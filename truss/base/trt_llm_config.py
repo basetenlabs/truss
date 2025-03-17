@@ -232,6 +232,14 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     def _validate_speculator_config(self):
         if self.speculator:
+            if self.max_batch_size and self.max_batch_size > 64:
+                logger.warning(
+                    "We recommend speculative decoding for lower load on your servers, e.g. with batch-sizes below 32"
+                    "To get better auto-tuned kernels, we recommend capping the max_batch_size to a more reasonable number e.g. `max_batch_size=64` or `max_batch_size=32`"
+                    "If you have high batch-sizes, speculative decoding may not be beneficial for total throughput."
+                    "If you want to use speculative decoding on high load, tune the concurrency settings for more aggressive autoscaling on Baseten."
+                )
+
             if not all(
                 [
                     self.plugin_configuration.use_paged_context_fmha,
