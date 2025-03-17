@@ -232,8 +232,6 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     def _validate_speculator_config(self):
         if self.speculator:
-            if self.base_model is TrussTRTLLMModel.WHISPER:
-                raise ValueError("Speculative decoding for Whisper is not supported.")
             if not all(
                 [
                     self.plugin_configuration.use_paged_context_fmha,
@@ -243,7 +241,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 raise ValueError(
                     "KV cache block reuse must be enabled for speculative decoding target model."
                 )
-            if self.speculator.build:
+
+            if self.uses_draft_external:
+                logger.warning(
+                    "Draft external mode is a advanced feature. If you encounter issues, feel free to contact us. You may also try lookahead decoding mode instead."
+                )
                 if (
                     self.tensor_parallel_count
                     != self.speculator.build.tensor_parallel_count
