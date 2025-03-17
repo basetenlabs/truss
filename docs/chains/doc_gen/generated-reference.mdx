@@ -16,8 +16,28 @@ Inheriting from this class adds validations to make sure subclasses adhere to th
 chainlet pattern and facilitates remote chainlet deployment.
 
 Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
-[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on how to create subclasses.
+
+
+### *class* `truss_chains.ModelBase`
+
+Base class for all standalone models.
+
+Inheriting from this class adds validations to make sure subclasses adhere to the
+truss model pattern.
+
+
+### *class* `truss_chains.EngineBuilderLLMChainlet`
+
+Bases: `EngineBuilderChainlet`
+
+#### *final async* run_remote(llm_input)
+
+* **Parameters:**
+  **llm_input** (*EngineBuilderLLMInput*)
+* **Return type:**
+  *AsyncIterator*[str]
 
 ### `truss_chains.depends`
 
@@ -28,7 +48,7 @@ When deploying a chain remotely, a corresponding stub to the remote is injected 
 its place. In `run_local` mode an instance of a local chainlet is injected.
 
 Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
-[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on how make one chainlet depend on another chainlet.
 
 #### WARNING
@@ -43,7 +63,7 @@ chainlet instance is provided.
 |------|------|-------------|
 | `chainlet_cls` | *Type[ChainletT]* | The chainlet class of the dependency. |
 | `retries` | *int* | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues). For streaming, retries are only made if the request fails before streaming any results back. Failures mid-stream not retried. |
-| `timeout_sec` | *int* | Timeout for the HTTP request to this chainlet. |
+| `timeout_sec` | *float* | Timeout for the HTTP request to this chainlet. |
 | `use_binary` | *bool* | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 
 * **Returns:**
@@ -57,7 +77,7 @@ chainlet instance is provided.
 Sets a “symbolic marker” for injecting a context object at runtime.
 
 Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
-[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on the `__init__`-signature of chainlets.
 
 #### WARNING
@@ -78,7 +98,7 @@ Bases: `pydantic.BaseModel`
 
 Bundles config values and resources needed to instantiate Chainlets.
 
-The context can optionally added as a trailing argument in a Chainlet’s
+The context can optionally be added as a trailing argument in a Chainlet’s
 `__init__` method and then used to set up the chainlet (e.g. using a secret as
 an access token for downloading model weights).
 
@@ -89,14 +109,14 @@ an access token for downloading model weights).
 |------|------|-------------|
 | `data_dir` | *Path\|None* | The directory where the chainlet can store and access data, e.g. for downloading model weights. |
 | `chainlet_to_service` | *Mapping[str,[DeployedServiceDescriptor](#truss_chains.DeployedServiceDescriptor* | A mapping from chainlet names to service descriptors. This is used to create RPC sessions to dependency chainlets. It contains only the chainlet services that are dependencies of the current chainlet. |
-| `secrets` | *MappingNoIter[str,str]* | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet. |
-| `environment` | *[Environment](#truss_chains.definitions.Environment* | The environment that the chainlet is deployed in. None if the chainlet is not associated with an environment. |
+| `secrets` | *\_MappingNoIter[str,str]* | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet. |
+| `environment` | *[Environment](#truss_chains.Environment* | The environment that the chainlet is deployed in. None if the chainlet is not associated with an environment. |
 
 #### chainlet_to_service *: Mapping[str, [DeployedServiceDescriptor](#truss_chains.DeployedServiceDescriptor)]*
 
 #### data_dir *: Path | None*
 
-#### environment *: [Environment](#truss_chains.definitions.Environment) | None*
+#### environment *: [Environment](#truss_chains.Environment) | None*
 
 #### get_baseten_api_key()
 
@@ -110,10 +130,10 @@ an access token for downloading model weights).
 * **Return type:**
   [*DeployedServiceDescriptor*](#truss_chains.DeployedServiceDescriptor)
 
-#### secrets *: MappingNoIter[str, str]*
+#### secrets *: \_MappingNoIter[str, str]*
 
 
-### *class* `truss_chains.definitions.Environment`
+### *class* `truss_chains.Environment`
 
 Bases: `pydantic.BaseModel`
 
@@ -134,11 +154,20 @@ Bases: `pydantic.BaseModel`
 | Name | Type | Description |
 |------|------|-------------|
 | `enable_b10_tracing` | *bool* | enables baseten-internal trace data collection. This helps baseten engineers better analyze chain performance in case of issues. It is independent of a potentially user-configured tracing instrumentation. Turning this on, could add performance overhead. |
+| `enable_debug_logs` | *bool* | Sets log level to debug in deployed server. |
 | `env_variables` | *Mapping[str,str]* | static environment variables available to the deployed chainlet. |
+| `health_checks` | *HealthChecks* | Configures health checks for the chainlet. See [guide](https://docs.baseten.co/truss/guides/custom-health-checks#chains). |
+| `metadata` | *JsonValue\|None* | Arbitrary JSON object to describe chainlet. |
 
 #### enable_b10_tracing *: bool*
 
+#### enable_debug_logs *: bool*
+
 #### env_variables *: Mapping[str, str]*
+
+#### health_checks *: HealthChecks*
+
+#### metadata *: JsonValue | None*
 
 
 ### *class* `truss_chains.RPCOptions`
@@ -153,12 +182,12 @@ Options to customize RPCs to dependency chainlets.
 | Name | Type | Description |
 |------|------|-------------|
 | `retries` | *int* | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues). For streaming, retries are only made if the request fails before streaming any results back. Failures mid-stream not retried. |
-| `timeout_sec` | *int* | Timeout for the HTTP request to this chainlet. |
+| `timeout_sec` | *float* | Timeout for the HTTP request to this chainlet. |
 | `use_binary` | *bool* | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 
 #### retries *: int*
 
-#### timeout_sec *: int*
+#### timeout_sec *: float*
 
 #### use_binary *: bool*
 
@@ -172,7 +201,7 @@ This decorator can be applied to *one* chainlet in a source file and then the
 CLI push command simplifies: only the file, not the class within, must be specified.
 
 Optionally a display name for the Chain (not the Chainlet) can be set (effectively
-giving a custom default value for the `name` arg of the CLI push command).
+giving a custom default value for the –name arg of the CLI push command).
 
 Example usage:
 
@@ -265,7 +294,7 @@ modules and keep their requirement files right next their python source files.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `base_image` | *[BasetenImage](#truss_chains.BasetenImage* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a Baseten default image for a supported python version (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`).. |
+| `base_image` | *[BasetenImage](#truss_chains.BasetenImage* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a Baseten default image for a supported python version (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`). |
 | `pip_requirements_file` | *AbsPath\|None* | Path to a file containing pip requirements. The file content is naively concatenated with `pip_requirements`. |
 | `pip_requirements` | *list[str]* | A list of pip requirements to install.  The items are naively concatenated with the content of the `pip_requirements_file`. |
 | `apt_requirements` | *list[str]* | A list of apt requirements to install. |
@@ -281,6 +310,11 @@ modules and keep their requirement files right next their python source files.
 #### external_package_dirs *: list[AbsPath] | None*
 
 #### *classmethod* migrate_fields(values)
+
+* **Parameters:**
+  **values** (*dict*)
+* **Return type:**
+  dict
 
 #### pip_requirements *: list[str]*
 
@@ -417,7 +451,7 @@ Deploys a chain remotely (with all dependent chainlets).
 
 | Name | Type | Description |
 |------|------|-------------|
-| `entrypoint` | *Type[ABCChainlet]* | The chainlet class that serves as the entrypoint to the chain. |
+| `entrypoint` | *Type[ChainletT]* | The chainlet class that serves as the entrypoint to the chain. |
 | `chain_name` | *str* | The name of the chain. |
 | `publish` | *bool* | Whether to publish the chain as a published deployment (it is a draft deployment otherwise) |
 | `promote` | *bool* | Whether to promote the chain to be the production deployment (this implies publishing as well). |
@@ -442,14 +476,8 @@ A `ChainService` is created and returned when using `push`. It
 bundles the individual services for each chainlet in the chain, and provides
 utilities to query their status, invoke the entrypoint etc.
 
-
-**Parameters:**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `name` | *str* |  |
-| `entrypoint_service` | *TrussService* |  |
-
+* **Parameters:**
+  **name** (*str*)
 
 #### *property* entrypoint_fake_json_data *: Any*
 
@@ -459,18 +487,19 @@ This property must be externally populated.
 * **Raises:**
   **ValueError** – If fake data was not set.
 
-#### *abstract* get_info()
+#### *abstractmethod* get_info()
 
 Queries the statuses of all chainlets in the chain.
 
 * **Returns:**
-  List of `DeployedChainlet` for each chainlet.
+  List of `DeployedChainlet`, `(name, is_entrypoint, status, logs_url)`
+  for each chainlet.
 * **Return type:**
   list[*DeployedChainlet*]
 
 #### *property* name *: str*
 
-#### run_remote(json)
+#### *abstractmethod* run_remote(json)
 
 Invokes the entrypoint with JSON data.
 
@@ -597,7 +626,10 @@ for more details.
 
 ### *class* `truss_chains.DeployedServiceDescriptor`
 
-Bases: `ServiceDescriptor`
+Bases: `pydantic.BaseModel`
+
+Bundles values to establish an RPC session to a dependency chainlet,
+specifically with `StubBase`.
 
 **Parameters:**
 
@@ -606,10 +638,42 @@ Bases: `ServiceDescriptor`
 | `name` | *str* |  |
 | `display_name` | *str* |  |
 | `options` | *[RPCOptions](#truss_chains.RPCOptions* |  |
-| `predict_url` | *str* |  |
+| `predict_url` | *str\|None* |  |
+| `internal_url` | *[InternalURL](#truss_chains.DeployedServiceDescriptor.InternalURL* |  |
 
 
-#### predict_url *: str*
+#### *class* InternalURL(, gateway_run_remote_url, hostname)
+
+Bases: `pydantic.BaseModel`
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `gateway_run_remote_url` | *str* |  |
+| `hostname` | *str* |  |
+
+
+#### gateway_run_remote_url *: str*
+
+#### hostname *: str*
+
+#### check_at_least_one_url()
+
+* **Parameters:**
+  **self** ([*DeployedServiceDescriptor*](#truss_chains.DeployedServiceDescriptor))
+* **Return type:**
+  [*DeployedServiceDescriptor*](#truss_chains.DeployedServiceDescriptor)
+
+#### display_name *: str*
+
+#### internal_url *: [InternalURL](#truss_chains.DeployedServiceDescriptor.InternalURL) | None*
+
+#### name *: str*
+
+#### options *: [RPCOptions](#truss_chains.RPCOptions)*
+
+#### predict_url *: str | None*
 
 
 ### *class* `truss_chains.StubBase`
@@ -674,7 +738,7 @@ class MyChainlet(chains.ChainletBase):
 | `api_key` | *str* | A baseten API key to authorize requests. |
 
 
-#### *classmethod* from_url(predict_url, context, options=None)
+#### *classmethod* from_url(predict_url, context_or_api_key, options=None)
 
 Factory method, convenient to be used in chainlet’s `__init__`-method.
 
@@ -684,7 +748,7 @@ Factory method, convenient to be used in chainlet’s `__init__`-method.
 | Name | Type | Description |
 |------|------|-------------|
 | `predict_url` | *str* | URL to predict endpoint of another chain / truss model. |
-| `context` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__`. |
+| `context_or_api_key` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__` or Baseten API key. |
 | `options` | *[RPCOptions](#truss_chains.RPCOptions* | RPC options, e.g. retries. |
 
 
@@ -719,8 +783,40 @@ error response.
 | `exception_cls_name` | *str* |  |
 | `exception_module_name` | *str\|None* |  |
 | `exception_message` | *str* |  |
-| `user_stack_trace` | *list[StackFrame]* |  |
+| `user_stack_trace` | *list[[StackFrame](#truss_chains.RemoteErrorDetail.StackFrame* |  |
 
+
+#### *class* StackFrame(, filename, lineno, name, line)
+
+Bases: `pydantic.BaseModel`
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `filename` | *str* |  |
+| `lineno` | *int\|None* |  |
+| `name` | *str* |  |
+| `line` | *str\|None* |  |
+
+
+#### filename *: str*
+
+#### *classmethod* from_frame_summary(frame)
+
+* **Parameters:**
+  **frame** (*FrameSummary*)
+
+#### line *: str | None*
+
+#### lineno *: int | None*
+
+#### name *: str*
+
+#### to_frame_summary()
+
+* **Return type:**
+  *FrameSummary*
 
 #### exception_cls_name *: str*
 
@@ -736,4 +832,12 @@ with stack traces.
 * **Return type:**
   str
 
-#### user_stack_trace *: list[StackFrame]*
+#### user_stack_trace *: list[[StackFrame](#truss_chains.RemoteErrorDetail.StackFrame)]*
+
+
+### *class* `truss_chains.GenericRemoteException`
+
+Bases: `Exception`
+
+Raised when calling a remote chainlet results in an error and it is not possible
+to re-raise the same exception that was raise remotely in the caller.

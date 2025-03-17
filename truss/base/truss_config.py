@@ -76,6 +76,7 @@ class Accelerator(Enum):
     A10G = "A10G"
     V100 = "V100"
     A100 = "A100"
+    A100_40GB = "A100_40GB"
     H100 = "H100"
     H200 = "H200"
     H100_40GB = "H100_40GB"
@@ -805,6 +806,7 @@ class TrussConfig:
             ] and self.resources.accelerator.accelerator in [
                 Accelerator.A10G,
                 Accelerator.A100,
+                Accelerator.A100_40GB,
             ]:
                 raise ValueError(
                     "FP8 quantization is only supported on L4, H100, H200 accelerators or newer (CUDA_COMPUTE>=89)"

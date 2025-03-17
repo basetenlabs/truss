@@ -36,8 +36,7 @@ jobs:
           python -c "import truss_transfer; print(truss_transfer.__version__)"
       - name: Download github file & test real bptr resolution
         run: |
-          sudo mkdir -p /bptr
-          sudo chown $(whoami):$(whoami) /bptr
+          sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           cp ./example-bptr-manifest.json /bptr/bptr-manifest
 
           source .venv/bin/activate

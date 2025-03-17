@@ -34,7 +34,7 @@ from truss.remote.baseten import service as b10_service
 from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
-from truss_chains import definitions, framework, utils
+from truss_chains import framework, private_types, public_types, utils
 from truss_chains.deployment import code_gen
 
 if TYPE_CHECKING:
@@ -43,12 +43,12 @@ if TYPE_CHECKING:
 
 
 def _get_ordered_dependencies(
-    chainlets: Iterable[Type[definitions.ABCChainlet]],
-) -> Iterable[definitions.ChainletAPIDescriptor]:
+    chainlets: Iterable[Type[private_types.ABCChainlet]],
+) -> Iterable[private_types.ChainletAPIDescriptor]:
     """Gather all Chainlets needed and returns a topologically ordered list."""
-    needed_chainlets: set[definitions.ChainletAPIDescriptor] = set()
+    needed_chainlets: set[private_types.ChainletAPIDescriptor] = set()
 
-    def add_needed_chainlets(chainlet: definitions.ChainletAPIDescriptor):
+    def add_needed_chainlets(chainlet: private_types.ChainletAPIDescriptor):
         needed_chainlets.add(chainlet)
         for chainlet_descriptor in framework.get_dependencies(chainlet):
             needed_chainlets.add(chainlet_descriptor)
@@ -64,7 +64,7 @@ def _get_ordered_dependencies(
     ]
 
 
-def _get_chain_root(entrypoint: Type[definitions.ABCChainlet]) -> pathlib.Path:
+def _get_chain_root(entrypoint: Type[private_types.ABCChainlet]) -> pathlib.Path:
     # TODO: revisit how chain root is inferred/specified, current might be brittle.
     chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
     logging.info(
@@ -115,7 +115,9 @@ class ChainService(abc.ABC):
         """Queries the statuses of all chainlets in the chain.
 
         Returns:
-            List of ``DeployedChainlet`` for each chainlet."""
+            List of ``DeployedChainlet``, ``(name, is_entrypoint, status, logs_url)``
+            for each chainlet.
+        """
 
     @property
     def entrypoint_fake_json_data(self) -> Any:
@@ -135,7 +137,7 @@ class ChainService(abc.ABC):
 
 
 def _generate_chainlet_artifacts(
-    options: definitions.PushOptions, entrypoint: Type[definitions.ABCChainlet]
+    options: private_types.PushOptions, entrypoint: Type[private_types.ABCChainlet]
 ) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact], bool]:
     chain_root = _get_chain_root(entrypoint)
     entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
@@ -143,7 +145,7 @@ def _generate_chainlet_artifacts(
     chainlet_display_names: set[str] = set()
 
     use_local_src = False
-    if isinstance(options, definitions.PushOptionsLocalDocker):
+    if isinstance(options, private_types.PushOptionsLocalDocker):
         use_local_src = options.use_local_src
 
     has_engine_builder_chainlets = False
@@ -155,7 +157,7 @@ def _generate_chainlet_artifacts(
         chainlet_display_name = chainlet_descriptor.display_name
 
         if chainlet_display_name in chainlet_display_names:
-            raise definitions.ChainsUsageError(
+            raise public_types.ChainsUsageError(
                 f"Chainlet names must be unique. Found multiple Chainlets with the name: '{chainlet_display_name}'."
             )
 
@@ -195,8 +197,8 @@ def _generate_chainlet_artifacts(
 
 @framework.raise_validation_errors_before
 def push(
-    entrypoint: Type[definitions.ABCChainlet],
-    options: definitions.PushOptions,
+    entrypoint: Type[private_types.ABCChainlet],
+    options: private_types.PushOptions,
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
     entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets = (
@@ -204,24 +206,33 @@ def push(
     )
     if options.only_generate_trusses:
         return None
-    if isinstance(options, definitions.PushOptionsBaseten):
+    if isinstance(options, private_types.PushOptionsBaseten):
         if has_engine_builder_chainlets and not options.publish:
-            raise definitions.ChainsDeploymentError(
+            raise public_types.ChainsDeploymentError(
                 "This chain contains engine builder chainlets. Development models are "
                 "not supportd, push with `--publish`."
             )
         return _create_baseten_chain(
             options, entrypoint_artifact, dependency_artifacts, progress_bar
         )
-    elif isinstance(options, definitions.PushOptionsLocalDocker):
+    elif isinstance(options, private_types.PushOptionsLocalDocker):
         if has_engine_builder_chainlets:
-            raise definitions.ChainsDeploymentError(
+            raise public_types.ChainsDeploymentError(
                 "This chain contains engine builder chainlets. Running in local docker "
                 "is not supported."
             )
         return _create_docker_chain(options, entrypoint_artifact, dependency_artifacts)
     else:
         raise NotImplementedError(options)
+
+
+def push_debug_docker(
+    entrypoint: Type[private_types.ABCChainlet], chain_name: str
+) -> ChainService:
+    options = private_types.PushOptionsLocalDocker(
+        chain_name=chain_name, only_generate_trusses=False, use_local_src=True
+    )
+    return cast(ChainService, push(entrypoint, options))
 
 
 # Docker ###############################################################################
@@ -265,11 +276,11 @@ class DockerChainletService(b10_service.TrussService):
 def _push_service_docker(
     truss_dir: pathlib.Path,
     chainlet_display_name: str,
-    options: definitions.PushOptionsLocalDocker,
+    options: private_types.PushOptionsLocalDocker,
     port: int,
 ) -> None:
     th = truss_handle.TrussHandle(truss_dir)
-    th.add_secret(definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
+    th.add_secret(public_types._BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
     th.docker_run(
         local_port=port,
         detach=True,
@@ -310,7 +321,7 @@ class DockerChainService(ChainService):
 
 
 def _create_docker_chain(
-    docker_options: definitions.PushOptionsLocalDocker,
+    docker_options: private_types.PushOptionsLocalDocker,
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
 ) -> DockerChainService:
@@ -330,7 +341,8 @@ def _create_docker_chain(
         chainlet_to_service[chainlet_artifact.name] = service
 
         local_config_handler.LocalConfigHandler.set_dynamic_config(
-            definitions.DYNAMIC_CHAINLET_CONFIG_KEY, json.dumps(chainlet_to_predict_url)
+            private_types.DYNAMIC_CHAINLET_CONFIG_KEY,
+            json.dumps(chainlet_to_predict_url),
         )
 
         truss_dir = chainlet_artifact.truss_dir
@@ -448,7 +460,7 @@ class BasetenChainService(ChainService):
 
 
 def _create_baseten_chain(
-    baseten_options: definitions.PushOptionsBaseten,
+    baseten_options: private_types.PushOptionsBaseten,
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
     progress_bar: Optional[Type["progress.Progress"]],
@@ -461,12 +473,21 @@ def _create_baseten_chain(
         b10_remote.BasetenRemote,
         remote_factory.RemoteFactory.create(remote=baseten_options.remote),
     )
+
+    if remote_provider.include_git_info or baseten_options.include_git_info:
+        truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
+            baseten_options.working_dir
+        )
+    else:
+        truss_user_env = b10_types.TrussUserEnv.collect()
+
     _create_chains_secret_if_missing(remote_provider)
 
     chain_deployment_handle = remote_provider.push_chain_atomic(
-        chain_name=baseten_options.chain_name,
-        entrypoint_artifact=entrypoint_artifact,
-        dependency_artifacts=dependency_artifacts,
+        baseten_options.chain_name,
+        entrypoint_artifact,
+        dependency_artifacts,
+        truss_user_env,
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,
@@ -479,14 +500,14 @@ def _create_baseten_chain(
 def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) -> None:
     secrets_info = remote_provider.api.get_all_secrets()
     secret_names = {sec["name"] for sec in secrets_info["secrets"]}
-    if definitions.BASETEN_API_SECRET_NAME not in secret_names:
+    if public_types._BASETEN_API_SECRET_NAME not in secret_names:
         logging.info(
             "It seems you are using chains for the first time, since there "
-            f"is no `{definitions.BASETEN_API_SECRET_NAME}` secret on baseten. "
+            f"is no `{public_types._BASETEN_API_SECRET_NAME}` secret on baseten. "
             "Creating secret automatically."
         )
         remote_provider.api.upsert_secret(
-            definitions.BASETEN_API_SECRET_NAME, remote_provider.api.auth_token.value
+            public_types._BASETEN_API_SECRET_NAME, remote_provider.api.auth_token.value
         )
 
 
@@ -645,7 +666,7 @@ class _Watcher:
 
         if included_chainlets:
             if not_matched := (set(included_chainlets) - chainlet_names):
-                raise definitions.ChainsDeploymentError(
+                raise public_types.ChainsDeploymentError(
                     "Requested to watch specific chainlets, but did not find "
                     f"{not_matched} among available chainlets {chainlet_names}."
                 )
@@ -657,7 +678,7 @@ class _Watcher:
             self._remote_provider.api, self._deployed_chain_name
         )
         if not chain_id:
-            raise definitions.ChainsDeploymentError(
+            raise public_types.ChainsDeploymentError(
                 f"Chain `{chain_id}` was not found."
             )
         self._status_page_url = b10_service.URLConfig.status_page_url(
@@ -667,7 +688,7 @@ class _Watcher:
             self._remote_provider.api, chain_id
         )
         if chain_deployment is None:
-            raise definitions.ChainsDeploymentError(
+            raise public_types.ChainsDeploymentError(
                 f"No development deployment was found for Chain `{chain_id}`. "
                 "You cannot live-patch production deployments. Check the Chain's "
                 f"status page for available deployments: {self._status_page_url}."
@@ -704,10 +725,10 @@ class _Watcher:
         if added:
             msg_parts.append(f"Chainlets added in current workspace: {list(added)}")
 
-        raise definitions.ChainsDeploymentError("\n".join(msg_parts))
+        raise public_types.ChainsDeploymentError("\n".join(msg_parts))
 
     def _code_gen_and_patch_thread(
-        self, descr: definitions.ChainletAPIDescriptor
+        self, descr: private_types.ChainletAPIDescriptor
     ) -> tuple[b10_remote.PatchResult, list[str]]:
         with log_utils.LogInterceptor() as log_interceptor:
             # TODO: Maybe try-except code_gen errors explicitly.
