@@ -760,16 +760,12 @@ class TrussConfig:
                     f"TRT-LLM models should have either model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
                     f"Your current tags are both {current_tags}, which is invalid. Please remove one of the tags."
                 )
-            elif (
-                not (
-                    OPENAI_COMPATIBLE_TAG in current_tags
-                    or OPENAI_NON_COMPATIBLE_TAG in current_tags
-                )
-                and ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
+            elif not (
+                OPENAI_COMPATIBLE_TAG in current_tags
+                or OPENAI_NON_COMPATIBLE_TAG in current_tags
             ):
                 # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
-                raise ValueError(
-                    f"""TRT-LLM models should have model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] (or ['{OPENAI_NON_COMPATIBLE_TAG}']).
+                message = f"""TRT-LLM models should have model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] (or ['{OPENAI_NON_COMPATIBLE_TAG}']).
                     Your current tags are {current_tags}, which is has neither option."
                     ```yaml
                     model_metadata:
@@ -777,7 +773,10 @@ class TrussConfig:
                     - {OPENAI_COMPATIBLE_TAG} # for legacy behavior set to `  - {OPENAI_NON_COMPATIBLE_TAG}`
                     ```
                     """
-                )
+                if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
+                    raise ValueError(message)
+                else:
+                    logger.warning(message)
             elif OPENAI_NON_COMPATIBLE_TAG in current_tags:
                 logger.warning(
                     f"Model is marked as {OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI."
