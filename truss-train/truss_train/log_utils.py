@@ -12,6 +12,8 @@ from truss.remote.baseten.api import BasetenApi
 POLL_INTERVAL_SEC = 5
 CLOCK_SKEW_BUFFER_MS = 1000
 
+JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_DEPLOYING"]
+
 
 class RawTrainingJobLog(pydantic.BaseModel):
     timestamp: str
@@ -90,7 +92,23 @@ class LogWatcher:
 
         self._last_poll_time = now
 
+    def _get_current_job_status(self) -> str:
+        job = self.api.get_training_job(self.project_id, self.job_id)
+        return job["current_status"]
+
+    def _wait_until_running(self) -> None:
+        current_status = self._get_current_job_status()
+        status_str = "Waiting for job to run, currently {current_status}..."
+        with self.console.status(
+            status_str.format(current_status=current_status), spinner="dots"
+        ) as status_console:
+            while current_status in JOB_STARTING_STATES:
+                time.sleep(POLL_INTERVAL_SEC)
+                current_status = self._get_current_job_status()
+                status_console.update(status_str.format(current_status=current_status))
+
     def watch(self) -> None:
+        self._wait_until_running()
         with self.console.status("Waiting for logs...", spinner="dots"):
             while True:
                 self._poll()
