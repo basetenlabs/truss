@@ -39,7 +39,9 @@ def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJo
     )
 
     return PreparedTrainingJob(
-        **training_job.model_dump(),
+        image=training_job.image,
+        runtime=training_job.runtime,
+        compute=training_job.compute,
         runtime_artifacts=[
             S3Artifact(s3_key=credentials["s3_key"], s3_bucket=credentials["s3_bucket"])
         ],
