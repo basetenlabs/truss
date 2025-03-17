@@ -178,10 +178,8 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     @property
     def uses_draft_external(self) -> bool:
-        return (
-            self.speculator is not None
-            and self.speculator.speculative_decoding_mode
-            == TrussSpecDecMode.DRAFT_EXTERNAL
+        return (self.speculator is not None) and (
+            self.speculator.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL
         )
 
     def _bei_specfic_migration(self):
@@ -250,7 +248,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                     "KV cache block reuse must be enabled for speculative decoding target model."
                 )
 
-            if self.uses_draft_external:
+            if self.uses_draft_external and self.speculator.build:
                 logger.warning(
                     "Draft external mode is a advanced feature. If you encounter issues, feel free to contact us. You may also try lookahead decoding mode instead."
                 )
