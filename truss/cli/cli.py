@@ -28,11 +28,7 @@ from truss.base.constants import (
 from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
-from truss.cli.remote_cli import (
-    inquire_model_name,
-    inquire_remote_config,
-    inquire_remote_name,
-)
+from truss.cli import remote_cli
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -239,7 +235,7 @@ def init(target_directory, backend, name, python_config) -> None:
     if name:
         model_name = name
     else:
-        model_name = inquire_model_name()
+        model_name = remote_cli.inquire_model_name()
     _init(
         target_directory=target_directory,
         build_config=build_config,
@@ -353,7 +349,7 @@ def login(api_key: Optional[str]):
     from truss.api import login
 
     if not api_key:
-        remote_config = inquire_remote_config()
+        remote_config = remote_cli.inquire_remote_config()
         RemoteFactory.update_remote_config(remote_config)
     else:
         login(api_key)
@@ -374,7 +370,7 @@ def whoami(remote: Optional[str]):
     from truss.api import whoami
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     user = whoami(remote)
 
@@ -399,7 +395,7 @@ def watch(target_directory: str, remote: str) -> None:
     """
     # TODO: ensure that provider support draft
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider = RemoteFactory.create(remote=remote)
 
@@ -522,6 +518,12 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     return table, statuses
 
 
+include_git_info_doc = (
+    "Whether to attach git versioning info (sha, branch, tag) to deployments made from "
+    "within a git repo. If set to True in `.trussrc`, it will always be attached."
+)
+
+
 @chains.command(name="push")  # type: ignore
 @click.argument("source", type=Path, required=True)
 @click.argument("entrypoint", type=str, required=False)
@@ -593,6 +595,14 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         "and refer to docs."
     ),
 )
+@click.option(
+    "--include-git-info",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=include_git_info_doc,
+)
 @log_level_option
 @error_handling
 def push_chain(
@@ -607,6 +617,7 @@ def push_chain(
     remote: Optional[str],
     environment: Optional[str],
     experimental_watch_chainlet_names: Optional[str],
+    include_git_info: bool = False,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -643,7 +654,10 @@ def push_chain(
         console.print(promote_warning, style="yellow")
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
+
+    if not include_git_info and remote_cli.check_is_interactive():
+        include_git_info = remote_cli.update_include_git_info_consent(remote)
 
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
@@ -656,6 +670,8 @@ def push_chain(
             only_generate_trusses=dryrun,
             remote=remote,
             environment=environment,
+            include_git_info=include_git_info,
+            working_dir=source.parent if source.is_file() else source.resolve(),
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
@@ -786,7 +802,7 @@ def watch_chains(
     from truss_chains.deployment import deployment_client
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     if experimental_chainlet_names:
         included_chainlets = [x.strip() for x in experimental_chainlet_names.split(",")]
@@ -875,7 +891,7 @@ def push_training_job(config: Path, remote: Optional[str]):
     from truss_train import deployment, loader
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
@@ -911,7 +927,7 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, watch: boo
     from truss_train import log_utils
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
@@ -1035,7 +1051,7 @@ def predict(
     REQUEST_FILE: Path to json file containing the request
     """
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider = RemoteFactory.create(remote=remote)
 
@@ -1204,6 +1220,14 @@ def run_python(script, target_directory):
         "specifying, the command will not complete until the deployment is complete."
     ),
 )
+@click.option(
+    "--include-git-info",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=include_git_info_doc,
+)
 @log_level_option
 @error_handling
 def push(
@@ -1219,6 +1243,7 @@ def push(
     wait: bool = False,
     timeout_seconds: Optional[int] = None,
     environment: Optional[str] = None,
+    include_git_info: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1227,14 +1252,17 @@ def push(
 
     """
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
+
+    if not include_git_info and remote_cli.check_is_interactive():
+        include_git_info = remote_cli.update_include_git_info_consent(remote)
 
     remote_provider = RemoteFactory.create(remote=remote)
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
-        model_name = inquire_model_name()
+        model_name = remote_cli.inquire_model_name()
 
     if promote and environment:
         promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
@@ -1282,10 +1310,12 @@ def push(
                 )
                 console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
+    source = Path(target_directory)
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
         model_name=model_name,
+        working_dir=source.parent if source.is_file() else source.resolve(),
         publish=publish,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
@@ -1293,6 +1323,7 @@ def push(
         environment=environment,
         disable_truss_download=disable_truss_download,
         progress_bar=progress.Progress,
+        include_git_info=include_git_info,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
