@@ -68,7 +68,7 @@ class LogWatcher:
         log_str = f"{log.timestamp}-{log.message}-{log.replica}"
         return hashlib.sha256(log_str.encode("utf-8")).hexdigest()
 
-    def _poll(self):
+    def _poll(self) -> None:
         start_epoch: Optional[int] = None
         now = int(time.time() * 1000)
         if self._last_poll_time is not None:

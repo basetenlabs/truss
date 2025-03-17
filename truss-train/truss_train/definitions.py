@@ -18,7 +18,7 @@ class Compute(types.SafeModel):
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
-        if self.accelerator:
+        if self.accelerator and self.accelerator.accelerator:
             data["accelerator"] = {
                 "accelerator": self.accelerator.accelerator.value,
                 "count": self.accelerator.count,
