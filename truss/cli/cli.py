@@ -1293,8 +1293,7 @@ def push(
                 "`hf_access_token` must be provided in secrets to build a gated model. "
                 "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
             )
-            console.print(missing_token_text, style="red")
-            sys.exit(1)
+            console.print(missing_token_text, style="yellow")
         if memory_updated_for_trt_llm_builder(tr):
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
