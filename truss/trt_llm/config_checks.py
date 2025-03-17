@@ -27,11 +27,9 @@ def is_missing_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
 def has_no_tags_trt_llm_builder(tr: TrussHandle) -> str:
     """
     support transitioning to more openai-compatible schema.
-    # transitioning in three phases:
-    # 1. set OPENAI_NON_COMPATIBLE_TAG as default
-    # 2. set OPENAI_COMPATIBLE_TAG as default for new pushes. (June 2025)
-    # 3. Reject models without tag (July 2025)
-    # 4. disable new legacy-non-openai pushes server-side. (2026 eta)
+    # transitioning:
+    # 1. Require a tag for all models (today), write to config.yaml client-side, and error.
+    # 2. disable new legacy-non-openai pushes server-side. (2026 eta)
     """
 
     def add_openai_tag(tr: TrussHandle) -> str:
@@ -53,7 +51,10 @@ model_metadata:
         assert tr.spec.config.trt_llm is not None
         current_tags = tr.spec.config.model_metadata.get("tags", [])
 
-        if tr.spec.config.trt_llm.build.speculator is not None:
+        if (
+            tr.spec.config.trt_llm.build.speculator is not None
+            and tr.spec.config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+        ):
             # spec-dec has no classic backend. OpenAI-mode is forced, regardless of tags.
             if OPENAI_NON_COMPATIBLE_TAG in current_tags:
                 return (
@@ -67,13 +68,9 @@ model_metadata:
                     f"{message}"
                     f"We have adjusted your config.yaml file to include this tag. Please save the changes and push again."
                 )
-        elif (
-            tr.spec.config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
-            and not current_tags
-            or not any(
-                tag in current_tags
-                for tag in (OPENAI_COMPATIBLE_TAG, OPENAI_NON_COMPATIBLE_TAG)
-            )
+        elif not any(
+            tag in current_tags
+            for tag in (OPENAI_COMPATIBLE_TAG, OPENAI_NON_COMPATIBLE_TAG)
         ):
             # inserting new tag client side on truss push
             message = add_openai_tag(tr)
