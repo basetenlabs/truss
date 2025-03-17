@@ -767,7 +767,7 @@ class TrussConfig:
             ):
                 # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
                 message = f"""TRT-LLM models should have model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] (or ['{OPENAI_NON_COMPATIBLE_TAG}']).
-                    Your current tags are {current_tags}, which is has neither option."
+                    Your current tags are {current_tags}, which is has neither option. We require a active choice to be made."
                     ```yaml
                     model_metadata:
                     tags:
@@ -780,8 +780,8 @@ class TrussConfig:
                     logger.warning(message)
             elif OPENAI_NON_COMPATIBLE_TAG in current_tags:
                 logger.warning(
-                    f"Model is marked as {OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI."
-                    "This is the deprecated legacy behavior, please update the tag to {OPENAI_COMPATIBLE_TAG}."
+                    f"Model is marked as {OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI clients directly. "
+                    f"This is the deprecated legacy behavior, please update the tag to {OPENAI_COMPATIBLE_TAG}."
                 )
 
             if (

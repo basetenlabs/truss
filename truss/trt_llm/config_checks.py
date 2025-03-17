@@ -26,10 +26,12 @@ def is_missing_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
 
 def has_no_tags_trt_llm_builder(tr: TrussHandle) -> str:
     """
-    support transitioning to more openai-compatible schema.
+    support transitioning to more openai-compatible schema. @michaelfeil
     # transitioning:
     # 1. Require a tag for all models (today), write to config.yaml client-side, and error.
-    # 2. disable new legacy-non-openai pushes server-side. (2026 eta)
+    # 2. disable new legacy-non-openai pushes server-side.
+    # 3. always push the openai-compatible tag client-side.
+    # 3. remove the meaning of any tags, including this logic on truss push
     """
 
     def add_openai_tag(tr: TrussHandle) -> str:
