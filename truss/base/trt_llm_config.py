@@ -438,10 +438,9 @@ class TRTLLMConfiguration(BaseModel):
             )
             self.build = self.build.model_copy(
                 update={
-                    "plugin_configuration": {
-                        "use_paged_context_fmha": True,
-                        "paged_kv_cache": True,
-                    }
+                    "plugin_configuration": self.build.plugin_configuration.model_copy(
+                        update={"use_paged_context_fmha": True, "paged_kv_cache": True}
+                    )
                 }
             )
 

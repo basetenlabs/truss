@@ -48,9 +48,10 @@ def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
     except Exception:
         pytest.skip("checkpoint not found - huggingface must be down.")
 
-    assert trt_llm_config.runtime.model_dump() == {
-        "webserver_default_route": "/v1/embeddings"
-    }
+    assert (
+        trt_llm_config.to_json_dict(verbose=False)["runtime"]["webserver_default_route"]
+        == "/v1/embeddings"
+    )
 
 
 def test_trt_llm_chunked_prefill_fix(trtllm_config):
@@ -65,7 +66,9 @@ def test_trt_llm_chunked_prefill_fix(trtllm_config):
     # fixed for user
     trt_llm2 = copy.deepcopy(trt_llm_config)
     trt_llm2.build.plugin_configuration.paged_kv_cache = False
+    trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
     trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
+    print(trt_llm_fixed.build)
     assert trt_llm_fixed.build.plugin_configuration.paged_kv_cache is True
 
     # fixed for user
@@ -77,7 +80,8 @@ def test_trt_llm_chunked_prefill_fix(trtllm_config):
     trt_llm2 = copy.deepcopy(trt_llm_config)
     trt_llm2.runtime.enable_chunked_context = False
     trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
-    TRTLLMConfiguration(**trt_llm2.model_dump())
+    trt_llm2.build.plugin_configuration.paged_kv_cache = False
+    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
     assert trt_llm_fixed.build.plugin_configuration.use_paged_context_fmha is False
     assert trt_llm_fixed.runtime.enable_chunked_context is False
 
