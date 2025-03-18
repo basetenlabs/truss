@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -124,6 +124,9 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
     )
     request_default_max_tokens: Optional[int] = None
     total_token_limit: int = 500000
+    webserver_default_route: Optional[
+        Literal["/v1/embeddings", "/rerank", "/predict"]
+    ] = None
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
@@ -416,7 +419,7 @@ class TRTLLMConfiguration(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def after(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
+    def chunked_context(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
         # check if there is an error wrt. runtime.enable_chunked_context
         if (
             self.runtime.enable_chunked_context
@@ -438,6 +441,31 @@ class TRTLLMConfiguration(BaseModel):
                     "If runtime.enable_chunked_context is True, then build.plugin_configuration.use_paged_context_fmha and build.plugin_configuration.paged_kv_cache should be True"
                 )
 
+        return self
+
+    @model_validator(mode="after")
+    def bei_default_route(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
+        if (
+            self.runtime.webserver_default_route is None
+            and self.build.base_model == TrussTRTLLMModel.ENCODER
+            and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
+        ):
+            # attemp to set the best possible default route client side.
+            try:
+                from transformers import AutoConfig
+
+                hf_cfg = AutoConfig.from_pretrained(
+                    self.build.checkpoint_repository.repo,
+                    revision=self.build.checkpoint_repository.revision,
+                )
+                # simple heuristic to set the default route
+                if "SequenceClassification" in hf_cfg.architectures[0]:
+                    self.runtime.webserver_default_route = "/predict"
+                else:
+                    self.runtime.webserver_default_route = "/v1/embeddings"
+            except Exception:
+                # access error, or any other issue
+                pass
         return self
 
     @property
