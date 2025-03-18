@@ -913,11 +913,10 @@ def push_training_job(config: Path, remote: Optional[str], watch: bool):
             )
 
         console.print("✨ Training job successfully created!", style="green")
-        if not watch:
-            console.print(
-                f"🪵 View logs for your job via "
-                f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--watch]`[/cyan]"
-            )
+        console.print(
+            f"🪵 View logs for your job via "
+            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--watch]`[/cyan]"
+        )
 
     if watch:
         log_watcher = log_utils.LogWatcher(
