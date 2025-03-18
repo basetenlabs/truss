@@ -7,6 +7,7 @@ import requests
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
+from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,8 @@ def _chainlet_data_atomic_to_graphql_mutation(
 
 
 class BasetenApi:
+    _rest_api_client: RestAPIClient
+
     class GraphQLErrorCodes(Enum):
         RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
 
@@ -70,6 +73,9 @@ class BasetenApi:
         self._rest_api_url = rest_api_url
         self._auth_service = auth_service
         self._auth_token = self._auth_service.authenticate()
+        self._rest_api_client = RestAPIClient(
+            base_url=self._rest_api_url, headers=self._auth_token.header()
+        )
 
     @property
     def app_url(self) -> str:
@@ -342,24 +348,12 @@ class BasetenApi:
         return chainlets
 
     def delete_chain(self, chain_id: str) -> Any:
-        url = f"{self._rest_api_url}/v1/chains/{chain_id}"
-        headers = self._auth_token.header()
-        resp = requests.delete(url, headers=headers)
-        if not resp.ok:
-            resp.raise_for_status()
-
-        deployment = resp.json()
-        return deployment
+        return self._rest_api_client.delete(f"v1/chains/{chain_id}")
 
     def delete_chain_deployment(self, chain_id: str, chain_deployment_id: str) -> Any:
-        url = f"{self._rest_api_url}/v1/chains/{chain_id}/deployments/{chain_deployment_id}"
-        headers = self._auth_token.header()
-        resp = requests.delete(url, headers=headers)
-        if not resp.ok:
-            resp.raise_for_status()
-
-        deployment = resp.json()
-        return deployment
+        return self._rest_api_client.delete(
+            f"v1/chains/{chain_id}/deployments/{chain_deployment_id}"
+        )
 
     def models(self):
         query_string = """
@@ -539,72 +533,34 @@ class BasetenApi:
         return resp["data"]["truss_validation"]
 
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:
-        headers = self._auth_token.header()
-        resp = requests.get(
-            f"{self._rest_api_url}/v1/models/{model_id}/deployments/{deployment_id}",
-            headers=headers,
+        return self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}"
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        deployment = resp.json()
-        return deployment
 
     def upsert_secret(self, name: str, value: str) -> Any:
-        headers = self._auth_token.header()
-        data = {"name": name, "value": value}
-        resp = requests.post(
-            f"{self._rest_api_url}/v1/secrets", headers=headers, json=data
+        return self._rest_api_client.post(
+            "v1/secrets", body={"name": name, "value": value}
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        secret_info = resp.json()
-        return secret_info
 
     def get_all_secrets(self) -> Any:
-        headers = self._auth_token.header()
-        resp = requests.get(f"{self._rest_api_url}/v1/secrets", headers=headers)
-        if not resp.ok:
-            resp.raise_for_status()
-
-        secrets_info = resp.json()
-        return secrets_info
+        return self._rest_api_client.get("v1/secrets")
 
     def upsert_training_project(self, training_project):
-        headers = self._auth_token.header()
-        resp = requests.post(
-            f"{self._rest_api_url}/v1/training_projects",
-            headers=headers,
-            json={"training_project": training_project.model_dump()},
+        resp_json = self._rest_api_client.post(
+            "v1/training_projects",
+            body={"training_project": training_project.model_dump()},
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        return resp.json()["training_project"]
+        return resp_json["training_project"]
 
     def create_training_job(self, project_id: str, job):
-        headers = self._auth_token.header()
-        resp = requests.post(
-            f"{self._rest_api_url}/v1/training_projects/{project_id}/jobs",
-            headers=headers,
-            json={"training_job": job.model_dump()},
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs",
+            body={"training_job": job.model_dump()},
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        return resp.json()["training_job"]
+        return resp_json["training_job"]
 
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
-        headers = self._auth_token.header()
-        resp = requests.get(
-            f"{self._rest_api_url}/v1/blobs/credentials/{blob_type.value}",
-            headers=headers,
-        )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        return resp.json()
+        return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
 
     def get_training_job_logs(
         self,
@@ -613,20 +569,13 @@ class BasetenApi:
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
     ):
-        headers = self._auth_token.header()
-
         payload = {}
         if start_epoch_millis:
             payload["start_epoch_millis"] = start_epoch_millis
         if end_epoch_millis:
             payload["end_epoch_millis"] = end_epoch_millis
 
-        resp = requests.post(
-            f"{self._rest_api_url}/v1/training_projects/{project_id}/jobs/{job_id}/logs",
-            headers=headers,
-            json=payload,
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/logs", body=payload
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        return resp.json()["logs"]
+        return resp_json["logs"]
