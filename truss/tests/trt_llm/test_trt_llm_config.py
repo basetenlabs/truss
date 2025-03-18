@@ -28,7 +28,6 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
         "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
         "request_default_max_tokens": 10,
         "total_token_limit": 50,
-        "webserver_default_route": None,
     }
 
 
@@ -45,7 +44,6 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields_existi
         "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
         "request_default_max_tokens": 10,
         "total_token_limit": 100,
-        "webserver_default_route": None,
     }
 
 
