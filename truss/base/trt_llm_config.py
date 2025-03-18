@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -124,6 +124,9 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
     )
     request_default_max_tokens: Optional[int] = None
     total_token_limit: int = 500000
+    webserver_default_route: Optional[
+        Literal["/v1/embeddings", "/rerank", "/predict"]
+    ] = None
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
@@ -381,6 +384,10 @@ class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
 
+    def model_post_init(self, __context):
+        self.add_bei_default_route()
+        self.chunked_context_fix()
+
     @model_validator(mode="before")
     @classmethod
     def migrate_runtime_fields(cls, data: Any) -> Any:
@@ -415,9 +422,8 @@ class TRTLLMConfiguration(BaseModel):
             return data
         return data
 
-    @model_validator(mode="after")
-    def after(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
-        # check if there is an error wrt. runtime.enable_chunked_context
+    def chunked_context_fix(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
+        """check if there is an error wrt. runtime.enable_chunked_context"""
         if (
             self.runtime.enable_chunked_context
             and (self.build.base_model != TrussTRTLLMModel.ENCODER)
@@ -426,19 +432,46 @@ class TRTLLMConfiguration(BaseModel):
                 and self.build.plugin_configuration.paged_kv_cache
             )
         ):
-            if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
-                logger.warning(
-                    "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
-                    "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
-                )
-                self.build.plugin_configuration.use_paged_context_fmha = True
-                self.build.plugin_configuration.paged_kv_cache = True
-            else:
-                raise ValueError(
-                    "If runtime.enable_chunked_context is True, then build.plugin_configuration.use_paged_context_fmha and build.plugin_configuration.paged_kv_cache should be True"
-                )
+            logger.warning(
+                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
+                "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
+            )
+            self.build = self.build.model_copy(
+                update={
+                    "plugin_configuration": self.build.plugin_configuration.model_copy(
+                        update={"use_paged_context_fmha": True, "paged_kv_cache": True}
+                    )
+                }
+            )
 
         return self
+
+    def add_bei_default_route(self):
+        if (
+            self.runtime.webserver_default_route is None
+            and self.build.base_model == TrussTRTLLMModel.ENCODER
+            and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
+        ):
+            # attemp to set the best possible default route client side.
+            try:
+                from transformers import AutoConfig
+
+                hf_cfg = AutoConfig.from_pretrained(
+                    self.build.checkpoint_repository.repo,
+                    revision=self.build.checkpoint_repository.revision,
+                )
+                # simple heuristic to set the default route
+                if "ForSequenceClassification" in hf_cfg.architectures[0]:
+                    route = "/predict"
+                else:
+                    route = "/v1/embeddings"
+                self.runtime = self.runtime.model_copy(
+                    update={"webserver_default_route": route}
+                )
+                logger.info(f"Setting default route to {route} for Encoder.")
+            except Exception:
+                # access error, or any other issue
+                pass
 
     @property
     def requires_build(self):

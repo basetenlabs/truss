@@ -885,11 +885,14 @@ def train():
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--watch", type=bool, is_flag=True, help="Watch for status + logs after push."
+)
 @log_level_option
 @error_handling
-def push_training_job(config: Path, remote: Optional[str]):
+def push_training_job(config: Path, remote: Optional[str], watch: bool):
     """Run a training job"""
-    from truss_train import deployment, loader
+    from truss_train import deployment, loader, log_utils
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -898,22 +901,30 @@ def push_training_job(config: Path, remote: Optional[str]):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     with loader.import_target(config) as training_project:
-        project_resp = remote_provider.api.upsert_training_project(
-            training_project=training_project
-        )
+        with console.status("Creating training job...", spinner="dots"):
+            project_resp = remote_provider.api.upsert_training_project(
+                training_project=training_project
+            )
 
-        prepared_job = deployment.prepare_push(
-            remote_provider.api, config, training_project.job
-        )
-        job_resp = remote_provider.api.create_training_job(
-            project_id=project_resp["id"], job=prepared_job
-        )
+            prepared_job = deployment.prepare_push(
+                remote_provider.api, config, training_project.job
+            )
+            job_resp = remote_provider.api.create_training_job(
+                project_id=project_resp["id"], job=prepared_job
+            )
 
         console.print("✨ Training job successfully created!", style="green")
-        console.print(
-            f"🪵 View logs for your job via "
-            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']}`[/cyan]"
+        if not watch:
+            console.print(
+                f"🪵 View logs for your job via "
+                f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--watch]`[/cyan]"
+            )
+
+    if watch:
+        log_watcher = log_utils.LogWatcher(
+            remote_provider.api, project_resp["id"], job_resp["id"], console
         )
+        log_watcher.watch()
 
 
 @train.command(name="logs")
