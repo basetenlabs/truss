@@ -75,7 +75,7 @@ def test_trt_llm_chunked_prefill_fix(trtllm_config):
     trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
     TRTLLMConfiguration(**trt_llm2.model_dump())
     assert trt_llm_fixed.build.plugin_configuration.use_paged_context_fmha is False
-    assert trt_llm_fixed.build.plugin_configuration.paged_kv_cache is False
+    assert trt_llm_fixed.runtime.enable_chunked_context is False
 
 
 def test_trt_llm_lookahead_decoding(trtllm_config):
