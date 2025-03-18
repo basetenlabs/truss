@@ -201,9 +201,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
             if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
-                logger.warning(
-                    f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
-                )
+                if self.max_num_tokens != 8192:
+                    # only warn if it is not the default value
+                    logger.warning(
+                        f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
+                    )
                 self = self.model_copy(
                     update={"max_num_tokens": BEI_REQUIRED_MAX_NUM_TOKENS}
                 )
