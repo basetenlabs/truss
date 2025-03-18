@@ -32,20 +32,24 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
     }
 
 
-def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields_existing_runtime(
-    deprecated_trtllm_config_with_runtime_existing,
-):
-    trt_llm_config = TRTLLMConfiguration(
-        **deprecated_trtllm_config_with_runtime_existing["trt_llm"]
-    )
+def test_trt_llm_encoder(trtllm_config_encoder):
+    TRTLLMConfiguration(**trtllm_config_encoder["trt_llm"])
+
+
+def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
+    trt_llm_config = TRTLLMConfiguration(**trtllm_config_encoder["trt_llm"])
+    try:
+        from transformers import AutoConfig
+    except ImportError:
+        pytest.skip("transformers is not installed")
+
+    try:
+        AutoConfig.from_pretrained(trt_llm_config.build.checkpoint_repository.repo)
+    except Exception:
+        pytest.skip("checkpoint not found - huggingface must be down.")
+
     assert trt_llm_config.runtime.model_dump() == {
-        "kv_cache_free_gpu_mem_fraction": 0.1,
-        "kv_cache_host_memory_bytes": None,
-        "enable_chunked_context": True,
-        "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
-        "request_default_max_tokens": 10,
-        "total_token_limit": 100,
-        "webserver_default_route": None,
+        "webserver_default_route": "/v1/embeddings"
     }
 
 
