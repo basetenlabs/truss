@@ -162,6 +162,24 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         self._validate_speculator_config()
         self._bei_specfic_migration()
 
+    def model_post_init(self, __context):
+        self.rename_base_model()
+
+    def rename_base_model(self):
+        if self.base_model in [
+            TrussTRTLLMModel.LLAMA,
+            TrussTRTLLMModel.MISTRAL,
+            TrussTRTLLMModel.DEEPSEEK,
+            TrussTRTLLMModel.PALMYRA,
+            TrussTRTLLMModel.QWEN,
+        ]:
+            self = self.model_copy(update={"base_model": TrussTRTLLMModel.DECODER})
+        elif self.base_model == TrussTRTLLMModel.WHISPER:
+            logger.warning(
+                "base_model.WHISPER is deprecated and will be removed in future versions. We now have a dedicated product for whisper."
+                "Please contact us for more details, we are happy to support you."
+            )
+
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
         if isinstance(v, int):
