@@ -44,7 +44,9 @@ Adding the following to your config.yaml file:
 ```yaml
 model_metadata:
   tags:
-  - {OPENAI_COMPATIBLE_TAG} # for legacy behavior set to `  - {OPENAI_NON_COMPATIBLE_TAG}`
+  - {OPENAI_COMPATIBLE_TAG}
+  # for legacy behavior set above line to
+  # - {OPENAI_NON_COMPATIBLE_TAG}
 ```
 """
         return message
@@ -66,9 +68,9 @@ model_metadata:
             elif OPENAI_COMPATIBLE_TAG not in current_tags:
                 message = add_openai_tag(tr)
                 return (
-                    f"TRT-LLM models with speculator require have model_metadata/tags section with ['{OPENAI_COMPATIBLE_TAG}']. "
+                    f"TRT-LLM models with speculator require have model_metadata['tags'] section with ['{OPENAI_COMPATIBLE_TAG}']. (openai-compatible) "
                     f"{message}"
-                    f"We have adjusted your config.yaml file to include this tag. Please save the changes and push again."
+                    f"We have adjusted your config.yaml file to include this tag. Please save the changed config and push again."
                 )
         elif not any(
             tag in current_tags
@@ -77,9 +79,9 @@ model_metadata:
             # inserting new tag client side on truss push
             message = add_openai_tag(tr)
             return (
-                f"TRT-LLM models require a model_metadata/tags section with ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
+                f"TRT-LLM models require a model_metadata['tags'] section with ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
                 f"{message}"
-                f"We have adjusted your config.yaml file to include this tag. Please save the changes and push again."
+                f"We have adjusted your config.yaml file to include this tag. Please save the changed config and push again."
             )
 
     return ""

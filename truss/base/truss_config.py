@@ -773,7 +773,9 @@ class TrussConfig:
                         ```yaml
                         model_metadata:
                         tags:
-                        - {OPENAI_COMPATIBLE_TAG} # for legacy behavior set to `  - {OPENAI_NON_COMPATIBLE_TAG}`
+                        - {OPENAI_COMPATIBLE_TAG}
+                        # for legacy behavior set above line to
+                        # `- {OPENAI_NON_COMPATIBLE_TAG}`
                         ```
                         """
                     if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
