@@ -42,6 +42,7 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
+    has_no_tags_trt_llm_builder,
     is_missing_secrets_for_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
@@ -884,11 +885,14 @@ def train():
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--watch", type=bool, is_flag=True, help="Watch for status + logs after push."
+)
 @log_level_option
 @error_handling
-def push_training_job(config: Path, remote: Optional[str]):
+def push_training_job(config: Path, remote: Optional[str], watch: bool):
     """Run a training job"""
-    from truss_train import deployment, loader
+    from truss_train import deployment, loader, log_utils
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -897,22 +901,29 @@ def push_training_job(config: Path, remote: Optional[str]):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     with loader.import_target(config) as training_project:
-        project_resp = remote_provider.api.upsert_training_project(
-            training_project=training_project
-        )
+        with console.status("Creating training job...", spinner="dots"):
+            project_resp = remote_provider.api.upsert_training_project(
+                training_project=training_project
+            )
 
-        prepared_job = deployment.prepare_push(
-            remote_provider.api, config, training_project.job
-        )
-        job_resp = remote_provider.api.create_training_job(
-            project_id=project_resp["id"], job=prepared_job
-        )
+            prepared_job = deployment.prepare_push(
+                remote_provider.api, config, training_project.job
+            )
+            job_resp = remote_provider.api.create_training_job(
+                project_id=project_resp["id"], job=prepared_job
+            )
 
         console.print("✨ Training job successfully created!", style="green")
         console.print(
             f"🪵 View logs for your job via "
-            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']}`[/cyan]"
+            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--watch]`[/cyan]"
         )
+
+    if watch:
+        log_watcher = log_utils.LogWatcher(
+            remote_provider.api, project_resp["id"], job_resp["id"], console
+        )
+        log_watcher.watch()
 
 
 @train.command(name="logs")
@@ -1286,17 +1297,21 @@ def push(
             live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
+
         if is_missing_secrets_for_trt_llm_builder(tr):
             missing_token_text = (
                 "`hf_access_token` must be provided in secrets to build a gated model. "
                 "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
             )
-            console.print(missing_token_text, style="red")
-            sys.exit(1)
+            console.print(missing_token_text, style="yellow")
         if memory_updated_for_trt_llm_builder(tr):
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
+        message_oai = has_no_tags_trt_llm_builder(tr)
+        if message_oai:
+            console.print(message_oai, style="red")
+            sys.exit(1)
         for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
             if (
                 trt_llm_build_config.quantization_type

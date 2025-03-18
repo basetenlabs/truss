@@ -9,8 +9,15 @@ from rich import text
 
 from truss.remote.baseten.api import BasetenApi
 
-POLL_INTERVAL_SEC = 5
+POLL_INTERVAL_SEC = 2
 CLOCK_SKEW_BUFFER_MS = 1000
+
+# NB(nikhil): When a job ends, we poll for this many seconds after to capture
+# any trailing logs that contain information about errors.
+JOB_TERMINATION_GRACE_PERIOD_SEC = 10
+
+JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_DEPLOYING"]
+JOB_RUNNING_STATES = ["TRAINING_JOB_RUNNING"]
 
 
 class RawTrainingJobLog(pydantic.BaseModel):
@@ -55,6 +62,7 @@ class LogWatcher:
     # TODO(nikhil): clean up hashes so this doesn't grow indefinitely.
     _log_hashes: set[str] = set()
     _last_poll_time: Optional[int] = None
+    _poll_stop_time: Optional[int] = None
 
     def __init__(
         self, api: BasetenApi, project_id: str, job_id: str, console: "rich.Console"
@@ -90,7 +98,33 @@ class LogWatcher:
 
         self._last_poll_time = now
 
+    def _get_current_job_status(self) -> str:
+        job = self.api.get_training_job(self.project_id, self.job_id)
+        return job["current_status"]
+
+    def _wait_until_running(self) -> None:
+        current_status = self._get_current_job_status()
+        status_str = "Waiting for job to run, currently {current_status}..."
+        with self.console.status(
+            status_str.format(current_status=current_status), spinner="dots"
+        ) as status_console:
+            while current_status in JOB_STARTING_STATES:
+                time.sleep(POLL_INTERVAL_SEC)
+                current_status = self._get_current_job_status()
+                status_console.update(status_str.format(current_status=current_status))
+
+    def _poll_final_logs(self):
+        if self._poll_stop_time is None:
+            return False
+
+        return int(time.time()) <= self._poll_stop_time
+
+    def _maybe_update_poll_stop_time(self, current_status: str) -> None:
+        if current_status not in JOB_RUNNING_STATES and self._poll_stop_time is None:
+            self._poll_stop_time = int(time.time()) + JOB_TERMINATION_GRACE_PERIOD_SEC
+
     def watch(self) -> None:
+        self._wait_until_running()
         with self.console.status("Waiting for logs...", spinner="dots"):
             while True:
                 self._poll()
@@ -98,6 +132,10 @@ class LogWatcher:
                     break
                 time.sleep(POLL_INTERVAL_SEC)
 
-        while True:
+        current_status = self._get_current_job_status()
+        while current_status in JOB_RUNNING_STATES or self._poll_final_logs():
             self._poll()
             time.sleep(POLL_INTERVAL_SEC)
+
+            current_status = self._get_current_job_status()
+            self._maybe_update_poll_stop_time(current_status)

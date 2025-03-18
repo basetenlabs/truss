@@ -160,6 +160,8 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         super().__init__(**data)
         self._validate_kv_cache_flags()
         self._validate_speculator_config()
+
+    def model_post_init(self, __context):
         self._bei_specfic_migration()
 
     def model_post_init(self, __context):
@@ -209,17 +211,23 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             # Encoder specific settings
             if self.max_seq_len:
                 logger.info(
-                    f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
-                    "automatically inferred from the model repo config.json -> `max_position_embeddings`"
+                    f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used for embedding models, "
+                    "and only respected for SequenceClassification models. "
+                    "Automatically inferred from the model repo config.json -> `max_position_embeddings`"
                 )
             # delayed import, as it is not available in all environments [Briton]
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
             if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
-                logger.warning(
-                    f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
+                if self.max_num_tokens != 8192:
+                    # only warn if it is not the default value
+                    logger.warning(
+                        f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
+                    )
+                self = self.model_copy(
+                    update={"max_num_tokens": BEI_REQUIRED_MAX_NUM_TOKENS}
                 )
-                self.max_num_tokens = BEI_REQUIRED_MAX_NUM_TOKENS
+            # set page_kv_cache and use_paged_context_fmha to false for encoder
             self.plugin_configuration.paged_kv_cache = False
             self.plugin_configuration.use_paged_context_fmha = False
 
@@ -479,14 +487,21 @@ class TRTLLMConfiguration(BaseModel):
                     revision=self.build.checkpoint_repository.revision,
                 )
                 # simple heuristic to set the default route
-                if "ForSequenceClassification" in hf_cfg.architectures[0]:
-                    route = "/predict"
-                else:
-                    route = "/v1/embeddings"
+                is_sequence_classification = (
+                    "ForSequenceClassification" in hf_cfg.architectures[0]
+                )
+                route = "/predict" if is_sequence_classification else "/v1/embeddings"
                 self.runtime = self.runtime.model_copy(
                     update={"webserver_default_route": route}
                 )
-                logger.info(f"Setting default route to {route} for Encoder.")
+                logger.info(
+                    f"Setting default route to {route} for your encoder, as the model is a "
+                    + (
+                        "SequenceClassification Model."
+                        if is_sequence_classification
+                        else "Embeddings model."
+                    )
+                )
             except Exception:
                 # access error, or any other issue
                 pass
