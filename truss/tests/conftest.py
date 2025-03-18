@@ -758,6 +758,26 @@ def trtllm_config(default_config) -> Dict[str, Any]:
 
 
 @pytest.fixture
+def trtllm_config_encoder(default_config) -> Dict[str, Any]:
+    trtllm_config = default_config
+    trtllm_config["resources"] = {
+        "accelerator": Accelerator.L4.value,
+        "cpu": "1",
+        "memory": "24Gi",
+        "use_gpu": True,
+        "node_count": 1,
+    }
+    trtllm_config["trt_llm"] = {
+        "build": {
+            "base_model": "encoder",
+            "checkpoint_repository": {"source": "HF", "repo": "BAAI/bge-m3"},
+        },
+        "runtime": {},
+    }
+    return trtllm_config
+
+
+@pytest.fixture
 def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
     trtllm_config = default_config
     trtllm_config["resources"] = {

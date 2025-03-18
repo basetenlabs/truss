@@ -105,17 +105,15 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0_v0.0.24"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0_v0.0.25"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
-BASE_TRTLLM_REQUIREMENTS = ["briton==0.4.8"]
+BASE_TRTLLM_REQUIREMENTS = ["briton==0.4.10.post2"]
 BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.18"
 
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 
-OPENAI_COMPATIBLE_TAG = (
-    "openai-compatible"  # deprecated - openai-compatible is now the default
-)
-OPENAI_NON_COMPATIBLE_TAG = "non-openai-compatible"
+OPENAI_COMPATIBLE_TAG = "openai-compatible"
+OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecated - openai-compatible is now the default
 
 
 PRODUCTION_ENVIRONMENT_NAME = "production"

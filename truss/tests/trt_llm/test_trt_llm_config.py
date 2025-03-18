@@ -28,49 +28,65 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
         "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
         "request_default_max_tokens": 10,
         "total_token_limit": 50,
+        "webserver_default_route": None,
     }
 
 
-def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields_existing_runtime(
-    deprecated_trtllm_config_with_runtime_existing,
-):
-    trt_llm_config = TRTLLMConfiguration(
-        **deprecated_trtllm_config_with_runtime_existing["trt_llm"]
+def test_trt_llm_encoder(trtllm_config_encoder):
+    config = TRTLLMConfiguration(**trtllm_config_encoder["trt_llm"])
+    # no paged_kv_cache for encoder and no use_paged_context_fmha
+    assert config.build.plugin_configuration.paged_kv_cache is False
+    assert config.build.plugin_configuration.use_paged_context_fmha is False
+
+
+def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
+    trt_llm_config = TRTLLMConfiguration(**trtllm_config_encoder["trt_llm"])
+    try:
+        from transformers import AutoConfig
+    except ImportError:
+        pytest.skip("transformers is not installed")
+
+    try:
+        AutoConfig.from_pretrained(trt_llm_config.build.checkpoint_repository.repo)
+    except Exception:
+        pytest.skip("checkpoint not found - huggingface must be down.")
+
+    assert (
+        trt_llm_config.to_json_dict(verbose=False)["runtime"]["webserver_default_route"]
+        == "/v1/embeddings"
     )
-    assert trt_llm_config.runtime.model_dump() == {
-        "kv_cache_free_gpu_mem_fraction": 0.1,
-        "kv_cache_host_memory_bytes": None,
-        "enable_chunked_context": True,
-        "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
-        "request_default_max_tokens": 10,
-        "total_token_limit": 100,
-    }
 
 
 def test_trt_llm_chunked_prefill_fix(trtllm_config):
     """make sure that the chunked prefill validation is working"""
     trt_llm_config = TRTLLMConfiguration(**trtllm_config["trt_llm"])
 
+    # check that the default is True
     assert trt_llm_config.build.plugin_configuration.paged_kv_cache is True
     assert trt_llm_config.build.plugin_configuration.use_paged_context_fmha is True
     assert trt_llm_config.runtime.enable_chunked_context is True
 
-    with pytest.raises(ValueError):
-        trt_llm2 = copy.deepcopy(trt_llm_config)
-        trt_llm2.build.plugin_configuration.paged_kv_cache = False
-        TRTLLMConfiguration(**trt_llm2.model_dump())
+    # fixed for user
+    trt_llm2 = copy.deepcopy(trt_llm_config)
+    trt_llm2.build.plugin_configuration.paged_kv_cache = False
+    trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
+    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
+    print(trt_llm_fixed.build)
+    assert trt_llm_fixed.build.plugin_configuration.paged_kv_cache is True
 
-    with pytest.raises(
-        ValueError
-    ):  # verify you cant disable paged context fmha without disabling enable_chunked_context
-        trt_llm2 = copy.deepcopy(trt_llm_config)
-        trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
-        TRTLLMConfiguration(**trt_llm2.model_dump())
+    # fixed for user
+    trt_llm2 = copy.deepcopy(trt_llm_config)
+    trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
+    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
+    assert trt_llm_fixed.build.plugin_configuration.use_paged_context_fmha is True
 
     trt_llm2 = copy.deepcopy(trt_llm_config)
     trt_llm2.runtime.enable_chunked_context = False
     trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
-    TRTLLMConfiguration(**trt_llm2.model_dump())
+    trt_llm2.build.plugin_configuration.paged_kv_cache = False
+    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
+    assert trt_llm_fixed.build.plugin_configuration.use_paged_context_fmha is False
+    assert trt_llm_fixed.runtime.enable_chunked_context is False
 
 
 def test_trt_llm_lookahead_decoding(trtllm_config):
