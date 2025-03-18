@@ -33,7 +33,10 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
 
 
 def test_trt_llm_encoder(trtllm_config_encoder):
-    TRTLLMConfiguration(**trtllm_config_encoder["trt_llm"])
+    config = TRTLLMConfiguration(**trtllm_config_encoder["trt_llm"])
+    # no paged_kv_cache for encoder and no use_paged_context_fmha
+    assert config.build.plugin_configuration.paged_kv_cache is False
+    assert config.build.plugin_configuration.use_paged_context_fmha is False
 
 
 def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
