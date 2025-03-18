@@ -1,3 +1,4 @@
+import pathlib
 import warnings
 from typing import TYPE_CHECKING, Optional, Type, cast
 
@@ -62,6 +63,7 @@ def push(
     deployment_name: Optional[str] = None,
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
+    include_git_info: bool = False,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -83,6 +85,9 @@ def push(
             only contain alphanumeric, ’.’, ’-’ or ’_’ characters.
         environment: Name of stable environment on baseten.
         progress_bar: Optional `rich.progress.Progress` if output is desired.
+        include_git_info: Whether to attach git versioning info (sha, branch, tag) to
+          deployments made from within a git repo. If set to True in `.trussrc`, it
+          will always be attached.
 
     Returns:
         The newly created ModelDeployment.
@@ -114,16 +119,17 @@ def push(
         raise ValueError(
             "No model name provided. Please specify a model name in config.yaml."
         )
-
     service = remote_provider.push(
         tr,
         model_name=model_name,
+        working_dir=pathlib.Path(target_directory),
         publish=publish,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
         environment=environment,
         progress_bar=progress_bar,
+        include_git_info=include_git_info,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))

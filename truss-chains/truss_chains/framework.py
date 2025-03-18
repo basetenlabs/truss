@@ -933,7 +933,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         "EngineBuilderLLMChainlet",
     ]
     if cls.__name__ in _skip_class_name:
-        print(f"Skipping {cls}")
+        logging.debug(f"Skipping chainlet class validation for `{cls}`.")
         return
 
     src_path = os.path.abspath(inspect.getfile(cls))

@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -124,6 +124,9 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
     )
     request_default_max_tokens: Optional[int] = None
     total_token_limit: int = 500000
+    webserver_default_route: Optional[
+        Literal["/v1/embeddings", "/rerank", "/predict"]
+    ] = None
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
@@ -157,6 +160,8 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         super().__init__(**data)
         self._validate_kv_cache_flags()
         self._validate_speculator_config()
+
+    def model_post_init(self, __context):
         self._bei_specfic_migration()
 
     @validator("max_beam_width")
@@ -178,10 +183,8 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     @property
     def uses_draft_external(self) -> bool:
-        return (
-            self.speculator is not None
-            and self.speculator.speculative_decoding_mode
-            == TrussSpecDecMode.DRAFT_EXTERNAL
+        return (self.speculator is not None) and (
+            self.speculator.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL
         )
 
     def _bei_specfic_migration(self):
@@ -190,17 +193,23 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             # Encoder specific settings
             if self.max_seq_len:
                 logger.info(
-                    f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
-                    "automatically inferred from the model repo config.json -> `max_position_embeddings`"
+                    f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used for embedding models, "
+                    "and only respected for SequenceClassification models. "
+                    "Automatically inferred from the model repo config.json -> `max_position_embeddings`"
                 )
             # delayed import, as it is not available in all environments [Briton]
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
             if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
-                logger.warning(
-                    f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
+                if self.max_num_tokens != 8192:
+                    # only warn if it is not the default value
+                    logger.warning(
+                        f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
+                    )
+                self = self.model_copy(
+                    update={"max_num_tokens": BEI_REQUIRED_MAX_NUM_TOKENS}
                 )
-                self.max_num_tokens = BEI_REQUIRED_MAX_NUM_TOKENS
+            # set page_kv_cache and use_paged_context_fmha to false for encoder
             self.plugin_configuration.paged_kv_cache = False
             self.plugin_configuration.use_paged_context_fmha = False
 
@@ -232,8 +241,14 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     def _validate_speculator_config(self):
         if self.speculator:
-            if self.base_model is TrussTRTLLMModel.WHISPER:
-                raise ValueError("Speculative decoding for Whisper is not supported.")
+            if self.max_batch_size and self.max_batch_size > 64:
+                logger.warning(
+                    "We recommend speculative decoding for lower load on your servers, e.g. with batch-sizes below 32"
+                    "To get better auto-tuned kernels, we recommend capping the max_batch_size to a more reasonable number e.g. `max_batch_size=64` or `max_batch_size=32`"
+                    "If you have high batch-sizes, speculative decoding may not be beneficial for total throughput."
+                    "If you want to use speculative decoding on high load, tune the concurrency settings for more aggressive autoscaling on Baseten."
+                )
+
             if not all(
                 [
                     self.plugin_configuration.use_paged_context_fmha,
@@ -243,7 +258,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 raise ValueError(
                     "KV cache block reuse must be enabled for speculative decoding target model."
                 )
-            if self.speculator.build:
+
+            if self.uses_draft_external and self.speculator.build:
+                logger.warning(
+                    "Draft external mode is a advanced feature. If you encounter issues, feel free to contact us. You may also try lookahead decoding mode instead."
+                )
                 if (
                     self.tensor_parallel_count
                     != self.speculator.build.tensor_parallel_count
@@ -373,6 +392,10 @@ class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
 
+    def model_post_init(self, __context):
+        self.add_bei_default_route()
+        self.chunked_context_fix()
+
     @model_validator(mode="before")
     @classmethod
     def migrate_runtime_fields(cls, data: Any) -> Any:
@@ -407,9 +430,8 @@ class TRTLLMConfiguration(BaseModel):
             return data
         return data
 
-    @model_validator(mode="after")
-    def after(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
-        # check if there is an error wrt. runtime.enable_chunked_context
+    def chunked_context_fix(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
+        """check if there is an error wrt. runtime.enable_chunked_context"""
         if (
             self.runtime.enable_chunked_context
             and (self.build.base_model != TrussTRTLLMModel.ENCODER)
@@ -418,19 +440,53 @@ class TRTLLMConfiguration(BaseModel):
                 and self.build.plugin_configuration.paged_kv_cache
             )
         ):
-            if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
-                logger.warning(
-                    "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
-                    "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
-                )
-                self.build.plugin_configuration.use_paged_context_fmha = True
-                self.build.plugin_configuration.paged_kv_cache = True
-            else:
-                raise ValueError(
-                    "If runtime.enable_chunked_context is True, then build.plugin_configuration.use_paged_context_fmha and build.plugin_configuration.paged_kv_cache should be True"
-                )
+            logger.warning(
+                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
+                "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
+            )
+            self.build = self.build.model_copy(
+                update={
+                    "plugin_configuration": self.build.plugin_configuration.model_copy(
+                        update={"use_paged_context_fmha": True, "paged_kv_cache": True}
+                    )
+                }
+            )
 
         return self
+
+    def add_bei_default_route(self):
+        if (
+            self.runtime.webserver_default_route is None
+            and self.build.base_model == TrussTRTLLMModel.ENCODER
+            and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
+        ):
+            # attemp to set the best possible default route client side.
+            try:
+                from transformers import AutoConfig
+
+                hf_cfg = AutoConfig.from_pretrained(
+                    self.build.checkpoint_repository.repo,
+                    revision=self.build.checkpoint_repository.revision,
+                )
+                # simple heuristic to set the default route
+                is_sequence_classification = (
+                    "ForSequenceClassification" in hf_cfg.architectures[0]
+                )
+                route = "/predict" if is_sequence_classification else "/v1/embeddings"
+                self.runtime = self.runtime.model_copy(
+                    update={"webserver_default_route": route}
+                )
+                logger.info(
+                    f"Setting default route to {route} for your encoder, as the model is a "
+                    + (
+                        "SequenceClassification Model."
+                        if is_sequence_classification
+                        else "Embeddings model."
+                    )
+                )
+            except Exception:
+                # access error, or any other issue
+                pass
 
     @property
     def requires_build(self):

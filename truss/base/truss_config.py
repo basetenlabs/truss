@@ -8,12 +8,18 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
-from truss.base.constants import HTTP_PUBLIC_BLOB_BACKEND
+from truss.base.constants import (
+    HTTP_PUBLIC_BLOB_BACKEND,
+    OPENAI_COMPATIBLE_TAG,
+    OPENAI_NON_COMPATIBLE_TAG,
+)
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
+    ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION,
     TRTLLMConfiguration,
     TrussTRTLLMBuildConfiguration,
+    TrussTRTLLMModel,
     TrussTRTLLMQuantizationType,
 )
 from truss.base.validation import (
@@ -71,6 +77,7 @@ class Accelerator(Enum):
     A10G = "A10G"
     V100 = "V100"
     A100 = "A100"
+    A100_40GB = "A100_40GB"
     H100 = "H100"
     H200 = "H200"
     H100_40GB = "H100_40GB"
@@ -746,6 +753,41 @@ class TrussConfig:
 
     def _validate_trt_llm_config(self) -> None:
         if self.trt_llm:
+            if self.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER:
+                current_tags = self.model_metadata.get("tags", [])
+                if (
+                    OPENAI_COMPATIBLE_TAG in current_tags
+                    and OPENAI_NON_COMPATIBLE_TAG in current_tags
+                ):
+                    raise ValueError(
+                        f"TRT-LLM models should have either model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
+                        f"Your current tags are both {current_tags}, which is invalid. Please remove one of the tags."
+                    )
+                elif not (
+                    OPENAI_COMPATIBLE_TAG in current_tags
+                    or OPENAI_NON_COMPATIBLE_TAG in current_tags
+                ):
+                    # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
+                    message = f"""TRT-LLM models should have model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] (or ['{OPENAI_NON_COMPATIBLE_TAG}']).
+                        Your current tags are {current_tags}, which is has neither option. We require a active choice to be made."
+                        ```yaml
+                        model_metadata:
+                        tags:
+                        - {OPENAI_COMPATIBLE_TAG}
+                        # for legacy behavior set above line to
+                        # `- {OPENAI_NON_COMPATIBLE_TAG}`
+                        ```
+                        """
+                    if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
+                        raise ValueError(message)
+                    else:
+                        logger.warning(message)
+                elif OPENAI_NON_COMPATIBLE_TAG in current_tags:
+                    logger.warning(
+                        f"Model is marked as {OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI clients directly. "
+                        f"This is the deprecated legacy behavior, please update the tag to {OPENAI_COMPATIBLE_TAG}."
+                    )
+
             if (
                 self.trt_llm.build.quantization_type
                 is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
@@ -768,6 +810,7 @@ class TrussConfig:
             ] and self.resources.accelerator.accelerator in [
                 Accelerator.A10G,
                 Accelerator.A100,
+                Accelerator.A100_40GB,
             ]:
                 raise ValueError(
                     "FP8 quantization is only supported on L4, H100, H200 accelerators or newer (CUDA_COMPUTE>=89)"

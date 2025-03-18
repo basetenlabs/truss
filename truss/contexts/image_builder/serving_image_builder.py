@@ -413,7 +413,9 @@ class ServingImageBuilder(ImageBuilder):
         self._spec.config.docker_server = DockerServer(
             start_command=f"/bin/sh -c '{start_command}'",
             server_port=port,
-            predict_endpoint="/v1/embeddings",
+            # mount the following predict endpoint location
+            predict_endpoint=config.trt_llm.runtime.webserver_default_route
+            or "/v1/embeddings",
             readiness_endpoint="/health",
             liveness_endpoint="/health",
         )
