@@ -53,21 +53,22 @@ def test_trt_llm_chunked_prefill_fix(trtllm_config):
     """make sure that the chunked prefill validation is working"""
     trt_llm_config = TRTLLMConfiguration(**trtllm_config["trt_llm"])
 
+    # check that the default is True
     assert trt_llm_config.build.plugin_configuration.paged_kv_cache is True
     assert trt_llm_config.build.plugin_configuration.use_paged_context_fmha is True
     assert trt_llm_config.runtime.enable_chunked_context is True
 
-    with pytest.raises(ValueError):
-        trt_llm2 = copy.deepcopy(trt_llm_config)
-        trt_llm2.build.plugin_configuration.paged_kv_cache = False
-        TRTLLMConfiguration(**trt_llm2.model_dump())
+    # fixed for user
+    trt_llm2 = copy.deepcopy(trt_llm_config)
+    trt_llm2.build.plugin_configuration.paged_kv_cache = False
+    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
+    assert trt_llm_fixed.build.plugin_configuration.paged_kv_cache is True
 
-    with pytest.raises(
-        ValueError
-    ):  # verify you cant disable paged context fmha without disabling enable_chunked_context
-        trt_llm2 = copy.deepcopy(trt_llm_config)
-        trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
-        TRTLLMConfiguration(**trt_llm2.model_dump())
+    # fixed for user
+    trt_llm2 = copy.deepcopy(trt_llm_config)
+    trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
+    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
+    assert trt_llm_fixed.build.plugin_configuration.use_paged_context_fmha is True
 
     trt_llm2 = copy.deepcopy(trt_llm_config)
     trt_llm2.runtime.enable_chunked_context = False
