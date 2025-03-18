@@ -19,7 +19,7 @@ jobs:
       - name: pre-commit
         run: poetry run pre-commit run --all-files
         env:
-          SKIP: ruff,ruff-format   # In CI run ruff separately to only check, not fix.
+          SKIP: ruff,ruff-format # In CI run ruff separately to only check, not fix.
       - name: ruff check
         run: |
           poetry run ruff check .
@@ -33,6 +33,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
+      - run: sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
       - run: poetry install --with=dev,dev-server --extras=all
       - name: run tests
         run: poetry run pytest --durations=0  -m 'not integration' --junitxml=report.xml
@@ -40,8 +41,8 @@ jobs:
         uses: mikepenz/action-junit-report@v4
         if: always()
         with:
-           commit: ${{ github.event.workflow_run.head_sha }}
-           report_paths: "report.xml"
+          commit: ${{ github.event.workflow_run.head_sha }}
+          report_paths: "report.xml"
 
   markdown-link-check:
     runs-on: ubuntu-22.04

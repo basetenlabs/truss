@@ -71,6 +71,7 @@ class Accelerator(Enum):
     A10G = "A10G"
     V100 = "V100"
     A100 = "A100"
+    A100_40GB = "A100_40GB"
     H100 = "H100"
     H200 = "H200"
     H100_40GB = "H100_40GB"
@@ -751,19 +752,27 @@ class TrussConfig:
                 is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
                 and self.resources.accelerator.accelerator is Accelerator.A100
             ):
+                logger.warning(
+                    "Weight only int8 quantization on A100 accelerators is not recommended."
+                )
+            if self.resources.accelerator.accelerator in [
+                Accelerator.T4,
+                Accelerator.V100,
+            ]:
                 raise ValueError(
-                    "Weight only int8 quantization on A100 accelerators is not currently supported"
+                    "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs"
+                    "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
                 )
             elif self.trt_llm.build.quantization_type in [
                 TrussTRTLLMQuantizationType.FP8,
                 TrussTRTLLMQuantizationType.FP8_KV,
-            ] and self.resources.accelerator.accelerator not in [
-                Accelerator.H100,
-                Accelerator.H100_40GB,
-                Accelerator.L4,
+            ] and self.resources.accelerator.accelerator in [
+                Accelerator.A10G,
+                Accelerator.A100,
+                Accelerator.A100_40GB,
             ]:
                 raise ValueError(
-                    "FP8 quantization is only supported on L4 and H100 accelerators"
+                    "FP8 quantization is only supported on L4, H100, H200 accelerators or newer (CUDA_COMPUTE>=89)"
                 )
             tensor_parallel_count = self.trt_llm.build.tensor_parallel_count
 

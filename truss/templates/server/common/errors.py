@@ -170,9 +170,9 @@ def intercept_exceptions(
         #  we have to add a special-case here.
         if "user_stack_trace" in e.detail:
             try:
-                from truss_chains import definitions
+                from truss_chains import public_types
 
-                chains_error = definitions.RemoteErrorDetail.model_validate(e.detail)
+                chains_error = public_types.RemoteErrorDetail.model_validate(e.detail)
                 # The formatted error contains a (potentially chained) stack trace
                 # with all framework code removed, see
                 # truss_chains/remote_chainlet/utils.py::response_raise_errors.

@@ -128,7 +128,7 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
-    max_seq_len: int
+    max_seq_len: Optional[int] = None
     max_batch_size: int = 256
     max_num_tokens: int = 8192
     max_beam_width: int = 1
@@ -178,20 +178,20 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     @property
     def uses_draft_external(self) -> bool:
-        return (
-            self.speculator is not None
-            and self.speculator.speculative_decoding_mode
-            == TrussSpecDecMode.DRAFT_EXTERNAL
+        return (self.speculator is not None) and (
+            self.speculator.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL
         )
 
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
         if self.base_model == TrussTRTLLMModel.ENCODER:
             # Encoder specific settings
-            logger.info(
-                f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
-                "automatically inferred from the model repo config.json -> `max_position_embeddings`"
-            )
+            if self.max_seq_len:
+                logger.info(
+                    f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
+                    "automatically inferred from the model repo config.json -> `max_position_embeddings`"
+                )
+            # delayed import, as it is not available in all environments [Briton]
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
             if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
@@ -230,8 +230,14 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     def _validate_speculator_config(self):
         if self.speculator:
-            if self.base_model is TrussTRTLLMModel.WHISPER:
-                raise ValueError("Speculative decoding for Whisper is not supported.")
+            if self.max_batch_size and self.max_batch_size > 64:
+                logger.warning(
+                    "We recommend speculative decoding for lower load on your servers, e.g. with batch-sizes below 32"
+                    "To get better auto-tuned kernels, we recommend capping the max_batch_size to a more reasonable number e.g. `max_batch_size=64` or `max_batch_size=32`"
+                    "If you have high batch-sizes, speculative decoding may not be beneficial for total throughput."
+                    "If you want to use speculative decoding on high load, tune the concurrency settings for more aggressive autoscaling on Baseten."
+                )
+
             if not all(
                 [
                     self.plugin_configuration.use_paged_context_fmha,
@@ -241,7 +247,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 raise ValueError(
                     "KV cache block reuse must be enabled for speculative decoding target model."
                 )
-            if self.speculator.build:
+
+            if self.uses_draft_external and self.speculator.build:
+                logger.warning(
+                    "Draft external mode is a advanced feature. If you encounter issues, feel free to contact us. You may also try lookahead decoding mode instead."
+                )
                 if (
                     self.tensor_parallel_count
                     != self.speculator.build.tensor_parallel_count

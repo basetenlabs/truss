@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import pathlib
 import textwrap
 from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
@@ -15,7 +16,6 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
-from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import load_trussignore_patterns_from_truss_dir
 
 logger = logging.getLogger(__name__)
@@ -111,6 +111,7 @@ def create_chain_atomic(
     entrypoint: b10_types.ChainletDataAtomic,
     dependencies: List[b10_types.ChainletDataAtomic],
     is_draft: bool,
+    truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
@@ -126,12 +127,14 @@ def create_chain_atomic(
     # 1. Prepare all arguments for `deploy_chain_atomic`.
     # 2. Validate argument combinations.
     # 3. Make a single invocation to `deploy_chain_atomic`.
+
     if is_draft:
         res = api.deploy_chain_atomic(
-            chain_name=chain_name,
-            is_draft=True,
             entrypoint=entrypoint,
             dependencies=dependencies,
+            chain_name=chain_name,
+            is_draft=True,
+            truss_user_env=truss_user_env,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -140,10 +143,11 @@ def create_chain_atomic(
         # be promoted.
         try:
             res = api.deploy_chain_atomic(
-                chain_id=chain_id,
-                environment=environment,
                 entrypoint=entrypoint,
                 dependencies=dependencies,
+                chain_id=chain_id,
+                environment=environment,
+                truss_user_env=truss_user_env,
             )
         except ApiError as e:
             if (
@@ -160,7 +164,10 @@ def create_chain_atomic(
         raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
     else:
         res = api.deploy_chain_atomic(
-            chain_name=chain_name, entrypoint=entrypoint, dependencies=dependencies
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+            chain_name=chain_name,
+            truss_user_env=truss_user_env,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -273,27 +280,25 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     return None
 
 
-def archive_truss(
-    truss_handle: TrussHandle, progress_bar: Optional[Type["progress.Progress"]]
+def archive_dir(
+    dir: pathlib.Path, progress_bar: Optional[Type["progress.Progress"]] = None
 ) -> IO:
     """Archive a TrussHandle into a tar file.
 
     Returns:
         A file-like object containing the tar file
     """
-    truss_dir = truss_handle._truss_dir
-
     # check for a truss_ignore file and read the ignore patterns if it exists
-    ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
+    ignore_patterns = load_trussignore_patterns_from_truss_dir(dir)
 
     try:
         temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, progress_bar=progress_bar
+            dir, ignore_patterns, progress_bar=progress_bar
         )
     except PermissionError:
         # workaround for Windows bug with Tempfile that causes PermissionErrors
         temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, delete=False, progress_bar=progress_bar
+            dir, ignore_patterns, delete=False, progress_bar=progress_bar
         )
     temp_file.file.seek(0)
     return temp_file
@@ -328,6 +333,7 @@ def create_truss_service(
     model_name: str,
     s3_key: str,
     config: str,
+    truss_user_env: b10_types.TrussUserEnv,
     semver_bump: str = "MINOR",
     preserve_previous_prod_deployment: bool = False,
     allow_truss_download: bool = False,
@@ -360,6 +366,7 @@ def create_truss_service(
             model_name,
             s3_key,
             config,
+            truss_user_env,
             allow_truss_download=allow_truss_download,
             origin=origin,
         )
@@ -375,10 +382,11 @@ def create_truss_service(
             raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
 
         model_version_json = api.create_model_from_truss(
-            model_name=model_name,
-            s3_key=s3_key,
-            config=config,
-            semver_bump=semver_bump,
+            model_name,
+            s3_key,
+            config,
+            semver_bump,
+            truss_user_env,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
@@ -392,10 +400,11 @@ def create_truss_service(
 
     try:
         model_version_json = api.create_model_version_from_truss(
-            model_id=model_id,
-            s3_key=s3_key,
-            config=config,
-            semver_bump=semver_bump,
+            model_id,
+            s3_key,
+            config,
+            semver_bump,
+            truss_user_env,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
             environment=environment,
