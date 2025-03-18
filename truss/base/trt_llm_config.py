@@ -160,6 +160,8 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         super().__init__(**data)
         self._validate_kv_cache_flags()
         self._validate_speculator_config()
+
+    def model_post_init(self, __context):
         self._bei_specfic_migration()
 
     @validator("max_beam_width")
