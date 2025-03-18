@@ -578,4 +578,11 @@ class BasetenApi:
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/logs", body=payload
         )
+
         return resp_json["logs"]
+
+    def get_training_job(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/jobs/{job_id}"
+        )
+        return resp_json["training_job"]
