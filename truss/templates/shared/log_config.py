@@ -18,7 +18,6 @@ class _HealthCheckFilter(logging.Filter):
             "GET / ",
             "GET /v1/models/model ",
             "GET /v1/models/model/loaded ",
-            "GET /metrics",
         }
         msg = record.getMessage()
         return not any(path in msg for path in excluded_paths)
@@ -31,6 +30,11 @@ class _WebsocketOpenFilter(logging.Filter):
         # `('172.17.0.1', 54024) - "WebSocket /v1/websocket" [accepted]`
         # So we filter this additional log for open.
         return "connection open" not in msg
+
+
+class _MetricsFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/metrics" not in record.getMessage()
 
 
 class _AccessJsonFormatter(jsonlogger.JsonFormatter):
@@ -98,6 +102,7 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
         "filters": {
             "health_check_filter": {"()": _HealthCheckFilter},
             "websocket_filter": {"()": _WebsocketOpenFilter},
+            "metrics_filter": {"()": _MetricsFilter},
         },
         "formatters": formatters,
         "handlers": {
@@ -129,7 +134,7 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
                 "handlers": ["access_handler"],
                 "level": "INFO",
                 "propagate": False,
-                "filters": ["health_check_filter"],
+                "filters": ["health_check_filter", "metrics_filter"],
             },
         },
         # Catch-all for module loggers
