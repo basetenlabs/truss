@@ -26,6 +26,7 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.errors import RemoteNetworkError
+from truss.base.log_watcher import ModelDeploymentLogWatcher
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
 from truss.cli import remote_cli
@@ -41,6 +42,7 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
+from truss.shared.log_watcher import format_and_output_logs
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
     is_missing_secrets_for_trt_llm_builder,
@@ -63,7 +65,7 @@ click.rich_click.COMMAND_GROUPS = {
     "truss": [
         {
             "name": "Main usage",
-            "commands": ["init", "push", "watch", "predict"],
+            "commands": ["init", "push", "watch", "predict", "model_logs"],
             "table_styles": {  # type: ignore
                 "row_styles": ["green"]
             },
@@ -920,7 +922,7 @@ def push_training_job(config: Path, remote: Optional[str], watch: bool):
         )
 
     if watch:
-        log_watcher = log_utils.LogWatcher(
+        log_watcher = log_utils.TrainingLogWatcher(
             remote_provider.api, project_resp["id"], job_resp["id"], console
         )
         log_watcher.watch()
@@ -946,9 +948,9 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, watch: boo
 
     if not watch:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
-        log_utils.format_and_output_logs(logs, console)
+        format_and_output_logs(logs, console)
     else:
-        log_watcher = log_utils.LogWatcher(
+        log_watcher = log_utils.TrainingLogWatcher(
             remote_provider.api, project_id, job_id, console
         )
         log_watcher.watch()
@@ -1239,6 +1241,7 @@ def run_python(script, target_directory):
     default=False,
     help=include_git_info_doc,
 )
+@click.option("--tail", type=bool, is_flag=True)
 @log_level_option
 @error_handling
 def push(
@@ -1255,6 +1258,7 @@ def push(
     timeout_seconds: Optional[int] = None,
     environment: Optional[str] = None,
     include_git_info: bool = False,
+    tail: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1400,6 +1404,32 @@ def push(
             except RemoteNetworkError:
                 console.print("Deployment failed: Could not reach remote.", style="red")
                 sys.exit(1)
+    elif tail and isinstance(service, BasetenService):
+        bt_remote = cast(BasetenRemote, remote_provider)
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id, console
+        )
+        log_watcher.watch()
+
+
+@truss_cli.command()
+@click.option("--remote", type=str, required=False)
+@click.option("--model_id", type=str, required=True)
+@click.option("--deployment_id", type=str, required=True)
+@log_level_option
+@error_handling
+def model_logs(remote: Optional[str], model_id: str, deployment_id: str) -> None:
+    """
+    Fetches logs for the packaged model
+    """
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+    log_watcher = ModelDeploymentLogWatcher(
+        remote_provider.api, model_id, deployment_id, console
+    )
+    log_watcher.watch()
 
 
 @truss_cli.command()

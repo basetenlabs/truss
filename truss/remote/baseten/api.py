@@ -562,6 +562,18 @@ class BasetenApi:
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
 
+    def _prepare_logs_query(
+        self,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ) -> Dict[str, int]:
+        payload = {}
+        if start_epoch_millis:
+            payload["start_epoch_millis"] = start_epoch_millis
+        if end_epoch_millis:
+            payload["end_epoch_millis"] = end_epoch_millis
+        return payload
+
     def get_training_job_logs(
         self,
         project_id: str,
@@ -569,16 +581,24 @@ class BasetenApi:
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
     ):
-        payload = {}
-        if start_epoch_millis:
-            payload["start_epoch_millis"] = start_epoch_millis
-        if end_epoch_millis:
-            payload["end_epoch_millis"] = end_epoch_millis
-
         resp_json = self._rest_api_client.post(
-            f"v1/training_projects/{project_id}/jobs/{job_id}/logs", body=payload
+            f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
         )
 
+        return resp_json["logs"]
+
+    def get_model_deployment_logs(
+        self,
+        model_id: str,
+        deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            f"v1/models/{model_id}/deployments/{deployment_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+        )
         return resp_json["logs"]
 
     def get_training_job(self, project_id: str, job_id: str):
