@@ -136,6 +136,12 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
                 "propagate": False,
                 "filters": ["health_check_filter", "metrics_filter"],
             },
+            "httpx": {
+                "handlers": ["default_handler"],
+                "level": "INFO",
+                "propagate": False,
+                "filters": ["metrics_filter"],
+            },
         },
         # Catch-all for module loggers
         "root": {"handlers": ["default_handler"], "level": log_level},
