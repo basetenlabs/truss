@@ -55,7 +55,7 @@ def inquire_remote_config() -> RemoteConfig:
 def update_include_git_info_consent(remote_name: str) -> bool:
     remote_config = RemoteFactory.load_remote_config(remote_name=remote_name)
     if "include_git_info" in remote_config.configs:
-        return remote_config.configs["include_git_info"]
+        return RemoteConfig.parse_bool(remote_config.configs["include_git_info"])
 
     include_git_info_consent = inquire_include_git_info_consent()
 
