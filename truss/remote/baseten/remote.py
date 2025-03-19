@@ -72,9 +72,7 @@ class FinalPushData(custom_types.OracleData):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(
-        self, remote_url: str, api_key: str, include_git_info: bool = False, **kwargs
-    ):
+    def __init__(self, remote_url: str, api_key: str, include_git_info: bool = False):
         super().__init__(remote_url)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
