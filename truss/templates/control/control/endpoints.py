@@ -145,6 +145,7 @@ async def proxy_ws(client_ws: WebSocket):
 
 control_app.add_websocket_route("/v1/websocket", proxy_ws)
 control_app.add_route("/v1/{path:path}", proxy_http, ["GET", "POST"])
+control_app.add_route("/metrics/", proxy_http, ["GET"])
 
 
 @control_app.post("/control/patch")
