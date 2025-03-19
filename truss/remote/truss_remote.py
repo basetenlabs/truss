@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Union
 
 import requests
 
@@ -271,3 +271,17 @@ class RemoteConfig:
 
     name: str
     configs: Dict = field(default_factory=dict)
+
+    # TODO: use a better, safer lib/schema for configs, this is terrible.
+    @staticmethod
+    def parse_bool(bool_or_str: Union[str, bool]) -> bool:
+        if isinstance(bool_or_str, bool):
+            return bool_or_str
+        elif bool_or_str.lower() == "true":
+            return True
+        elif bool_or_str.lower() == "false":
+            return False
+        else:
+            raise ValueError(
+                f"Expected a string denoting a boolean, got `{bool_or_str}`."
+            )
