@@ -18,6 +18,11 @@ JOB_TERMINATION_GRACE_PERIOD_SEC = 10
 
 JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_DEPLOYING"]
 JOB_RUNNING_STATES = ["TRAINING_JOB_RUNNING"]
+JOB_TERMINAL_STATES = [
+    "TRAINING_JOB_COMPLETED",
+    "TRAINING_JOB_FAILED",
+    "TRAINING_JOB_STOPPED",
+]
 
 
 class RawTrainingJobLog(pydantic.BaseModel):
@@ -139,3 +144,13 @@ class LogWatcher:
 
             current_status = self._get_current_job_status()
             self._maybe_update_poll_stop_time(current_status)
+
+        if current_status in JOB_TERMINAL_STATES:
+            if current_status == "TRAINING_JOB_COMPLETED":
+                self.console.print(
+                    "Training job completed successfully.", style="green"
+                )
+            elif current_status == "TRAINING_JOB_STOPPED":
+                self.console.print("Training job stopped by user.", style="yellow")
+            else:
+                self.console.print("Training job failed.", style="red")
