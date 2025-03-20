@@ -70,61 +70,37 @@ class RemoteFactory:
         config[remote_config.name] = remote_config.configs
         update_config(config)
 
-    @staticmethod
-    def validate_remote_config(remote_config: Dict, remote_name: str):
-        """
-        Validates remote config by checking
-            1. the 'remote' field exists
-            2. all required parameters for the 'remote' class are provided
-        """
-        if "remote_provider" not in remote_config:
-            raise ValueError(
-                f"Missing 'remote_provider' field for remote {remote_name} in .trussrc"
-            )
-
-        if remote_config["remote_provider"] not in RemoteFactory.REGISTRY:
-            raise ValueError(
-                f"Remote provider {remote_config['remote_provider']} not found in registry"
-            )
-
-        remote = RemoteFactory.REGISTRY.get(remote_config["remote_provider"])
-        if remote:
-            required_params = RemoteFactory.required_params(remote)
-            missing_params = required_params - set(remote_config.keys())
-            if missing_params:
-                raise ValueError(
-                    f"Missing required parameter(s) {missing_params} for remote {remote_name} in .trussrc"
-                )
-
-    @staticmethod
-    def required_params(remote: Type[TrussRemote]) -> set:
-        """
-        Get the required parameters for a remote by inspecting its __init__ method
-        """
-        init_signature = inspect.signature(remote.__init__)
-        params = init_signature.parameters
-        required_params = {
-            name
-            for name, param in params.items()
-            if param.default == inspect.Parameter.empty
-            and name not in {"self", "args", "kwargs"}
-        }
-        return required_params
-
     @classmethod
     def create(cls, remote: str) -> TrussRemote:
-        remote_config = cls.load_remote_config(remote)
-        configs = remote_config.configs
-        cls.validate_remote_config(configs, remote)
+        remote_config = cls.load_remote_config(remote).configs
+        if "remote_provider" not in remote_config:
+            raise ValueError(f"Missing 'remote_provider' field for remote `{remote}`.")
+        provider = remote_config.pop("remote_provider")
+        if provider not in cls.REGISTRY:
+            raise ValueError(f"Remote provider {provider} not found in registry.")
+        remote_class = cls.REGISTRY[provider]
 
-        remote_class = cls.REGISTRY[configs.pop("remote_provider")]
-        remote_params = {
-            param: configs.get(param) for param in cls.required_params(remote_class)
+        parameters = inspect.signature(remote_class.__init__).parameters
+        init_params = {n for n in parameters if n not in {"self", "args", "kwargs"}}
+        required_params = {
+            n
+            for n, p in parameters.items()
+            if p.default == inspect.Parameter.empty
+            and n not in {"self", "args", "kwargs"}
         }
+        accepts_kwargs = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in parameters.values()
+        )
 
-        # Add any additional params provided by the user in their .trussrc
-        additional_params = set(configs.keys()) - set(remote_params.keys())
-        for param in additional_params:
-            remote_params[param] = configs.get(param)
+        # If class accepts **kwargs, pass everything, else only known params
+        if accepts_kwargs:
+            passed_config = remote_config
+        else:
+            passed_config = {k: v for k, v in remote_config.items() if k in init_params}
 
-        return remote_class(**remote_params)  # type: ignore
+        missing = required_params - set(remote_config.keys())
+        if missing:
+            raise ValueError(
+                f"Missing required parameter(s) {list(missing)} for remote `{remote}`."
+            )
+        return remote_class(**passed_config)

@@ -6,7 +6,6 @@ import inspect
 import json
 import logging
 import pathlib
-import re
 import sys
 import tempfile
 import textwrap
@@ -24,7 +23,6 @@ import websockets
 from opentelemetry import context, trace
 from python_on_whales import Container
 from requests.exceptions import RequestException
-from websockets.exceptions import ConnectionClosed
 
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.helpers import create_truss
@@ -55,7 +53,9 @@ def _log_contains_line(
     )
 
 
-def _assert_logs_contain_error(logs: str, error: str, message=DEFAULT_LOG_ERROR):
+def _assert_logs_contain_error(
+    logs: str, error: Optional[str], message=DEFAULT_LOG_ERROR
+):
     loglines = [json.loads(line) for line in logs.splitlines()]
     assert any(
         _log_contains_line(line, message, "ERROR", error) for line in loglines
@@ -1905,6 +1905,10 @@ async def test_websocket_endpoint():
             try:
                 while True:
                     text = await websocket.receive_text()
+                    if text == "done":
+                        print("done")
+                        return
+
                     await websocket.send_text(text + " pong")
             except fastapi.WebSocketDisconnect:
                 pass
@@ -1922,6 +1926,65 @@ async def test_websocket_endpoint():
             response = await websocket.recv()
             assert response == "world pong"
 
+            await websocket.send("done")
+
+            with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+                await websocket.recv()
+
+            assert exc_info.value.rcvd.code == 1000
+            assert exc_info.value.rcvd.reason == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_websocket_endpoint_error_logs():
+    model = """
+    import fastapi
+
+    class Model:
+        async def websocket(self, websocket: fastapi.WebSocket):
+            try:
+                while True:
+                    text = await websocket.receive_text()
+                    if text == "raise":
+                        raise ValueError("This is test error.")
+                    await websocket.send_text(text + " pong")
+            except fastapi.WebSocketDisconnect:
+                pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        async with websockets.connect(WEBSOCKETS_URL) as websocket:
+            # Send "hello" and verify response
+            await websocket.send("hello")
+            response = await websocket.recv()
+            assert response == "hello pong"
+
+            # Send "raise" to raise a test error.
+            await websocket.send("raise")
+            with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
+                await websocket.recv()
+
+            assert exc_info.value.rcvd.code == 1011
+            assert (
+                exc_info.value.rcvd.reason
+                == "Internal Server Error (in model/chainlet)."
+            )
+
+            expected_stack_trace = (
+                "Traceback (most recent call last):\n"
+                '  File "/app/model/model.py", line 10, in websocket\n'
+                '    raise ValueError("This is test error.")\n'
+                "ValueError: This is test error."
+            )
+            _assert_logs_contain_error(
+                container.logs(),
+                error=expected_stack_trace,
+                message="Internal Server Error (in model/chainlet).",
+            )
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -1933,13 +1996,20 @@ async def test_nonexistent_websocket_endpoint():
             pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-        response = None
-        with pytest.raises(ConnectionClosed) as exc_info:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        with pytest.raises(websockets.ConnectionClosedError) as exc_info:
             async with websockets.connect(WEBSOCKETS_URL) as ws:
-                response_bytes = await ws.recv()
-                response = response_bytes.decode()
-                await ws.recv()  # Triggers exception, recv after expected closure
+                await ws.recv()
 
         assert exc_info.value.rcvd.code == 1003
-        assert re.search(r"not implemented", response, re.IGNORECASE)
+        assert (
+            exc_info.value.rcvd.reason
+            == "WebSocket is not implemented on this deployment."
+        )
+        _assert_logs_contain_error(
+            container.logs(),
+            error=None,
+            message="WebSocket is not implemented on this deployment.",
+        )

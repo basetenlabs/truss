@@ -769,12 +769,15 @@ class TrussConfig:
                 ):
                     # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
                     message = f"""TRT-LLM models should have model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] (or ['{OPENAI_NON_COMPATIBLE_TAG}']).
-                        Your current tags are {current_tags}, which is has neither option. We require a active choice to be made."
+                        Your current tags are {current_tags}, which is has neither option. We require a active choice to be made.
+
+                        For making the model compatible with OpenAI clients, we require to add the following to your config.
                         ```yaml
                         model_metadata:
                         tags:
                         - {OPENAI_COMPATIBLE_TAG}
-                        # for legacy behavior set above line to
+                        # for legacy behavior set above line to the following, which will break OpenAI compatibility explicitly.
+                        # This was the old default behaviour if you used Baseten before March 19th 2025 or truss<=0.9.68
                         # `- {OPENAI_NON_COMPATIBLE_TAG}`
                         ```
                         """

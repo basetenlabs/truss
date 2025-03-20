@@ -96,12 +96,12 @@ Chainlet-Traceback \(most recent call last\):
   File \".*?/itest_chain\.py\", line \d+, in _accumulate_parts
     value \+= self\._text_to_num\.run_remote\(part\)
 ValueError: \(showing chained remote errors, root error at the bottom\)
-├─ Error calling dependency Chainlet `TextToNum`, HTTP status=500, trace ID=`TRACE_ID`.
+├─ Error calling dependency Chainlet `TextToNum`, HTTP status=500, trace ID=`TRACE_ID`\.
 │   Chainlet-Traceback \(most recent call last\):
 │     File \".*?/itest_chain\.py\", line \d+, in run_remote
 │       generated_text = self\._replicator\.run_remote\(data\)
 │   ValueError: \(showing chained remote errors, root error at the bottom\)
-│   ├─ Error calling dependency Chainlet `TextReplicator`, HTTP status=500, trace ID=`TRACE_ID`.
+│   ├─ Error calling dependency Chainlet `TextReplicator`, HTTP status=500, trace ID=`TRACE_ID`\.
 │   │   Chainlet-Traceback \(most recent call last\):
 │   │     File \".*?/itest_chain\.py\", line \d+, in run_remote
 │   │       validate_data\(data\)
@@ -339,3 +339,46 @@ async def test_websocket_chain(anyio_backend):
                 await websocket.send("dep")
                 response = await websocket.recv()
                 assert response == "Hello from dependency, Head."
+
+
+@pytest.mark.integration
+async def test_http_status_propagation(anyio_backend):
+    with ensure_kill_all():
+        chain_name = "http_errors"
+        chain_root = TEST_ROOT / chain_name / f"{chain_name}.py"
+        with framework.ChainletImporter.import_target(chain_root) as entrypoint:
+            service = deployment_client.push_debug_docker(entrypoint, chain_name)
+            url = service.run_remote_url.replace("host.docker.internal", "localhost")
+            time.sleep(1.0)  # Wait for models to be ready.
+
+            response = requests.post(url, json={"max_value": 12})
+            assert response.status_code == 422
+
+            error = public_types.RemoteErrorDetail.model_validate(
+                response.json()["error"]
+            )
+            error_str = error.format()
+            error_regex = r"""
+Chainlet-Traceback \(most recent call last\):
+  File \".*?/http_errors\.py\", line \d+, in run_remote
+    num_repetitions = self\._rand_int\.run_remote\(max_value\)
+HTTPException: 422: \(showing chained remote errors, root error at the bottom\)
+├─ Error calling dependency Chainlet `FailingHelper`, HTTP status=422, trace ID=``\.
+│   Chainlet-Traceback \(most recent call last\):
+│     File \".*?/http_errors\.py\", line \d+, in run_remote
+│       raise fastapi\.HTTPException\(status_code=422, detail="This is a test error."\)
+│   HTTPException: 422: This is a test error\.
+╰   \(Exception class defined in `fastapi\.exceptions`\.\)
+\(Exception class defined in `fastapi\.exceptions`\.\)
+            """
+            assert re.match(error_regex.strip(), error_str.strip(), re.MULTILINE), (
+                error_str
+            )
+
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert (
+                container_logs.count(
+                    "Handled request - POST /v1/models/model:predict HTTP/1.1 422"
+                )
+                == 1
+            )
