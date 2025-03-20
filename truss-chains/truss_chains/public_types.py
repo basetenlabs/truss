@@ -363,6 +363,13 @@ class Assets:
         return self._spec.model_copy(deep=True)
 
 
+try:
+    # Was only introduced in 2.5.0
+    JsonType = pydantic.JsonValue
+except AttributeError:
+    JsonType = dict[str, Any]  # type: ignore[misc]
+
+
 class ChainletOptions(types.SafeModelNonSerializable):
     """
     Args:
@@ -380,7 +387,7 @@ class ChainletOptions(types.SafeModelNonSerializable):
     enable_debug_logs: bool = False
     env_variables: Mapping[str, str] = pydantic.Field(default_factory=dict)
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
-    metadata: Optional[pydantic.JsonValue] = None
+    metadata: Optional[JsonType] = None
 
 
 class RemoteConfig(types.SafeModelNonSerializable):
