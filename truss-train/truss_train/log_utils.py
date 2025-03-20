@@ -1,10 +1,9 @@
 import time
 from typing import Any, List, Optional
 
-import rich
-
 from truss.remote.baseten.api import BasetenApi
 from truss.shared.log_watcher import POLL_INTERVAL_SEC, LogWatcher
+from truss.shared.types import SpinnerFactory
 
 # NB(nikhil): When a job ends, we poll for this many seconds after to capture
 # any trailing logs that contain information about errors.
@@ -21,9 +20,13 @@ class TrainingLogWatcher(LogWatcher):
     _current_status: Optional[str] = None
 
     def __init__(
-        self, api: BasetenApi, project_id: str, job_id: str, console: "rich.Console"
+        self,
+        api: BasetenApi,
+        project_id: str,
+        job_id: str,
+        spinner_factory: SpinnerFactory,
     ):
-        super().__init__(api, console)
+        super().__init__(api, spinner_factory)
         self.project_id = project_id
         self.job_id = job_id
 
@@ -34,15 +37,13 @@ class TrainingLogWatcher(LogWatcher):
     def before_polling(self) -> None:
         self._current_status = self._get_current_job_status()
         status_str = "Waiting for job to run, currently {current_status}..."
-        with self.console.status(
-            status_str.format(current_status=self._current_status), spinner="dots"
-        ) as status_console:
+        with self.spinner_factory(
+            status_str.format(current_status=self._current_status)
+        ) as spinner:
             while self._current_status in JOB_STARTING_STATES:
                 time.sleep(POLL_INTERVAL_SEC)
                 self._current_status = self._get_current_job_status()
-                status_console.update(
-                    status_str.format(current_status=self._current_status)
-                )
+                spinner.update(status_str.format(current_status=self._current_status))
 
     def fetch_logs(
         self, start_epoch_millis: Optional[int], end_epoch_millis: Optional[int]

@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 
@@ -566,7 +566,7 @@ class BasetenApi:
         self,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
-    ) -> Dict[str, int]:
+    ) -> Mapping[str, int]:
         payload = {}
         if start_epoch_millis:
             payload["start_epoch_millis"] = start_epoch_millis

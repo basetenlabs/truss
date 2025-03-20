@@ -1,9 +1,39 @@
-from typing import Any, List, Optional
+from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Iterator, List, Optional
 
-import rich
+from rich import console as rich_console
+from rich import text
 
 from truss.remote.baseten.api import BasetenApi
 from truss.shared.log_watcher import LogWatcher
+from truss.shared.types import ParsedLog, Spinner, SpinnerFactory
+
+
+def gen_spinner_factory(console: rich_console.Console) -> SpinnerFactory:
+    @contextmanager
+    def spinner_factory(text: str) -> Iterator[Spinner]:
+        with console.status(text, spinner="dots") as status:
+            yield status
+
+    return spinner_factory
+
+
+def output_log(log: ParsedLog, console: rich_console.Console):
+    epoch_nanos = int(log.timestamp)
+    dt = datetime.fromtimestamp(epoch_nanos / 1e9)
+    formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    time_text = text.Text(f"[{formatted_time}]: ", style="blue")
+    message_text = text.Text(f"{log.message.strip()}", style="white")
+    if log.replica:
+        replica_text = text.Text(f"({log.replica}) ", style="green")
+    else:
+        replica_text = text.Text()
+
+    # Output the combined log line to the console
+    console.print(time_text, replica_text, message_text, sep="")
+
 
 # NB(nikhil): These are slightly translated verisons of our internal model state machine.
 MODEL_RUNNING_STATES = [
@@ -26,9 +56,9 @@ class ModelDeploymentLogWatcher(LogWatcher):
         api: BasetenApi,
         model_id: str,
         deployment_id: str,
-        console: "rich.Console",
+        spinner_factory: SpinnerFactory,
     ):
-        super().__init__(api, console)
+        super().__init__(api, spinner_factory)
         self._model_id = model_id
         self._deployment_id = deployment_id
 
