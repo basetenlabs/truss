@@ -959,6 +959,34 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log, console)
+        job = remote_provider.api.get_training_job(project_id, job_id)
+        current_status = job.get("current_status")
+        # output if we're in a terminal state
+        if current_status == "TRAINING_JOB_COMPLETED":
+            console.print("Training job completed successfully.", style="green")
+        elif current_status == "TRAINING_JOB_FAILED":
+            console.print("Training job failed.", style="red")
+        elif current_status == "TRAINING_JOB_STOPPED":
+            console.print("Training job stopped by user.", style="yellow")
+
+
+@train.command(name="stop")
+@click.option("--project-id", type=str, required=True, help="Project ID.")
+@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def stop_job(project_id: str, job_id: str, remote: Optional[str]):
+    """Stop a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    remote_provider.api.stop_training_job(project_id, job_id)
+    console.print("Training job stopped successfully.", style="green")
 
 
 # End Training Stuff #####################################################################
