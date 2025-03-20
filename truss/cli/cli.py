@@ -1420,11 +1420,14 @@ def push(
 
 @truss_cli.command()
 @click.option("--remote", type=str, required=False)
-@click.option("--model_id", type=str, required=True)
-@click.option("--deployment_id", type=str, required=True)
+@click.option("--model-id", type=str, required=True)
+@click.option("--deployment-id", type=str, required=True)
+@click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
 @log_level_option
 @error_handling
-def model_logs(remote: Optional[str], model_id: str, deployment_id: str) -> None:
+def model_logs(
+    remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
+) -> None:
     """
     Fetches logs for the packaged model
     """
@@ -1432,11 +1435,16 @@ def model_logs(remote: Optional[str], model_id: str, deployment_id: str) -> None
     if not remote:
         remote = remote_cli.inquire_remote_name()
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
-    log_watcher = cli_log_utils.ModelDeploymentLogWatcher(
-        remote_provider.api, model_id, deployment_id, spinner_factory
-    )
-    for log in log_watcher.watch():
-        cli_log_utils.output_log(log, console)
+    if not tail:
+        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
+        for log in parse_logs(logs):
+            cli_log_utils.output_log(log, console)
+    else:
+        log_watcher = cli_log_utils.ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id, spinner_factory
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
 
 
 @truss_cli.command()

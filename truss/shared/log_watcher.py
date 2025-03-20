@@ -42,7 +42,7 @@ class LogWatcher(ABC):
         )
 
         parsed_logs = parse_logs(api_logs)
-        for log in parsed_logs[::-1]:
+        for log in parsed_logs:
             h = self._hash_log(log)
             if h not in self._log_hashes:
                 self._log_hashes.add(h)
