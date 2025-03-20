@@ -586,7 +586,8 @@ class BasetenApi:
             body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
         )
 
-        return resp_json["logs"]
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]
 
     def get_model_deployment_logs(
         self,
@@ -599,7 +600,9 @@ class BasetenApi:
             f"v1/models/{model_id}/deployments/{deployment_id}/logs",
             body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
         )
-        return resp_json["logs"]
+
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]
 
     def get_training_job(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
