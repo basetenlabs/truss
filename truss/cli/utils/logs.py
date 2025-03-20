@@ -6,6 +6,7 @@ from rich import console as rich_console
 from rich import text
 
 from truss.remote.baseten.api import BasetenApi
+from truss.remote.baseten.utils.status import MODEL_RUNNING_STATES
 from truss.shared.log_watcher import LogWatcher
 from truss.shared.types import ParsedLog, Spinner, SpinnerFactory
 
@@ -33,17 +34,6 @@ def output_log(log: ParsedLog, console: rich_console.Console):
 
     # Output the combined log line to the console
     console.print(time_text, replica_text, message_text, sep="")
-
-
-# NB(nikhil): These are slightly translated verisons of our internal model state machine.
-MODEL_RUNNING_STATES = [
-    "BUILDING",
-    "DEPLOYING",
-    "LOADING_MODEL",
-    "ACTIVE",
-    "UPDATING",
-    "WAKING_UP",
-]
 
 
 class ModelDeploymentLogWatcher(LogWatcher):

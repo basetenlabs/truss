@@ -6,7 +6,8 @@ from typing import Any, Iterator, List, Optional
 from truss.remote.baseten.api import BasetenApi
 from truss.shared.types import ParsedLog, SpinnerFactory
 
-CLOCK_SKEW_BUFFER_MS = 1000
+# NB(nikhil): This helps account for (1) log processing delays (2) clock skews
+CLOCK_SKEW_BUFFER_MS = 10000
 POLL_INTERVAL_SEC = 2
 
 
