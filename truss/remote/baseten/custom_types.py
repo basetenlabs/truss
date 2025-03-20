@@ -105,7 +105,7 @@ class TrussUserEnv(pydantic.BaseModel):
         return cls(
             truss_client_version=truss.version(),
             python_version=f"{py_version.major}.{py_version.minor}.{py_version.micro}",
-            pydantic_version=pydantic.version.version_short(),
+            pydantic_version=pydantic.version.VERSION,
             mypy_version=mypy_version,
             git_info=None,
         )

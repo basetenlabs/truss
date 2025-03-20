@@ -832,24 +832,23 @@ def _validate_engine_builder_fields(
     #  a better way to do this.
     violations = []
     # `model_fields_set` does not work reliably here, so we compare against defaults.
-    if (
-        remote_config.docker_image
-        != public_types.RemoteConfig.model_fields["docker_image"].default
+    if remote_config.docker_image != utils.get_pydantic_field_default_value(
+        public_types.RemoteConfig, "docker_image"
     ):
         violations.append("docker_image")
-    if (
-        remote_config.assets.get_spec().cached
-        != public_types.AssetSpec.model_fields["cached"].default
+    if remote_config.assets.get_spec().cached != utils.get_pydantic_field_default_value(
+        public_types.AssetSpec, "cached"
     ):
         violations.append("assets.cached")
     if (
         remote_config.assets.get_spec().external_data
-        != public_types.AssetSpec.model_fields["external_data"].default
+        != utils.get_pydantic_field_default_value(
+            public_types.AssetSpec, "external_data"
+        )
     ):
         violations.append("assets.external_data")
-    if (
-        remote_config.options.health_checks
-        != public_types.ChainletOptions.model_fields["health_checks"].default
+    if remote_config.options.health_checks != utils.get_pydantic_field_default_value(
+        public_types.ChainletOptions, "health_checks"
     ):
         violations.append("options.health_checks")
     if violations:
