@@ -16,6 +16,16 @@ STATUS_TO_DISPLAYABLE = {
     "SCALING_FROM_ZERO": "WAKING_UP",
 }
 
+# NB(nikhil): These are slightly translated verisons of our internal model state machine.
+MODEL_RUNNING_STATES = [
+    "BUILDING",
+    "DEPLOYING",
+    "LOADING_MODEL",
+    "ACTIVE",
+    "UPDATING",
+    "WAKING_UP",
+]
+
 
 def get_displayable_status(status: str) -> str:
     """
