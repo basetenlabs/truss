@@ -144,11 +144,11 @@ class LazyDataResolverV2:
     def __init__(self, data_dir: Path):
         self._data_dir: Path = data_dir
 
-    def fetch(self):
+    def fetch(self) -> str:
         if not LAZY_DATA_RESOLVER_PATH.is_file():
             logger.warning("Lazy data resolver path does not exist.")
-            return {}
-        truss_transfer.lazy_data_resolve(str(self._data_dir))
+            return ""
+        return truss_transfer.lazy_data_resolve(str(self._data_dir))
 
 
 def _read_bptr_resolution() -> Dict[str, Tuple[str, str, int]]:

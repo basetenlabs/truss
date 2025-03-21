@@ -57,9 +57,8 @@ def setup_v2_bptr():
         LAZY_DATA_RESOLVER_PATH.unlink()
 
     try:
-        # Verify that accessing non-existent file raises exception
-        with pytest.raises(Exception):
-            LazyDataResolverV2(Path("/tmp")).fetch()
+        # Verify that accessing non-existent file leads to """
+        assert LazyDataResolverV2(Path("/tmp")).fetch() == ""
 
         # Create parent directory
         try:
@@ -103,9 +102,10 @@ def test_lazy_data_resolver_v2_regular():
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file()
             resolver = LazyDataResolverV2(data_dir)
-            resolver.fetch()
+            location = resolver.fetch()
             assert (data_dir / TARGET_FILE).exists()
             assert (data_dir / TARGET_FILE).stat().st_size == 1482
+            assert location == str(data_dir)
 
 
 @pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
