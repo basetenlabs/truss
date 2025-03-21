@@ -660,8 +660,8 @@ def push_chain(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    if not include_git_info and remote_cli.check_is_interactive():
-        include_git_info = remote_cli.update_include_git_info_consent(remote)
+    if not include_git_info:
+        include_git_info = remote_cli.determine_include_git_info_consent(remote)
 
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
@@ -1302,8 +1302,8 @@ def push(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    if not include_git_info and remote_cli.check_is_interactive():
-        include_git_info = remote_cli.update_include_git_info_consent(remote)
+    if not include_git_info:
+        include_git_info = remote_cli.determine_include_git_info_consent(remote)
 
     remote_provider = RemoteFactory.create(remote=remote)
     tr = _get_truss_from_directory(target_directory=target_directory)
