@@ -29,7 +29,9 @@ from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
 from truss.cli import remote_cli
-from truss.cli.utils import logs as cli_log_utils
+from truss.cli.logs import utils as cli_log_utils
+from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -42,7 +44,6 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
-from truss.shared.log_watcher import parse_logs
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
     is_missing_secrets_for_trt_llm_builder,
@@ -95,7 +96,6 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 console = Console()
-spinner_factory = cli_log_utils.gen_spinner_factory(console)
 
 error_console = Console(stderr=True, style="bold red")
 
@@ -895,7 +895,7 @@ def train():
 @error_handling
 def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
-    from truss_train import deployment, loader, log_utils
+    from truss_train import deployment, loader
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -924,9 +924,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
     if tail:
         project_id, job_id = project_resp["id"], job_resp["id"]
-        watcher = log_utils.TrainingLogWatcher(
-            remote_provider.api, project_id, job_id, spinner_factory
-        )
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id, console)
         for log in watcher.watch():
             cli_log_utils.output_log(log, console)
 
@@ -940,7 +938,6 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 @error_handling
 def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool):
     """Fetch logs for a training job"""
-    from truss_train import log_utils
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -951,23 +948,14 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool
 
     if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
-        for log in parse_logs(logs):
+        for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log, console)
     else:
-        log_watcher = log_utils.TrainingLogWatcher(
-            remote_provider.api, project_id, job_id, spinner_factory
+        log_watcher = TrainingLogWatcher(
+            remote_provider.api, project_id, job_id, console
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log, console)
-        job = remote_provider.api.get_training_job(project_id, job_id)
-        current_status = job.get("current_status")
-        # output if we're in a terminal state
-        if current_status == "TRAINING_JOB_COMPLETED":
-            console.print("Training job completed successfully.", style="green")
-        elif current_status == "TRAINING_JOB_FAILED":
-            console.print("Training job failed.", style="red")
-        elif current_status == "TRAINING_JOB_STOPPED":
-            console.print("Training job stopped by user.", style="yellow")
 
 
 @train.command(name="stop")
@@ -1439,8 +1427,8 @@ def push(
                 sys.exit(1)
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
-        log_watcher = cli_log_utils.ModelDeploymentLogWatcher(
-            bt_remote.api, service.model_id, service.model_version_id, spinner_factory
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id, console
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log, console)
@@ -1465,11 +1453,11 @@ def model_logs(
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
     if not tail:
         logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
-        for log in parse_logs(logs):
+        for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log, console)
     else:
-        log_watcher = cli_log_utils.ModelDeploymentLogWatcher(
-            remote_provider.api, model_id, deployment_id, spinner_factory
+        log_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id, console
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log, console)
