@@ -12,7 +12,7 @@ from huggingface_hub.utils import validate_repo_id
 from pydantic import (
     BaseModel,
     PydanticDeprecatedSince20,
-    constr,
+    StringConstraints,
     model_validator,
     validator,
 )
@@ -24,8 +24,6 @@ warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
     os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
 )
-
-LoraName = Annotated[str, constr(pattern=r"^[a-z0-9]+$")]
 
 
 class TrussTRTLLMModel(str, Enum):
@@ -160,7 +158,12 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     num_builder_gpus: Optional[int] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
-    lora_adapters: Optional[Dict[LoraName, CheckpointRepository]] = None
+    lora_adapters: Optional[
+        Dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z0-9]+$")],
+            CheckpointRepository,
+        ]
+    ] = None
 
     class Config:
         extra = "forbid"
@@ -195,6 +198,10 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         return (self.speculator is not None) and (
             self.speculator.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL
         )
+
+    @property
+    def uses_lora(self) -> bool:
+        return self.lora_adapters is not None and len(self.lora_adapters) > 0
 
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
