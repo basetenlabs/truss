@@ -30,7 +30,7 @@ from common.schema import TrussSchema
 from fastapi import HTTPException, WebSocket
 from opentelemetry import trace
 from shared import dynamic_config_resolver, serialization
-from shared.lazy_data_resolver import LazyDataResolver
+from shared.lazy_data_resolver import LazyDataResolverV2
 from shared.secrets_resolver import SecretsResolver
 
 if sys.version_info >= (3, 9):
@@ -464,7 +464,7 @@ class ModelWrapper:
                 sys.path.append(str(bundled_packages_path))
 
         secrets = SecretsResolver.get_secrets(self._config)
-        lazy_data_resolver = LazyDataResolver(data_dir)
+        lazy_data_resolver = LazyDataResolverV2(data_dir)
 
         apply_patches(
             self._config.get("apply_library_patches", True),
