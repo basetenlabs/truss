@@ -17,6 +17,27 @@ def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
     TRTLLMConfiguration(build=build_config, runtime=TrussTRTLLMRuntimeConfiguration())
 
 
+def test_trt_llm_config_init_with_lora(trtllm_config):
+    build = trtllm_config["trt_llm"]["build"]
+    build["lora_adapters"] = {
+        "adapter1": {"source": "HF", "repo": "meta/llama4-500B-lora2"},
+        "adapter2": {"source": "HF", "repo": "meta/llama4-500B-lora1"},
+    }
+
+    build_config = TrussTRTLLMBuildConfiguration(**build)
+    assert len(build_config.lora_adapters) == 2
+    assert build_config.lora_adapters["adapter1"].source == "HF"
+
+    TRTLLMConfiguration(build=build_config, runtime=TrussTRTLLMRuntimeConfiguration())
+
+    with pytest.raises(Exception):
+        build["lora_adapters"] = {
+            "adapter-$ bad-invalid": {"source": "HF", "repo": "meta/llama4-500B-lora2"}
+        }
+        build_config2 = TrussTRTLLMBuildConfiguration(**build)
+        print(build_config2.lora_adapters)
+
+
 def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
     deprecated_trtllm_config,
 ):
