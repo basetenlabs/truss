@@ -32,6 +32,11 @@ class _WebsocketOpenFilter(logging.Filter):
         return "connection open" not in msg
 
 
+class _MetricsFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/metrics" not in record.getMessage()
+
+
 class _AccessJsonFormatter(jsonlogger.JsonFormatter):
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
@@ -97,6 +102,7 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
         "filters": {
             "health_check_filter": {"()": _HealthCheckFilter},
             "websocket_filter": {"()": _WebsocketOpenFilter},
+            "metrics_filter": {"()": _MetricsFilter},
         },
         "formatters": formatters,
         "handlers": {
@@ -128,7 +134,13 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
                 "handlers": ["access_handler"],
                 "level": "INFO",
                 "propagate": False,
-                "filters": ["health_check_filter"],
+                "filters": ["health_check_filter", "metrics_filter"],
+            },
+            "httpx": {
+                "handlers": ["default_handler"],
+                "level": "INFO",
+                "propagate": False,
+                "filters": ["metrics_filter"],
             },
         },
         # Catch-all for module loggers
