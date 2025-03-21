@@ -5,11 +5,17 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Dict, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, validator
+from pydantic import (
+    BaseModel,
+    PydanticDeprecatedSince20,
+    constr,
+    model_validator,
+    validator,
+)
 
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
@@ -18,6 +24,8 @@ warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
     os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
 )
+
+LoraName = Annotated[str, constr(pattern=r"^[a-z0-9]+$")]
 
 
 class TrussTRTLLMModel(str, Enum):
@@ -152,6 +160,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     num_builder_gpus: Optional[int] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
+    lora_adapters: Optional[Dict[LoraName, CheckpointRepository]] = None
 
     class Config:
         extra = "forbid"

@@ -17,6 +17,18 @@ def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
     TRTLLMConfiguration(build=build_config, runtime=TrussTRTLLMRuntimeConfiguration())
 
 
+def test_trt_llm_config_init_with_lora(trtllm_config):
+    build = trtllm_config["trt_llm"]["build"]
+    build["lora_adapters"] = {
+        "adapter1": {"source": "HF", "repo": "meta/llama4-500B-lora2"},
+        "adapter2": {"source": "HF", "repo": "meta/llama4-500B-lora1"},
+    }
+
+    build_config = TrussTRTLLMBuildConfiguration(**build)
+
+    TRTLLMConfiguration(build=build_config, runtime=TrussTRTLLMRuntimeConfiguration())
+
+
 def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
     deprecated_trtllm_config,
 ):
