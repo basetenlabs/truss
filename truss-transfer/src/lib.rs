@@ -307,7 +307,7 @@ async fn download_file_with_cache(
                 hash
             );
             if let Err(e) = create_symlink_or_skip(&cache_path, &destination, size).await {
-                debug!(
+                warn!(
                     "Symlink creation failed: {}.  Proceeding with direct download.",
                     e
                 );
@@ -326,7 +326,6 @@ async fn download_file_with_cache(
         }
     }
     // Download the file to the local path
-    info!("Download file to path: {:?}", destination);
     download_to_path(client, url, &destination, size).await?;
 
     // After the file is locally downloaded, optionally move it to b10cache.
@@ -341,9 +340,10 @@ async fn download_file_with_cache(
 /// Returns an error if the download fails or if the file size does not match the expected size.
 async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .context("Failed to create parent directory for download path")?;
+        fs::create_dir_all(parent).await.context(format!(
+            "Failed to create directory for download path: {:?}",
+            parent
+        ))?;
     }
 
     info!("Starting download to {:?}", path);
@@ -461,4 +461,93 @@ fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lazy_data_resolve, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn test_resolve_truss_transfer_download_dir_with_arg() {
+        // If an argument is provided, it should take precedence.
+        let dir = "my/download/dir".to_string();
+        let result = resolve_truss_transfer_download_dir(Some(dir.clone()));
+        assert_eq!(result, dir);
+    }
+
+    #[test]
+    fn test_resolve_truss_transfer_download_dir_from_env() {
+        // Set the environment variable and ensure it is used.
+        let test_dir = "env_download_dir".to_string();
+        env::set_var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR, test_dir.clone());
+        let result = resolve_truss_transfer_download_dir(None);
+        assert_eq!(result, test_dir);
+        env::remove_var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR);
+    }
+
+    #[test]
+    fn test_resolve_truss_transfer_download_dir_fallback() {
+        // Ensure that when no arg and no env var are provided, the fallback is returned.
+        env::remove_var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR);
+        let result = resolve_truss_transfer_download_dir(None);
+        assert_eq!(result, TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK.to_string());
+    }
+
+    #[test]
+    fn test_build_resolution_map_valid() {
+        // Create a pointer with an expiration timestamp in the future.
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600; // one hour in the future
+        let pointer = BasetenPointer {
+            resolution: Resolution {
+                url: "http://example.com/file".into(),
+                expiration_timestamp: future_timestamp,
+            },
+            uid: "123".into(),
+            file_name: "file.txt".into(),
+            hashtype: "sha256".into(),
+            hash: "abcdef".into(),
+            size: 1024,
+        };
+        let manifest = BasetenPointerManifest {
+            pointers: vec![pointer],
+        };
+        let result = build_resolution_map(&manifest);
+        assert!(result.is_ok());
+        let map = result.unwrap();
+        assert_eq!(map.len(), 1);
+        assert_eq!(map[0].0, "file.txt");
+        assert_eq!(map[0].1 .0, "http://example.com/file");
+        assert_eq!(map[0].1 .1, "abcdef");
+        assert_eq!(map[0].1 .2, 1024);
+    }
+
+    #[test]
+    fn test_build_resolution_map_expired() {
+        // Create a pointer that has already expired.
+        let past_timestamp = chrono::Utc::now().timestamp() - 3600; // one hour in the past
+        let pointer = BasetenPointer {
+            resolution: Resolution {
+                url: "http://example.com/file".into(),
+                expiration_timestamp: past_timestamp,
+            },
+            uid: "123".into(),
+            file_name: "file.txt".into(),
+            hashtype: "sha256".into(),
+            hash: "abcdef".into(),
+            size: 1024,
+        };
+        let manifest = BasetenPointerManifest {
+            pointers: vec![pointer],
+        };
+        let result = build_resolution_map(&manifest);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_init_logger_once() {
+        // Calling init_logger_once multiple times should not panic.
+        init_logger_once();
+        init_logger_once();
+    }
 }
