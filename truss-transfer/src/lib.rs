@@ -294,22 +294,28 @@ async fn download_file_with_cache(
 
     if uses_b10_cache {
         let cache_path = Path::new(CACHE_DIR).join(hash);
-        if fs::metadata(&cache_path).await.is_ok() {
-            info!(
-                "Found {} in b10cache. Attempting to create symlink...",
-                hash
-            );
-            if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
-                debug!(
-                    "Symlink creation failed: {}. Proceeding with direct download.",
-                    e
-                );
+
+        // Check metadata and size first
+        if let Ok(cache_metadata) = fs::metadata(&cache_path).await {
+            if cache_metadata.len() as i64 == size {
+                info!("Found {} in b10cache. Attempting to create symlink...", hash);
+                if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
+                    debug!(
+                        "Symlink creation failed: {}. Proceeding with direct download.",
+                        e
+                    );
+                } else {
+                    info!(
+                        "Symlink created successfully. Skipping download for {}.",
+                        file_name
+                    );
+                    return Ok(());
+                }
             } else {
                 info!(
-                    "Symlink created successfully. Skipping download for {}.",
-                    file_name
+                    "Found {} in b10cache but size mismatch. Proceeding to download.",
+                    hash
                 );
-                return Ok(());
             }
         }
     }
