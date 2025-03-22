@@ -97,7 +97,7 @@ struct BasetenPointer {
     file_name: String,
     hashtype: String,
     hash: String,
-    size: i64,
+    size: u64,
 }
 
 /// Corresponds to `BasetenPointerManifest` in the Python code
@@ -248,7 +248,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 /// Validate expiration and build a vector of (file_name, (URL, hash, size)).
 fn build_resolution_map(
     bptr_manifest: &BasetenPointerManifest,
-) -> Result<Vec<(String, (String, String, i64))>> {
+) -> Result<Vec<(String, (String, String, u64))>> {
     let now = chrono::Utc::now().timestamp();
     let mut out = Vec::new();
 
@@ -264,6 +264,12 @@ fn build_resolution_map(
 
     Ok(out)
 }
+async fn check_metadata_size(path: &Path, size: u64) -> bool {
+    match fs::metadata(path).await {
+        Ok(metadata) => size == metadata.len() as u64,
+        Err(_) => false, // If metadata cannot be accessed, consider it a size mismatch
+    }
+}
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 async fn download_file_with_cache(
@@ -272,59 +278,51 @@ async fn download_file_with_cache(
     download_dir: &Path,
     file_name: &str,
     hash: &str,
-    size: i64,
+    size: u64,
     uses_b10_cache: bool,
 ) -> Result<()> {
     let destination = download_dir.join(file_name);
+    let cache_path = Path::new(CACHE_DIR).join(hash);
 
     // Skip download if file exists with the expected size.
-    if destination.exists() {
-        if let Ok(metadata) = fs::metadata(&destination).await {
-            if metadata.len() as i64 == size {
-                info!(
-                    "File {} already exists with correct size. Skipping download.",
-                    file_name
-                );
-                return Ok(());
-            } else {
-                info!(
-                    "File {} exists but size mismatch. Redownloading.",
-                    file_name
-                );
-            }
-        }
+    if check_metadata_size(&destination, size).await {
+        info!(
+            "File {} already exists with correct size. Skipping download.",
+            file_name
+        );
+        return Ok(());
+    } else if destination.exists() {
+        warn!(
+            "File {} exists but size mismatch. Redownloading.",
+            file_name
+        );
     }
 
     // If b10cache is enabled, try symlinking from the cache
-
     if uses_b10_cache {
-        let cache_path = Path::new(CACHE_DIR).join(hash);
-
         // Check metadata and size first
-        if let Ok(cache_metadata) = fs::metadata(&cache_path).await {
-            if cache_metadata.len() as i64 == size {
-                info!(
-                    "Found {} in b10cache. Attempting to create symlink...",
-                    hash
+        if check_metadata_size(&cache_path, size).await {
+            info!(
+                "Found {} in b10cache. Attempting to create symlink...",
+                hash
+            );
+            if let Err(e) = create_symlink_or_skip(&cache_path, &destination, size).await {
+                debug!(
+                    "Symlink creation failed: {}.  Proceeding with direct download.",
+                    e
                 );
-                if let Err(e) = create_symlink_or_skip(&cache_path, &destination, size).await {
-                    debug!(
-                        "Symlink creation failed: {}.  Proceeding with direct download.",
-                        e
-                    );
-                } else {
-                    info!(
-                        "Symlink created successfully. Skipping download for {}.",
-                        file_name
-                    );
-                    return Ok(());
-                }
             } else {
-                warn!(
-                    "Found {} in b10cache but size mismatch. b10cache is inconsistent. Proceeding to download.",
-                    hash
+                info!(
+                    "Symlink created successfully. Skipping download for {}.",
+                    file_name
                 );
+                return Ok(());
             }
+        } else {
+            warn!(
+                "Found {} in b10cache but size mismatch. b10cache is inconsistent. Proceeding to download.",
+                hash
+            );
         }
     }
     // Download the file to the local path
@@ -333,7 +331,6 @@ async fn download_file_with_cache(
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if uses_b10_cache {
-        let cache_path = Path::new(CACHE_DIR).join(hash);
         handle_b10cache(&destination, &cache_path, size).await?;
     }
 
@@ -341,7 +338,8 @@ async fn download_file_with_cache(
 }
 
 /// Stream a download from `url` into the specified `path`.
-async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) -> Result<()> {
+/// Returns an error if the download fails or if the file size does not match the expected size.
+async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .await
@@ -358,25 +356,27 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
         file.write_all(&chunk).await?;
     }
 
-    if size > 0 {
-        let metadata = fs::metadata(path).await?;
-        let written = metadata.len();
-        if written as i64 != size {
-            warn!(
-                "Downloaded file size mismatch for {:?} (expected {}, got {})",
-                path, size, written
-            );
-        }
+    let metadata = fs::metadata(path).await?;
+    let written = metadata.len();
+    if written as u64 != size {
+        Err(anyhow!(
+            "Downloaded file size mismatch for {:?} (expected {}, got {})",
+            path,
+            size,
+            written
+        ))?;
     }
 
     info!("Completed download to {:?}", path);
     Ok(())
 }
 
-// Logic for handling b10cache symlinking or copying.
-// If the file exists in the cache and matches the size, it will create a symlink.
-// If the file does not exist or size does not match, it will copy the file to the cache.
-async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: i64) -> Result<()> {
+// Logic for leaving the behind in b10cache for subsequent calls by other processes getting a cache hit.
+// 1. Move the file to b10cache, symlinking back to the original location.
+// 2. If the move fails due to cross-device link error (EEXDEV), copy the file instead.
+// Should be a no-op/optional call from perspective of the caller, a file will be
+// at `download_path` and optionally in `cache_path` if b10cache is enabled.
+async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: u64) -> Result<()> {
     info!(
         "b10cache enabled: moving file to {:?} and creating symlink back to {:?}",
         cache_path, download_path
@@ -399,10 +399,12 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: i64) -> 
             warn!("Failed to move file to b10cache: {}. Keeping local copy and not populating b10cache.", e);
         }
     } else {
-        create_symlink_or_skip(cache_path, download_path, size)
-            .await
-            .context("Failed to create symlink from cache to download path")?;
-        info!("File moved to b10cache successfully.");
+        match create_symlink_or_skip(cache_path, download_path, size).await {
+            Ok(()) => info!("Symlink from b10cache created successfully."),
+            Err(e) => {
+                return Err(e);
+            }
+        }
     }
 
     Ok(())
@@ -410,9 +412,9 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: i64) -> 
 
 /// Create a symlink from `src` to `dst` if `dst` does not exist.
 /// Returns Ok(()) if `dst` already exists.
-async fn create_symlink_or_skip(src: &Path, dst: &Path, size: i64) -> Result<()> {
+async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()> {
     let src_metadata = fs::metadata(src).await?;
-    if src_metadata.len() as i64 != size {
+    if src_metadata.len() as u64 != size {
         warn!(
             "File size mismatch before symlink to {:?}. Expected {}, got {}",
             dst,
