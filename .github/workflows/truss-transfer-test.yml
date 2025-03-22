@@ -37,6 +37,7 @@ jobs:
       - name: Download github file & test real bptr resolution
         run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
+          sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
           cp ./example-bptr-manifest.json /bptr/bptr-manifest
 
           source .venv/bin/activate
