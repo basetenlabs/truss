@@ -312,39 +312,71 @@ async fn download_file_with_cache(
                     return Ok(());
                 }
             } else {
-                info!(
-                    "Found {} in b10cache but size mismatch. Proceeding to download.",
+                warn!(
+                    "Found {} in b10cache but size mismatch. b10cache is inconsistent. Proceeding to download.",
                     hash
                 );
             }
         }
     }
 
+    info!("Download file to path: {:?}", destination);
+    download_to_path(client, url, &destination, size).await?;
+
+    // After the file is locally downloaded, optionally move it to b10cache.
     if uses_b10_cache {
+        // logic:
+        // 1. Move the file to b10cache + Create a symlink from b10cache to the original destination
+        // 2. If the move fails due to cross-device error, copy the file instead
+        // 3. Ensure the file size in b10cache matches the expected size
+
         let cache_path = Path::new(CACHE_DIR).join(hash);
-        info!("Downloading file to cache path: {:?}", cache_path);
-        if let Err(e) = download_to_path(client, url, &cache_path, size).await {
-            info!(
-                "Download to b10cache failed ({}). Falling back to direct download.",
-                e
-            );
-            download_to_path(client, url, &destination, size).await?;
+        info!(
+            "b10cache enabled: moving file to {:?} and creating symlink back to {:?}",
+            cache_path, destination
+        );
+
+        if let Some(parent) = cache_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .context("Failed to create parent directory for b10fs cache path")?;
+        }
+
+        if let Err(e) = fs::rename(&destination, &cache_path).await {
+            // Check if this is a cross-device error, which prevents rename from working.
+            // If so, copy manually, so the cache is up to date, but keep the local copy.
+            if let Some(18) = e.raw_os_error() {
+                warn!("Cross-device link error (EEXDEV). Attempting copy fallback.");
+                // try a copy instead, without caring about the result of copy
+                if let Err(copy_err) = fs::copy(&destination, &cache_path).await {
+                    warn!("Failed to copy file to b10cache: {}. Keeping local copy.", copy_err);
+                } else {
+                    info!("File copied to b10cache successfully.");
+                }
+            } else {
+                warn!("Failed to move file to b10cache: {}. Keeping local copy.", e);
+            }
         } else {
-            info!("Download to b10cache succeeded. Creating symlink to final destination.");
+            // check file size after moving and ensure it's correct
+            let cache_metadata = fs::metadata(&cache_path).await?;
+            if cache_metadata.len() as i64 != size {
+                return Err(anyhow!(
+                    "File size mismatch after moving to b10cache. Expected {}, got {}. Keeping local copy.",
+                    size,
+                    cache_metadata.len()
+                ));
+            } else {
+                info!("File moved to b10cache successfully.");
+            }
+
             if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
-                warn!(
-                    "Symlink creation failed: {}. Falling back to direct download.",
-                    e
-                );
-                download_to_path(client, url, &destination, size).await?;
+                return Err(e).context("Failed to create symlink to b10cache");
+            } else {
+                info!("Symlink from b10cache created successfully.");
             }
         }
     } else {
-        info!(
-            "b10cache not enabled. Downloading file directly to {:?}",
-            destination
-        );
-        download_to_path(client, url, &destination, size).await?;
+        info!("b10cache not enabled; file remains in {:?}", destination);
     }
 
     Ok(())
