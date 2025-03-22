@@ -301,7 +301,7 @@ async fn download_file_with_cache(
                 info!("Found {} in b10cache. Attempting to create symlink...", hash);
                 if let Err(e) = create_symlink_or_skip(&cache_path, &destination, size).await {
                     debug!(
-                        "Symlink creation failed: {}. Proceeding with direct download.",
+                        "Symlink creation failed: {}.  Proceeding with direct download.",
                         e
                     );
                 } else {
