@@ -340,12 +340,10 @@ async fn download_file_with_cache(
 /// Returns an error if the download fails or if the file size does not match the expected size.
 async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .context(format!(
-                "Failed to create directory for download path: {:?}",
-                parent
-            ))?;
+        fs::create_dir_all(parent).await.context(format!(
+            "Failed to create directory for download path: {:?}",
+            parent
+        ))?;
     }
 
     info!("Starting download to {:?}", path);
@@ -465,7 +463,6 @@ fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,9 +517,9 @@ mod tests {
         let map = result.unwrap();
         assert_eq!(map.len(), 1);
         assert_eq!(map[0].0, "file.txt");
-        assert_eq!(map[0].1.0, "http://example.com/file");
-        assert_eq!(map[0].1.1, "abcdef");
-        assert_eq!(map[0].1.2, 1024);
+        assert_eq!(map[0].1 .0, "http://example.com/file");
+        assert_eq!(map[0].1 .1, "abcdef");
+        assert_eq!(map[0].1 .2, 1024);
     }
 
     #[test]
