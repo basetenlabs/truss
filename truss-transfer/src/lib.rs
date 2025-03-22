@@ -181,10 +181,15 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         "1" | "true" => true,
         _ => false,
     };
-    info!(
-        "b10cache enabled: {}",
-        if uses_b10_cache { "True" } else { "False" }
-    );
+    if uses_b10_cache {
+        info!("b10cache is enabled.");
+        // create cache directory if it doesn't exist
+        fs::create_dir_all(CACHE_DIR)
+            .await
+            .context("Failed to create b10cache directory")?;
+    } else {
+        info!("b10cache is not enabled.");
+    }
 
     // 5. Build concurrency limit
     info!("Using {} concurrent workers.", num_workers);
@@ -298,7 +303,10 @@ async fn download_file_with_cache(
         // Check metadata and size first
         if let Ok(cache_metadata) = fs::metadata(&cache_path).await {
             if cache_metadata.len() as i64 == size {
-                info!("Found {} in b10cache. Attempting to create symlink...", hash);
+                info!(
+                    "Found {} in b10cache. Attempting to create symlink...",
+                    hash
+                );
                 if let Err(e) = create_symlink_or_skip(&cache_path, &destination, size).await {
                     debug!(
                         "Symlink creation failed: {}.  Proceeding with direct download.",
@@ -358,8 +366,6 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
                 "Downloaded file size mismatch for {:?} (expected {}, got {})",
                 path, size, written
             );
-        } else {
-            info!("Download size verified: {} bytes", size);
         }
     }
 
@@ -370,21 +376,11 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
 // Logic for handling b10cache symlinking or copying.
 // If the file exists in the cache and matches the size, it will create a symlink.
 // If the file does not exist or size does not match, it will copy the file to the cache.
-async fn handle_b10cache(
-    download_path: &Path,
-    cache_path: &Path,
-    size: i64,
-) -> Result<()> {
+async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: i64) -> Result<()> {
     info!(
         "b10cache enabled: moving file to {:?} and creating symlink back to {:?}",
         cache_path, download_path
     );
-
-    if let Some(parent) = cache_path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .context("Failed to create parent directory for b10fs cache path")?;
-    }
 
     // can be e.g. out of memory, permission denied, etc.
     if let Err(e) = fs::rename(download_path, cache_path).await {
@@ -392,7 +388,10 @@ async fn handle_b10cache(
         if let Some(18) = e.raw_os_error() {
             warn!("Cross-device link error (EEXDEV). Attempting copy fallback.");
             if let Err(copy_err) = fs::copy(download_path, cache_path).await {
-                warn!("Failed to copy file to b10cache: {}. Keeping local copy.", copy_err);
+                warn!(
+                    "Failed to copy file to b10cache: {}. Keeping local copy.",
+                    copy_err
+                );
             } else {
                 info!("File copied to b10cache successfully.");
             }
@@ -400,9 +399,10 @@ async fn handle_b10cache(
             warn!("Failed to move file to b10cache: {}. Keeping local copy and not populating b10cache.", e);
         }
     } else {
-        create_symlink_or_skip(cache_path, download_path, size).await
-            .context("Failed to create symlink to b10cache")?;
-        info!("Symlink from b10cache created successfully.");
+        create_symlink_or_skip(cache_path, download_path, size)
+            .await
+            .context("Failed to create symlink from cache to download path")?;
+        info!("File moved to b10cache successfully.");
     }
 
     Ok(())
