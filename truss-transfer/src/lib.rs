@@ -18,7 +18,7 @@ use tokio::sync::Semaphore;
 
 // For logging
 use env_logger::Builder;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{error, info, warn, LevelFilter};
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
@@ -371,42 +371,111 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     Ok(())
 }
 
-// Logic for leaving the behind in b10cache for subsequent calls by other processes getting a cache hit.
-// 1. Move the file to b10cache, symlinking back to the original location.
-// 2. If the move fails due to cross-device link error (EEXDEV), copy the file instead.
-// Should be a no-op/optional call from perspective of the caller, a file will be
-// at `download_path` and optionally in `cache_path` if b10cache is enabled.
+/// handling new b10cache:
+/// 1. Copy the local file (download_path) to a temporary cache file with a “.incomplete” suffix.
+/// 2. Verify that the copied file’s size matches the expected size.
+/// 3. If the sizes match:
+///    - Atomically rename the temporary file to the final cache path.
+///    - Delete the local file (deduplicate).
+///    - Create a symlink from the cache file to the original local path.
+/// 4. If the sizes do not match:
+///    - Delete the .incomplete file and keep the local file.
 async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: u64) -> Result<()> {
     info!(
-        "b10cache enabled: moving file to {:?} and creating symlink back to {:?}",
-        cache_path, download_path
+        "b10cache enabled: copying file from {:?} to cache and creating symlink back to {:?}",
+        download_path, cache_path
     );
 
-    // can be e.g. out of memory, permission denied, etc.
-    if let Err(e) = fs::rename(download_path, cache_path).await {
-        // handle cross-device link error (EEXDEV) by falling back to copy
-        if let Some(18) = e.raw_os_error() {
-            warn!("Cross-device link error (EEXDEV). Attempting copy fallback.");
-            if let Err(copy_err) = fs::copy(download_path, cache_path).await {
-                warn!(
-                    "Failed to copy file to b10cache: {}. Keeping local copy.",
-                    copy_err
-                );
-            } else {
-                info!("File copied to b10cache successfully.");
-            }
-        } else {
-            warn!("Failed to move file to b10cache: {}. Keeping local copy and not populating b10cache.", e);
-        }
-    } else {
-        match create_symlink_or_skip(cache_path, download_path, size).await {
-            Ok(()) => info!("Symlink from b10cache created successfully."),
-            Err(e) => {
-                return Err(e);
-            }
+    // Build the temporary incomplete file path.
+    let incomplete_cache_path = cache_path.with_extension("incomplete");
+    if incomplete_cache_path.exists() {
+        warn!(
+            "Incomplete cache file {:?} already exists. Deleting it.",
+            incomplete_cache_path
+        );
+        match fs::remove_file(&incomplete_cache_path).await {
+            Ok(_) => info!("Deleted incomplete cache file."),
+            Err(e) => warn!("Failed to delete incomplete cache file: {}", e),
         }
     }
 
+    // Copy the local file to the incomplete cache file.
+    info!(
+        "Copying local file {:?} to temporary incomplete cache file {:?}",
+        download_path, incomplete_cache_path
+    );
+    match fs::copy(download_path, &incomplete_cache_path).await {
+        Ok(_) => info!("Successfully copied to incomplete cache file."),
+        Err(e) => {
+            warn!("Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage.", e);
+            return Ok(());
+        }
+    };
+
+    // Check that the copied file has the expected size.
+    let incomplete_metadata = fs::metadata(&incomplete_cache_path)
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to get metadata for incomplete cache file {:?}. This should not happen.",
+                incomplete_cache_path
+            )
+        })?;
+    if incomplete_metadata.len() as u64 != size {
+        warn!(
+            "Size mismatch in incomplete cache file: expected {} bytes, got {} bytes. Keeping local file and cleaning up b10cache - perhaps related to high concurrency.",
+            size,
+            incomplete_metadata.len()
+        );
+        fs::remove_file(&incomplete_cache_path)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to delete incomplete cache file {:?}",
+                    incomplete_cache_path
+                )
+            })?;
+        return Ok(());
+    }
+
+    // Atomically rename the incomplete file to the final cache file.
+    info!(
+        "Atomic rename: renaming incomplete cache file {:?} to final cache file {:?}",
+        incomplete_cache_path, cache_path
+    );
+    fs::rename(&incomplete_cache_path, cache_path)
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to atomically rename incomplete cache file {:?} to final cache file {:?}",
+                incomplete_cache_path, cache_path
+            )
+        })?;
+
+    // Delete the local file as its copy is now in the cache.
+    info!("Deleting local file at {:?}", download_path);
+    fs::remove_file(download_path)
+        .await
+        .with_context(|| format!("Failed to delete local file {:?}", download_path))?;
+
+    // Create a symlink from the cache file to the original download location.
+    info!(
+        "Creating symlink from cache file {:?} to local file path {:?}",
+        cache_path, download_path
+    );
+    create_symlink_or_skip(cache_path, download_path, size)
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to create symlink from cache file {:?} to local file path {:?}",
+                cache_path, download_path
+            )
+        })?;
+
+    info!(
+        "Successfully handled b10cache for file: {:?}",
+        download_path
+    );
     Ok(())
 }
 
