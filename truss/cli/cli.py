@@ -978,12 +978,18 @@ def stop_job(project_id: str, job_id: str, remote: Optional[str]):
 
 
 @train.command(name="view")
-@click.option("--project-id", type=str, required=False, help="View training jobs for a project.")
-@click.option("--job-id", type=str, required=False, help="View a specific training job.")
+@click.option(
+    "--project-id", type=str, required=False, help="View training jobs for a project."
+)
+@click.option(
+    "--job-id", type=str, required=False, help="View a specific training job."
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
-def view_training(project_id: Optional[str], job_id: Optional[str], remote: Optional[str]):
+def view_training(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
     """List all training jobs for a project"""
 
     if not remote:
