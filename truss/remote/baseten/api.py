@@ -565,6 +565,22 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def list_training_jobs(self, project_id: str):
+        # training_jobs, training_project
+        resp_json = self._rest_api_client.get(f"v1/training_projects/{project_id}/jobs")
+        return resp_json
+
+    def get_training_job(self, project_id: str, job_id: str):
+        # training_job, training_project
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/jobs/{job_id}"
+        )
+        return resp_json
+
+    def list_training_projects(self):
+        resp_json = self._rest_api_client.get("v1/training_projects")
+        return resp_json["training_projects"]
+
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
 
@@ -609,9 +625,3 @@ class BasetenApi:
 
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
-
-    def get_training_job(self, project_id: str, job_id: str) -> Dict[str, Any]:
-        resp_json = self._rest_api_client.get(
-            f"v1/training_projects/{project_id}/jobs/{job_id}"
-        )
-        return resp_json["training_job"]
