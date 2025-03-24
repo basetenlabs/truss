@@ -355,6 +355,9 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
         let chunk: Bytes = chunk_result?;
         file.write_all(&chunk).await?;
     }
+    // make sure all data is written to disk
+    file.flush().await?;
+    file.sync_all().await?;
 
     let metadata = fs::metadata(path).await?;
     let written = metadata.len();
