@@ -978,12 +978,12 @@ def stop_job(project_id: str, job_id: str, remote: Optional[str]):
 
 
 @train.command(name="view")
-@click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--project-id", type=str, required=False, help="View training jobs for a project.")
+@click.option("--job-id", type=str, required=False, help="View a specific training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
-def view_job(project_id: Optional[str], job_id: Optional[str], remote: Optional[str]):
+def view_training(project_id: Optional[str], job_id: Optional[str], remote: Optional[str]):
     """List all training jobs for a project"""
 
     if not remote:
@@ -1044,10 +1044,10 @@ def display_training_jobs(project, jobs):
     )
     table.add_column("Project ID/Name", style="cyan")
     table.add_column("Job ID", style="cyan")
-    table.add_column("Status", style="cyan")
-    table.add_column("Instance Type", style="cyan")
-    table.add_column("Created At", style="cyan")
-    table.add_column("Updated At", style="cyan")
+    table.add_column("Status", style="white")
+    table.add_column("Instance Type", style="white")
+    table.add_column("Created At", style="white")
+    table.add_column("Updated At", style="white")
     for job in jobs:
         table.add_row(
             f"{project['id']} / {project['name']}",
