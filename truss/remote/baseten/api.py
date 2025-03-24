@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 
@@ -559,8 +559,26 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def stop_training_job(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/stop", body={}
+        )
+        return resp_json["training_job"]
+
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
+
+    def _prepare_logs_query(
+        self,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ) -> Mapping[str, int]:
+        payload = {}
+        if start_epoch_millis:
+            payload["start_epoch_millis"] = start_epoch_millis
+        if end_epoch_millis:
+            payload["end_epoch_millis"] = end_epoch_millis
+        return payload
 
     def get_training_job_logs(
         self,
@@ -569,19 +587,30 @@ class BasetenApi:
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
     ):
-        payload = {}
-        if start_epoch_millis:
-            payload["start_epoch_millis"] = start_epoch_millis
-        if end_epoch_millis:
-            payload["end_epoch_millis"] = end_epoch_millis
-
         resp_json = self._rest_api_client.post(
-            f"v1/training_projects/{project_id}/jobs/{job_id}/logs", body=payload
+            f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
         )
 
-        return resp_json["logs"]
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]
 
-    def get_training_job(self, project_id: str, job_id: str):
+    def get_model_deployment_logs(
+        self,
+        model_id: str,
+        deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            f"v1/models/{model_id}/deployments/{deployment_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+        )
+
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]
+
+    def get_training_job(self, project_id: str, job_id: str) -> Dict[str, Any]:
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}"
         )

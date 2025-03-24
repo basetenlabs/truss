@@ -37,6 +37,7 @@ jobs:
       - name: Download github file & test real bptr resolution
         run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
+          sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
           cp ./example-bptr-manifest.json /bptr/bptr-manifest
 
           source .venv/bin/activate
@@ -47,6 +48,7 @@ jobs:
           fi
 
           export BASETEN_FS_ENABLED=True
+          python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_fs_enabled/test')"
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_fs_enabled/test')"
           # test files are created in example_bptr_resolved
 

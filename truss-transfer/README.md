@@ -20,6 +20,13 @@ def lazy_data_loader(download_dir: str):
         raise
 ```
 
+Environment variables:
+
+```bash
+BASETEN_FS_ENABLED=0
+TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/bptr-resolved"
+```
+
 ### Running the CLI as binary
 
 Compiling the libary as musl-linux target for cross-platform usage.

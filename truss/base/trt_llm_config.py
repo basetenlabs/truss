@@ -5,11 +5,17 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Dict, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, validator
+from pydantic import (
+    BaseModel,
+    PydanticDeprecatedSince20,
+    StringConstraints,
+    model_validator,
+    validator,
+)
 
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
@@ -152,6 +158,12 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     num_builder_gpus: Optional[int] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
+    lora_adapters: Optional[
+        Dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z0-9]+$")],
+            CheckpointRepository,
+        ]
+    ] = None
 
     class Config:
         extra = "forbid"
@@ -186,6 +198,10 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         return (self.speculator is not None) and (
             self.speculator.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL
         )
+
+    @property
+    def uses_lora(self) -> bool:
+        return self.lora_adapters is not None and len(self.lora_adapters) > 0
 
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
