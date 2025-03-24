@@ -1028,7 +1028,7 @@ def view_training(
         table.add_column("Name")
         table.add_column("Created At")
         table.add_column("Updated At")
-        table.add_column("Most Recent Job ID")
+        table.add_column("Latest Job ID")
 
         for project in projects:
             table.add_row(
@@ -1036,7 +1036,7 @@ def view_training(
                 project["name"],
                 project["created_at"],
                 project["updated_at"],
-                project.get("most_recent_job", {}).get("id", ""),
+                project.get("latest_job", {}).get("id", ""),
             )
 
         console.print(table)
