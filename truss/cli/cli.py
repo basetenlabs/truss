@@ -977,6 +977,97 @@ def stop_job(project_id: str, job_id: str, remote: Optional[str]):
     console.print("Training job stopped successfully.", style="green")
 
 
+@train.command(name="view")
+@click.option(
+    "--project-id", type=str, required=False, help="View training jobs for a project."
+)
+@click.option(
+    "--job-id", type=str, required=False, help="View a specific training job."
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def view_training(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
+    """List all training jobs for a project"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    if job_id and not project_id:
+        raise click.UsageError(
+            "Project ID is required when specifying a job ID. To see all projects, use `truss train view`"
+        )
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    if project_id:
+        if job_id:
+            job_response = remote_provider.api.get_training_job(project_id, job_id)
+            display_training_jobs(
+                job_response["training_project"], [job_response["training_job"]]
+            )
+        else:
+            jobs_response = remote_provider.api.list_training_jobs(project_id)
+            jobs = jobs_response["training_jobs"]
+            display_training_jobs(jobs_response["training_project"], jobs)
+
+    else:
+        projects = remote_provider.api.list_training_projects()
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title="Training Projects",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        table.add_column("Project ID", style="cyan")
+        table.add_column("Name")
+        table.add_column("Created At")
+        table.add_column("Updated At")
+        table.add_column("Latest Job ID")
+
+        for project in projects:
+            table.add_row(
+                project["id"],
+                project["name"],
+                project["created_at"],
+                project["updated_at"],
+                project.get("latest_job", {}).get("id", ""),
+            )
+
+        console.print(table)
+
+
+def display_training_jobs(project, jobs):
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Training Job Details",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Project ID/Name", style="cyan")
+    table.add_column("Job ID", style="cyan")
+    table.add_column("Status", style="white")
+    table.add_column("Instance Type", style="white")
+    table.add_column("Created At", style="white")
+    table.add_column("Updated At", style="white")
+    for job in jobs:
+        table.add_row(
+            f"{project['id']} / {project['name']}",
+            job["id"],
+            job["current_status"],
+            job["instance_type"]["name"],
+            job["created_at"],
+            job["updated_at"],
+        )
+    console.print(table)
+
+
 # End Training Stuff #####################################################################
 
 
