@@ -1000,7 +1000,9 @@ def view_training(
             "Project ID is required when specifying a job ID. To see all projects, use `truss train view`"
         )
 
-    remote_provider = RemoteFactory.create(remote=remote)
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
 
     if project_id:
         if job_id:
