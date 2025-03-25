@@ -10,6 +10,9 @@ CUSTOM = "custom"
 HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
 LIGHTGBM = "lightgbm"
 
+ARM_PLATFORMS = ("aarch64", "arm64")
+
+
 _TRUSS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
 TEMPLATES_DIR = _TRUSS_ROOT / "templates"

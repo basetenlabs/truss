@@ -1,9 +1,10 @@
 import time
 from typing import Any, List, Optional
 
+from rich import console as rich_console
+
+from truss.cli.logs.base_watcher import POLL_INTERVAL_SEC, LogWatcher
 from truss.remote.baseten.api import BasetenApi
-from truss.shared.log_watcher import POLL_INTERVAL_SEC, LogWatcher
-from truss.shared.types import SpinnerFactory
 
 # NB(nikhil): When a job ends, we poll for this many seconds after to capture
 # any trailing logs that contain information about errors.
@@ -11,6 +12,11 @@ JOB_TERMINATION_GRACE_PERIOD_SEC = 10
 
 JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_DEPLOYING"]
 JOB_RUNNING_STATES = ["TRAINING_JOB_RUNNING"]
+JOB_ENDED_STATES = [
+    "TRAINING_JOB_COMPLETED",
+    "TRAINING_JOB_FAILED",
+    "TRAINING_JOB_STOPPED",
+]
 
 
 class TrainingLogWatcher(LogWatcher):
@@ -24,26 +30,26 @@ class TrainingLogWatcher(LogWatcher):
         api: BasetenApi,
         project_id: str,
         job_id: str,
-        spinner_factory: SpinnerFactory,
+        console: rich_console.Console,
     ):
-        super().__init__(api, spinner_factory)
+        super().__init__(api, console)
         self.project_id = project_id
         self.job_id = job_id
 
     def _get_current_job_status(self) -> str:
         job = self.api.get_training_job(self.project_id, self.job_id)
-        return job["current_status"]
+        return job["training_job"]["current_status"]
 
     def before_polling(self) -> None:
         self._current_status = self._get_current_job_status()
         status_str = "Waiting for job to run, currently {current_status}..."
-        with self.spinner_factory(
-            status_str.format(current_status=self._current_status)
-        ) as spinner:
+        with self.console.status(
+            status_str.format(current_status=self._current_status), spinner="dots"
+        ) as status:
             while self._current_status in JOB_STARTING_STATES:
                 time.sleep(POLL_INTERVAL_SEC)
                 self._current_status = self._get_current_job_status()
-                spinner.update(status_str.format(current_status=self._current_status))
+                status.update(status_str.format(current_status=self._current_status))
 
     def fetch_logs(
         self, start_epoch_millis: Optional[int], end_epoch_millis: Optional[int]
@@ -58,6 +64,14 @@ class TrainingLogWatcher(LogWatcher):
     def post_poll(self) -> None:
         self._current_status = self._get_current_job_status()
         self._maybe_update_poll_stop_time(self._current_status)
+
+    def after_polling(self) -> None:
+        if self._current_status == "TRAINING_JOB_COMPLETED":
+            self.console.print("Training job completed successfully.", style="green")
+        elif self._current_status == "TRAINING_JOB_FAILED":
+            self.console.print("Training job failed.", style="red")
+        elif self._current_status == "TRAINING_JOB_STOPPED":
+            self.console.print("Training job stopped by user.", style="yellow")
 
     def _poll_final_logs(self):
         if self._poll_stop_time is None:

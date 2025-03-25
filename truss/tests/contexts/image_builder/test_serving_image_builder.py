@@ -26,8 +26,9 @@ from truss.truss_handle.truss_handle import TrussHandle
 BASE_DIR = Path(__file__).parent
 
 
+@patch("platform.machine", return_value="amd")
 def test_serving_image_dockerfile_from_user_base_image(
-    test_data_path, custom_model_truss_dir
+    mock_machine, test_data_path, custom_model_truss_dir
 ):
     th = TrussHandle(custom_model_truss_dir)
     # The test fixture python varies with host version, need to pin here.
@@ -43,11 +44,12 @@ def test_serving_image_dockerfile_from_user_base_image(
         with open(test_data_path / "server.Dockerfile", "r") as f:
             server_docker_lines = f.readlines()
 
-        def filter_empty_lines(lines):
-            return list(filter(lambda x: x and x != "\n" and x != "", lines))
+        # Remove both empty lines + comments
+        def filter_unneeded_lines(lines):
+            return [x for x in lines if x.strip() and not x.strip().startswith("#")]
 
-        gen_docker_lines = filter_empty_lines(gen_docker_lines)
-        server_docker_lines = filter_empty_lines(server_docker_lines)
+        gen_docker_lines = filter_unneeded_lines(gen_docker_lines)
+        server_docker_lines = filter_unneeded_lines(server_docker_lines)
         assert gen_docker_lines == server_docker_lines
 
 

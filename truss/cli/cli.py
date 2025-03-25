@@ -29,7 +29,9 @@ from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
 from truss.cli import remote_cli
-from truss.cli.utils import logs as cli_log_utils
+from truss.cli.logs import utils as cli_log_utils
+from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -42,7 +44,6 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
-from truss.shared.log_watcher import parse_logs
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
     is_missing_secrets_for_trt_llm_builder,
@@ -95,7 +96,6 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 console = Console()
-spinner_factory = cli_log_utils.gen_spinner_factory(console)
 
 error_console = Console(stderr=True, style="bold red")
 
@@ -895,7 +895,7 @@ def train():
 @error_handling
 def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
-    from truss_train import deployment, loader, log_utils
+    from truss_train import deployment, loader
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -924,9 +924,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
     if tail:
         project_id, job_id = project_resp["id"], job_resp["id"]
-        watcher = log_utils.TrainingLogWatcher(
-            remote_provider.api, project_id, job_id, spinner_factory
-        )
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id, console)
         for log in watcher.watch():
             cli_log_utils.output_log(log, console)
 
@@ -940,7 +938,6 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 @error_handling
 def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool):
     """Fetch logs for a training job"""
-    from truss_train import log_utils
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -951,23 +948,14 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool
 
     if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
-        for log in parse_logs(logs):
+        for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log, console)
     else:
-        log_watcher = log_utils.TrainingLogWatcher(
-            remote_provider.api, project_id, job_id, spinner_factory
+        log_watcher = TrainingLogWatcher(
+            remote_provider.api, project_id, job_id, console
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log, console)
-        job = remote_provider.api.get_training_job(project_id, job_id)
-        current_status = job.get("current_status")
-        # output if we're in a terminal state
-        if current_status == "TRAINING_JOB_COMPLETED":
-            console.print("Training job completed successfully.", style="green")
-        elif current_status == "TRAINING_JOB_FAILED":
-            console.print("Training job failed.", style="red")
-        elif current_status == "TRAINING_JOB_STOPPED":
-            console.print("Training job stopped by user.", style="yellow")
 
 
 @train.command(name="stop")
@@ -987,6 +975,97 @@ def stop_job(project_id: str, job_id: str, remote: Optional[str]):
     )
     remote_provider.api.stop_training_job(project_id, job_id)
     console.print("Training job stopped successfully.", style="green")
+
+
+@train.command(name="view")
+@click.option(
+    "--project-id", type=str, required=False, help="View training jobs for a project."
+)
+@click.option(
+    "--job-id", type=str, required=False, help="View a specific training job."
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def view_training(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
+    """List all training jobs for a project"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    if job_id and not project_id:
+        raise click.UsageError(
+            "Project ID is required when specifying a job ID. To see all projects, use `truss train view`"
+        )
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    if project_id:
+        if job_id:
+            job_response = remote_provider.api.get_training_job(project_id, job_id)
+            display_training_jobs(
+                job_response["training_project"], [job_response["training_job"]]
+            )
+        else:
+            jobs_response = remote_provider.api.list_training_jobs(project_id)
+            jobs = jobs_response["training_jobs"]
+            display_training_jobs(jobs_response["training_project"], jobs)
+
+    else:
+        projects = remote_provider.api.list_training_projects()
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title="Training Projects",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        table.add_column("Project ID", style="cyan")
+        table.add_column("Name")
+        table.add_column("Created At")
+        table.add_column("Updated At")
+        table.add_column("Latest Job ID")
+
+        for project in projects:
+            table.add_row(
+                project["id"],
+                project["name"],
+                project["created_at"],
+                project["updated_at"],
+                project.get("latest_job", {}).get("id", ""),
+            )
+
+        console.print(table)
+
+
+def display_training_jobs(project, jobs):
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Training Job Details",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Project ID/Name", style="cyan")
+    table.add_column("Job ID", style="cyan")
+    table.add_column("Status", style="white")
+    table.add_column("Instance Type", style="white")
+    table.add_column("Created At", style="white")
+    table.add_column("Updated At", style="white")
+    for job in jobs:
+        table.add_row(
+            f"{project['id']} / {project['name']}",
+            job["id"],
+            job["current_status"],
+            job["instance_type"]["name"],
+            job["created_at"],
+            job["updated_at"],
+        )
+    console.print(table)
 
 
 # End Training Stuff #####################################################################
@@ -1439,8 +1518,8 @@ def push(
                 sys.exit(1)
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
-        log_watcher = cli_log_utils.ModelDeploymentLogWatcher(
-            bt_remote.api, service.model_id, service.model_version_id, spinner_factory
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id, console
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log, console)
@@ -1465,11 +1544,11 @@ def model_logs(
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
     if not tail:
         logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
-        for log in parse_logs(logs):
+        for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log, console)
     else:
-        log_watcher = cli_log_utils.ModelDeploymentLogWatcher(
-            remote_provider.api, model_id, deployment_id, spinner_factory
+        log_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id, console
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log, console)
