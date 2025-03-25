@@ -38,7 +38,7 @@ class TrainingLogWatcher(LogWatcher):
 
     def _get_current_job_status(self) -> str:
         job = self.api.get_training_job(self.project_id, self.job_id)
-        return job["current_status"]
+        return job["training_job"]["current_status"]
 
     def before_polling(self) -> None:
         self._current_status = self._get_current_job_status()
