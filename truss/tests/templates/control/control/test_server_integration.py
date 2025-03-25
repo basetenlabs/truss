@@ -16,6 +16,7 @@ import psutil
 import pytest
 import requests
 import websockets
+from prometheus_client.parser import text_string_to_metric_families
 
 PATCH_PING_MAX_DELAY_SECS = 3
 
@@ -180,8 +181,9 @@ class Model:
     requests.post(f"{ctrl_url}/v1/models/model:predict", json={})
     resp = requests.get(f"{ctrl_url}/metrics")
     assert resp.status_code == 200
+    metric_names = [family.name for family in text_string_to_metric_families(resp.text)]
+    assert metric_names == ["my_really_cool_metric"]
     assert "my_really_cool_metric_total 20.0" in resp.text
-    assert "my_really_cool_metric_created" in resp.text
 
 
 @pytest.mark.integration
