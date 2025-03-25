@@ -21,6 +21,7 @@ import pytest
 import requests
 import websockets
 from opentelemetry import context, trace
+from prometheus_client.parser import text_string_to_metric_families
 from python_on_whales import Container
 from requests.exceptions import RequestException
 
@@ -1178,8 +1179,11 @@ def test_instrument_metrics():
         requests.post(PREDICT_URL, json={})
         resp = requests.get(metrics_url)
         assert resp.status_code == 200
+        metric_names = [
+            family.name for family in text_string_to_metric_families(resp.text)
+        ]
+        assert metric_names == ["my_really_cool_metric"]
         assert "my_really_cool_metric_total 10.0" in resp.text
-        assert "my_really_cool_metric_created" in resp.text
         assert "/metrics" not in container.logs()
 
     # Test otel metrics
@@ -1209,6 +1213,11 @@ def test_instrument_metrics():
         requests.post(PREDICT_URL, json={})
         resp = requests.get(metrics_url)
         assert resp.status_code == 200
+        metric_names = [
+            family.name for family in text_string_to_metric_families(resp.text)
+        ]
+        assert len(metric_names) == 2
+        assert "my_really_cool_metric" in metric_names
         assert "my_really_cool_metric_total 10.0" in resp.text
         assert "/metrics" not in container.logs()
 
