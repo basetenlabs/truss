@@ -1213,11 +1213,11 @@ def test_instrument_metrics():
         requests.post(PREDICT_URL, json={})
         resp = requests.get(metrics_url)
         assert resp.status_code == 200
-        metric_names = [
+        metric_names = {
             family.name for family in text_string_to_metric_families(resp.text)
-        ]
-        assert len(metric_names) == 2
-        assert "my_really_cool_metric" in metric_names
+        }
+        expected_metric_names = {"target_info", "my_really_cool_metric"}
+        assert metric_names == expected_metric_names
         assert "my_really_cool_metric_total 10.0" in resp.text
         assert "/metrics" not in container.logs()
 
