@@ -354,33 +354,21 @@ class TrussSpeculatorConfiguration(BaseModel):
                 self.lookahead_ngram_size,
                 self.lookahead_verification_set_size,
             )
-            if not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
-                if (
-                    self.num_draft_tokens
-                    and self.num_draft_tokens != lade_num_draft_tokens
-                ):
-                    raise ValueError(
-                        f"num_draft_tokens is automatically calculated based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size. "
-                        f"Please remove num_draft_tokens or set it to exactly {lade_num_draft_tokens}. You set it to {self.num_draft_tokens}."
-                    )
-                self.num_draft_tokens = lade_num_draft_tokens
-                if self.num_draft_tokens > 512:
-                    logger.warning(
-                        f"Lookahead decoding mode generates up to {self.num_draft_tokens} speculative tokens per step and may have performance implications. "
-                        "We recommend a simpler config, e.g. lookahead_windows_size=7, lookahead_ngram_size=5, lookahead_verification_set_size=3."
-                    )
-            else:
-                # server side on engine-builder
-                if not self.num_draft_tokens:
-                    raise ValueError(
-                        "num_draft_tokens is required in lookahead decoding mode but not set"
-                    )
-                if (
-                    self.num_draft_tokens < lade_num_draft_tokens
-                ):  # check that it has at least the required tokens. That way, it could have even higher at request time.
-                    raise ValueError(
-                        "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
-                    )
+
+            if self.num_draft_tokens and self.num_draft_tokens <= lade_num_draft_tokens:
+                raise ValueError(
+                    f"num_draft_tokens is automatically calculated based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size. "
+                    f"Please remove num_draft_tokens or set it to exactly {lade_num_draft_tokens}. You set it to {self.num_draft_tokens}."
+                )
+            elif not self.num_draft_tokens:
+                self = self.model_copy(
+                    update={"num_draft_tokens": lade_num_draft_tokens}
+                )
+            if self.num_draft_tokens > 512:
+                logger.warning(
+                    f"Lookahead decoding mode generates up to {self.num_draft_tokens} speculative tokens per step and may have performance implications. "
+                    "We recommend a simpler config, e.g. lookahead_windows_size=5, lookahead_ngram_size=35 lookahead_verification_set_size=5."
+                )
 
         self._assert_draft_tokens()
 
