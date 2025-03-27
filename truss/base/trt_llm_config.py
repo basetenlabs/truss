@@ -169,7 +169,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             CheckpointRepository,
         ]
     ] = None
-    lora_configuration = Optional[TrussTRTLLMLoraConfiguration]
+    lora_configuration: Optional[TrussTRTLLMLoraConfiguration] = None
 
     class Config:
         extra = "forbid"
