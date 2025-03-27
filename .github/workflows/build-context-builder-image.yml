@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       target_platforms:
-        description: 'Select target platforms'
+        description: 'Select target platforms. NOTE: Only change default if performing local testing.'
         required: false
-        default: 'linux/amd64'
+        default: 'linux/amd64,linux/arm64'
         type: choice
         options:
           - linux/amd64
