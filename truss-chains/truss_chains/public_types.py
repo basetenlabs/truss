@@ -697,9 +697,9 @@ class DeploymentContext(types.SafeModelNonSerializable):
           None if the chainlet is not associated with an environment.
     """
 
-    data_dir: Optional[pathlib.Path] = None
     chainlet_to_service: Mapping[str, DeployedServiceDescriptor]
     secrets: _MappingNoIter[str, str]
+    data_dir: Optional[pathlib.Path] = None
     environment: Optional[Environment] = None
 
     def get_service_descriptor(self, chainlet_name: str) -> DeployedServiceDescriptor:
