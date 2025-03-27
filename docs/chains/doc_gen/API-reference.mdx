@@ -15,7 +15,7 @@ Base class for all chainlets.
 Inheriting from this class adds validations to make sure subclasses adhere to the
 chainlet pattern and facilitates remote chainlet deployment.
 
-Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
+Refer to [the docs](/development/chain/getting-started) and this
 [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on how to create subclasses.
 
@@ -47,10 +47,10 @@ Sets a “symbolic marker” to indicate to the framework that a chainlet is a
 dependency of another chainlet. The return value of `depends` is intended to be
 used as a default argument in a chainlet’s `__init__`-method.
 When deploying a chain remotely, a corresponding stub to the remote is injected in
-its place. In [`run_local`](#function-truss-chains-run-local) mode an instance 
+its place. In [`run_local`](#function-truss-chains-run-local) mode an instance
 of a local chainlet is injected.
 
-Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
+Refer to [the docs](/development/chain/getting-started) and this
 [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on how make one chainlet depend on another chainlet.
 
@@ -78,7 +78,7 @@ chainlet instance is provided.
 
 Sets a “symbolic marker” for injecting a context object at runtime.
 
-Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
+Refer to [the docs](/development/chain/getting-started) and this
 [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on the `__init__`-signature of chainlets.
 
@@ -151,7 +151,7 @@ Bases: `pydantic.BaseModel`
 | `enable_b10_tracing` | *bool*             | `False`                                  | enables baseten-internal trace data collection. This helps baseten engineers better analyze chain performance in case of issues. It is independent of a potentially user-configured tracing instrumentation. Turning this on, could add performance overhead. |
 | `enable_debug_logs`  | *bool*             | `False`                                  | Sets log level to debug in deployed server.                                                                                                                                                                                                                   |
 | `env_variables`      | *Mapping[str,str]* | `{}`                                     | static environment variables available to the deployed chainlet.                                                                                                                                                                                              |
-| `health_checks`      | *HealthChecks*     | `truss.base.truss_config.HealthChecks()` | Configures health checks for the chainlet. See [guide](https://docs.baseten.co/truss/guides/custom-health-checks#chains).                                                                                                                                     |
+| `health_checks`      | *HealthChecks*     | `truss.base.truss_config.HealthChecks()` | Configures health checks for the chainlet. See [guide](/development/model/custom-health-checks#custom-health-checks-in-chains).                                                                                                                               |
 | `metadata`           | *JsonValue\|None*  | `None`                                   | Arbitrary JSON object to describe chainlet.                                                                                                                                                                                                                   |
 
 ### *class* `truss_chains.RPCOptions`
@@ -282,11 +282,11 @@ Configures the usage of a custom image hosted on dockerhub.
 
 **Parameters:**
 
-| Name                     | Type                       | Default | Description                                                                                              |
-|--------------------------|----------------------------|---------|----------------------------------------------------------------------------------------------------------|
-| `image`                  | *str*                      |         | Reference to image on dockerhub.                                                                         |
-| `python_executable_path` | *str\|None*                | `None`  | Absolute path to python executable (if default `python` is ambiguous).                                   |
-| `docker_auth`            | *DockerAuthSettings\|None* | `None`  | See [corresponding truss config](https://docs.baseten.co/truss-reference/config#base-image-docker-auth). |
+| Name                     | Type                       | Default | Description                                                                                            |
+|--------------------------|----------------------------|---------|--------------------------------------------------------------------------------------------------------|
+| `image`                  | *str*                      |         | Reference to image on dockerhub.                                                                       |
+| `python_executable_path` | *str\|None*                | `None`  | Absolute path to python executable (if default `python` is ambiguous).                                 |
+| `docker_auth`            | *DockerAuthSettings\|None* | `None`  | See [corresponding truss config](/development/model/base-images#example%3A-docker-hub-authentication). |
 
 
 ### *class* `truss_chains.Compute`
@@ -297,21 +297,21 @@ Specifies which compute resources a chainlet has in the *remote* deployment.
 Not all combinations can be exactly satisfied by available hardware, in some
 cases more powerful machine types are chosen to make sure requirements are met
 or over-provisioned. Refer to the
-[baseten instance reference](https://docs.baseten.co/performance/instances).
+[baseten instance reference](https://docs.baseten.co/deployment/resources).
 </Note>
 
 **Parameters:**
 
-| Name                  | Type                        | Default | Description                                                                                                                                              |
-|-----------------------|-----------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `cpu_count`           | *int*                       | `1`     | Minimum number of CPUs to allocate.                                                                                                                      |
-| `memory`              | *str*                       | `'2Gi'` | Minimum memory to allocate, e.g. “2Gi” (2 gibibytes).                                                                                                    |
-| `gpu`                 | *str\|Accelerator\|None*    | `None`  | GPU accelerator type, e.g. “A10G”, “A100”, refer to the [truss config](https://docs.baseten.co/reference/config#resources-accelerator) for more choices. |
-| `gpu_count`           | *int*                       | `1`     | Number of GPUs to allocate.                                                                                                                              |
-| `predict_concurrency` | *int\|Literal['cpu_count']* | `1`     | Number of concurrent requests a single replica of a deployed chainlet handles.                                                                           |
+| Name                  | Type                        | Default | Description                                                                                                     |
+|-----------------------|-----------------------------|---------|-----------------------------------------------------------------------------------------------------------------|
+| `cpu_count`           | *int*                       | `1`     | Minimum number of CPUs to allocate.                                                                             |
+| `memory`              | *str*                       | `'2Gi'` | Minimum memory to allocate, e.g. “2Gi” (2 gibibytes).                                                           |
+| `gpu`                 | *str\|Accelerator\|None*    | `None`  | GPU accelerator type, e.g. “A10G”, “A100”, refer to the [truss config](/deployment/resources) for more choices. |
+| `gpu_count`           | *int*                       | `1`     | Number of GPUs to allocate.                                                                                     |
+| `predict_concurrency` | *int\|Literal['cpu_count']* | `1`     | Number of concurrent requests a single replica of a deployed chainlet handles.                                  |
 
 
-Concurrency concepts are explained in [this guide](https://docs.baseten.co/deploy/guides/concurrency#predict-concurrency).
+Concurrency concepts are explained in [this guide](/development/model/performance/concurrency#2-predict-concurrency).
 It is important to understand the difference between predict_concurrency and
 the concurrency target (used for autoscaling, i.e. adding or removing replicas).
 Furthermore, the `predict_concurrency` of a single instance is implemented in
@@ -340,17 +340,14 @@ mistral_cache = truss_config.ModelRepo(
 chains.Assets(cached=[mistral_cache], ...)
 ```
 
-See [truss caching guide](https://docs.baseten.co/deploy/guides/model-cache#enabling-caching-for-a-model)
-for more details on caching.
-
 
 **Parameters:**
 
-| Name            | Type                         | Default | Description                                                                                                                                                                                |
-|-----------------|------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `cached`        | *Iterable[ModelRepo]*        | `()`    | One or more `truss_config.ModelRepo` objects.                                                                                                                                              |
-| `secret_keys`   | *Iterable[str]*              | `()`    | Names of secrets stored on baseten, that the chainlet should have access to. You can manage secrets on baseten [here](https://app.baseten.co/settings/secrets).                            |
-| `external_data` | *Iterable[ExternalDataItem]* | `()`    | Data to be downloaded from public URLs and made available in the deployment (via `context.data_dir`). See [here](https://docs.baseten.co/reference/config#external-data) for more details. |
+| Name            | Type                         | Default | Description                                                                                                                                                     |
+|-----------------|------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `cached`        | *Iterable[ModelRepo]*        | `()`    | One or more `truss_config.ModelRepo` objects.                                                                                                                   |
+| `secret_keys`   | *Iterable[str]*              | `()`    | Names of secrets stored on baseten, that the chainlet should have access to. You can manage secrets on baseten [here](https://app.baseten.co/settings/secrets). |
+| `external_data` | *Iterable[ExternalDataItem]* | `()`    | Data to be downloaded from public URLs and made available in the deployment (via `context.data_dir`).                                                           |
 
 
 # Core
@@ -530,7 +527,7 @@ if __name__ == "__main__":
     print(result)
 ```
 
-Refer to the [local debugging guide](https://docs.baseten.co/chains/guide#test-a-chain-locally)
+Refer to the [local debugging guide](/development/chain/localdev)
 for more details.
 
 

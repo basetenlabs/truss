@@ -240,7 +240,7 @@ class Compute:
         Not all combinations can be exactly satisfied by available hardware, in some
         cases more powerful machine types are chosen to make sure requirements are met
         or over-provisioned. Refer to the
-        `baseten instance reference <https://docs.baseten.co/performance/instances>`_.
+        `baseten instance reference <https://docs.baseten.co/deployment/resources>`_.
     """
 
     # Builder to create ComputeSpec.
@@ -685,14 +685,14 @@ class DeploymentContext(types.SafeModelNonSerializable):
     an access token for downloading model weights).
 
     Args:
-        data_dir: The directory where the chainlet can store and access data,
-          e.g. for downloading model weights.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
           This is used to create RPC sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
+        data_dir: The directory where the chainlet can store and access data,
+          e.g. for downloading model weights.
         environment: The environment that the chainlet is deployed in.
           None if the chainlet is not associated with an environment.
     """

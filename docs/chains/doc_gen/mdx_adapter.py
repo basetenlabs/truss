@@ -60,7 +60,6 @@ def _format_default(obj: Any) -> str:
 
 
 def _get_model_field_defaults(full_class_path: str) -> dict[str, Any]:
-    print(f"Attempting to load defaults from model: {full_class_path}")
     try:
         module_path, cls_name = full_class_path.rsplit(".", 1)
         mod = importlib.import_module(module_path)
@@ -75,18 +74,27 @@ def _get_model_field_defaults(full_class_path: str) -> dict[str, Any]:
                 else:
                     continue
 
-                print(f"@@@ {name}: {value}")
                 defaults[name] = _format_default(value)
 
             return defaults
+
+        init_func = model_cls.__init__
+        sig = inspect.signature(init_func)
+        defaults = {}
+        for param_name, param in sig.parameters.items():
+            if param_name == "self":
+                continue
+            if param.default is not param.empty:
+                defaults[param_name] = _format_default(param.default)
+        return defaults
+
     except Exception as e:
         print(f"Could not load model defaults for {full_class_path}: {e}")
-    return {}
+        raise
 
 
 def _get_function_defaults(full_func_path: str) -> dict[str, Any]:
     # For methods or functions, parse signature to extract defaults.
-    print(f"Attempting to load defaults from function: {full_func_path}")
     try:
         module_path, func_name = full_func_path.rsplit(".", 1)
         mod = importlib.import_module(module_path)
@@ -99,11 +107,11 @@ def _get_function_defaults(full_func_path: str) -> dict[str, Any]:
         return defaults
     except Exception as e:
         print(f"Could not load function defaults for {full_func_path}: {e}")
-    return {}
+        raise
 
 
 def _format_and_inject_parameters(section: str, field_defaults: dict[str, Any]) -> str:
-    pattern = r"(\* \*\*Parameters:\*\*\n((?: {2}\* .+(?:\n {4}.+)*\n?)+))"
+    pattern = r"(\* \*\*Parameters:\*\*\n((?: {2}\* .+(?:\n {2,}.+)*\n?)+))"
     matches = re.findall(pattern, section)
 
     for full_match, list_block in matches:
@@ -111,7 +119,6 @@ def _format_and_inject_parameters(section: str, field_defaults: dict[str, Any]) 
         extracted_items = []
         for item in list_items:
             parsed = _parse_param_item(item, field_defaults)
-            print(parsed)
             extracted_items.append(parsed)
 
         table = _format_as_table(extracted_items)
@@ -126,7 +133,7 @@ def _parse_param_item(
 ) -> tuple[str, str, str, str]:
     # parse lines like:
     #   "  * **param_name** (str) – Description of param."
-    item = item.replace("\n    ", " ")
+    item = re.sub(r"\n\s+", " ", item)
     parts = item.split(" – ", 1)
     name_type = parts[0]
     description = parts[1] if len(parts) == 2 else ""
@@ -152,11 +159,14 @@ def _parse_param_item(
 
 def _format_as_table(items: list[tuple[str, str, str, str]]) -> str:
     headers = ["Name", "Type", "Default", "Description"]
-    if all(i[2] == "" for i in items):
-        headers = ["Name", "Type", "Description"]
-        items = [(i[0], i[1], i[2]) for i in items]
+    columns = list(zip(*items)) if items else [[], [], [], []]
+    non_empty_indices = [
+        i for i, col in enumerate(columns) if any(cell.strip() for cell in col)
+    ]
+    filtered_headers = [headers[i] for i in non_empty_indices]
+    filtered_items = [tuple(row[i] for i in non_empty_indices) for row in items]
 
-    return tabulate(items, headers=headers, tablefmt="github")
+    return tabulate(filtered_items, headers=filtered_headers, tablefmt="github")
 
 
 def extract_and_format_parameters_section(content: str) -> str:
@@ -164,9 +174,7 @@ def extract_and_format_parameters_section(content: str) -> str:
     updated_sections = []
 
     for section in sections:
-        print(f"Processing section: `{section[:80]}...`")
         kind, full_name = _extract_section_header(section) or (None, None)
-        print(f"kind=`{kind}`, full_name=`{full_name}`")
         field_defaults: dict[str, Any] = {}
 
         if kind == "class" and full_name:
@@ -174,7 +182,6 @@ def extract_and_format_parameters_section(content: str) -> str:
         elif kind in ("function", "method") and full_name:
             field_defaults = _get_function_defaults(full_name)
 
-        print(f"field_defaults={field_defaults}")
         section = _format_and_inject_parameters(section, field_defaults)
         updated_sections.append(section)
 
