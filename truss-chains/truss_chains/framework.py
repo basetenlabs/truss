@@ -38,7 +38,8 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss.base import custom_types, truss_config
+from truss.base import trt_llm_config
+from truss.base import custom_types
 from truss_chains import private_types, public_types, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
@@ -946,7 +947,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
             cls,
             location,
             private_types.ENGINE_BUILDER_CONFIG_NAME,
-            truss_config.TRTLLMConfiguration,
+            trt_llm_config.TRTLLMConfiguration,
         )
         _validate_engine_builder_fields(cls.remote_config, location)
 
@@ -1618,7 +1619,7 @@ class EngineBuilderChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
     We do not support customization, because that should be done caller-side for chains.
     """
 
-    engine_builder_config: ClassVar[truss_config.TRTLLMConfiguration]
+    engine_builder_config: ClassVar[trt_llm_config.TRTLLMConfiguration]
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)

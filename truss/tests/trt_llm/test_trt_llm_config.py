@@ -73,7 +73,7 @@ def test_trt_llm_encoder_autoconfig(trtllm_config_encoder):
         pytest.skip("checkpoint not found - huggingface must be down.")
 
     assert (
-        trt_llm_config.to_json_dict(verbose=False)["runtime"]["webserver_default_route"]
+        trt_llm_config.to_dict(verbose=False)["runtime"]["webserver_default_route"]
         == "/v1/embeddings"
     )
 

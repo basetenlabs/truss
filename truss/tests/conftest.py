@@ -393,7 +393,8 @@ def custom_model_trt_llm(tmp_path):
                     "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT.value,
                 },
             }
-            content["resources"]["accelerator"] = "H100:1"
+
+            content["resources"] = {"accelerator": "H100:1"}
 
     yield _custom_model_from_code(
         tmp_path,
@@ -710,27 +711,19 @@ def _modify_yaml(yaml_path: Path):
         content = yaml.safe_load(yaml_file)
     yield content
     with yaml_path.open("w") as yaml_file:
-        yaml.dump(content, yaml_file)
+        yaml.safe_dump(content, yaml_file)
 
 
 @pytest.fixture
 def default_config() -> Dict[str, Any]:
     return {
-        "build_commands": [],
-        "environment_variables": {},
-        "external_package_dirs": [],
-        "model_metadata": {},
-        "model_name": None,
         "python_version": "py39",
-        "requirements": [],
         "resources": {
             "accelerator": None,
             "cpu": "1",
             "memory": "2Gi",
             "use_gpu": False,
         },
-        "secrets": {},
-        "system_packages": [],
     }
 
 

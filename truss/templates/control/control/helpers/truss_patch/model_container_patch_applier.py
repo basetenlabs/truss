@@ -162,12 +162,11 @@ class ModelContainerPatchApplier:
             raise ValueError(f"Unknown patch action {action}")
 
     def _apply_external_data_patch(self, external_data_patch: ExternalDataPatch):
-        self._app_logger.debug(
-            f"Applying external data patch {external_data_patch.to_dict()}"
-        )
+        self._app_logger.debug(f"Applying external data patch {external_data_patch}")
         action = external_data_patch.action
+        item = ExternalDataItem.model_validate(external_data_patch.item)
+
         if action == Action.REMOVE:
-            item = ExternalDataItem.from_dict(external_data_patch.item)
             filepath = self._data_dir / item.local_data_path
             if not filepath.exists():
                 self._app_logger.warning(
@@ -177,9 +176,7 @@ class ModelContainerPatchApplier:
                 self._app_logger.debug(f"Deleting file {filepath}")
                 filepath.unlink()
         elif action == Action.ADD:
-            download_external_data(
-                ExternalData.from_list([external_data_patch.item]), self._data_dir
-            )
+            download_external_data(ExternalData(items=[item]), self._data_dir)
         else:
             raise ValueError(f"Unknown patch action {action}")
 

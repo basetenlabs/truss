@@ -1,14 +1,13 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import yaml
 
+from truss.base import truss_config
 from truss.base.constants import CONFIG_FILE
-from truss.base.custom_types import Example, ModelFrameworkType
+from truss.base.custom_types import Example
 from truss.base.errors import ValidationError
-from truss.base.truss_config import ExternalData, ModelServer, TrussConfig
-from truss.base.validation import validate_memory_spec
 
 
 class TrussSpec:
@@ -18,7 +17,7 @@ class TrussSpec:
 
     def __init__(self, truss_dir: Path) -> None:
         self._truss_dir = truss_dir
-        self._config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
+        self._config = truss_config.TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
 
     @property
     def truss_dir(self) -> Path:
@@ -33,7 +32,7 @@ class TrussSpec:
         return self._truss_dir / self._config.data_dir
 
     @property
-    def external_data(self) -> Optional[ExternalData]:
+    def external_data(self) -> Optional[truss_config.ExternalData]:
         return self._config.external_data
 
     @property
@@ -65,11 +64,11 @@ class TrussSpec:
         return self._truss_dir / conf.model_module_dir / conf.model_class_filename
 
     @property
-    def config(self) -> TrussConfig:
+    def config(self) -> truss_config.TrussConfig:
         return self._config
 
     @property
-    def model_server(self) -> ModelServer:
+    def model_server(self) -> truss_config.ModelServer:
         return self.config.build.model_server
 
     @property
@@ -98,10 +97,10 @@ class TrussSpec:
 
     @property
     def memory_in_bytes(self) -> int:
-        return validate_memory_spec(self.memory)
+        return self.config.resources.memory_in_bytes
 
     @property
-    def use_gpu(self) -> str:
+    def use_gpu(self) -> bool:
         return self._config.resources.use_gpu
 
     @property
@@ -117,12 +116,9 @@ class TrussSpec:
         return self._config.model_class_name
 
     @property
-    def model_framework_type(self) -> ModelFrameworkType:
-        return self._config.model_framework
-
-    @property
     def model_framework_name(self) -> str:
-        return self.model_framework_type.value
+        # TODO: this could be cleaned up.
+        return "custom"
 
     @property
     def requirements(self) -> List[str]:
@@ -178,7 +174,7 @@ class TrussSpec:
         return self._config.secrets
 
     @property
-    def description(self) -> str:
+    def description(self) -> Optional[str]:
         return self._config.description
 
     @property
@@ -186,8 +182,10 @@ class TrussSpec:
         return self._config.live_reload
 
     @property
-    def base_image_name(self) -> Optional[str]:
-        return self._config.base_image.image
+    def base_image_name(self) -> Union[str, None]:
+        if self._config.base_image is not None:
+            return self._config.base_image.image
+        return None
 
     @property
     def python_executable_path(self) -> Optional[str]:

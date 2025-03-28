@@ -759,7 +759,7 @@ def _gen_truss_config(
             f"Chains automatically add {public_types._BASETEN_API_SECRET_NAME} "
             "to secrets - no need to manually add it."
         )
-    config.model_cache.models = assets.cached
+    config.model_cache = truss_config.ModelCache(assets.cached)
     config.external_data = truss_config.ExternalData(items=assets.external_data)
     config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
         private_types.TrussMetadata(

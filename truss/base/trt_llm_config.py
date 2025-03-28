@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import warnings
 from enum import Enum
-from typing import Annotated, Any, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -16,6 +15,11 @@ from pydantic import (
     model_validator,
     validator,
 )
+
+if TYPE_CHECKING:
+    from truss.base.truss_config import TrussConfig
+
+from truss.base import constants
 
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
@@ -500,7 +504,85 @@ class TRTLLMConfiguration(BaseModel):
     def requires_build(self):
         return self.build is not None
 
-    # TODO(Abu): Replace this with model_dump(json=True)
-    # when pydantic v2 is used here
-    def to_json_dict(self, verbose=True):
-        return json.loads(self.json(exclude_unset=not verbose))
+
+def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
+    # Inline importing truss_config, to avoid cycle. This dependency is a bit sketchy,
+    # but we don't want this trt specific code to live in `truss.base` and we also don't
+    # want to move `Accelerator` out of the truss config module.
+    from truss.base import truss_config
+
+    if config.trt_llm:
+        if config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER:
+            current_tags = config.model_metadata.get("tags", [])
+            if (
+                constants.OPENAI_COMPATIBLE_TAG in current_tags
+                and constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
+            ):
+                raise ValueError(
+                    f"TRT-LLM models should have either model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']. "
+                    f"Your current tags are both {current_tags}, which is invalid. Please remove one of the tags."
+                )
+            elif not (
+                constants.OPENAI_COMPATIBLE_TAG in current_tags
+                or constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
+            ):
+                # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
+                message = f"""TRT-LLM models should have model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] (or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']).
+                     Your current tags are {current_tags}, which is has neither option. We require a active choice to be made.
+                     For making the model compatible with OpenAI clients, we require to add the following to your config.
+                     ```yaml
+                     model_metadata:
+                     tags:
+                     - {constants.OPENAI_COMPATIBLE_TAG}
+                     # for legacy behavior set above line to the following, which will break OpenAI compatibility explicitly.
+                     # This was the old default behaviour if you used Baseten before March 19th 2025 or truss<=0.9.68
+                     # `- {constants.OPENAI_NON_COMPATIBLE_TAG}`
+                     ```
+                     """
+                if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
+                    raise ValueError(message)
+                else:
+                    logger.warning(message)
+            elif constants.OPENAI_NON_COMPATIBLE_TAG in current_tags:
+                logger.warning(
+                    f"Model is marked as {constants.OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI clients directly. "
+                    f"This is the deprecated legacy behavior, please update the tag to {constants.OPENAI_COMPATIBLE_TAG}."
+                )
+
+        if (
+            config.trt_llm.build.quantization_type
+            is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
+            and config.resources.accelerator.accelerator
+            is truss_config.Accelerator.A100
+        ):
+            logger.warning(
+                "Weight only int8 quantization on A100 accelerators is not recommended."
+            )
+        if config.resources.accelerator.accelerator in [
+            truss_config.Accelerator.T4,
+            truss_config.Accelerator.V100,
+        ]:
+            raise ValueError(
+                "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs"
+                "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
+            )
+        elif config.trt_llm.build.quantization_type in [
+            TrussTRTLLMQuantizationType.FP8,
+            TrussTRTLLMQuantizationType.FP8_KV,
+        ] and config.resources.accelerator.accelerator in [
+            truss_config.Accelerator.A10G,
+            truss_config.Accelerator.A100,
+            truss_config.Accelerator.A100_40GB,
+        ]:
+            raise ValueError(
+                "FP8 quantization is only supported on L4, H100, H200 "
+                "accelerators or newer (CUDA_COMPUTE>=89)"
+            )
+        tensor_parallel_count = config.trt_llm.build.tensor_parallel_count
+
+        if tensor_parallel_count != config.resources.accelerator.count:
+            raise ValueError(
+                "Tensor parallelism and GPU count must be the same for TRT-LLM"
+            )
+
+    return config

@@ -1,21 +1,7 @@
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any
 
 import pydantic
-
-
-# TODO(marius/TaT): kill this.
-class ModelFrameworkType(Enum):
-    SKLEARN = "sklearn"
-    TENSORFLOW = "tensorflow"
-    KERAS = "keras"
-    PYTORCH = "pytorch"
-    HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
-    XGBOOST = "xgboost"
-    LIGHTGBM = "lightgbm"
-    MLFLOW = "mlflow"
-    CUSTOM = "custom"
 
 
 @dataclass
@@ -48,3 +34,20 @@ class SafeModelNonSerializable(pydantic.BaseModel):
         validate_assignment=True,
         extra="forbid",
     )
+
+
+class ConfigModel(pydantic.BaseModel):
+    def to_dict(self, verbose: bool = False) -> dict[str, Any]:
+        mode = "json"
+        full_dump = super().model_dump(mode=mode)
+        if verbose:
+            return full_dump
+
+        reduced_dump = super().model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+            exclude_defaults=True,
+            mode=mode,
+            context={"verbose": verbose},
+        )
+        return reduced_dump

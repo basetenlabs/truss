@@ -1,11 +1,7 @@
 import pytest
 
+from truss.base import truss_config
 from truss.base.errors import ValidationError
-from truss.base.validation import (
-    validate_cpu_spec,
-    validate_memory_spec,
-    validate_secret_name,
-)
 
 
 @pytest.mark.parametrize(
@@ -34,7 +30,7 @@ from truss.base.validation import (
 def test_validate_secret_name(secret_name, should_error):
     does_error = False
     try:
-        validate_secret_name(secret_name)
+        truss_config.Build.validate_secret_name(secret_name)
     except:  # noqa
         does_error = True
 
@@ -59,9 +55,9 @@ def test_validate_secret_name(secret_name, should_error):
 def test_validate_cpu_spec(cpu_spec, expected_valid):
     if not expected_valid:
         with pytest.raises(ValidationError):
-            validate_cpu_spec(cpu_spec)
+            truss_config.Resources.validate_cpu(cpu_spec)
     else:
-        validate_cpu_spec(cpu_spec)
+        truss_config.Resources.validate_cpu(cpu_spec)
 
 
 @pytest.mark.parametrize(
@@ -81,6 +77,6 @@ def test_validate_cpu_spec(cpu_spec, expected_valid):
 def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
     if not expected_valid:
         with pytest.raises(ValidationError):
-            validate_memory_spec(mem_spec)
+            truss_config.Resources.validate_memory_spec(mem_spec)
     else:
-        assert memory_in_bytes == validate_memory_spec(mem_spec)
+        assert memory_in_bytes == truss_config.Resources.validate_memory_spec(mem_spec)
