@@ -706,6 +706,10 @@ class TrussConfig:
                 d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
             ),
+            model_cache_v2=transform_optional(
+                d.get("model_cache_v2") or d.get("hf_cache") or [],  # type: ignore
+                ModelCache.from_list,
+            ),
             cache_internal=transform_optional(
                 d.get("cache_internal") or [],  # type: ignore
                 CacheInternal.from_list,
@@ -932,6 +936,10 @@ def obj_to_dict(obj, verbose: bool = False):
                 )
             elif isinstance(field_curr_value, ModelCache):
                 d["model_cache"] = transform_optional(
+                    field_curr_value, lambda data: data.to_list(verbose=verbose)
+                )
+            elif isinstance(field_curr_value, ModelCache):
+                d["model_cache_v2"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
             elif isinstance(field_curr_value, CacheInternal):
