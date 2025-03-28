@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::HashSet;
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -15,6 +16,10 @@ use serde::Deserialize;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+#[cfg(windows)]
+use std::time::UNIX_EPOCH;
 
 // For logging
 use env_logger::Builder;
@@ -27,6 +32,7 @@ static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
+static TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS";
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
@@ -187,6 +193,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         fs::create_dir_all(CACHE_DIR)
             .await
             .context("Failed to create b10cache directory")?;
+        // Clean up cache files that have not been accessed within the threshold
+        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
+        cleanup_cache(&current_hashes).await?;
     } else {
         info!("b10cache is not enabled.");
     }
@@ -204,7 +213,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 
     // 6. Spawn download tasks
     info!("Spawning download tasks...");
-    let mut tasks = FuturesUnordered::new();
+    let mut tasks: FuturesUnordered<tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>> = FuturesUnordered::new();
     for (file_name, (resolved_url, hash, size)) in resolution_map {
         let download_dir = download_dir.clone();
         let client = client.clone();
@@ -330,7 +339,7 @@ async fn download_file_with_cache(
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if uses_b10_cache {
-        handle_b10cache(&destination, &cache_path, size).await?;
+        handle_b10cache(&destination, &cache_path).await?;
     }
 
     Ok(())
@@ -374,6 +383,74 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     Ok(())
 }
 
+fn get_cleanup_threshold_hours() -> u64 {
+    env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(14 * 24) // default to 336 hours (14 days)
+}
+
+fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
+    manifest.pointers.iter().map(|p| p.hash.clone()).collect()
+}
+
+/// Helper function to get the file’s last access time as a Unix timestamp.
+/// On Unix, it uses `metadata.atime()`. On Windows, it uses `metadata.accessed()`.
+fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
+    #[cfg(unix)]
+    {
+        Ok(metadata.atime())
+    }
+    #[cfg(windows)]
+    {
+        let accessed = metadata.accessed()?;
+        let duration = accessed.duration_since(UNIX_EPOCH).unwrap_or_default();
+        Ok(duration.as_secs() as i64)
+    }
+}
+
+/// Asynchronously cleans up cache files that have not been accessed within the threshold
+/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
+/// Asynchronously cleans up cache files that have not been accessed within the threshold
+/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
+pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
+    let cleanup_threshold_hours = get_cleanup_threshold_hours();
+    let cache_dir = Path::new(CACHE_DIR);
+    let now = chrono::Utc::now().timestamp();
+    let threshold_seconds = cleanup_threshold_hours * 3600;
+
+    let mut dir = fs::read_dir(cache_dir).await?;
+    info!("Cleaning up b10cache with a threshold of {} hours", cleanup_threshold_hours);
+    while let Some(entry) = dir.next_entry().await? {
+        let path = entry.path();
+        // Only process files
+        if path.is_file() {
+            let metadata = fs::metadata(&path).await?;
+            let atime = get_atime(&metadata)?;
+            if now - atime > threshold_seconds as i64 {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if !current_hashes.contains(file_name) {
+                        info!(
+                            "Deleting cached file {}: not accessed for over {} hours",
+                            file_name, cleanup_threshold_hours
+                        );
+                        fs::remove_file(&path).await?;
+                    } else {
+                        info!("Skipping file {} as it is part of the current hashes", file_name);
+                    }
+                }
+            } else {
+                info!(
+                    "Skipping file {:?}: last accessed {} minutes ago",
+                    path,
+                    (now - atime) / 60
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// handling new b10cache:
 /// 1. Copy the local file (download_path) to a temporary cache file with a “.incomplete” suffix.
 /// 2. Verify that the copied file’s size matches the expected size.
@@ -383,11 +460,12 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
 ///    - Create a symlink from the cache file to the original local path.
 /// 4. If the sizes do not match:
 ///    - Delete the .incomplete file and keep the local file.
-async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: u64) -> Result<()> {
+async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> {
     info!(
         "b10cache enabled: copying file from {:?} to cache and creating symlink back to {:?}",
         download_path, cache_path
     );
+    let size = fs::metadata(download_path).await?.len();
 
     // Build the temporary incomplete file path.
     let incomplete_cache_path = cache_path.with_extension("incomplete");
