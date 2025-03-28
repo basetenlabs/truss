@@ -398,9 +398,16 @@ class TrussSpeculatorConfiguration(BaseModel):
             )
 
 
+class VersionOverrides(BaseModel):
+    engine_builder_version: Optional[str] = None
+    bei_version: Optional[str] = None
+    briton_version: Optional[str] = None
+
+
 class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
+    version_overrides: VersionOverrides = VersionOverrides()
 
     def model_post_init(self, __context):
         self.add_bei_default_route()

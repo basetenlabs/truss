@@ -40,7 +40,8 @@ runtime:
     restart_check_delay_seconds: null
     restart_threshold_seconds: null
     stop_traffic_threshold_seconds: null
-  is_websocket_endpoint: false
+  transport:
+    kind: websocket
   predict_concurrency: 1
   streaming_read_timeout: 60
 secrets: {}

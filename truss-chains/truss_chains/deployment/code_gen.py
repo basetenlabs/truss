@@ -715,7 +715,8 @@ def _gen_truss_config(
     config.resources.memory = str(compute.memory)
     config.resources.accelerator = compute.accelerator
     config.runtime.predict_concurrency = compute.predict_concurrency
-    config.runtime.is_websocket_endpoint = chainlet_descriptor.endpoint.is_websocket
+    if chainlet_descriptor.endpoint.is_websocket:
+        config.runtime.transport = truss_config.WebsocketOptions()
 
     assets = remote_config.get_asset_spec()
     config.secrets = {k: v for k, v in assets.secrets.items()}
