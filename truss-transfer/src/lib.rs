@@ -16,7 +16,10 @@ use serde::Deserialize;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
+#[cfg(windows)]
+use std::time::UNIX_EPOCH;
 
 // For logging
 use env_logger::Builder;
@@ -336,7 +339,7 @@ async fn download_file_with_cache(
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if uses_b10_cache {
-        handle_b10cache(&destination, &cache_path, size).await?;
+        handle_b10cache(&destination, &cache_path).await?;
     }
 
     Ok(())
@@ -391,6 +394,21 @@ fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<St
     manifest.pointers.iter().map(|p| p.hash.clone()).collect()
 }
 
+/// Helper function to get the file’s last access time as a Unix timestamp.
+/// On Unix, it uses `metadata.atime()`. On Windows, it uses `metadata.accessed()`.
+fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
+    #[cfg(unix)]
+    {
+        Ok(metadata.atime())
+    }
+    #[cfg(windows)]
+    {
+        let accessed = metadata.accessed()?;
+        let duration = accessed.duration_since(UNIX_EPOCH).unwrap_or_default();
+        Ok(duration.as_secs() as i64)
+    }
+}
+
 /// Asynchronously cleans up cache files that have not been accessed within the threshold
 /// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
 /// Asynchronously cleans up cache files that have not been accessed within the threshold
@@ -408,7 +426,7 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
         // Only process files
         if path.is_file() {
             let metadata = fs::metadata(&path).await?;
-            let atime = metadata.atime(); // last accessed time in seconds since epoch
+            let atime = get_atime(&metadata)?;
             if now - atime > threshold_seconds as i64 {
                 if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                     if !current_hashes.contains(file_name) {
@@ -442,11 +460,12 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
 ///    - Create a symlink from the cache file to the original local path.
 /// 4. If the sizes do not match:
 ///    - Delete the .incomplete file and keep the local file.
-async fn handle_b10cache(download_path: &Path, cache_path: &Path, size: u64) -> Result<()> {
+async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> {
     info!(
         "b10cache enabled: copying file from {:?} to cache and creating symlink back to {:?}",
         download_path, cache_path
     );
+    let size = fs::metadata(download_path).await?.len();
 
     // Build the temporary incomplete file path.
     let incomplete_cache_path = cache_path.with_extension("incomplete");
