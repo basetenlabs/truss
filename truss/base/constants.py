@@ -110,7 +110,7 @@ TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
 TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0-954539f"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
-BASE_TRTLLM_REQUIREMENTS = ["briton==0.5.0.dev2"]
+BASE_TRTLLM_REQUIREMENTS = ["briton==0.5.0.dev3"]
 BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.18"
 
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
