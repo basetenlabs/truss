@@ -4,7 +4,7 @@ import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar
 
 import yaml
 
@@ -118,6 +118,7 @@ class ModelRepo:
     revision: Optional[str] = None
     allow_patterns: Optional[List[str]] = None
     ignore_patterns: Optional[List[str]] = None
+    runtime_path: Optional[str] = None
 
     @staticmethod
     def from_dict(d):
@@ -128,12 +129,16 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
+        runtime_path_default = Path("/app/model_cache_v2" / repo_id.replace("/", "_"))
+        # assert the runtime path
+        runtime_path = d.get("runtime_path", runtime_path_default.as_posix())
 
         return ModelRepo(
             repo_id=repo_id,
             revision=revision,
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_pattenrs,
+            runtime_path=runtime_path,
         )
 
     def to_dict(self, verbose=False):
@@ -142,6 +147,7 @@ class ModelRepo:
             "revision": self.revision,
             "allow_patterns": self.allow_patterns,
             "ignore_patterns": self.ignore_patterns,
+            "runtime_path": self.runtime_path,
         }
 
         if not verbose:
@@ -154,6 +160,7 @@ class ModelRepo:
 @dataclass
 class ModelCache:
     models: List[ModelRepo] = field(default_factory=list)
+    version: Literal[1, 2] = 1  # v1 is legacy, v2 is the new format for model cache
 
     @staticmethod
     def from_list(items: List[Dict[str, str]]) -> "ModelCache":

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -69,6 +70,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.truss_handle.patch.hash import directory_content_hash
+from truss.util.basetenpointer import model_cache_hf_to_b10ptr
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -276,30 +278,33 @@ class CachedFile:
     dst: str
 
 
-def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
+def get_files_to_cache_v1(config: TrussConfig, truss_dir: Path, build_dir: Path):
+    assert config.model_cache
+    assert config.model_cache.version == 1
+
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
     remote_model_files = {}
     local_files_to_cache: List[CachedFile] = []
-    if config.model_cache:
-        curr_dir = Path(__file__).parent.resolve()
-        copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
-        for model in config.model_cache.models:
-            repo_id = model.repo_id
-            revision = model.revision
 
-            allow_patterns = model.allow_patterns
-            ignore_patterns = model.ignore_patterns
+    curr_dir = Path(__file__).parent.resolve()
+    copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
+    for model in config.model_cache.models:
+        repo_id = model.repo_id
+        revision = model.revision
 
-            model_cache = RemoteCache.from_repo(repo_id, truss_dir / config.data_dir)
-            remote_filtered_files = model_cache.filter(allow_patterns, ignore_patterns)
-            local_files_to_cache += model_cache.prepare_for_cache(remote_filtered_files)
+        allow_patterns = model.allow_patterns
+        ignore_patterns = model.ignore_patterns
 
-            remote_model_files[repo_id] = {
-                "files": remote_filtered_files,
-                "revision": revision,
-            }
+        model_cache = RemoteCache.from_repo(repo_id, truss_dir / config.data_dir)
+        remote_filtered_files = model_cache.filter(allow_patterns, ignore_patterns)
+        local_files_to_cache += model_cache.prepare_for_cache(remote_filtered_files)
+
+        remote_model_files[repo_id] = {
+            "files": remote_filtered_files,
+            "revision": revision,
+        }
 
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
@@ -307,10 +312,14 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     return remote_model_files, local_files_to_cache
 
 
-def update_config_and_gather_files(
-    config: TrussConfig, truss_dir: Path, build_dir: Path
-):
-    return get_files_to_cache(config, truss_dir, build_dir)
+def build_and_copy_bptr_manifest(config: TrussConfig, build_dir: Path):
+    assert config.model_cache is not None
+    assert config.model_cache.version == 2
+    # builds BasetenManifest for caching
+    basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
+    # write json of bastenpointers into build dir
+    with open(build_dir / "bptr_manifest.json", "w") as f:
+        f.write(basetenpointers.model_dump_json())
 
 
 def generate_docker_server_nginx_config(build_dir, config):
@@ -522,11 +531,20 @@ class ServingImageBuilder(ImageBuilder):
                 external_data_files.append(
                     (ext_file.url, (data_dir / ext_file.local_data_path).resolve())
                 )
-
-        # Download from HuggingFace
-        model_files, cached_files = update_config_and_gather_files(
-            config, truss_dir, build_dir
-        )
+        if config.model_cache and config.model_cache.version == 2:
+            build_and_copy_bptr_manifest(config=config, build_dir=build_dir)
+        elif config.model_cache and config.model_cache.version == 1:
+            # Download from HuggingFace
+            logging.warning(
+                "model_cache.version=1 will be deprecated soon. Please use version 2."
+            )
+            model_files, cached_files = get_files_to_cache_v1(
+                config, truss_dir, build_dir
+            )
+        else:
+            # No model cache provided, initialize empty
+            model_files = {}
+            cached_files = []
 
         # Copy inference server code
         self._copy_into_build_dir(SERVER_CODE_DIR, build_dir, BUILD_SERVER_DIR_NAME)
