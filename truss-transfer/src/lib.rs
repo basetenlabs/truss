@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::HashSet;
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -15,6 +16,7 @@ use serde::Deserialize;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
+use std::os::unix::fs::MetadataExt;
 
 // For logging
 use env_logger::Builder;
@@ -27,6 +29,7 @@ static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
+static TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS";
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
@@ -187,6 +190,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         fs::create_dir_all(CACHE_DIR)
             .await
             .context("Failed to create b10cache directory")?;
+        // Clean up cache files that have not been accessed within the threshold
+        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
+        cleanup_cache(&current_hashes).await?;
     } else {
         info!("b10cache is not enabled.");
     }
@@ -204,7 +210,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 
     // 6. Spawn download tasks
     info!("Spawning download tasks...");
-    let mut tasks = FuturesUnordered::new();
+    let mut tasks: FuturesUnordered<tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>> = FuturesUnordered::new();
     for (file_name, (resolved_url, hash, size)) in resolution_map {
         let download_dir = download_dir.clone();
         let client = client.clone();
@@ -371,6 +377,59 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     }
 
     info!("Completed download to {:?}", path);
+    Ok(())
+}
+
+fn get_cleanup_threshold_hours() -> u64 {
+    env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(14 * 24) // default to 336 hours (14 days)
+}
+
+fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
+    manifest.pointers.iter().map(|p| p.hash.clone()).collect()
+}
+
+/// Asynchronously cleans up cache files that have not been accessed within the threshold
+/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
+/// Asynchronously cleans up cache files that have not been accessed within the threshold
+/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
+pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
+    let cleanup_threshold_hours = get_cleanup_threshold_hours();
+    let cache_dir = Path::new(CACHE_DIR);
+    let now = chrono::Utc::now().timestamp();
+    let threshold_seconds = cleanup_threshold_hours * 3600;
+
+    let mut dir = fs::read_dir(cache_dir).await?;
+    info!("Cleaning up b10cache with a threshold of {} hours", cleanup_threshold_hours);
+    while let Some(entry) = dir.next_entry().await? {
+        let path = entry.path();
+        // Only process files
+        if path.is_file() {
+            let metadata = fs::metadata(&path).await?;
+            let atime = metadata.atime(); // last accessed time in seconds since epoch
+            if now - atime > threshold_seconds as i64 {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if !current_hashes.contains(file_name) {
+                        info!(
+                            "Deleting cached file {}: not accessed for over {} hours",
+                            file_name, cleanup_threshold_hours
+                        );
+                        fs::remove_file(&path).await?;
+                    } else {
+                        info!("Skipping file {} as it is part of the current hashes", file_name);
+                    }
+                }
+            } else {
+                info!(
+                    "Skipping file {:?}: last accessed {} minutes ago",
+                    path,
+                    (now - atime) / 60
+                );
+            }
+        }
+    }
     Ok(())
 }
 
