@@ -4,7 +4,7 @@ import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
@@ -118,7 +118,7 @@ class ModelRepo:
     revision: Optional[str] = None
     allow_patterns: Optional[List[str]] = None
     ignore_patterns: Optional[List[str]] = None
-    runtime_path: Optional[str] = None
+    runtime_path: str = ""
 
     @staticmethod
     def from_dict(d):
@@ -129,9 +129,12 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
-        runtime_path_default = Path("/app/model_cache_v2" / repo_id.replace("/", "_"))
-        # assert the runtime path
-        runtime_path = d.get("runtime_path", runtime_path_default.as_posix())
+        runtime_path = d.get("runtime_path")
+        if not runtime_path:
+            runtime_path = (
+                Path("/app/model_cache_v2")
+                / repo_id.replace("/", "_").replace("-", "_").lower()
+            )
 
         return ModelRepo(
             repo_id=repo_id,
@@ -160,7 +163,6 @@ class ModelRepo:
 @dataclass
 class ModelCache:
     models: List[ModelRepo] = field(default_factory=list)
-    version: Literal[1, 2] = 1  # v1 is legacy, v2 is the new format for model cache
 
     @staticmethod
     def from_list(items: List[Dict[str, str]]) -> "ModelCache":
@@ -168,6 +170,11 @@ class ModelCache:
 
     def to_list(self, verbose=False) -> List[Dict[str, str]]:
         return [model.to_dict(verbose=verbose) for model in self.models]
+
+
+@dataclass
+class ModelCacheV2(ModelCache):
+    pass
 
 
 @dataclass
@@ -633,6 +640,7 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
+    model_cache_v2: ModelCacheV2 = field(default_factory=ModelCacheV2)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
     use_local_src: bool = False

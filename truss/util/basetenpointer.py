@@ -8,7 +8,7 @@ from huggingface_hub import hf_api, hf_hub_url
 from pydantic import BaseModel, RootModel
 
 if TYPE_CHECKING:
-    from truss.base.truss_config import ModelCache
+    from truss.base.truss_config import ModelCacheV2
 
 
 class Resolution(BaseModel):
@@ -29,6 +29,12 @@ class BasetenPointerList(RootModel):
     root: list[BasetenPointer]
 
 
+def get_hf_metadata(api: "hf_api.HfApi", repo: str, revision: str, file: str):
+    url = hf_hub_url(repo_id=repo, revision=revision, filename=file)
+    meta = api.get_hf_file_metadata(url=url)
+    return {"etag": meta.etag, "location": meta.location, "size": meta.size, "url": url}
+
+
 def metadata_hf_repo(repo: str, revision: str) -> dict[str, dict]:
     """Lists all files, gathers metadata without downloading, just using the Hugging Face API.
     Example:
@@ -36,32 +42,22 @@ def metadata_hf_repo(repo: str, revision: str) -> dict[str, dict]:
     commit_hash='07163b72af1488142a360786df853f237b1a3ca1',
     etag='a6344aac8c09253b3b630fb776ae94478aa0275b',
     location='https://huggingface.co/intfloat/e5-mistral-7b-instruct/resolve/main/.gitattributes',
+    url='https://huggingface.co/intfloat/e5-mistral-7b-instruct/resolve/main/.gitattributes',
     size=1519)]
     """
     api = hf_api.HfApi()
     files: list[str] = api.list_repo_files(repo_id=repo, revision=revision)
 
-    hf_files_meta = {
-        file: api.get_hf_file_metadata(
-            url=hf_hub_url(repo_id=repo, revision=revision, filename=file)
-        )
-        for file in files
-    }
+    hf_files_meta = {file: get_hf_metadata(api, repo, revision, file) for file in files}
 
-    # Convert to a dict with the required keys
-    metadata_slim = {
-        file: {"etag": meta.etag, "location": meta.location, "size": meta.size}
-        for file, meta in hf_files_meta.items()
-    }
-
-    return metadata_slim
+    return hf_files_meta
 
 
-def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
+def model_cache_hf_to_b10ptr(cache: "ModelCacheV2") -> BasetenPointerList:
     """
     Convert a ModelCache object to a BasetenPointer object.
     """
-    assert cache.version == 2
+    assert cache is not None, "ModelCache cannot be None"
 
     basetenpointers: list[BasetenPointer] = []
     # validate all models have a valid revision:
@@ -83,15 +79,15 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
         b10_pointer_list = [
             BasetenPointer(
                 uid=f"{model.repo_id}:{model.revision}:{filename}",
-                file_name=(Path("model.runtime_path") / filename).as_posix(),
+                file_name=(Path(model.runtime_path) / filename).as_posix(),
                 hashtype="etag",
                 hash=content["etag"],
                 size=content["size"],
                 resolution=Resolution(
-                    url=content["location"],
+                    url=content["url"],
                     # set 20 years from now for expiration, since Huggingface
                     expiration_timestamp=int(
-                        time.time() + 20 * 365 * 24 * 60 * 60  # 20 years in seconds
+                        time.time() + 50 * 365 * 24 * 60 * 60  # 20 years in seconds
                     ),
                 ),
             )
