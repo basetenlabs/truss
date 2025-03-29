@@ -93,6 +93,7 @@ S3_CREDENTIALS = "s3_credentials.json"
 HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
 CLOUD_BUCKET_CACHE = Path("/app/model_cache/")
+
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
@@ -280,7 +281,6 @@ class CachedFile:
 
 def get_files_to_cache_v1(config: TrussConfig, truss_dir: Path, build_dir: Path):
     assert config.model_cache
-    assert config.model_cache.version == 1
 
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
@@ -314,7 +314,6 @@ def get_files_to_cache_v1(config: TrussConfig, truss_dir: Path, build_dir: Path)
 
 def build_and_copy_bptr_manifest(config: TrussConfig, build_dir: Path):
     assert config.model_cache is not None
-    assert config.model_cache.version == 2
     # builds BasetenManifest for caching
     basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
     # write json of bastenpointers into build dir
@@ -531,20 +530,27 @@ class ServingImageBuilder(ImageBuilder):
                 external_data_files.append(
                     (ext_file.url, (data_dir / ext_file.local_data_path).resolve())
                 )
-        if config.model_cache and config.model_cache.version == 2:
-            build_and_copy_bptr_manifest(config=config, build_dir=build_dir)
-        elif config.model_cache and config.model_cache.version == 1:
-            # Download from HuggingFace
-            logging.warning(
-                "model_cache.version=1 will be deprecated soon. Please use version 2."
+
+        # No model cache provided, initialize empty
+        model_files = {}
+        cached_files = []
+        if config.model_cache:
+            is_legacy_flow = any(
+                (model.repo_id.startswith("gs://") or model.repo_id.startswith("s3://"))
+                for model in config.model_cache.models
             )
-            model_files, cached_files = get_files_to_cache_v1(
-                config, truss_dir, build_dir
-            )
-        else:
-            # No model cache provided, initialize empty
-            model_files = {}
-            cached_files = []
+            if is_legacy_flow:
+                # bakes into the image
+                logging.warning(
+                    "model_cache from gs:// or s3:// is deprecated. "
+                    "Please use huggingface.co instead, which uses a new mechanism to cache models."
+                )
+                model_files, cached_files = get_files_to_cache_v1(
+                    config, truss_dir, build_dir
+                )
+            else:
+                # adds a lazy pointer, will be downloaded at runtimes
+                build_and_copy_bptr_manifest(config=config, build_dir=build_dir)
 
         # Copy inference server code
         self._copy_into_build_dir(SERVER_CODE_DIR, build_dir, BUILD_SERVER_DIR_NAME)

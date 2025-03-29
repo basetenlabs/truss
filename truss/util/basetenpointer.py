@@ -8,7 +8,7 @@ from huggingface_hub import hf_api, hf_hub_url
 from pydantic import BaseModel, RootModel
 
 if TYPE_CHECKING:
-    from truss.base.truss_config import ModelCacheV2
+    from truss.base.truss_config import ModelCache
 
 
 class Resolution(BaseModel):
@@ -53,7 +53,7 @@ def metadata_hf_repo(repo: str, revision: str) -> dict[str, dict]:
     return hf_files_meta
 
 
-def model_cache_hf_to_b10ptr(cache: "ModelCacheV2") -> BasetenPointerList:
+def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
     """
     Convert a ModelCache object to a BasetenPointer object.
     """

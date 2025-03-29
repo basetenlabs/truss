@@ -132,7 +132,7 @@ class ModelRepo:
         runtime_path = d.get("runtime_path")
         if not runtime_path:
             runtime_path = (
-                Path("/app/model_cache_v2")
+                Path("/app/model_cache")
                 / repo_id.replace("/", "_").replace("-", "_").lower()
             )
 
@@ -170,11 +170,6 @@ class ModelCache:
 
     def to_list(self, verbose=False) -> List[Dict[str, str]]:
         return [model.to_dict(verbose=verbose) for model in self.models]
-
-
-@dataclass
-class ModelCacheV2(ModelCache):
-    pass
 
 
 @dataclass
@@ -640,7 +635,6 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
-    model_cache_v2: ModelCacheV2 = field(default_factory=ModelCacheV2)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
     use_local_src: bool = False
@@ -704,10 +698,6 @@ class TrussConfig:
             ),
             model_cache=transform_optional(
                 d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
-                ModelCache.from_list,
-            ),
-            model_cache_v2=transform_optional(
-                d.get("model_cache_v2") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
             ),
             cache_internal=transform_optional(
@@ -936,10 +926,6 @@ def obj_to_dict(obj, verbose: bool = False):
                 )
             elif isinstance(field_curr_value, ModelCache):
                 d["model_cache"] = transform_optional(
-                    field_curr_value, lambda data: data.to_list(verbose=verbose)
-                )
-            elif isinstance(field_curr_value, ModelCache):
-                d["model_cache_v2"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
             elif isinstance(field_curr_value, CacheInternal):
