@@ -31,6 +31,7 @@ from truss.base.constants import (
     FILENAME_CONSTANTS_MAP,
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
+    MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
@@ -92,7 +93,7 @@ S3_CREDENTIALS = "s3_credentials.json"
 
 HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
-CLOUD_BUCKET_CACHE = Path("/app/model_cache/")
+CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")

@@ -10,6 +10,7 @@ import yaml
 
 from truss.base.constants import (
     HTTP_PUBLIC_BLOB_BACKEND,
+    MODEL_CACHE_PATH,
     OPENAI_COMPATIBLE_TAG,
     OPENAI_NON_COMPATIBLE_TAG,
 )
@@ -129,13 +130,10 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
-        runtime_path = d.get("runtime_path")
-        if not runtime_path:
-            runtime_path = (
-                Path("/app/model_cache")
-                / repo_id.replace("/", "_").replace("-", "_").lower()
-            )
-
+        runtime_path_suffix = str(d.get("runtime_path"))
+        if not runtime_path_suffix:
+            runtime_path_suffix = repo_id.replace("/", "_").replace("-", "_").lower()
+        runtime_path = MODEL_CACHE_PATH / runtime_path_suffix
         return ModelRepo(
             repo_id=repo_id,
             revision=revision,
