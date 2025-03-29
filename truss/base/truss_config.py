@@ -10,6 +10,7 @@ import yaml
 
 from truss.base.constants import (
     HTTP_PUBLIC_BLOB_BACKEND,
+    MODEL_CACHE_PATH,
     OPENAI_COMPATIBLE_TAG,
     OPENAI_NON_COMPATIBLE_TAG,
 )
@@ -118,6 +119,7 @@ class ModelRepo:
     revision: Optional[str] = None
     allow_patterns: Optional[List[str]] = None
     ignore_patterns: Optional[List[str]] = None
+    runtime_path: str = ""
 
     @staticmethod
     def from_dict(d):
@@ -128,12 +130,16 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
-
+        runtime_path_suffix = str(d.get("runtime_path"))
+        if not runtime_path_suffix:
+            runtime_path_suffix = repo_id.replace("/", "_").replace("-", "_").lower()
+        runtime_path = MODEL_CACHE_PATH / runtime_path_suffix
         return ModelRepo(
             repo_id=repo_id,
             revision=revision,
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_pattenrs,
+            runtime_path=runtime_path,
         )
 
     def to_dict(self, verbose=False):
@@ -142,6 +148,7 @@ class ModelRepo:
             "revision": self.revision,
             "allow_patterns": self.allow_patterns,
             "ignore_patterns": self.ignore_patterns,
+            "runtime_path": self.runtime_path,
         }
 
         if not verbose:
