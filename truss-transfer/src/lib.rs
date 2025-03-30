@@ -194,8 +194,8 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             .await
             .context("Failed to create b10cache directory")?;
         // Clean up cache files that have not been accessed within the threshold
-        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        cleanup_cache(&current_hashes).await?;
+        // let current_hashes = current_hashes_from_manifest(&bptr_manifest);
+        // cleanup_cache(&current_hashes).await?;
     } else {
         info!("b10cache is not enabled.");
     }
@@ -291,7 +291,6 @@ async fn download_file_with_cache(
     uses_b10_cache: bool,
 ) -> Result<()> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
-
     let cache_path = Path::new(CACHE_DIR).join(hash);
 
     // Skip download if file exists with the expected size.
