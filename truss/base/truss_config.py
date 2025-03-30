@@ -130,9 +130,14 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
-        runtime_path = (
-            MODEL_CACHE_PATH / repo_id.replace("/", "_").replace("-", "_").lower()
-        ).as_posix()
+        runtime_path_suffix = (
+            d.get("runtime_path", repo_id.lower())
+            .replace("/", "_")
+            .replace(".", "_")
+            .replace("-", "_")
+        )
+
+        runtime_path = (MODEL_CACHE_PATH / runtime_path_suffix).as_posix()
         return ModelRepo(
             repo_id=repo_id,
             revision=revision,

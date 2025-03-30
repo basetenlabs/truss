@@ -248,11 +248,13 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=ModelCache.from_list([dict(repo_id="test/model", revision="main")]),
+        model_cache=ModelCache.from_list([dict(repo_id="test/model")]),
     )
 
     new_config = default_config
-    new_config["model_cache"] = [{"repo_id": "test/model"}]
+    new_config["model_cache"] = [
+        {"repo_id": "test/model", "runtime_path": "/app/model_cache/test_model"}
+    ]
 
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
@@ -281,12 +283,12 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1", "revision": "main"},
-        {"repo_id": "test/model2"},
+        {"repo_id": "test/model1", "runtime_path": "/app/model_cache/test_model1"},
+        {"repo_id": "test/model2", "runtime_path": "/app/model_cache/test_model2"},
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
 
 
@@ -304,12 +306,20 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1"},
-        {"repo_id": "test/model2", "revision": "not-main2"},
+        {
+            "repo_id": "test/model1",
+            "revision": "main",
+            "runtime_path": "/app/model_cache/test_model1",
+        },
+        {
+            "repo_id": "test/model2",
+            "revision": "not-main2",
+            "runtime_path": "/app/model_cache/test_model2",
+        },
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
 
 
