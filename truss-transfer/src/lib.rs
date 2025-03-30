@@ -290,7 +290,12 @@ async fn download_file_with_cache(
     size: u64,
     uses_b10_cache: bool,
 ) -> Result<()> {
-    let destination = download_dir.join(file_name);
+    let destination = if file_name.starts_with('/') {
+        PathBuf::from(file_name)
+    } else {
+        download_dir.join(file_name)
+    };
+
     let cache_path = Path::new(CACHE_DIR).join(hash);
 
     // Skip download if file exists with the expected size.
