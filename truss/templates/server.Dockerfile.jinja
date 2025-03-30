@@ -58,9 +58,9 @@ RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /ro
     {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}
 
+{%- if model_cache_v2 %}
 RUN wget -q -O /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.9.72/truss-transfer-cli-v0.9.72-linux-x86_64-unknown-linux-musl && \
 chmod +x /usr/local/bin/truss-transfer-cli
-{%- if model_cache_v2 %}
 RUN mkdir /bptr
 COPY ./bptr-manifest /bptr/bptr-manifest
 {%- endif %}
