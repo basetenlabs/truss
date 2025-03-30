@@ -31,7 +31,7 @@ def test_dolly_12b():
                 "Skipping test due to ReadTimeout error from Hugging Face API, "
                 "this can happen for large models like Dolly-12b"
             )
-    bptr_list = bptr.root
+    bptr_list = bptr.pointers
     expected = [
         {
             "resolution": {
