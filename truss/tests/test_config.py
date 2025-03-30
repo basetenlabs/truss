@@ -274,8 +274,8 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=ModelCache(
-            models=[ModelRepo("test/model1", "main"), ModelRepo("test/model2")]
+        model_cache=ModelCache.from_list(
+            [dict(repo_id="test/model1"), dict(repo_id="test/model2")]
         ),
     )
 
@@ -294,8 +294,11 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=ModelCache(
-            models=[ModelRepo("test/model1"), ModelRepo("test/model2", "not-main2")]
+        model_cache=ModelCache.from_list(
+            [
+                dict(repo_id="test/model1", revision="main"),
+                dict(repo_id="test/model2", revision="not-main2"),
+            ]
         ),
     )
 
