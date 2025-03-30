@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 import requests
 from huggingface_hub import hf_api, hf_hub_url
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from truss.base.truss_config import ModelCache
@@ -26,8 +26,8 @@ class BasetenPointer(BaseModel):
     size: int
 
 
-class BasetenPointerList(RootModel):
-    root: list[BasetenPointer]
+class BasetenPointerList(BaseModel):
+    pointers: list[BasetenPointer]
 
 
 def get_hf_metadata(api: "hf_api.HfApi", repo: str, revision: str, file: str):
@@ -96,9 +96,8 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
                 size=content["size"],
                 resolution=Resolution(
                     url=content["url"],
-                    # set 20 years from now for expiration, since Huggingface
                     expiration_timestamp=int(
-                        time.time() + 50 * 365 * 24 * 60 * 60  # 20 years in seconds
+                        4044816725  # 90 years in the future, hf does not expire. needs to be static, to have cache hits.
                     ),
                 ),
             )
@@ -106,4 +105,4 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
         ]
         basetenpointers.extend(b10_pointer_list)
 
-    return BasetenPointerList(root=basetenpointers)
+    return BasetenPointerList(pointers=basetenpointers)

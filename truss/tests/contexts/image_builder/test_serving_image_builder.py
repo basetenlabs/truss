@@ -248,7 +248,7 @@ def test_model_cache_dockerfile(test_data_path):
         image_builder.prepare_image_build_dir(tmp_path, use_hf_secret=True)
         assert (tmp_path / "bptr-manifest").exists(), "bptr-manifest not found"
         with open(tmp_path / "bptr-manifest", "r") as f:
-            json_bptr = json.load(f)
+            json_bptr = json.load(f)["pointers"]
         assert len(json_bptr) == 9, (
             f"bptr-manifest should have 2 entries, found {len(json_bptr)}"
         )
