@@ -7,6 +7,7 @@ class Model:
 
     def load(self):
         # Load model here and assign to self._model.
+        print("loading model from /app/model_cache/julien_c_esper")
         self._model = pipeline(
             "fill-mask",
             model="/app/model_cache/julien_c_esper",
