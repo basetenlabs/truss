@@ -569,6 +569,18 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     Ok(())
 }
 
+// verifies that the file exists and updates its atime by reading it
+async fn update_atime_by_reading(path: &Path) -> Result<()> {
+    use tokio::io::AsyncReadExt;
+    // Open the file in read-only mode.
+    let mut file = fs::File::open(path)
+        .await
+        .with_context(|| format!("Failed to open file {:?} for updating atime", path))?;
+    let mut buffer = [0u8; 1];
+    let _ = file.read(&mut buffer).await?;
+    Ok(())
+}
+
 /// Create a symlink from `src` to `dst` if `dst` does not exist.
 /// Returns Ok(()) if `dst` already exists.
 async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()> {
@@ -596,6 +608,9 @@ async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()>
     {
         std::os::windows::fs::symlink_file(src, dst).context("Failed to create Windows symlink")?;
     }
+    update_atime_by_reading(src)
+        .await
+        .context("Failed to update atime after symlink")?;
     Ok(())
 }
 
