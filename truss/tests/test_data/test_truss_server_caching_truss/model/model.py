@@ -9,8 +9,8 @@ class Model:
         # Load model here and assign to self._model.
         self._model = pipeline(
             "fill-mask",
-            model="julien-c/EsperBERTo-small",
-            tokenizer="julien-c/EsperBERTo-small",
+            model="/app/model_cache/julien_c_esper",
+            tokenizer="/app/model_cache/julien_c_esper",
         )
 
     def predict(self, model_input):

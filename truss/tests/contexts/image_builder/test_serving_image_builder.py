@@ -16,7 +16,6 @@ from truss.base.constants import (
 )
 from truss.base.truss_config import ModelCache, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
-    HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_cache_v1,
 )
@@ -243,13 +242,14 @@ def test_model_cache_dockerfile(test_data_path):
     builder_context = ServingImageBuilderContext
     image_builder = builder_context.run(tr.spec.truss_dir)
 
-    secret_mount = f"RUN --mount=type=secret,id={HF_ACCESS_TOKEN_FILE_NAME}"
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path, use_hf_secret=True)
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
-            assert secret_mount in gen_docker_file
+            print(gen_docker_file)
+            assert False
+            assert "truss-transfer" in gen_docker_file
 
 
 def test_ignore_files_during_build_setup(custom_model_truss_dir_with_truss_ignore):

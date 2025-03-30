@@ -130,6 +130,7 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
+        print(d)
         runtime_folder = (
             d.get("runtime_folder", repo_id.lower())
             .replace("/", "_")
