@@ -539,15 +539,18 @@ class ServingImageBuilder(ImageBuilder):
             if config.model_cache.is_v2:
                 # adds a lazy pointer, will be downloaded at runtimes
                 logging.warning(
-                    "Since March 2025, model_cache from huggingface.co is using a new mechanism to cache models."
-                    "Huggingface cache path is no populated downloaded, but instead the repo is downloaded at runtime, with optional caching in baseten's b10cache."
+                    "Since March 2025, `model_cache` is restricted to huggingface.co is using a new mechanism to cache models. "
+                    "Huggingface models are now backed by Baseten's distributed filesystem b10fs, and downloaded from huggingface to b10fs, in case of a cache miss. "
+                    "Cached models will also be fast for regular downloads (faster than e.g. hf_transfer), but for optional performance, we "
+                    "recommend your organization to have B10FS enabled. Feel free to reach out, if you see in the download"
+                    " logs of your model, that B10FS is disabled. "
                 )
                 build_and_copy_bptr_manifest(config=config, build_dir=build_dir)
             else:
                 # bakes into the image
                 logging.warning(
                     "model_cache from gs:// or s3:// is deprecated, and will be removed in the future."
-                    "Please use huggingface.co only instead, which uses a new mechanism to cache models."
+                    "Please use huggingface.co repo_id only, which uses a more performant mechanism to cache models."
                 )
                 model_files, cached_files = get_files_to_cache_v1(
                     config, truss_dir, build_dir
