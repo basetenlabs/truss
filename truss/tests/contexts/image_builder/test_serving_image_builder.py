@@ -14,11 +14,11 @@ from truss.base.constants import (
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
 )
-from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
+from truss.base.truss_config import ModelCache, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
-    get_files_to_cache,
+    get_files_to_cache_v1,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.truss_handle import TrussHandle
@@ -75,35 +75,6 @@ def flatten_cached_files(local_cache_files):
     return [file.source for file in local_cache_files]
 
 
-def test_correct_hf_files_accessed_for_caching():
-    model = "openai/whisper-small"
-    config = TrussConfig(
-        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
-    )
-
-    with TemporaryDirectory() as tmp_dir:
-        truss_path = Path(tmp_dir)
-        build_path = truss_path / "build"
-        build_path.mkdir(parents=True, exist_ok=True)
-
-        hf_path = Path("root/.cache/huggingface/hub")
-
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
-        files_to_cache = flatten_cached_files(files_to_cache)
-        assert str(hf_path / "version.txt") in files_to_cache
-
-        blobs = [
-            blob
-            for blob in files_to_cache
-            if blob.startswith(f"{hf_path}/models--openai--whisper-small/blobs/")
-        ]
-        assert len(blobs) >= 1
-
-        files = model_files[model]["files"]
-        assert "model.safetensors" in files
-        assert "tokenizer_config.json" in files
-
-
 @patch("truss.contexts.image_builder.serving_image_builder.GCSCache.list_files")
 def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
     mock_list_bucket_files.return_value = [
@@ -113,7 +84,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
+        python_version="py39", model_cache=ModelCache.from_list([dict(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -121,7 +92,9 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
@@ -146,7 +119,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
+        python_version="py39", model_cache=ModelCache.from_list([dict(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -154,7 +127,9 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
@@ -179,7 +154,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
+        python_version="py39", model_cache=ModelCache.from_list([dict(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -187,7 +162,9 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
@@ -216,7 +193,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
+        python_version="py39", model_cache=ModelCache.from_list([dict(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -224,7 +201,9 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (

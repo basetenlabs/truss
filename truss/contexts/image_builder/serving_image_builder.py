@@ -318,7 +318,7 @@ def build_and_copy_bptr_manifest(config: TrussConfig, build_dir: Path):
     # builds BasetenManifest for caching
     basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
     # write json of bastenpointers into build dir
-    with open(build_dir / "bptr_manifest.json", "w") as f:
+    with open(build_dir / "bptr-manifest", "w") as f:
         f.write(basetenpointers.model_dump_json())
 
 
@@ -536,22 +536,22 @@ class ServingImageBuilder(ImageBuilder):
         model_files = {}
         cached_files = []
         if config.model_cache:
-            is_legacy_flow = any(
-                (model.repo_id.startswith("gs://") or model.repo_id.startswith("s3://"))
-                for model in config.model_cache.models
-            )
-            if is_legacy_flow:
+            if config.model_cache.is_v2:
+                # adds a lazy pointer, will be downloaded at runtimes
+                logging.warning(
+                    "Since March 2025, model_cache from huggingface.co is using a new mechanism to cache models."
+                    "Huggingface cache path is no populated downloaded, but instead the repo is downloaded at runtime, with optional caching in baseten's b10cache."
+                )
+                build_and_copy_bptr_manifest(config=config, build_dir=build_dir)
+            else:
                 # bakes into the image
                 logging.warning(
-                    "model_cache from gs:// or s3:// is deprecated. "
-                    "Please use huggingface.co instead, which uses a new mechanism to cache models."
+                    "model_cache from gs:// or s3:// is deprecated, and will be removed in the future."
+                    "Please use huggingface.co only instead, which uses a new mechanism to cache models."
                 )
                 model_files, cached_files = get_files_to_cache_v1(
                     config, truss_dir, build_dir
                 )
-            else:
-                # adds a lazy pointer, will be downloaded at runtimes
-                build_and_copy_bptr_manifest(config=config, build_dir=build_dir)
 
         # Copy inference server code
         self._copy_into_build_dir(SERVER_CODE_DIR, build_dir, BUILD_SERVER_DIR_NAME)
@@ -720,7 +720,9 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
             credentials_to_cache=get_credentials_to_cache(data_dir),
-            model_cache=len(config.model_cache.models) > 0,
+            model_cache=len(config.model_cache.models) > 0
+            and not config.model_cache.is_v2,
+            model_cache_v2=config.model_cache.is_v2,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,

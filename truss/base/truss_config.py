@@ -130,10 +130,9 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
-        runtime_path_suffix = str(d.get("runtime_path"))
-        if not runtime_path_suffix:
-            runtime_path_suffix = repo_id.replace("/", "_").replace("-", "_").lower()
-        runtime_path = MODEL_CACHE_PATH / runtime_path_suffix
+        runtime_path = (
+            MODEL_CACHE_PATH / repo_id.replace("/", "_").replace("-", "_").lower()
+        )
         return ModelRepo(
             repo_id=repo_id,
             revision=revision,
@@ -168,6 +167,15 @@ class ModelCache:
 
     def to_list(self, verbose=False) -> List[Dict[str, str]]:
         return [model.to_dict(verbose=verbose) for model in self.models]
+
+    @property
+    def is_v2(self) -> bool:
+        has_models = len(self.models) > 0
+        is_gcs = any(
+            (model.repo_id.startswith("gs://") or model.repo_id.startswith("s3://"))
+            for model in self.models
+        )
+        return has_models and not is_gcs
 
 
 @dataclass
@@ -741,8 +749,8 @@ class TrussConfig:
         with yaml_path.open() as yaml_file:
             raw_data = yaml.safe_load(yaml_file) or {}
             if "hf_cache" in raw_data:
-                logger.warning(
-                    """Warning: `hf_cache` is deprecated in favor of `model_cache`.
+                raise ValueError(
+                    """Error: `hf_cache` is deprecated in favor of `model_cache`.
                     Everything will run as before, but if you are pulling weights from S3 or GCS, they will be
                     stored at /app/model_cache instead of /app/hf_cache as before."""
                 )
