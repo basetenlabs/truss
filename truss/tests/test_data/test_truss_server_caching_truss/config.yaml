@@ -4,16 +4,18 @@ model_metadata: {}
 model_name: test
 python_version: py39
 requirements:
-- transformers
-- torch
+  - transformers
+  - torch
 model_cache:
-- repo_id: julien-c/EsperBERTo-small
-  ignore_patterns:
-    - "*.bin"
-    - "*.msgpack"
+  - repo_id: julien-c/EsperBERTo-small
+    revision: main
+    runtime_folder:
+    ignore_patterns:
+      - "*.bin"
+      - "*.msgpack"
 resources:
   accelerator: null
-  cpu: '2'
+  cpu: "2"
   memory: 2Gi
   use_gpu: false
 secrets: {}

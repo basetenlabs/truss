@@ -119,7 +119,7 @@ class ModelRepo:
     revision: Optional[str] = None
     allow_patterns: Optional[List[str]] = None
     ignore_patterns: Optional[List[str]] = None
-    runtime_path: str = ""
+    runtime_folder: str = ""
 
     @staticmethod
     def from_dict(d):
@@ -130,21 +130,24 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
-        runtime_path_suffix = (
-            d.get("runtime_path", repo_id.lower())
+        runtime_folder = (
+            d.get("runtime_folder", repo_id.lower())
             .replace("/", "_")
             .replace(".", "_")
             .replace("-", "_")
         )
 
-        runtime_path = (MODEL_CACHE_PATH / runtime_path_suffix).as_posix()
         return ModelRepo(
             repo_id=repo_id,
             revision=revision,
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_pattenrs,
-            runtime_path=runtime_path,
+            runtime_folder=runtime_folder,
         )
+
+    @property
+    def runtime_path(self) -> Path:
+        return MODEL_CACHE_PATH / self.runtime_folder
 
     def to_dict(self, verbose=False):
         data = {
@@ -152,7 +155,7 @@ class ModelRepo:
             "revision": self.revision,
             "allow_patterns": self.allow_patterns,
             "ignore_patterns": self.ignore_patterns,
-            "runtime_path": self.runtime_path,
+            "runtime_folder": self.runtime_folder,
         }
 
         if not verbose:
