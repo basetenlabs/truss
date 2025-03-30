@@ -1,9 +1,9 @@
+use std::collections::HashSet;
 use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::collections::HashSet;
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -13,13 +13,13 @@ use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use reqwest::Client;
 use serde::Deserialize;
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Semaphore;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::time::UNIX_EPOCH;
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 
 // For logging
 use env_logger::Builder;
@@ -213,7 +213,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 
     // 6. Spawn download tasks
     info!("Spawning download tasks...");
-    let mut tasks: FuturesUnordered<tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>> = FuturesUnordered::new();
+    let mut tasks: FuturesUnordered<
+        tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>,
+    > = FuturesUnordered::new();
     for (file_name, (resolved_url, hash, size)) in resolution_map {
         let download_dir = download_dir.clone();
         let client = client.clone();
@@ -290,7 +292,7 @@ async fn download_file_with_cache(
     size: u64,
     uses_b10_cache: bool,
 ) -> Result<()> {
-    let destination = download_dir.join(file_name);
+    let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(hash);
 
     // Skip download if file exists with the expected size.
@@ -420,7 +422,10 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
     let mut dir = fs::read_dir(cache_dir).await?;
-    info!("Cleaning up b10cache with a threshold of {} hours", cleanup_threshold_hours);
+    info!(
+        "Cleaning up b10cache with a threshold of {} hours",
+        cleanup_threshold_hours
+    );
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
         // Only process files
@@ -431,12 +436,16 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
                 if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                     if !current_hashes.contains(file_name) {
                         info!(
-                            "Deleting cached file {}: not accessed for over {} hours",
+                            "Would delete cached file {}: not accessed for over {} hours",
                             file_name, cleanup_threshold_hours
                         );
-                        fs::remove_file(&path).await?;
+                        // Uncomment the following line to actually delete the file
+                        // fs::remove_file(&path).await?;
                     } else {
-                        info!("Skipping file {} as it is part of the current hashes", file_name);
+                        info!(
+                            "Skipping file {} as it is part of the current hashes",
+                            file_name
+                        );
                     }
                 }
             } else {
@@ -560,6 +569,18 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     Ok(())
 }
 
+// verifies that the file exists and updates its atime by reading it
+async fn update_atime_by_reading(path: &Path) -> Result<()> {
+    use tokio::io::AsyncReadExt;
+    // Open the file in read-only mode.
+    let mut file = fs::File::open(path)
+        .await
+        .with_context(|| format!("Failed to open file {:?} for updating atime", path))?;
+    let mut buffer = [0u8; 1];
+    let _ = file.read(&mut buffer).await?;
+    Ok(())
+}
+
 /// Create a symlink from `src` to `dst` if `dst` does not exist.
 /// Returns Ok(()) if `dst` already exists.
 async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()> {
@@ -587,6 +608,9 @@ async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()>
     {
         std::os::windows::fs::symlink_file(src, dst).context("Failed to create Windows symlink")?;
     }
+    update_atime_by_reading(src)
+        .await
+        .context("Failed to update atime after symlink")?;
     Ok(())
 }
 
