@@ -1,4 +1,5 @@
 import filecmp
+import json
 import os
 import time
 from pathlib import Path
@@ -245,11 +246,51 @@ def test_model_cache_dockerfile(test_data_path):
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path, use_hf_secret=True)
+        assert (tmp_path / "bptr-manifest").exists(), "bptr-manifest not found"
+        with open(tmp_path / "bptr-manifest", "r") as f:
+            json_bptr = json.load(f)
+        assert len(json_bptr) == 9, (
+            f"bptr-manifest should have 2 entries, found {len(json_bptr)}"
+        )
+        assert (
+            json_bptr[0]["file_name"]
+            == "/app/model_cache/julien_c_esper/.gitattributes"
+        )
+        assert json_bptr[0]["hash"] == "602b71f15d40ed68c5f96330e3f3175a76a32126"
+        assert json_bptr[0]["size"] == 445
+        assert (
+            json_bptr[0]["resolution"]["url"]
+            == "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/.gitattributes"
+        )
+        assert (
+            json_bptr[0]["resolution"]["expiration_timestamp"]
+            > time.time() + 20 * 365 * 24 * 60 * 60
+        ), (
+            f"Expected unix expiration timestamp to be at least 20 years ahead, but got {json_bptr[0]['resolution']['expiration_timestamp']}. "
+        )
+
+        # lfs files
+        assert (
+            json_bptr[5]["file_name"]
+            == "/app/model_cache/julien_c_esper/model.safetensors"
+        )
+        assert (
+            json_bptr[5]["hash"]
+            == "78ee94168f400dd136a1418a9f21f01ada049cdb3c064145b1400642cf342de6"
+        )
+        assert json_bptr[5]["size"] == 336392830
+        assert (
+            json_bptr[5]["resolution"]["url"]
+            == "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/model.safetensors"
+        )
+
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
             print(gen_docker_file)
-            assert False
             assert "truss-transfer" in gen_docker_file
+            assert "COPY ./bptr-manifest /bptr/bptr-manifest" in gen_docker_file, (
+                "bptr-manifest copy not found in Dockerfile"
+            )
 
 
 def test_ignore_files_during_build_setup(custom_model_truss_dir_with_truss_ignore):

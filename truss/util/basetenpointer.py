@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+import requests
 from huggingface_hub import hf_api, hf_hub_url
 from pydantic import BaseModel, RootModel
 
@@ -71,9 +72,20 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
         # assert model.revision is not None
 
         # get meta
-        metadata_hf_repo_list = metadata_hf_repo(
-            repo=model.repo_id, revision=model.revision
-        )
+        exception = None
+        for _ in range(3):
+            try:
+                metadata_hf_repo_list = metadata_hf_repo(
+                    repo=model.repo_id, revision=model.revision
+                )
+                break
+            except requests.exceptions.ReadTimeout as e:
+                # this is expected, sometimes huggingface hub times out
+                print("ReadTimeout Error: ", e)
+                time.sleep(5)
+                exception = e
+        if isinstance(exception, Exception):
+            raise exception
         # convert the metadata to b10 pointer format
         b10_pointer_list = [
             BasetenPointer(
