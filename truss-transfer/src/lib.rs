@@ -358,7 +358,13 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     }
 
     info!("Starting download to {:?}", path);
-    let resp = client.get(url).send().await?.error_for_status()?;
+    let mut request_builder = client.get(url);
+    if url.starts_with("https://huggingface.co") {
+        if let Some(token) = get_hf_token() {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+        }
+    }
+    let resp = request_builder.send().await?.error_for_status()?;
     let mut stream = resp.bytes_stream();
 
     let mut file = fs::File::create(path).await?;
@@ -385,11 +391,21 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     Ok(())
 }
 
+fn get_hf_token() -> Option<String> {
+    std::env::var("HF_TOKEN").ok()
+}
+
 fn get_cleanup_threshold_hours() -> u64 {
-    env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
+    let var: i32 = env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(14 * 24) // default to 336 hours (14 days)
+        .unwrap_or(90 * 24); // default to 336 hours (14 days)
+    if var < 0 {
+        // raise an error if the value is negative
+        panic!("Invalid value for {}: {}. Must be a non-negative integer.", TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR, var);
+    }
+    // var as u64
+    var as u64
 }
 
 fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
