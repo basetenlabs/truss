@@ -931,12 +931,14 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option("--project-id", type=str, required=True, help="Project ID.")
-@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
 @log_level_option
 @error_handling
-def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool):
+def get_job_logs(
+    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+):
     """Fetch logs for a training job"""
 
     if not remote:
@@ -945,6 +947,22 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    if not project_id or not job_id:
+        all_jobs = remote_provider.api.list_all_training_jobs(
+            project_id=project_id, job_id=job_id
+        )
+        if not all_jobs:
+            raise click.UsageError(
+                "No jobs found. Please provide a Project ID and Job ID"
+            )
+        if len(all_jobs) > 1:
+            display_training_jobs(all_jobs, title="Training Jobs")
+            raise click.UsageError("Multiple jobs found. Please provide a Job ID")
+        project_id = all_jobs[0]["training_project_id"]
+        job_id = all_jobs[0]["id"]
+
+    if not project_id or not job_id:
+        raise click.UsageError("Please provide a Project ID and Job ID")
 
     if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
