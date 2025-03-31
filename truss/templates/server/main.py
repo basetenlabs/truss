@@ -38,9 +38,12 @@ def dev_magic():
     # restart it using the exact same command and arguments
     env = os.environ.copy()
     env.pop("DEV_MAGIC", None)
-    cmd = [sys.argv[0], *sys.argv[1:]]
+    # Get Python interpreter path to ensure we use the same interpreter
+    python_interpreter = sys.executable
+    script_path = os.path.abspath(sys.argv[0])
+    cmd = [python_interpreter, script_path, *sys.argv[1:]]
     logger.info(f"Starting child process with command: {' '.join(cmd)}")
-    p = subprocess.Popen(cmd, env=env)
+    p = subprocess.Popen(cmd, env=env, cwd=os.path.dirname(script_path))
 
     # check for restart every 5 seconds
     while True:
@@ -76,7 +79,7 @@ def dev_magic():
 
         # restart the process
         logger.info("Restarting child process")
-        p = subprocess.Popen(cmd, env=env)
+        p = subprocess.Popen(cmd, env=env, cwd=os.path.dirname(script_path))
 
 
 if __name__ == "__main__":
