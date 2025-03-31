@@ -23,7 +23,7 @@ use tokio::sync::Semaphore;
 
 // For logging
 use env_logger::Builder;
-use log::{error, info, warn, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
@@ -392,7 +392,27 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
 }
 
 fn get_hf_token() -> Option<String> {
-    std::env::var("HF_TOKEN").ok()
+    if let Ok(env_token) = std::env::var("HF_TOKEN") {
+        if !env_token.is_empty() {
+            info!("Found HF token in environment variable");
+            return Some(env_token);
+        }
+    }
+    let token_path = "/secrets/hf_access_token";
+    if std::path::Path::new(token_path).exists() {
+        if let Ok(contents) = std::fs::read_to_string(token_path) {
+            let trimmed = contents.trim().to_string();
+            if !trimmed.is_empty() {
+                info!("Found HF token in {}", token_path);
+                return Some(trimmed);
+            }
+        }
+    }
+    info!(
+        "No HF token found in environment variable or {}",
+        token_path
+    );
+    None
 }
 
 fn get_cleanup_threshold_hours() -> u64 {
@@ -402,7 +422,10 @@ fn get_cleanup_threshold_hours() -> u64 {
         .unwrap_or(90 * 24); // default to 336 hours (14 days)
     if var < 0 {
         // raise an error if the value is negative
-        panic!("Invalid value for {}: {}. Must be a non-negative integer.", TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR, var);
+        panic!(
+            "Invalid value for {}: {}. Must be a non-negative integer.",
+            TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR, var
+        );
     }
     // var as u64
     var as u64
