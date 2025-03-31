@@ -27,7 +27,7 @@ use log::{debug, error, info, warn, LevelFilter};
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
-static CACHE_DIR: &str = "/cache/org/artifacts";
+static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
 static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
@@ -419,7 +419,7 @@ fn get_cleanup_threshold_hours() -> u64 {
     let var: i32 = env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(90 * 24); // default to 336 hours (14 days)
+        .unwrap_or(90 * 24); // default to 2160 hours (90 days)
     if var < 0 {
         // raise an error if the value is negative
         panic!(
@@ -462,8 +462,8 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
 
     let mut dir = fs::read_dir(cache_dir).await?;
     info!(
-        "Cleaning up b10cache with a threshold of {} hours",
-        cleanup_threshold_hours
+        "Cleaning up b10cache with a threshold of {} hours ({} days)",
+        cleanup_threshold_hours, cleanup_threshold_hours as f64 / 24.0
     );
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
@@ -479,7 +479,7 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
                             file_name, cleanup_threshold_hours
                         );
                         // Uncomment the following line to actually delete the file
-                        // fs::remove_file(&path).await?;
+                        fs::remove_file(&path).await?;
                     } else {
                         info!(
                             "Skipping file {} as it is part of the current hashes",
