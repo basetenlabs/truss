@@ -268,6 +268,12 @@ fn build_resolution_map(
         if bptr.resolution.expiration_timestamp < now {
             return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
         }
+        if bptr.hash.contains('/') {
+            return Err(anyhow!(
+                "Hash {} contains '/', which is not allowed",
+                bptr.hash
+            ));
+        }
         out.push((
             bptr.file_name.clone(),
             (bptr.resolution.url.clone(), bptr.hash.clone(), bptr.size),
@@ -478,7 +484,6 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
                             "Would delete cached file {}: not accessed for over {} hours",
                             file_name, cleanup_threshold_hours
                         );
-                        // Uncomment the following line to actually delete the file
                         fs::remove_file(&path).await?;
                     } else {
                         info!(
