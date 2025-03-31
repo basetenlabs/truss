@@ -34,6 +34,7 @@ static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 static TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS";
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
+static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a “double start” scenario),
@@ -394,23 +395,22 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
 fn get_hf_token() -> Option<String> {
     if let Ok(env_token) = std::env::var("HF_TOKEN") {
         if !env_token.is_empty() {
-            info!("Found HF token in environment variable");
+            debug!("Found HF token in environment variable");
             return Some(env_token);
         }
     }
-    let token_path = "/secrets/hf_access_token";
-    if std::path::Path::new(token_path).exists() {
-        if let Ok(contents) = std::fs::read_to_string(token_path) {
+    if std::path::Path::new(HF_TOKEN_PATH).exists() {
+        if let Ok(contents) = std::fs::read_to_string(HF_TOKEN_PATH) {
             let trimmed = contents.trim().to_string();
             if !trimmed.is_empty() {
-                info!("Found HF token in {}", token_path);
+                debug!("Found HF token in {}", HF_TOKEN_PATH);
                 return Some(trimmed);
             }
         }
     }
-    info!(
-        "No HF token found in environment variable or {}",
-        token_path
+    warn!(
+        "No HF token found in environment variable or {}. Using unauthenticated access to download from huggingface.co. Make sure you set `hf_access_token` in your Baseten.co secrets and add `secrets:- hf_access_token: null` to your config.yaml.",
+        HF_TOKEN_PATH
     );
     None
 }
