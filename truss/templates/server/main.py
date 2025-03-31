@@ -6,10 +6,10 @@ CONFIG_FILE = "config.yaml"
 
 
 def dev_magic():
+    import os
     if not os.environ.get("DEV_MAGIC") == "true":
         return
 
-    import os
     import sys
     import subprocess
     import time
