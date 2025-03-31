@@ -1,5 +1,14 @@
-import os
+if __name__ == "__main__":
+    import os
+    import time
 
+    # wait until the file /tmp/dev_restart is created
+    while os.environ.get("DEV_MAGIC_HANG") == "true" and (
+        not os.path.exists("/tmp/dev_restart")
+    ):
+        time.sleep(1)
+
+import os
 from truss_server import TrussServer
 
 CONFIG_FILE = "config.yaml"
