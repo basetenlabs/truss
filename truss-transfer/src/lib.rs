@@ -23,17 +23,18 @@ use tokio::sync::Semaphore;
 
 // For logging
 use env_logger::Builder;
-use log::{error, info, warn, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
-static CACHE_DIR: &str = "/cache/org/artifacts";
+static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
 static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 static TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS";
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
+static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a “double start” scenario),
@@ -267,6 +268,12 @@ fn build_resolution_map(
         if bptr.resolution.expiration_timestamp < now {
             return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
         }
+        if bptr.hash.contains('/') {
+            return Err(anyhow!(
+                "Hash {} contains '/', which is not allowed",
+                bptr.hash
+            ));
+        }
         out.push((
             bptr.file_name.clone(),
             (bptr.resolution.url.clone(), bptr.hash.clone(), bptr.size),
@@ -358,7 +365,13 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     }
 
     info!("Starting download to {:?}", path);
-    let resp = client.get(url).send().await?.error_for_status()?;
+    let mut request_builder = client.get(url);
+    if url.starts_with("https://huggingface.co") {
+        if let Some(token) = get_hf_token() {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+        }
+    }
+    let resp = request_builder.send().await?.error_for_status()?;
     let mut stream = resp.bytes_stream();
 
     let mut file = fs::File::create(path).await?;
@@ -385,11 +398,43 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     Ok(())
 }
 
+fn get_hf_token() -> Option<String> {
+    if let Ok(env_token) = std::env::var("HF_TOKEN") {
+        if !env_token.is_empty() {
+            debug!("Found HF token in environment variable");
+            return Some(env_token);
+        }
+    }
+    if std::path::Path::new(HF_TOKEN_PATH).exists() {
+        if let Ok(contents) = std::fs::read_to_string(HF_TOKEN_PATH) {
+            let trimmed = contents.trim().to_string();
+            if !trimmed.is_empty() {
+                debug!("Found HF token in {}", HF_TOKEN_PATH);
+                return Some(trimmed);
+            }
+        }
+    }
+    warn!(
+        "No HF token found in environment variable or {}. Using unauthenticated access to download from huggingface.co. Make sure you set `hf_access_token` in your Baseten.co secrets and add `secrets:- hf_access_token: null` to your config.yaml.",
+        HF_TOKEN_PATH
+    );
+    None
+}
+
 fn get_cleanup_threshold_hours() -> u64 {
-    env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
+    let var: i32 = env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(14 * 24) // default to 336 hours (14 days)
+        .unwrap_or(90 * 24); // default to 2160 hours (90 days)
+    if var < 0 {
+        // raise an error if the value is negative
+        panic!(
+            "Invalid value for {}: {}. Must be a non-negative integer.",
+            TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR, var
+        );
+    }
+    // var as u64
+    var as u64
 }
 
 fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
@@ -423,8 +468,8 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
 
     let mut dir = fs::read_dir(cache_dir).await?;
     info!(
-        "Cleaning up b10cache with a threshold of {} hours",
-        cleanup_threshold_hours
+        "Cleaning up b10cache with a threshold of {} hours ({} days)",
+        cleanup_threshold_hours, cleanup_threshold_hours as f64 / 24.0
     );
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
@@ -439,8 +484,7 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
                             "Would delete cached file {}: not accessed for over {} hours",
                             file_name, cleanup_threshold_hours
                         );
-                        // Uncomment the following line to actually delete the file
-                        // fs::remove_file(&path).await?;
+                        fs::remove_file(&path).await?;
                     } else {
                         info!(
                             "Skipping file {} as it is part of the current hashes",
