@@ -570,6 +570,22 @@ class BasetenApi:
         resp_json = self._rest_api_client.get(f"v1/training_projects/{project_id}/jobs")
         return resp_json
 
+    def list_all_training_jobs(
+        self,
+        status_filter: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            "v1/training_projects/all_jobs",
+            body={
+                "status_filter": status_filter,
+                "project_id": project_id,
+                "job_id": job_id,
+            },
+        )
+        return resp_json["training_jobs"]
+
     def get_training_job(self, project_id: str, job_id: str):
         # training_job, training_project
         resp_json = self._rest_api_client.get(
