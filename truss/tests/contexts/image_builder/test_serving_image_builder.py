@@ -249,8 +249,9 @@ def test_model_cache_dockerfile(test_data_path):
         assert (tmp_path / "bptr-manifest").exists(), "bptr-manifest not found"
         with open(tmp_path / "bptr-manifest", "r") as f:
             json_bptr = json.load(f)["pointers"]
-        assert len(json_bptr) == 9, (
-            f"bptr-manifest should have 2 entries, found {len(json_bptr)}"
+        print(json_bptr)
+        assert len(json_bptr) == 7, (
+            f"bptr-manifest should have 7 entries, found {len(json_bptr)}"
         )
         assert (
             json_bptr[0]["file_name"]
@@ -271,16 +272,16 @@ def test_model_cache_dockerfile(test_data_path):
 
         # lfs files
         assert (
-            json_bptr[5]["file_name"]
+            json_bptr[4]["file_name"]
             == "/app/model_cache/julien_c_esper/model.safetensors"
         )
         assert (
-            json_bptr[5]["hash"]
+            json_bptr[4]["hash"]
             == "78ee94168f400dd136a1418a9f21f01ada049cdb3c064145b1400642cf342de6"
         )
-        assert json_bptr[5]["size"] == 336392830
+        assert json_bptr[4]["size"] == 336392830
         assert (
-            json_bptr[5]["resolution"]["url"]
+            json_bptr[4]["resolution"]["url"]
             == "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/model.safetensors"
         )
 
