@@ -1,9 +1,9 @@
+use std::collections::HashSet;
 use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::collections::HashSet;
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -13,27 +13,28 @@ use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use reqwest::Client;
 use serde::Deserialize;
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Semaphore;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::time::UNIX_EPOCH;
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 
 // For logging
 use env_logger::Builder;
-use log::{error, info, warn, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
-static CACHE_DIR: &str = "/cache/org/artifacts";
+static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
 static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 static TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS";
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
+static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a “double start” scenario),
@@ -213,7 +214,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 
     // 6. Spawn download tasks
     info!("Spawning download tasks...");
-    let mut tasks: FuturesUnordered<tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>> = FuturesUnordered::new();
+    let mut tasks: FuturesUnordered<
+        tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>,
+    > = FuturesUnordered::new();
     for (file_name, (resolved_url, hash, size)) in resolution_map {
         let download_dir = download_dir.clone();
         let client = client.clone();
@@ -265,6 +268,12 @@ fn build_resolution_map(
         if bptr.resolution.expiration_timestamp < now {
             return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
         }
+        if bptr.hash.contains('/') {
+            return Err(anyhow!(
+                "Hash {} contains '/', which is not allowed",
+                bptr.hash
+            ));
+        }
         out.push((
             bptr.file_name.clone(),
             (bptr.resolution.url.clone(), bptr.hash.clone(), bptr.size),
@@ -290,7 +299,7 @@ async fn download_file_with_cache(
     size: u64,
     uses_b10_cache: bool,
 ) -> Result<()> {
-    let destination = download_dir.join(file_name);
+    let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(hash);
 
     // Skip download if file exists with the expected size.
@@ -356,7 +365,13 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     }
 
     info!("Starting download to {:?}", path);
-    let resp = client.get(url).send().await?.error_for_status()?;
+    let mut request_builder = client.get(url);
+    if url.starts_with("https://huggingface.co") {
+        if let Some(token) = get_hf_token() {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+        }
+    }
+    let resp = request_builder.send().await?.error_for_status()?;
     let mut stream = resp.bytes_stream();
 
     let mut file = fs::File::create(path).await?;
@@ -383,11 +398,43 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     Ok(())
 }
 
+fn get_hf_token() -> Option<String> {
+    if let Ok(env_token) = std::env::var("HF_TOKEN") {
+        if !env_token.is_empty() {
+            debug!("Found HF token in environment variable");
+            return Some(env_token);
+        }
+    }
+    if std::path::Path::new(HF_TOKEN_PATH).exists() {
+        if let Ok(contents) = std::fs::read_to_string(HF_TOKEN_PATH) {
+            let trimmed = contents.trim().to_string();
+            if !trimmed.is_empty() {
+                debug!("Found HF token in {}", HF_TOKEN_PATH);
+                return Some(trimmed);
+            }
+        }
+    }
+    warn!(
+        "No HF token found in environment variable or {}. Using unauthenticated access to download from huggingface.co. Make sure you set `hf_access_token` in your Baseten.co secrets and add `secrets:- hf_access_token: null` to your config.yaml.",
+        HF_TOKEN_PATH
+    );
+    None
+}
+
 fn get_cleanup_threshold_hours() -> u64 {
-    env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
+    let var: i32 = env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(14 * 24) // default to 336 hours (14 days)
+        .unwrap_or(90 * 24); // default to 2160 hours (90 days)
+    if var < 0 {
+        // raise an error if the value is negative
+        panic!(
+            "Invalid value for {}: {}. Must be a non-negative integer.",
+            TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR, var
+        );
+    }
+    // var as u64
+    var as u64
 }
 
 fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
@@ -420,7 +467,10 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
     let mut dir = fs::read_dir(cache_dir).await?;
-    info!("Cleaning up b10cache with a threshold of {} hours", cleanup_threshold_hours);
+    info!(
+        "Cleaning up b10cache with a threshold of {} hours ({} days)",
+        cleanup_threshold_hours, cleanup_threshold_hours as f64 / 24.0
+    );
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
         // Only process files
@@ -431,12 +481,15 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
                 if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                     if !current_hashes.contains(file_name) {
                         info!(
-                            "Deleting cached file {}: not accessed for over {} hours",
+                            "Would delete cached file {}: not accessed for over {} hours",
                             file_name, cleanup_threshold_hours
                         );
                         fs::remove_file(&path).await?;
                     } else {
-                        info!("Skipping file {} as it is part of the current hashes", file_name);
+                        info!(
+                            "Skipping file {} as it is part of the current hashes",
+                            file_name
+                        );
                     }
                 }
             } else {
@@ -560,6 +613,18 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     Ok(())
 }
 
+// verifies that the file exists and updates its atime by reading it
+async fn update_atime_by_reading(path: &Path) -> Result<()> {
+    use tokio::io::AsyncReadExt;
+    // Open the file in read-only mode.
+    let mut file = fs::File::open(path)
+        .await
+        .with_context(|| format!("Failed to open file {:?} for updating atime", path))?;
+    let mut buffer = [0u8; 1];
+    let _ = file.read(&mut buffer).await?;
+    Ok(())
+}
+
 /// Create a symlink from `src` to `dst` if `dst` does not exist.
 /// Returns Ok(()) if `dst` already exists.
 async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()> {
@@ -587,6 +652,9 @@ async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()>
     {
         std::os::windows::fs::symlink_file(src, dst).context("Failed to create Windows symlink")?;
     }
+    update_atime_by_reading(src)
+        .await
+        .context("Failed to update atime after symlink")?;
     Ok(())
 }
 
