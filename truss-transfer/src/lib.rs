@@ -32,7 +32,8 @@ static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
-static TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS";
+static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
+static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 28 * 24; // 28 days
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
 
@@ -421,20 +422,11 @@ fn get_hf_token() -> Option<String> {
     None
 }
 
-fn get_cleanup_threshold_hours() -> u64 {
-    let var: i32 = env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
+fn get_b10fs_cleanup_threshold_hours() -> u64 {
+    env::var(TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR)
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(90 * 24); // default to 2160 hours (90 days)
-    if var < 0 {
-        // raise an error if the value is negative
-        panic!(
-            "Invalid value for {}: {}. Must be a non-negative integer.",
-            TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR, var
-        );
-    }
-    // var as u64
-    var as u64
+        .unwrap_or(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS)
 }
 
 fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
@@ -461,7 +453,7 @@ fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
 /// Asynchronously cleans up cache files that have not been accessed within the threshold
 /// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
 pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
-    let cleanup_threshold_hours = get_cleanup_threshold_hours();
+    let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
     let cache_dir = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
