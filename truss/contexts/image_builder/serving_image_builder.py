@@ -537,14 +537,15 @@ class ServingImageBuilder(ImageBuilder):
         cached_files = []
         if config.model_cache:
             if config.model_cache.is_v2:
+                if config.trt_llm:
+                    raise RuntimeError("TensorRTLLM models do not support model_cache")
                 # adds a lazy pointer, will be downloaded at runtimes
                 logging.warning(
-                    "Since March 2025, `model_cache` has been refactored and is using a new mechanism to cache models. "
-                    "Downloads are backed by Baseten's distributed filesystem b10fs. In case of a cache-miss, "
-                    " re-downloaded from huggingface to b10fs using a highly concurrent golang/rust implementation. "
-                    "In case you download is not cached, models dwonloads will still be faster than regular downloads (faster than e.g. hf_transfer). "
-                    "For optional performance, we recommend to have B10FS enabled. Feel free to reach out, if you see in the download"
-                    " logs of your model, that B10FS is disabled. "
+                    "The model_cache system has been upgraded to use Baseten's distributed filesystem (b10fs). "
+                    "Model downloads are now automatically cached and shared across deployments. "
+                    "Downloads use a high-performance concurrent go/rust implementation that is faster than other downloaders (huggingface_hub, hf_transfer). "
+                    "For optimal performance, ensure b10fs is enabled on your deployment. "
+                    "Contact support if you see 'b10fs disabled' in your download logs."
                 )
                 build_and_copy_bptr_manifest(config=config, build_dir=build_dir)
             else:
