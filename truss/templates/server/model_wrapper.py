@@ -51,14 +51,22 @@ POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
 
 
 class MethodName(str, enum.Enum):
-    CHAT_COMPLETIONS = "chat_completions"
-    COMPLETIONS = "completions"
-    IS_HEALTHY = "is_healthy"
-    POSTPROCESS = "postprocess"
-    PREDICT = "predict"
-    PREPROCESS = "preprocess"
-    SETUP_ENVIRONMENT = "setup_environment"
-    WEBSOCKET = "websocket"
+    def _generate_next_value_(  # type: ignore[override]
+        name: str, start: int, count: int, last_values: list[str]
+    ) -> str:
+        return name.lower()
+
+    CHAT_COMPLETIONS = enum.auto()
+    COMPLETIONS = enum.auto()
+    IS_HEALTHY = enum.auto()
+    POSTPROCESS = enum.auto()
+    PREDICT = enum.auto()
+    PREPROCESS = enum.auto()
+    SETUP_ENVIRONMENT = enum.auto()
+    WEBSOCKET = enum.auto()
+
+    def __str__(self):
+        return self.value
 
 
 InputType = Union[serialization.JSONType, serialization.MsgPackType, pydantic.BaseModel]
