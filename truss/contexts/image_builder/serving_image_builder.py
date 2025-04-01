@@ -539,10 +539,11 @@ class ServingImageBuilder(ImageBuilder):
             if config.model_cache.is_v2:
                 # adds a lazy pointer, will be downloaded at runtimes
                 logging.warning(
-                    "Since March 2025, `model_cache` is restricted to huggingface.co is using a new mechanism to cache models. "
-                    "Huggingface models are now backed by Baseten's distributed filesystem b10fs, and downloaded from huggingface to b10fs, in case of a cache miss. "
-                    "Cached models will also be fast for regular downloads (faster than e.g. hf_transfer), but for optional performance, we "
-                    "recommend your organization to have B10FS enabled. Feel free to reach out, if you see in the download"
+                    "Since March 2025, `model_cache` has been refactored and is using a new mechanism to cache models. "
+                    "Downloads are backed by Baseten's distributed filesystem b10fs. In case of a cache-miss, "
+                    " re-downloaded from huggingface to b10fs using a highly concurrent golang/rust implementation. "
+                    "In case you download is not cached, models dwonloads will still be faster than regular downloads (faster than e.g. hf_transfer). "
+                    "For optional performance, we recommend to have B10FS enabled. Feel free to reach out, if you see in the download"
                     " logs of your model, that B10FS is disabled. "
                 )
                 build_and_copy_bptr_manifest(config=config, build_dir=build_dir)

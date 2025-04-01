@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 import requests
 from huggingface_hub import hf_api, hf_hub_url
+from huggingface_hub.utils import filter_repo_objects
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -36,7 +37,24 @@ def get_hf_metadata(api: "hf_api.HfApi", repo: str, revision: str, file: str):
     return {"etag": meta.etag, "location": meta.location, "size": meta.size, "url": url}
 
 
-def metadata_hf_repo(repo: str, revision: str) -> dict[str, dict]:
+def filter_repo_files(
+    files: list[str],
+    allow_patterns: Optional[list[str]],
+    ignore_patterns: Optional[list[str]],
+) -> list[str]:
+    return list(
+        filter_repo_objects(
+            items=files, allow_patterns=allow_patterns, ignore_patterns=ignore_patterns
+        )
+    )
+
+
+def metadata_hf_repo(
+    repo: str,
+    revision: str,
+    allow_patterns: Optional[list[str]] = None,
+    ignore_patterns: Optional[list[str]] = None,
+) -> dict[str, dict]:
     """Lists all files, gathers metadata without downloading, just using the Hugging Face API.
     Example:
     [{'.gitattributes': HfFileMetadata(
@@ -48,6 +66,9 @@ def metadata_hf_repo(repo: str, revision: str) -> dict[str, dict]:
     """
     api = hf_api.HfApi()
     files: list[str] = api.list_repo_files(repo_id=repo, revision=revision)
+    files = filter_repo_files(
+        files, allow_patterns=allow_patterns, ignore_patterns=ignore_patterns
+    )
 
     hf_files_meta = {file: get_hf_metadata(api, repo, revision, file) for file in files}
 
@@ -76,7 +97,10 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
         for _ in range(3):
             try:
                 metadata_hf_repo_list = metadata_hf_repo(
-                    repo=model.repo_id, revision=model.revision
+                    repo=model.repo_id,
+                    revision=model.revision,
+                    allow_patterns=model.allow_patterns,
+                    ignore_patterns=model.ignore_patterns,
                 )
                 break
             except requests.exceptions.ReadTimeout as e:
