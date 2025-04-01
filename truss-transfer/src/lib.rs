@@ -355,6 +355,15 @@ async fn download_file_with_cache(
     Ok(())
 }
 
+/// Sanitize a URL by removing query parameters if they exist for logging purposes.
+fn sanitize_url(url: &str) -> String {
+    if let Some(index) = url.find('?') {
+        url[..index].to_string()
+    } else {
+        url.to_string()
+    }
+}
+
 /// Stream a download from `url` into the specified `path`.
 /// Returns an error if the download fails or if the file size does not match the expected size.
 async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) -> Result<()> {
@@ -365,14 +374,20 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
         ))?;
     }
 
-    info!("Starting download to {:?}", path);
+    info!("Starting download to {:?} from {}", path, sanitize_url(url));
     let mut request_builder = client.get(url);
     if url.starts_with("https://huggingface.co") {
         if let Some(token) = get_hf_token() {
             request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
     }
-    let resp = request_builder.send().await?.error_for_status()?;
+    let resp = request_builder.send().await?.error_for_status().map_err(|e| {
+        anyhow!(
+            "HTTP error for url ({}): {}",
+            sanitize_url(url),
+            e
+        )
+    })?;
     let mut stream = resp.bytes_stream();
 
     let mut file = fs::File::create(path).await?;
