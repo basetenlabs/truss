@@ -1,3 +1,4 @@
+import signal
 import time
 from typing import Any, List, Optional
 
@@ -35,6 +36,13 @@ class TrainingLogWatcher(LogWatcher):
         super().__init__(api, console)
         self.project_id = project_id
         self.job_id = job_id
+        # register siging handler that instructs user on how to stop the job
+        signal.signal(signal.SIGINT, self._handle_sigint)
+
+    def _handle_sigint(self, signum: int, frame: Any) -> None:
+        msg = f"\n\nExiting training job logs. To stop the job, run `truss train stop --project-id {self.project_id} --job-id {self.job_id}`"
+        self.console.print(msg, style="yellow")
+        raise KeyboardInterrupt()
 
     def _get_current_job_status(self) -> str:
         job = self.api.get_training_job(self.project_id, self.job_id)
