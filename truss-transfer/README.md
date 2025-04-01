@@ -30,7 +30,7 @@ TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/bptr-resolved"
 # after how much time since the last access of the file,
 # deleting all files from other tenants in the org to make space for this deployment.
 # "/cache/org/artifacts/truss_transfer_managed_v1";
-TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS="48" # sets it to two days.
+TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR="48" # sets it to two days.
 ```
 
 ### Running the CLI as binary
