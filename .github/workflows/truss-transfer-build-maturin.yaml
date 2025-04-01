@@ -11,12 +11,12 @@ on:
       - main
       - master
     paths:
-      - 'truss-transfer/**'
+      - "truss-transfer/**"
     tags:
-      - '*'  # Still runs on all tags regardless of directory changes
+      - "*" # Still runs on all tags regardless of directory changes
   pull_request:
     paths:
-      - 'truss-transfer/**'
+      - "truss-transfer/**"
   workflow_dispatch:
 
 permissions:
@@ -51,7 +51,7 @@ jobs:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
-          sccache: 'true'
+          sccache: "false"
           manylinux: auto
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
@@ -69,7 +69,7 @@ jobs:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
-          sccache: 'true'
+          sccache: "false"
           manylinux: auto
           docker-options: >
             ${{ matrix.platform.target == 'armv7' && '--env RING_PREGENERATE_ASM=false' || '' }}
@@ -112,7 +112,7 @@ jobs:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
-          sccache: 'true'
+          sccache: "false"
           manylinux: musllinux_1_2
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
@@ -120,7 +120,7 @@ jobs:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
-          sccache: 'true'
+          sccache: "false"
           manylinux: musllinux_1_2
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -149,13 +149,13 @@ jobs:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
-          sccache: 'true'
+          sccache: "false"
       # - name: Build free-threaded wheels
       #   uses: PyO3/maturin-action@v1
       #   with:
       #     target: ${{ matrix.platform.target }}
       #     args: --release --out dist -i python3.13t
-      #     sccache: 'true'
+      #     sccache: 'false'
       #     working-directory: truss-transfer
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -183,14 +183,14 @@ jobs:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
-          sccache: 'true'
+          sccache: "false"
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
-          sccache: 'true'
+          sccache: "false"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -230,7 +230,7 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v1
         with:
-          subject-path: 'wheels-*/*'
+          subject-path: "wheels-*/*"
       - name: Publish to PyPI
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: PyO3/maturin-action@v1
