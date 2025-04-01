@@ -32,6 +32,7 @@ from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.train import display_training_jobs, get_args_for_logs, get_args_for_stop
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -947,22 +948,7 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    if not project_id or not job_id:
-        all_jobs = remote_provider.api.list_all_training_jobs(
-            project_id=project_id, job_id=job_id
-        )
-        if not all_jobs:
-            raise click.UsageError(
-                "No jobs found. Please provide a Project ID and Job ID"
-            )
-        if len(all_jobs) > 1:
-            display_training_jobs(all_jobs, title="Training Jobs")
-            raise click.UsageError("Multiple jobs found. Please provide a Job ID")
-        project_id = all_jobs[0]["training_project_id"]
-        job_id = all_jobs[0]["id"]
-
-    if not project_id or not job_id:
-        raise click.UsageError("Please provide a Project ID and Job ID")
+    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
 
     if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
@@ -991,48 +977,10 @@ def stop_job(project_id: Optional[str], job_id: Optional[str], remote: Optional[
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    if not project_id or not job_id:
-        # get all running jobs
-        job = _get_running_job(remote_provider, project_id, job_id)
-        if not job:
-            return
-        project_id_for_job = job["training_project_id"]
-        job_id_to_stop = job["id"]
-        # check if the user wants to stop the inferred running job
-        if not job_id:
-            confirm = inquirer.confirm(
-                message=f"Are you sure you want to stop training job {job_id_to_stop}?",
-                default=False,
-            ).execute()
-            if not confirm:
-                return
-        job_id = job_id_to_stop
-        project_id = project_id_for_job
+    project_id, job_id = get_args_for_stop(console, remote_provider, project_id, job_id)
 
-    if not project_id or not job_id:
-        # we shouldn't end up here, but we offer this as an escape hatch for the user
-        raise click.UsageError("Please provide a Project ID and Job ID")
     remote_provider.api.stop_training_job(project_id, job_id)
     console.print("Training job stopped successfully.", style="green")
-
-
-def _get_running_job(
-    remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
-):
-    jobs = remote_provider.api.list_all_training_jobs(
-        status_filter=["TRAINING_JOB_RUNNING"], project_id=project_id, job_id=job_id
-    )
-    if not jobs:
-        console.print("No running jobs found.", style="yellow")
-        return
-    if len(jobs) > 1:
-        display_training_jobs(jobs, title="Running Training Jobs")
-        console.print(
-            "Multiple running jobs found. Please specify a project and job id.",
-            style="yellow",
-        )
-        return
-    return jobs[0]
 
 
 @train.command(name="view")
@@ -1065,11 +1013,11 @@ def view_training(
     if project_id:
         if job_id:
             job_response = remote_provider.api.get_training_job(project_id, job_id)
-            display_training_jobs([job_response["training_job"]])
+            display_training_jobs(console, [job_response["training_job"]])
         else:
             jobs_response = remote_provider.api.list_training_jobs(project_id)
             jobs = jobs_response["training_jobs"]
-            display_training_jobs(jobs)
+            display_training_jobs(console, jobs)
 
     else:
         projects = remote_provider.api.list_training_projects()
@@ -1097,32 +1045,6 @@ def view_training(
             )
 
         console.print(table)
-
-
-def display_training_jobs(jobs, title="Training Job Details"):
-    table = rich.table.Table(
-        show_header=True,
-        header_style="bold magenta",
-        title=title,
-        box=rich.table.box.ROUNDED,
-        border_style="blue",
-    )
-    table.add_column("Project ID", style="cyan")
-    table.add_column("Job ID", style="cyan")
-    table.add_column("Status", style="white")
-    table.add_column("Instance Type", style="white")
-    table.add_column("Created At", style="white")
-    table.add_column("Updated At", style="white")
-    for job in jobs:
-        table.add_row(
-            job["training_project_id"],
-            job["id"],
-            job["current_status"],
-            job["instance_type"]["name"],
-            job["created_at"],
-            job["updated_at"],
-        )
-    console.print(table)
 
 
 # End Training Stuff #####################################################################
