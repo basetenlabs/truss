@@ -1,11 +1,11 @@
 import pathlib
 from typing import List
 
+from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import archive_dir
 from truss.remote.baseten.utils import transfer
-from truss.shared.types import SafeModel
 from truss_train.definitions import TrainingJob
 
 

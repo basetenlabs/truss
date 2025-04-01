@@ -1,16 +1,3 @@
-import pydantic
-
-pydantic_major_version = int(pydantic.VERSION.split(".")[0])
-if pydantic_major_version < 2:
-    raise RuntimeError(
-        f"Pydantic version {pydantic.VERSION} is not supported for Truss-Chains."
-        "Please upgrade to pydantic v2. With v1, you can still use all 'classical' "
-        "(non-Chains) Truss features."
-    )
-
-del pydantic, pydantic_major_version
-
-
 from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
 from truss_chains.public_api import (
     depends,

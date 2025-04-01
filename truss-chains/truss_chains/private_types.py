@@ -19,8 +19,8 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 
 import pydantic
 
+from truss.base import custom_types
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.shared import types
 from truss_chains import public_types, utils
 
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
@@ -54,7 +54,7 @@ def classproperty(fget: Callable[[Type[C]], V]) -> _classproperty[C, V]:
     return _classproperty(fget)
 
 
-class ChainletMetadata(types.SafeModelNonSerializable):
+class ChainletMetadata(custom_types.SafeModelNonSerializable):
     is_entrypoint: bool = False
     chain_name: Optional[str] = None
     init_is_patched: bool = False
@@ -66,13 +66,13 @@ class EntityType(utils.StrEnum):
     ENGINE_BUILDER_MODEL = enum.auto()
 
 
-class FrameworkConfig(types.SafeModelNonSerializable):
+class FrameworkConfig(custom_types.SafeModelNonSerializable):
     entity_type: EntityType
     supports_dependencies: bool
     endpoint_method_name: str
 
 
-class ServiceDescriptor(types.SafeModel):
+class ServiceDescriptor(custom_types.SafeModel):
     """like `DeployedServiceDescriptor` but without url."""
 
     name: str
@@ -80,7 +80,7 @@ class ServiceDescriptor(types.SafeModel):
     options: public_types.RPCOptions
 
 
-class TrussMetadata(types.SafeModel):
+class TrussMetadata(custom_types.SafeModel):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     chainlet_to_service: Mapping[str, ServiceDescriptor]
@@ -128,7 +128,7 @@ class ABCChainlet(abc.ABC):
     #     ...
 
 
-class TypeDescriptor(types.SafeModelNonSerializable):
+class TypeDescriptor(custom_types.SafeModelNonSerializable):
     """For describing I/O types of Chainlets."""
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
@@ -170,13 +170,13 @@ class StreamingTypeDescriptor(TypeDescriptor):
         return False
 
 
-class InputArg(types.SafeModelNonSerializable):
+class InputArg(custom_types.SafeModelNonSerializable):
     name: str
     type: TypeDescriptor
     is_optional: bool
 
 
-class EndpointAPIDescriptor(types.SafeModelNonSerializable):
+class EndpointAPIDescriptor(custom_types.SafeModelNonSerializable):
     name: str = RUN_REMOTE_METHOD_NAME
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
@@ -213,7 +213,7 @@ class EndpointAPIDescriptor(types.SafeModelNonSerializable):
         )
 
 
-class DependencyDescriptor(types.SafeModelNonSerializable):
+class DependencyDescriptor(custom_types.SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     options: public_types.RPCOptions
 
@@ -226,12 +226,12 @@ class DependencyDescriptor(types.SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
-class HealthCheckAPIDescriptor(types.SafeModelNonSerializable):
+class HealthCheckAPIDescriptor(custom_types.SafeModelNonSerializable):
     name: str = HEALTH_CHECK_METHOD_NAME
     is_async: bool
 
 
-class ChainletAPIDescriptor(types.SafeModelNonSerializable):
+class ChainletAPIDescriptor(custom_types.SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
     has_context: bool
@@ -254,7 +254,7 @@ class ChainletAPIDescriptor(types.SafeModelNonSerializable):
 ########################################################################################
 
 
-class PushOptions(types.SafeModelNonSerializable):
+class PushOptions(custom_types.SafeModelNonSerializable):
     chain_name: str
     only_generate_trusses: bool = False
 
