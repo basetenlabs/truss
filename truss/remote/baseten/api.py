@@ -575,10 +575,16 @@ class BasetenApi:
         statuses: Optional[List[str]] = None,
         project_id: Optional[str] = None,
         job_id: Optional[str] = None,
+        order_by: List[str] = ["-created_at"],
     ):
         resp_json = self._rest_api_client.post(
             "v1/training_jobs/search",
-            body={"statuses": statuses, "project_id": project_id, "job_id": job_id},
+            body={
+                "statuses": statuses,
+                "project_id": project_id,
+                "job_id": job_id,
+                "order_by": order_by,
+            },
         )
         return resp_json["training_jobs"]
 
