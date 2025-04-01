@@ -374,7 +374,8 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
         ))?;
     }
 
-    info!("Starting download to {:?} from {}", path, sanitize_url(url));
+    let sanitized_url = sanitize_url(url);
+    info!("Starting download to {:?} from {}", path, sanitized_url);
     let mut request_builder = client.get(url);
     if url.starts_with("https://huggingface.co") {
         if let Some(token) = get_hf_token() {
@@ -382,10 +383,11 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
         }
     }
     let resp = request_builder.send().await?.error_for_status().map_err(|e| {
+        let status = e.status().map_or("unknown".into(), |s| s.to_string());
         anyhow!(
-            "HTTP error for url ({}): {}",
-            sanitize_url(url),
-            e
+            "HTTP status {} for url ({})",
+            status,
+            sanitized_url,
         )
     })?;
     let mut stream = resp.bytes_stream();
