@@ -18,8 +18,7 @@ from typing import (
 
 import pydantic
 
-from truss.base import truss_config
-from truss.shared import types
+from truss.base import custom_types, truss_config
 
 CpuCountT = Literal["cpu_count"]
 CPU_COUNT: CpuCountT = "cpu_count"
@@ -66,13 +65,13 @@ class GenericRemoteException(Exception):
     to re-raise the same exception that was raise remotely in the caller."""
 
 
-class RemoteErrorDetail(types.SafeModel):
+class RemoteErrorDetail(custom_types.SafeModel):
     """When a remote chainlet raises an exception, this pydantic model contains
     information about the error and stack trace and is included in JSON form in the
     error response.
     """
 
-    class StackFrame(types.SafeModel):
+    class StackFrame(custom_types.SafeModel):
         filename: str
         lineno: Optional[int]
         name: str
@@ -167,7 +166,7 @@ class BasetenImage(enum.Enum):
     PY311 = "py311"
 
 
-class CustomImage(types.SafeModel):
+class CustomImage(custom_types.SafeModel):
     """Configures the usage of a custom image hosted on dockerhub."""
 
     image: str
@@ -175,7 +174,7 @@ class CustomImage(types.SafeModel):
     docker_auth: Optional[truss_config.DockerAuthSettings] = None
 
 
-class DockerImage(types.SafeModelNonSerializable):
+class DockerImage(custom_types.SafeModelNonSerializable):
     """Configures the docker image in which a remoted chainlet is deployed.
 
     Note:
@@ -303,7 +302,7 @@ class Compute:
         return self._spec.model_copy(deep=True)
 
 
-class AssetSpec(types.SafeModel):
+class AssetSpec(custom_types.SafeModel):
     """Parsed and validated assets. See ``Assets`` for more information."""
 
     secrets: dict[str, str] = pydantic.Field(default_factory=dict)
@@ -370,7 +369,7 @@ except AttributeError:
     JsonType = dict[str, Any]  # type: ignore[misc]
 
 
-class ChainletOptions(types.SafeModelNonSerializable):
+class ChainletOptions(custom_types.SafeModelNonSerializable):
     """
     Args:
         enable_b10_tracing: enables baseten-internal trace data collection. This
@@ -390,7 +389,7 @@ class ChainletOptions(types.SafeModelNonSerializable):
     metadata: Optional[JsonType] = None
 
 
-class RemoteConfig(types.SafeModelNonSerializable):
+class RemoteConfig(custom_types.SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
     This is specified as a class variable for each chainlet class, e.g.::
@@ -422,7 +421,7 @@ class RemoteConfig(types.SafeModelNonSerializable):
         return self.assets.get_spec()
 
 
-class RPCOptions(types.SafeModel):
+class RPCOptions(custom_types.SafeModel):
     """Options to customize RPCs to dependency chainlets.
 
     Args:
@@ -636,11 +635,11 @@ class EngineBuilderLLMInput(pydantic.BaseModel):
     lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
 
 
-class DeployedServiceDescriptor(types.SafeModel):
+class DeployedServiceDescriptor(custom_types.SafeModel):
     """Bundles values to establish an RPC session to a dependency chainlet,
     specifically with ``StubBase``."""
 
-    class InternalURL(types.SafeModel):
+    class InternalURL(custom_types.SafeModel):
         gateway_run_remote_url: str  # Includes `https` and endpoint.
         hostname: str  # Does not include `https`.
 
@@ -666,7 +665,7 @@ class DeployedServiceDescriptor(types.SafeModel):
         return self
 
 
-class Environment(types.SafeModel):
+class Environment(custom_types.SafeModel):
     """The environment the chainlet is deployed in.
 
     Args:
@@ -677,7 +676,7 @@ class Environment(types.SafeModel):
     # can add more fields here as we add them to dynamic_config configmap
 
 
-class DeploymentContext(types.SafeModelNonSerializable):
+class DeploymentContext(custom_types.SafeModelNonSerializable):
     """Bundles config values and resources needed to instantiate Chainlets.
 
     The context can optionally be added as a trailing argument in a Chainlet's
