@@ -1,11 +1,10 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, MutableMapping, Optional, Union
 
 import yaml
 
-from truss.base import truss_config
-from truss.base.constants import CONFIG_FILE
+from truss.base import constants, truss_config
 from truss.base.custom_types import Example
 from truss.base.errors import ValidationError
 
@@ -17,7 +16,9 @@ class TrussSpec:
 
     def __init__(self, truss_dir: Path) -> None:
         self._truss_dir = truss_dir
-        self._config = truss_config.TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
+        self._config = truss_config.TrussConfig.from_yaml(
+            truss_dir / constants.CONFIG_FILE
+        )
 
     @property
     def truss_dir(self) -> Path:
@@ -25,7 +26,7 @@ class TrussSpec:
 
     @property
     def config_path(self) -> Path:
-        return self._truss_dir / CONFIG_FILE
+        return self._truss_dir / constants.CONFIG_FILE
 
     @property
     def data_dir(self) -> Path:
@@ -101,7 +102,7 @@ class TrussSpec:
 
     @property
     def use_gpu(self) -> bool:
-        return self._config.resources.use_gpu
+        return self._config.resources.use_gpu  # type: ignore[return-value]  # computed field.
 
     @property
     def model_module_name(self) -> str:
@@ -170,7 +171,7 @@ class TrussSpec:
             return yaml_file.read()
 
     @property
-    def secrets(self) -> Dict[str, str]:
+    def secrets(self) -> MutableMapping[str, Optional[str]]:
         return self._config.secrets
 
     @property

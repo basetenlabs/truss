@@ -19,8 +19,6 @@ from pydantic import (
 if TYPE_CHECKING:
     from truss.base.truss_config import TrussConfig
 
-from truss.base import constants
-
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
@@ -509,7 +507,7 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
     # Inline importing truss_config, to avoid cycle. This dependency is a bit sketchy,
     # but we don't want this trt specific code to live in `truss.base` and we also don't
     # want to move `Accelerator` out of the truss config module.
-    from truss.base import truss_config
+    from truss.base import constants, truss_config
 
     if config.trt_llm:
         if config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER:

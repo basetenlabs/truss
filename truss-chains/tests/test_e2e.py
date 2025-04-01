@@ -33,12 +33,10 @@ def test_chain():
         with framework.ChainletImporter.import_target(
             chain_root, "ItestChain"
         ) as entrypoint:
-            service = deployment_client.push_debug_docker(
-                entrypoint, "integration-test"
-            )
-
-        url = service.run_remote_url.replace("host.docker.internal", "localhost")
+            service = deployment_client.push_debug_docker(entrypoint)
+        assert service is not None
         time.sleep(1.0)  # Wait for models to be ready.
+        url = service.run_remote_url.replace("host.docker.internal", "localhost")
 
         # Call without providing values for default arguments.
         response = requests.post(
@@ -136,7 +134,13 @@ async def test_chain_local():
             )
 
             # Convert the pydantic model to a dict for comparison
-            result_dict = (result[0], result[1], result[2], result[3].dict(), result[4])
+            result_dict = (
+                result[0],
+                result[1],
+                result[2],
+                result[3].model_dump(),
+                result[4],
+            )
 
             assert result_dict == expected
 
@@ -155,10 +159,9 @@ def test_streaming_chain():
         with framework.ChainletImporter.import_target(
             chain_root, "Consumer"
         ) as entrypoint:
-            service = deployment_client.push_debug_docker(
-                entrypoint, "integration-test-stream"
-            )
+            service = deployment_client.push_debug_docker(entrypoint)
             assert service is not None
+            time.sleep(1.0)  # Wait for models to be ready.
 
             response = service.run_remote({"cause_error": False})
             assert response.status_code == 200
@@ -209,9 +212,11 @@ def test_numpy_chain(mode):
         chain_root = TEST_ROOT / "numpy_and_binary" / "chain.py"
         with framework.ChainletImporter.import_target(chain_root, target) as entrypoint:
             service = deployment_client.push_debug_docker(
-                entrypoint, f"integration-test-numpy-{mode}"
+                entrypoint, f"numpy-chain-{mode}"
             )
             assert service is not None
+            time.sleep(1.0)  # Wait for models to be ready.
+
             response = service.run_remote({})
             assert response.status_code == 200
             print(response.json())
@@ -225,9 +230,7 @@ async def test_timeout():
         with framework.ChainletImporter.import_target(
             chain_root, "TimeoutChain"
         ) as entrypoint:
-            service = deployment_client.push_debug_docker(
-                entrypoint, "integration-test"
-            )
+            service = deployment_client.push_debug_docker(entrypoint)
 
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
         time.sleep(1.0)  # Wait for models to be ready.
@@ -293,11 +296,10 @@ def test_custom_health_checks_chain():
         with framework.ChainletImporter.import_target(
             chain_root, "CustomHealthChecks"
         ) as entrypoint:
-            service = deployment_client.push_debug_docker(
-                entrypoint, "integration-test-custom-health-checks"
-            )
-
+            service = deployment_client.push_debug_docker(entrypoint)
             assert service is not None
+            time.sleep(1.0)  # Wait for models to be ready.
+
             health_check_url = service.run_remote_url.split(":predict")[0]
 
             response = service.run_remote({"fail": False})
@@ -326,6 +328,9 @@ async def test_websocket_chain(anyio_backend):
         chain_root = TEST_ROOT / chain_name / f"{chain_name}.py"
         with framework.ChainletImporter.import_target(chain_root) as entrypoint:
             service = deployment_client.push_debug_docker(entrypoint, chain_name)
+            assert service is not None
+            time.sleep(1.0)  # Wait for models to be ready.
+
             # Get something like `ws://localhost:38605/v1/websocket`.
             url = service.run_remote_url.replace("http", "ws").replace(
                 "v1/models/model:predict", "v1/websocket"
@@ -348,9 +353,10 @@ async def test_http_status_propagation(anyio_backend):
         chain_root = TEST_ROOT / chain_name / f"{chain_name}.py"
         with framework.ChainletImporter.import_target(chain_root) as entrypoint:
             service = deployment_client.push_debug_docker(entrypoint, chain_name)
-            url = service.run_remote_url.replace("host.docker.internal", "localhost")
+            assert service is not None
             time.sleep(1.0)  # Wait for models to be ready.
 
+            url = service.run_remote_url.replace("host.docker.internal", "localhost")
             response = requests.post(url, json={"max_value": 12})
             assert response.status_code == 422
 

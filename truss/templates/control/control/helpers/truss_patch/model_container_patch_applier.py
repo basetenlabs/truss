@@ -17,16 +17,7 @@ from helpers.custom_types import (
 from helpers.errors import UnsupportedPatch
 from helpers.truss_patch.model_code_patch_applier import apply_code_patch
 
-# TODO(marius/TaT): remove try-except after TaT.
-try:
-    from truss.base.truss_config import ExternalData, ExternalDataItem, TrussConfig
-except ImportError:
-    from truss.truss_config import (  # type: ignore[no-redef]
-        ExternalData,
-        ExternalDataItem,
-        TrussConfig,
-    )
-
+from truss.base.truss_config import ExternalData, ExternalDataItem, TrussConfig
 from truss.util.download import download_external_data
 
 
@@ -176,7 +167,7 @@ class ModelContainerPatchApplier:
                 self._app_logger.debug(f"Deleting file {filepath}")
                 filepath.unlink()
         elif action == Action.ADD:
-            download_external_data(ExternalData(items=[item]), self._data_dir)
+            download_external_data(ExternalData([item]), self._data_dir)
         else:
             raise ValueError(f"Unknown patch action {action}")
 

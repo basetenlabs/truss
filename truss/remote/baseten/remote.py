@@ -277,7 +277,7 @@ class BasetenRemote(TrussRemote):
         for artifact in [entrypoint_artifact, *dependency_artifacts]:
             truss_handle = truss_build.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
-            assert model_name
+            assert model_name, "Per creation of artefacts should not be empty."
 
             push_data = self._prepare_push(
                 truss_handle=truss_handle,

@@ -5,7 +5,7 @@ import logging
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 from urllib.error import HTTPError
 
 import requests
@@ -33,12 +33,7 @@ from truss.base.constants import (
 )
 from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
-from truss.base.truss_config import (
-    BaseImage,
-    ExternalData,
-    ExternalDataItem,
-    TrussConfig,
-)
+from truss.base.truss_config import BaseImage, ExternalData, ExternalDataItem
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
@@ -224,7 +219,11 @@ class TrussHandle:
             return RunningContainer(container)
 
         try:
-            return _docker_run("all" if self._spec.config.resources.use_gpu else None)
+            return _docker_run(
+                "all"
+                if self._spec.config.resources.use_gpu  # type: ignore[truthy-function]  # Is computed field.
+                else None
+            )
         except DockerException:
             # The reason we'd wind up here is if the Truss needs
             # a GPU, but the host does not have one that can attach.
@@ -325,12 +324,12 @@ class TrussHandle:
 
             try:
                 container = _run_docker(
-                    "all" if self._spec.config.resources.use_gpu else None
+                    "all" if self._spec.config.resources.use_gpu else None  # type: ignore[truthy-function]  # Is computed field.
                 )
             except DockerException:
                 # This is in the case of testing where the Codespace doesn't have a GPU
                 # and we need to run it anyways
-                logger.warn("No GPU is available to docker. Running without a GPU.")
+                logger.warning("No GPU is available to docker. Running without a GPU.")
                 container = _run_docker(None)
 
             logger.info(
@@ -453,13 +452,11 @@ class TrussHandle:
         return image_builder.docker_build_command(build_dir)
 
     def add_python_requirement(self, python_requirement: str):
-        """Add a python requirement to truss model's config."""
         self._update_config(
             requirements=[*self._spec.config.requirements, python_requirement]
         )
 
     def remove_python_requirement(self, python_requirement: str):
-        """Remove a python requirement to truss model's config."""
         self._update_config(
             requirements=[
                 req
@@ -469,7 +466,6 @@ class TrussHandle:
         )
 
     def add_environment_variable(self, env_var_name: str, env_var_value: str):
-        """Add an environment variable to truss model's config."""
         if not env_var_value:
             logger.info("Environment value should not be empty or None!")
             return
@@ -482,7 +478,6 @@ class TrussHandle:
         )
 
     def add_secret(self, secret_name: str, default_secret_value: str = ""):
-        """Add a secret to truss model's config."""
         self._update_config(
             secrets={**self._spec.config.secrets, secret_name: default_secret_value}
         )
@@ -494,19 +489,18 @@ class TrussHandle:
         backend: Optional[str] = None,
         name: Optional[str] = None,
     ):
-        """Add a new external data item to the config."""
+        # todo: write tests for this
         item = ExternalDataItem(
             url=url,
             local_data_path=local_data_path,
             backend=backend or "http_public",
             name=name,
         )
-        current_data = self._spec.config.external_data or ExternalData(items=[])
-        updated_data = ExternalData(items=[*current_data.items, item])
+        current_data = self._spec.config.external_data or ExternalData([])
+        updated_data = ExternalData([*current_data.items, item])
         self._update_config(external_data=updated_data)
 
     def remove_all_external_data(self):
-        """Remove all external data items from the config."""
         self._update_config(external_data=None)
 
     def update_requirements(self, requirements: List[str]):
@@ -532,13 +526,11 @@ class TrussHandle:
             )
 
     def add_system_package(self, system_package: str):
-        """Add a system package requirement to truss model's config."""
         self._update_config(
             system_packages=[*self._spec.config.system_packages, system_package]
         )
 
     def remove_system_package(self, system_package: str):
-        """Remove a system package requirement from truss model's config."""
         self._update_config(
             system_packages=[
                 pkg
@@ -564,7 +556,6 @@ class TrussHandle:
         self._copy_files(file_dir_or_glob, self._spec.bundled_packages_dir)
 
     def add_external_package(self, external_dir_path: str):
-        """Add a new external package directory to the config."""
         self._update_config(
             external_package_dirs=[
                 *self._spec.config.external_package_dirs,
@@ -573,7 +564,6 @@ class TrussHandle:
         )
 
     def clear_external_packages(self):
-        """Clear all external package directories from the config."""
         self._update_config(external_package_dirs=[])
 
     def examples(self) -> List[Example]:
@@ -678,21 +668,7 @@ class TrussHandle:
             raise ValueError("No Container is running for truss!")
         return get_container_logs(containers[-1], follow, stream)
 
-    def enable_gpu(self):
-        """Enable gpu use for given model.
-
-        This is suggestive, model serving environment may still use cpu, e.g. if
-        the setup doesn't have access to a GPU.
-
-        Note that truss would typically use a larger docker base image when this
-        is enabled, for example to include the cuda libraries.
-        """
-        self._update_config(
-            resources=self._spec.config.resources.model_copy(update={"use_gpu": True})
-        )
-
     def set_base_image(self, image: str, python_executable_path: str):
-        """Set the base image for a given truss"""
         current = self._spec.config.base_image
         new_base_image = (
             current.model_copy(
@@ -752,7 +728,6 @@ class TrussHandle:
         return respj["result"]
 
     def update_python_version(self, python_version: str):
-        """Update the python version used by this truss config."""
         if not python_version.startswith("py"):
             # support 3.9 style versions
             version_parts = python_version.split(".")
@@ -793,7 +768,6 @@ class TrussHandle:
         return generate_readme(self._spec)
 
     def update_description(self, description: str):
-        """Update the description field of the Truss config."""
         self._update_config(description=description)
 
     def live_reload(self, enable: bool = True):
@@ -924,15 +898,8 @@ class TrussHandle:
         )
         return build_image_result
 
-    def _update_config(
-        self,
-        update_config_fn: Optional[Callable[[TrussConfig], TrussConfig]] = None,
-        **fields_to_update,
-    ):
-        if update_config_fn:
-            config = update_config_fn(self._spec.config)
-        else:
-            config = self._spec.config.model_copy(update=fields_to_update)
+    def _update_config(self, **fields_to_update):
+        config = self._spec.config.model_copy(update=fields_to_update)
         config.write_to_yaml_file(self._spec.config_path)
         self._spec = TrussSpec(self._truss_dir)  # Reload.
 

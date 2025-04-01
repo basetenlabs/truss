@@ -6,16 +6,14 @@ import pathlib
 import re
 import sys
 from pathlib import PurePosixPath
-from typing import Annotated, Any, ClassVar, Optional
+from typing import Annotated, Any, ClassVar, MutableMapping, Optional
 
 import pydantic
 import yaml
 from pydantic import json_schema
 from pydantic_core import core_schema
 
-from truss.base import custom_types, trt_llm_config
-from truss.base.constants import REGISTRY_BUILD_SECRET_PREFIX
-from truss.base.errors import ValidationError
+from truss.base import constants, custom_types, trt_llm_config
 from truss.util.requirements import parse_requirement_string
 
 logger = logging.getLogger(__name__)
@@ -26,7 +24,14 @@ DEFAULT_BUNDLED_PACKAGES_DIR = "packages"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
-DEFAULT_USE_GPU = False
+
+
+def _is_numeric(number_like: str) -> bool:
+    try:
+        float(number_like)
+        return True
+    except ValueError:
+        return False
 
 
 class Accelerator(str, enum.Enum):
@@ -45,7 +50,7 @@ class AcceleratorSpec(custom_types.ConfigModel):
     accelerator: Optional[Accelerator] = None
     count: int = pydantic.Field(default=1, ge=0)
 
-    def _to_string(self) -> Optional[str]:
+    def _to_string_spec(self) -> Optional[str]:
         if self.accelerator is None or self.count <= 0:
             return None
         elif self.count > 1:
@@ -88,45 +93,28 @@ class AcceleratorSpec(custom_types.ConfigModel):
             return handler(value)
         if isinstance(value, cls):
             return value
-        raise ValueError(
-            f"Expected string, dict, or AcceleratorSpec; got {type(value)}."
+        if value is None:
+            return cls()
+        raise TypeError(
+            f"Expected string, dict, None or AcceleratorSpec; got {type(value)}."
         )
 
     @classmethod
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: pydantic.GetCoreSchemaHandler
     ) -> core_schema.CoreSchema:
-        """
-        Defines how Pydantic should validate and serialize AcceleratorSpec.
-        Uses a wrap validator to handle string/dict/instance inputs and
-        a plain serializer to output the string format.
-        """
-        # Get the default schema Pydantic would generate for validation (handles dicts)
-        default_schema = handler(source_type)
-
-        # Define a schema using a wrap validator (_validate_input)
-        # This validator will try parsing strings and delegate dicts/instances back to Pydantic's default handling
-        validation_schema = core_schema.with_info_wrap_validator_function(
-            cls._validate_input, default_schema
+        schema = core_schema.with_info_wrap_validator_function(
+            cls._validate_input, handler(source_type)
         )
-
-        # Define the serialization logic (instance -> string)
-        serialization_schema = core_schema.plain_serializer_function_ser_schema(  # Correct function name
-            function=cls._to_string,
-            info_arg=False,
-            return_schema=core_schema.str_schema(),  # Use return_schema with a schema object
-            when_used="json-unless-none",
-        )
-
         return core_schema.json_or_python_schema(
-            # Use the custom validation logic for incoming JSON/Python data
-            json_schema=validation_schema,
-            python_schema=validation_schema,  # Same logic for Python dicts/values
-            # Apply the custom serialization logic when dumping the model
-            serialization=serialization_schema,
-            # Link back to the default schema for other Pydantic internals if needed
-            # (might not be strictly necessary with wrap validator but good practice)
-            # core_schema=default_schema # This might re-introduce recursion issues depending on exact Pydantic version/use. Often safer without it when using wrap.
+            json_schema=schema,
+            python_schema=schema,
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                function=cls._to_string_spec,
+                info_arg=False,
+                return_schema=core_schema.str_schema(),
+                when_used="json-unless-none",
+            ),
         )
 
     @classmethod
@@ -135,36 +123,22 @@ class AcceleratorSpec(custom_types.ConfigModel):
         core_schema_obj: core_schema.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
-        """
-        Overrides the JSON schema generation to represent this type as a string.
-        """
-        # Get the schema Pydantic would normally generate based on the core_schema
-        # (which includes our validation/serialization but might still resolve to an object internally)
         schema = handler(core_schema_obj)
-
-        # Override the type and add examples reflecting the string format
         schema.update(
             type="string",
             examples=["A100", "T4:2", "H100:8"],
-            description="Accelerator specification in 'TYPE' or 'TYPE:count' format.",  # Optional: Add description
+            description="Accelerator specification in 'TYPE' or 'TYPE:count' format.",
         )
-        # Remove properties/required if they were inferred from the object structure
         schema.pop("properties", None)
         schema.pop("required", None)
         return schema
 
 
 class ModelRepo(custom_types.ConfigModel):
-    repo_id: str
+    repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
     revision: Optional[str] = None
     allow_patterns: Optional[list[str]] = None
     ignore_patterns: Optional[list[str]] = None
-
-    @pydantic.model_validator(mode="after")
-    def _check_repo(self) -> "ModelRepo":
-        if not self.repo_id:
-            raise ValidationError("Repo ID  for Hugging Face model cannot be empty")
-        return self
 
 
 class ModelCache(pydantic.RootModel[list[ModelRepo]]):
@@ -215,28 +189,31 @@ class Build(custom_types.ConfigModel):
     arguments: dict[str, Any] = pydantic.Field(default_factory=dict)
     secret_to_path_mapping: dict[str, str] = pydantic.Field(default_factory=dict)
 
-    _secret_name_regex: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
+    _SECRET_NAME_REGEX: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
+    _MAX_SECRET_NAME_LENGTH: ClassVar[int] = 253
 
-    @staticmethod
-    def validate_secret_name(secret_name: str) -> None:
+    class Config:
+        protected_namespaces = ()  # Allow fields starting with `model_`.
+
+    @classmethod
+    def validate_secret_name(cls, secret_name: str) -> None:
         if not isinstance(secret_name, str) or not secret_name:
             raise ValueError(f"Invalid secret name `{secret_name}`")
-
-        if len(secret_name) > 253:
-            raise ValueError(f"Secret name `{secret_name}` is too long.")
-
+        if len(secret_name) > cls._MAX_SECRET_NAME_LENGTH:
+            raise ValueError(
+                f"Secret name `{secret_name}` must be shorter than {cls._MAX_SECRET_NAME_LENGTH}."
+            )
         if secret_name in {".", ".."}:
             raise ValueError(f"Secret name `{secret_name}` cannot be `{secret_name}`.")
 
-        # Mimic k8s sanitization
-        k8s_safe = re.sub("[^0-9a-zA-Z]+", "-", secret_name)
-        if secret_name != k8s_safe and not secret_name.startswith(
-            REGISTRY_BUILD_SECRET_PREFIX
-        ):
-            raise ValueError(
-                f"Secrets used in builds must follow Kubernetes object naming conventions. Name `{secret_name}` is not valid. "
-                f"Please use only alphanumeric characters and `-`."
-            )
+        if not cls._SECRET_NAME_REGEX.match(secret_name):
+            if not secret_name.startswith(constants.REGISTRY_BUILD_SECRET_PREFIX):
+                raise ValueError(
+                    f"Secrets used in builds must follow Kubernetes object naming "
+                    f"conventions. Name `{secret_name}` is not valid. Please comply "
+                    f"with the regex `{cls._SECRET_NAME_REGEX.pattern}` and do not start "
+                    f"with `{constants.REGISTRY_BUILD_SECRET_PREFIX}`."
+                )
 
     @pydantic.model_validator(mode="after")
     def _validate_secrets(self) -> "Build":
@@ -248,13 +225,12 @@ class Build(custom_types.ConfigModel):
 class Resources(custom_types.ConfigModel):
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
-    use_gpu: bool = DEFAULT_USE_GPU
     accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
     node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
 
-    _milli_cpu_regex: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
-    _memory_regex: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*([a-zA-Z]+)?$")
-    _memory_units: ClassVar[dict[str, int]] = {
+    _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
+    _MEMORY_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*([a-zA-Z]+)?$")
+    _MEMORY_UNITS: ClassVar[dict[str, int]] = {
         "k": 10**3,
         "M": 10**6,
         "G": 10**9,
@@ -269,46 +245,43 @@ class Resources(custom_types.ConfigModel):
         "Ei": 1024**6,
     }
 
+    @pydantic.computed_field(return_type=bool)
+    def use_gpu(self) -> bool:
+        return self.accelerator.accelerator is not None
+
     @property
     def memory_in_bytes(self) -> int:
-        match = self._memory_regex.search(self.memory)
+        if _is_numeric(self.memory):
+            return math.ceil(float(self.memory))
+
+        match = self._MEMORY_REGEX.search(self.memory)
         assert match
         unit = match.group(1)
-        return math.ceil(float(self.memory.strip(unit)) * self._memory_units[unit])
-
-    @pydantic.field_validator("accelerator", mode="before")
-    def _default_accelerator_if_none(cls, v: Any) -> AcceleratorSpec:
-        return AcceleratorSpec() if v is None else v
+        return math.ceil(float(self.memory.strip(unit)) * self._MEMORY_UNITS[unit])
 
     @pydantic.field_validator("cpu")
-    def validate_cpu(cls, v: str) -> str:
-        try:
-            float(v)
-            return v
-        except ValueError:
-            if not cls._milli_cpu_regex.fullmatch(v):
-                raise ValidationError(f"Invalid cpu specification {v}")
-        return v
+    def _validate_cpu(cls, cpu_spec: str) -> str:
+        if _is_numeric(cpu_spec):
+            return cpu_spec
+
+        if not cls._MILLI_CPU_REGEX.fullmatch(cpu_spec):
+            raise ValueError(f"Invalid cpu specification {cpu_spec}.")
+        return cpu_spec
 
     @pydantic.field_validator("memory")
-    def validate_memory(cls, v: str) -> str:
-        try:
-            float(v)
-            return v
-        except ValueError:
-            match = cls._memory_regex.fullmatch(v)
-            if not match:
-                raise ValidationError(f"Invalid memory specification {v}")
-            unit = match.group(1)
-            if unit not in cls._memory_units:
-                raise ValidationError(f"Invalid memory unit {unit} in {v}")
-        return v
+    def _validate_memory(cls, mem_spec: str) -> str:
+        if _is_numeric(mem_spec):
+            return mem_spec
 
-    @pydantic.model_validator(mode="after")
-    def _sync_gpu_flag(self) -> "Resources":
-        if self.accelerator.accelerator is not None:
-            self.use_gpu = True
-        return self
+        match = cls._MEMORY_REGEX.fullmatch(mem_spec)
+        if not match:
+            raise ValueError(f"Invalid memory specification {mem_spec}")
+
+        unit = match.group(1)
+        if unit not in cls._MEMORY_UNITS:
+            raise ValueError(f"Invalid memory unit {unit} in {mem_spec}")
+
+        return mem_spec
 
     @pydantic.model_serializer(mode="wrap")
     def _serialize(
@@ -316,6 +289,7 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
+        """Custom omission of `node_count` if at default."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
@@ -329,41 +303,39 @@ class ExternalDataItem(custom_types.ConfigModel):
     to avoid conflicts. This will get precedence if there's overlap.
     """
 
-    # Url to download the data from.
-    # Currently only files are allowed.
-    url: str
-    # This should be path relative to data directory. This is where the remote
-    # file will be downloaded.
-    local_data_path: str
-    # This should be path relative to data directory. This is where the remote
-    # file will be downloaded.
-    backend: str = "http_public"
-    # This should be path relative to data directory. This is where the remote
-    # file will be downloaded.
-    name: Optional[str] = None
-
-    @pydantic.model_validator(mode="after")
-    def _validate_paths(self) -> "ExternalDataItem":
-        if not self.url:
-            raise ValueError("URL of an external data item cannot be empty")
-        if not self.local_data_path:
-            raise ValueError(
-                "The `local_data_path` field of an external data item cannot be empty"
-            )
-        return self
+    url: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ...,
+        description="URL to download the data from. Currently only files are allowed.",
+    )
+    local_data_path: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
+        pydantic.Field(
+            ...,
+            description="Path relative to the data directory where the remote file will be downloaded.",
+        )
+    )
+    backend: str = pydantic.Field(
+        default="http_public",
+        description="Download backend to use. Defaults to 'http_public'.",
+    )
+    name: Optional[str] = pydantic.Field(
+        default=None,
+        description="Optional name for the download. Path relative to data directory.",
+    )
 
 
-class ExternalData(custom_types.ConfigModel):
+class ExternalData(pydantic.RootModel[list[ExternalDataItem]]):
     """[Experimental] External data is data that is not contained in the Truss folder.
 
-    Typically this will be data stored remotely. This data is guaranteed to be made
+    Typically, this will be data stored remotely. This data is guaranteed to be made
     available under the data directory of the truss."""
 
-    items: list[ExternalDataItem]
+    @property
+    def items(self) -> list[ExternalDataItem]:
+        return self.root
 
 
 class DockerAuthType(str, enum.Enum):
-    """This enum will express all of the types of registry
+    """This enum will express all the types of registry
     authentication we support."""
 
     GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
@@ -378,7 +350,6 @@ class DockerAuthSettings(custom_types.ConfigModel):
     registry: Optional[str] = ""
 
     @pydantic.field_validator("auth_method", mode="before")
-    @classmethod
     def _normalize_auth_method(cls, v: str) -> str:
         return v.upper() if isinstance(v, str) else v
 
@@ -391,7 +362,7 @@ class BaseImage(custom_types.ConfigModel):
     @pydantic.field_validator("python_executable_path")
     def _validate_path(cls, v: str) -> str:
         if v and not PurePosixPath(v).is_absolute():
-            raise ValidationError(
+            raise ValueError(
                 f"Invalid relative python executable path {v}. Provide an absolute path"
             )
         return v
@@ -414,40 +385,39 @@ SUPPORTED_PYTHON_VERSIONS = {
 
 
 class TrussConfig(custom_types.ConfigModel):
-    _MODEL_NAME_RE: ClassVar[re.Pattern] = re.compile(r"^[a-zA-Z0-9_-]+-[0-9a-f]{8}$")
-
-    model_framework: str = "custom"
-    model_type: str = "Model"
     model_name: Optional[str] = None
-    model_module_dir: str = DEFAULT_MODEL_MODULE_DIR
-    model_class_filename: str = "model.py"
-    model_class_name: str = "Model"
+    model_metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
+    description: Optional[str] = None
+    examples_filename: str = "examples.yaml"
 
     data_dir: str = DEFAULT_DATA_DIRECTORY
     external_data: Optional[ExternalData] = None
+    external_package_dirs: list[str] = pydantic.Field(default_factory=list)
 
-    input_type: str = "Any"
-    model_metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
+    python_version: str = "py39"
+    base_image: Optional[BaseImage] = None
     requirements_file: Optional[str] = None
     requirements: list[str] = pydantic.Field(default_factory=list)
     system_packages: list[str] = pydantic.Field(default_factory=list)
     environment_variables: dict[str, str] = pydantic.Field(default_factory=dict)
+    secrets: MutableMapping[str, Optional[str]] = pydantic.Field(default_factory=dict)
+
     resources: Resources = pydantic.Field(default_factory=Resources)
     runtime: Runtime = pydantic.Field(default_factory=Runtime)
     build: Build = pydantic.Field(default_factory=Build)
-    python_version: str = "py39"
-    examples_filename: str = "examples.yaml"
-    secrets: dict[str, str] = pydantic.Field(default_factory=dict)
-    description: Optional[str] = None
-    bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
-    external_package_dirs: list[str] = pydantic.Field(default_factory=list)
-    base_image: Optional[BaseImage] = None
+    build_commands: list[str] = pydantic.Field(default_factory=list)
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
-    build_commands: list[str] = pydantic.Field(default_factory=list)
 
-    # Internal
+    # Internal / Legacy.
+    input_type: str = "Any"
+    model_framework: str = "custom"
+    model_type: str = "Model"
+    model_module_dir: str = DEFAULT_MODEL_MODULE_DIR
+    model_class_filename: str = "model.py"
+    model_class_name: str = "Model"
+    bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
     use_local_src: bool = False
     cache_internal: CacheInternal = pydantic.Field(
         default_factory=lambda: CacheInternal([])
@@ -456,43 +426,8 @@ class TrussConfig(custom_types.ConfigModel):
     apply_library_patches: bool = True
     spec_version: str = "2.0"
 
-    def to_dict(self, verbose: bool = False) -> dict:
-        data = super().to_dict(verbose)
-        # Always include.
-        data["resources"] = self.resources.to_dict(verbose=True)
-        data["python_version"] = self.python_version
-        return data
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "TrussConfig":
-        if "hf_cache" in data and "model_cache" not in data:
-            data["model_cache"] = data.pop("hf_cache") or []
-        data["environment_variables"] = {
-            k: str(v).lower() if isinstance(v, bool) else str(v)
-            for k, v in data.get("environment_variables", {}).items()
-        }
-        return cls.model_validate(data)
-
-    @classmethod
-    def from_yaml(cls, path: pathlib.Path) -> "TrussConfig":
-        if not os.path.isfile(path):
-            raise ValueError(f"Expected a truss configuration file at {path}")
-        with path.open() as f:
-            raw_data = yaml.safe_load(f) or {}
-            if "hf_cache" in raw_data:
-                logger.warning(
-                    """Warning: `hf_cache` is deprecated in favor of `model_cache`.
-                    Everything will run as before, but if you are pulling weights from S3 or GCS, they will be
-                    stored at /app/model_cache instead of /app/hf_cache as before."""
-                )
-        return cls.from_dict(raw_data)
-
-    def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
-        with path.open("w") as config_file:
-            yaml.safe_dump(self.to_dict(verbose=verbose), config_file)
-
-    def clone(self) -> "TrussConfig":
-        return self.from_dict(self.to_dict())
+    class Config:
+        protected_namespaces = ()  # Allow fields starting with `model_`.
 
     @property
     def canonical_python_version(self) -> str:
@@ -507,6 +442,45 @@ class TrussConfig(custom_types.ConfigModel):
                 return [self.trt_llm.build, self.trt_llm.build.speculator.build]
             return [self.trt_llm.build]
         return []
+
+    def to_dict(self, verbose: bool = True) -> dict:
+        data = super().to_dict(verbose)
+        # Always include.
+        data["resources"] = self.resources.to_dict(verbose=True)
+        data["python_version"] = self.python_version
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TrussConfig":
+        if "hf_cache" in data:
+            logger.warning(
+                "Warning: `hf_cache` is deprecated in favor of `model_cache`. "
+                "Everything will run as before, but if you are pulling weights from S3 "
+                "or GCS, they will be stored at /app/model_cache instead of "
+                "/app/hf_cache as before."
+            )
+        if "hf_cache" in data and "model_cache" not in data:
+            data["model_cache"] = data.pop("hf_cache") or []
+        data["environment_variables"] = {
+            k: str(v).lower() if isinstance(v, bool) else str(v)
+            for k, v in data.get("environment_variables", {}).items()
+        }
+        return cls.model_validate(data)
+
+    @classmethod
+    def from_yaml(cls, path: pathlib.Path) -> "TrussConfig":
+        if not os.path.isfile(path):
+            raise ValueError(f"Expected a truss configuration file at {path}")
+        with path.open() as f:
+            raw_data = yaml.safe_load(f) or {}
+        return cls.from_dict(raw_data)
+
+    def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
+        with path.open("w") as config_file:
+            yaml.safe_dump(self.to_dict(verbose=verbose), config_file)
+
+    def clone(self) -> "TrussConfig":
+        return self.from_dict(self.to_dict())
 
     def load_requirements_from_file(self, truss_dir: pathlib.Path) -> list[str]:
         if self.requirements_file:
@@ -531,17 +505,6 @@ class TrussConfig(custom_types.ConfigModel):
         config = TrussConfig.from_yaml(yaml_path)
         return config.load_requirements_from_file(yaml_path.parent)
 
-    @pydantic.field_validator("model_name")
-    def validate_model_name(cls, model_name: str) -> str:
-        if not model_name:
-            return model_name
-
-        if not bool(cls._MODEL_NAME_RE.match(model_name)):
-            raise ValueError(
-                f"Model name `{model_name}` must match regex {cls._MODEL_NAME_RE}."
-            )
-        return model_name
-
     @pydantic.field_validator("python_version")
     def _validate_python_version(cls, v: str) -> str:
         valid = ["py38", "py39", "py310", "py311"]
@@ -558,8 +521,8 @@ class TrussConfig(custom_types.ConfigModel):
         return self
 
     @pydantic.field_validator("cache_internal", mode="before")
-    def _default_cache_internal_if_none(cls, v: Any) -> AcceleratorSpec:
-        return CacheInternal([]) if v is None else v  # type: ignore[return-value]
+    def _default_cache_internal_if_none(cls, v: Any) -> CacheInternal:
+        return CacheInternal([]) if v is None else v
 
     @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
@@ -575,14 +538,6 @@ class TrussConfig(custom_types.ConfigModel):
             return None
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
-
-
-def _infer_python_version() -> str:
-    return f"py{sys.version_info.major}{sys.version_info.minor}"
-
-
-def map_local_to_supported_python_version() -> str:
-    return _map_to_supported_python_version(_infer_python_version())
 
 
 def _map_to_supported_python_version(python_version: str) -> str:
@@ -614,3 +569,9 @@ def _map_to_supported_python_version(python_version: str) -> str:
         )
 
     return python_version
+
+
+def map_local_to_supported_python_version() -> str:
+    return _map_to_supported_python_version(
+        f"py{sys.version_info.major}{sys.version_info.minor}"
+    )

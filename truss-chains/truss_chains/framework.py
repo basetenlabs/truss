@@ -12,6 +12,7 @@ import logging
 import os
 import pathlib
 import pprint
+import re
 import sys
 import types
 import warnings
@@ -38,8 +39,7 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss.base import trt_llm_config
-from truss.base import custom_types
+from truss.base import custom_types, trt_llm_config
 from truss_chains import private_types, public_types, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
@@ -58,6 +58,7 @@ _DUMMY_ENDPOINT_DESCRIPTOR = private_types.EndpointAPIDescriptor(
     input_args=[], output_types=[], is_async=False, is_streaming=False
 )
 
+_DISPLAY_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 ChainletT = TypeVar("ChainletT", bound=private_types.ABCChainlet)
 _P = ParamSpec("_P")
@@ -825,6 +826,20 @@ def _validate_config_class_variable(
         )
 
 
+def _validate_display_name(
+    cls: Type[private_types.ABCChainlet], location: _ErrorLocation
+) -> None:
+    if cls.entity_type == private_types.EntityType.MODEL:
+        return  # Model can have any name.
+
+    if not bool(_DISPLAY_NAME_RE.match(cls.display_name)):
+        _collect_error(
+            f"Chainlet display name `{cls.display_name}` must match `{_DISPLAY_NAME_RE.pattern}` regex.",
+            _ErrorKind.INVALID_CONFIG_ERROR,
+            location,
+        )
+
+
 def _validate_engine_builder_fields(
     remote_config: public_types.RemoteConfig, location: _ErrorLocation
 ) -> None:
@@ -939,6 +954,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
 
+    _validate_display_name(cls, location)
     _validate_config_class_variable(
         cls, location, private_types.REMOTE_CONFIG_NAME, public_types.RemoteConfig
     )

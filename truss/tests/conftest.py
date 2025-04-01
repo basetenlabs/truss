@@ -310,7 +310,6 @@ def custom_model_external_data_access_tuple_fixture_gpu(tmp_path: Path):
             h.add_external_data_item(
                 url=url_with_get_params, local_data_path="test.txt"
             )
-            h.enable_gpu()
 
         yield (
             _custom_model_from_code(
@@ -375,7 +374,6 @@ def no_params_init_custom_model(tmp_path):
 def custom_model_trt_llm(tmp_path):
     def modify_handle(h: TrussHandle):
         with _modify_yaml(h.spec.config_path) as content:
-            h.enable_gpu()
             content["trt_llm"] = {
                 "build": {
                     "base_model": "llama",
@@ -393,7 +391,6 @@ def custom_model_trt_llm(tmp_path):
                     "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT.value,
                 },
             }
-
             content["resources"] = {"accelerator": "H100:1"}
 
     yield _custom_model_from_code(
@@ -530,7 +527,6 @@ def custom_model_truss_dir_with_pre_and_post_description(tmp_path):
 def custom_model_truss_dir_for_gpu(tmp_path):
     dir_path = tmp_path / "custom_truss"
     th = TrussHandle(init_directory(dir_path))
-    th.enable_gpu()
     th.spec.model_class_filepath.write_text(CUSTOM_MODEL_CODE_FOR_GPU_TESTING)
     yield dir_path
 
