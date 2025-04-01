@@ -570,6 +570,24 @@ class BasetenApi:
         resp_json = self._rest_api_client.get(f"v1/training_projects/{project_id}/jobs")
         return resp_json
 
+    def search_training_jobs(
+        self,
+        statuses: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        order_by: List[dict[str, str]] = [{"field": "created_at", "order": "desc"}],
+    ):
+        resp_json = self._rest_api_client.post(
+            "v1/training_jobs/search",
+            body={
+                "statuses": statuses,
+                "project_id": project_id,
+                "job_id": job_id,
+                "order_by": order_by,
+            },
+        )
+        return resp_json["training_jobs"]
+
     def get_training_job(self, project_id: str, job_id: str):
         # training_job, training_project
         resp_json = self._rest_api_client.get(
