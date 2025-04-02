@@ -156,6 +156,7 @@ class ModelRepo:
             "allow_patterns": self.allow_patterns,
             "ignore_patterns": self.ignore_patterns,
             "volume_folder": self.volume_folder,
+            "use_volume": self.use_volume,
         }
 
         if not verbose:
