@@ -1,7 +1,7 @@
 environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
-model_name: test
+model_name: test_model_cache_v1
 python_version: py39
 requirements:
   - transformers
