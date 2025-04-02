@@ -17,6 +17,7 @@ from truss.base.constants import (
 )
 from truss.base.truss_config import ModelCache, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
+    HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_model_cache_v1,
 )
@@ -73,6 +74,37 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
 
 def flatten_cached_files(local_cache_files):
     return [file.source for file in local_cache_files]
+
+
+def test_correct_hf_files_accessed_for_caching():
+    model = "openai/whisper-small"
+    config = TrussConfig(
+        python_version="py39", model_cache=ModelCache.from_list([dict(repo_id=model)])
+    )
+
+    with TemporaryDirectory() as tmp_dir:
+        truss_path = Path(tmp_dir)
+        build_path = truss_path / "build"
+        build_path.mkdir(parents=True, exist_ok=True)
+
+        hf_path = Path("root/.cache/huggingface/hub")
+
+        model_files, files_to_cache = get_files_to_model_cache_v1(
+            config, truss_path, build_path
+        )
+        files_to_cache = flatten_cached_files(files_to_cache)
+        assert str(hf_path / "version.txt") in files_to_cache
+
+        blobs = [
+            blob
+            for blob in files_to_cache
+            if blob.startswith(f"{hf_path}/models--openai--whisper-small/blobs/")
+        ]
+        assert len(blobs) >= 1
+
+        files = model_files[model]["files"]
+        assert "model.safetensors" in files
+        assert "tokenizer_config.json" in files
 
 
 @patch("truss.contexts.image_builder.serving_image_builder.GCSCache.list_files")
@@ -250,6 +282,22 @@ def test_test_truss_server_model_cache_v2(test_data_path):
 
 
 def test_model_cache_dockerfile(test_data_path):
+    truss_dir = test_data_path / "test_truss_server_caching_truss"
+    tr = TrussHandle(truss_dir)
+
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(tr.spec.truss_dir)
+
+    secret_mount = f"RUN --mount=type=secret,id={HF_ACCESS_TOKEN_FILE_NAME}"
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path, use_hf_secret=True)
+        with open(tmp_path / "Dockerfile", "r") as f:
+            gen_docker_file = f.read()
+            assert secret_mount in gen_docker_file
+
+
+def test_model_cache_dockerfile_v2(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v2"
     tr = TrussHandle(truss_dir)
     # assert tr.spec.config.model_cache.is_v2
