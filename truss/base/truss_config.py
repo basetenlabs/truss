@@ -119,7 +119,8 @@ class ModelRepo:
     revision: Optional[str] = None
     allow_patterns: Optional[List[str]] = None
     ignore_patterns: Optional[List[str]] = None
-    runtime_folder: str = ""
+    volume_folder: str = ""
+    use_volume: bool = False
 
     @staticmethod
     def from_dict(d):
@@ -130,21 +131,21 @@ class ModelRepo:
 
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
-        runtime_folder = d.get("runtime_folder", repo_id.lower())
+        volume_folder = d.get("volume_folder", repo_id.lower())
         for char in {"/", ":", ".", "@", ",", "-", " ", "\\"}:
-            runtime_folder = runtime_folder.replace(char, "_")
+            volume_folder = volume_folder.replace(char, "_")
 
         return ModelRepo(
             repo_id=repo_id,
             revision=revision,
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_pattenrs,
-            runtime_folder=runtime_folder,
+            volume_folder=volume_folder,
         )
 
     @property
     def runtime_path(self) -> Path:
-        return MODEL_CACHE_PATH / self.runtime_folder
+        return MODEL_CACHE_PATH / self.volume_folder
 
     def to_dict(self, verbose=False):
         data = {
@@ -152,7 +153,7 @@ class ModelRepo:
             "revision": self.revision,
             "allow_patterns": self.allow_patterns,
             "ignore_patterns": self.ignore_patterns,
-            "runtime_folder": self.runtime_folder,
+            "volume_folder": self.volume_folder,
         }
 
         if not verbose:
@@ -173,20 +174,30 @@ class ModelCache:
     def to_list(self, verbose=False) -> List[Dict[str, str]]:
         return [model.to_dict(verbose=verbose) for model in self.models]
 
-
-@dataclass
-class ModelCacheB10FS(ModelCache):
     @property
-    def check_v2(self) -> bool:
-        has_models = len(self.models) > 0
-        if any(
-            (model.repo_id.startswith("gs://") or model.repo_id.startswith("s3://"))
-            for model in self.models
+    def is_v1(self) -> bool:
+        self._check_volume_consistent()
+        return len(self.models) >= 1 and all(
+            model.use_volume is False for model in self.models
+        )
+
+    @property
+    def is_v2(self) -> bool:
+        self._check_volume_consistent()
+        return len(self.models) >= 1 and any(
+            model.use_volume is True for model in self.models
+        )
+
+    def _check_volume_consistent(self):
+        """Check if all models have the same volume folder."""
+        if len(self.models) == 0:
+            return
+        if not all(
+            model.volume_folder == self.models[0].volume_folder for model in self.models
         ):
             raise ValidationError(
-                "Model cache v2 does not support GCS or S3 models. Please use model cache v1."
+                "All models in the `model_cache` must either use `use_volume=True` or `use_volume=False`."
             )
-        return has_models
 
 
 @dataclass
@@ -652,7 +663,6 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
-    model_cache_v2: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
     use_local_src: bool = False
@@ -717,10 +727,6 @@ class TrussConfig:
             model_cache=transform_optional(
                 d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
-            ),
-            model_cache_v2=transform_optional(
-                d.get("model_cache_v2") or [],  # type: ignore
-                ModelCacheB10FS.from_list,
             ),
             cache_internal=transform_optional(
                 d.get("cache_internal") or [],  # type: ignore
@@ -947,10 +953,6 @@ def obj_to_dict(obj, verbose: bool = False):
                     field_curr_value, lambda data: data.to_list()
                 )
             elif isinstance(field_curr_value, ModelCache):
-                d["model_cache"] = transform_optional(
-                    field_curr_value, lambda data: data.to_list(verbose=verbose)
-                )
-            elif isinstance(field_curr_value, ModelCacheB10FS):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )

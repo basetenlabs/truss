@@ -19,7 +19,6 @@ from truss.base.truss_config import (
     DockerAuthSettings,
     DockerAuthType,
     ModelCache,
-    ModelCacheB10FS,
     ModelRepo,
     Resources,
     TrussConfig,
@@ -249,30 +248,16 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache_v2=ModelCache.from_list([dict(repo_id="test/model")]),
+        model_cache=ModelCache.from_list([dict(repo_id="test/model")]),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model", "runtime_folder": "test_model"}
+        {"repo_id": "test/model", "volume_folder": "test_model"}
     ]
 
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
-
-
-def test_huggingface_cache_single_model_non_default_revision_v2():
-    config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-        model_cache_v2=ModelCacheB10FS.from_list(
-            [dict(repo_id="test/model", revision="not-main")]
-        ),
-    )
-
-    assert (
-        config.to_dict(verbose=False)["model_cache_v2"][0].get("revision") == "not-main"
-    )
 
 
 def test_huggingface_cache_single_model_non_default_revision_v1():
@@ -298,8 +283,8 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1", "runtime_folder": "test_model1"},
-        {"repo_id": "test/model2", "runtime_folder": "test_model2"},
+        {"repo_id": "test/model1", "volume_folder": "test_model1"},
+        {"repo_id": "test/model2", "volume_folder": "test_model2"},
     ]
 
     assert new_config == config.to_dict(verbose=False)
@@ -324,11 +309,11 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1", "revision": "main", "runtime_folder": "test_model1"},
+        {"repo_id": "test/model1", "revision": "main", "volume_folder": "test_model1"},
         {
             "repo_id": "test/model2",
             "revision": "not-main2",
-            "runtime_folder": "test_model2",
+            "volume_folder": "test_model2",
         },
     ]
 

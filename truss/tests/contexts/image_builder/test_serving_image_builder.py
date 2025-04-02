@@ -18,7 +18,7 @@ from truss.base.constants import (
 from truss.base.truss_config import ModelCache, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
-    get_files_to_cache_v1,
+    get_files_to_model_cache_v1,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.truss_handle import TrussHandle
@@ -92,7 +92,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache_v1(
+        model_files, files_to_cache = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
@@ -127,7 +127,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache_v1(
+        model_files, files_to_cache = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
@@ -162,7 +162,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache_v1(
+        model_files, files_to_cache = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
@@ -201,7 +201,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache_v1(
+        model_files, files_to_cache = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
