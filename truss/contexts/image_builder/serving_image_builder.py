@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -537,10 +536,10 @@ class ServingImageBuilder(ImageBuilder):
         cached_files = []
         if config.model_cache.is_v1:
             # bakes into the image
-            logging.warning(
-                "model_cache from gs:// or s3:// is deprecated, and will be removed in the future."
-                "Please use huggingface.co repo_id only, which uses a more performant mechanism to cache models."
-            )
+            # logging.warning(
+            #     "model_cache from gs:// or s3:// is deprecated, and will be removed in the future."
+            #     "Please use huggingface.co repo_id only, which uses a more performant mechanism to cache models."
+            # )
             model_files, cached_files = get_files_to_model_cache_v1(
                 config, truss_dir, build_dir
             )

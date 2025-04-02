@@ -132,6 +132,7 @@ class ModelRepo:
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
         volume_folder = d.get("volume_folder", repo_id.lower())
+        use_volume = d.get("use_volume", False)
         for char in {"/", ":", ".", "@", ",", "-", " ", "\\"}:
             volume_folder = volume_folder.replace(char, "_")
 
@@ -141,6 +142,7 @@ class ModelRepo:
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_pattenrs,
             volume_folder=volume_folder,
+            use_volume=use_volume,
         )
 
     @property
