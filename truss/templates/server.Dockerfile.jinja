@@ -1,4 +1,4 @@
-{%- if model_cache %}
+{%- if model_cache_v1 %}
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %}
 
@@ -53,7 +53,7 @@ RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /ro
 
 
 {% block app_copy %}
-{%- if model_cache %}
+{%- if model_cache_v1 %}
 # Copy data before code for better caching
     {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}

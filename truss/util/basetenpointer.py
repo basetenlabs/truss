@@ -79,7 +79,7 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
     """
     Convert a ModelCache object to a BasetenPointer object.
     """
-    assert cache is not None, "ModelCache cannot be None"
+    assert cache.is_v2, "ModelCache is not v2"
 
     basetenpointers: list[BasetenPointer] = []
     # validate all models have a valid revision:

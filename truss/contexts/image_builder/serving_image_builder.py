@@ -727,7 +727,7 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
             credentials_to_cache=get_credentials_to_cache(data_dir),
-            model_cache=config.model_cache.is_v1,
+            model_cache_v1=config.model_cache.is_v1,
             model_cache_v2=config.model_cache.is_v2,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
