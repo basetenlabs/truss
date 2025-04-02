@@ -282,7 +282,7 @@ def test_test_truss_server_model_cache_v2(test_data_path):
 
 
 def test_model_cache_dockerfile(test_data_path):
-    truss_dir = test_data_path / "test_truss_server_caching_truss"
+    truss_dir = test_data_path / "test_truss_server_model_cache_v1"
     tr = TrussHandle(truss_dir)
 
     builder_context = ServingImageBuilderContext
