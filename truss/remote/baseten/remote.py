@@ -210,6 +210,7 @@ class BasetenRemote(TrussRemote):
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
+        preserve_env_instance_type: bool = False,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -246,6 +247,7 @@ class BasetenRemote(TrussRemote):
             origin=push_data.origin,
             environment=push_data.environment,
             truss_user_env=truss_user_env,
+            preserve_env_instance_type=preserve_env_instance_type,
         )
 
         return BasetenService(

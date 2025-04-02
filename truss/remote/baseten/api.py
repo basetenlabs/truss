@@ -177,6 +177,7 @@ class BasetenApi:
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
+        preserve_env_instance_type: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -187,6 +188,7 @@ class BasetenApi:
                     semver_bump: "{semver_bump}"
                     truss_user_env: $trussUserEnv
                     scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"}
+                    preserve_env_instance_type: {"true" if preserve_env_instance_type else "false"}
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                 ) {{
