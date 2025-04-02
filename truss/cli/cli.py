@@ -32,6 +32,7 @@ from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.train import display_training_jobs, get_args_for_logs, get_args_for_stop
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -931,12 +932,14 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option("--project-id", type=str, required=True, help="Project ID.")
-@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
 @log_level_option
 @error_handling
-def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool):
+def get_job_logs(
+    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+):
     """Fetch logs for a training job"""
 
     if not remote:
@@ -945,6 +948,7 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
 
     if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
@@ -959,12 +963,12 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, tail: bool
 
 
 @train.command(name="stop")
-@click.option("--project-id", type=str, required=True, help="Project ID.")
-@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
-def stop_job(project_id: str, job_id: str, remote: Optional[str]):
+def stop_job(project_id: Optional[str], job_id: Optional[str], remote: Optional[str]):
     """Stop a training job"""
 
     if not remote:
@@ -973,6 +977,8 @@ def stop_job(project_id: str, job_id: str, remote: Optional[str]):
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id, job_id = get_args_for_stop(console, remote_provider, project_id, job_id)
+
     remote_provider.api.stop_training_job(project_id, job_id)
     console.print("Training job stopped successfully.", style="green")
 
@@ -1007,13 +1013,11 @@ def view_training(
     if project_id:
         if job_id:
             job_response = remote_provider.api.get_training_job(project_id, job_id)
-            display_training_jobs(
-                job_response["training_project"], [job_response["training_job"]]
-            )
+            display_training_jobs(console, [job_response["training_job"]])
         else:
             jobs_response = remote_provider.api.list_training_jobs(project_id)
             jobs = jobs_response["training_jobs"]
-            display_training_jobs(jobs_response["training_project"], jobs)
+            display_training_jobs(console, jobs)
 
     else:
         projects = remote_provider.api.list_training_projects()
@@ -1031,41 +1035,16 @@ def view_training(
         table.add_column("Latest Job ID")
 
         for project in projects:
+            latest_job = project.get("latest_job") or {}
             table.add_row(
                 project["id"],
                 project["name"],
                 project["created_at"],
                 project["updated_at"],
-                project.get("latest_job", {}).get("id", ""),
+                latest_job.get("id", ""),
             )
 
         console.print(table)
-
-
-def display_training_jobs(project, jobs):
-    table = rich.table.Table(
-        show_header=True,
-        header_style="bold magenta",
-        title="Training Job Details",
-        box=rich.table.box.ROUNDED,
-        border_style="blue",
-    )
-    table.add_column("Project ID/Name", style="cyan")
-    table.add_column("Job ID", style="cyan")
-    table.add_column("Status", style="white")
-    table.add_column("Instance Type", style="white")
-    table.add_column("Created At", style="white")
-    table.add_column("Updated At", style="white")
-    for job in jobs:
-        table.add_row(
-            f"{project['id']} / {project['name']}",
-            job["id"],
-            job["current_status"],
-            job["instance_type"]["name"],
-            job["created_at"],
-            job["updated_at"],
-        )
-    console.print(table)
 
 
 # End Training Stuff #####################################################################

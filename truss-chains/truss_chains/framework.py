@@ -38,8 +38,7 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss.base import truss_config
-from truss.shared import types as shared_types
+from truss.base import custom_types, truss_config
 from truss_chains import private_types, public_types, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
@@ -74,7 +73,7 @@ class _ErrorKind(str, enum.Enum):
     INVALID_CONFIG_ERROR = enum.auto()
 
 
-class _ErrorLocation(shared_types.SafeModel):
+class _ErrorLocation(custom_types.SafeModel):
     src_path: str
     line: Optional[int] = None
     chainlet_name: Optional[str] = None
@@ -91,7 +90,7 @@ class _ErrorLocation(shared_types.SafeModel):
         return value
 
 
-class _ValidationError(shared_types.SafeModel):
+class _ValidationError(custom_types.SafeModel):
     msg: str
     kind: _ErrorKind
     location: _ErrorLocation

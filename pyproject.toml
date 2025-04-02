@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.75rc002"
+version = "0.9.76rc002"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -74,7 +74,7 @@ truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup
 # "When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
 python = ">=3.9,<3.13"
 huggingface_hub = ">=0.25.0"
-pydantic = ">=1.10.0"  # We cannot upgrade to v2, due to customer constraints.
+pydantic = ">=2.10.0"
 PyYAML = ">=6.0"
 single-source = "^0.3.0"
 # "non-base" dependencies.
