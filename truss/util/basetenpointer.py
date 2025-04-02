@@ -108,7 +108,9 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
                 print("ReadTimeout Error: ", e)
                 time.sleep(5)
                 exception = e
-        if isinstance(exception, Exception):
+        else:
+            # if we get here, we have exhausted the retries
+            assert exception is not None, "ReadTimeout Error: " + str(exception)
             raise exception
         # convert the metadata to b10 pointer format
         b10_pointer_list = [
