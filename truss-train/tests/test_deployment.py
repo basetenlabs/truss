@@ -29,10 +29,7 @@ from truss_train.definitions import Compute, Image, Runtime, TrainingJob
     ],
 )
 def test_prepare_push(
-    get_blob_credentials_mock,
-    multipart_upload_boto3_mock,
-    compute,
-    enable_cache,
+    get_blob_credentials_mock, multipart_upload_boto3_mock, compute, enable_cache
 ):
     mock_api = mock.Mock()
     mock_api.get_blob_credentials.return_value = {
