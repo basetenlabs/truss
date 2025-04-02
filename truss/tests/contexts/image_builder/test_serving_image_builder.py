@@ -278,7 +278,7 @@ def test_test_truss_server_model_cache_v2(test_data_path):
             local_port=8090, detach=True, wait_for_server_ready=True, network="host"
         )
         time.sleep(15)
-        assert "/app/model_cache/model.safetensors" not in container.logs()
+        assert "truss-transfer" in container.logs()
 
 
 def test_model_cache_dockerfile(test_data_path):
@@ -296,6 +296,8 @@ def test_model_cache_dockerfile(test_data_path):
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
             assert secret_mount in gen_docker_file
+            assert "cache_warmer.py" in gen_docker_file
+            assert "bptr-manifest" not in gen_docker_file
 
 
 def test_model_cache_dockerfile_v2(test_data_path):
@@ -356,6 +358,7 @@ def test_model_cache_dockerfile_v2(test_data_path):
             assert "COPY ./bptr-manifest /bptr/bptr-manifest" in gen_docker_file, (
                 "bptr-manifest copy not found in Dockerfile"
             )
+            assert "cache_warmer.py" not in gen_docker_file
 
 
 def test_ignore_files_during_build_setup(custom_model_truss_dir_with_truss_ignore):

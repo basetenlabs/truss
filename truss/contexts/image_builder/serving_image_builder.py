@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -535,6 +536,9 @@ class ServingImageBuilder(ImageBuilder):
         model_files = {}
         cached_files = []
         if config.model_cache.is_v1:
+            logging.warning(
+                f"Model cache v1 is enabled. This will bake the model weights into the image. {config.model_cache}"
+            )
             # bakes model weights into the image
             model_files, cached_files = get_files_to_model_cache_v1(
                 config, truss_dir, build_dir
@@ -545,6 +549,9 @@ class ServingImageBuilder(ImageBuilder):
                 raise RuntimeError(
                     "TensorRTLLM models do not support model_cache. Feel free to reach out to us if you need this feature."
                 )
+            logging.warning(
+                f"Model cache v2 is enabled. This will create a lazy pointer for a B10CACHE to the model weights. {config.model_cache}"
+            )
             # adds a lazy pointer, will be downloaded at runtimes
             build_model_cache_v2_and_copy_bptr_manifest(
                 config=config, build_dir=build_dir
