@@ -28,6 +28,7 @@ class Compute(custom_types.SafeModel):
 class Runtime(custom_types.SafeModel):
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
+    enable_cache: bool = False
 
 
 class Image(custom_types.SafeModel):
