@@ -173,14 +173,20 @@ class ModelCache:
     def to_list(self, verbose=False) -> List[Dict[str, str]]:
         return [model.to_dict(verbose=verbose) for model in self.models]
 
+
+@dataclass
+class ModelCacheV2(ModelCache):
     @property
-    def is_v2(self) -> bool:
+    def check_v2(self) -> bool:
         has_models = len(self.models) > 0
-        is_gcs = any(
+        if any(
             (model.repo_id.startswith("gs://") or model.repo_id.startswith("s3://"))
             for model in self.models
-        )
-        return has_models and not is_gcs
+        ):
+            raise ValidationError(
+                "Model cache v2 does not support GCS or S3 models. Please use model cache v1."
+            )
+        return has_models
 
 
 @dataclass
@@ -646,6 +652,7 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
+    model_cache_v2: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
     use_local_src: bool = False
@@ -710,6 +717,10 @@ class TrussConfig:
             model_cache=transform_optional(
                 d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
+            ),
+            model_cache_v2=transform_optional(
+                d.get("model_cache_v2") or [],  # type: ignore
+                ModelCacheV2.from_list,
             ),
             cache_internal=transform_optional(
                 d.get("cache_internal") or [],  # type: ignore
@@ -936,6 +947,10 @@ def obj_to_dict(obj, verbose: bool = False):
                     field_curr_value, lambda data: data.to_list()
                 )
             elif isinstance(field_curr_value, ModelCache):
+                d["model_cache"] = transform_optional(
+                    field_curr_value, lambda data: data.to_list(verbose=verbose)
+                )
+            elif isinstance(field_curr_value, ModelCacheV2):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )

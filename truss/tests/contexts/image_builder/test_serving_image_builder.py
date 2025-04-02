@@ -224,9 +224,9 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
 
 
 @pytest.mark.integration
-def test_truss_server_caching_truss(test_data_path):
+def test_test_truss_server_model_cache_v1(test_data_path):
     with ensure_kill_all():
-        truss_dir = test_data_path / "test_truss_server_caching_truss"
+        truss_dir = test_data_path / "test_truss_server_model_cache_v1"
         tr = TrussHandle(truss_dir)
 
         container = tr.docker_run(
@@ -236,8 +236,21 @@ def test_truss_server_caching_truss(test_data_path):
         assert "Downloading model.safetensors:" not in container.logs()
 
 
+@pytest.mark.integration
+def test_test_truss_server_model_cache_v2(test_data_path):
+    with ensure_kill_all():
+        truss_dir = test_data_path / "test_truss_server_model_cache_v2"
+        tr = TrussHandle(truss_dir)
+
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True, network="host"
+        )
+        time.sleep(15)
+        assert "/app/model_cache/model.safetensors" not in container.logs()
+
+
 def test_model_cache_dockerfile(test_data_path):
-    truss_dir = test_data_path / "test_truss_server_caching_truss"
+    truss_dir = test_data_path / "test_truss_server_model_cache_v2"
     tr = TrussHandle(truss_dir)
 
     builder_context = ServingImageBuilderContext
