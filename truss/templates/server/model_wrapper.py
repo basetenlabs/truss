@@ -16,7 +16,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union, cast
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -51,14 +51,22 @@ POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
 
 
 class MethodName(str, enum.Enum):
-    CHAT_COMPLETIONS = "chat_completions"
-    COMPLETIONS = "completions"
-    IS_HEALTHY = "is_healthy"
-    POSTPROCESS = "postprocess"
-    PREDICT = "predict"
-    PREPROCESS = "preprocess"
-    SETUP_ENVIRONMENT = "setup_environment"
-    WEBSOCKET = "websocket"
+    def _generate_next_value_(  # type: ignore[override]
+        name: str, start: int, count: int, last_values: List[str]
+    ) -> str:
+        return name.lower()
+
+    CHAT_COMPLETIONS = enum.auto()
+    COMPLETIONS = enum.auto()
+    IS_HEALTHY = enum.auto()
+    POSTPROCESS = enum.auto()
+    PREDICT = enum.auto()
+    PREPROCESS = enum.auto()
+    SETUP_ENVIRONMENT = enum.auto()
+    WEBSOCKET = enum.auto()
+
+    def __str__(self) -> str:
+        return self.value
 
 
 InputType = Union[serialization.JSONType, serialization.MsgPackType, pydantic.BaseModel]
