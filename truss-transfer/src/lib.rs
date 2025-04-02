@@ -32,7 +32,8 @@ static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
-static TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_CLEANUP_THRESHOLD_HOURS";
+static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
+static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 28 * 24; // 28 days
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
 
@@ -354,6 +355,15 @@ async fn download_file_with_cache(
     Ok(())
 }
 
+/// Sanitize a URL by removing query parameters if they exist for logging purposes.
+fn sanitize_url(url: &str) -> String {
+    if let Some(index) = url.find('?') {
+        url[..index].to_string()
+    } else {
+        url.to_string()
+    }
+}
+
 /// Stream a download from `url` into the specified `path`.
 /// Returns an error if the download fails or if the file size does not match the expected size.
 async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) -> Result<()> {
@@ -364,14 +374,22 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
         ))?;
     }
 
-    info!("Starting download to {:?}", path);
+    let sanitized_url = sanitize_url(url);
+    info!("Starting download to {:?} from {}", path, sanitized_url);
     let mut request_builder = client.get(url);
     if url.starts_with("https://huggingface.co") {
         if let Some(token) = get_hf_token() {
             request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
     }
-    let resp = request_builder.send().await?.error_for_status()?;
+    let resp = request_builder.send().await?.error_for_status().map_err(|e| {
+        let status = e.status().map_or("unknown".into(), |s| s.to_string());
+        anyhow!(
+            "HTTP status {} for url ({})",
+            status,
+            sanitized_url,
+        )
+    })?;
     let mut stream = resp.bytes_stream();
 
     let mut file = fs::File::create(path).await?;
@@ -421,20 +439,11 @@ fn get_hf_token() -> Option<String> {
     None
 }
 
-fn get_cleanup_threshold_hours() -> u64 {
-    let var: i32 = env::var(TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR)
+fn get_b10fs_cleanup_threshold_hours() -> u64 {
+    env::var(TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR)
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(90 * 24); // default to 2160 hours (90 days)
-    if var < 0 {
-        // raise an error if the value is negative
-        panic!(
-            "Invalid value for {}: {}. Must be a non-negative integer.",
-            TRUSS_TRANSFER_CLEANUP_HOURS_ENV_VAR, var
-        );
-    }
-    // var as u64
-    var as u64
+        .unwrap_or(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS)
 }
 
 fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
@@ -461,7 +470,7 @@ fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
 /// Asynchronously cleans up cache files that have not been accessed within the threshold
 /// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
 pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
-    let cleanup_threshold_hours = get_cleanup_threshold_hours();
+    let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
     let cache_dir = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
