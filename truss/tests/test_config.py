@@ -19,6 +19,7 @@ from truss.base.truss_config import (
     DockerAuthSettings,
     DockerAuthType,
     ModelCache,
+    ModelCacheB10FS,
     ModelRepo,
     Resources,
     TrussConfig,
@@ -248,7 +249,7 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=ModelCache.from_list([dict(repo_id="test/model")]),
+        model_cache_v2=ModelCache.from_list([dict(repo_id="test/model")]),
     )
 
     new_config = default_config
@@ -260,7 +261,21 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
 
 
-def test_huggingface_cache_single_model_non_default_revision():
+def test_huggingface_cache_single_model_non_default_revision_v2():
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        model_cache_v2=ModelCacheB10FS.from_list(
+            [dict(repo_id="test/model", revision="not-main")]
+        ),
+    )
+
+    assert (
+        config.to_dict(verbose=False)["model_cache_v2"][0].get("revision") == "not-main"
+    )
+
+
+def test_huggingface_cache_single_model_non_default_revision_v1():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
@@ -288,6 +303,9 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
     ]
 
     assert new_config == config.to_dict(verbose=False)
+    assert config.to_dict(verbose=True)["model_cache"], config.to_dict(verbose=True)[
+        "model_cache"
+    ]
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
 

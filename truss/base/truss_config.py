@@ -175,7 +175,7 @@ class ModelCache:
 
 
 @dataclass
-class ModelCacheV2(ModelCache):
+class ModelCacheB10FS(ModelCache):
     @property
     def check_v2(self) -> bool:
         has_models = len(self.models) > 0
@@ -720,7 +720,7 @@ class TrussConfig:
             ),
             model_cache_v2=transform_optional(
                 d.get("model_cache_v2") or [],  # type: ignore
-                ModelCacheV2.from_list,
+                ModelCacheB10FS.from_list,
             ),
             cache_internal=transform_optional(
                 d.get("cache_internal") or [],  # type: ignore
@@ -950,7 +950,7 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
-            elif isinstance(field_curr_value, ModelCacheV2):
+            elif isinstance(field_curr_value, ModelCacheB10FS):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
