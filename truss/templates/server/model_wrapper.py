@@ -16,7 +16,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union, cast
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -52,7 +52,7 @@ POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
 
 class MethodName(str, enum.Enum):
     def _generate_next_value_(  # type: ignore[override]
-        name: str, start: int, count: int, last_values: list[str]
+        name: str, start: int, count: int, last_values: List[str]
     ) -> str:
         return name.lower()
 
@@ -65,7 +65,7 @@ class MethodName(str, enum.Enum):
     SETUP_ENVIRONMENT = enum.auto()
     WEBSOCKET = enum.auto()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value
 
 
