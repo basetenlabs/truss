@@ -108,6 +108,8 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
                 print("ReadTimeout Error: ", e)
                 time.sleep(5)
                 exception = e
+            except Exception as e:
+                raise e
         else:
             # if we get here, we have exhausted the retries
             assert exception is not None, "ReadTimeout Error: " + str(exception)
