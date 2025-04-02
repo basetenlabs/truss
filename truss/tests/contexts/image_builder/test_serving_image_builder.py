@@ -278,7 +278,7 @@ def test_test_truss_server_model_cache_v2(test_data_path):
             local_port=8090, detach=True, wait_for_server_ready=True, network="host"
         )
         time.sleep(15)
-        container.logs()
+        assert container.logs()
 
 
 def test_model_cache_dockerfile(test_data_path):
