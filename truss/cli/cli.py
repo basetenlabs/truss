@@ -1326,7 +1326,7 @@ def run_python(script, target_directory):
 )
 @click.option("--tail", type=bool, is_flag=True)
 @click.option(
-    "--preserve-env-instance-type/--preserve-env-instance-type",
+    "--preserve-env-instance-type/--no-preserve-env-instance-type",
     type=bool,
     is_flag=True,
     required=False,
@@ -1377,7 +1377,7 @@ def push(
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
     if preserve_env_instance_type and not environment:
-        preserve_env_warning = "`preserve-env-instance-type` flag specifiec without the `environment` parameter. Ignoring the value of `preserve-env-instance-type`"
+        preserve_env_warning = "`preserve-env-instance-type` flag specified without the `environment` parameter. Ignoring the value of `preserve-env-instance-type`"
         console.print(preserve_env_warning, style="yellow")
 
     # Write model name to config if it's not already there
