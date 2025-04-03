@@ -135,6 +135,11 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
     ] = None
 
 
+class TrussTRTLLMLoraConfiguration(BaseModel):
+    max_lora_rank: int = 64
+    lora_target_modules: list[str] = []
+
+
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
     max_seq_len: Optional[int] = None
@@ -164,6 +169,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             CheckpointRepository,
         ]
     ] = None
+    lora_configuration: Optional[TrussTRTLLMLoraConfiguration] = None
 
     class Config:
         extra = "forbid"

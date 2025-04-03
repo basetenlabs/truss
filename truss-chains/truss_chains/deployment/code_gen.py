@@ -39,9 +39,8 @@ import libcst
 import pydantic
 
 import truss
-from truss.base import truss_config
+from truss.base import custom_types, truss_config
 from truss.contexts.image_builder import serving_image_builder
-from truss.shared import types
 from truss.util import path as truss_path
 from truss_chains import framework, private_types, public_types, utils
 
@@ -92,7 +91,7 @@ def _format_python_file(file_path: pathlib.Path) -> None:
     _run_simple_subprocess(f"ruff format {file_path}")
 
 
-class _Source(types.SafeModelNonSerializable):
+class _Source(custom_types.SafeModelNonSerializable):
     src: str
     imports: set[str] = pydantic.Field(default_factory=set)
 
