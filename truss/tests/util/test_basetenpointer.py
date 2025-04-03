@@ -16,6 +16,7 @@ def test_dolly_12b():
                 repo_id="databricks/dolly-v2-12b",
                 revision="19308160448536e378e3db21a73a751579ee7fdd",
                 use_volume=True,
+                volume_path="databricks_dolly_v2_12b",
             )
         ]
     )
