@@ -547,7 +547,9 @@ class ServingImageBuilder(ImageBuilder):
         if config.model_cache.is_v2:
             if config.trt_llm:
                 raise RuntimeError(
-                    "TensorRTLLM models do not support model_cache. Feel free to reach out to us if you need this feature."
+                    "TensorRTLLM models is already occupying and using `model_cache` by default. "
+                    "Additional huggingface weights are not allowed. "
+                    "Feel free to reach out to us if you need this feature."
                 )
             logging.warning(
                 f"Model cache v2 is enabled. This will create a lazy pointer for a B10CACHE to the model weights. {config.model_cache}"
