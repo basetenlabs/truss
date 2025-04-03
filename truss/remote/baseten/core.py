@@ -379,7 +379,7 @@ def create_truss_service(
             hostname=model_version_json["oracle"]["hostname"],
             instance_type_name=(
                 model_version_json["instance_type"]["name"]
-                if model_version_json["instance_type"]
+                if "instance_type" in model_version_json
                 else None
             ),
         )
@@ -405,7 +405,7 @@ def create_truss_service(
             hostname=model_version_json["oracle"]["hostname"],
             instance_type_name=(
                 model_version_json["instance_type"]["name"]
-                if model_version_json["instance_type"]
+                if "instance_type" in model_version_json
                 else None
             ),
         )
@@ -439,7 +439,7 @@ def create_truss_service(
         hostname=model_version_json["oracle"]["hostname"],
         instance_type_name=(
             model_version_json["instance_type"]["name"]
-            if model_version_json["instance_type"]
+            if "instance_type" in model_version_json
             else None
         ),
     )

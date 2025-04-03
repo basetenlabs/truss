@@ -69,7 +69,7 @@ def mock_create_model_response():
     response.json = mock.Mock(
         return_value={
             "data": {
-                "create_model_version_from_truss": {
+                "create_model_from_truss": {
                     "model_version": {
                         "id": "12345",
                         "oracle": {
