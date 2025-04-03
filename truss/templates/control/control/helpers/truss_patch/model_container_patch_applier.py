@@ -155,7 +155,10 @@ class ModelContainerPatchApplier:
     def _apply_external_data_patch(self, external_data_patch: ExternalDataPatch):
         self._app_logger.debug(f"Applying external data patch {external_data_patch}")
         action = external_data_patch.action
-        item = ExternalDataItem.model_validate(external_data_patch.item)
+        try:
+            item = ExternalDataItem.model_validate(external_data_patch.item)
+        except Exception:
+            item = ExternalDataItem.from_dict(external_data_patch.item)  # type: ignore[attr-defined]
 
         if action == Action.REMOVE:
             filepath = self._data_dir / item.local_data_path
