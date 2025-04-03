@@ -138,22 +138,33 @@ class AcceleratorSpec(custom_types.ConfigModel):
 
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
-    revision: Optional[str] = None
+    revision: Optional[Annotated[str, pydantic.StringConstraints(min_length=1)]] = None
     allow_patterns: Optional[list[str]] = None
     ignore_patterns: Optional[list[str]] = None
-    volume_folder: str = ""
+    volume_folder: Optional[
+        Annotated[str, pydantic.StringConstraints(min_length=1)]
+    ] = None
     use_volume: bool = False
 
     @property
     def runtime_path(self) -> "Path":
+        assert self.volume_folder is not None
         return constants.MODEL_CACHE_PATH / self.volume_folder
 
-    @pydantic.field_validator("volume_folder", mode="before")
-    def _default_volume_folder(cls, v: Any) -> str:
-        volume_folder = v.get("volume_folder", v["repo_id"].lower())
-        for char in {"/", ":", ".", "@", ",", "-", " ", "\\"}:
-            volume_folder = volume_folder.replace(char, "_")
-        return volume_folder
+    @pydantic.model_validator(mode="before")
+    def _check_v2_requirements(cls, v) -> str:
+        use_volume = v.get("use_volume", False)
+        if not use_volume:
+            return v
+        if v.get("revision") is None:
+            raise ValueError(
+                "the key `revision: str` is required for use_volume=True repos."
+            )
+        if v.get("volume_folder") is None:
+            raise ValueError(
+                "the key `volume_folder: str` is required for `use_volume=True` repos."
+            )
+        return v
 
 
 class ModelCache(pydantic.RootModel[list[ModelRepo]]):

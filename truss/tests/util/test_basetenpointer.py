@@ -10,7 +10,7 @@ from truss.util.basetenpointer import model_cache_hf_to_b10ptr
 
 
 def test_dolly_12b():
-    ModelCached = ModelCache.from_list(
+    ModelCached = ModelCache(
         [
             dict(
                 repo_id="databricks/dolly-v2-12b",
