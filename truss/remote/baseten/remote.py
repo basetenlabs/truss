@@ -250,6 +250,11 @@ class BasetenRemote(TrussRemote):
             preserve_env_instance_type=preserve_env_instance_type,
         )
 
+        if model_version_handle.instance_type_name:
+            logging.info(
+                f"Deploying truss using {model_version_handle.instance_type_name} instance type."
+            )
+
         return BasetenService(
             model_version_handle=model_version_handle,
             is_draft=push_data.is_draft,

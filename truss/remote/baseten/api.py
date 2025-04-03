@@ -158,6 +158,9 @@ class BasetenApi:
                             name
                             hostname
                         }}
+                        instance_type {{
+                            name
+                        }}
                     }}
                 }}
             }}
@@ -195,7 +198,12 @@ class BasetenApi:
                     model_version {{
                         id
                         oracle {{
+                            id
+                            name
                             hostname
+                        }}
+                        instance_type {{
+                            name
                         }}
                     }}
                 }}
@@ -231,6 +239,9 @@ class BasetenApi:
                             id
                             name
                             hostname
+                        }}
+                        instance_type {{
+                            name
                         }}
                     }}
                 }}

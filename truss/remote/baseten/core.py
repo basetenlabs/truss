@@ -73,6 +73,7 @@ class ModelVersionHandle(NamedTuple):
     version_id: str
     model_id: str
     hostname: str
+    instance_type_name: Optional[str] = None
 
 
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
@@ -376,6 +377,11 @@ def create_truss_service(
             version_id=model_version_json["id"],
             model_id=model_version_json["oracle"]["id"],
             hostname=model_version_json["oracle"]["hostname"],
+            instance_type_name=(
+                model_version_json["instance_type"]["name"]
+                if model_version_json["instance_type"]
+                else None
+            ),
         )
 
     if model_id is None:
@@ -397,6 +403,11 @@ def create_truss_service(
             version_id=model_version_json["id"],
             model_id=model_version_json["oracle"]["id"],
             hostname=model_version_json["oracle"]["hostname"],
+            instance_type_name=(
+                model_version_json["instance_type"]["name"]
+                if model_version_json["instance_type"]
+                else None
+            ),
         )
 
     try:
@@ -426,6 +437,11 @@ def create_truss_service(
         version_id=model_version_json["id"],
         model_id=model_id,
         hostname=model_version_json["oracle"]["hostname"],
+        instance_type_name=(
+            model_version_json["instance_type"]["name"]
+            if model_version_json["instance_type"]
+            else None
+        ),
     )
 
 

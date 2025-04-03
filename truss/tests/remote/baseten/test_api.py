@@ -46,7 +46,17 @@ def mock_create_model_version_response():
     response.json = mock.Mock(
         return_value={
             "data": {
-                "create_model_version_from_truss": {"model_version": {"id": "12345"}}
+                "create_model_version_from_truss": {
+                    "model_version": {
+                        "id": "12345",
+                        "oracle": {
+                            "id": "67890",
+                            "name": "model-1",
+                            "hostname": "localhost:1234",
+                        },
+                        "instance_type": {"name": "1x4"},
+                    }
+                }
             }
         }
     )
@@ -58,7 +68,19 @@ def mock_create_model_response():
     response.status_code = 200
     response.json = mock.Mock(
         return_value={
-            "data": {"create_model_from_truss": {"model_version": {"id": "12345"}}}
+            "data": {
+                "create_model_version_from_truss": {
+                    "model_version": {
+                        "id": "12345",
+                        "oracle": {
+                            "id": "67890",
+                            "name": "model-1",
+                            "hostname": "localhost:1234",
+                        },
+                        "instance_type": {"name": "1x4"},
+                    }
+                }
+            }
         }
     )
     return response
