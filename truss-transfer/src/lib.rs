@@ -511,7 +511,7 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
         download_path, cache_path
     );
     let size = fs::metadata(download_path).await?.len();
-    // check if cache_path exists and has the same size
+    // check if cache_path exists and has the same size, concurrency with other replica.
     if cache_path.exists() {
         let cache_metadata = fs::metadata(cache_path).await?;
         if cache_metadata.len() as u64 == size {
