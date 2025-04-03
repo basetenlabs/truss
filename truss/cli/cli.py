@@ -1376,9 +1376,17 @@ def push(
         console.print(promote_warning, style="yellow")
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
+
     if preserve_env_instance_type and not environment:
         preserve_env_warning = "`preserve-env-instance-type` flag specified without the `environment` parameter. Ignoring the value of `preserve-env-instance-type`"
         console.print(preserve_env_warning, style="yellow")
+    if environment:
+        if preserve_env_instance_type:
+            preserve_env_info = f"`preserve-env-instance-type` flag specified. Resources from the config will be ignored and the current instance type of the {environment} environment will be used."
+            console.print(preserve_env_info, style="green")
+        else:
+            preserve_env_info = f"`preserve-env-instance-type` flag not specified. Instance type will be derived from the config and updated in the {environment} environment."
+            console.print(preserve_env_info, style="green")
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
