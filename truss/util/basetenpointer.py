@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from truss.base.truss_config import ModelCache
 
 
+# copied from: https://github.com/basetenlabs/baseten/blob/caeba66cd544a5152bb6a018d6ac2871814f327b/baseten_shared/baseten_shared/lms/types.py#L13
 class Resolution(BaseModel):
     url: str
     expiration_timestamp: int
