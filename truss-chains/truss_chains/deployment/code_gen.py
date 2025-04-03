@@ -714,12 +714,11 @@ def _gen_truss_config(
     config.resources.cpu = str(compute.cpu_count)
     config.resources.memory = str(compute.memory)
     config.resources.accelerator = compute.accelerator
-    config.resources.use_gpu = bool(compute.accelerator.count)
     config.runtime.predict_concurrency = compute.predict_concurrency
     config.runtime.is_websocket_endpoint = chainlet_descriptor.endpoint.is_websocket
 
     assets = remote_config.get_asset_spec()
-    config.secrets = assets.secrets
+    config.secrets = {k: v for k, v in assets.secrets.items()}
     config.runtime.enable_tracing_data = remote_config.options.enable_b10_tracing
     config.runtime.enable_debug_logs = remote_config.options.enable_debug_logs
     config.model_metadata = cast(dict[str, Any], remote_config.options.metadata) or {}
@@ -727,7 +726,7 @@ def _gen_truss_config(
 
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
         config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
-        truss_config.TrussConfig.validate(config)
+        truss_config.TrussConfig.model_validate(config)
         return config
 
     config.model_class_filename = _MODEL_FILENAME
@@ -759,14 +758,14 @@ def _gen_truss_config(
             f"Chains automatically add {public_types._BASETEN_API_SECRET_NAME} "
             "to secrets - no need to manually add it."
         )
-    config.model_cache.models = assets.cached
-    config.external_data = truss_config.ExternalData(items=assets.external_data)
+    config.model_cache = truss_config.ModelCache(assets.cached)
+    config.external_data = truss_config.ExternalData(assets.external_data)
     config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
         private_types.TrussMetadata(
             chainlet_to_service=chainlet_to_service
         ).model_dump()
     )
-    truss_config.TrussConfig.validate(config)
+    truss_config.TrussConfig.model_validate(config)
     return config
 
 

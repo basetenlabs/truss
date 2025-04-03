@@ -305,7 +305,7 @@ class Compute:
 class AssetSpec(custom_types.SafeModel):
     """Parsed and validated assets. See ``Assets`` for more information."""
 
-    secrets: dict[str, str] = pydantic.Field(default_factory=dict)
+    secrets: Mapping[str, str] = pydantic.Field(default_factory=dict)
     cached: list[truss_config.ModelRepo] = pydantic.Field(default_factory=list)
     external_data: list[truss_config.ExternalDataItem] = pydantic.Field(
         default_factory=list
