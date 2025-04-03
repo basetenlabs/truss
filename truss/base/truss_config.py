@@ -6,7 +6,7 @@ import pathlib
 import re
 import sys
 from pathlib import PurePosixPath
-from typing import Annotated, Any, ClassVar, MutableMapping, Optional
+from typing import Annotated, Any, ClassVar, Mapping, MutableMapping, Optional
 
 import pydantic
 import yaml
@@ -103,6 +103,7 @@ class AcceleratorSpec(custom_types.ConfigModel):
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: pydantic.GetCoreSchemaHandler
     ) -> core_schema.CoreSchema:
+        # Hooks up custom parsing and serialization with pydantic.
         schema = core_schema.with_info_wrap_validator_function(
             cls._validate_input, handler(source_type)
         )
@@ -123,6 +124,7 @@ class AcceleratorSpec(custom_types.ConfigModel):
         core_schema_obj: core_schema.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
+        # Hooks up differing JSON schema from python fields with pydantic.
         schema = handler(core_schema_obj)
         schema.update(
             type="string",
@@ -187,13 +189,13 @@ class ModelServer(str, enum.Enum):
 class Build(custom_types.ConfigModel):
     model_server: ModelServer = ModelServer.TrussServer
     arguments: dict[str, Any] = pydantic.Field(default_factory=dict)
-    secret_to_path_mapping: dict[str, str] = pydantic.Field(default_factory=dict)
+    secret_to_path_mapping: Mapping[str, str] = pydantic.Field(default_factory=dict)
 
     _SECRET_NAME_REGEX: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
     _MAX_SECRET_NAME_LENGTH: ClassVar[int] = 253
 
     class Config:
-        protected_namespaces = ()  # Allow fields starting with `model_`.
+        protected_namespaces = ()  # Silence warnings about fields starting with `model_`.
 
     @classmethod
     def validate_secret_name(cls, secret_name: str) -> None:
@@ -427,7 +429,7 @@ class TrussConfig(custom_types.ConfigModel):
     spec_version: str = "2.0"
 
     class Config:
-        protected_namespaces = ()  # Allow fields starting with `model_`.
+        protected_namespaces = ()  # Silence warnings about fields starting with `model_`.
 
     @property
     def canonical_python_version(self) -> str:

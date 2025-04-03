@@ -3,8 +3,6 @@
 # It takes an existing version number as an argument instead of extracting it via Poetry
 # and increments the major, minor, or patch version as specified.
 #
-# For release versions, also updates `truss/templates/control/requirements.txt`.
-#
 # Usage:
 #   ./bump_version.sh 0.9.60         # bumps the patch (micro) version by default -> 0.9.61
 #   ./bump_version.sh 0.9.60 major   # bumps the major version (resets minor and patch to 0) -> 1.0.0
@@ -51,39 +49,6 @@ new_version="${major}.${minor}.${patch}"
 
 # Set the new version using Poetry
 poetry version "$new_version"
-
-# If version is a release (no rc/dev suffix), sync to requirements.txt
-if [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  requirements_file="truss/templates/control/requirements.txt"
-  tmp_file="$(mktemp)"
-
-  if [[ ! -f "$requirements_file" ]]; then
-    echo "❌ requirements file not found: $requirements_file" >&2
-    exit 1
-  fi
-
-updated=false
-while IFS= read -r line; do
-  if [[ "$line" =~ ^truss==([0-9]+\.[0-9]+\.[0-9]+[^\s]*)([[:space:]]+#.*)?$ ]]; then
-    trailing="${BASH_REMATCH[2]:-}"
-    echo "truss==${new_version}${trailing}" >> "$tmp_file"
-    updated=true
-  else
-    echo "$line" >> "$tmp_file"
-  fi
-done < "$requirements_file"
-
-  if [ "$updated" = true ]; then
-    mv "$tmp_file" "$requirements_file"
-    echo "✅ Updated truss version in $requirements_file to $new_version"
-  else
-    rm "$tmp_file"
-    echo "❌ No truss==... entry found in $requirements_file — nothing updated." >&2
-    exit 1
-  fi
-else
-  echo "ℹ️  Version is not a release (contains rc/dev), skipping requirements.txt update."
-fi
 
 # If GITHUB_OUTPUT is set (GitHub Actions context), write the output there.
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

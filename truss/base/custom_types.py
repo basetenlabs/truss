@@ -38,16 +38,15 @@ class SafeModelNonSerializable(pydantic.BaseModel):
 
 class ConfigModel(pydantic.BaseModel):
     def to_dict(self, verbose: bool = False) -> dict[str, Any]:
-        mode = "json"
-        full_dump = super().model_dump(mode=mode)
-        if verbose:
-            return full_dump
-
-        reduced_dump = super().model_dump(
-            exclude_unset=True,
-            exclude_none=True,
-            exclude_defaults=True,
-            mode=mode,
-            context={"verbose": verbose},
+        kwargs: dict[str, Any] = (
+            {"mode": "json"}
+            if verbose
+            else {
+                "mode": "json",
+                "exclude_unset": True,
+                "exclude_none": True,
+                "exclude_defaults": True,
+                "context": {"verbose": verbose},
+            }
         )
-        return reduced_dump
+        return super().model_dump(**kwargs)

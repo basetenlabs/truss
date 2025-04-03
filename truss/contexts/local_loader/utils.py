@@ -1,12 +1,12 @@
 import copy
 import inspect
-from typing import MutableMapping, Optional
+from typing import Mapping, Optional
 
 from truss.base.truss_spec import TrussSpec
 from truss.local.local_config_handler import LocalConfigHandler
 
 
-def prepare_secrets(spec: TrussSpec) -> MutableMapping[str, Optional[str]]:
+def prepare_secrets(spec: TrussSpec) -> Mapping[str, Optional[str]]:
     secrets = copy.deepcopy(spec.secrets)
     local_secrets = LocalConfigHandler.get_config().secrets
     for secret_name in secrets:
