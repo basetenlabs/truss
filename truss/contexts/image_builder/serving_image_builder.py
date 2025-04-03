@@ -638,7 +638,7 @@ class ServingImageBuilder(ImageBuilder):
             base_image_name = truss_base_image_name(job_type="server")
             tag = truss_base_image_tag(
                 python_version=python_version,
-                use_gpu=config.resources.use_gpu,
+                use_gpu=config.resources.use_gpu,  # type: ignore  # computed field.
                 version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
             )
             base_image_name_and_tag = f"{base_image_name}:{tag}"

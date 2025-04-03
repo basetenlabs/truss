@@ -10,7 +10,7 @@ class Llama7BChainlet(chains.EngineBuilderLLMChainlet):
         assets=chains.Assets(secret_keys=["hf_access_token"]),
         options=chains.ChainletOptions(metadata={"tags": ["openai-compatible"]}),
     )
-    engine_builder_config = truss_config.TRTLLMConfiguration(
+    engine_builder_config = trt_llm_config.TRTLLMConfiguration(
         build=trt_llm_config.TrussTRTLLMBuildConfiguration(
             base_model=trt_llm_config.TrussTRTLLMModel.LLAMA,
             checkpoint_repository=trt_llm_config.CheckpointRepository(

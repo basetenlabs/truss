@@ -159,21 +159,17 @@ def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path
         lambda config: config.requirements.append("requests==1.0.0"),
     )
     assert len(patches) == 2
-    assert patches == [
-        Patch(
-            type=PatchType.CONFIG,
-            body=ConfigPatch(
-                action=Action.UPDATE,
-                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
-            ),
+    assert patches[0] == Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=Action.UPDATE,
+            config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
         ),
-        Patch(
-            type=PatchType.PYTHON_REQUIREMENT,
-            body=PythonRequirementPatch(
-                action=Action.ADD, requirement="requests==1.0.0"
-            ),
-        ),
-    ]
+    )
+    assert patches[1] == Patch(
+        type=PatchType.PYTHON_REQUIREMENT,
+        body=PythonRequirementPatch(action=Action.ADD, requirement="requests==1.0.0"),
+    )
 
 
 def test_calc_truss_patch_add_package(custom_model_truss_dir: Path):
@@ -860,7 +856,10 @@ def test_calc_config_patches_add_external_data(
         ),
         Patch(
             type=PatchType.EXTERNAL_DATA,
-            body=ExternalDataPatch(action=Action.ADD, item=external_data.to_list()[0]),
+            body=ExternalDataPatch(
+                action=Action.ADD,
+                item=external_data.items[0].model_dump(exclude_none=True),
+            ),
         ),
     ]
 
@@ -888,7 +887,8 @@ def test_calc_config_patches_remove_external_data(
         Patch(
             type=PatchType.EXTERNAL_DATA,
             body=ExternalDataPatch(
-                action=Action.REMOVE, item=external_data.to_list()[0]
+                action=Action.REMOVE,
+                item=external_data.items[0].model_dump(exclude_none=True),
             ),
         ),
     ]
