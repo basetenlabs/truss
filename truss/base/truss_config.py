@@ -14,7 +14,7 @@ from pydantic import json_schema
 from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
-from truss.util.requirements import parse_requirement_string
+from truss.util.requirements import parse_requirement_string, raise_insufficent_revision
 
 logger = logging.getLogger(__name__)
 
@@ -157,9 +157,10 @@ class ModelRepo(custom_types.ConfigModel):
         if not use_volume:
             return v
         if v.get("revision") is None:
-            raise ValueError(
+            logger.warning(
                 "the key `revision: str` is required for use_volume=True repos."
             )
+            raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
         if v.get("volume_folder") is None:
             raise ValueError(
                 "the key `volume_folder: str` is required for `use_volume=True` repos."
