@@ -85,13 +85,10 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
     basetenpointers: list[BasetenPointer] = []
     # validate all models have a valid revision:
     for model in cache.models:
-        if model.revision is None or len(model.revision) <= 6:
+        if model.revision is None:
             raise ValueError(
-                "requiring to set the model cache revision to a valid commit sha."
-                "e.g. ModelRepo(repo_id='Qwen/QwQ-32B', revision='976055f8c83f394f35dbd3ab09a285a984907bd0') "
-                f"Please a suitable commit sha under this `[link](https://huggingface.co/{model.repo_id}/commits/main)` and add it to your config.yaml file"
+                f"Model {model.repo_id} does not have a revision. Please specify a revision."
             )
-        # assert model.revision is not None
 
         # get meta
         exception = None
