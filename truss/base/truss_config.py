@@ -6,7 +6,6 @@ import pathlib
 import re
 import sys
 import warnings
-from pathlib import PurePosixPath
 from typing import (
     Annotated,
     Any,
@@ -158,7 +157,7 @@ class ModelRepo(custom_types.ConfigModel):
     use_volume: bool = False
 
     @property
-    def runtime_path(self) -> "Path":
+    def runtime_path(self) -> pathlib.Path:
         assert self.volume_folder is not None
         return constants.MODEL_CACHE_PATH / self.volume_folder
 
@@ -260,6 +259,8 @@ class Runtime(custom_types.ConfigModel):
         "CLI used to push. This field allows specifying a pinned/specific version instead.",
     )
 
+    config: ClassVar = pydantic.ConfigDict(validate_assignment=True)
+
     @pydantic.model_validator(mode="before")
     def _check_legacy_workers(cls, values: dict) -> dict:
         if "num_workers" in values and values["num_workers"] != 1:
@@ -285,10 +286,9 @@ class Runtime(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _sync_is_websocket(self) -> "Runtime":
-        if hasattr(self.transport, "kind"):
+        if self.is_websocket_endpoint is None:
             self.is_websocket_endpoint = self.transport.kind == TransportKind.WEBSOCKET
-        else:
-            self.is_websocket_endpoint = False
+
         return self
 
     @pydantic.field_validator("truss_server_version_override")
@@ -304,10 +304,12 @@ class Runtime(custom_types.ConfigModel):
     @pydantic.model_serializer(mode="wrap")
     def _inject_legacy_field(self, serializer):
         data = serializer(self)
+        is_ws = self.is_websocket_endpoint
+        if is_ws and self.transport.kind != TransportKind.WEBSOCKET:
+            data["transport"] = WebsocketOptions().model_dump()
+
         data["is_websocket_endpoint"] = (
-            self.transport.kind == TransportKind.WEBSOCKET
-            if hasattr(self.transport, "kind")
-            else False
+            self.transport.kind == TransportKind.WEBSOCKET or is_ws
         )
         return data
 
@@ -498,7 +500,7 @@ class BaseImage(custom_types.ConfigModel):
 
     @pydantic.field_validator("python_executable_path")
     def _validate_path(cls, v: str) -> str:
-        if v and not PurePosixPath(v).is_absolute():
+        if v and not pathlib.PurePosixPath(v).is_absolute():
             raise ValueError(
                 f"Invalid relative python executable path {v}. Provide an absolute path"
             )

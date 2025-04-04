@@ -763,6 +763,30 @@ def test_resources_transport_serialize_from_old_way(tmp_path):
     assert dumped["runtime"]["is_websocket_endpoint"] is True
 
 
+def test_resources_transport_correct_serialize_from_legacy(tmp_path):
+    config = TrussConfig()
+    config.runtime.is_websocket_endpoint = True
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_resources_transport_correct_serialize_from(tmp_path):
+    config = TrussConfig()
+    config.runtime.transport = WebsocketOptions()
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
