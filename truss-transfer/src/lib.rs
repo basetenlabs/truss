@@ -203,7 +203,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         // only use at max max 2 workers for b10cache
         num_workers = num_workers.min(2);
         // shuffle the resolution map to randomize the order of downloads
-        // in a multi-worker scenario
+        // in a multi-worker inital start scenario (cold-boost + x)
         // This is to avoid the same file being downloaded by multiple workers
         use rand::seq::SliceRandom;
         resolution_map.shuffle(&mut rand::rng());
