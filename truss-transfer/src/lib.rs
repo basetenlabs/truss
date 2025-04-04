@@ -33,7 +33,7 @@ static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
-static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 28 * 24; // 28 days
+static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 14 * 24; // 14 days
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
 
@@ -183,7 +183,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("All pointers validated successfully.");
 
     // 4. Check if b10cache is enabled
-    let uses_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
+    let allowed_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
         .unwrap_or_else(|_| "false".into())
         .to_lowercase()
         .as_str()
@@ -191,7 +191,10 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         "1" | "true" => true,
         _ => false,
     };
-    if uses_b10_cache {
+    let read_from_b10cache = allowed_b10_cache;
+    let mut write_to_b10cache = allowed_b10_cache;
+
+    if allowed_b10_cache {
         info!("b10cache is enabled.");
         // create cache directory if it doesn't exist
         fs::create_dir_all(CACHE_DIR)
@@ -199,7 +202,15 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             .context("Failed to create b10cache directory")?;
         // Clean up cache files that have not been accessed within the threshold
         let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        cleanup_cache(&current_hashes).await?;
+        let (cache_size, _) = cleanup_b10cache_and_calculate_size(&current_hashes).await?;
+        // warn if cache size is over 400GB, max size is 500GB
+        if cache_size > 400 * 1024 * 1024 * 1024 {
+            warn!("b10cache size is over 400GB. Consider cleaning up the cache, not backing up additional files.");
+            write_to_b10cache = false;
+        }
+        // todo: check speed of b10cache (e.g. vs download speed / constant)
+        // and stop using b10cache if download speed is faster
+
         // only use at max max 2 workers for b10cache
         num_workers = num_workers.min(2);
         // shuffle the resolution map to randomize the order of downloads
@@ -241,7 +252,8 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                 &file_name,
                 &hash,
                 size,
-                uses_b10_cache,
+                read_from_b10cache,
+                write_to_b10cache,
             )
             .await
         }));
@@ -307,7 +319,8 @@ async fn download_file_with_cache(
     file_name: &str,
     hash: &str,
     size: u64,
-    uses_b10_cache: bool,
+    read_from_b10cache: bool,
+    write_to_b10cache: bool,
 ) -> Result<()> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(hash);
@@ -327,7 +340,7 @@ async fn download_file_with_cache(
     }
 
     // If b10cache is enabled, try symlinking from the cache
-    if uses_b10_cache {
+    if read_from_b10cache {
         // Check metadata and size first
         if check_metadata_size(&cache_path, size).await {
             info!(
@@ -357,7 +370,7 @@ async fn download_file_with_cache(
     download_to_path(client, url, &destination, size).await?;
 
     // After the file is locally downloaded, optionally move it to b10cache.
-    if uses_b10_cache {
+    if write_to_b10cache {
         match handle_b10cache(&destination, &cache_path).await {
             Ok(_) => info!("b10cache handled successfully."),
             Err(e) => {
@@ -479,55 +492,67 @@ fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
     }
 }
 
-/// Asynchronously cleans up cache files that have not been accessed within the threshold
-/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
-/// Asynchronously cleans up cache files that have not been accessed within the threshold
-/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
-pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
+/// cleans up cache files and calculates total cache utilization.
+/// Returns a tuple of (bytes_used, files_count) after cleanup.
+/// Files are cleaned up if they:
+/// - Have not been accessed within the threshold
+/// - Their filename (assumed to be the file's hash) is not in `current_hashes`
+pub async fn cleanup_b10cache_and_calculate_size(
+    current_hashes: &HashSet<String>,
+) -> Result<(u64, usize)> {
     let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
     let cache_dir = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
     let mut dir = fs::read_dir(cache_dir).await?;
+    let mut total_bytes = 0u64;
+    let mut total_files = 0usize;
+
     info!(
-        "Cleaning up b10cache with a threshold of {} hours ({} days)",
+        "Analyzing b10cache with a threshold of {} hours ({} days)",
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
+
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
         // Only process files
         if path.is_file() {
             let metadata = fs::metadata(&path).await?;
+            let file_size = metadata.len();
             let atime = get_atime(&metadata)?;
-            if now - atime > threshold_seconds as i64 {
-                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                    if !current_hashes.contains(file_name) {
-                        info!(
-                            "Would delete cached file {}: not accessed for over {} hours",
-                            file_name, cleanup_threshold_hours
-                        );
-                        fs::remove_file(&path).await?;
-                    } else {
-                        info!(
-                            "Skipping file {} as it is part of the current hashes",
-                            file_name
-                        );
-                    }
+
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                if now - atime > threshold_seconds as i64 && !current_hashes.contains(file_name) {
+                    info!(
+                        "Deleting cached file {} ({} bytes): not accessed for over {} hours",
+                        file_name, file_size, cleanup_threshold_hours
+                    );
+                    fs::remove_file(&path).await?;
+                } else {
+                    info!(
+                        "Keeping file {} ({} bytes): last accessed {} minutes ago",
+                        file_name,
+                        file_size,
+                        (now - atime) / 60
+                    );
+                    total_bytes += file_size;
+                    total_files += 1;
                 }
-            } else {
-                info!(
-                    "Skipping file {:?}: last accessed {} minutes ago",
-                    path,
-                    (now - atime) / 60
-                );
             }
         }
     }
-    Ok(())
-}
 
+    info!(
+        "Cache utilization after cleanup: {} files using {} bytes ({:.2} GB)",
+        total_files,
+        total_bytes,
+        total_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+    );
+
+    Ok((total_bytes, total_files))
+}
 /// handling new b10cache:
 /// 1. Copy the local file (download_path) to a temporary cache file with a “.incomplete” suffix.
 /// 2. Verify that the copied file’s size matches the expected size.
