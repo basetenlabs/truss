@@ -694,17 +694,17 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     Ok(())
 }
 
-/// Check file read speed above 100MB/s and decide whether to use b10cache or not.
-/// Uses the Manifest, and searches for the first file in the cache that is available and >512MB.
-/// Then reads the first 200MB (byte range request for read) of the file and checks the speed.
-/// If the speed is above 100MB/s, it returns true.
+/// Check if b10cache is faster than downloading by reading the first 100MB of a file in the cache.
+/// If the read speed is greater than 100MB/s, it returns true.
+/// If no file in the cache is larger than 128MB, it returns true.
 /// Otherwise, it returns false.
-/// If all files in the cache or manifest are <512MB, it returns true.
 async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
+    let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
+
     for bptr in &manifest.pointers {
         let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
 
-        if bptr.size > 512 * 1024 * 1024 && cache_path.exists() {
+        if bptr.size > benchmark_size as u64 && cache_path.exists() {
             let metadata = fs::metadata(&cache_path).await?;
             let file_size = metadata.len();
             if file_size == bptr.size as u64 {
@@ -712,20 +712,21 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
                     .await
                     .with_context(|| format!("Failed to open file {:?}", cache_path))?;
                 // benchmark, read 100MB
-                let mut buffer = vec![0u8; 100 * 1024 * 1024]; // 100MB buffer
+                let mut buffer = vec![0u8; benchmark_size]; // 100MB buffer
                 let start_time = std::time::Instant::now();
                 let bytes_read = file.read_exact(&mut buffer).await;
                 let elapsed_time = start_time.elapsed();
                 if bytes_read.is_ok() {
                     let elapsed_secs = elapsed_time.as_secs_f64();
                     let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
-                    info!("Read speed for file {:?}: {:.2} MB/s", cache_path, speed);
+                    info!("Read speed of b10cache approx. {:.2} MB/s", speed);
                     if speed > 100.0 {
                         return Ok(true); // Use b10cache
                     } else {
                         return Ok(false); // Don't use b10cache
                     }
                 } else {
+                    // If reading fails, log the error and continue
                     warn!(
                         "Failed to read file {:?}: {}",
                         cache_path,
