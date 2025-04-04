@@ -155,6 +155,8 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         LAZY_DATA_RESOLVER_PATH
     );
 
+    let mut num_workers = num_workers;
+
     // 1. Check if bptr-manifest file exists
     let manifest_path = Path::new(LAZY_DATA_RESOLVER_PATH);
     if !manifest_path.is_file() {
@@ -177,7 +179,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     );
 
     // 3. Validate expiration and build the resolution map
-    let resolution_map = build_resolution_map(&bptr_manifest)?;
+    let mut resolution_map = build_resolution_map(&bptr_manifest)?;
     info!("All pointers validated successfully.");
 
     // 4. Check if b10cache is enabled
@@ -198,6 +200,13 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         // Clean up cache files that have not been accessed within the threshold
         let current_hashes = current_hashes_from_manifest(&bptr_manifest);
         cleanup_cache(&current_hashes).await?;
+        // only use at max max 2 workers for b10cache
+        num_workers = num_workers.min(2);
+        // shuffle the resolution map to randomize the order of downloads
+        // in a multi-worker inital start scenario (cold-boost + x)
+        // This is to avoid the same file being downloaded by multiple workers
+        use rand::seq::SliceRandom;
+        resolution_map.shuffle(&mut rand::rng());
     } else {
         info!("b10cache is not enabled.");
     }
@@ -349,7 +358,12 @@ async fn download_file_with_cache(
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if uses_b10_cache {
-        handle_b10cache(&destination, &cache_path).await?;
+        match handle_b10cache(&destination, &cache_path).await {
+            Ok(_) => info!("b10cache handled successfully."),
+            Err(e) => {
+                warn!("Failed to handle b10cache: {}", e);
+            }
+        }
     }
 
     Ok(())
@@ -382,14 +396,14 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
             request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
     }
-    let resp = request_builder.send().await?.error_for_status().map_err(|e| {
-        let status = e.status().map_or("unknown".into(), |s| s.to_string());
-        anyhow!(
-            "HTTP status {} for url ({})",
-            status,
-            sanitized_url,
-        )
-    })?;
+    let resp = request_builder
+        .send()
+        .await?
+        .error_for_status()
+        .map_err(|e| {
+            let status = e.status().map_or("unknown".into(), |s| s.to_string());
+            anyhow!("HTTP status {} for url ({})", status, sanitized_url,)
+        })?;
     let mut stream = resp.bytes_stream();
 
     let mut file = fs::File::create(path).await?;
@@ -478,7 +492,8 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
     let mut dir = fs::read_dir(cache_dir).await?;
     info!(
         "Cleaning up b10cache with a threshold of {} hours ({} days)",
-        cleanup_threshold_hours, cleanup_threshold_hours as f64 / 24.0
+        cleanup_threshold_hours,
+        cleanup_threshold_hours as f64 / 24.0
     );
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
@@ -516,6 +531,7 @@ pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
 /// handling new b10cache:
 /// 1. Copy the local file (download_path) to a temporary cache file with a “.incomplete” suffix.
 /// 2. Verify that the copied file’s size matches the expected size.
+/// - (1.), (2.), (3.) with error handling for concurrency.
 /// 3. If the sizes match:
 ///    - Atomically rename the temporary file to the final cache path.
 ///    - Delete the local file (deduplicate).
@@ -541,54 +557,57 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     }
 
     // Build the temporary incomplete file path.
+    let mut should_copy = true;
     let incomplete_cache_path = cache_path.with_extension("incomplete");
     if incomplete_cache_path.exists() {
-        warn!(
-            "Incomplete cache file {:?} already exists. Deleting it.",
-            incomplete_cache_path
-        );
-        match fs::remove_file(&incomplete_cache_path).await {
-            Ok(_) => info!("Deleted incomplete cache file."),
-            Err(e) => warn!("Failed to delete incomplete cache file: {}", e),
+        // Check if the incomplete file has the expected size.
+        if check_metadata_size(&incomplete_cache_path, size).await {
+            should_copy = false;
+        } else {
+            warn!(
+                "Incomplete cache file {:?} already exists. Deleting it.",
+                incomplete_cache_path
+            );
+            match fs::remove_file(&incomplete_cache_path).await {
+                Ok(_) => info!("Deleted incomplete cache file."),
+                Err(e) => warn!("Failed to delete incomplete cache file: {}", e),
+            }
         }
     }
 
-    // Copy the local file to the incomplete cache file.
-    info!(
-        "Copying local file {:?} to temporary incomplete cache file {:?}",
-        download_path, incomplete_cache_path
-    );
-    match fs::copy(download_path, &incomplete_cache_path).await {
-        Ok(_) => info!("Successfully copied to incomplete cache file."),
+    if should_copy {
+        // Copy the local file to the incomplete cache file.
+        info!(
+            "Copying local file {:?} to temporary incomplete cache file {:?}",
+            download_path, incomplete_cache_path
+        );
+        match fs::copy(download_path, &incomplete_cache_path).await {
+            Ok(_) => info!("Successfully copied to incomplete cache file."),
+            Err(e) => {
+                warn!("Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage.", e);
+                return Ok(());
+            }
+        }
+    }
+
+    let incomplete_metadata = match fs::metadata(&incomplete_cache_path).await {
+        Ok(metadata) => metadata,
         Err(e) => {
-            warn!("Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage.", e);
+            warn!("Failed to get metadata for incomplete cache file: {}. Maybe b10cache has no storage or concurrency issue.", e);
             return Ok(());
         }
     };
 
-    // Check that the copied file has the expected size.
-    let incomplete_metadata = fs::metadata(&incomplete_cache_path)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to get metadata for incomplete cache file {:?}. This should not happen.",
-                incomplete_cache_path
-            )
-        })?;
     if incomplete_metadata.len() as u64 != size {
         warn!(
             "Size mismatch in incomplete cache file: expected {} bytes, got {} bytes. Keeping local file and cleaning up b10cache - perhaps related to high concurrency.",
             size,
             incomplete_metadata.len()
         );
-        fs::remove_file(&incomplete_cache_path)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to delete incomplete cache file {:?}",
-                    incomplete_cache_path
-                )
-            })?;
+        match fs::remove_file(&incomplete_cache_path).await {
+            Ok(_) => info!("Deleted incomplete cache file."),
+            Err(e) => warn!("Failed to delete incomplete cache file: {}", e),
+        };
         return Ok(());
     }
 
