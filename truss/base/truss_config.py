@@ -5,9 +5,19 @@ import os
 import pathlib
 import re
 import sys
-from pathlib import Path, PurePosixPath
-from typing import Annotated, Any, ClassVar, Mapping, MutableMapping, Optional
+import warnings
+from typing import (
+    Annotated,
+    Any,
+    ClassVar,
+    Literal,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Union,
+)
 
+import packaging.version
 import pydantic
 import yaml
 from pydantic import json_schema
@@ -147,7 +157,7 @@ class ModelRepo(custom_types.ConfigModel):
     use_volume: bool = False
 
     @property
-    def runtime_path(self) -> "Path":
+    def runtime_path(self) -> pathlib.Path:
         assert self.volume_folder is not None
         return constants.MODEL_CACHE_PATH / self.volume_folder
 
@@ -208,13 +218,48 @@ class HealthChecks(custom_types.ConfigModel):
     stop_traffic_threshold_seconds: Optional[int] = None
 
 
+class TransportKind(str, enum.Enum):
+    HTTP = "http"
+    WEBSOCKET = "websocket"
+    GRPC = "grpc"
+
+
+class HTTPOptions(pydantic.BaseModel):
+    kind: Literal["http"] = "http"
+
+
+class WebsocketOptions(pydantic.BaseModel):
+    kind: Literal["websocket"] = "websocket"
+
+
+class GRPCOptions(pydantic.BaseModel):
+    kind: Literal["grpc"] = "grpc"
+
+
+Transport = Annotated[
+    Union[HTTPOptions, WebsocketOptions, GRPCOptions],
+    pydantic.Field(discriminator="kind"),
+]
+
+
 class Runtime(custom_types.ConfigModel):
     predict_concurrency: int = 1
     streaming_read_timeout: int = 60
     enable_tracing_data: bool = False
     enable_debug_logs: bool = False
-    is_websocket_endpoint: bool = False
+    transport: Transport = HTTPOptions()
+    is_websocket_endpoint: Optional[bool] = pydantic.Field(
+        None,
+        description="DEPRECATED. Do not set manually. Automatically inferred from `transport.kind == websocket`.",
+    )
     health_checks: HealthChecks = pydantic.Field(default_factory=HealthChecks)
+    truss_server_version_override: Optional[str] = pydantic.Field(
+        None,
+        description="By default, truss servers are built from the same release as the "
+        "CLI used to push. This field allows specifying a pinned/specific version instead.",
+    )
+
+    config: ClassVar = pydantic.ConfigDict(validate_assignment=True)
 
     @pydantic.model_validator(mode="before")
     def _check_legacy_workers(cls, values: dict) -> dict:
@@ -225,6 +270,48 @@ class Runtime(custom_types.ConfigModel):
                 "and as a last resort thread/process pools inside the truss model."
             )
         return values
+
+    @pydantic.model_validator(mode="before")
+    def _handle_legacy_input(cls, values: dict) -> dict:
+        if (
+            values.get("transport") is None
+            and values.get("is_websocket_endpoint") is True
+        ):
+            warnings.warn(
+                "`is_websocket_endpoint` is deprecated, use `transport.kind == websocket`",
+                DeprecationWarning,
+            )
+            values["transport"] = {"kind": "websocket"}
+        return values
+
+    @pydantic.model_validator(mode="after")
+    def _sync_is_websocket(self) -> "Runtime":
+        if self.is_websocket_endpoint is None:
+            self.is_websocket_endpoint = self.transport.kind == TransportKind.WEBSOCKET
+
+        return self
+
+    @pydantic.field_validator("truss_server_version_override")
+    def _validate_semver(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        try:
+            packaging.version.Version(value)
+        except packaging.version.InvalidVersion as e:
+            raise ValueError(f"Invalid version string: {value}") from e
+        return value
+
+    @pydantic.model_serializer(mode="wrap")
+    def _inject_legacy_field(self, serializer):
+        data = serializer(self)
+        is_ws = self.is_websocket_endpoint
+        if is_ws and self.transport.kind != TransportKind.WEBSOCKET:
+            data["transport"] = WebsocketOptions().model_dump()
+
+        data["is_websocket_endpoint"] = (
+            self.transport.kind == TransportKind.WEBSOCKET or is_ws
+        )
+        return data
 
 
 class ModelServer(str, enum.Enum):
@@ -413,7 +500,7 @@ class BaseImage(custom_types.ConfigModel):
 
     @pydantic.field_validator("python_executable_path")
     def _validate_path(cls, v: str) -> str:
-        if v and not PurePosixPath(v).is_absolute():
+        if v and not pathlib.PurePosixPath(v).is_absolute():
             raise ValueError(
                 f"Invalid relative python executable path {v}. Provide an absolute path"
             )

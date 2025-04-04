@@ -21,7 +21,10 @@ from truss.base.truss_config import (
     ModelCache,
     ModelRepo,
     Resources,
+    Runtime,
+    TransportKind,
     TrussConfig,
+    WebsocketOptions,
     _map_to_supported_python_version,
 )
 from truss.truss_handle.truss_handle import TrussHandle
@@ -700,6 +703,88 @@ def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
     config.resources.accelerator.accelerator = accelerator
     with expectation:
         TrussConfig.model_validate(config.to_dict())
+
+
+def test_resources_transport_read_from_new_yaml(tmp_path):
+    yaml_content = """
+    runtime:
+      transport:
+        kind: websocket
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, WebsocketOptions)
+    assert config.runtime.transport.kind == TransportKind.WEBSOCKET
+    assert config.runtime.is_websocket_endpoint is True
+
+
+def test_resources_transport_read_from_legacy_yaml(tmp_path):
+    yaml_content = """
+    runtime:
+      is_websocket_endpoint: true
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    with pytest.warns(DeprecationWarning, match="is_websocket_endpoint"):
+        config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, WebsocketOptions)
+    assert config.runtime.transport.kind == TransportKind.WEBSOCKET
+    assert config.runtime.is_websocket_endpoint is True
+
+
+def test_resources_transport_serialize_from_new_way(tmp_path):
+    config = TrussConfig(runtime=Runtime(transport=WebsocketOptions()))
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_resources_transport_serialize_from_old_way(tmp_path):
+    yaml_content = """
+    runtime:
+      is_websocket_endpoint: true
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_resources_transport_correct_serialize_from_legacy(tmp_path):
+    config = TrussConfig()
+    config.runtime.is_websocket_endpoint = True
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_resources_transport_correct_serialize_from(tmp_path):
+    config = TrussConfig()
+    config.runtime.transport = WebsocketOptions()
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
 
 
 @pytest.mark.parametrize(
