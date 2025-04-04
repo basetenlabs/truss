@@ -208,9 +208,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         // Clean up cache files that have not been accessed within the threshold
         let current_hashes = current_hashes_from_manifest(&bptr_manifest);
         let (cache_size, _) = cleanup_b10cache_and_calculate_size(&current_hashes).await?;
-        // warn if cache size is over 450GB, max size is 500GB
-        if cache_size > 450 * 1024 * 1024 * 1024 {
-            warn!("b10cache size is over 450GB. Consider cleaning up the cache. Disabling write to cache.");
+        // warn if cache size is over 425GB, disabling write to b10cache
+        if cache_size > 425 * 1024 * 1024 * 1024 {
+            warn!("b10cache size is over 425GB. Consider cleaning up the cache. Disabling write to cache.");
             write_to_b10cache = false;
         }
         // todo: check speed of b10cache (e.g. is faster than 100MB/s)
