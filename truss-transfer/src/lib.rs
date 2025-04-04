@@ -238,7 +238,6 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             "b10cache use: Read: {}, Write: {}",
             read_from_b10cache, write_to_b10cache
         );
-
     } else {
         info!("b10cache is not enabled for read or write.");
     }
@@ -536,7 +535,6 @@ pub async fn cleanup_b10cache_and_calculate_size(
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
-
 
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
