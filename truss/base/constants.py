@@ -108,7 +108,7 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0-81ab052"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0_v0.1.1.dev4"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
 BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.20"
 
