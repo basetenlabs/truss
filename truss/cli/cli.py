@@ -1331,7 +1331,12 @@ def run_python(script, target_directory):
     is_flag=True,
     required=False,
     default=False,
-    help="When pushing a truss to an environment, whether to use the resources specified in the truss config to resolve the instance type or preserve the instance type configured in the specified environment.",
+    help=(
+        "When pushing a truss to an environment, whether to use the resources specified "
+        "in the truss config to resolve the instance type or preserve the instance type "
+        "configured in the specified environment. It will be ignored if --environment is not specified. "
+        "Default is --no-preserve-env-instance-type."
+    ),
 )
 @log_level_option
 @error_handling
