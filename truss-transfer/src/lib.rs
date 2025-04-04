@@ -527,6 +527,7 @@ pub async fn cleanup_b10cache_and_calculate_size(
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
     let mut dir = fs::read_dir(cache_dir).await?;
+
     let mut total_bytes = 0u64;
     let mut total_files = 0usize;
 
@@ -535,6 +536,7 @@ pub async fn cleanup_b10cache_and_calculate_size(
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
+
 
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();

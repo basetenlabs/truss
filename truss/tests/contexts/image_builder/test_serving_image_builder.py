@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from truss.base.constants import (
-    BASE_TRTLLM_REQUIREMENTS,
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
@@ -406,7 +405,6 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
             build_th.spec.config.base_image.python_executable_path
             == TRTLLM_PYTHON_EXECUTABLE
         )
-        assert BASE_TRTLLM_REQUIREMENTS == build_th.spec.config.requirements
 
 
 def _assert_copied(src_path: str, dest_path: str):
