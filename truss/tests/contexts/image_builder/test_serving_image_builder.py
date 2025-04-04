@@ -1,4 +1,5 @@
 import filecmp
+import json
 import os
 import time
 from pathlib import Path
@@ -18,7 +19,7 @@ from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
-    get_files_to_cache,
+    get_files_to_model_cache_v1,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.truss_handle import TrussHandle
@@ -88,7 +89,9 @@ def test_correct_hf_files_accessed_for_caching():
 
         hf_path = Path("root/.cache/huggingface/hub")
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_model_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
         assert str(hf_path / "version.txt") in files_to_cache
 
@@ -121,7 +124,9 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_model_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
@@ -154,7 +159,9 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_model_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
@@ -187,7 +194,9 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_model_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
@@ -224,7 +233,9 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        model_files, files_to_cache = get_files_to_model_cache_v1(
+            config, truss_path, build_path
+        )
         files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
@@ -245,9 +256,9 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
 
 
 @pytest.mark.integration
-def test_truss_server_caching_truss(test_data_path):
+def test_test_truss_server_model_cache_v1(test_data_path):
     with ensure_kill_all():
-        truss_dir = test_data_path / "test_truss_server_caching_truss"
+        truss_dir = test_data_path / "test_truss_server_model_cache_v1"
         tr = TrussHandle(truss_dir)
 
         container = tr.docker_run(
@@ -257,10 +268,24 @@ def test_truss_server_caching_truss(test_data_path):
         assert "Downloading model.safetensors:" not in container.logs()
 
 
-def test_model_cache_dockerfile(test_data_path):
-    truss_dir = test_data_path / "test_truss_server_caching_truss"
-    tr = TrussHandle(truss_dir)
+@pytest.mark.integration
+def test_test_truss_server_model_cache_v2(test_data_path):
+    with ensure_kill_all():
+        truss_dir = test_data_path / "test_truss_server_model_cache_v2"
+        tr = TrussHandle(truss_dir)
 
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True, network="host"
+        )
+        time.sleep(15)
+        assert container.logs()
+
+
+def test_model_cache_dockerfile(test_data_path):
+    truss_dir = test_data_path / "test_truss_server_model_cache_v1"
+    tr = TrussHandle(truss_dir)
+    assert tr.spec.config.model_cache.is_v1
+    assert not tr.spec.config.model_cache.is_v2
     builder_context = ServingImageBuilderContext
     image_builder = builder_context.run(tr.spec.truss_dir)
 
@@ -271,6 +296,69 @@ def test_model_cache_dockerfile(test_data_path):
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
             assert secret_mount in gen_docker_file
+            assert "cache_warmer.py" in gen_docker_file
+            assert "bptr-manifest" not in gen_docker_file
+
+
+def test_model_cache_dockerfile_v2(test_data_path):
+    truss_dir = test_data_path / "test_truss_server_model_cache_v2"
+    tr = TrussHandle(truss_dir)
+    assert not tr.spec.config.model_cache.is_v1
+    assert tr.spec.config.model_cache.is_v2
+    # assert tr.spec.config.model_cache.is_v2
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(tr.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path, use_hf_secret=True)
+        assert (tmp_path / "bptr-manifest").exists(), "bptr-manifest not found"
+        with open(tmp_path / "bptr-manifest", "r") as f:
+            json_bptr = json.load(f)["pointers"]
+        print(json_bptr)
+        assert len(json_bptr) == 7, (
+            f"bptr-manifest should have 7 entries, found {len(json_bptr)}"
+        )
+        assert (
+            json_bptr[0]["file_name"]
+            == "/app/model_cache/julien_c_esper/.gitattributes"
+        )
+        assert json_bptr[0]["hash"] == "602b71f15d40ed68c5f96330e3f3175a76a32126"
+        assert json_bptr[0]["size"] == 445
+        assert (
+            json_bptr[0]["resolution"]["url"]
+            == "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/.gitattributes"
+        )
+        assert (
+            json_bptr[0]["resolution"]["expiration_timestamp"]
+            > time.time() + 20 * 365 * 24 * 60 * 60
+        ), (
+            f"Expected unix expiration timestamp to be at least 20 years ahead, but got {json_bptr[0]['resolution']['expiration_timestamp']}. "
+        )
+
+        # lfs files
+        assert (
+            json_bptr[4]["file_name"]
+            == "/app/model_cache/julien_c_esper/model.safetensors"
+        )
+        assert (
+            json_bptr[4]["hash"]
+            == "78ee94168f400dd136a1418a9f21f01ada049cdb3c064145b1400642cf342de6"
+        )
+        assert json_bptr[4]["size"] == 336392830
+        assert (
+            json_bptr[4]["resolution"]["url"]
+            == "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/model.safetensors"
+        )
+
+        with open(tmp_path / "Dockerfile", "r") as f:
+            gen_docker_file = f.read()
+            print(gen_docker_file)
+            assert "truss-transfer" in gen_docker_file
+            assert "COPY ./bptr-manifest /bptr/bptr-manifest" in gen_docker_file, (
+                "bptr-manifest copy not found in Dockerfile"
+            )
+            assert "cache_warmer.py" not in gen_docker_file
 
 
 def test_ignore_files_during_build_setup(custom_model_truss_dir_with_truss_ignore):

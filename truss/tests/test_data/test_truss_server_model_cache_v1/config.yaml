@@ -1,19 +1,19 @@
 environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
-model_name: test
+model_name: test_model_cache_v1
 python_version: py39
 requirements:
-- transformers
-- torch
+  - transformers
+  - torch
 model_cache:
-- repo_id: julien-c/EsperBERTo-small
-  ignore_patterns:
-    - "*.bin"
-    - "*.msgpack"
+  - repo_id: julien-c/EsperBERTo-small
+    ignore_patterns:
+      - "*.bin"
+      - "*.msgpack"
 resources:
   accelerator: null
-  cpu: '2'
+  cpu: "2"
   memory: 2Gi
   use_gpu: false
 secrets: {}

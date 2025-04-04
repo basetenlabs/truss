@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from truss.base.constants import (
     FILENAME_CONSTANTS_MAP,
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
+    MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
@@ -69,6 +71,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.truss_handle.patch.hash import directory_content_hash
+from truss.util.basetenpointer import model_cache_hf_to_b10ptr
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -90,7 +93,8 @@ S3_CREDENTIALS = "s3_credentials.json"
 
 HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
-CLOUD_BUCKET_CACHE = Path("/app/model_cache/")
+CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
+
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
@@ -276,30 +280,32 @@ class CachedFile:
     dst: str
 
 
-def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
+def get_files_to_model_cache_v1(config: TrussConfig, truss_dir: Path, build_dir: Path):
+    assert config.model_cache.is_v1
+
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
     remote_model_files = {}
     local_files_to_cache: List[CachedFile] = []
-    if config.model_cache:
-        curr_dir = Path(__file__).parent.resolve()
-        copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
-        for model in config.model_cache.models:
-            repo_id = model.repo_id
-            revision = model.revision
 
-            allow_patterns = model.allow_patterns
-            ignore_patterns = model.ignore_patterns
+    curr_dir = Path(__file__).parent.resolve()
+    copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
+    for model in config.model_cache.models:
+        repo_id = model.repo_id
+        revision = model.revision
 
-            model_cache = RemoteCache.from_repo(repo_id, truss_dir / config.data_dir)
-            remote_filtered_files = model_cache.filter(allow_patterns, ignore_patterns)
-            local_files_to_cache += model_cache.prepare_for_cache(remote_filtered_files)
+        allow_patterns = model.allow_patterns
+        ignore_patterns = model.ignore_patterns
 
-            remote_model_files[repo_id] = {
-                "files": remote_filtered_files,
-                "revision": revision,
-            }
+        model_cache = RemoteCache.from_repo(repo_id, truss_dir / config.data_dir)
+        remote_filtered_files = model_cache.filter(allow_patterns, ignore_patterns)
+        local_files_to_cache += model_cache.prepare_for_cache(remote_filtered_files)
+
+        remote_model_files[repo_id] = {
+            "files": remote_filtered_files,
+            "revision": revision,
+        }
 
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
@@ -307,10 +313,13 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     return remote_model_files, local_files_to_cache
 
 
-def update_config_and_gather_files(
-    config: TrussConfig, truss_dir: Path, build_dir: Path
-):
-    return get_files_to_cache(config, truss_dir, build_dir)
+def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: Path):
+    assert config.model_cache.is_v2
+    # builds BasetenManifest for caching
+    basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
+    # write json of bastenpointers into build dir
+    with open(build_dir / "bptr-manifest", "w") as f:
+        f.write(basetenpointers.model_dump_json())
 
 
 def generate_docker_server_nginx_config(build_dir, config):
@@ -523,10 +532,32 @@ class ServingImageBuilder(ImageBuilder):
                     (ext_file.url, (data_dir / ext_file.local_data_path).resolve())
                 )
 
-        # Download from HuggingFace
-        model_files, cached_files = update_config_and_gather_files(
-            config, truss_dir, build_dir
-        )
+        # No model cache provided, initialize empty
+        model_files = {}
+        cached_files = []
+        if config.model_cache.is_v1:
+            logging.warning(
+                f"Model cache v1 is enabled. This will bake the model weights into the image. {config.model_cache}"
+            )
+            # bakes model weights into the image
+            model_files, cached_files = get_files_to_model_cache_v1(
+                config, truss_dir, build_dir
+            )
+
+        if config.model_cache.is_v2:
+            if config.trt_llm:
+                raise RuntimeError(
+                    "TensorRTLLM models is already occupying and using `model_cache` by default. "
+                    "Additional huggingface weights are not allowed. "
+                    "Feel free to reach out to us if you need this feature."
+                )
+            logging.warning(
+                f"Model cache v2 is enabled. This will create a lazy pointer for a B10CACHE to the model weights. {config.model_cache}"
+            )
+            # adds a lazy pointer, will be downloaded at runtimes
+            build_model_cache_v2_and_copy_bptr_manifest(
+                config=config, build_dir=build_dir
+            )
 
         # Copy inference server code
         self._copy_into_build_dir(SERVER_CODE_DIR, build_dir, BUILD_SERVER_DIR_NAME)
@@ -695,7 +726,8 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
             credentials_to_cache=get_credentials_to_cache(data_dir),
-            model_cache=len(config.model_cache.models) > 0,
+            model_cache_v1=config.model_cache.is_v1,
+            model_cache_v2=config.model_cache.is_v2,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,

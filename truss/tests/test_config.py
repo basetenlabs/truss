@@ -255,14 +255,6 @@ def test_empty_model_cache_key():
     assert config.model_cache.models == []
 
 
-def test_null_hf_cache_key():
-    config_yaml_dict = {"hf_cache": None}
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
-        yaml.safe_dump(config_yaml_dict, tmp_file)
-    config = TrussConfig.from_yaml(Path(tmp_file.name))
-    assert config.model_cache.models == []
-
-
 def test_cache_internal_with_models(default_config):
     config = TrussConfig(
         python_version="py39",
@@ -290,7 +282,7 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
 
 
-def test_huggingface_cache_single_model_non_default_revision():
+def test_huggingface_cache_single_model_non_default_revision_v1():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
@@ -318,6 +310,9 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
     ]
 
     assert new_config == config.to_dict(verbose=False)
+    assert config.to_dict(verbose=True)["model_cache"], config.to_dict(verbose=True)[
+        "model_cache"
+    ]
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
 
@@ -342,6 +337,35 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
+
+
+def test_huggingface_cache_v2_use_volume(default_config):
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        model_cache=ModelCache(
+            [
+                dict(
+                    repo_id="test/model1",
+                    revision="main",
+                    use_volume=True,
+                    volume_folder="test_model1",
+                )
+            ]
+        ),
+    )
+
+    new_config = default_config
+    new_config["model_cache"] = [
+        {
+            "repo_id": "test/model1",
+            "revision": "main",
+            "volume_folder": "test_model1",
+            "use_volume": True,
+        }
+    ]
+
+    assert new_config == config.to_dict(verbose=False)
 
 
 def test_empty_config(default_config):
