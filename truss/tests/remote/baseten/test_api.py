@@ -46,7 +46,17 @@ def mock_create_model_version_response():
     response.json = mock.Mock(
         return_value={
             "data": {
-                "create_model_version_from_truss": {"model_version": {"id": "12345"}}
+                "create_model_version_from_truss": {
+                    "model_version": {
+                        "id": "12345",
+                        "oracle": {
+                            "id": "67890",
+                            "name": "model-1",
+                            "hostname": "localhost:1234",
+                        },
+                        "instance_type": {"name": "1x4"},
+                    }
+                }
             }
         }
     )
@@ -58,7 +68,19 @@ def mock_create_model_response():
     response.status_code = 200
     response.json = mock.Mock(
         return_value={
-            "data": {"create_model_from_truss": {"model_version": {"id": "12345"}}}
+            "data": {
+                "create_model_from_truss": {
+                    "model_version": {
+                        "id": "12345",
+                        "oracle": {
+                            "id": "67890",
+                            "name": "model-1",
+                            "hostname": "localhost:1234",
+                        },
+                        "instance_type": {"name": "1x4"},
+                    }
+                }
+            }
         }
     )
     return response
@@ -149,6 +171,7 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
     assert 'environment_name: "production"' in gql_mutation
+    assert "preserve_env_instance_type: false" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -163,6 +186,7 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
         b10_types.TrussUserEnv.collect(),
         False,
         deployment_name=None,
+        preserve_env_instance_type=False,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -176,6 +200,7 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert "scale_down_old_production: true" in gql_mutation
     assert " name: " not in gql_mutation
     assert "environment_name: " not in gql_mutation
+    assert "preserve_env_instance_type: false" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -191,9 +216,11 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
         True,
         deployment_name=None,
         environment="staging",
+        preserve_env_instance_type=True,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
+
     assert 'model_id: "model_id"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
@@ -204,6 +231,7 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert "scale_down_old_production: false" in gql_mutation
     assert " name: " not in gql_mutation
     assert 'environment_name: "staging"' in gql_mutation
+    assert "preserve_env_instance_type: true" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
