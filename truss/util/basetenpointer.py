@@ -83,14 +83,9 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
     assert cache.is_v2, "ModelCache is not v2"
 
     basetenpointers: list[BasetenPointer] = []
-    # validate all models have a valid revision:
-    for model in cache.models:
-        if model.revision is None:
-            raise ValueError(
-                f"Model {model.repo_id} does not have a revision. Please specify a revision."
-            )
 
-        # get meta
+    for model in cache.models:
+        assert model.revision is not None, "ModelCache is not v2, revision is None"
         exception = None
         for _ in range(3):
             try:
