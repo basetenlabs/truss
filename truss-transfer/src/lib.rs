@@ -199,7 +199,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             .context("Failed to create b10cache directory")?;
         // Clean up cache files that have not been accessed within the threshold
         let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        cleanup_cache(&current_hashes).await?;
+        cleanup_cache_and_calculate_size(&current_hashes).await?;
         // only use at max max 2 workers for b10cache
         num_workers = num_workers.min(2);
         // shuffle the resolution map to randomize the order of downloads
@@ -479,53 +479,64 @@ fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
     }
 }
 
-/// Asynchronously cleans up cache files that have not been accessed within the threshold
-/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
-/// Asynchronously cleans up cache files that have not been accessed within the threshold
-/// and whose filename (assumed to be the file's hash) is not in `current_hashes`.
-pub async fn cleanup_cache(current_hashes: &HashSet<String>) -> Result<()> {
+/// cleans up cache files and calculates total cache utilization.
+/// Returns a tuple of (bytes_used, files_count) after cleanup.
+/// Files are cleaned up if they:
+/// - Have not been accessed within the threshold
+/// - Their filename (assumed to be the file's hash) is not in `current_hashes`
+pub async fn cleanup_cache_and_calculate_size(current_hashes: &HashSet<String>) -> Result<(u64, usize)> {
     let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
     let cache_dir = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
     let mut dir = fs::read_dir(cache_dir).await?;
+    let mut total_bytes = 0u64;
+    let mut total_files = 0usize;
+
     info!(
-        "Cleaning up b10cache with a threshold of {} hours ({} days)",
+        "Analyzing b10cache with a threshold of {} hours ({} days)",
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
+
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
         // Only process files
         if path.is_file() {
             let metadata = fs::metadata(&path).await?;
+            let file_size = metadata.len();
             let atime = get_atime(&metadata)?;
-            if now - atime > threshold_seconds as i64 {
-                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                    if !current_hashes.contains(file_name) {
-                        info!(
-                            "Would delete cached file {}: not accessed for over {} hours",
-                            file_name, cleanup_threshold_hours
-                        );
-                        fs::remove_file(&path).await?;
-                    } else {
-                        info!(
-                            "Skipping file {} as it is part of the current hashes",
-                            file_name
-                        );
-                    }
+
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                if now - atime > threshold_seconds as i64 && !current_hashes.contains(file_name) {
+                    info!(
+                        "Deleting cached file {} ({} bytes): not accessed for over {} hours",
+                        file_name, file_size, cleanup_threshold_hours
+                    );
+                    fs::remove_file(&path).await?;
+                } else {
+                    info!(
+                        "Keeping file {} ({} bytes): last accessed {} minutes ago",
+                        file_name,
+                        file_size,
+                        (now - atime) / 60
+                    );
+                    total_bytes += file_size;
+                    total_files += 1;
                 }
-            } else {
-                info!(
-                    "Skipping file {:?}: last accessed {} minutes ago",
-                    path,
-                    (now - atime) / 60
-                );
             }
         }
     }
-    Ok(())
+
+    info!(
+        "Cache utilization after cleanup: {} files using {} bytes ({:.2} MB)",
+        total_files,
+        total_bytes,
+        total_bytes as f64 / 1_048_576.0
+    );
+
+    Ok((total_bytes, total_files))
 }
 
 /// handling new b10cache:
