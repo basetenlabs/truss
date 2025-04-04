@@ -18,9 +18,8 @@ use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::time::UNIX_EPOCH;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Semaphore;
-
 // For logging
 use env_logger::Builder;
 use log::{debug, error, info, warn, LevelFilter};
@@ -200,24 +199,42 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         fs::create_dir_all(CACHE_DIR)
             .await
             .context("Failed to create b10cache directory")?;
-        // Clean up cache files that have not been accessed within the threshold
-        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        let (cache_size, _) = cleanup_b10cache_and_calculate_size(&current_hashes).await?;
-        // warn if cache size is over 400GB, max size is 500GB
-        if cache_size > 400 * 1024 * 1024 * 1024 {
-            warn!("b10cache size is over 400GB. Consider cleaning up the cache, not backing up additional files.");
-            write_to_b10cache = false;
-        }
-        // todo: check speed of b10cache (e.g. vs download speed / constant)
-        // and stop using b10cache if download speed is faster
-
-        // only use at max max 2 workers for b10cache
-        num_workers = num_workers.min(2);
         // shuffle the resolution map to randomize the order of downloads
         // in a multi-worker inital start scenario (cold-boost + x)
         // This is to avoid the same file being downloaded by multiple workers
         use rand::seq::SliceRandom;
         resolution_map.shuffle(&mut rand::rng());
+
+        // Clean up cache files that have not been accessed within the threshold
+        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
+        let (cache_size, _) = cleanup_b10cache_and_calculate_size(&current_hashes).await?;
+        // warn if cache size is over 400GB, max size is 500GB
+        if cache_size > 450 * 1024 * 1024 * 1024 {
+            warn!("b10cache size is over 450GB. Consider cleaning up the cache. Disabling write to cache.");
+            write_to_b10cache = false;
+        }
+        // todo: check speed of b10cache (e.g. is faster than 100MB/s)
+        // and stop using b10cache if download speed is faster
+        match is_b10cache_fast_heuristic(&bptr_manifest).await {
+            Ok(speed) => {
+                if speed {
+                    info!("b10cache is faster than downloading. Using b10cache.");
+                } else {
+                    info!("b10cache is slower than downloading. Not reading from b10cache.");
+                    // TODO: switch to downloading
+                    // read_from_b10cache = true;
+                }
+            }
+            Err(e) => {
+                warn!("Failed to check b10cache speed: {}", e);
+            }
+        }
+
+        // only use at max 2 workers for b10cache
+        if read_from_b10cache {
+            info!("Using b10cache. Limiting to 2 workers.");
+            num_workers = num_workers.min(2);
+        }
     } else {
         info!("b10cache is not enabled.");
     }
@@ -677,9 +694,53 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     Ok(())
 }
 
+/// Check file read speed above 100MB/s and decide whether to use b10cache or not.
+/// Uses the Manifest, and searches for the first file in the cache that is available and >512MB.
+/// Then reads the first 200MB (byte range request for read) of the file and checks the speed.
+/// If the speed is above 100MB/s, it returns true.
+/// Otherwise, it returns false.
+/// If all files in the cache or manifest are <512MB, it returns true.
+async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
+    for bptr in &manifest.pointers {
+        let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
+
+        if bptr.size > 512 * 1024 * 1024 && cache_path.exists() {
+            let metadata = fs::metadata(&cache_path).await?;
+            let file_size = metadata.len();
+            if file_size == bptr.size as u64 {
+                let mut file = fs::File::open(&cache_path)
+                    .await
+                    .with_context(|| format!("Failed to open file {:?}", cache_path))?;
+                // benchmark, read 100MB
+                let mut buffer = vec![0u8; 100 * 1024 * 1024]; // 100MB buffer
+                let start_time = std::time::Instant::now();
+                let bytes_read = file.read_exact(&mut buffer).await;
+                let elapsed_time = start_time.elapsed();
+                if bytes_read.is_ok() {
+                    let elapsed_secs = elapsed_time.as_secs_f64();
+                    let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
+                    info!("Read speed for file {:?}: {:.2} MB/s", cache_path, speed);
+                    if speed > 100.0 {
+                        return Ok(true); // Use b10cache
+                    } else {
+                        return Ok(false); // Don't use b10cache
+                    }
+                } else {
+                    warn!(
+                        "Failed to read file {:?}: {}",
+                        cache_path,
+                        bytes_read.unwrap_err()
+                    );
+                }
+            }
+        }
+    }
+    // no file > 512MB found in cache
+    return Ok(true);
+}
+
 // verifies that the file exists and updates its atime by reading it
 async fn update_atime_by_reading(path: &Path) -> Result<()> {
-    use tokio::io::AsyncReadExt;
     // Open the file in read-only mode.
     let mut file = fs::File::open(path)
         .await
