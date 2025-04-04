@@ -391,9 +391,10 @@ async fn download_file_with_cache(
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache {
-        match handle_b10cache(&destination, &cache_path).await {
+        match handle_write_b10cache(&destination, &cache_path).await {
             Ok(_) => info!("b10cache handled successfully."),
             Err(e) => {
+                 // even if the handle_write_b10cache fails, we still continue.
                 warn!("Failed to handle b10cache: {}", e);
             }
         }
@@ -584,7 +585,7 @@ pub async fn cleanup_b10cache_and_calculate_size(
 ///    - Create a symlink from the cache file to the original local path.
 /// 4. If the sizes do not match:
 ///    - Delete the .incomplete file and keep the local file.
-async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> {
+async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> {
     info!(
         "b10cache enabled: copying file from {:?} to cache and creating symlink back to {:?}",
         download_path, cache_path
@@ -598,6 +599,9 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
                 "Cache file {:?} already exists with the same size. Skipping copy to b10fs.",
                 cache_path
             );
+            update_atime_by_reading(cache_path)
+                .await
+                .context("Failed to update atime for cache file")?;
             return Ok(());
         }
     }
