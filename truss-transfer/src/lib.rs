@@ -230,9 +230,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             }
         }
 
-        // only use at max 2 workers for b10cache
-        if read_from_b10cache {
-            info!("Using b10cache. Limiting to 2 workers.");
+        // only use at max 2 workers for b10cache, to avoid conflicts on parallel writes
+        if write_to_b10cache {
+            info!("Using b10cache write. Limiting to 2 workers.");
             num_workers = num_workers.min(2);
         }
     } else {
