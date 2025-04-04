@@ -32,7 +32,12 @@ from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
-from truss.cli.train import display_training_jobs, get_args_for_logs, get_args_for_stop
+from truss.cli.train import (
+    ACTIVE_JOB_STATUSES,
+    display_training_jobs,
+    get_args_for_logs,
+    get_args_for_stop,
+)
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -1001,24 +1006,27 @@ def view_training(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    if job_id and not project_id:
-        raise click.UsageError(
-            "Project ID is required when specifying a job ID. To see all projects, use `truss train view`"
-        )
-
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    if project_id:
-        if job_id:
+    if job_id:
+        # show one job
+        if project_id:
             job_response = remote_provider.api.get_training_job(project_id, job_id)
-            display_training_jobs(console, [job_response["training_job"]])
+            training_job = job_response["training_job"]
         else:
-            jobs_response = remote_provider.api.list_training_jobs(project_id)
-            jobs = jobs_response["training_jobs"]
-            display_training_jobs(console, jobs)
-
+            training_jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+            if len(training_jobs) == 0:
+                raise click.UsageError("No training job found with the given job ID.")
+            training_job = training_jobs[0]
+        display_training_jobs(console, [training_job])
+    elif project_id:
+        # show all jobs for a project
+        jobs = remote_provider.api.search_training_jobs(
+            project_id=project_id, order_by=[{"field": "created_at", "order": "asc"}]
+        )
+        display_training_jobs(console, jobs)
     else:
         projects = remote_provider.api.list_training_projects()
         table = rich.table.Table(
@@ -1034,7 +1042,8 @@ def view_training(
         table.add_column("Updated At")
         table.add_column("Latest Job ID")
 
-        for project in projects:
+        # most recent projects at bottom of terminal
+        for project in projects[::-1]:
             latest_job = project.get("latest_job") or {}
             table.add_row(
                 project["id"],
@@ -1045,6 +1054,14 @@ def view_training(
             )
 
         console.print(table)
+
+        active_jobs = remote_provider.api.search_training_jobs(
+            statuses=ACTIVE_JOB_STATUSES
+        )
+        if active_jobs:
+            display_training_jobs(console, active_jobs, title="Active Training Jobs")
+        else:
+            console.print("No active training jobs.", style="yellow")
 
 
 # End Training Stuff #####################################################################

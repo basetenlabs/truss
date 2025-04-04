@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -621,6 +622,23 @@ class BasetenApi:
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
     ):
+        job_resp = self.get_training_job(project_id, job_id)
+        training_job = job_resp["training_job"]
+        # get the start and end epoch millis from the training job's end
+        if training_job["current_status"] in [
+            "TRAINING_JOB_FAILED",
+            "TRAINING_JOB_COMPLETED",
+            "TRAINING_JOB_STOPPED",
+        ]:
+            last_updated = training_job["updated_at"]
+            last_updated_time = datetime.fromisoformat(last_updated).replace(
+                tzinfo=timezone.utc
+            )
+            end_epoch_millis = int(last_updated_time.timestamp() * 1000)
+            start_epoch_millis = int(
+                (last_updated_time - timedelta(minutes=30)).timestamp() * 1000
+            )
+
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
             body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
