@@ -694,7 +694,7 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     Ok(())
 }
 
-/// Check if b10cache is faster than downloading by reading the first 100MB of a file in the cache.
+/// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
 /// If the read speed is greater than 100MB/s, it returns true.
 /// If no file in the cache is larger than 128MB, it returns true.
 /// Otherwise, it returns false.
