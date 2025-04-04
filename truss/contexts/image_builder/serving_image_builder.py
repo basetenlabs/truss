@@ -19,7 +19,6 @@ from truss.base import constants
 from truss.base.constants import (
     ARM_PLATFORMS,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
-    BASE_TRTLLM_REQUIREMENTS,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_BASE_IMAGE,
@@ -473,7 +472,6 @@ class ServingImageBuilder(ImageBuilder):
         config.base_image = BaseImage(
             image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
         )
-        config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
