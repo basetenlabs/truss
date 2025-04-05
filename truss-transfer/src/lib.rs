@@ -709,6 +709,8 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
 async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
     let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
     // random number, uniform between 25 and 250 MB/s as a threshold
+    // using random instead of fixed number to e.g. avoid catastrophic
+    // events e.g. huggingface is down, where b10cache will have more load.
     let desired_speed: f64 = 25.0 + rand::random::<f64>() * (225.0);
 
     for bptr in &manifest.pointers {
