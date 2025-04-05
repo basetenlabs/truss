@@ -218,7 +218,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         match is_b10cache_fast_heuristic(&bptr_manifest).await {
             Ok(speed) => {
                 if speed {
-                    info!("b10cache is faster than downloading. Using b10cache: Read.");
+                    info!("b10cache is faster than downloading.");
                 } else {
                     info!("b10cache is slower than downloading. Not reading from b10cache.");
                     // TODO: switch to downloading
@@ -363,7 +363,7 @@ async fn download_file_with_cache(
     if read_from_b10cache {
         // Check metadata and size first
         if check_metadata_size(&cache_path, size).await {
-            info!(
+            debug!(
                 "Found {} in b10cache. Attempting to create symlink...",
                 hash
             );
@@ -423,7 +423,7 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     }
 
     let sanitized_url = sanitize_url(url);
-    info!("Starting download to {:?} from {}", path, sanitized_url);
+    debug!("Starting download to {:?} from {}", path, sanitized_url);
     let mut request_builder = client.get(url);
     if url.starts_with("https://huggingface.co") {
         if let Some(token) = get_hf_token() {
@@ -553,7 +553,7 @@ pub async fn cleanup_b10cache_and_calculate_size(
                     );
                     fs::remove_file(&path).await?;
                 } else {
-                    info!(
+                    debug!(
                         "Keeping file {} ({} bytes): last accessed {} minutes ago",
                         file_name,
                         file_size,
