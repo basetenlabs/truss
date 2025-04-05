@@ -218,7 +218,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         match is_b10cache_fast_heuristic(&bptr_manifest).await {
             Ok(speed) => {
                 if speed {
-                    info!("b10cache is faster than downloading. Using b10cache.");
+                    info!("b10cache is faster than downloading. Using b10cache: Read.");
                 } else {
                     info!("b10cache is slower than downloading. Not reading from b10cache.");
                     // TODO: switch to downloading
@@ -703,11 +703,13 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
 }
 
 /// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
-/// If the read speed is greater than 100MB/s, it returns true.
+/// If the read speed is greater than e.g. 114MB/s, it returns true.
 /// If no file in the cache is larger than 128MB, it returns true.
 /// Otherwise, it returns false.
 async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
     let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
+    // random number, uniform between 25 and 250 MB/s as a threshold
+    let desired_speed: f64 = 25.0 + rand::random::<f64>() * (225.0);
 
     for bptr in &manifest.pointers {
         let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
@@ -728,7 +730,7 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
                     let elapsed_secs = elapsed_time.as_secs_f64();
                     let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
                     info!("Read speed of b10cache approx. {:.2} MB/s", speed);
-                    if speed > 100.0 {
+                    if speed > desired_speed {
                         return Ok(true); // Use b10cache
                     } else {
                         return Ok(false); // Don't use b10cache
