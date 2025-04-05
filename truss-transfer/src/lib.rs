@@ -264,7 +264,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         let sem_clone = semaphore.clone();
         tasks.push(tokio::spawn(async move {
             let _permit = sem_clone.acquire_owned().await;
-            info!("Handling file: {}", file_name);
+            debug!("Handling file: {}", file_name);
             download_file_with_cache(
                 &client,
                 &resolved_url,
