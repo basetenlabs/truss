@@ -18,9 +18,8 @@ use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::time::UNIX_EPOCH;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Semaphore;
-
 // For logging
 use env_logger::Builder;
 use log::{debug, error, info, warn, LevelFilter};
@@ -33,7 +32,7 @@ static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
-static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 28 * 24; // 28 days
+static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 14 * 24; // 14 days
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
 
@@ -183,7 +182,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("All pointers validated successfully.");
 
     // 4. Check if b10cache is enabled
-    let uses_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
+    let allowed_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
         .unwrap_or_else(|_| "false".into())
         .to_lowercase()
         .as_str()
@@ -191,24 +190,56 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         "1" | "true" => true,
         _ => false,
     };
-    if uses_b10_cache {
+    let read_from_b10cache = allowed_b10_cache;
+    let mut write_to_b10cache = allowed_b10_cache;
+
+    if allowed_b10_cache {
         info!("b10cache is enabled.");
         // create cache directory if it doesn't exist
         fs::create_dir_all(CACHE_DIR)
             .await
             .context("Failed to create b10cache directory")?;
-        // Clean up cache files that have not been accessed within the threshold
-        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        cleanup_cache_and_calculate_size(&current_hashes).await?;
-        // only use at max max 2 workers for b10cache
-        num_workers = num_workers.min(2);
         // shuffle the resolution map to randomize the order of downloads
         // in a multi-worker inital start scenario (cold-boost + x)
         // This is to avoid the same file being downloaded by multiple workers
         use rand::seq::SliceRandom;
         resolution_map.shuffle(&mut rand::rng());
+
+        // Clean up cache files that have not been accessed within the threshold
+        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
+        let (cache_size, _) = cleanup_b10cache_and_calculate_size(&current_hashes).await?;
+        // warn if cache size is over 425GB, disabling write to b10cache
+        if cache_size > 425 * 1024 * 1024 * 1024 {
+            warn!("b10cache size is over 425GB. Consider cleaning up the cache. Disabling write to cache.");
+            write_to_b10cache = false;
+        }
+        // todo: check speed of b10cache (e.g. is faster than 100MB/s)
+        // and stop using b10cache if download speed is faster
+        match is_b10cache_fast_heuristic(&bptr_manifest).await {
+            Ok(speed) => {
+                if speed {
+                    info!("b10cache is faster than downloading. Using b10cache: Read.");
+                } else {
+                    info!("b10cache is slower than downloading. Not reading from b10cache.");
+                    // TODO: switch to downloading
+                    // read_from_b10cache = true;
+                }
+            }
+            Err(e) => {
+                warn!("Failed to check b10cache speed: {}", e);
+            }
+        }
+
+        // only use at max 2 workers for b10cache, to avoid conflicts on parallel writes
+        if write_to_b10cache {
+            num_workers = num_workers.min(2);
+        }
+        info!(
+            "b10cache use: Read: {}, Write: {}",
+            read_from_b10cache, write_to_b10cache
+        );
     } else {
-        info!("b10cache is not enabled.");
+        info!("b10cache is not enabled for read or write.");
     }
 
     // 5. Build concurrency limit
@@ -241,7 +272,8 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                 &file_name,
                 &hash,
                 size,
-                uses_b10_cache,
+                read_from_b10cache,
+                write_to_b10cache,
             )
             .await
         }));
@@ -307,7 +339,8 @@ async fn download_file_with_cache(
     file_name: &str,
     hash: &str,
     size: u64,
-    uses_b10_cache: bool,
+    read_from_b10cache: bool,
+    write_to_b10cache: bool,
 ) -> Result<()> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(hash);
@@ -327,7 +360,7 @@ async fn download_file_with_cache(
     }
 
     // If b10cache is enabled, try symlinking from the cache
-    if uses_b10_cache {
+    if read_from_b10cache {
         // Check metadata and size first
         if check_metadata_size(&cache_path, size).await {
             info!(
@@ -357,10 +390,11 @@ async fn download_file_with_cache(
     download_to_path(client, url, &destination, size).await?;
 
     // After the file is locally downloaded, optionally move it to b10cache.
-    if uses_b10_cache {
-        match handle_b10cache(&destination, &cache_path).await {
+    if write_to_b10cache {
+        match handle_write_b10cache(&destination, &cache_path).await {
             Ok(_) => info!("b10cache handled successfully."),
             Err(e) => {
+                 // even if the handle_write_b10cache fails, we still continue.
                 warn!("Failed to handle b10cache: {}", e);
             }
         }
@@ -484,13 +518,16 @@ fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
 /// Files are cleaned up if they:
 /// - Have not been accessed within the threshold
 /// - Their filename (assumed to be the file's hash) is not in `current_hashes`
-pub async fn cleanup_cache_and_calculate_size(current_hashes: &HashSet<String>) -> Result<(u64, usize)> {
+pub async fn cleanup_b10cache_and_calculate_size(
+    current_hashes: &HashSet<String>,
+) -> Result<(u64, usize)> {
     let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
     let cache_dir = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
     let mut dir = fs::read_dir(cache_dir).await?;
+
     let mut total_bytes = 0u64;
     let mut total_files = 0usize;
 
@@ -530,15 +567,14 @@ pub async fn cleanup_cache_and_calculate_size(current_hashes: &HashSet<String>) 
     }
 
     info!(
-        "Cache utilization after cleanup: {} files using {} bytes ({:.2} MB)",
+        "Cache utilization after cleanup: {} files using {} bytes ({:.2} GB)",
         total_files,
         total_bytes,
-        total_bytes as f64 / 1_048_576.0
+        total_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
     );
 
     Ok((total_bytes, total_files))
 }
-
 /// handling new b10cache:
 /// 1. Copy the local file (download_path) to a temporary cache file with a “.incomplete” suffix.
 /// 2. Verify that the copied file’s size matches the expected size.
@@ -549,7 +585,7 @@ pub async fn cleanup_cache_and_calculate_size(current_hashes: &HashSet<String>) 
 ///    - Create a symlink from the cache file to the original local path.
 /// 4. If the sizes do not match:
 ///    - Delete the .incomplete file and keep the local file.
-async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> {
+async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> {
     info!(
         "b10cache enabled: copying file from {:?} to cache and creating symlink back to {:?}",
         download_path, cache_path
@@ -563,6 +599,9 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
                 "Cache file {:?} already exists with the same size. Skipping copy to b10fs.",
                 cache_path
             );
+            update_atime_by_reading(cache_path)
+                .await
+                .context("Failed to update atime for cache file")?;
             return Ok(());
         }
     }
@@ -663,9 +702,56 @@ async fn handle_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> 
     Ok(())
 }
 
+/// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
+/// If the read speed is greater than e.g. 114MB/s, it returns true.
+/// If no file in the cache is larger than 128MB, it returns true.
+/// Otherwise, it returns false.
+async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
+    let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
+    // random number, uniform between 25 and 250 MB/s as a threshold
+    let desired_speed: f64 = 25.0 + rand::random::<f64>() * (225.0);
+
+    for bptr in &manifest.pointers {
+        let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
+
+        if bptr.size > benchmark_size as u64 && cache_path.exists() {
+            let metadata = fs::metadata(&cache_path).await?;
+            let file_size = metadata.len();
+            if file_size == bptr.size as u64 {
+                let mut file = fs::File::open(&cache_path)
+                    .await
+                    .with_context(|| format!("Failed to open file {:?}", cache_path))?;
+                // benchmark, read 100MB
+                let mut buffer = vec![0u8; benchmark_size]; // 100MB buffer
+                let start_time = std::time::Instant::now();
+                let bytes_read = file.read_exact(&mut buffer).await;
+                let elapsed_time = start_time.elapsed();
+                if bytes_read.is_ok() {
+                    let elapsed_secs = elapsed_time.as_secs_f64();
+                    let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
+                    info!("Read speed of b10cache approx. {:.2} MB/s", speed);
+                    if speed > desired_speed {
+                        return Ok(true); // Use b10cache
+                    } else {
+                        return Ok(false); // Don't use b10cache
+                    }
+                } else {
+                    // If reading fails, log the error and continue
+                    warn!(
+                        "Failed to read file {:?}: {}",
+                        cache_path,
+                        bytes_read.unwrap_err()
+                    );
+                }
+            }
+        }
+    }
+    // no file > 512MB found in cache
+    return Ok(true);
+}
+
 // verifies that the file exists and updates its atime by reading it
 async fn update_atime_by_reading(path: &Path) -> Result<()> {
-    use tokio::io::AsyncReadExt;
     // Open the file in read-only mode.
     let mut file = fs::File::open(path)
         .await
