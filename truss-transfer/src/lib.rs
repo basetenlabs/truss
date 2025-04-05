@@ -190,7 +190,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         "1" | "true" => true,
         _ => false,
     };
-    let read_from_b10cache = allowed_b10_cache;
+    let mut read_from_b10cache = allowed_b10_cache;
     let mut write_to_b10cache = allowed_b10_cache;
 
     if allowed_b10_cache {
@@ -221,8 +221,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                     info!("b10cache is faster than downloading.");
                 } else {
                     info!("b10cache is slower than downloading. Not reading from b10cache.");
-                    // TODO: switch to downloading
-                    // read_from_b10cache = true;
+                    read_from_b10cache = false;
                 }
             }
             Err(e) => {
