@@ -7,6 +7,12 @@ from rich.console import Console
 
 from truss.remote.baseten.remote import BasetenRemote
 
+ACTIVE_JOB_STATUSES = [
+    "TRAINING_JOB_RUNNING",
+    "TRAINING_JOB_CREATED",
+    "TRAINING_JOB_DEPLOYING",
+]
+
 
 def get_args_for_stop(
     console: Console,
@@ -16,7 +22,7 @@ def get_args_for_stop(
 ) -> Tuple[str, str]:
     if not project_id or not job_id:
         # get all running jobs
-        job = _get_running_job(console, remote_provider, project_id, job_id)
+        job = _get_active_job(console, remote_provider, project_id, job_id)
         project_id_for_job = cast(str, job["training_project_id"])
         job_id_to_stop = cast(str, job["id"])
         # check if the user wants to stop the inferred running job
@@ -59,20 +65,20 @@ def get_args_for_logs(
     return project_id, job_id
 
 
-def _get_running_job(
+def _get_active_job(
     console: Console,
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
 ) -> dict:
     jobs = remote_provider.api.search_training_jobs(
-        statuses=["TRAINING_JOB_RUNNING"], project_id=project_id, job_id=job_id
+        statuses=ACTIVE_JOB_STATUSES, project_id=project_id, job_id=job_id
     )
     if not jobs:
         raise click.UsageError("No running jobs found.")
     if len(jobs) > 1:
-        display_training_jobs(console, jobs, title="Running Training Jobs")
-        raise click.UsageError("Multiple running jobs found. Please specify a job id.")
+        display_training_jobs(console, jobs, title="Active Training Jobs")
+        raise click.UsageError("Multiple active jobs found. Please specify a job id.")
     return jobs[0]
 
 
