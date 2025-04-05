@@ -392,7 +392,7 @@ async fn download_file_with_cache(
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache {
         match handle_write_b10cache(&destination, &cache_path).await {
-            Ok(_) => info!("b10cache handled successfully."),
+            Ok(_) => debug!("b10cache handled successfully."),
             Err(e) => {
                  // even if the handle_write_b10cache fails, we still continue.
                 warn!("Failed to handle b10cache: {}", e);
@@ -729,7 +729,7 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
                 if bytes_read.is_ok() {
                     let elapsed_secs = elapsed_time.as_secs_f64();
                     let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
-                    info!("Read speed of b10cache approx. {:.2} MB/s", speed);
+                    warn!("b10cache: Read speed of {:.2} MB/s", speed);
                     if speed > desired_speed {
                         return Ok(true); // Use b10cache
                     } else {
