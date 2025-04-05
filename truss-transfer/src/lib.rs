@@ -190,7 +190,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         "1" | "true" => true,
         _ => false,
     };
-    let read_from_b10cache = allowed_b10_cache;
+    let mut read_from_b10cache = allowed_b10_cache;
     let mut write_to_b10cache = allowed_b10_cache;
 
     if allowed_b10_cache {
@@ -218,11 +218,10 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         match is_b10cache_fast_heuristic(&bptr_manifest).await {
             Ok(speed) => {
                 if speed {
-                    info!("b10cache is faster than downloading. Using b10cache: Read.");
+                    info!("b10cache is faster than downloading.");
                 } else {
                     info!("b10cache is slower than downloading. Not reading from b10cache.");
-                    // TODO: switch to downloading
-                    // read_from_b10cache = true;
+                    read_from_b10cache = false;
                 }
             }
             Err(e) => {
@@ -264,7 +263,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         let sem_clone = semaphore.clone();
         tasks.push(tokio::spawn(async move {
             let _permit = sem_clone.acquire_owned().await;
-            info!("Handling file: {}", file_name);
+            debug!("Handling file: {}", file_name);
             download_file_with_cache(
                 &client,
                 &resolved_url,
@@ -363,7 +362,7 @@ async fn download_file_with_cache(
     if read_from_b10cache {
         // Check metadata and size first
         if check_metadata_size(&cache_path, size).await {
-            info!(
+            debug!(
                 "Found {} in b10cache. Attempting to create symlink...",
                 hash
             );
@@ -392,7 +391,7 @@ async fn download_file_with_cache(
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache {
         match handle_write_b10cache(&destination, &cache_path).await {
-            Ok(_) => info!("b10cache handled successfully."),
+            Ok(_) => debug!("b10cache handled successfully."),
             Err(e) => {
                  // even if the handle_write_b10cache fails, we still continue.
                 warn!("Failed to handle b10cache: {}", e);
@@ -423,7 +422,7 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     }
 
     let sanitized_url = sanitize_url(url);
-    info!("Starting download to {:?} from {}", path, sanitized_url);
+    debug!("Starting download to {:?} from {}", path, sanitized_url);
     let mut request_builder = client.get(url);
     if url.starts_with("https://huggingface.co") {
         if let Some(token) = get_hf_token() {
@@ -553,7 +552,7 @@ pub async fn cleanup_b10cache_and_calculate_size(
                     );
                     fs::remove_file(&path).await?;
                 } else {
-                    info!(
+                    debug!(
                         "Keeping file {} ({} bytes): last accessed {} minutes ago",
                         file_name,
                         file_size,
@@ -709,6 +708,8 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
 async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
     let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
     // random number, uniform between 25 and 250 MB/s as a threshold
+    // using random instead of fixed number to e.g. avoid catastrophic
+    // events e.g. huggingface is down, where b10cache will have more load.
     let desired_speed: f64 = 25.0 + rand::random::<f64>() * (225.0);
 
     for bptr in &manifest.pointers {
@@ -729,7 +730,7 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
                 if bytes_read.is_ok() {
                     let elapsed_secs = elapsed_time.as_secs_f64();
                     let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
-                    info!("Read speed of b10cache approx. {:.2} MB/s", speed);
+                    warn!("b10cache: Read speed of {:.2} MB/s", speed);
                     if speed > desired_speed {
                         return Ok(true); // Use b10cache
                     } else {
