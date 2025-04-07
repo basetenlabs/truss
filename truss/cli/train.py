@@ -165,3 +165,23 @@ def view_training_details(
             display_training_jobs(console, active_jobs, title="Active Training Jobs")
         else:
             console.print("No active training jobs.", style="yellow")
+
+
+def stop_all_jobs(
+    console: Console, remote_provider: BasetenRemote, project_id: Optional[str]
+):
+    active_jobs = remote_provider.api.search_training_jobs(
+        project_id=project_id, statuses=ACTIVE_JOB_STATUSES
+    )
+    if not active_jobs:
+        console.print("No active jobs found.", style="yellow")
+        return
+    confirm = inquirer.confirm(
+        message=f"Are you sure you want to stop {len(active_jobs)} active jobs?",
+        default=False,
+    ).execute()
+    if not confirm:
+        raise click.UsageError("Training jobs not stopped.")
+    for job in active_jobs:
+        remote_provider.api.stop_training_job(job["training_project_id"], job["id"])
+    console.print("Training jobs stopped successfully.", style="green")
