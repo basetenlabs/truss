@@ -100,7 +100,7 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
     for job in jobs:
         table.add_row(
             job["training_project_id"],
-            job["training_project_name"],
+            job["training_project"]["name"],
             job["id"],
             job["current_status"],
             job["instance_type"]["name"],
