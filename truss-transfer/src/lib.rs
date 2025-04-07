@@ -715,7 +715,7 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
     for bptr in &manifest.pointers {
         let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
 
-        if bptr.size > benchmark_size as u64 && cache_path.exists() {
+        if bptr.size > (2*benchmark_size as u64) && cache_path.exists() {
             let metadata = fs::metadata(&cache_path).await?;
             let file_size = metadata.len();
             if file_size == bptr.size as u64 {
@@ -747,6 +747,7 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
             }
         }
     }
+    info!("Skipping b10cache speed check.");
     // no file > 512MB found in cache
     return Ok(true);
 }
