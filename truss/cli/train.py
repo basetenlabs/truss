@@ -91,6 +91,7 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
         border_style="blue",
     )
     table.add_column("Project ID", style="cyan")
+    table.add_column("Project Name", style="cyan")
     table.add_column("Job ID", style="cyan")
     table.add_column("Status", style="white")
     table.add_column("Instance Type", style="white")
@@ -99,6 +100,7 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
     for job in jobs:
         table.add_row(
             job["training_project_id"],
+            job["training_project_name"],
             job["id"],
             job["current_status"],
             job["instance_type"]["name"],
@@ -106,3 +108,60 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
             job["updated_at"],
         )
     console.print(table)
+
+
+def view_training_details(
+    console: Console,
+    remote_provider: BasetenRemote,
+    project_id: Optional[str],
+    job_id: Optional[str],
+):
+    """
+    view_training_details shows a list of jobs that meet the provided project_id and job_id filters.
+
+     If no filters are provided, the command will show a list of all training projects and a list of active jobs.
+    """
+    if job_id or project_id:
+        jobs_response = remote_provider.api.search_training_jobs(
+            project_id=project_id,
+            job_id=job_id,
+            order_by=[{"field": "created_at", "order": "asc"}],
+        )
+        if len(jobs_response) == 0:
+            raise click.UsageError("No training jobs found")
+        display_training_jobs(console, jobs_response)
+    else:
+        projects = remote_provider.api.list_training_projects()
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title="Training Projects",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        table.add_column("Project ID", style="cyan")
+        table.add_column("Name")
+        table.add_column("Created At")
+        table.add_column("Updated At")
+        table.add_column("Latest Job ID")
+
+        # most recent projects at bottom of terminal
+        for project in projects[::-1]:
+            latest_job = project.get("latest_job") or {}
+            table.add_row(
+                project["id"],
+                project["name"],
+                project["created_at"],
+                project["updated_at"],
+                latest_job.get("id", ""),
+            )
+
+        console.print(table)
+
+        active_jobs = remote_provider.api.search_training_jobs(
+            statuses=ACTIVE_JOB_STATUSES
+        )
+        if active_jobs:
+            display_training_jobs(console, active_jobs, title="Active Training Jobs")
+        else:
+            console.print("No active training jobs.", style="yellow")
