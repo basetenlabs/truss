@@ -77,8 +77,8 @@ COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
 {%- if model_cache_v2 %}
-# v0.0.8rc5, keep synced with server_requirements.txt
-RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.9.78rc003/truss-transfer-cli-v0.9.78rc003-linux-x86_64-unknown-linux-musl
+# v0.0.9, keep synced with server_requirements.txt
+RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.9.78rc004/truss-transfer-cli-v0.9.78rc004-linux-x86_64-unknown-linux-musl
 RUN chmod +x /usr/local/bin/truss-transfer-cli
 RUN mkdir /bptr
 COPY ./bptr-manifest /bptr/bptr-manifest
