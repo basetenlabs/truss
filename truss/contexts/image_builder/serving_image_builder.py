@@ -431,10 +431,17 @@ class ServingImageBuilder(ImageBuilder):
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
-        config.base_image = BaseImage(
-            image=BEI_TRTLLM_BASE_IMAGE,
-            python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
-        )
+        # Flex builds fill in the latest image during `docker_build_setup` on the
+        # baseten backend. So only the image is not set, we use the constant
+        # `BEI_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
+        # builds, we can remove the constant and setting the image here.
+        if not (
+            config.base_image and config.base_image.image.startswith("baseten/bei")
+        ):
+            config.base_image = BaseImage(
+                image=BEI_TRTLLM_BASE_IMAGE,
+                python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
+            )
 
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
@@ -468,10 +475,17 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
-
-        config.base_image = BaseImage(
-            image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
-        )
+        # Flex builds fill in the latest image during `docker_build_setup` on the
+        # baseten backend. So only the image is not set, we use the constant
+        # `TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
+        # builds, we can remove the constant and setting the image here.
+        if not (
+            config.base_image
+            and config.base_image.image.startswith("baseten/briton-server:")
+        ):
+            config.base_image = BaseImage(
+                image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
+            )
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False

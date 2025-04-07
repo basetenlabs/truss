@@ -398,16 +398,25 @@ class TrussSpeculatorConfiguration(BaseModel):
             )
 
 
-class VersionOverrides(BaseModel):
-    engine_builder_version: Optional[str] = None
-    bei_version: Optional[str] = None
-    briton_version: Optional[str] = None
+class ImageVersionsOverrides(BaseModel):
+    engine_builder_image: Optional[str] = None
+    briton_image: Optional[str] = None
+    bei_image: Optional[str] = None
+
+
+class ImageVersions(BaseModel):
+    # Required versions for patching truss config during docker build setup.
+    # The schema of this model must be such that it can parse the values serialized
+    # from the backend..
+    bei_image: str
+    briton_image: str
 
 
 class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
-    version_overrides: VersionOverrides = VersionOverrides()
+    # If image versions are not set, the baseten backend will insert current defaults.
+    image_version_overrides: ImageVersionsOverrides = ImageVersionsOverrides()
 
     def model_post_init(self, __context):
         self.add_bei_default_route()
