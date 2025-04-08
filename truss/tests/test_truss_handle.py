@@ -392,12 +392,6 @@ def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
         Docker.client().kill(container)
 
 
-def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
-    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.enable_gpu()
-    assert th.spec.config.resources.use_gpu
-
-
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [("3.8", "py38"), ("py38", "py38"), ("3.9", "py39"), ("py39", "py39")],
@@ -796,21 +790,13 @@ def generate_default_config():
     # The test fixture varies with host version.
     python_version = map_local_to_supported_python_version()
     config = {
-        "build_commands": [],
-        "environment_variables": {},
-        "external_package_dirs": [],
-        "model_metadata": {},
-        "model_name": None,
         "python_version": python_version,
-        "requirements": [],
         "resources": {
             "accelerator": None,
             "cpu": "1",
             "memory": "2Gi",
             "use_gpu": False,
         },
-        "secrets": {},
-        "system_packages": [],
     }
     return config
 

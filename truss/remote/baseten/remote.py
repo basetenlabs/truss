@@ -8,7 +8,6 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base import validation
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
@@ -211,6 +210,7 @@ class BasetenRemote(TrussRemote):
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
+        preserve_env_instance_type: bool = False,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -247,7 +247,13 @@ class BasetenRemote(TrussRemote):
             origin=push_data.origin,
             environment=push_data.environment,
             truss_user_env=truss_user_env,
+            preserve_env_instance_type=preserve_env_instance_type,
         )
+
+        if model_version_handle.instance_type_name:
+            logging.info(
+                f"Deploying truss using {model_version_handle.instance_type_name} instance type."
+            )
 
         return BasetenService(
             model_version_handle=model_version_handle,
@@ -278,8 +284,7 @@ class BasetenRemote(TrussRemote):
         for artifact in [entrypoint_artifact, *dependency_artifacts]:
             truss_handle = truss_build.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
-
-            assert model_name and validation.is_valid_model_name(model_name)
+            assert model_name, "Per creation of artifacts should not be empty."
 
             push_data = self._prepare_push(
                 truss_handle=truss_handle,

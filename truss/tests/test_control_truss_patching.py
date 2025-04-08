@@ -1,10 +1,9 @@
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
-from truss.base.truss_config import ExternalDataItem
+from truss.base.truss_config import ExternalData, ExternalDataItem
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (
@@ -400,18 +399,15 @@ class Model:
         content = "patched content"
         new_filename = "foobar-patched.txt"
         (tmp_path / new_filename).write_text(content)
-        current_external_data = th._spec.config.external_data
-        new_external_data = replace(
-            current_external_data,
-            items=[
+        new_external_data = ExternalData(
+            [
                 ExternalDataItem(
                     url=f"http://host.docker.internal:9089/{new_filename}",
                     local_data_path=filename,
                 )
-            ],
+            ]
         )
-        th._update_config(lambda conf: replace(conf, external_data=new_external_data))
+        th._update_config(external_data=new_external_data)
         result = th.docker_predict([], tag=tag, network="host")
-        assert result == content and orig_num_truss_images == current_num_docker_images(
-            th
-        )
+        assert orig_num_truss_images == current_num_docker_images(th)
+        assert result == content

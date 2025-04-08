@@ -3,9 +3,11 @@ import logging
 import os
 import pathlib
 import sys
+from typing import Optional
 
 import click
 
+from truss.base import constants, trt_llm_config
 from truss.patch.hash import directory_content_hash
 from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
 from truss.templates.control.control.helpers.custom_types import Patch
@@ -22,9 +24,30 @@ TRUSS_SIGNATURE_FILE = working_dir / "scaffold/truss_signature"
 TRUSS_BUILD_CONTEXT_DIR = working_dir / "build/context"
 
 
+def _fill_trt_llm_versions(
+    tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
+):
+    assert tr.spec.config.trt_llm is not None
+    logging.info(f"Using TRT LLM image versions:\n`{image_versions}`")
+    if (
+        tr.spec.config.trt_llm.build.base_model
+        == trt_llm_config.TrussTRTLLMModel.ENCODER
+    ):
+        tr.set_base_image(
+            image_versions.bei_image, constants.BEI_TRTLLM_PYTHON_EXECUTABLE
+        )
+    else:
+        tr.set_base_image(
+            image_versions.briton_image, constants.BEI_TRTLLM_PYTHON_EXECUTABLE
+        )
+
+
 @click.command()
 @click.option("--truss_type", required=True)
-def docker_build_setup(truss_type: str) -> None:
+@click.option("--trt_llm_image_versions_json")
+def docker_build_setup(
+    truss_type: str, trt_llm_image_versions_json: Optional[str] = None
+) -> None:
     """
     Prepares source and asset files in a build directory (build context), on which a
     docker build command can be run.
@@ -34,6 +57,12 @@ def docker_build_setup(truss_type: str) -> None:
     """
     logging.info("Loading truss")
     tr = truss_handle.TrussHandle(TRUSS_SRC_DIR)
+    if tr.spec.config.trt_llm is not None and trt_llm_image_versions_json:
+        image_versions = trt_llm_config.ImageVersions.model_validate_json(
+            trt_llm_image_versions_json
+        )
+        _fill_trt_llm_versions(tr, image_versions)
+
     logging.info("Truss is loaded")
 
     if patches_dir := os.environ.get("PATCHES_DIR"):
