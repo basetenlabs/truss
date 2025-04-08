@@ -1,0 +1,23 @@
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: test_model_cache_v2
+python_version: py39
+requirements:
+  - transformers
+  - torch
+model_cache:
+  - repo_id: julien-c/EsperBERTo-small
+    revision: 4c7798256a4a6d577738150840c8f728361496d6
+    volume_folder: "julien_c_esper"
+    use_volume: true
+    ignore_patterns:
+      - "*.bin"
+      - "*.msgpack"
+resources:
+  accelerator: null
+  cpu: "2"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []

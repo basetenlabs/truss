@@ -62,7 +62,7 @@ FILENAME_CONSTANTS_MAP = {
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
-
+MODEL_CACHE_PATH = pathlib.Path("/app/model_cache")
 README_TEMPLATE_NAME = "README.md.jinja"
 MODEL_README_NAME = "README.md"
 
@@ -78,28 +78,6 @@ TRUSS_HASH = "truss_hash"
 
 HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = set({})
 
-# list from https://scikit-learn.org/stable/developers/advanced_installation.html
-SKLEARN_REQ_MODULE_NAMES: Set[str] = {
-    "numpy",
-    "scipy",
-    "joblib",
-    "scikit-learn",
-    "threadpoolctl",
-}
-
-XGBOOST_REQ_MODULE_NAMES: Set[str] = {"xgboost"}
-
-# list from https://www.tensorflow.org/install/pip
-# if problematic, lets look to https://www.tensorflow.org/install/source
-TENSORFLOW_REQ_MODULE_NAMES: Set[str] = {"tensorflow"}
-
-LIGHTGBM_REQ_MODULE_NAMES: Set[str] = {"lightgbm"}
-
-# list from https://pytorch.org/get-started/locally/
-PYTORCH_REQ_MODULE_NAMES: Set[str] = {"torch", "torchvision", "torchaudio"}
-
-MLFLOW_REQ_MODULE_NAMES: Set[str] = {"mlflow"}
-
 INFERENCE_SERVER_PORT = 8080
 
 HTTP_PUBLIC_BLOB_BACKEND = "http_public"
@@ -108,11 +86,11 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0-e882027"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0-fd30ac1"
+# TODO: build the image so that the default path `python3` can be used - then remove here.
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
-BASE_TRTLLM_REQUIREMENTS = ["briton==0.5.0"]
 BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.20"
-
+# TODO: build the image so that the default path `python3` can be used - then remove here.
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 
 OPENAI_COMPATIBLE_TAG = "openai-compatible"

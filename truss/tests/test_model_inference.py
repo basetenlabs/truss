@@ -1,7 +1,6 @@
 import asyncio
 import concurrent
 import contextlib
-import dataclasses
 import inspect
 import json
 import logging
@@ -1337,14 +1336,11 @@ def test_streaming_truss_with_user_tracing(test_data_path, enable_tracing_data):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_streaming_truss_with_tracing"
         tr = TrussHandle(truss_dir)
-
-        def enable_gpu_fn(conf):
-            new_runtime = dataclasses.replace(
-                conf.runtime, enable_tracing_data=enable_tracing_data
+        tr._update_config(
+            runtime=tr._spec.config.runtime.model_copy(
+                update={"enable_tracing_data": enable_tracing_data}
             )
-            return dataclasses.replace(conf, runtime=new_runtime)
-
-        tr._update_config(enable_gpu_fn)
+        )
 
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -1393,6 +1389,9 @@ def test_streaming_truss_with_user_tracing(test_data_path, enable_tracing_data):
             assert len(user_traces) > 0
             return
 
+        print("***")
+        print(truss_traces)
+        print("***")
         assert sum(1 for x in truss_traces if x["name"] == "predict-endpoint") == 3
         assert sum(1 for x in user_traces if x["name"] == "load_model") == 1
         assert sum(1 for x in user_traces if x["name"] == "predict") == 3

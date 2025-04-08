@@ -227,8 +227,10 @@ def push(
 
 
 def push_debug_docker(
-    entrypoint: Type[private_types.ABCChainlet], chain_name: str
+    entrypoint: Type[private_types.ABCChainlet], chain_name: Optional[str] = None
 ) -> ChainService:
+    if not chain_name:
+        chain_name = entrypoint.name.lower()
     options = private_types.PushOptionsLocalDocker(
         chain_name=chain_name, only_generate_trusses=False, use_local_src=True
     )

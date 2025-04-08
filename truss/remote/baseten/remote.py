@@ -8,7 +8,6 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base import validation
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
@@ -278,8 +277,7 @@ class BasetenRemote(TrussRemote):
         for artifact in [entrypoint_artifact, *dependency_artifacts]:
             truss_handle = truss_build.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
-
-            assert model_name and validation.is_valid_model_name(model_name)
+            assert model_name, "Per creation of artifacts should not be empty."
 
             push_data = self._prepare_push(
                 truss_handle=truss_handle,

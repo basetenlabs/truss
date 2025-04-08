@@ -14,7 +14,7 @@ FIXED_TEXT_PRFIX = "<|startoftranscript|><|en|><|transcribe|><|0.00|>"
 
 
 class WhisperBatchProcessor(AsyncBatcher[List[BatchWhisperItem], List[str]]):
-    def __init__(self, model, *args, **kwargs):
+    def __init__(self, model, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.model: "WhisperModel" = model
 
