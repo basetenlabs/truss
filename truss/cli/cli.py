@@ -68,22 +68,30 @@ click.rich_click.COMMAND_GROUPS = {
         {
             "name": "Main usage",
             "commands": ["init", "push", "watch", "predict", "model_logs"],
-            "table_styles": {"row_styles": ["green"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["green"]
+            },
         },
         {
             "name": "Advanced Usage",
             "commands": ["image", "container", "cleanup"],
-            "table_styles": {"row_styles": ["yellow"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["yellow"]
+            },
         },
         {
             "name": "Chains",
             "commands": ["chains"],
-            "table_styles": {"row_styles": ["red"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["red"]
+            },
         },
         {
             "name": "Train",
             "commands": ["train"],
-            "table_styles": {"row_styles": ["magenta"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["magenta"]
+            },
         },
     ]
 }
@@ -1325,19 +1333,6 @@ def run_python(script, target_directory):
     help=include_git_info_doc,
 )
 @click.option("--tail", type=bool, is_flag=True)
-@click.option(
-    "--preserve-env-instance-type/--no-preserve-env-instance-type",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help=(
-        "When pushing a truss to an environment, whether to use the resources specified "
-        "in the truss config to resolve the instance type or preserve the instance type "
-        "configured in the specified environment. It will be ignored if --environment is not specified. "
-        "Default is --no-preserve-env-instance-type."
-    ),
-)
 @log_level_option
 @error_handling
 def push(
@@ -1355,7 +1350,6 @@ def push(
     environment: Optional[str] = None,
     include_git_info: bool = False,
     tail: bool = False,
-    preserve_env_instance_type: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1381,17 +1375,6 @@ def push(
         console.print(promote_warning, style="yellow")
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
-
-    if preserve_env_instance_type and not environment:
-        preserve_env_warning = "`preserve-env-instance-type` flag specified without the `environment` parameter. Ignoring the value of `preserve-env-instance-type`"
-        console.print(preserve_env_warning, style="yellow")
-    if environment:
-        if preserve_env_instance_type:
-            preserve_env_info = f"`preserve-env-instance-type` flag specified. Resources from the config will be ignored and the current instance type of the {environment} environment will be used."
-            console.print(preserve_env_info, style="green")
-        else:
-            preserve_env_info = f"`preserve-env-instance-type` flag not specified. Instance type will be derived from the config and updated in the {environment} environment."
-            console.print(preserve_env_info, style="green")
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
@@ -1451,7 +1434,6 @@ def push(
         disable_truss_download=disable_truss_download,
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
-        preserve_env_instance_type=preserve_env_instance_type,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
