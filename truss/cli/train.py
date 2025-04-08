@@ -108,6 +108,7 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
         )
     console.print(table)
 
+
 def display_training_projects(console: Console, projects):
     table = rich.table.Table(
         show_header=True,
@@ -135,7 +136,6 @@ def display_training_projects(console: Console, projects):
 
     console.print(table)
 
-    
 
 def view_training_details(
     console: Console,
