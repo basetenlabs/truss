@@ -23,8 +23,8 @@ def get_args_for_stop(
     if not project_id or not job_id:
         # get all running jobs
         job = _get_active_job(console, remote_provider, project_id, job_id)
-        project_id_for_job = cast(str, job["training_project_id"])
-        job_id_to_stop = cast(str, job["id"])
+        project_id_for_job = job["training_project"]["id"]
+        job_id_to_stop = job["id"]
         # check if the user wants to stop the inferred running job
         if not job_id:
             confirm = inquirer.confirm(
@@ -33,8 +33,7 @@ def get_args_for_stop(
             ).execute()
             if not confirm:
                 raise click.UsageError("Training job not stopped.")
-        project_id = project_id_for_job
-        job_id = job_id_to_stop
+        return project_id_for_job, job_id_to_stop
 
     return project_id, job_id
 
@@ -60,7 +59,7 @@ def get_args_for_logs(
             )
         else:
             job = jobs[0]
-        project_id = cast(str, job["training_project_id"])
+        project_id = cast(str, job["training_project"]["id"])
         job_id = cast(str, job["id"])
     return project_id, job_id
 
@@ -99,7 +98,7 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
     table.add_column("Updated At", style="white")
     for job in jobs:
         table.add_row(
-            job["training_project_id"],
+            job["training_project"]["id"],
             job["training_project"]["name"],
             job["id"],
             job["current_status"],
@@ -109,6 +108,34 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
         )
     console.print(table)
 
+def display_training_projects(console: Console, projects):
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Training Projects",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Project ID", style="cyan")
+    table.add_column("Name")
+    table.add_column("Created At")
+    table.add_column("Updated At")
+    table.add_column("Latest Job ID")
+
+    # most recent projects at bottom of terminal
+    for project in projects[::-1]:
+        latest_job = project.get("latest_job") or {}
+        table.add_row(
+            project["id"],
+            project["name"],
+            project["created_at"],
+            project["updated_at"],
+            latest_job.get("id", ""),
+        )
+
+    console.print(table)
+
+    
 
 def view_training_details(
     console: Console,
@@ -132,32 +159,7 @@ def view_training_details(
         display_training_jobs(console, jobs_response)
     else:
         projects = remote_provider.api.list_training_projects()
-        table = rich.table.Table(
-            show_header=True,
-            header_style="bold magenta",
-            title="Training Projects",
-            box=rich.table.box.ROUNDED,
-            border_style="blue",
-        )
-        table.add_column("Project ID", style="cyan")
-        table.add_column("Name")
-        table.add_column("Created At")
-        table.add_column("Updated At")
-        table.add_column("Latest Job ID")
-
-        # most recent projects at bottom of terminal
-        for project in projects[::-1]:
-            latest_job = project.get("latest_job") or {}
-            table.add_row(
-                project["id"],
-                project["name"],
-                project["created_at"],
-                project["updated_at"],
-                latest_job.get("id", ""),
-            )
-
-        console.print(table)
-
+        display_training_projects(console, projects)
         active_jobs = remote_provider.api.search_training_jobs(
             statuses=ACTIVE_JOB_STATUSES
         )
@@ -183,5 +185,5 @@ def stop_all_jobs(
     if not confirm:
         raise click.UsageError("Training jobs not stopped.")
     for job in active_jobs:
-        remote_provider.api.stop_training_job(job["training_project_id"], job["id"])
+        remote_provider.api.stop_training_job(job["training_project"]["id"], job["id"])
     console.print("Training jobs stopped successfully.", style="green")
