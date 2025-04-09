@@ -399,7 +399,7 @@ class TrussSpeculatorConfiguration(BaseModel):
             )
 
 
-class ImageVersionsOverrides(BaseModel):
+class VersionsOverrides(BaseModel):
     # If an override is specified, it takes precedence over the backend's current
     # default version. The version is used to create a full image ref and should look
     # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
@@ -422,8 +422,8 @@ class ImageVersions(BaseModel):
 class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
-    # If image versions are not set, the baseten backend will insert current defaults.
-    image_version_overrides: ImageVersionsOverrides = ImageVersionsOverrides()
+    # If versions are not set, the baseten backend will insert current defaults.
+    version_overrides: VersionsOverrides = VersionsOverrides()
 
     def model_post_init(self, __context):
         self.add_bei_default_route()
