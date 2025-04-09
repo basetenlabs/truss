@@ -291,6 +291,12 @@ class Runtime(custom_types.ConfigModel):
 
         return self
 
+    @pydantic.field_validator("transport", mode="before")
+    def _default_transport_kind(cls, value: Any) -> Any:
+        if value == {}:
+            return {"kind": "http"}
+        return value
+
     @pydantic.field_validator("truss_server_version_override")
     def _validate_semver(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
