@@ -54,6 +54,7 @@ class Accelerator(str, enum.Enum):
     H100 = "H100"
     H200 = "H200"
     H100_40GB = "H100_40GB"
+    B200 = "B200"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
