@@ -399,15 +399,21 @@ class TrussSpeculatorConfiguration(BaseModel):
 
 
 class ImageVersionsOverrides(BaseModel):
-    engine_builder_image: Optional[str] = None
-    briton_image: Optional[str] = None
-    bei_image: Optional[str] = None
+    # If an override is specified, it takes precedence over the backend's current
+    # default version. The version is used to create a full image ref and should look
+    # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
+    # here and the backend creates the full image tag like
+    # `baseten/briton-server:v0.17.0-fd30ac1`.
+    engine_builder_version: Optional[str] = None
+    briton_version: Optional[str] = None
+    bei_version: Optional[str] = None
 
 
 class ImageVersions(BaseModel):
     # Required versions for patching truss config during docker build setup.
     # The schema of this model must be such that it can parse the values serialized
-    # from the backend..
+    # from the backend. The inserted values are full image references, resolved using
+    # backend defaults and `ImageVersionsOverrides` from the pushed config.
     bei_image: str
     briton_image: str
 

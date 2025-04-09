@@ -18,6 +18,7 @@ from truss.base.truss_config import (
     CacheInternal,
     DockerAuthSettings,
     DockerAuthType,
+    HTTPOptions,
     ModelCache,
     ModelRepo,
     Resources,
@@ -718,6 +719,32 @@ def test_resources_transport_read_from_new_yaml(tmp_path):
     assert isinstance(config.runtime.transport, WebsocketOptions)
     assert config.runtime.transport.kind == TransportKind.WEBSOCKET
     assert config.runtime.is_websocket_endpoint is True
+
+
+def test_resources_transport_read_unspecified(tmp_path):
+    yaml_content = """
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, HTTPOptions)
+    assert config.runtime.transport.kind == TransportKind.HTTP
+    assert config.runtime.is_websocket_endpoint is False
+
+
+def test_resources_transport_read_empty(tmp_path):
+    yaml_content = """
+    runtime:
+        transport: {}
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, HTTPOptions)
+    assert config.runtime.transport.kind == TransportKind.HTTP
+    assert config.runtime.is_websocket_endpoint is False
 
 
 def test_resources_transport_read_from_legacy_yaml(tmp_path):
