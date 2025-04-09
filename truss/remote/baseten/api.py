@@ -180,7 +180,7 @@ class BasetenApi:
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
-        preserve_env_instance_type: bool = False,
+        preserve_env_instance_type: bool = True,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{

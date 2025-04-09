@@ -171,7 +171,7 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
     assert 'environment_name: "production"' in gql_mutation
-    assert "preserve_env_instance_type: false" in gql_mutation
+    assert "preserve_env_instance_type: true" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())

@@ -343,7 +343,7 @@ def create_truss_service(
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
-    preserve_env_instance_type: bool = False,
+    preserve_env_instance_type: bool = True,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
