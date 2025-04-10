@@ -96,7 +96,7 @@ class MetricsWatcher(TrainingPollerMixin):
             while True:
                 try:
                     metrics = self.api.get_training_job_metrics(
-                        self.project_id, self.job_id
+                        self.project_id, self.job_id, offset_minutes=1
                     )
                     table = self.create_metrics_table(metrics)
                     live.update(table, refresh=True)
