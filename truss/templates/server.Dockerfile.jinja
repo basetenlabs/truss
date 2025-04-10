@@ -65,6 +65,7 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 {%- endif  %}
 
 
+USER root
 {%- if build_commands %}
 {% for command in build_commands %}
 RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{secret}},target={{path}}{% endfor %} {{ command }}
@@ -122,6 +123,7 @@ RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="supervisord -c {{ supervisor_config_path }}"
+
 ENTRYPOINT ["supervisord", "-c", "{{ supervisor_config_path }}"]
     {%- elif config.live_reload %}
 ENV HASH_TRUSS="{{truss_hash}}"
