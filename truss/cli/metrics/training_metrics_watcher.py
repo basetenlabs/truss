@@ -1,9 +1,10 @@
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
+from rich.text import Text
 
 from truss.cli.training_poller import TrainingPollerMixin
 from truss.remote.baseten.api import BasetenApi
@@ -13,13 +14,25 @@ class MetricsWatcher(TrainingPollerMixin):
     def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
         super().__init__(api, project_id, job_id, console)
 
-    def _format_bytes(self, bytes_val: float, unit: str = "MB") -> str:
+    def _format_bytes(
+        self, bytes_val: float, unit: Optional[str] = None
+    ) -> Tuple[str, str]:
         """Convert bytes to human readable format"""
+        color_map = {"MB": "green", "GB": "blue", "TB": "magenta"}
+        if unit is None:
+            # determine the unit based on the scale of the value
+            if bytes_val > 1024 * 1024 * 1024 * 1024:
+                unit = "TB"
+            elif bytes_val > 1024 * 1024 * 1024:
+                unit = "GB"
+            else:
+                unit = "MB"
+
         if unit == "MB":
-            return f"{bytes_val / (1024 * 1024):.2f} MB"
+            return f"{bytes_val / (1024 * 1024):.2f} MB", color_map[unit]
         elif unit == "GB":
-            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
-        return f"{bytes_val:.2f} bytes"
+            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB", color_map[unit]
+        return f"{bytes_val:.2f} bytes", color_map[unit]
 
     def _get_latest_metric(self, metrics: List[Dict]) -> Optional[float]:
         """Get the most recent metric value"""
@@ -42,7 +55,8 @@ class MetricsWatcher(TrainingPollerMixin):
             metrics_data.get("cpu_memory_usage_bytes", [])
         )
         if cpu_memory is not None:
-            table.add_row("CPU Memory", self._format_bytes(cpu_memory))
+            formatted_value, color = self._format_bytes(cpu_memory)
+            table.add_row("CPU Memory", Text(formatted_value, style=color))
 
         # Add separator after CPU metrics
         table.add_section()
@@ -60,7 +74,10 @@ class MetricsWatcher(TrainingPollerMixin):
             # Add GPU memory right after its utilization
             latest_memory = self._get_latest_metric(gpu_memory.get(gpu_id, []))
             if latest_memory is not None:
-                table.add_row(f"GPU {gpu_id} Memory", self._format_bytes(latest_memory))
+                formatted_value, color = self._format_bytes(latest_memory)
+                table.add_row(
+                    f"GPU {gpu_id} Memory", Text(formatted_value, style=color)
+                )
 
             # Add separator after each GPU's metrics (except for the last one)
             if gpu_id != max(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
