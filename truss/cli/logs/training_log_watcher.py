@@ -20,7 +20,7 @@ JOB_ENDED_STATES = [
 ]
 
 
-class TrainingPoller:
+class TrainingPollerMixin:
     def __init__(
         self,
         api: BasetenApi,
@@ -38,9 +38,6 @@ class TrainingPoller:
     def before_polling(self) -> None:
         self._current_status = self._get_current_job_status()
         status_str = "Waiting for job to run, currently {current_status}..."
-        import ipdb
-
-        ipdb.set_trace()
         with self.console.status(
             status_str.format(current_status=self._current_status), spinner="dots"
         ) as status:
@@ -79,7 +76,7 @@ class TrainingPoller:
         return job["training_job"]["current_status"]
 
 
-class TrainingLogWatcher(TrainingPoller, LogWatcher):
+class TrainingLogWatcher(TrainingPollerMixin, LogWatcher):
     project_id: str
     job_id: str
 
@@ -91,7 +88,7 @@ class TrainingLogWatcher(TrainingPoller, LogWatcher):
         console: rich_console.Console,
     ):
         # Initialize TrainingPoller with all its required arguments
-        TrainingPoller.__init__(self, api, project_id, job_id, console)
+        TrainingPollerMixin.__init__(self, api, project_id, job_id, console)
         # Initialize LogWatcher with its required arguments
         LogWatcher.__init__(self, api, console)
         # These assignments might be redundant now but keeping for clarity

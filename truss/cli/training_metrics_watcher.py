@@ -9,7 +9,7 @@ from truss.cli.logs.training_log_watcher import TrainingPollerMixin
 from truss.remote.baseten.api import BasetenApi
 
 
-class MetricsDisplay(TrainingPollerMixin):
+class MetricsWatcher(TrainingPollerMixin):
     def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
         super().__init__(api, project_id, job_id, console)
 
@@ -84,7 +84,7 @@ class MetricsDisplay(TrainingPollerMixin):
         return table
 
     def display_live_metrics(
-        self, refresh_rate: int = 3, active_statuses: List[str] = []
+        self, refresh_rate: int = 3
     ):
         """Display continuously updating metrics"""
         self.before_polling()
