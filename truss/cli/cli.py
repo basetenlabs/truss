@@ -32,12 +32,7 @@ from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
-from truss.cli.train import (
-    get_args_for_logs,
-    get_args_for_stop,
-    stop_all_jobs,
-    view_training_details,
-)
+import truss.cli.train as train_cli
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -953,7 +948,7 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
+    project_id, job_id = train_cli.get_args_for_logs(console, remote_provider, project_id, job_id)
 
     if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
@@ -986,9 +981,9 @@ def stop_job(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     if all:
-        stop_all_jobs(console, remote_provider, project_id)
+        train_cli.stop_all_jobs(console, remote_provider, project_id)
     else:
-        project_id, job_id = get_args_for_stop(
+        project_id, job_id = train_cli.get_args_for_stop(
             console, remote_provider, project_id, job_id
         )
         remote_provider.api.stop_training_job(project_id, job_id)
@@ -1016,8 +1011,24 @@ def view_training(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    view_training_details(console, remote_provider, project_id, job_id)
+    train_cli.view_training_details(console, remote_provider, project_id, job_id)
 
+@train.command(name="metrics")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def get_job_metrics(project_id: Optional[str], job_id: Optional[str], remote: Optional[str]):
+    """Get metrics for a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    train_cli.view_training_job_metrics(console, remote_provider, project_id, job_id)
 
 # End Training Stuff #####################################################################
 

@@ -49,12 +49,12 @@ def get_args_for_logs(
             project_id=project_id, job_id=job_id
         )
         if not jobs:
-            raise click.UsageError("Unable to get logs. No jobs found.")
+            raise click.UsageError("No jobs found.")
         if len(jobs) > 1:
             sorted_jobs = sorted(jobs, key=lambda x: x["created_at"], reverse=True)
             job = sorted_jobs[0]
             console.print(
-                f"Multiple jobs found. Showing logs for the most recently created job: {job['id']}",
+                f"Multiple jobs found. Showing the most recently created job: {job['id']}",
                 style="yellow",
             )
         else:
@@ -187,3 +187,13 @@ def stop_all_jobs(
     for job in active_jobs:
         remote_provider.api.stop_training_job(job["training_project"]["id"], job["id"])
     console.print("Training jobs stopped successfully.", style="green")
+
+def view_training_job_metrics(
+    console: Console, remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
+):
+    """
+    view_training_job_metrics shows a list of metrics for a training job.
+    """
+    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
+    metrics_resp = remote_provider.api.get_training_job_metrics(project_id, job_id)
+    console.print(metrics_resp)
