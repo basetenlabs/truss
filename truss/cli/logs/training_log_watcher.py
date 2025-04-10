@@ -4,7 +4,7 @@ from typing import Any, List, Optional
 from rich import console as rich_console
 
 from truss.cli.logs.base_watcher import LogWatcher
-from truss.cli.training_poller import TrainingPollerMixin
+from truss.cli.train.poller import TrainingPollerMixin
 from truss.remote.baseten.api import BasetenApi
 
 

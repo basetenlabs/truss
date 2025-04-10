@@ -6,7 +6,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from truss.cli.training_poller import TrainingPollerMixin
+from truss.cli.train.poller import TrainingPollerMixin
 from truss.remote.baseten.api import BasetenApi
 
 
@@ -89,7 +89,7 @@ class MetricsWatcher(TrainingPollerMixin):
 
         return table
 
-    def display_live_metrics(self, refresh_rate: int = 3):
+    def display_live_metrics(self, refresh_rate: int = 30):
         """Display continuously updating metrics"""
         self.before_polling()
         with Live(auto_refresh=False) as live:

@@ -21,7 +21,7 @@ from rich import progress
 from rich.console import Console
 
 import truss
-import truss.cli.train as train_cli
+import truss.cli.train.core as train_cli
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,

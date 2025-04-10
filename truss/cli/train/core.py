@@ -5,7 +5,7 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich.console import Console
 
-from truss.cli.metrics.training_metrics_watcher import MetricsWatcher
+from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.remote.baseten.remote import BasetenRemote
 
 ACTIVE_JOB_STATUSES = [
