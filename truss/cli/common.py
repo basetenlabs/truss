@@ -1,2 +1,1 @@
-
 POLL_INTERVAL_SEC = 2

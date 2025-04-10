@@ -2,8 +2,9 @@ import time
 from typing import Optional
 
 from rich.console import Console
-from truss.remote.baseten.api import BasetenApi
+
 from truss.cli.common import POLL_INTERVAL_SEC
+from truss.remote.baseten.api import BasetenApi
 
 # NB(nikhil): When a job ends, we poll for this many seconds after to capture
 # any trailing logs that contain information about errors.
@@ -11,14 +12,9 @@ JOB_TERMINATION_GRACE_PERIOD_SEC = 10
 JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_DEPLOYING"]
 JOB_RUNNING_STATES = ["TRAINING_JOB_RUNNING"]
 
+
 class TrainingPollerMixin:
-    def __init__(
-        self,
-        api: BasetenApi,
-        project_id: str,
-        job_id: str,
-        console: Console,
-    ):
+    def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
         self.api = api
         self.project_id = project_id
         self.job_id = job_id
@@ -65,4 +61,3 @@ class TrainingPollerMixin:
     def _get_current_job_status(self) -> str:
         job = self.api.get_training_job(self.project_id, self.job_id)
         return job["training_job"]["current_status"]
-

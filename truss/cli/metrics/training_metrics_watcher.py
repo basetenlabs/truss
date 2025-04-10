@@ -83,9 +83,7 @@ class MetricsWatcher(TrainingPollerMixin):
 
         return table
 
-    def display_live_metrics(
-        self, refresh_rate: int = 3
-    ):
+    def display_live_metrics(self, refresh_rate: int = 3):
         """Display continuously updating metrics"""
         self.before_polling()
         with Live(auto_refresh=False) as live:
