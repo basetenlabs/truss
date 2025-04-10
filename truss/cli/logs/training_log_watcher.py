@@ -19,14 +19,9 @@ class TrainingLogWatcher(TrainingPollerMixin, LogWatcher):
         job_id: str,
         console: rich_console.Console,
     ):
-        # Initialize TrainingPoller with all its required arguments
         TrainingPollerMixin.__init__(self, api, project_id, job_id, console)
-        # Initialize LogWatcher with its required arguments
         LogWatcher.__init__(self, api, console)
-        # These assignments might be redundant now but keeping for clarity
-        self.project_id = project_id
-        self.job_id = job_id
-        # register sigint handler that instructs user on how to stop the job
+        # registering the sigint allows us to provide messaging on next steps
         signal.signal(signal.SIGINT, self._handle_sigint)
 
     def _handle_sigint(self, signum: int, frame: Any) -> None:

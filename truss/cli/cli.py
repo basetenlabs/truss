@@ -920,7 +920,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
         console.print("✨ Training job successfully created!", style="green")
         console.print(
             f"🪵 View logs for your job via "
-            f"[cyan]`truss train logs --job-id {job_resp['id']} [--tail]`[/cyan]"
+            f"[cyan]`truss train logs --job-id {job_resp['id']} [--tail]`[/cyan]\n"
             f"🔍 View metrics for your job via "
             f"[cyan]`truss train metrics --job-id {job_resp['id']}`[/cyan]"
         )

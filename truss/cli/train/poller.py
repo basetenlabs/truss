@@ -14,13 +14,20 @@ JOB_RUNNING_STATES = ["TRAINING_JOB_RUNNING"]
 
 
 class TrainingPollerMixin:
+    api: BasetenApi
+    project_id: str
+    job_id: str
+    console: Console
+    _current_status: Optional[str]
+    _poll_stop_time: Optional[int]
+
     def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
         self.api = api
         self.project_id = project_id
         self.job_id = job_id
         self.console = console
-        self._current_status: Optional[str] = None
-        self._poll_stop_time: Optional[int] = None
+        self._current_status = None
+        self._poll_stop_time = None
 
     def before_polling(self) -> None:
         self._current_status = self._get_current_job_status()

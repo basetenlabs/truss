@@ -1,5 +1,6 @@
+import signal
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.console import Console
 from rich.live import Live
@@ -9,24 +10,33 @@ from rich.text import Text
 from truss.cli.train.poller import TrainingPollerMixin
 from truss.remote.baseten.api import BasetenApi
 
+METRICS_POLL_INTERVAL_SEC = 30
+
 
 class MetricsWatcher(TrainingPollerMixin):
+    live: Optional[Live]
+
     def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
         super().__init__(api, project_id, job_id, console)
 
-    def _format_bytes(
-        self, bytes_val: float, unit: Optional[str] = None
-    ) -> Tuple[str, str]:
+        self.live = None
+        signal.signal(signal.SIGINT, self._handle_sigint)
+
+    def _handle_sigint(self, signum: int, frame: Any) -> None:
+        if self.live:
+            self.live.stop()
+        msg = f"\n\nExiting training job metrics. To stop the job, run `truss train stop --job-id {self.job_id}`"
+        self.console.print(msg, style="yellow")
+        raise KeyboardInterrupt()
+
+    def _format_bytes(self, bytes_val: float) -> Tuple[str, str]:
         """Convert bytes to human readable format"""
         color_map = {"MB": "green", "GB": "blue", "TB": "magenta"}
-        if unit is None:
-            # determine the unit based on the scale of the value
-            if bytes_val > 1024 * 1024 * 1024 * 1024:
-                unit = "TB"
-            elif bytes_val > 1024 * 1024 * 1024:
-                unit = "GB"
-            else:
-                unit = "MB"
+        unit = "MB"
+        if bytes_val > 1024 * 1024 * 1024 * 1024:
+            unit = "TB"
+        elif bytes_val > 1024 * 1024 * 1024:
+            unit = "GB"
 
         if unit == "MB":
             return f"{bytes_val / (1024 * 1024):.2f} MB", color_map[unit]
@@ -89,10 +99,11 @@ class MetricsWatcher(TrainingPollerMixin):
 
         return table
 
-    def display_live_metrics(self, refresh_rate: int = 30):
+    def display_live_metrics(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
         """Display continuously updating metrics"""
         self.before_polling()
         with Live(auto_refresh=False) as live:
+            self.live = live
             while True:
                 try:
                     metrics = self.api.get_training_job_metrics(
@@ -105,13 +116,6 @@ class MetricsWatcher(TrainingPollerMixin):
                         break
                     time.sleep(refresh_rate)
                     self.post_poll()
-                except KeyboardInterrupt:
-                    live.stop()
-                    self.console.print(
-                        f"Exiting metrics display. To stop the job, run `truss train stop --job-id {self.job_id}`",
-                        style="yellow",
-                    )
-                    break
                 except Exception as e:
                     live.stop()
                     self.console.print(f"Error fetching metrics: {e}", style="red")
