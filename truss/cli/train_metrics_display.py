@@ -1,19 +1,23 @@
 import time
 from typing import Dict, List, Optional
-import pandas as pd
+
+from rich.console import Console
 from rich.live import Live
 from rich.table import Table
-from rich.console import Console
 
-class MetricsDisplay:
-    def __init__(self, console: Console):
-        self.console = console
-        
-    def _format_bytes(self, bytes_val: float, unit: str = 'MB') -> str:
+from truss.cli.logs.training_log_watcher import TrainingPoller
+from truss.remote.baseten.api import BasetenApi
+
+
+class MetricsDisplay(TrainingPoller):
+    def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
+        super().__init__(api, project_id, job_id, console)
+
+    def _format_bytes(self, bytes_val: float, unit: str = "MB") -> str:
         """Convert bytes to human readable format"""
-        if unit == 'MB':
+        if unit == "MB":
             return f"{bytes_val / (1024 * 1024):.2f} MB"
-        elif unit == 'GB':
+        elif unit == "GB":
             return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
         return f"{bytes_val:.2f} bytes"
 
@@ -21,7 +25,7 @@ class MetricsDisplay:
         """Get the most recent metric value"""
         if not metrics:
             return None
-        return metrics[-1].get('value')
+        return metrics[-1].get("value")
 
     def create_metrics_table(self, metrics_data: Dict) -> Table:
         """Create a Rich table with the metrics"""
@@ -30,11 +34,13 @@ class MetricsDisplay:
         table.add_column("Value")
 
         # CPU metrics
-        cpu_usage = self._get_latest_metric(metrics_data.get('cpu_usage', []))
+        cpu_usage = self._get_latest_metric(metrics_data.get("cpu_usage", []))
         if cpu_usage is not None:
             table.add_row("CPU Usage", f"{cpu_usage:.2f} cores")
 
-        cpu_memory = self._get_latest_metric(metrics_data.get('cpu_memory_usage_bytes', []))
+        cpu_memory = self._get_latest_metric(
+            metrics_data.get("cpu_memory_usage_bytes", [])
+        )
         if cpu_memory is not None:
             table.add_row("CPU Memory", self._format_bytes(cpu_memory))
 
@@ -42,20 +48,20 @@ class MetricsDisplay:
         table.add_section()
 
         # GPU metrics - grouped by GPU ID
-        gpu_metrics = metrics_data.get('gpu_utilization', {})
-        gpu_memory = metrics_data.get('gpu_memory_usage_bytes', {})
-        
+        gpu_metrics = metrics_data.get("gpu_utilization", {})
+        gpu_memory = metrics_data.get("gpu_memory_usage_bytes", {})
+
         for gpu_id in sorted(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
             # Add GPU utilization
             latest_util = self._get_latest_metric(gpu_metrics.get(gpu_id, []))
             if latest_util is not None:
                 table.add_row(f"GPU {gpu_id} Usage", f"{latest_util * 100:.1f}%")
-            
+
             # Add GPU memory right after its utilization
             latest_memory = self._get_latest_metric(gpu_memory.get(gpu_id, []))
             if latest_memory is not None:
                 table.add_row(f"GPU {gpu_id} Memory", self._format_bytes(latest_memory))
-            
+
             # Add separator after each GPU's metrics (except for the last one)
             if gpu_id != max(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
                 table.add_section()
@@ -65,32 +71,45 @@ class MetricsDisplay:
             table.add_section()
 
         # Storage metrics
-        storage = metrics_data.get('storage_metrics')
+        storage = metrics_data.get("storage_metrics")
         if storage:
-            table.add_row("Disk Free", f"{storage.get('ephemeral_storage_available_gib', 0):.2f} GB")
-            table.add_row("Disk Used", f"{storage.get('ephemeral_storage_used_gib', 0):.2f} GB")
+            table.add_row(
+                "Disk Free",
+                f"{storage.get('ephemeral_storage_available_gib', 0):.2f} GB",
+            )
+            table.add_row(
+                "Disk Used", f"{storage.get('ephemeral_storage_used_gib', 0):.2f} GB"
+            )
 
         return table
 
-    def display_live_metrics(self, api_client, project_id: str, job_id: str, refresh_rate: int = 3, active_statuses: List[str] = []):
+    def display_live_metrics(
+        self, refresh_rate: int = 3, active_statuses: List[str] = []
+    ):
         """Display continuously updating metrics"""
+        self.before_polling()
         with Live(auto_refresh=False) as live:
             while True:
                 try:
-                    metrics = api_client.get_training_job_metrics(project_id, job_id)
+                    metrics = self.api.get_training_job_metrics(
+                        self.project_id, self.job_id
+                    )
                     table = self.create_metrics_table(metrics)
                     live.update(table, refresh=True)
-                    status = metrics["training_job"]["current_status"]
-                    if status not in active_statuses:
+                    if not self.should_poll_again():
                         live.stop()
-                        self.console.print(f"Training job is no longer active: {status}", style="yellow")
                         break
                     time.sleep(refresh_rate)
+                    self.post_poll()
                 except KeyboardInterrupt:
                     live.stop()
-                    self.console.print(f"Exiting metrics display. To stop the job, run `truss train stop --job-id {job_id}`", style="yellow")
+                    self.console.print(
+                        f"Exiting metrics display. To stop the job, run `truss train stop --job-id {self.job_id}`",
+                        style="yellow",
+                    )
                     break
                 except Exception as e:
                     live.stop()
                     self.console.print(f"Error fetching metrics: {e}", style="red")
-                    break 
+                    break
+        self.after_polling()

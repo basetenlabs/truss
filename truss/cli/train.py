@@ -201,7 +201,5 @@ def view_training_job_metrics(
     """
     project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
     console.print(f"Showing metrics for job: {job_id}")
-    metrics_display = MetricsDisplay(console)
-    metrics_display.display_live_metrics(
-        remote_provider.api, project_id, job_id, active_statuses=ACTIVE_JOB_STATUSES
-    )
+    metrics_display = MetricsDisplay(remote_provider.api, project_id, job_id, console)
+    metrics_display.display_live_metrics(active_statuses=ACTIVE_JOB_STATUSES)

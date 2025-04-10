@@ -20,12 +20,7 @@ JOB_ENDED_STATES = [
 ]
 
 
-class TrainingLogWatcher(LogWatcher):
-    project_id: str
-    job_id: str
-    _poll_stop_time: Optional[int] = None
-    _current_status: Optional[str] = None
-
+class TrainingPoller:
     def __init__(
         self,
         api: BasetenApi,
@@ -33,24 +28,19 @@ class TrainingLogWatcher(LogWatcher):
         job_id: str,
         console: rich_console.Console,
     ):
-        super().__init__(api, console)
+        self.api = api
         self.project_id = project_id
         self.job_id = job_id
-        # register siging handler that instructs user on how to stop the job
-        signal.signal(signal.SIGINT, self._handle_sigint)
-
-    def _handle_sigint(self, signum: int, frame: Any) -> None:
-        msg = f"\n\nExiting training job logs. To stop the job, run `truss train stop --job-id {self.job_id}`"
-        self.console.print(msg, style="yellow")
-        raise KeyboardInterrupt()
-
-    def _get_current_job_status(self) -> str:
-        job = self.api.get_training_job(self.project_id, self.job_id)
-        return job["training_job"]["current_status"]
+        self.console = console
+        self._current_status: Optional[str] = None
+        self._poll_stop_time: Optional[int] = None
 
     def before_polling(self) -> None:
         self._current_status = self._get_current_job_status()
         status_str = "Waiting for job to run, currently {current_status}..."
+        import ipdb
+
+        ipdb.set_trace()
         with self.console.status(
             status_str.format(current_status=self._current_status), spinner="dots"
         ) as status:
@@ -59,19 +49,22 @@ class TrainingLogWatcher(LogWatcher):
                 self._current_status = self._get_current_job_status()
                 status.update(status_str.format(current_status=self._current_status))
 
-    def fetch_logs(
-        self, start_epoch_millis: Optional[int], end_epoch_millis: Optional[int]
-    ) -> List[Any]:
-        return self.api.get_training_job_logs(
-            self.project_id, self.job_id, start_epoch_millis, end_epoch_millis
-        )
-
-    def should_poll_again(self) -> bool:
-        return self._current_status in JOB_RUNNING_STATES or self._poll_final_logs()
-
     def post_poll(self) -> None:
         self._current_status = self._get_current_job_status()
         self._maybe_update_poll_stop_time(self._current_status)
+
+    def _maybe_update_poll_stop_time(self, current_status: str) -> None:
+        if current_status not in JOB_RUNNING_STATES and self._poll_stop_time is None:
+            self._poll_stop_time = int(time.time()) + JOB_TERMINATION_GRACE_PERIOD_SEC
+
+    def should_poll_again(self) -> bool:
+        return self._current_status in JOB_RUNNING_STATES or self._poll_expired()
+
+    def _poll_expired(self):
+        if self._poll_stop_time is None:
+            return False
+
+        return int(time.time()) <= self._poll_stop_time
 
     def after_polling(self) -> None:
         if self._current_status == "TRAINING_JOB_COMPLETED":
@@ -81,12 +74,40 @@ class TrainingLogWatcher(LogWatcher):
         elif self._current_status == "TRAINING_JOB_STOPPED":
             self.console.print("Training job stopped by user.", style="yellow")
 
-    def _poll_final_logs(self):
-        if self._poll_stop_time is None:
-            return False
+    def _get_current_job_status(self) -> str:
+        job = self.api.get_training_job(self.project_id, self.job_id)
+        return job["training_job"]["current_status"]
 
-        return int(time.time()) <= self._poll_stop_time
 
-    def _maybe_update_poll_stop_time(self, current_status: str) -> None:
-        if current_status not in JOB_RUNNING_STATES and self._poll_stop_time is None:
-            self._poll_stop_time = int(time.time()) + JOB_TERMINATION_GRACE_PERIOD_SEC
+class TrainingLogWatcher(TrainingPoller, LogWatcher):
+    project_id: str
+    job_id: str
+
+    def __init__(
+        self,
+        api: BasetenApi,
+        project_id: str,
+        job_id: str,
+        console: rich_console.Console,
+    ):
+        # Initialize TrainingPoller with all its required arguments
+        TrainingPoller.__init__(self, api, project_id, job_id, console)
+        # Initialize LogWatcher with its required arguments
+        LogWatcher.__init__(self, api, console)
+        # These assignments might be redundant now but keeping for clarity
+        self.project_id = project_id
+        self.job_id = job_id
+        # register sigint handler that instructs user on how to stop the job
+        signal.signal(signal.SIGINT, self._handle_sigint)
+
+    def _handle_sigint(self, signum: int, frame: Any) -> None:
+        msg = f"\n\nExiting training job logs. To stop the job, run `truss train stop --job-id {self.job_id}`"
+        self.console.print(msg, style="yellow")
+        raise KeyboardInterrupt()
+
+    def fetch_logs(
+        self, start_epoch_millis: Optional[int], end_epoch_millis: Optional[int]
+    ) -> List[Any]:
+        return self.api.get_training_job_logs(
+            self.project_id, self.job_id, start_epoch_millis, end_epoch_millis
+        )
