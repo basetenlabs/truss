@@ -131,6 +131,7 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
     request_default_max_tokens: Optional[int] = None
+    served_model_name: Optional[str] = None
     total_token_limit: int = 500000
     webserver_default_route: Optional[
         Literal["/v1/embeddings", "/rerank", "/predict"]
