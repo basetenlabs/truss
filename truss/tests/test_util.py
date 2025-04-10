@@ -1,5 +1,6 @@
 import os
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import requests_mock
 
@@ -37,3 +38,17 @@ def test_download_into_nested_subdir(tmp_path):
             content = f.read()
 
         assert content == mocked_download_content
+
+
+@patch("truss.util.download.download_from_url_using_requests")
+def test_download_with_absolute_path(mock_download_from_url_using_requests, tmp_path):
+    with patch("pathlib.Path.mkdir", MagicMock()):
+        data = ExternalData.from_list(
+            [{"local_data_path": "/foo/bar", "url": TEST_DOWNLOAD_URL}]
+        )
+
+        download_external_data(data, data_dir=tmp_path)
+
+    mock_download_from_url_using_requests.assert_called_once_with(
+        TEST_DOWNLOAD_URL, Path("/foo/bar")
+    )
