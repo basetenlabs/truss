@@ -116,6 +116,7 @@ def test_create_truss_services_handles_is_draft(model_id):
     return_value = {
         "id": "model_version_id",
         "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
     }
     api.create_development_model_from_truss.return_value = return_value
     version_handle = create_truss_service(
@@ -159,6 +160,7 @@ def test_create_truss_service_handles_existing_model(inputs):
     return_value = {
         "id": "model_version_id",
         "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
     }
     api.create_model_version_from_truss.return_value = return_value
     version_handle = create_truss_service(
