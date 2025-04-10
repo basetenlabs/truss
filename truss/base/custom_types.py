@@ -1,19 +1,7 @@
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any
 
-
-# TODO(marius/TaT): kill this.
-class ModelFrameworkType(Enum):
-    SKLEARN = "sklearn"
-    TENSORFLOW = "tensorflow"
-    KERAS = "keras"
-    PYTORCH = "pytorch"
-    HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
-    XGBOOST = "xgboost"
-    LIGHTGBM = "lightgbm"
-    MLFLOW = "mlflow"
-    CUSTOM = "custom"
+import pydantic
 
 
 @dataclass
@@ -27,3 +15,38 @@ class Example:
 
     def to_dict(self) -> dict:
         return {"name": self.name, "input": self.input}
+
+
+class SafeModel(pydantic.BaseModel):
+    """Pydantic base model with reasonable config."""
+
+    model_config = pydantic.ConfigDict(
+        arbitrary_types_allowed=False, strict=True, validate_assignment=True
+    )
+
+
+class SafeModelNonSerializable(pydantic.BaseModel):
+    """Pydantic base model with reasonable config - allowing arbitrary types."""
+
+    model_config = pydantic.ConfigDict(
+        arbitrary_types_allowed=True,
+        strict=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+
+class ConfigModel(pydantic.BaseModel):
+    def to_dict(self, verbose: bool = False) -> dict[str, Any]:
+        kwargs: dict[str, Any] = (
+            {"mode": "json"}
+            if verbose
+            else {
+                "mode": "json",
+                "exclude_unset": True,
+                "exclude_none": True,
+                "exclude_defaults": True,
+                "context": {"verbose": verbose},
+            }
+        )
+        return super().model_dump(**kwargs)

@@ -1,4 +1,4 @@
-{%- if model_cache %}
+{%- if model_cache_v1 %}
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %}
 
@@ -53,7 +53,7 @@ RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /ro
 
 
 {% block app_copy %}
-{%- if model_cache %}
+{%- if model_cache_v1 %}
 # Copy data before code for better caching
     {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}
@@ -75,6 +75,14 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 # Copy data before code for better caching
 {%- if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
+{%- endif %}
+
+{%- if model_cache_v2 %}
+# v0.0.9, keep synced with server_requirements.txt
+RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.9.78rc004/truss-transfer-cli-v0.9.78rc004-linux-x86_64-unknown-linux-musl
+RUN chmod +x /usr/local/bin/truss-transfer-cli
+RUN mkdir /bptr
+COPY ./bptr-manifest /bptr/bptr-manifest
 {%- endif %}
 
 {%- if not config.docker_server %}

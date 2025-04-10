@@ -227,8 +227,10 @@ def push(
 
 
 def push_debug_docker(
-    entrypoint: Type[private_types.ABCChainlet], chain_name: str
+    entrypoint: Type[private_types.ABCChainlet], chain_name: Optional[str] = None
 ) -> ChainService:
+    if not chain_name:
+        chain_name = entrypoint.name.lower()
     options = private_types.PushOptionsLocalDocker(
         chain_name=chain_name, only_generate_trusses=False, use_local_src=True
     )
@@ -473,12 +475,21 @@ def _create_baseten_chain(
         b10_remote.BasetenRemote,
         remote_factory.RemoteFactory.create(remote=baseten_options.remote),
     )
+
+    if remote_provider.include_git_info or baseten_options.include_git_info:
+        truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
+            baseten_options.working_dir
+        )
+    else:
+        truss_user_env = b10_types.TrussUserEnv.collect()
+
     _create_chains_secret_if_missing(remote_provider)
 
     chain_deployment_handle = remote_provider.push_chain_atomic(
-        chain_name=baseten_options.chain_name,
-        entrypoint_artifact=entrypoint_artifact,
-        dependency_artifacts=dependency_artifacts,
+        baseten_options.chain_name,
+        entrypoint_artifact,
+        dependency_artifacts,
+        truss_user_env,
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,

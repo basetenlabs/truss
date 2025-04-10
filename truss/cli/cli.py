@@ -28,10 +28,15 @@ from truss.base.constants import (
 from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
-from truss.cli.remote_cli import (
-    inquire_model_name,
-    inquire_remote_config,
-    inquire_remote_name,
+from truss.cli import remote_cli
+from truss.cli.logs import utils as cli_log_utils
+from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.train import (
+    get_args_for_logs,
+    get_args_for_stop,
+    stop_all_jobs,
+    view_training_details,
 )
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -46,6 +51,7 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
+    has_no_tags_trt_llm_builder,
     is_missing_secrets_for_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
@@ -66,7 +72,7 @@ click.rich_click.COMMAND_GROUPS = {
     "truss": [
         {
             "name": "Main usage",
-            "commands": ["init", "push", "watch", "predict"],
+            "commands": ["init", "push", "watch", "predict", "model_logs"],
             "table_styles": {  # type: ignore
                 "row_styles": ["green"]
             },
@@ -239,7 +245,7 @@ def init(target_directory, backend, name, python_config) -> None:
     if name:
         model_name = name
     else:
-        model_name = inquire_model_name()
+        model_name = remote_cli.inquire_model_name()
     _init(
         target_directory=target_directory,
         build_config=build_config,
@@ -353,7 +359,7 @@ def login(api_key: Optional[str]):
     from truss.api import login
 
     if not api_key:
-        remote_config = inquire_remote_config()
+        remote_config = remote_cli.inquire_remote_config()
         RemoteFactory.update_remote_config(remote_config)
     else:
         login(api_key)
@@ -374,7 +380,7 @@ def whoami(remote: Optional[str]):
     from truss.api import whoami
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     user = whoami(remote)
 
@@ -399,7 +405,7 @@ def watch(target_directory: str, remote: str) -> None:
     """
     # TODO: ensure that provider support draft
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider = RemoteFactory.create(remote=remote)
 
@@ -522,6 +528,12 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     return table, statuses
 
 
+include_git_info_doc = (
+    "Whether to attach git versioning info (sha, branch, tag) to deployments made from "
+    "within a git repo. If set to True in `.trussrc`, it will always be attached."
+)
+
+
 @chains.command(name="push")  # type: ignore
 @click.argument("source", type=Path, required=True)
 @click.argument("entrypoint", type=str, required=False)
@@ -593,6 +605,14 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         "and refer to docs."
     ),
 )
+@click.option(
+    "--include-git-info",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=include_git_info_doc,
+)
 @log_level_option
 @error_handling
 def push_chain(
@@ -607,6 +627,7 @@ def push_chain(
     remote: Optional[str],
     environment: Optional[str],
     experimental_watch_chainlet_names: Optional[str],
+    include_git_info: bool = False,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -643,7 +664,10 @@ def push_chain(
         console.print(promote_warning, style="yellow")
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
+
+    if not include_git_info:
+        include_git_info = remote_cli.determine_include_git_info_consent(remote)
 
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
@@ -656,6 +680,8 @@ def push_chain(
             only_generate_trusses=dryrun,
             remote=remote,
             environment=environment,
+            include_git_info=include_git_info,
+            working_dir=source.parent if source.is_file() else source.resolve(),
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
@@ -786,7 +812,7 @@ def watch_chains(
     from truss_chains.deployment import deployment_client
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     if experimental_chainlet_names:
         included_chainlets = [x.strip() for x in experimental_chainlet_names.split(",")]
@@ -868,29 +894,129 @@ def train():
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--tail", type=bool, is_flag=True, help="Tail for status + logs after push."
+)
 @log_level_option
 @error_handling
-def push_training_job(config: Path, remote: Optional[str]):
+def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
     from truss_train import deployment, loader
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     with loader.import_target(config) as training_project:
-        training_resp = remote_provider.api.upsert_training_project(
-            training_project=training_project
+        with console.status("Creating training job...", spinner="dots"):
+            project_resp = remote_provider.api.upsert_training_project(
+                training_project=training_project
+            )
+
+            prepared_job = deployment.prepare_push(
+                remote_provider.api, config, training_project.job
+            )
+            job_resp = remote_provider.api.create_training_job(
+                project_id=project_resp["id"], job=prepared_job
+            )
+
+        console.print("✨ Training job successfully created!", style="green")
+        console.print(
+            f"🪵 View logs for your job via "
+            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--tail]`[/cyan]"
         )
 
-        prepared_job = deployment.prepare_push(
-            remote_provider.api, config, training_project.job
+    if tail:
+        project_id, job_id = project_resp["id"], job_resp["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id, console)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log, console)
+
+
+@train.command(name="logs")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
+@log_level_option
+@error_handling
+def get_job_logs(
+    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+):
+    """Fetch logs for a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
+
+    if not tail:
+        logs = remote_provider.api.get_training_job_logs(project_id, job_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log, console)
+    else:
+        log_watcher = TrainingLogWatcher(
+            remote_provider.api, project_id, job_id, console
         )
-        remote_provider.api.create_training_job(
-            project_id=training_resp["id"], job=prepared_job
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
+
+
+@train.command(name="stop")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--all", type=bool, is_flag=True, help="Stop all running jobs.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def stop_job(
+    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
+):
+    """Stop a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    if all:
+        stop_all_jobs(console, remote_provider, project_id)
+    else:
+        project_id, job_id = get_args_for_stop(
+            console, remote_provider, project_id, job_id
         )
+        remote_provider.api.stop_training_job(project_id, job_id)
+        console.print("Training job stopped successfully.", style="green")
+
+
+@train.command(name="view")
+@click.option(
+    "--project-id", type=str, required=False, help="View training jobs for a project."
+)
+@click.option(
+    "--job-id", type=str, required=False, help="View a specific training job."
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def view_training(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
+    """List all training jobs for a project"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    view_training_details(console, remote_provider, project_id, job_id)
 
 
 # End Training Stuff #####################################################################
@@ -1001,7 +1127,7 @@ def predict(
     REQUEST_FILE: Path to json file containing the request
     """
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider = RemoteFactory.create(remote=remote)
 
@@ -1170,6 +1296,15 @@ def run_python(script, target_directory):
         "specifying, the command will not complete until the deployment is complete."
     ),
 )
+@click.option(
+    "--include-git-info",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=include_git_info_doc,
+)
+@click.option("--tail", type=bool, is_flag=True)
 @log_level_option
 @error_handling
 def push(
@@ -1185,6 +1320,8 @@ def push(
     wait: bool = False,
     timeout_seconds: Optional[int] = None,
     environment: Optional[str] = None,
+    include_git_info: bool = False,
+    tail: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1193,14 +1330,17 @@ def push(
 
     """
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
+
+    if not include_git_info:
+        include_git_info = remote_cli.determine_include_git_info_consent(remote)
 
     remote_provider = RemoteFactory.create(remote=remote)
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
-        model_name = inquire_model_name()
+        model_name = remote_cli.inquire_model_name()
 
     if promote and environment:
         promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
@@ -1224,17 +1364,21 @@ def push(
             live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
+
         if is_missing_secrets_for_trt_llm_builder(tr):
             missing_token_text = (
                 "`hf_access_token` must be provided in secrets to build a gated model. "
                 "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
             )
-            console.print(missing_token_text, style="red")
-            sys.exit(1)
+            console.print(missing_token_text, style="yellow")
         if memory_updated_for_trt_llm_builder(tr):
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
+        message_oai = has_no_tags_trt_llm_builder(tr)
+        if message_oai:
+            console.print(message_oai, style="red")
+            sys.exit(1)
         for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
             if (
                 trt_llm_build_config.quantization_type
@@ -1248,10 +1392,12 @@ def push(
                 )
                 console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
+    source = Path(target_directory)
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
         model_name=model_name,
+        working_dir=source.parent if source.is_file() else source.resolve(),
         publish=publish,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
@@ -1259,6 +1405,7 @@ def push(
         environment=environment,
         disable_truss_download=disable_truss_download,
         progress_bar=progress.Progress,
+        include_git_info=include_git_info,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -1320,6 +1467,42 @@ def push(
             except RemoteNetworkError:
                 console.print("Deployment failed: Could not reach remote.", style="red")
                 sys.exit(1)
+    elif tail and isinstance(service, BasetenService):
+        bt_remote = cast(BasetenRemote, remote_provider)
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id, console
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
+
+
+@truss_cli.command()
+@click.option("--remote", type=str, required=False)
+@click.option("--model-id", type=str, required=True)
+@click.option("--deployment-id", type=str, required=True)
+@click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
+@log_level_option
+@error_handling
+def model_logs(
+    remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
+) -> None:
+    """
+    Fetches logs for the packaged model
+    """
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+    if not tail:
+        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log, console)
+    else:
+        log_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id, console
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
 
 
 @truss_cli.command()

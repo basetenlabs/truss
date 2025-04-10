@@ -23,6 +23,20 @@ class _HealthCheckFilter(logging.Filter):
         return not any(path in msg for path in excluded_paths)
 
 
+class _WebsocketOpenFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        # There is already the line
+        # `('172.17.0.1', 54024) - "WebSocket /v1/websocket" [accepted]`
+        # So we filter this additional log for open.
+        return "connection open" not in msg
+
+
+class _MetricsFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/metrics" not in record.getMessage()
+
+
 class _AccessJsonFormatter(jsonlogger.JsonFormatter):
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
@@ -46,8 +60,7 @@ class _AccessFormatter(logging.Formatter):
             client_addr, method, raw_path, version, status = record.args
             path_decoded = urllib.parse.unquote(str(raw_path))
             new_message = (
-                f"Handled request from  {client_addr} - {method} "
-                f"{path_decoded} HTTP/{version} {status}"
+                f"Handled request - {method} {path_decoded} HTTP/{version} {status}"
             )
             record.msg = new_message
             record.args = ()
@@ -86,7 +99,11 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
     log_config = {
         "version": 1,
         "disable_existing_loggers": False,
-        "filters": {"health_check_filter": {"()": _HealthCheckFilter}},
+        "filters": {
+            "health_check_filter": {"()": _HealthCheckFilter},
+            "websocket_filter": {"()": _WebsocketOpenFilter},
+            "metrics_filter": {"()": _MetricsFilter},
+        },
         "formatters": formatters,
         "handlers": {
             "default_handler": {
@@ -110,12 +127,20 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
                 "handlers": ["default_handler"],
                 "level": "INFO",
                 "propagate": False,
+                # For some reason websockets use error logger.
+                "filters": ["websocket_filter"],
             },
             "uvicorn.access": {
                 "handlers": ["access_handler"],
                 "level": "INFO",
                 "propagate": False,
-                "filters": ["health_check_filter"],
+                "filters": ["health_check_filter", "metrics_filter"],
+            },
+            "httpx": {
+                "handlers": ["default_handler"],
+                "level": "INFO",
+                "propagate": False,
+                "filters": ["metrics_filter"],
             },
         },
         # Catch-all for module loggers

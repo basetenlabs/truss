@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.76dev001"
+version = "0.9.79rc100"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -74,7 +74,7 @@ truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup
 # "When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
 python = ">=3.9,<3.13"
 huggingface_hub = ">=0.25.0"
-pydantic = ">=1.10.0"  # We cannot upgrade to v2, due to customer constraints.
+pydantic = ">=2.10.0"
 PyYAML = ">=6.0"
 single-source = "^0.3.0"
 # "non-base" dependencies.
@@ -85,7 +85,7 @@ single-source = "^0.3.0"
 Jinja2 = { version = "^3.1.2", optional = false }
 aiofiles = { version = "^24.1.0", optional = false }
 aiohttp = { version = "^3.10.10", optional = false }
-blake3 = { version = "^0.3.3", optional = false }
+blake3 = { version = "^1.0.4", optional = false }
 boto3 = { version = "^1.34.85", optional = false }
 click = { version = "^8.0.3", optional = false }
 fastapi = { version =">=0.109.1", optional = false }
@@ -159,7 +159,6 @@ types-setuptools = "^69.0.0.0"
 [tool.poetry.group.dev-server.dependencies]
 # These packages are needed to run local tests of server components. Note that the actual
 # server deps for building the docker image are (so far) defined in `requirements.txt`-files.
-dockerfile = "^3.2.0"
 fastapi =">=0.109.1"
 flask = "^2.3.3"
 msgpack = ">=1.0.2"
@@ -168,10 +167,11 @@ numpy = ">=1.23.5"
 opentelemetry-api = ">=1.25.0"
 opentelemetry-exporter-otlp = ">=1.25.0"
 opentelemetry-sdk = ">=1.25.0"
-truss_transfer="0.0.1"
+prometheus-client = "^0.21.1"
+truss_transfer="0.0.9"
 uvicorn = ">=0.24.0"
 uvloop = ">=0.17.0"
-websockets = "<=14.0"
+websockets = ">=14.0"
 
 
 [build-system]

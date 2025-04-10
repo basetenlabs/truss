@@ -1,12 +1,13 @@
 import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
+from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -23,8 +24,6 @@ API_URL_MAPPING = {
 # If a non-standard domain is used with the baseten remote, default to
 # using the production api routes
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
-
-TRUSS_USER_ENV = b10_types.TrussUserEnv.collect().json()
 
 
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
@@ -51,17 +50,16 @@ def _chainlet_data_atomic_to_graphql_mutation(
     chainlet: b10_types.ChainletDataAtomic,
 ) -> str:
     oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
-
     args = [f'name: "{chainlet.name}"', f"oracle: {oracle_data_string}"]
-
     args_str = ",\n".join(args)
-
     return f"""{{
         {args_str}
     }}"""
 
 
 class BasetenApi:
+    _rest_api_client: RestAPIClient
+
     class GraphQLErrorCodes(Enum):
         RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
 
@@ -75,6 +73,9 @@ class BasetenApi:
         self._rest_api_url = rest_api_url
         self._auth_service = auth_service
         self._auth_token = self._auth_service.authenticate()
+        self._rest_api_client = RestAPIClient(
+            base_url=self._rest_api_url, headers=self._auth_token.header()
+        )
 
     @property
     def app_url(self) -> str:
@@ -133,6 +134,7 @@ class BasetenApi:
         s3_key: str,
         config: str,
         semver_bump: str,
+        truss_user_env: b10_types.TrussUserEnv,
         allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
@@ -161,7 +163,7 @@ class BasetenApi:
             }}
         """
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
         return resp["data"]["create_model_from_truss"]["model_version"]
 
@@ -171,6 +173,7 @@ class BasetenApi:
         s3_key: str,
         config: str,
         semver_bump: str,
+        truss_user_env: b10_types.TrussUserEnv,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
@@ -198,7 +201,7 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
 
@@ -207,6 +210,7 @@ class BasetenApi:
         model_name,
         s3_key,
         config,
+        truss_user_env: b10_types.TrussUserEnv,
         allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
@@ -232,7 +236,7 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
         return resp["data"]["deploy_draft_truss"]["model_version"]
 
@@ -240,6 +244,7 @@ class BasetenApi:
         self,
         entrypoint: b10_types.ChainletDataAtomic,
         dependencies: List[b10_types.ChainletDataAtomic],
+        truss_user_env: b10_types.TrussUserEnv,
         chain_id: Optional[str] = None,
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
@@ -277,7 +282,7 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
 
         return resp["data"]["deploy_chain_atomic"]
@@ -343,24 +348,12 @@ class BasetenApi:
         return chainlets
 
     def delete_chain(self, chain_id: str) -> Any:
-        url = f"{self._rest_api_url}/v1/chains/{chain_id}"
-        headers = self._auth_token.header()
-        resp = requests.delete(url, headers=headers)
-        if not resp.ok:
-            resp.raise_for_status()
-
-        deployment = resp.json()
-        return deployment
+        return self._rest_api_client.delete(f"v1/chains/{chain_id}")
 
     def delete_chain_deployment(self, chain_id: str, chain_deployment_id: str) -> Any:
-        url = f"{self._rest_api_url}/v1/chains/{chain_id}/deployments/{chain_deployment_id}"
-        headers = self._auth_token.header()
-        resp = requests.delete(url, headers=headers)
-        if not resp.ok:
-            resp.raise_for_status()
-
-        deployment = resp.json()
-        return deployment
+        return self._rest_api_client.delete(
+            f"v1/chains/{chain_id}/deployments/{chain_deployment_id}"
+        )
 
     def models(self):
         query_string = """
@@ -484,8 +477,9 @@ class BasetenApi:
             }}
         }}
         """
+        truss_user_env = b10_types.TrussUserEnv.collect().json()
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env}
         )
         result = resp["data"]["stage_patch_for_draft_truss"]
         if not result["succeeded"]:
@@ -511,8 +505,9 @@ class BasetenApi:
             }}
         }}
         """
+        truss_user_env = b10_types.TrussUserEnv.collect().json()
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env}
         )
         result = resp["data"]["sync_draft_truss"]
         if not result["succeeded"]:
@@ -531,75 +526,120 @@ class BasetenApi:
             }}
         }}
         """
+        truss_user_env = b10_types.TrussUserEnv.collect().json()
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env}
         )
         return resp["data"]["truss_validation"]
 
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:
-        headers = self._auth_token.header()
-        resp = requests.get(
-            f"{self._rest_api_url}/v1/models/{model_id}/deployments/{deployment_id}",
-            headers=headers,
+        return self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}"
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        deployment = resp.json()
-        return deployment
 
     def upsert_secret(self, name: str, value: str) -> Any:
-        headers = self._auth_token.header()
-        data = {"name": name, "value": value}
-        resp = requests.post(
-            f"{self._rest_api_url}/v1/secrets", headers=headers, json=data
+        return self._rest_api_client.post(
+            "v1/secrets", body={"name": name, "value": value}
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        secret_info = resp.json()
-        return secret_info
 
     def get_all_secrets(self) -> Any:
-        headers = self._auth_token.header()
-        resp = requests.get(f"{self._rest_api_url}/v1/secrets", headers=headers)
-        if not resp.ok:
-            resp.raise_for_status()
-
-        secrets_info = resp.json()
-        return secrets_info
+        return self._rest_api_client.get("v1/secrets")
 
     def upsert_training_project(self, training_project):
-        headers = self._auth_token.header()
-        resp = requests.post(
-            f"{self._rest_api_url}/v1/training_projects",
-            headers=headers,
-            json={"training_project": training_project.model_dump()},
+        resp_json = self._rest_api_client.post(
+            "v1/training_projects",
+            body={"training_project": training_project.model_dump()},
         )
-        if not resp.ok:
-            resp.raise_for_status()
-
-        return resp.json()["training_project"]
+        return resp_json["training_project"]
 
     def create_training_job(self, project_id: str, job):
-        headers = self._auth_token.header()
-        resp = requests.post(
-            f"{self._rest_api_url}/v1/training_projects/{project_id}/jobs",
-            headers=headers,
-            json={"training_job": job.model_dump()},
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs",
+            body={"training_job": job.model_dump()},
         )
-        if not resp.ok:
-            resp.raise_for_status()
+        return resp_json["training_job"]
 
-        return resp.json()
+    def stop_training_job(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/stop", body={}
+        )
+        return resp_json["training_job"]
+
+    def list_training_jobs(self, project_id: str):
+        # training_jobs, training_project
+        resp_json = self._rest_api_client.get(f"v1/training_projects/{project_id}/jobs")
+        return resp_json
+
+    def search_training_jobs(
+        self,
+        statuses: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        order_by: List[dict[str, str]] = [{"field": "created_at", "order": "desc"}],
+    ):
+        resp_json = self._rest_api_client.post(
+            "v1/training_jobs/search",
+            body={
+                "statuses": statuses,
+                "project_id": project_id,
+                "job_id": job_id,
+                "order_by": order_by,
+            },
+        )
+        return resp_json["training_jobs"]
+
+    def get_training_job(self, project_id: str, job_id: str):
+        # training_job, training_project
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/jobs/{job_id}"
+        )
+        return resp_json
+
+    def list_training_projects(self):
+        resp_json = self._rest_api_client.get("v1/training_projects")
+        return resp_json["training_projects"]
 
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
-        headers = self._auth_token.header()
-        resp = requests.get(
-            f"{self._rest_api_url}/v1/blobs/credentials/{blob_type.value}",
-            headers=headers,
-        )
-        if not resp.ok:
-            resp.raise_for_status()
+        return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
 
-        return resp.json()
+    def _prepare_logs_query(
+        self,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ) -> Mapping[str, int]:
+        payload = {}
+        if start_epoch_millis:
+            payload["start_epoch_millis"] = start_epoch_millis
+        if end_epoch_millis:
+            payload["end_epoch_millis"] = end_epoch_millis
+        return payload
+
+    def get_training_job_logs(
+        self,
+        project_id: str,
+        job_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+        )
+
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]
+
+    def get_model_deployment_logs(
+        self,
+        model_id: str,
+        deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            f"v1/models/{model_id}/deployments/{deployment_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+        )
+
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]

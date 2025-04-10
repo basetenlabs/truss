@@ -1,12 +1,10 @@
 import asyncio
 import concurrent
 import contextlib
-import dataclasses
 import inspect
 import json
 import logging
 import pathlib
-import re
 import sys
 import tempfile
 import textwrap
@@ -22,9 +20,9 @@ import pytest
 import requests
 import websockets
 from opentelemetry import context, trace
+from prometheus_client.parser import text_string_to_metric_families
 from python_on_whales import Container
 from requests.exceptions import RequestException
-from websockets.exceptions import ConnectionClosed
 
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.helpers import create_truss
@@ -55,7 +53,9 @@ def _log_contains_line(
     )
 
 
-def _assert_logs_contain_error(logs: str, error: str, message=DEFAULT_LOG_ERROR):
+def _assert_logs_contain_error(
+    logs: str, error: Optional[str], message=DEFAULT_LOG_ERROR
+):
     loglines = [json.loads(line) for line in logs.splitlines()]
     assert any(
         _log_contains_line(line, message, "ERROR", error) for line in loglines
@@ -1159,6 +1159,68 @@ def test_is_healthy():
         assert healthy.status_code == 200
 
 
+@pytest.mark.integration
+def test_instrument_metrics():
+    model = """
+    from prometheus_client import Counter
+    class Model:
+        def __init__(self):
+            self.counter = Counter('my_really_cool_metric', 'my really cool metric description')
+        def predict(self, model_input):
+            self.counter.inc(10)
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        metrics_url = "http://localhost:8090/metrics"
+        requests.post(PREDICT_URL, json={})
+        resp = requests.get(metrics_url)
+        assert resp.status_code == 200
+        metric_names = [
+            family.name for family in text_string_to_metric_families(resp.text)
+        ]
+        assert metric_names == ["my_really_cool_metric"]
+        assert "my_really_cool_metric_total 10.0" in resp.text
+        assert "/metrics" not in container.logs()
+
+    # Test otel metrics
+    model = """
+    from opentelemetry import metrics
+    from opentelemetry.exporter.prometheus import PrometheusMetricReader
+    from opentelemetry.sdk.metrics import MeterProvider
+    class Model:
+        def __init__(self):
+            meter_provider = MeterProvider(metric_readers=[PrometheusMetricReader()])
+            metrics.set_meter_provider(meter_provider)
+            meter = metrics.get_meter(__name__)
+            self.counter = meter.create_counter('my_really_cool_metric', description='my really cool metric description')
+        def predict(self, model_input):
+            self.counter.add(10)
+            return model_input
+    """
+    config = """
+    requirements:
+    - opentelemetry-exporter-prometheus>=0.52b0
+    """
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        metrics_url = "http://localhost:8090/metrics"
+        requests.post(PREDICT_URL, json={})
+        resp = requests.get(metrics_url)
+        assert resp.status_code == 200
+        metric_names = {
+            family.name for family in text_string_to_metric_families(resp.text)
+        }
+        expected_metric_names = {"target_info", "my_really_cool_metric"}
+        assert metric_names == expected_metric_names
+        assert "my_really_cool_metric_total 10.0" in resp.text
+        assert "/metrics" not in container.logs()
+
+
 def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):
     app_path = truss_container_fs / "app"
     sys.path.append(str(app_path))
@@ -1274,14 +1336,11 @@ def test_streaming_truss_with_user_tracing(test_data_path, enable_tracing_data):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_streaming_truss_with_tracing"
         tr = TrussHandle(truss_dir)
-
-        def enable_gpu_fn(conf):
-            new_runtime = dataclasses.replace(
-                conf.runtime, enable_tracing_data=enable_tracing_data
+        tr._update_config(
+            runtime=tr._spec.config.runtime.model_copy(
+                update={"enable_tracing_data": enable_tracing_data}
             )
-            return dataclasses.replace(conf, runtime=new_runtime)
-
-        tr._update_config(enable_gpu_fn)
+        )
 
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -1330,6 +1389,9 @@ def test_streaming_truss_with_user_tracing(test_data_path, enable_tracing_data):
             assert len(user_traces) > 0
             return
 
+        print("***")
+        print(truss_traces)
+        print("***")
         assert sum(1 for x in truss_traces if x["name"] == "predict-endpoint") == 3
         assert sum(1 for x in user_traces if x["name"] == "load_model") == 1
         assert sum(1 for x in user_traces if x["name"] == "predict") == 3
@@ -1844,11 +1906,34 @@ async def test_raise_predict_and_websocket_endpoint():
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=False
         )
-        time.sleep(1)
+        time.sleep(3)
         _assert_logs_contain_error(
             container.logs(),
             message="Exception while loading model",
-            error="cannot have both `predict` and `websocket` method",
+            error="cannot have both",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_raise_preprocess_and_websocket_endpoint():
+    model = """
+    class Model:
+        async def websocket(self, websocket):
+            pass
+
+        async def preprocess(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(3)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="cannot have both",
         )
 
 
@@ -1882,6 +1967,10 @@ async def test_websocket_endpoint():
             try:
                 while True:
                     text = await websocket.receive_text()
+                    if text == "done":
+                        print("done")
+                        return
+
                     await websocket.send_text(text + " pong")
             except fastapi.WebSocketDisconnect:
                 pass
@@ -1899,6 +1988,65 @@ async def test_websocket_endpoint():
             response = await websocket.recv()
             assert response == "world pong"
 
+            await websocket.send("done")
+
+            with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+                await websocket.recv()
+
+            assert exc_info.value.rcvd.code == 1000
+            assert exc_info.value.rcvd.reason == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_websocket_endpoint_error_logs():
+    model = """
+    import fastapi
+
+    class Model:
+        async def websocket(self, websocket: fastapi.WebSocket):
+            try:
+                while True:
+                    text = await websocket.receive_text()
+                    if text == "raise":
+                        raise ValueError("This is test error.")
+                    await websocket.send_text(text + " pong")
+            except fastapi.WebSocketDisconnect:
+                pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        async with websockets.connect(WEBSOCKETS_URL) as websocket:
+            # Send "hello" and verify response
+            await websocket.send("hello")
+            response = await websocket.recv()
+            assert response == "hello pong"
+
+            # Send "raise" to raise a test error.
+            await websocket.send("raise")
+            with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
+                await websocket.recv()
+
+            assert exc_info.value.rcvd.code == 1011
+            assert (
+                exc_info.value.rcvd.reason
+                == "Internal Server Error (in model/chainlet)."
+            )
+
+            expected_stack_trace = (
+                "Traceback (most recent call last):\n"
+                '  File "/app/model/model.py", line 10, in websocket\n'
+                '    raise ValueError("This is test error.")\n'
+                "ValueError: This is test error."
+            )
+            _assert_logs_contain_error(
+                container.logs(),
+                error=expected_stack_trace,
+                message="Internal Server Error (in model/chainlet).",
+            )
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -1910,13 +2058,20 @@ async def test_nonexistent_websocket_endpoint():
             pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-        response = None
-        with pytest.raises(ConnectionClosed) as exc_info:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        with pytest.raises(websockets.ConnectionClosedError) as exc_info:
             async with websockets.connect(WEBSOCKETS_URL) as ws:
-                response_bytes = await ws.recv()
-                response = response_bytes.decode()
-                await ws.recv()  # Triggers exception, recv after expected closure
+                await ws.recv()
 
         assert exc_info.value.rcvd.code == 1003
-        assert re.search(r"not implemented", response, re.IGNORECASE)
+        assert (
+            exc_info.value.rcvd.reason
+            == "WebSocket is not implemented on this deployment."
+        )
+        _assert_logs_contain_error(
+            container.logs(),
+            error=None,
+            message="WebSocket is not implemented on this deployment.",
+        )

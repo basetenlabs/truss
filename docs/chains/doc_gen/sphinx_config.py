@@ -37,6 +37,7 @@ autodoc_default_options = {
     "show-inheritance": True,
 }
 
+
 # Other Options.
 autodoc_typehints = "description"
 always_document_param_types = True

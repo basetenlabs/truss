@@ -54,8 +54,8 @@ jobs:
 
       - name: Test CLI Binary
         run: |
-          sudo mkdir -p /bptr
-          sudo chown $(whoami):$(whoami) /bptr
+          sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
+          sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
           cp ./example-bptr-manifest.json /bptr/bptr-manifest
           dist/cli/${{ env.NAME }} ./example_bptr_resolved
           if [ ! -d "./example_bptr_resolved" ]; then

@@ -16,6 +16,7 @@ import psutil
 import pytest
 import requests
 import websockets
+from prometheus_client.parser import text_string_to_metric_families
 
 PATCH_PING_MAX_DELAY_SECS = 3
 
@@ -160,6 +161,29 @@ def test_truss_control_server_health_check(control_server: ControlServerDetails)
     resp = requests.get(f"{ctrl_url}/v1/models/model")
     assert resp.status_code == 200
     assert resp.json() == {}
+
+
+@pytest.mark.integration
+def test_instrument_metrics(control_server: ControlServerDetails):
+    metrics_model_code = """
+from prometheus_client import Counter
+class Model:
+    def __init__(self):
+        self.counter = Counter('my_really_cool_metric', 'my really cool metric description')
+    def predict(self, model_input):
+        self.counter.inc(10)
+        return model_input
+"""
+
+    ctrl_url = f"http://localhost:{control_server.control_server_port}"
+    _patch(metrics_model_code, control_server)
+    requests.post(f"{ctrl_url}/v1/models/model:predict", json={})
+    requests.post(f"{ctrl_url}/v1/models/model:predict", json={})
+    resp = requests.get(f"{ctrl_url}/metrics")
+    assert resp.status_code == 200
+    metric_names = [family.name for family in text_string_to_metric_families(resp.text)]
+    assert metric_names == ["my_really_cool_metric"]
+    assert "my_really_cool_metric_total 20.0" in resp.text
 
 
 @pytest.mark.integration

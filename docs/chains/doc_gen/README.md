@@ -3,7 +3,7 @@ an interim solution. It requires significant manual oversight and the code
 quality in this directory is non-existent.
 
 Extra deps required:
-`sphinx sphinx_rtd_theme sphinx_markdown_builder sphinx-pydantic`
+`pip install sphinx sphinx_rtd_theme sphinx_markdown_builder sphinx-pydantic`
 
 
 The general process is:
