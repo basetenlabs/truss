@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.78"
+version = "0.9.79"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -85,7 +85,7 @@ single-source = "^0.3.0"
 Jinja2 = { version = "^3.1.2", optional = false }
 aiofiles = { version = "^24.1.0", optional = false }
 aiohttp = { version = "^3.10.10", optional = false }
-blake3 = { version = "^0.3.3", optional = false }
+blake3 = { version = "^1.0.4", optional = false }
 boto3 = { version = "^1.34.85", optional = false }
 click = { version = "^8.0.3", optional = false }
 fastapi = { version =">=0.109.1", optional = false }
@@ -159,7 +159,6 @@ types-setuptools = "^69.0.0.0"
 [tool.poetry.group.dev-server.dependencies]
 # These packages are needed to run local tests of server components. Note that the actual
 # server deps for building the docker image are (so far) defined in `requirements.txt`-files.
-dockerfile = "^3.2.0"
 fastapi =">=0.109.1"
 flask = "^2.3.3"
 msgpack = ">=1.0.2"

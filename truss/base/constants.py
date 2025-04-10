@@ -10,8 +10,6 @@ CUSTOM = "custom"
 HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
 LIGHTGBM = "lightgbm"
 
-ARM_PLATFORMS = ("aarch64", "arm64")
-
 
 _TRUSS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
@@ -89,7 +87,7 @@ TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
 TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0-fd30ac1"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
-BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.20"
+BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.21"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 

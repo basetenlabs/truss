@@ -25,20 +25,6 @@ RUN pip install mkl
 {% block post_base %}
 {% endblock %}
 
-# NB(nikhil): We need to install additional toolchains to support installing
-# python dependencies (currently blake3 and dockerfile) on arm64 architecture.
-# Currently, we only support arm64 in local dev, but we need these for:
-#   1) Control server (depends on truss)
-#   2) Python DX / Chains (depends on truss)
-{% block install_arm64_requirements %}
-    {%- if should_install_arm64_requirements %}
-RUN apt-get update && apt-get install --yes --no-install-recommends golang-go
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-RUN rustup update stable && rustup default stable
-    {%- endif %}
-{% endblock %}
-
 {% block install_system_requirements %}
     {%- if should_install_system_requirements %}
 COPY ./{{system_packages_filename}} {{system_packages_filename}}
