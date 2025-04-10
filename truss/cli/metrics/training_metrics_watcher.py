@@ -70,17 +70,6 @@ class MetricsWatcher(TrainingPollerMixin):
         if gpu_metrics or gpu_memory:
             table.add_section()
 
-        # Storage metrics
-        storage = metrics_data.get("storage_metrics")
-        if storage:
-            table.add_row(
-                "Disk Free",
-                f"{storage.get('ephemeral_storage_available_gib', 0):.2f} GB",
-            )
-            table.add_row(
-                "Disk Used", f"{storage.get('ephemeral_storage_used_gib', 0):.2f} GB"
-            )
-
         return table
 
     def display_live_metrics(self, refresh_rate: int = 3):
