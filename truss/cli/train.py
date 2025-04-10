@@ -5,6 +5,7 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich.console import Console
 
+from truss.cli.train_metrics_display import MetricsDisplay
 from truss.remote.baseten.remote import BasetenRemote
 
 ACTIVE_JOB_STATUSES = [
@@ -188,12 +189,19 @@ def stop_all_jobs(
         remote_provider.api.stop_training_job(job["training_project"]["id"], job["id"])
     console.print("Training jobs stopped successfully.", style="green")
 
+
 def view_training_job_metrics(
-    console: Console, remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
+    console: Console,
+    remote_provider: BasetenRemote,
+    project_id: Optional[str],
+    job_id: Optional[str],
 ):
     """
     view_training_job_metrics shows a list of metrics for a training job.
     """
     project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
-    metrics_resp = remote_provider.api.get_training_job_metrics(project_id, job_id)
-    console.print(metrics_resp)
+    console.print(f"Showing metrics for job: {job_id}")
+    metrics_display = MetricsDisplay(console)
+    metrics_display.display_live_metrics(
+        remote_provider.api, project_id, job_id, active_statuses=ACTIVE_JOB_STATUSES
+    )

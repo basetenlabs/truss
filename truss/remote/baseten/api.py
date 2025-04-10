@@ -601,9 +601,18 @@ class BasetenApi:
 
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
-    
-    def get_training_job_metrics(self, project_id: str, job_id: str, start_epoch_millis: Optional[int] = None, end_epoch_millis: Optional[int] = None):
-        resp_json = self._rest_api_client.post(f"v1/training_projects/{project_id}/jobs/{job_id}/metrics", body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis))
+
+    def get_training_job_metrics(
+        self,
+        project_id: str,
+        job_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/metrics",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+        )
         return resp_json
 
     def _prepare_logs_query(

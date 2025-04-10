@@ -40,7 +40,7 @@ class TrainingLogWatcher(LogWatcher):
         signal.signal(signal.SIGINT, self._handle_sigint)
 
     def _handle_sigint(self, signum: int, frame: Any) -> None:
-        msg = f"\n\nExiting training job logs. To stop the job, run `truss train stop --project-id {self.project_id} --job-id {self.job_id}`"
+        msg = f"\n\nExiting training job logs. To stop the job, run `truss train stop --job-id {self.job_id}`"
         self.console.print(msg, style="yellow")
         raise KeyboardInterrupt()
 
