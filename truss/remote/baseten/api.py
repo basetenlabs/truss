@@ -611,11 +611,11 @@ class BasetenApi:
     ):
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/metrics",
-            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
         )
         return resp_json
 
-    def _prepare_logs_query(
+    def _prepare_time_range_query(
         self,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
@@ -636,7 +636,7 @@ class BasetenApi:
     ):
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
-            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
         )
 
         # NB(nikhil): reverse order so latest logs are at the end
@@ -651,7 +651,7 @@ class BasetenApi:
     ):
         resp_json = self._rest_api_client.post(
             f"v1/models/{model_id}/deployments/{deployment_id}/logs",
-            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
         )
 
         # NB(nikhil): reverse order so latest logs are at the end
