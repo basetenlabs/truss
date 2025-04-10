@@ -286,10 +286,10 @@ class Runtime(custom_types.ConfigModel):
         return values
 
     @pydantic.model_validator(mode="after")
-    def _sync_is_websocket(self) -> "Runtime":
-        if self.is_websocket_endpoint is None:
-            self.is_websocket_endpoint = self.transport.kind == TransportKind.WEBSOCKET
-
+    def sync_is_websocket(self) -> "Runtime":
+        if self.is_websocket_endpoint is True:
+            self.transport = WebsocketOptions()
+        self.is_websocket_endpoint = self.transport.kind == TransportKind.WEBSOCKET
         return self
 
     @pydantic.field_validator("transport", mode="before")
@@ -309,15 +309,9 @@ class Runtime(custom_types.ConfigModel):
         return value
 
     @pydantic.model_serializer(mode="wrap")
-    def _inject_legacy_field(self, serializer):
+    def _serialize_transport(self, serializer):
         data = serializer(self)
-        is_ws = self.is_websocket_endpoint
-        if is_ws and self.transport.kind != TransportKind.WEBSOCKET:
-            data["transport"] = WebsocketOptions().model_dump()
-
-        data["is_websocket_endpoint"] = (
-            self.transport.kind == TransportKind.WEBSOCKET or is_ws
-        )
+        data["transport"] = self.transport.model_dump(exclude_defaults=False)
         return data
 
 
@@ -590,6 +584,7 @@ class TrussConfig(custom_types.ConfigModel):
         return []
 
     def to_dict(self, verbose: bool = True) -> dict:
+        self.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.
         data = super().to_dict(verbose)
         # Always include.
         data["resources"] = self.resources.to_dict(verbose=True)

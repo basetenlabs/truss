@@ -721,6 +721,11 @@ def test_resources_transport_read_from_new_yaml(tmp_path):
     assert config.runtime.transport.kind == TransportKind.WEBSOCKET
     assert config.runtime.is_websocket_endpoint is True
 
+    config_dict = config.to_dict(verbose=False)
+    config_new = TrussConfig.from_dict(config_dict)
+    assert config_new.runtime.transport.kind == TransportKind.WEBSOCKET
+    assert config_new.runtime.is_websocket_endpoint is True
+
 
 def test_resources_transport_read_unspecified(tmp_path):
     yaml_content = """
@@ -732,6 +737,11 @@ def test_resources_transport_read_unspecified(tmp_path):
     assert isinstance(config.runtime.transport, HTTPOptions)
     assert config.runtime.transport.kind == TransportKind.HTTP
     assert config.runtime.is_websocket_endpoint is False
+
+    config_dict = config.to_dict(verbose=False)
+    config_new = TrussConfig.from_dict(config_dict)
+    assert config_new.runtime.transport.kind == TransportKind.HTTP
+    assert config_new.runtime.is_websocket_endpoint is False
 
 
 def test_resources_transport_read_empty(tmp_path):
@@ -746,6 +756,11 @@ def test_resources_transport_read_empty(tmp_path):
     assert isinstance(config.runtime.transport, HTTPOptions)
     assert config.runtime.transport.kind == TransportKind.HTTP
     assert config.runtime.is_websocket_endpoint is False
+
+    config_dict = config.to_dict(verbose=False)
+    config_new = TrussConfig.from_dict(config_dict)
+    assert config_new.runtime.transport.kind == TransportKind.HTTP
+    assert config_new.runtime.is_websocket_endpoint is False
 
 
 def test_resources_transport_read_from_legacy_yaml(tmp_path):
@@ -766,7 +781,7 @@ def test_resources_transport_read_from_legacy_yaml(tmp_path):
 def test_resources_transport_serialize_from_new_way(tmp_path):
     config = TrussConfig(runtime=Runtime(transport=WebsocketOptions()))
     out_path = tmp_path / "out.yaml"
-    config.write_to_yaml_file(out_path)
+    config.write_to_yaml_file(out_path, verbose=False)
 
     dumped = yaml.safe_load(out_path.read_text())
     assert dumped["runtime"]["transport"]["kind"] == "websocket"
@@ -784,7 +799,7 @@ def test_resources_transport_serialize_from_old_way(tmp_path):
     config = TrussConfig.from_yaml(config_path)
 
     out_path = tmp_path / "out.yaml"
-    config.write_to_yaml_file(out_path)
+    config.write_to_yaml_file(out_path, verbose=False)
 
     dumped = yaml.safe_load(out_path.read_text())
     assert dumped["runtime"]["transport"]["kind"] == "websocket"
@@ -793,10 +808,24 @@ def test_resources_transport_serialize_from_old_way(tmp_path):
 
 def test_resources_transport_correct_serialize_from_legacy(tmp_path):
     config = TrussConfig()
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path, verbose=False)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert "runtime" not in dumped
+
+    config_new = TrussConfig.from_yaml(out_path)
+    assert config_new.runtime.transport.kind == TransportKind.HTTP
+    assert config_new.runtime.is_websocket_endpoint is False
+
+
+def test_resources_transport_correct_serialize(tmp_path):
+    config = TrussConfig()
     config.runtime.is_websocket_endpoint = True
 
     out_path = tmp_path / "out.yaml"
-    config.write_to_yaml_file(out_path)
+    config.write_to_yaml_file(out_path, verbose=False)
 
     dumped = yaml.safe_load(out_path.read_text())
     assert dumped["runtime"]["transport"]["kind"] == "websocket"
@@ -808,7 +837,7 @@ def test_resources_transport_correct_serialize_from(tmp_path):
     config.runtime.transport = WebsocketOptions()
 
     out_path = tmp_path / "out.yaml"
-    config.write_to_yaml_file(out_path)
+    config.write_to_yaml_file(out_path, verbose=False)
 
     dumped = yaml.safe_load(out_path.read_text())
     assert dumped["runtime"]["transport"]["kind"] == "websocket"
