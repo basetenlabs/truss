@@ -114,15 +114,11 @@ class MetricsWatcher(TrainingPollerMixin):
         with Live(auto_refresh=False) as live:
             self.live = live
             while True:
-                # our first instance of fetching metric can fetch for the whole time range. If the job has been stopped, this
-                # allows us to fetch the most recent snapshot of metrics. Subsequent queries will fetch only the most recent data
-                end_epoch_millis = int(time.time() * 1000)
-                start_epoch_millis = end_epoch_millis - 60 * 1000
+                # our first instance of fetching metrics passes no explicit time range. We do this so that we can fetch metrics
+                # for inactive jobs, using the job's completion time to set the time range.
+                # Subsequent queries will fetch only the most recent data to avoid unnecessary load on VM
                 metrics = self.api.get_training_job_metrics(
-                    self.project_id,
-                    self.job_id,
-                    start_epoch_millis=start_epoch_millis,
-                    end_epoch_millis=end_epoch_millis,
+                    self.project_id, self.job_id
                 )
                 try:
                     # range of one minute since we only want the last recording
