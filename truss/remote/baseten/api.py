@@ -608,13 +608,10 @@ class BasetenApi:
         job_id: str,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
-        offset_minutes: Optional[int] = None,
     ):
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/metrics",
-            body=self._prepare_time_range_query(
-                start_epoch_millis, end_epoch_millis, offset_minutes
-            ),
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
         )
         return resp_json
 
@@ -622,15 +619,12 @@ class BasetenApi:
         self,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
-        offset_minutes: Optional[int] = None,
     ) -> Mapping[str, int]:
         payload = {}
         if start_epoch_millis:
             payload["start_epoch_millis"] = start_epoch_millis
         if end_epoch_millis:
             payload["end_epoch_millis"] = end_epoch_millis
-        if offset_minutes:
-            payload["offset_minutes"] = offset_minutes
         return payload
 
     def get_training_job_logs(

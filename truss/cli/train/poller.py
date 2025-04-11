@@ -49,9 +49,9 @@ class TrainingPollerMixin:
             self._poll_stop_time = int(time.time()) + JOB_TERMINATION_GRACE_PERIOD_SEC
 
     def should_poll_again(self) -> bool:
-        return self._current_status in JOB_RUNNING_STATES or self._poll_expired()
+        return self._current_status in JOB_RUNNING_STATES or self._do_cleanup_polling()
 
-    def _poll_expired(self):
+    def _do_cleanup_polling(self):
         if self._poll_stop_time is None:
             return False
 

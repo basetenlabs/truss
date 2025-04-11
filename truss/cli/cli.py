@@ -950,7 +950,7 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id, job_id = train_cli.get_args_for_logs(
+    project_id, job_id = train_cli.get_args_for_monitoring(
         console, remote_provider, project_id, job_id
     )
 

@@ -39,7 +39,7 @@ def get_args_for_stop(
     return project_id, job_id
 
 
-def get_args_for_logs(
+def get_args_for_monitoring(
     console: Console,
     remote_provider: BasetenRemote,
     project_id: Optional[str],
@@ -199,6 +199,8 @@ def view_training_job_metrics(
     """
     view_training_job_metrics shows a list of metrics for a training job.
     """
-    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
+    project_id, job_id = get_args_for_monitoring(
+        console, remote_provider, project_id, job_id
+    )
     metrics_display = MetricsWatcher(remote_provider.api, project_id, job_id, console)
-    metrics_display.display_live_metrics()
+    metrics_display.watch()

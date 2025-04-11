@@ -1,5 +1,6 @@
 import signal
 import time
+import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
 from rich.console import Console
@@ -31,7 +32,7 @@ class MetricsWatcher(TrainingPollerMixin):
 
     def _format_bytes(self, bytes_val: float) -> Tuple[str, str]:
         """Convert bytes to human readable format"""
-        color_map = {"MB": "green", "GB": "blue", "TB": "magenta"}
+        color_map = {"MB": "green", "GB": "cyan", "TB": "magenta"}
         unit = "MB"
         if bytes_val > 1024 * 1024 * 1024 * 1024:
             unit = "TB"
@@ -55,6 +56,14 @@ class MetricsWatcher(TrainingPollerMixin):
         table = Table(title="Training Job Metrics")
         table.add_column("Metric")
         table.add_column("Value")
+
+        # Add timestamp if available
+        cpu_usage_data = metrics_data.get("cpu_usage", [])
+        if cpu_usage_data and len(cpu_usage_data) > 0:
+            latest_timestamp = cpu_usage_data[-1].get("timestamp")
+            if latest_timestamp:
+                table.add_row("Timestamp", latest_timestamp)
+                table.add_section()
 
         # CPU metrics
         cpu_usage = self._get_latest_metric(metrics_data.get("cpu_usage", []))
@@ -99,25 +108,44 @@ class MetricsWatcher(TrainingPollerMixin):
 
         return table
 
-    def display_live_metrics(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
+    def watch(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
         """Display continuously updating metrics"""
         self.before_polling()
         with Live(auto_refresh=False) as live:
             self.live = live
             while True:
+                # our first instance of fetching metric can fetch for the whole time range. If the job has been stopped, this
+                # allows us to fetch the most recent snapshot of metrics. Subsequent queries will fetch only the most recent data
+                end_epoch_millis = int(time.time() * 1000)
+                start_epoch_millis = end_epoch_millis - 60 * 1000
+                metrics = self.api.get_training_job_metrics(
+                    self.project_id,
+                    self.job_id,
+                    start_epoch_millis=start_epoch_millis,
+                    end_epoch_millis=end_epoch_millis,
+                )
                 try:
-                    metrics = self.api.get_training_job_metrics(
-                        self.project_id, self.job_id, offset_minutes=1
-                    )
+                    # range of one minute since we only want the last recording
                     table = self.create_metrics_table(metrics)
                     live.update(table, refresh=True)
                     if not self.should_poll_again():
                         live.stop()
                         break
                     time.sleep(refresh_rate)
+                    end_epoch_millis = int(time.time() * 1000)
+                    start_epoch_millis = end_epoch_millis - 60 * 1000
+                    metrics = self.api.get_training_job_metrics(
+                        self.project_id,
+                        self.job_id,
+                        end_epoch_millis=end_epoch_millis,
+                        start_epoch_millis=start_epoch_millis,
+                    )
                     self.post_poll()
                 except Exception as e:
                     live.stop()
-                    self.console.print(f"Error fetching metrics: {e}", style="red")
+                    self.console.print(
+                        f"Error fetching metrics: {e}: {traceback.format_exc()}",
+                        style="red",
+                    )
                     break
         self.after_polling()
