@@ -120,7 +120,12 @@ struct BasetenPointerManifest {
 #[pyfunction]
 #[pyo3(signature = (download_dir=None))]
 fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
-    lazy_data_resolve_entrypoint(download_dir).map_err(|err| PyException::new_err(err.to_string()))
+    Python::with_gil(|py| {
+        py.allow_threads(|| {
+            lazy_data_resolve_entrypoint(download_dir)
+        })
+    })
+    .map_err(|err| PyException::new_err(err.to_string()))
 }
 
 /// Shared entrypoint for both Python and CLI
