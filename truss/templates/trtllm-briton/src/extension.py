@@ -36,6 +36,7 @@ class Extension:
 
     def __init__(self, *args, **kwargs):
         self._config = kwargs["config"]
+        self._lazy_data_resolver = kwargs["lazy_data_resolver"]
         trt_llm_config = self._config.get("trt_llm")
         config = TRTLLMConfiguration(**trt_llm_config)
         if (
@@ -65,4 +66,5 @@ class Extension:
         return {"engine": self._model}
 
     def load(self):
+        self._lazy_data_resolver.block_until_download_complete()
         self._model.load()
