@@ -43,13 +43,13 @@ class LazyDataResolverV2:
         self._lock = Lock()
         self._start_time = time.time()
         self.logger = logger or logging.getLogger(__name__)
-        self._is_collected = False
+        self._is_collected_by_user = False
         thread = Thread(target=self._prefetch_in_thread, daemon=True)
         thread.start()
 
         def print_error_message_on_exit_if_not_collected():
             try:
-                if not self._is_collected and thread.is_alive():
+                if not self._is_collected_by_user and thread.is_alive():
                     # if thread is still alive, and the user has not called collect,
                     # the download in flight could have been the core issue
                     self.logger.warning(
@@ -67,10 +67,10 @@ class LazyDataResolverV2:
         )
         if not result:
             # no data to resolve, no need to collect
-            self._is_collected = True
+            self._is_collected_by_user = True
             return None
         # verify the user has called collect.
-        if not self._is_collected and time.time() - self._start_time > 20:
+        if not self._is_collected_by_user and time.time() - self._start_time > 20:
             # issue a warning if the user has not collected after 20 seconds.
             # skip for small downloads that are less than 20 seconds
             # as the user might have a lot of work before is able to call collect.
@@ -86,7 +86,7 @@ class LazyDataResolverV2:
         return truss_transfer.lazy_data_resolve(str(self._data_dir))
 
     def raise_if_not_collected(self):
-        if not self._is_collected:
+        if not self._is_collected_by_user:
             raise RuntimeError(MISSING_COLLECTION_MESSAGE)
 
     def block_until_download_complete(
@@ -110,7 +110,7 @@ class LazyDataResolverV2:
 
         """
         start_lock = time.time()
-        self._is_collected = issue_collect or self._is_collected
+        self._is_collected_by_user = issue_collect or self._is_collected_by_user
         with self._lock:
             result = self._fetch()
             if log_stats and result:
