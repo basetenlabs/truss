@@ -473,7 +473,6 @@ class ModelWrapper:
 
         secrets = SecretsResolver.get_secrets(self._config)
         lazy_data_resolver = LazyDataResolverV2(data_dir)
-        lazy_data_resolver._prefetch_in_thread()
 
         apply_patches(
             self._config.get("apply_library_patches", True),
