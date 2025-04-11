@@ -19,9 +19,14 @@ class Model:
         self._lazy_data_resolver = kwargs["lazy_data_resolver"]
 
     def load():
+        # work that does not require the download may be done here
         random_vector = torch.randn(1000)
         # important to collect the download before using any incomplete data
         self._lazy_data_resolver.block_until_download_complete()
+        # after the call, you may use the /app/model_cache directory
+        torch.load(
+            "/app/model_cache/your_model.pt"
+        ) * random_vector
 ```
 """
 
