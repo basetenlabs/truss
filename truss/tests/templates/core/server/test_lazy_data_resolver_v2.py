@@ -111,8 +111,6 @@ def test_lazy_data_resolver_v2_threaded():
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file()
             resolver = LazyDataResolverV2(data_dir)
-            for _ in range(10):
-                resolver._prefetch_in_thread()
             resolver.block_until_download_complete()
 
 
