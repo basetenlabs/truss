@@ -15,7 +15,7 @@ TARGET_FILE = Path("nested/config.json")
 
 
 def write_bptr_manifest_to_file(
-    expiration_timestamp: int = 2683764059, num_files: int = 1
+    expiration_timestamp: int = 4111111611, num_files: int = 1
 ):
     bptr_manifest = {
         "pointers": [
