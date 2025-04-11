@@ -39,6 +39,7 @@ class Extension:
         self._lazy_data_resolver = kwargs["lazy_data_resolver"]
         trt_llm_config = self._config.get("trt_llm")
         config = TRTLLMConfiguration(**trt_llm_config)
+        self._lazy_data_resolver.block_until_download_complete()
         if (
             config.build.speculator is not None
             and config.build.speculator.speculative_decoding_mode
@@ -66,5 +67,4 @@ class Extension:
         return {"engine": self._model}
 
     def load(self):
-        self._lazy_data_resolver.block_until_download_complete()
         self._model.load()
