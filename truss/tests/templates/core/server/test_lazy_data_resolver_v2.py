@@ -55,7 +55,7 @@ def setup_v2_bptr():
 
     try:
         # Verify that accessing non-existent file leads to """
-        assert LazyDataResolverV2(Path("/tmp")).fetch() == ""
+        assert LazyDataResolverV2(Path("/tmp")).block_until_download_complete() == ""
 
         # Create parent directory
         try:
@@ -87,7 +87,6 @@ def test_lazy_data_resolver_v2_invalid():
 
             with pytest.raises(Exception):
                 resolver = LazyDataResolverV2(data_dir)
-                resolver.fetch()
                 resolver.block_until_download_complete()
                 assert not (data_dir / TARGET_FILE).exists()
 
@@ -99,7 +98,7 @@ def test_lazy_data_resolver_v2_regular():
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file()
             resolver = LazyDataResolverV2(data_dir)
-            location = resolver.fetch()
+            location = resolver.block_until_download_complete()
             assert (data_dir / TARGET_FILE).exists()
             assert (data_dir / TARGET_FILE).stat().st_size == 1482
             assert location == str(data_dir)
@@ -115,7 +114,7 @@ def test_lazy_data_resolver_v2_regular_baseten_fs():
                 data_dir = Path(tempdir)
                 write_bptr_manifest_to_file()
                 resolver = LazyDataResolverV2(data_dir)
-                resolver.fetch()
+                resolver.block_until_download_complete()
                 assert (data_dir / TARGET_FILE).exists()
                 assert (data_dir / TARGET_FILE).stat().st_size == 1482
         finally:
@@ -132,7 +131,7 @@ def test_lazy_data_resolver_v2_multiple_files():
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file(num_files=2)
             resolver = LazyDataResolverV2(data_dir)
-            resolver.fetch()
+            resolver.block_until_download_complete()
             assert (data_dir / TARGET_FILE).exists()
             assert (data_dir / TARGET_FILE).stat().st_size == 1482
 
@@ -146,4 +145,4 @@ def test_lazy_data_resolver_v2_expired():
 
             with pytest.raises(Exception):
                 resolver = LazyDataResolverV2(data_dir)
-                resolver.fetch()
+                resolver.block_until_download_complete()
