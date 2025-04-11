@@ -1,17 +1,17 @@
 import copy
 import inspect
-from typing import Dict
+from typing import Mapping, Optional
 
 from truss.base.truss_spec import TrussSpec
 from truss.local.local_config_handler import LocalConfigHandler
 
 
-def prepare_secrets(spec: TrussSpec) -> Dict[str, str]:
+def prepare_secrets(spec: TrussSpec) -> Mapping[str, Optional[str]]:
     secrets = copy.deepcopy(spec.secrets)
-    local_secerts = LocalConfigHandler.get_config().secrets
+    local_secrets = LocalConfigHandler.get_config().secrets
     for secret_name in secrets:
-        if secret_name in local_secerts:
-            secrets[secret_name] = local_secerts[secret_name]
+        if secret_name in local_secrets:
+            secrets[secret_name] = local_secrets[secret_name]
     return secrets
 
 

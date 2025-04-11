@@ -25,6 +25,14 @@ SAMPLE_TRUSSRC_NO_PARAMS = """
 remote_provider=test_remote
 """
 
+SAMPLE_TRUSSRC_EXTRA_PARAM = """
+[test_extra]
+remote_provider=test_remote
+api_key=test_key
+remote_url=http://test.com
+extra_field=some_value
+"""
+
 
 class TrussTestRemote(TrussRemote):
     def __init__(self, api_key, remote_url):
@@ -108,9 +116,14 @@ def test_load_remote_config_no_service(mock_exists, mock_open):
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TrussTestRemote}, clear=True)
-def test_required_params():
-    required_params = RemoteFactory.required_params(TrussTestRemote)
-    assert required_params == {"api_key", "remote_url"}
+@mock.patch(
+    "builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC_EXTRA_PARAM
+)
+@mock.patch("pathlib.Path.exists", return_value=True)
+def test_create_with_extra_param(mock_exists, mock_open):
+    remote = RemoteFactory.create("test_extra")
+    assert isinstance(remote, TrussTestRemote)
+    assert remote.api_key == "test_key"
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TrussTestRemote}, clear=True)
@@ -118,10 +131,9 @@ def test_required_params():
     "builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC_NO_REMOTE
 )
 @mock.patch("pathlib.Path.exists", return_value=True)
-def test_validate_remote_config_no_remote(mock_exists, mock_open):
-    service = RemoteFactory.load_remote_config("test")
-    with pytest.raises(ValueError):
-        RemoteFactory.validate_remote_config(service.configs, "test")
+def test_create_no_remote_param(mock_exists, mock_open):
+    with pytest.raises(ValueError, match="remote_provider"):
+        RemoteFactory.create("test")
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TrussTestRemote}, clear=True)
@@ -129,7 +141,6 @@ def test_validate_remote_config_no_remote(mock_exists, mock_open):
     "builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC_NO_PARAMS
 )
 @mock.patch("pathlib.Path.exists", return_value=True)
-def test_load_remote_config_no_params(mock_exists, mock_open):
-    service = RemoteFactory.load_remote_config("test")
-    with pytest.raises(ValueError):
-        RemoteFactory.validate_remote_config(service.configs, "test")
+def test_create_missing_required_param(mock_exists, mock_open):
+    with pytest.raises(ValueError, match="Missing required parameter"):
+        RemoteFactory.create("test")

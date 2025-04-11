@@ -1,15 +1,23 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import warnings
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, validator
+from pydantic import (
+    BaseModel,
+    PydanticDeprecatedSince20,
+    StringConstraints,
+    model_validator,
+    validator,
+)
+
+if TYPE_CHECKING:
+    from truss.base.truss_config import TrussConfig
 
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
@@ -123,10 +131,16 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
     request_default_max_tokens: Optional[int] = None
+    served_model_name: Optional[str] = None
     total_token_limit: int = 500000
     webserver_default_route: Optional[
         Literal["/v1/embeddings", "/rerank", "/predict"]
     ] = None
+
+
+class TrussTRTLLMLoraConfiguration(BaseModel):
+    max_lora_rank: int = 64
+    lora_target_modules: list[str] = []
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
@@ -152,6 +166,13 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     num_builder_gpus: Optional[int] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
+    lora_adapters: Optional[
+        Dict[
+            Annotated[str, StringConstraints(pattern=r"^[a-z0-9]+$")],
+            CheckpointRepository,
+        ]
+    ] = None
+    lora_configuration: Optional[TrussTRTLLMLoraConfiguration] = None
 
     class Config:
         extra = "forbid"
@@ -204,6 +225,10 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         return (self.speculator is not None) and (
             self.speculator.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL
         )
+
+    @property
+    def uses_lora(self) -> bool:
+        return self.lora_adapters is not None and len(self.lora_adapters) > 0
 
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
@@ -351,38 +376,24 @@ class TrussSpeculatorConfiguration(BaseModel):
                 raise ValueError(
                     f"Lookahead decoding mode requires lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size to be set. you set: {self}"
                 )
-            lade_num_draft_tokens = self.lade_max_draft_len(
+            lade_num_draft_tokens = self.lade_max_draft_len(  # required
                 self.lookahead_windows_size,
                 self.lookahead_ngram_size,
                 self.lookahead_verification_set_size,
             )
-            if not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
-                if (
-                    self.num_draft_tokens
-                    and self.num_draft_tokens != lade_num_draft_tokens
-                ):
-                    raise ValueError(
-                        f"num_draft_tokens is automatically calculated based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size. "
-                        f"Please remove num_draft_tokens or set it to exactly {lade_num_draft_tokens}. You set it to {self.num_draft_tokens}."
-                    )
+            if self.num_draft_tokens is None:
                 self.num_draft_tokens = lade_num_draft_tokens
-                if self.num_draft_tokens > 512:
-                    logger.warning(
-                        f"Lookahead decoding mode generates up to {self.num_draft_tokens} speculative tokens per step and may have performance implications. "
-                        "We recommend a simpler config, e.g. lookahead_windows_size=7, lookahead_ngram_size=5, lookahead_verification_set_size=3."
-                    )
-            else:
-                # server side on engine-builder
-                if not self.num_draft_tokens:
-                    raise ValueError(
-                        "num_draft_tokens is required in lookahead decoding mode but not set"
-                    )
-                if (
-                    self.num_draft_tokens < lade_num_draft_tokens
-                ):  # check that it has at least the required tokens. That way, it could have even higher at request time.
-                    raise ValueError(
-                        "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
-                    )
+            if self.num_draft_tokens > 512:
+                logger.warning(
+                    f"Lookahead decoding mode generates up to {self.num_draft_tokens} speculative tokens per step and may have performance implications. "
+                    "We recommend a simpler config, e.g. lookahead_windows_size=7, lookahead_ngram_size=5, lookahead_verification_set_size=3."
+                )
+            if (
+                self.num_draft_tokens < lade_num_draft_tokens
+            ):  # check that it has at least the required tokens. That way, it could have even higher at request time.
+                raise ValueError(
+                    "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
+                )
 
         self._assert_draft_tokens()
 
@@ -406,9 +417,31 @@ class TrussSpeculatorConfiguration(BaseModel):
             )
 
 
+class VersionsOverrides(BaseModel):
+    # If an override is specified, it takes precedence over the backend's current
+    # default version. The version is used to create a full image ref and should look
+    # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
+    # here and the backend creates the full image tag like
+    # `baseten/briton-server:v0.17.0-fd30ac1`.
+    engine_builder_version: Optional[str] = None
+    briton_version: Optional[str] = None
+    bei_version: Optional[str] = None
+
+
+class ImageVersions(BaseModel):
+    # Required versions for patching truss config during docker build setup.
+    # The schema of this model must be such that it can parse the values serialized
+    # from the backend. The inserted values are full image references, resolved using
+    # backend defaults and `ImageVersionsOverrides` from the pushed config.
+    bei_image: str
+    briton_image: str
+
+
 class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
+    # If versions are not set, the baseten backend will insert current defaults.
+    version_overrides: VersionsOverrides = VersionsOverrides()
 
     def model_post_init(self, __context):
         self.add_bei_default_route()
@@ -510,7 +543,85 @@ class TRTLLMConfiguration(BaseModel):
     def requires_build(self):
         return self.build is not None
 
-    # TODO(Abu): Replace this with model_dump(json=True)
-    # when pydantic v2 is used here
-    def to_json_dict(self, verbose=True):
-        return json.loads(self.json(exclude_unset=not verbose))
+
+def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
+    # Inline importing truss_config, to avoid cycle. This dependency is a bit sketchy,
+    # but we don't want this trt specific code to live in `truss.base` and we also don't
+    # want to move `Accelerator` out of the truss config module.
+    from truss.base import constants, truss_config
+
+    if config.trt_llm:
+        if config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER:
+            current_tags = config.model_metadata.get("tags", [])
+            if (
+                constants.OPENAI_COMPATIBLE_TAG in current_tags
+                and constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
+            ):
+                raise ValueError(
+                    f"TRT-LLM models should have either model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']. "
+                    f"Your current tags are both {current_tags}, which is invalid. Please remove one of the tags."
+                )
+            elif not (
+                constants.OPENAI_COMPATIBLE_TAG in current_tags
+                or constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
+            ):
+                # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
+                message = f"""TRT-LLM models should have model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] (or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']).
+                     Your current tags are {current_tags}, which is has neither option. We require a active choice to be made.
+                     For making the model compatible with OpenAI clients, we require to add the following to your config.
+                     ```yaml
+                     model_metadata:
+                     tags:
+                     - {constants.OPENAI_COMPATIBLE_TAG}
+                     # for legacy behavior set above line to the following, which will break OpenAI compatibility explicitly.
+                     # This was the old default behaviour if you used Baseten before March 19th 2025 or truss<=0.9.68
+                     # `- {constants.OPENAI_NON_COMPATIBLE_TAG}`
+                     ```
+                     """
+                if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
+                    raise ValueError(message)
+                else:
+                    logger.warning(message)
+            elif constants.OPENAI_NON_COMPATIBLE_TAG in current_tags:
+                logger.warning(
+                    f"Model is marked as {constants.OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI clients directly. "
+                    f"This is the deprecated legacy behavior, please update the tag to {constants.OPENAI_COMPATIBLE_TAG}."
+                )
+
+        if (
+            config.trt_llm.build.quantization_type
+            is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
+            and config.resources.accelerator.accelerator
+            is truss_config.Accelerator.A100
+        ):
+            logger.warning(
+                "Weight only int8 quantization on A100 accelerators is not recommended."
+            )
+        if config.resources.accelerator.accelerator in [
+            truss_config.Accelerator.T4,
+            truss_config.Accelerator.V100,
+        ]:
+            raise ValueError(
+                "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs"
+                "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
+            )
+        elif config.trt_llm.build.quantization_type in [
+            TrussTRTLLMQuantizationType.FP8,
+            TrussTRTLLMQuantizationType.FP8_KV,
+        ] and config.resources.accelerator.accelerator in [
+            truss_config.Accelerator.A10G,
+            truss_config.Accelerator.A100,
+            truss_config.Accelerator.A100_40GB,
+        ]:
+            raise ValueError(
+                "FP8 quantization is only supported on L4, H100, H200 "
+                "accelerators or newer (CUDA_COMPUTE>=89)"
+            )
+        tensor_parallel_count = config.trt_llm.build.tensor_parallel_count
+
+        if tensor_parallel_count != config.resources.accelerator.count:
+            raise ValueError(
+                "Tensor parallelism and GPU count must be the same for TRT-LLM"
+            )
+
+    return config

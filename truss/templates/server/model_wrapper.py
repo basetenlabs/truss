@@ -16,7 +16,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union, cast
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -27,10 +27,10 @@ from common import errors, tracing
 from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
-from fastapi import WebSocket
+from fastapi import HTTPException, WebSocket
 from opentelemetry import trace
 from shared import dynamic_config_resolver, serialization
-from shared.lazy_data_resolver import LazyDataResolver
+from shared.lazy_data_resolver import LazyDataResolverV2
 from shared.secrets_resolver import SecretsResolver
 
 if sys.version_info >= (3, 9):
@@ -51,14 +51,22 @@ POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
 
 
 class MethodName(str, enum.Enum):
-    CHAT_COMPLETIONS = "chat_completions"
-    COMPLETIONS = "completions"
-    IS_HEALTHY = "is_healthy"
-    POSTPROCESS = "postprocess"
-    PREDICT = "predict"
-    PREPROCESS = "preprocess"
-    SETUP_ENVIRONMENT = "setup_environment"
-    WEBSOCKET = "websocket"
+    def _generate_next_value_(  # type: ignore[override]
+        name: str, start: int, count: int, last_values: List[str]
+    ) -> str:
+        return name.lower()
+
+    CHAT_COMPLETIONS = enum.auto()
+    COMPLETIONS = enum.auto()
+    IS_HEALTHY = enum.auto()
+    POSTPROCESS = enum.auto()
+    PREDICT = enum.auto()
+    PREPROCESS = enum.auto()
+    SETUP_ENVIRONMENT = enum.auto()
+    WEBSOCKET = enum.auto()
+
+    def __str__(self) -> str:
+        return self.value
 
 
 InputType = Union[serialization.JSONType, serialization.MsgPackType, pydantic.BaseModel]
@@ -126,6 +134,15 @@ def _is_request_type(obj: Any) -> bool:
         return issubclass(obj, starlette.requests.Request)
     except Exception:
         return False
+
+
+async def raise_if_disconnected(
+    request: starlette.requests.Request, step_name: str
+) -> None:
+    if await request.is_disconnected():
+        error_message = f"Client disconnected, skipping `{step_name}`."
+        logging.warning(error_message)
+        raise HTTPException(status_code=499, detail=error_message)
 
 
 class ArgConfig(enum.Enum):
@@ -304,6 +321,10 @@ class ModelDescriptor:
                 raise errors.ModelDefinitionError(
                     f"`{MethodName.WEBSOCKET}` must have only one argument: `websocket`."
                 )
+            if not websocket.is_async:
+                raise errors.ModelDefinitionError(
+                    f"`{MethodName.WEBSOCKET}` endpoints must be async function definitions."
+                )
         elif predict:
             assert websocket is None
             if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
@@ -405,7 +426,7 @@ class ModelWrapper:
         return self._status == ModelWrapper.Status.READY
 
     @property
-    def _model_file_name(self) -> str:
+    def model_file_name(self) -> str:
         return self._config["model_class_filename"]
 
     @property
@@ -451,7 +472,7 @@ class ModelWrapper:
                 sys.path.append(str(bundled_packages_path))
 
         secrets = SecretsResolver.get_secrets(self._config)
-        lazy_data_resolver = LazyDataResolver(data_dir)
+        lazy_data_resolver = LazyDataResolverV2(data_dir)
 
         apply_patches(
             self._config.get("apply_library_patches", True),
@@ -599,7 +620,7 @@ class ModelWrapper:
                 except Exception as e:
                     self._logger.exception(
                         f"Exception while setting up environment: {str(e)}",
-                        exc_info=errors.filter_traceback(self._model_file_name),
+                        exc_info=errors.filter_traceback(self.model_file_name),
                     )
 
     async def is_healthy(self) -> Optional[bool]:
@@ -618,7 +639,7 @@ class ModelWrapper:
             is_healthy = False
             self._logger.exception(
                 f"Exception while checking if model is healthy: {str(e)}",
-                exc_info=errors.filter_traceback(self._model_file_name),
+                exc_info=errors.filter_traceback(self.model_file_name),
             )
         if not is_healthy and self.ready:
             # self.ready evaluates to True when the model's load function has completed,
@@ -673,7 +694,7 @@ class ModelWrapper:
             except Exception as e:
                 self._logger.exception(
                     f"Exception while generating streamed response: {str(e)}",
-                    exc_info=errors.filter_traceback(self._model_file_name),
+                    exc_info=errors.filter_traceback(self.model_file_name),
                 )
             finally:
                 await queue.put(SENTINEL)
@@ -732,8 +753,9 @@ class ModelWrapper:
         request: starlette.requests.Request,
         descriptor: MethodDescriptor,
     ) -> OutputType:
+        await raise_if_disconnected(request, descriptor.method_name)
         args = ArgConfig.prepare_args(inputs, request, descriptor)
-        with errors.intercept_exceptions(self._logger, self._model_file_name):
+        with errors.intercept_exceptions(self._logger, self.model_file_name):
             if descriptor.is_generator:
                 # Even for async generators, don't await here.
                 return descriptor.method(*args)
@@ -750,6 +772,7 @@ class ModelWrapper:
         """
         Wraps the execution of any model code other than `predict`.
         """
+        await raise_if_disconnected(request, descriptor.method_name)
         fn_span = self._tracer.start_span(f"call-{descriptor.method_name}")
         with tracing.section_as_event(
             fn_span, descriptor.method_name, detach=True
@@ -798,37 +821,6 @@ class ModelWrapper:
 
         return descriptor
 
-    async def completions(
-        self, inputs: InputType, request: starlette.requests.Request
-    ) -> OutputType:
-        descriptor = self._get_descriptor_or_raise(
-            self.model_descriptor.completions, MethodName.COMPLETIONS
-        )
-        return await self._execute_model_endpoint(inputs, request, descriptor)
-
-    async def chat_completions(
-        self, inputs: InputType, request: starlette.requests.Request
-    ) -> OutputType:
-        descriptor = self._get_descriptor_or_raise(
-            self.model_descriptor.chat_completions, MethodName.CHAT_COMPLETIONS
-        )
-        return await self._execute_model_endpoint(inputs, request, descriptor)
-
-    async def websocket(self, ws: WebSocket) -> None:
-        # FastAPI automatically completes the upgrade request for websockets, so we can't
-        # return a helpful HTTP error to the client. Sending an error message before we
-        # explicitly close the connection is the better option.
-        descriptor = self.model_descriptor.websocket
-        if not descriptor:
-            await ws.send_bytes(f"{MethodName.WEBSOCKET} not implemented.".encode())
-            await ws.close(code=1003)  # 1003 = Unsupported
-            return
-
-        if descriptor.is_async:
-            await self._model.websocket(ws)
-        else:
-            await to_thread.run_sync(self._model.websocket, ws)
-
     async def predict(
         self, inputs: Optional[InputType], request: starlette.requests.Request
     ) -> OutputType:
@@ -869,7 +861,7 @@ class ModelWrapper:
             ):
                 if self.model_descriptor.postprocess:
                     with errors.intercept_exceptions(
-                        self._logger, self._model_file_name
+                        self._logger, self.model_file_name
                     ):
                         raise errors.ModelDefinitionError(
                             "If the predict function returns a generator (streaming), "
@@ -888,7 +880,7 @@ class ModelWrapper:
             if isinstance(predict_result, starlette.responses.Response):
                 if self.model_descriptor.postprocess:
                     with errors.intercept_exceptions(
-                        self._logger, self._model_file_name
+                        self._logger, self.model_file_name
                     ):
                         raise errors.ModelDefinitionError(
                             "If the predict function returns a response object, "
@@ -911,6 +903,28 @@ class ModelWrapper:
                 return postprocess_result
         else:
             return predict_result
+
+    async def completions(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self._get_descriptor_or_raise(
+            self.model_descriptor.completions, MethodName.COMPLETIONS
+        )
+        return await self._execute_model_endpoint(inputs, request, descriptor)
+
+    async def chat_completions(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self._get_descriptor_or_raise(
+            self.model_descriptor.chat_completions, MethodName.CHAT_COMPLETIONS
+        )
+        return await self._execute_model_endpoint(inputs, request, descriptor)
+
+    async def websocket(self, ws: WebSocket) -> None:
+        descriptor = self.model_descriptor.websocket
+        assert descriptor, "websocket can only be invoked if present on model."
+        assert descriptor.is_async, "websocket endpoints are enforced to be async."
+        await self._model.websocket(ws)
 
 
 async def _gather_generator(

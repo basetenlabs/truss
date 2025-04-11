@@ -1,5 +1,6 @@
 import inspect
 from pathlib import Path
+from typing import Any
 
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.local_loader.truss_module_loader import truss_module_loaded
@@ -30,7 +31,7 @@ class LoadModelLocal(TrussContext):
         ) as module:
             model_class = getattr(module, spec.model_class_name)
             model_class_signature = inspect.signature(model_class)
-            model_init_params = {}
+            model_init_params: dict[str, Any] = {}
             if signature_accepts_keyword_arg(model_class_signature, "config"):
                 model_init_params["config"] = spec.config.to_dict()
             if signature_accepts_keyword_arg(model_class_signature, "data_dir"):

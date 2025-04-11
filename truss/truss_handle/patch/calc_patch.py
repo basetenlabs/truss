@@ -312,8 +312,12 @@ def _calc_external_data_patches(
     Empty list means no relevant differences found.
     """
     patches = []
-    prev_items = (prev_config.external_data or ExternalData([])).to_list()
-    new_items = (new_config.external_data or ExternalData([])).to_list()
+    prev_items = (prev_config.external_data or ExternalData([])).model_dump(
+        exclude_none=True
+    )
+    new_items = (new_config.external_data or ExternalData([])).model_dump(
+        exclude_none=True
+    )
 
     removed_items = [x for x in prev_items if x not in new_items]
     for removed_item in removed_items:

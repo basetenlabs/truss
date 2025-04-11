@@ -3,7 +3,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
-from truss.base.validation import validate_secret_name
+from truss.base import truss_config
 from truss.local.local_config import LocalConfig
 
 
@@ -42,7 +42,7 @@ class LocalConfigHandler:
     @staticmethod
     def set_secret(secret_name: str, secret_value: str):
         LocalConfigHandler._ensure_config_dir()
-        validate_secret_name(secret_name)
+        truss_config.Build.validate_secret_name(secret_name)
         local_config = LocalConfigHandler.get_config()
         new_secrets = {**local_config.secrets, secret_name: secret_value}
         new_local_config = replace(local_config, secrets=new_secrets)

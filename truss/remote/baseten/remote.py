@@ -2,13 +2,12 @@ import enum
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
+from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type, Union
 
 import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base import validation
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
@@ -38,7 +37,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
-from truss.remote.truss_remote import RemoteUser, TrussRemote
+from truss.remote.truss_remote import RemoteConfig, RemoteUser, TrussRemote
 from truss.truss_handle import build as truss_build
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
@@ -72,11 +71,13 @@ class FinalPushData(custom_types.OracleData):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: str, include_git_info: bool = False):
+    def __init__(
+        self, remote_url: str, api_key: str, include_git_info: Union[str, bool] = False
+    ):
         super().__init__(remote_url)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
-        self._include_git_info = include_git_info
+        self._include_git_info = RemoteConfig.parse_bool(include_git_info)
 
     @property
     def api(self) -> BasetenApi:
@@ -276,8 +277,7 @@ class BasetenRemote(TrussRemote):
         for artifact in [entrypoint_artifact, *dependency_artifacts]:
             truss_handle = truss_build.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
-
-            assert model_name and validation.is_valid_model_name(model_name)
+            assert model_name, "Per creation of artifacts should not be empty."
 
             push_data = self._prepare_push(
                 truss_handle=truss_handle,

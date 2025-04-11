@@ -200,17 +200,14 @@ def _handle_exception(exception: Exception) -> NoReturn:
         exception_message=str(exception),
         user_stack_trace=list(stack),
     )
+    if isinstance(exception, fastapi.HTTPException):
+        status_code = exception.status_code
+    else:
+        status_code = fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR
+
     raise fastapi.HTTPException(
-        status_code=500, detail=error.model_dump()
+        status_code=status_code, detail=error.model_dump()
     ) from exception
-
-
-@contextlib.contextmanager
-def _exception_to_http_error() -> Iterator[None]:
-    try:
-        yield
-    except Exception as e:
-        _handle_exception(e)
 
 
 def _resolve_exception_class(error: public_types.RemoteErrorDetail) -> Type[Exception]:
@@ -239,7 +236,7 @@ def _resolve_exception_class(error: public_types.RemoteErrorDetail) -> Type[Exce
     return exception_cls
 
 
-def _handle_response_error(response_json: dict, base_msg: str):
+def _handle_response_error(response_json: dict, base_msg: str, http_status: int):
     try:
         error_json = response_json["error"]
     except KeyError as e:
@@ -270,7 +267,17 @@ def _handle_response_error(response_json: dict, base_msg: str):
         f"├─ {base_msg}\n"
         f"{error_format}"
     )
-    raise exception_cls(msg)
+
+    if issubclass(exception_cls, fastapi.HTTPException):
+        raise fastapi.HTTPException(status_code=http_status, detail=msg)
+
+    try:
+        exc = exception_cls(msg)
+    except Exception:  # ruff
+        # Some exceptions cannot be directly instantiated with message, fallback.
+        exc = public_types.GenericRemoteException(msg)
+
+    raise exc
 
 
 def _make_base_error_message(remote_name: str, http_status: int) -> str:
@@ -317,7 +324,7 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
             response_json = response.json()
         except Exception as e:
             raise ValueError(base_msg) from e
-        _handle_response_error(response_json, base_msg)
+        _handle_response_error(response_json, base_msg, response.status_code)
 
 
 async def async_response_raise_errors(
@@ -330,13 +337,16 @@ async def async_response_raise_errors(
             response_json = await response.json()
         except Exception as e:
             raise ValueError(base_msg) from e
-        _handle_response_error(response_json, base_msg)
+        _handle_response_error(response_json, base_msg, response.status)
 
 
 @contextlib.contextmanager
 def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
-    with _trace_parent(headers), _exception_to_http_error():
-        yield
+    with _trace_parent(headers):
+        try:
+            yield
+        except Exception as e:
+            _handle_exception(e)
 
 
 class WebsocketWrapperFastAPI:

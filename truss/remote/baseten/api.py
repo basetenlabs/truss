@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 
@@ -559,8 +559,60 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def stop_training_job(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/stop", body={}
+        )
+        return resp_json["training_job"]
+
+    def list_training_jobs(self, project_id: str):
+        # training_jobs, training_project
+        resp_json = self._rest_api_client.get(f"v1/training_projects/{project_id}/jobs")
+        return resp_json
+
+    def search_training_jobs(
+        self,
+        statuses: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        order_by: List[dict[str, str]] = [{"field": "created_at", "order": "desc"}],
+    ):
+        resp_json = self._rest_api_client.post(
+            "v1/training_jobs/search",
+            body={
+                "statuses": statuses,
+                "project_id": project_id,
+                "job_id": job_id,
+                "order_by": order_by,
+            },
+        )
+        return resp_json["training_jobs"]
+
+    def get_training_job(self, project_id: str, job_id: str):
+        # training_job, training_project
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/jobs/{job_id}"
+        )
+        return resp_json
+
+    def list_training_projects(self):
+        resp_json = self._rest_api_client.get("v1/training_projects")
+        return resp_json["training_projects"]
+
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
+
+    def _prepare_logs_query(
+        self,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ) -> Mapping[str, int]:
+        payload = {}
+        if start_epoch_millis:
+            payload["start_epoch_millis"] = start_epoch_millis
+        if end_epoch_millis:
+            payload["end_epoch_millis"] = end_epoch_millis
+        return payload
 
     def get_training_job_logs(
         self,
@@ -569,20 +621,25 @@ class BasetenApi:
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
     ):
-        payload = {}
-        if start_epoch_millis:
-            payload["start_epoch_millis"] = start_epoch_millis
-        if end_epoch_millis:
-            payload["end_epoch_millis"] = end_epoch_millis
-
         resp_json = self._rest_api_client.post(
-            f"v1/training_projects/{project_id}/jobs/{job_id}/logs", body=payload
+            f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
         )
 
-        return resp_json["logs"]
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]
 
-    def get_training_job(self, project_id: str, job_id: str):
-        resp_json = self._rest_api_client.get(
-            f"v1/training_projects/{project_id}/jobs/{job_id}"
+    def get_model_deployment_logs(
+        self,
+        model_id: str,
+        deployment_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            f"v1/models/{model_id}/deployments/{deployment_id}/logs",
+            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
         )
-        return resp_json["training_job"]
+
+        # NB(nikhil): reverse order so latest logs are at the end
+        return resp_json["logs"][::-1]

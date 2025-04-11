@@ -29,6 +29,15 @@ from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
 from truss.cli import remote_cli
+from truss.cli.logs import utils as cli_log_utils
+from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.train import (
+    get_args_for_logs,
+    get_args_for_stop,
+    stop_all_jobs,
+    view_training_details,
+)
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -63,7 +72,7 @@ click.rich_click.COMMAND_GROUPS = {
     "truss": [
         {
             "name": "Main usage",
-            "commands": ["init", "push", "watch", "predict"],
+            "commands": ["init", "push", "watch", "predict", "model_logs"],
             "table_styles": {  # type: ignore
                 "row_styles": ["green"]
             },
@@ -657,8 +666,8 @@ def push_chain(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    if not include_git_info and remote_cli.check_is_interactive():
-        include_git_info = remote_cli.update_include_git_info_consent(remote)
+    if not include_git_info:
+        include_git_info = remote_cli.determine_include_git_info_consent(remote)
 
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
@@ -886,13 +895,13 @@ def train():
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
-    "--watch", type=bool, is_flag=True, help="Watch for status + logs after push."
+    "--tail", type=bool, is_flag=True, help="Tail for status + logs after push."
 )
 @log_level_option
 @error_handling
-def push_training_job(config: Path, remote: Optional[str], watch: bool):
+def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
-    from truss_train import deployment, loader, log_utils
+    from truss_train import deployment, loader
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -916,26 +925,27 @@ def push_training_job(config: Path, remote: Optional[str], watch: bool):
         console.print("✨ Training job successfully created!", style="green")
         console.print(
             f"🪵 View logs for your job via "
-            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--watch]`[/cyan]"
+            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--tail]`[/cyan]"
         )
 
-    if watch:
-        log_watcher = log_utils.LogWatcher(
-            remote_provider.api, project_resp["id"], job_resp["id"], console
-        )
-        log_watcher.watch()
+    if tail:
+        project_id, job_id = project_resp["id"], job_resp["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id, console)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log, console)
 
 
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option("--project-id", type=str, required=True, help="Project ID.")
-@click.option("--job-id", type=str, required=True, help="Job ID.")
-@click.option("--watch", type=bool, is_flag=True, help="Tail for ongoing logs.")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
 @log_level_option
 @error_handling
-def get_job_logs(remote: Optional[str], project_id: str, job_id: str, watch: bool):
+def get_job_logs(
+    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+):
     """Fetch logs for a training job"""
-    from truss_train import log_utils
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -943,15 +953,70 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str, watch: boo
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
 
-    if not watch:
+    if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
-        log_utils.format_and_output_logs(logs, console)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log, console)
     else:
-        log_watcher = log_utils.LogWatcher(
+        log_watcher = TrainingLogWatcher(
             remote_provider.api, project_id, job_id, console
         )
-        log_watcher.watch()
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
+
+
+@train.command(name="stop")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--all", type=bool, is_flag=True, help="Stop all running jobs.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def stop_job(
+    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
+):
+    """Stop a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    if all:
+        stop_all_jobs(console, remote_provider, project_id)
+    else:
+        project_id, job_id = get_args_for_stop(
+            console, remote_provider, project_id, job_id
+        )
+        remote_provider.api.stop_training_job(project_id, job_id)
+        console.print("Training job stopped successfully.", style="green")
+
+
+@train.command(name="view")
+@click.option(
+    "--project-id", type=str, required=False, help="View training jobs for a project."
+)
+@click.option(
+    "--job-id", type=str, required=False, help="View a specific training job."
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def view_training(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
+    """List all training jobs for a project"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    view_training_details(console, remote_provider, project_id, job_id)
 
 
 # End Training Stuff #####################################################################
@@ -1239,6 +1304,7 @@ def run_python(script, target_directory):
     default=False,
     help=include_git_info_doc,
 )
+@click.option("--tail", type=bool, is_flag=True)
 @log_level_option
 @error_handling
 def push(
@@ -1255,6 +1321,7 @@ def push(
     timeout_seconds: Optional[int] = None,
     environment: Optional[str] = None,
     include_git_info: bool = False,
+    tail: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1265,8 +1332,8 @@ def push(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    if not include_git_info and remote_cli.check_is_interactive():
-        include_git_info = remote_cli.update_include_git_info_consent(remote)
+    if not include_git_info:
+        include_git_info = remote_cli.determine_include_git_info_consent(remote)
 
     remote_provider = RemoteFactory.create(remote=remote)
     tr = _get_truss_from_directory(target_directory=target_directory)
@@ -1400,6 +1467,42 @@ def push(
             except RemoteNetworkError:
                 console.print("Deployment failed: Could not reach remote.", style="red")
                 sys.exit(1)
+    elif tail and isinstance(service, BasetenService):
+        bt_remote = cast(BasetenRemote, remote_provider)
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id, console
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
+
+
+@truss_cli.command()
+@click.option("--remote", type=str, required=False)
+@click.option("--model-id", type=str, required=True)
+@click.option("--deployment-id", type=str, required=True)
+@click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
+@log_level_option
+@error_handling
+def model_logs(
+    remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
+) -> None:
+    """
+    Fetches logs for the packaged model
+    """
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+    if not tail:
+        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log, console)
+    else:
+        log_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id, console
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
 
 
 @truss_cli.command()

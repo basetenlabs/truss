@@ -1,6 +1,6 @@
 [package]
 name = "truss_transfer"
-version = "0.0.2"
+version = "0.0.10"
 edition = "2021"
 
 [lib]
@@ -12,10 +12,11 @@ anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 bytes = "1.5"
-pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38"] }
+pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
+rand = "0.9"
 
 reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "stream", "http2", "default-tls"] }
 # static linking of openssl, as rustls-tls is failing to build on aaarch64

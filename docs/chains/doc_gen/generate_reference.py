@@ -26,7 +26,7 @@ Welcome to Truss Chains's documentation!
 """
 
 
-BUILDER = "mdx_adapter"  # "html"
+BUILDER = "mdx_adapter"  # "mdx_adapter" "html" "markdown"
 NON_PUBLIC_SYMBOLS = ["truss_chains.deployment.deployment_client.ChainService"]
 
 

@@ -29,6 +29,14 @@ from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
+from prometheus_client import (
+    REGISTRY,
+    gc_collector,
+    make_asgi_app,
+    metrics,
+    platform_collector,
+    process_collector,
+)
 from pydantic import BaseModel
 from shared import log_config, serialization
 from shared.secrets_resolver import SecretsResolver
@@ -62,9 +70,18 @@ async def parse_body(request: Request) -> bytes:
     try:
         return await request.body()
     except ClientDisconnect as exc:
-        error_message = "Client disconnected"
-        logging.error(error_message)
+        error_message = "Client disconnected while reading request."
+        logging.warning(error_message)
         raise HTTPException(status_code=499, detail=error_message) from exc
+
+
+async def _safe_close_websocket(
+    ws: WebSocket, reason: Optional[str], status_code: int = 1000
+) -> None:
+    try:
+        await ws.close(code=status_code, reason=reason)
+    except RuntimeError as close_error:
+        logging.debug(f"Duplicate close of websocket: `{close_error}`.")
 
 
 class BasetenEndpoints:
@@ -165,11 +182,6 @@ class BasetenEndpoints:
         """
         Executes a predictive endpoint
         """
-        if await request.is_disconnected():
-            msg = f"Client disconnected. Skipping `{method.__name__}`."
-            logging.info(msg)
-            raise ClientDisconnect(msg)
-
         self.check_healthy()
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
@@ -198,6 +210,13 @@ class BasetenEndpoints:
                 return result
             return self._serialize_result(result, self.is_binary(request), span)
 
+    async def predict(
+        self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.predict, request=request, body_raw=body_raw
+        )
+
     async def chat_completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
@@ -212,31 +231,42 @@ class BasetenEndpoints:
             method=self._model.completions, request=request, body_raw=body_raw
         )
 
-    async def websocket(self, ws: WebSocket):
+    async def websocket(self, ws: WebSocket) -> None:
         self.check_healthy()
         trace_ctx = otel_propagate.extract(ws.headers) or None
         # We don't go through the typical execute_request path, since we don't need
         # to parse request body or attempt to serialize results.
         with self._tracer.start_as_current_span("websocket", context=trace_ctx):
-            try:
-                await ws.accept()
-                await self._model.websocket(ws)
-            except WebSocketDisconnect as ws_error:
-                logging.info(f"Client terminated websocket connection: `{ws_error}`.")
-            finally:
-                # It's possible that user code explicitly closes the websocket connection before exiting,
-                # so we need to be graceful because duplicate closes cause errors.
+            if not self._model.model_descriptor.websocket:
+                msg = "WebSocket is not implemented on this deployment."
+                logging.error(msg)
+                # Ideally we would send a response before accepting the WS, but it is
+                # hard to customize the denied upgrade request, so
+                # instead we go the clumsy way of sending the error response through
+                # accepted WS itself.
                 try:
-                    await ws.close()
-                except RuntimeError as close_error:
-                    logging.debug(f"Duplicate close of websocket: `{close_error}`.")
+                    await ws.accept()
+                    await ws.close(code=1003, reason=msg)
+                    return
+                except WebSocketDisconnect:
+                    return
 
-    async def predict(
-        self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
-    ) -> Response:
-        return await self._execute_request(
-            method=self._model.predict, request=request, body_raw=body_raw
-        )
+            with errors.intercept_exceptions(
+                logging.getLogger(), self._model.model_file_name
+            ):
+                try:
+                    await ws.accept()
+                    await self._model.websocket(ws)
+                    await _safe_close_websocket(ws, None, status_code=1000)
+                except WebSocketDisconnect as ws_error:
+                    logging.info(
+                        f"Client terminated websocket connection: `{ws_error}`."
+                    )
+                except Exception:
+                    await _safe_close_websocket(
+                        ws, errors.MODEL_ERROR_MESSAGE, status_code=1011
+                    )
+                    raise  # Re raise to let `intercept_exceptions` deal with it.
 
     def _serialize_result(
         self, result: "OutputType", is_binary: bool, span: trace.Span
@@ -413,6 +443,16 @@ class TrussServer:
         # Above `exception_handlers` only triggers on exact exception classes.
         # This here is a fallback to add our custom headers in all other cases.
         app.add_exception_handler(Exception, errors.exception_handler)
+
+        # Unregister default prometheus metrics collectors
+        REGISTRY.unregister(process_collector.PROCESS_COLLECTOR)
+        REGISTRY.unregister(platform_collector.PLATFORM_COLLECTOR)
+        REGISTRY.unregister(gc_collector.GC_COLLECTOR)
+        # Disable exporting _created metrics
+        metrics.disable_created_metrics()
+        # Add prometheus asgi middleware to route /metrics requests
+        metrics_app = make_asgi_app()
+        app.mount("/metrics", metrics_app)
 
         return app
 

@@ -40,31 +40,36 @@ def inquire_remote_config() -> RemoteConfig:
     api_key = inquirer.secret(
         message="🤫 Quietly paste your API_KEY:", qmark="", validate=NonEmptyValidator()
     ).execute()
-    include_git_info_consent = inquire_include_git_info_consent()
+    # TODO: until git version info is shown customer-facing, we don't ask everyone.
+    # include_git_info_consent = inquire_include_git_info_consent()
     return RemoteConfig(
         name="baseten",
         configs={
             "remote_provider": "baseten",
             "api_key": api_key,
             "remote_url": remote_url,
-            "include_git_info": include_git_info_consent,
+            # "include_git_info": include_git_info_consent,
         },
     )
 
 
-def update_include_git_info_consent(remote_name: str) -> bool:
+def determine_include_git_info_consent(remote_name: str) -> bool:
     remote_config = RemoteFactory.load_remote_config(remote_name=remote_name)
     if "include_git_info" in remote_config.configs:
-        return remote_config.configs["include_git_info"]
+        return RemoteConfig.parse_bool(remote_config.configs["include_git_info"])
 
-    include_git_info_consent = inquire_include_git_info_consent()
+    # TODO: until git version info is shown customer-facing, we don't ask everyone.
+    # if check_is_interactive():
+    #     include_git_info_consent = inquire_include_git_info_consent()
+    #
+    #     remote_config.configs["include_git_info"] = include_git_info_consent
+    #     RemoteFactory.update_remote_config(remote_config)
+    #     rich.print(
+    #         f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
+    #     )
+    #     return include_git_info_consent
 
-    remote_config.configs["include_git_info"] = include_git_info_consent
-    RemoteFactory.update_remote_config(remote_config)
-    rich.print(
-        f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
-    )
-    return include_git_info_consent
+    return False
 
 
 def inquire_remote_name() -> str:

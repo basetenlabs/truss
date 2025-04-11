@@ -239,6 +239,16 @@ async def test_health_check_retries(client, app):
 
 
 @pytest.mark.anyio
+async def test_metrics(client):
+    resp = await client.get("/metrics")
+    # Redirect to /metrics/
+    assert resp.status_code == 307
+    # Follow redirect
+    resp = await client.get("/metrics/")
+    assert resp.status_code == 200
+
+
+@pytest.mark.anyio
 async def test_retries(client, app):
     app.state.proxy_client.send = AsyncMock(
         side_effect=[

@@ -59,6 +59,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: baseten/truss-context-builder:v${{ needs.detect-version-changed.outputs.new_version }}
           labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
 
   publish-release-to-pypi:
     needs: [detect-version-changed]

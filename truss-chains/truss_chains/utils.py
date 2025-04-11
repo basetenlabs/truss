@@ -7,6 +7,9 @@ import random
 import socket
 from typing import Any, Iterable, Iterator, TypeVar, Union
 
+import pydantic
+import pydantic_core
+
 from truss_chains import public_types
 
 T = TypeVar("T")
@@ -176,3 +179,15 @@ class StrEnum(str, enum.Enum):
 def issubclass_safe(x: Any, cls: type) -> bool:
     """Like built-in `issubclass`, but works on non-type objects."""
     return isinstance(x, type) and issubclass(x, cls)
+
+
+def get_pydantic_field_default_value(
+    model: type[pydantic.BaseModel], field_name: str
+) -> Any:
+    """Retrieve the default value of a field, considering both default and default_factory."""
+    field_info = model.model_fields[field_name]
+    if field_info.default is not pydantic_core.PydanticUndefined:
+        return field_info.default
+    if field_info.default_factory is not None:
+        return field_info.default_factory()  #  type: ignore[call-arg]
+    return None
