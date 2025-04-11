@@ -115,7 +115,7 @@ class LazyDataResolverV2:
             result = self._fetch()
             if log_stats and result:
                 self.logger.info(
-                    f"LazyDataResolverV2: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
+                    f"model_cache: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
                 )
             return result
 
