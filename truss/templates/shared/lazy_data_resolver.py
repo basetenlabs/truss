@@ -62,6 +62,7 @@ class LazyDataResolverV2:
         atexit.register(print_error_message_on_exit_if_not_collected)
 
     def _prefetch_in_thread(self):
+        """Invokes the download ahead of time, before user doubles down on the download"""
         result = self.block_until_download_complete(
             log_stats=False, issue_collect=False
         )
@@ -79,6 +80,7 @@ class LazyDataResolverV2:
 
     @cache
     def _fetch(self) -> str:
+        """cached and locked method to fetch the data."""
         if not LAZY_DATA_RESOLVER_PATH.is_file():
             return ""  # no data to resolve
         import truss_transfer
@@ -86,6 +88,9 @@ class LazyDataResolverV2:
         return truss_transfer.lazy_data_resolve(str(self._data_dir))
 
     def raise_if_not_collected(self):
+        """We require the user to call `block_until_download_complete` before using the data.
+        If the user has not called the method during load, we raise an error.
+        """
         if not self._is_collected_by_user:
             raise RuntimeError(MISSING_COLLECTION_MESSAGE)
 
