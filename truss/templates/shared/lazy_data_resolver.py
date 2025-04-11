@@ -9,6 +9,7 @@ LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 
 MISSING_COLLECTION_MESSAGE = """model_cache: Data was not collected, using lazy_data_resolver.block_until_download_complete().
 This is a bug by the user implementation of model.py when using model_cache.
+We need you to call the block_until_download_complete() method during __init__ or load() of your model.
 Please implement the following pattern when using model_cache.
 ```
 import torch
