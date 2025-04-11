@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,7 +16,6 @@ from huggingface_hub.utils import filter_repo_objects
 
 from truss.base import constants
 from truss.base.constants import (
-    ARM_PLATFORMS,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
@@ -711,8 +709,6 @@ class ServingImageBuilder(ImageBuilder):
             MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[0]
         )
 
-        should_install_arm64_requirements = platform.machine() in ARM_PLATFORMS
-
         hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
@@ -745,7 +741,6 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files=external_data_files,
             build_commands=build_commands,
             use_local_src=config.use_local_src,
-            should_install_arm64_requirements=should_install_arm64_requirements,
             **FILENAME_CONSTANTS_MAP,
         )
 
