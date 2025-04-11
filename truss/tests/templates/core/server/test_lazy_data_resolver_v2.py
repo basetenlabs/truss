@@ -104,6 +104,18 @@ def test_lazy_data_resolver_v2_regular():
             assert location == str(data_dir)
 
 
+def test_lazy_data_resolver_v2_threaded():
+    with setup_v2_bptr():
+        # with LAZY_DATA_RESOLVER_PATH -> fetches data
+        with tempfile.TemporaryDirectory() as tempdir:
+            data_dir = Path(tempdir)
+            write_bptr_manifest_to_file()
+            resolver = LazyDataResolverV2(data_dir)
+            for _ in range(10):
+                resolver._prefetch_in_thread()
+            resolver.block_until_download_complete()
+
+
 def test_lazy_data_resolver_v2_regular_baseten_fs():
     with setup_v2_bptr():
         old_os_setting = os.environ.get("BASETEN_FS_ENABLED")

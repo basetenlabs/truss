@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from threading import Lock, Thread
 
@@ -14,12 +14,11 @@ class LazyDataResolverV2:
     def __init__(self, data_dir: Path):
         self._data_dir = data_dir
         self._lock = Lock()
-        Thread(target=self._prefetch_thread, daemon=True).start()
 
-    def _prefetch_thread(self):
-        self._fetch()
+    def _prefetch_in_thread(self):
+        Thread(target=self.block_until_download_complete, daemon=True).start()
 
-    @lru_cache
+    @cache
     def _fetch(self) -> str:
         if not LAZY_DATA_RESOLVER_PATH.is_file():
             return ""
