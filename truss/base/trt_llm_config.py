@@ -161,6 +161,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     tensor_parallel_count: int = 1
     pipeline_parallel_count: int = 1
+    sequence_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )

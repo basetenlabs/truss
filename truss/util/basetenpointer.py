@@ -127,3 +127,22 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
         basetenpointers.extend(b10_pointer_list)
 
     return BasetenPointerList(pointers=basetenpointers)
+
+
+if __name__ == "__main__":
+    # example usage
+    from truss.base.truss_config import ModelCache, ModelRepo
+
+    cache = ModelCache(
+        [
+            ModelRepo(
+                repo_id="intfloat/e5-mistral-7b-instruct",
+                revision="main",
+                ignore_patterns=["*.json", "*.txt", "*.md"],
+                volume_folder="mistral_demo",
+                use_volume=True,
+            )
+        ]
+    )
+    b10ptr = model_cache_hf_to_b10ptr(cache)
+    print(b10ptr.model_dump_json())
