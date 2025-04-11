@@ -84,8 +84,9 @@ def test_lazy_data_resolver_v2_invalid():
 
         with tempfile.TemporaryDirectory() as tempdir:
             data_dir = Path(tempdir)
-            resolver = LazyDataResolverV2(data_dir)
+
             with pytest.raises(Exception):
+                resolver = LazyDataResolverV2(data_dir)
                 resolver.fetch()
                 assert not (data_dir / TARGET_FILE).exists()
 
@@ -141,6 +142,7 @@ def test_lazy_data_resolver_v2_expired():
         with tempfile.TemporaryDirectory() as tempdir:
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file(expiration_timestamp=int(time.time()) - 1)
-            resolver = LazyDataResolverV2(data_dir)
+
             with pytest.raises(Exception):
+                resolver = LazyDataResolverV2(data_dir)
                 resolver.fetch()
