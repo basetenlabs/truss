@@ -5,6 +5,7 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich.console import Console
 
+from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.remote.baseten.remote import BasetenRemote
 
 ACTIVE_JOB_STATUSES = [
@@ -38,7 +39,7 @@ def get_args_for_stop(
     return project_id, job_id
 
 
-def get_args_for_logs(
+def get_args_for_monitoring(
     console: Console,
     remote_provider: BasetenRemote,
     project_id: Optional[str],
@@ -49,12 +50,12 @@ def get_args_for_logs(
             project_id=project_id, job_id=job_id
         )
         if not jobs:
-            raise click.UsageError("Unable to get logs. No jobs found.")
+            raise click.UsageError("No jobs found.")
         if len(jobs) > 1:
             sorted_jobs = sorted(jobs, key=lambda x: x["created_at"], reverse=True)
             job = sorted_jobs[0]
             console.print(
-                f"Multiple jobs found. Showing logs for the most recently created job: {job['id']}",
+                f"Multiple jobs found. Showing the most recently created job: {job['id']}",
                 style="yellow",
             )
         else:
@@ -187,3 +188,19 @@ def stop_all_jobs(
     for job in active_jobs:
         remote_provider.api.stop_training_job(job["training_project"]["id"], job["id"])
     console.print("Training jobs stopped successfully.", style="green")
+
+
+def view_training_job_metrics(
+    console: Console,
+    remote_provider: BasetenRemote,
+    project_id: Optional[str],
+    job_id: Optional[str],
+):
+    """
+    view_training_job_metrics shows a list of metrics for a training job.
+    """
+    project_id, job_id = get_args_for_monitoring(
+        console, remote_provider, project_id, job_id
+    )
+    metrics_display = MetricsWatcher(remote_provider.api, project_id, job_id, console)
+    metrics_display.watch()
