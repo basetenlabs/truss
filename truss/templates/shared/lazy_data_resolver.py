@@ -30,7 +30,3 @@ class LazyDataResolverV2:
         """blocks until the data has been downloaded."""
         with self._lock:
             return self._fetch()
-
-    def fetch(self) -> str:
-        """deprecated: use block_until_fetched instead"""
-        return self.block_until_download_complete()
