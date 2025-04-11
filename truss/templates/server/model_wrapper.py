@@ -544,7 +544,8 @@ class ModelWrapper:
 
         if self._maybe_model_descriptor.setup_environment:
             self._initialize_environment_before_load()
-
+        # TODO(michaelfeil): Remove this async blocking call once we hand responsibility to the user
+        lazy_data_resolver.block_until_download_complete()
         if hasattr(self._model, "load"):
             retry(
                 self._model.load,
