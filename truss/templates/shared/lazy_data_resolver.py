@@ -52,7 +52,10 @@ class LazyDataResolverV2:
                 if not self._is_collected and thread.is_alive():
                     # if thread is still alive, and the user has not called collect,
                     # the download in flight could have been the core issue
-                    self.logger.warning(MISSING_COLLECTION_MESSAGE)
+                    self.logger.warning(
+                        "An error was detected while the data was still being downloaded. "
+                        + MISSING_COLLECTION_MESSAGE
+                    )
             except Exception as e:
                 print("Error while printing error message on exit:", e)
 
@@ -72,7 +75,7 @@ class LazyDataResolverV2:
             # skip for small downloads that are less than 20 seconds
             # as the user might have a lot of work before is able to call collect.
             self.logger.warning(MISSING_COLLECTION_MESSAGE)
-        time.sleep(1)
+        time.sleep(0.5)
 
     @cache
     def _fetch(self) -> str:
@@ -119,7 +122,9 @@ class LazyDataResolverV2:
 
 if __name__ == "__main__":
     # Example usage
+    print("invoking download")
     resolver = LazyDataResolverV2(Path("/example/path"))
     # similate crash
-    raise Exception("Simulated crash")
+    time.sleep(0.01)
     resolver.block_until_download_complete()
+    raise Exception("Simulated crash")
