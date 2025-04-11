@@ -29,7 +29,6 @@ def _fill_trt_llm_versions(
     tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
 ):
     assert tr.spec.config.trt_llm is not None
-    logging.info(f"Using TRT LLM image versions:\n`{image_versions}`")
     if (
         tr.spec.config.trt_llm.build.base_model
         == trt_llm_config.TrussTRTLLMModel.ENCODER
@@ -39,7 +38,7 @@ def _fill_trt_llm_versions(
             image_versions.bei_image, constants.BEI_TRTLLM_PYTHON_EXECUTABLE
         )
     else:
-        print(f"Using Briton image: {image_versions.bei_image}")
+        print(f"Using Briton image: {image_versions.briton_image}")
         tr.set_base_image(
             image_versions.briton_image, constants.TRTLLM_PYTHON_EXECUTABLE
         )
