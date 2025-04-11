@@ -1,3 +1,4 @@
+import atexit
 import logging
 import time
 from functools import cache
@@ -7,9 +8,9 @@ from typing import Optional
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 
-MISSING_COLLECTION_MESSAGE = """model_cache: Data was not collected, using lazy_data_resolver.block_until_download_complete().
-This is a bug by the user implementation of model.py when using model_cache.
-We need you to call the block_until_download_complete() method during __init__ or load() of your model.
+MISSING_COLLECTION_MESSAGE = """model_cache: Data was not collected. Missing lazy_data_resolver.block_until_download_complete().
+This is a potential bug by the user implementation of model.py when using model_cache.
+We need you to call the block_until_download_complete() method during __init__ or load() method of your model.
 Please implement the following pattern when using model_cache.
 ```
 import torch
@@ -43,7 +44,19 @@ class LazyDataResolverV2:
         self._start_time = time.time()
         self.logger = logger or logging.getLogger(__name__)
         self._is_collected = False
-        Thread(target=self._prefetch_in_thread, daemon=True).start()
+        thread = Thread(target=self._prefetch_in_thread, daemon=True)
+        thread.start()
+
+        def print_error_message_on_exit_if_not_collected():
+            try:
+                if not self._is_collected and thread.is_alive():
+                    # if thread is still alive, and the user has not called collect,
+                    # the download in flight could have been the core issue
+                    self.logger.warning(MISSING_COLLECTION_MESSAGE)
+            except Exception as e:
+                print("Error while printing error message on exit:", e)
+
+        atexit.register(print_error_message_on_exit_if_not_collected)
 
     def _prefetch_in_thread(self):
         result = self.block_until_download_complete(
@@ -59,6 +72,7 @@ class LazyDataResolverV2:
             # skip for small downloads that are less than 20 seconds
             # as the user might have a lot of work before is able to call collect.
             self.logger.warning(MISSING_COLLECTION_MESSAGE)
+        time.sleep(1)
 
     @cache
     def _fetch(self) -> str:
@@ -101,3 +115,11 @@ class LazyDataResolverV2:
                     f"LazyDataResolverV2: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
                 )
             return result
+
+
+if __name__ == "__main__":
+    # Example usage
+    resolver = LazyDataResolverV2(Path("/example/path"))
+    # similate crash
+    raise Exception("Simulated crash")
+    resolver.block_until_download_complete()
