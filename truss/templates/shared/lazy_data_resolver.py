@@ -27,11 +27,11 @@ class LazyDataResolverV2:
 
         return truss_transfer.lazy_data_resolve(str(self._data_dir))
 
-    def block_until_fetched(self):
+    def block_until_download_complete(self):
         """blocks until the data has been downloaded."""
         with self._lock:
             return self._fetch()
 
     def fetch(self) -> str:
         """deprecated: use block_until_fetched instead"""
-        return self.block_until_fetched()
+        return self.block_until_download_complete()

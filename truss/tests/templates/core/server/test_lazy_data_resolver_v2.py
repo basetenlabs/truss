@@ -88,6 +88,7 @@ def test_lazy_data_resolver_v2_invalid():
             with pytest.raises(Exception):
                 resolver = LazyDataResolverV2(data_dir)
                 resolver.fetch()
+                resolver.block_until_download_complete()
                 assert not (data_dir / TARGET_FILE).exists()
 
 
