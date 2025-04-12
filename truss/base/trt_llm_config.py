@@ -600,11 +600,20 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
                 "FP8 quantization is only supported on L4, H100, H200 "
                 "accelerators or newer (CUDA_COMPUTE>=89)"
             )
-        tensor_parallel_count = config.trt_llm.build.tensor_parallel_count
+        world_size = (
+            config.trt_llm.build.tensor_parallel_count
+            * config.trt_llm.build.pipeline_parallel_count
+            * config.trt_llm.build.sequence_parallel_count
+        )
 
-        if tensor_parallel_count != config.resources.accelerator.count:
+        if world_size != config.resources.accelerator.count:
             raise ValueError(
                 "Tensor parallelism and GPU count must be the same for TRT-LLM"
+                f"You have set tensor_parallel_count={config.trt_llm.build.tensor_parallel_count}, "
+                f"pipeline_parallel_count={config.trt_llm.build.pipeline_parallel_count}, "
+                f"sequence_parallel_count={config.trt_llm.build.sequence_parallel_count} "
+                f"== world_size->{world_size} "
+                f"and accelerator.count={config.resources.accelerator.count}. "
             )
 
     return config
