@@ -547,7 +547,10 @@ class ServingImageBuilder(ImageBuilder):
         cached_files = []
         if config.model_cache.is_v1:
             logging.warning(
-                f"Model cache v1 is enabled. This will bake the model weights into the image. {config.model_cache}"
+                "`model_cache` with `use_volume=False` (legacy) is deprecated. This will bake the model weights into the image."
+                "We recommend upgrading to the pattern of using `use_volume=True`, keeping the weights outside of the container."
+                "read more on the migration guide here: https://docs.baseten.co/development/model/model-cache"
+                f"Config: {config.model_cache}"
             )
             # bakes model weights into the image
             model_files, cached_files = get_files_to_model_cache_v1(
@@ -561,8 +564,8 @@ class ServingImageBuilder(ImageBuilder):
                     "Additional huggingface weights are not allowed. "
                     "Feel free to reach out to us if you need this feature."
                 )
-            logging.warning(
-                f"Model cache v2 is enabled. This will create a lazy pointer for a B10CACHE to the model weights. {config.model_cache}"
+            logging.info(
+                f"`model_cache` with `use_volume=True` is enabled. Creating {config.model_cache}"
             )
             # adds a lazy pointer, will be downloaded at runtimes
             build_model_cache_v2_and_copy_bptr_manifest(

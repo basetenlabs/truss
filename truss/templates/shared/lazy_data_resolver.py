@@ -1,7 +1,7 @@
 import atexit
 import logging
 import time
-from functools import cache
+from functools import lru_cache
 from pathlib import Path
 from threading import Lock, Thread
 from typing import Optional
@@ -78,7 +78,7 @@ class LazyDataResolverV2:
             self.logger.warning(MISSING_COLLECTION_MESSAGE)
         time.sleep(0.5)
 
-    @cache
+    @lru_cache(maxsize=None)
     def _fetch(self) -> str:
         """cached and locked method to fetch the data."""
         if not LAZY_DATA_RESOLVER_PATH.is_file():
