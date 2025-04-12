@@ -35,6 +35,8 @@ static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_
 static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 14 * 24; // 14 days
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
+static TRUSS_TRANSFER_B10FS_MAX_DISK_USAGE_GB: u64 = 425;
+static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 400.0;
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a “double start” scenario),
@@ -118,7 +120,12 @@ struct BasetenPointerManifest {
 #[pyfunction]
 #[pyo3(signature = (download_dir=None))]
 fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
-    lazy_data_resolve_entrypoint(download_dir).map_err(|err| PyException::new_err(err.to_string()))
+    Python::with_gil(|py| {
+        py.allow_threads(|| {
+            lazy_data_resolve_entrypoint(download_dir)
+        })
+    })
+    .map_err(|err| PyException::new_err(err.to_string()))
 }
 
 /// Shared entrypoint for both Python and CLI
@@ -209,8 +216,8 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         let current_hashes = current_hashes_from_manifest(&bptr_manifest);
         let (cache_size, _) = cleanup_b10cache_and_calculate_size(&current_hashes).await?;
         // warn if cache size is over 425GB, disabling write to b10cache
-        if cache_size > 425 * 1024 * 1024 * 1024 {
-            warn!("b10cache size is over 425GB. Consider cleaning up the cache. Disabling write to cache.");
+        if cache_size > TRUSS_TRANSFER_B10FS_MAX_DISK_USAGE_GB * 1024 * 1024 * 1024 {
+            warn!("b10cache size is over {}GB. Disabling write to b10cache.", TRUSS_TRANSFER_B10FS_MAX_DISK_USAGE_GB);
             write_to_b10cache = false;
         }
         // todo: check speed of b10cache (e.g. is faster than 100MB/s)
@@ -707,15 +714,15 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
 /// Otherwise, it returns false.
 async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
     let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
-    // random number, uniform between 25 and 250 MB/s as a threshold
+    // random number, uniform between 25 and 400 MB/s as a threshold
     // using random instead of fixed number to e.g. avoid catastrophic
     // events e.g. huggingface is down, where b10cache will have more load.
-    let desired_speed: f64 = 25.0 + rand::random::<f64>() * (225.0);
+    let desired_speed: f64 = 25.0 + rand::random::<f64>() * (TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS - 25.0);
 
     for bptr in &manifest.pointers {
         let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
 
-        if bptr.size > benchmark_size as u64 && cache_path.exists() {
+        if bptr.size > (2*benchmark_size as u64) && cache_path.exists() {
             let metadata = fs::metadata(&cache_path).await?;
             let file_size = metadata.len();
             if file_size == bptr.size as u64 {
@@ -747,6 +754,7 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
             }
         }
     }
+    info!("Skipping b10cache speed check.");
     // no file > 512MB found in cache
     return Ok(true);
 }

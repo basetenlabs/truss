@@ -43,7 +43,7 @@ class ConfigModel(pydantic.BaseModel):
             if verbose
             else {
                 "mode": "json",
-                "exclude_unset": True,
+                "exclude_unset": False,
                 "exclude_none": True,
                 "exclude_defaults": True,
                 "context": {"verbose": verbose},

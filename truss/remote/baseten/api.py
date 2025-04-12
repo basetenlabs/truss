@@ -158,9 +158,6 @@ class BasetenApi:
                             name
                             hostname
                         }}
-                        instance_type {{
-                            name
-                        }}
                     }}
                 }}
             }}
@@ -180,7 +177,6 @@ class BasetenApi:
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
-        preserve_env_instance_type: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -191,19 +187,13 @@ class BasetenApi:
                     semver_bump: "{semver_bump}"
                     truss_user_env: $trussUserEnv
                     scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"}
-                    preserve_env_instance_type: {"true" if preserve_env_instance_type else "false"}
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                 ) {{
                     model_version {{
                         id
                         oracle {{
-                            id
-                            name
                             hostname
-                        }}
-                        instance_type {{
-                            name
                         }}
                     }}
                 }}
@@ -239,9 +229,6 @@ class BasetenApi:
                             id
                             name
                             hostname
-                        }}
-                        instance_type {{
-                            name
                         }}
                     }}
                 }}
@@ -615,7 +602,20 @@ class BasetenApi:
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
 
-    def _prepare_logs_query(
+    def get_training_job_metrics(
+        self,
+        project_id: str,
+        job_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/metrics",
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
+        )
+        return resp_json
+
+    def _prepare_time_range_query(
         self,
         start_epoch_millis: Optional[int] = None,
         end_epoch_millis: Optional[int] = None,
@@ -636,7 +636,7 @@ class BasetenApi:
     ):
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
-            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
         )
 
         # NB(nikhil): reverse order so latest logs are at the end
@@ -651,7 +651,7 @@ class BasetenApi:
     ):
         resp_json = self._rest_api_client.post(
             f"v1/models/{model_id}/deployments/{deployment_id}/logs",
-            body=self._prepare_logs_query(start_epoch_millis, end_epoch_millis),
+            body=self._prepare_time_range_query(start_epoch_millis, end_epoch_millis),
         )
 
         # NB(nikhil): reverse order so latest logs are at the end

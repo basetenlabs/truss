@@ -543,7 +543,6 @@ class ModelWrapper:
 
         if self._maybe_model_descriptor.setup_environment:
             self._initialize_environment_before_load()
-
         if hasattr(self._model, "load"):
             retry(
                 self._model.load,
@@ -552,6 +551,7 @@ class ModelWrapper:
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
+        lazy_data_resolver.raise_if_not_collected()
 
     def setup_polling_for_environment_updates(self):
         self._poll_for_environment_updates_task = asyncio.create_task(
@@ -1018,7 +1018,7 @@ def _prepare_init_args(klass, config, data_dir, secrets, lazy_data_resolver):
     if _signature_accepts_keyword_arg(signature, "secrets"):
         model_init_params["secrets"] = secrets
     if _signature_accepts_keyword_arg(signature, "lazy_data_resolver"):
-        model_init_params["lazy_data_resolver"] = lazy_data_resolver.fetch()
+        model_init_params["lazy_data_resolver"] = lazy_data_resolver
     if _signature_accepts_keyword_arg(signature, "environment"):
         environment = None
         environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(

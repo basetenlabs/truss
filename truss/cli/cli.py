@@ -21,6 +21,7 @@ from rich import progress
 from rich.console import Console
 
 import truss
+import truss.cli.train.core as train_cli
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
@@ -32,7 +33,6 @@ from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
-from truss.cli.train import display_training_jobs, get_args_for_logs, get_args_for_stop
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -68,22 +68,30 @@ click.rich_click.COMMAND_GROUPS = {
         {
             "name": "Main usage",
             "commands": ["init", "push", "watch", "predict", "model_logs"],
-            "table_styles": {"row_styles": ["green"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["green"]
+            },
         },
         {
             "name": "Advanced Usage",
             "commands": ["image", "container", "cleanup"],
-            "table_styles": {"row_styles": ["yellow"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["yellow"]
+            },
         },
         {
             "name": "Chains",
             "commands": ["chains"],
-            "table_styles": {"row_styles": ["red"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["red"]
+            },
         },
         {
             "name": "Train",
             "commands": ["train"],
-            "table_styles": {"row_styles": ["magenta"]},  # type: ignore
+            "table_styles": {  # type: ignore
+                "row_styles": ["magenta"]
+            },
         },
     ]
 }
@@ -912,7 +920,9 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
         console.print("✨ Training job successfully created!", style="green")
         console.print(
             f"🪵 View logs for your job via "
-            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']} [--tail]`[/cyan]"
+            f"[cyan]`truss train logs --job-id {job_resp['id']} [--tail]`[/cyan]\n"
+            f"🔍 View metrics for your job via "
+            f"[cyan]`truss train metrics --job-id {job_resp['id']}`[/cyan]"
         )
 
     if tail:
@@ -940,7 +950,9 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id, job_id = get_args_for_logs(console, remote_provider, project_id, job_id)
+    project_id, job_id = train_cli.get_args_for_monitoring(
+        console, remote_provider, project_id, job_id
+    )
 
     if not tail:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
@@ -957,10 +969,13 @@ def get_job_logs(
 @train.command(name="stop")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--all", type=bool, is_flag=True, help="Stop all running jobs.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
-def stop_job(project_id: Optional[str], job_id: Optional[str], remote: Optional[str]):
+def stop_job(
+    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
+):
     """Stop a training job"""
 
     if not remote:
@@ -969,10 +984,14 @@ def stop_job(project_id: Optional[str], job_id: Optional[str], remote: Optional[
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id, job_id = get_args_for_stop(console, remote_provider, project_id, job_id)
-
-    remote_provider.api.stop_training_job(project_id, job_id)
-    console.print("Training job stopped successfully.", style="green")
+    if all:
+        train_cli.stop_all_jobs(console, remote_provider, project_id)
+    else:
+        project_id, job_id = train_cli.get_args_for_stop(
+            console, remote_provider, project_id, job_id
+        )
+        remote_provider.api.stop_training_job(project_id, job_id)
+        console.print("Training job stopped successfully.", style="green")
 
 
 @train.command(name="view")
@@ -993,50 +1012,30 @@ def view_training(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    if job_id and not project_id:
-        raise click.UsageError(
-            "Project ID is required when specifying a job ID. To see all projects, use `truss train view`"
-        )
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    train_cli.view_training_details(console, remote_provider, project_id, job_id)
+
+
+@train.command(name="metrics")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def get_job_metrics(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
+    """Get metrics for a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-
-    if project_id:
-        if job_id:
-            job_response = remote_provider.api.get_training_job(project_id, job_id)
-            display_training_jobs(console, [job_response["training_job"]])
-        else:
-            jobs_response = remote_provider.api.list_training_jobs(project_id)
-            jobs = jobs_response["training_jobs"]
-            display_training_jobs(console, jobs)
-
-    else:
-        projects = remote_provider.api.list_training_projects()
-        table = rich.table.Table(
-            show_header=True,
-            header_style="bold magenta",
-            title="Training Projects",
-            box=rich.table.box.ROUNDED,
-            border_style="blue",
-        )
-        table.add_column("Project ID", style="cyan")
-        table.add_column("Name")
-        table.add_column("Created At")
-        table.add_column("Updated At")
-        table.add_column("Latest Job ID")
-
-        for project in projects:
-            latest_job = project.get("latest_job") or {}
-            table.add_row(
-                project["id"],
-                project["name"],
-                project["created_at"],
-                project["updated_at"],
-                latest_job.get("id", ""),
-            )
-
-        console.print(table)
+    train_cli.view_training_job_metrics(console, remote_provider, project_id, job_id)
 
 
 # End Training Stuff #####################################################################
@@ -1325,19 +1324,6 @@ def run_python(script, target_directory):
     help=include_git_info_doc,
 )
 @click.option("--tail", type=bool, is_flag=True)
-@click.option(
-    "--preserve-env-instance-type/--no-preserve-env-instance-type",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help=(
-        "When pushing a truss to an environment, whether to use the resources specified "
-        "in the truss config to resolve the instance type or preserve the instance type "
-        "configured in the specified environment. It will be ignored if --environment is not specified. "
-        "Default is --no-preserve-env-instance-type."
-    ),
-)
 @log_level_option
 @error_handling
 def push(
@@ -1355,7 +1341,6 @@ def push(
     environment: Optional[str] = None,
     include_git_info: bool = False,
     tail: bool = False,
-    preserve_env_instance_type: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1381,17 +1366,6 @@ def push(
         console.print(promote_warning, style="yellow")
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
-
-    if preserve_env_instance_type and not environment:
-        preserve_env_warning = "`preserve-env-instance-type` flag specified without the `environment` parameter. Ignoring the value of `preserve-env-instance-type`"
-        console.print(preserve_env_warning, style="yellow")
-    if environment:
-        if preserve_env_instance_type:
-            preserve_env_info = f"`preserve-env-instance-type` flag specified. Resources from the config will be ignored and the current instance type of the {environment} environment will be used."
-            console.print(preserve_env_info, style="green")
-        else:
-            preserve_env_info = f"`preserve-env-instance-type` flag not specified. Instance type will be derived from the config and updated in the {environment} environment."
-            console.print(preserve_env_info, style="green")
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
@@ -1451,7 +1425,6 @@ def push(
         disable_truss_download=disable_truss_download,
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
-        preserve_env_instance_type=preserve_env_instance_type,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")

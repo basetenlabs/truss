@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,7 +16,6 @@ from huggingface_hub.utils import filter_repo_objects
 
 from truss.base import constants
 from truss.base.constants import (
-    ARM_PLATFORMS,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
@@ -431,10 +429,17 @@ class ServingImageBuilder(ImageBuilder):
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
-        config.base_image = BaseImage(
-            image=BEI_TRTLLM_BASE_IMAGE,
-            python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
-        )
+        # Flex builds fill in the latest image during `docker_build_setup` on the
+        # baseten backend. So only the image is not set, we use the constant
+        # `BEI_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
+        # builds, we can remove the constant and setting the image here.
+        if not (
+            config.base_image and config.base_image.image.startswith("baseten/bei")
+        ):
+            config.base_image = BaseImage(
+                image=BEI_TRTLLM_BASE_IMAGE,
+                python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
+            )
 
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
@@ -468,10 +473,17 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
-
-        config.base_image = BaseImage(
-            image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
-        )
+        # Flex builds fill in the latest image during `docker_build_setup` on the
+        # baseten backend. So only the image is not set, we use the constant
+        # `TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
+        # builds, we can remove the constant and setting the image here.
+        if not (
+            config.base_image
+            and config.base_image.image.startswith("baseten/briton-server:")
+        ):
+            config.base_image = BaseImage(
+                image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
+            )
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
@@ -535,7 +547,10 @@ class ServingImageBuilder(ImageBuilder):
         cached_files = []
         if config.model_cache.is_v1:
             logging.warning(
-                f"Model cache v1 is enabled. This will bake the model weights into the image. {config.model_cache}"
+                "`model_cache` with `use_volume=False` (legacy) is deprecated. This will bake the model weights into the image."
+                "We recommend upgrading to the pattern of using `use_volume=True`, keeping the weights outside of the container."
+                "read more on the migration guide here: https://docs.baseten.co/development/model/model-cache"
+                f"Config: {config.model_cache}"
             )
             # bakes model weights into the image
             model_files, cached_files = get_files_to_model_cache_v1(
@@ -549,8 +564,8 @@ class ServingImageBuilder(ImageBuilder):
                     "Additional huggingface weights are not allowed. "
                     "Feel free to reach out to us if you need this feature."
                 )
-            logging.warning(
-                f"Model cache v2 is enabled. This will create a lazy pointer for a B10CACHE to the model weights. {config.model_cache}"
+            logging.info(
+                f"`model_cache` with `use_volume=True` is enabled. Creating {config.model_cache}"
             )
             # adds a lazy pointer, will be downloaded at runtimes
             build_model_cache_v2_and_copy_bptr_manifest(
@@ -697,8 +712,6 @@ class ServingImageBuilder(ImageBuilder):
             MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[0]
         )
 
-        should_install_arm64_requirements = platform.machine() in ARM_PLATFORMS
-
         hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
@@ -731,7 +744,6 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files=external_data_files,
             build_commands=build_commands,
             use_local_src=config.use_local_src,
-            should_install_arm64_requirements=should_install_arm64_requirements,
             **FILENAME_CONSTANTS_MAP,
         )
 

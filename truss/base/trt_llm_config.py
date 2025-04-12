@@ -131,6 +131,7 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
     request_default_max_tokens: Optional[int] = None
+    served_model_name: Optional[str] = None
     total_token_limit: int = 500000
     webserver_default_route: Optional[
         Literal["/v1/embeddings", "/rerank", "/predict"]
@@ -160,6 +161,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     tensor_parallel_count: int = 1
     pipeline_parallel_count: int = 1
+    sequence_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
@@ -398,16 +400,31 @@ class TrussSpeculatorConfiguration(BaseModel):
             )
 
 
-class VersionOverrides(BaseModel):
+class VersionsOverrides(BaseModel):
+    # If an override is specified, it takes precedence over the backend's current
+    # default version. The version is used to create a full image ref and should look
+    # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
+    # here and the backend creates the full image tag like
+    # `baseten/briton-server:v0.17.0-fd30ac1`.
     engine_builder_version: Optional[str] = None
-    bei_version: Optional[str] = None
     briton_version: Optional[str] = None
+    bei_version: Optional[str] = None
+
+
+class ImageVersions(BaseModel):
+    # Required versions for patching truss config during docker build setup.
+    # The schema of this model must be such that it can parse the values serialized
+    # from the backend. The inserted values are full image references, resolved using
+    # backend defaults and `ImageVersionsOverrides` from the pushed config.
+    bei_image: str
+    briton_image: str
 
 
 class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
-    version_overrides: VersionOverrides = VersionOverrides()
+    # If versions are not set, the baseten backend will insert current defaults.
+    version_overrides: VersionsOverrides = VersionsOverrides()
 
     def model_post_init(self, __context):
         self.add_bei_default_route()
@@ -583,11 +600,20 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
                 "FP8 quantization is only supported on L4, H100, H200 "
                 "accelerators or newer (CUDA_COMPUTE>=89)"
             )
-        tensor_parallel_count = config.trt_llm.build.tensor_parallel_count
+        world_size = (
+            config.trt_llm.build.tensor_parallel_count
+            * config.trt_llm.build.pipeline_parallel_count
+            * config.trt_llm.build.sequence_parallel_count
+        )
 
-        if tensor_parallel_count != config.resources.accelerator.count:
+        if world_size != config.resources.accelerator.count:
             raise ValueError(
                 "Tensor parallelism and GPU count must be the same for TRT-LLM"
+                f"You have set tensor_parallel_count={config.trt_llm.build.tensor_parallel_count}, "
+                f"pipeline_parallel_count={config.trt_llm.build.pipeline_parallel_count}, "
+                f"sequence_parallel_count={config.trt_llm.build.sequence_parallel_count} "
+                f"== world_size->{world_size} "
+                f"and accelerator.count={config.resources.accelerator.count}. "
             )
 
     return config

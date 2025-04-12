@@ -1,166 +1,135 @@
+import atexit
 import logging
-import os
-import shutil
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+import time
+from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Tuple
-
-import pydantic
-import requests
-import yaml
-
-try:
-    from shared.util import BLOB_DOWNLOAD_TIMEOUT_SECS
-except ModuleNotFoundError:
-    from truss.templates.shared.util import BLOB_DOWNLOAD_TIMEOUT_SECS
-
-try:
-    import truss_transfer
-
-    TRUSS_TRANSFER_AVAILABLE = True
-except ImportError:
-    TRUSS_TRANSFER_AVAILABLE = False
+from threading import Lock, Thread
+from typing import Optional
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
-NUM_WORKERS = 4
-CACHE_DIR = Path("/cache/org/artifacts")
-BASETEN_FS_ENABLED_ENV_VAR = "BASETEN_FS_ENABLED"
 
-logger = logging.getLogger(__name__)
+MISSING_COLLECTION_MESSAGE = """model_cache: Data was not collected. Missing lazy_data_resolver.block_until_download_complete().
+This is a potential bug by the user implementation of model.py when using model_cache.
+We need you to call the block_until_download_complete() method during __init__ or load() method of your model.
+Please implement the following pattern when using model_cache.
+```
+import torch
 
+class Model:
+    def __init__(self, *args, **kwargs):
+        self._lazy_data_resolver = kwargs["lazy_data_resolver"]
 
-class Resolution(pydantic.BaseModel):
-    url: str
-    expiration_timestamp: int
-
-
-class BasetenPointer(pydantic.BaseModel):
-    """Specification for lazy data resolution for download of large files, similar to Git LFS pointers"""
-
-    resolution: Resolution
-    uid: str
-    file_name: str
-    hashtype: str
-    hash: str
-    size: int
-
-
-class BasetenPointerManifest(pydantic.BaseModel):
-    pointers: List[BasetenPointer]
-
-
-class LazyDataResolver:
-    """Deprecation warning: This class is deprecated and will be removed in a future release.
-
-    Please use LazyDataResolverV2 instead (using the `truss_transfer` package).
-    """
-
-    def __init__(self, data_dir: Path):
-        self._data_dir: Path = data_dir
-        self._bptr_resolution: Dict[str, Tuple[str, str, int]] = _read_bptr_resolution()
-        self._resolution_done = False
-        self._uses_b10_cache = (
-            os.environ.get(BASETEN_FS_ENABLED_ENV_VAR, "False") == "True"
-        )
-
-    def cached_download_from_url_using_requests(
-        self, URL: str, hash: str, file_name: str, size: int
-    ):
-        """Download object from URL, attempt to write to cache and symlink to data directory if applicable, data directory otherwise.
-        In case of failure, write to data directory
-        """
-        if self._uses_b10_cache:
-            file_path = CACHE_DIR / hash
-            if file_path.exists():
-                try:
-                    os.symlink(file_path, self._data_dir / file_name)
-                    return
-                except FileExistsError:
-                    # symlink may already exist if the inference server was restarted
-                    return
-
-        # Streaming download to keep memory usage low
-        resp = requests.get(
-            URL, allow_redirects=True, stream=True, timeout=BLOB_DOWNLOAD_TIMEOUT_SECS
-        )
-        resp.raise_for_status()
-
-        if self._uses_b10_cache:
-            try:
-                # Check whether the cache has sufficient space to store the file
-                cache_free_space = shutil.disk_usage(CACHE_DIR).free
-                if cache_free_space < size:
-                    raise OSError(
-                        f"Cache directory does not have sufficient space to save file {file_name}. Free space in cache: {cache_free_space}, file size: {size}"
-                    )
-
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                with file_path.open("wb") as file:
-                    shutil.copyfileobj(resp.raw, file)
-                # symlink to data directory
-                os.symlink(file_path, self._data_dir / file_name)
-                return
-            except FileExistsError:
-                # symlink may already exist if the inference server was restarted
-                return
-            except OSError as e:
-                logger.debug(
-                    "Failed to save artifact to cache dir, saving to data dir instead. Error: %s",
-                    e,
-                )
-                # Cache likely has no space left on device, break to download to data dir as fallback
-                pass
-
-        file_path = self._data_dir / file_name
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with file_path.open("wb") as file:
-            shutil.copyfileobj(resp.raw, file)
-
-    def fetch(self):
-        if self._resolution_done:
-            return
-
-        with ThreadPoolExecutor(NUM_WORKERS) as executor:
-            futures = {}
-            for file_name, (resolved_url, hash, size) in self._bptr_resolution.items():
-                futures[
-                    executor.submit(
-                        self.cached_download_from_url_using_requests,
-                        resolved_url,
-                        hash,
-                        file_name,
-                        size,
-                    )
-                ] = file_name
-            for future in as_completed(futures):
-                if future.exception():
-                    file_name = futures[future]
-                    raise RuntimeError(f"Download failure for file {file_name}")
-        self._resolution_done = True
+    def load():
+        # work that does not require the download may be done here
+        random_vector = torch.randn(1000)
+        # important to collect the download before using any incomplete data
+        self._lazy_data_resolver.block_until_download_complete()
+        # after the call, you may use the /app/model_cache directory
+        torch.load(
+            "/app/model_cache/your_model.pt"
+        ) * random_vector
+```
+"""
 
 
 class LazyDataResolverV2:
-    def __init__(self, data_dir: Path):
-        self._data_dir: Path = data_dir
+    """Lazy data resolver pre-fetches data in a separate thread.
+    It uses a lock to ensure that the data is only fetched once
+    and that the thread is not blocked by other threads.
+    """
 
-    def fetch(self) -> str:
+    def __init__(self, data_dir: Path, logger: Optional[logging.Logger] = None):
+        self._data_dir = data_dir
+        self._lock = Lock()
+        self._start_time = time.time()
+        self.logger = logger or logging.getLogger(__name__)
+        self._is_collected_by_user = False
+        thread = Thread(target=self._prefetch_in_thread, daemon=True)
+        thread.start()
+
+        def print_error_message_on_exit_if_not_collected():
+            try:
+                if not self._is_collected_by_user and thread.is_alive():
+                    # if thread is still alive, and the user has not called collect,
+                    # the download in flight could have been the core issue
+                    self.logger.warning(
+                        "An error was detected while the data was still being downloaded. "
+                        + MISSING_COLLECTION_MESSAGE
+                    )
+            except Exception as e:
+                print("Error while printing error message on exit:", e)
+
+        atexit.register(print_error_message_on_exit_if_not_collected)
+
+    def _prefetch_in_thread(self):
+        """Invokes the download ahead of time, before user doubles down on the download"""
+        result = self.block_until_download_complete(
+            log_stats=False, issue_collect=False
+        )
+        if not result:
+            # no data to resolve, no need to collect
+            self._is_collected_by_user = True
+            return None
+        # verify the user has called collect.
+        if not self._is_collected_by_user and time.time() - self._start_time > 20:
+            # issue a warning if the user has not collected after 20 seconds.
+            # skip for small downloads that are less than 20 seconds
+            # as the user might have a lot of work before is able to call collect.
+            self.logger.warning(MISSING_COLLECTION_MESSAGE)
+        time.sleep(0.5)
+
+    @lru_cache(maxsize=None)
+    def _fetch(self) -> str:
+        """cached and locked method to fetch the data."""
         if not LAZY_DATA_RESOLVER_PATH.is_file():
-            return ""
+            return ""  # no data to resolve
+        import truss_transfer
+
         return truss_transfer.lazy_data_resolve(str(self._data_dir))
 
+    def raise_if_not_collected(self):
+        """We require the user to call `block_until_download_complete` before using the data.
+        If the user has not called the method during load, we raise an error.
+        """
+        if not self._is_collected_by_user:
+            raise RuntimeError(MISSING_COLLECTION_MESSAGE)
 
-def _read_bptr_resolution() -> Dict[str, Tuple[str, str, int]]:
-    if not LAZY_DATA_RESOLVER_PATH.is_file():
-        return {}
-    bptr_manifest = BasetenPointerManifest(
-        **yaml.safe_load(LAZY_DATA_RESOLVER_PATH.read_text())
-    )
-    resolution_map = {}
-    for bptr in bptr_manifest.pointers:
-        if bptr.resolution.expiration_timestamp < int(
-            datetime.now(timezone.utc).timestamp()
-        ):
-            raise RuntimeError("Baseten pointer lazy data resolution has expired")
-        resolution_map[bptr.file_name] = bptr.resolution.url, bptr.hash, bptr.size
-    return resolution_map
+    def block_until_download_complete(
+        self, log_stats: bool = True, issue_collect: bool = True
+    ) -> str:
+        """Once called, blocks until the data has been downloaded.
+
+        example usage:
+        ```
+        import torch
+
+        class Model:
+            def __init__(self, *args, **kwargs):
+                self._lazy_data_resolver = kwargs["lazy_data_resolver"]
+
+            def load():
+                random_vector = torch.randn(1000)
+                # important to collect the download before using any incomplete data
+                self._lazy_data_resolver.block_until_download_complete()
+        ```
+
+        """
+        start_lock = time.time()
+        self._is_collected_by_user = issue_collect or self._is_collected_by_user
+        with self._lock:
+            result = self._fetch()
+            if log_stats and result:
+                self.logger.info(
+                    f"model_cache: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
+                )
+            return result
+
+
+if __name__ == "__main__":
+    # Example usage
+    print("invoking download")
+    resolver = LazyDataResolverV2(Path("/example/path"))
+    # similate crash
+    time.sleep(0.01)
+    resolver.block_until_download_complete()
+    raise Exception("Simulated crash")

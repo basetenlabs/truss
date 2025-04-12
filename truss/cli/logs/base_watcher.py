@@ -5,12 +5,12 @@ from typing import Any, Iterator, List, Optional
 
 from rich import console as rich_console
 
+from truss.cli.common import POLL_INTERVAL_SEC
 from truss.cli.logs.utils import ParsedLog, parse_logs
 from truss.remote.baseten.api import BasetenApi
 
 # NB(nikhil): This helps account for (1) log processing delays (2) clock skews
 CLOCK_SKEW_BUFFER_MS = 10000
-POLL_INTERVAL_SEC = 2
 
 
 class LogWatcher(ABC):
