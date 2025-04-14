@@ -603,12 +603,12 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
                 "accelerators or newer (CUDA_COMPUTE>=89)"
             )
         elif config.trt_llm.build.quantization_type in [
-            TrussTRTLLMQuantizationType.FP4,
+            TrussTRTLLMQuantizationType.FP4
         ] and config.resources.accelerator.accelerator in [
             truss_config.Accelerator.H100,
             truss_config.Accelerator.L4,
             truss_config.Accelerator.A100_40GB,
-        ]:   
+        ]:
             raise ValueError(
                 "FP4 quantization is only supported on B200 / Blackwell "
                 "accelerators or newer (CUDA_COMPUTE>=100)"
