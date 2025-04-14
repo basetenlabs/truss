@@ -4,7 +4,7 @@ import truss_chains as chains
 
 
 class Dependency(chains.ChainletBase):
-    # Don't throttle in the chainlet
+    # Don't throttle in the chainlet.
     remote_config = chains.RemoteConfig(compute=chains.Compute(predict_concurrency=100))
 
     async def run_remote(self) -> bool:
@@ -20,7 +20,7 @@ class ThrottlingChain(chains.ChainletBase):
 
     def __init__(self, dep=chains.depends(Dependency, concurrency_limit=4)):
         self._dep = dep
-        dep._async_throttler._log_interval_sec = 0.0
+        dep._async_semaphore_wrapper._log_interval_sec = 0.0
 
     async def run_remote(self, num_requests: int = 4) -> float:
         t0 = asyncio.get_event_loop().time()

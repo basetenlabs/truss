@@ -412,8 +412,8 @@ async def test_throttling_chain(anyio_backend):
 
             time.sleep(0.5)  # Wait for log propagation.
             container_logs = get_container_logs_from_prefix(entrypoint.name)
-            assert "No throttling" in container_logs
-            assert "Throttling calls to `Dependency`" not in container_logs
+            assert "No queueing" in container_logs
+            assert "Queueing calls to `Dependency`" not in container_logs
 
             # Now "overload" dependency.
             response = service.run_remote({"num_requests": 8})
@@ -423,4 +423,4 @@ async def test_throttling_chain(anyio_backend):
 
             time.sleep(0.5)  # Wait for log propagation.
             container_logs = get_container_logs_from_prefix(entrypoint.name)
-            assert "Throttling calls to `Dependency`" in container_logs
+            assert "Queueing calls to `Dependency`" in container_logs

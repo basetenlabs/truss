@@ -44,7 +44,7 @@ async def _safe_close(session: aiohttp.ClientSession, timeout_sec: float) -> Non
 
 
 class BasetenSession:
-    """Provides configured HTTP clients, retries, throttling etc."""
+    """Provides configured HTTP clients, retries, queueing etc."""
 
     _client_cycle_time_sec: ClassVar[int] = 3600  # 1 hour.
     _target_url: str
@@ -55,8 +55,8 @@ class BasetenSession:
     _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
     _sync_lock: threading.Lock
     _async_lock: asyncio.Lock
-    _sync_throttler: utils.ThreadThrottler
-    _async_throttler: utils.AsyncThrottler
+    _sync_semaphore_wrapper: utils.ThreadSemaphoreWrapper
+    _async_semaphore_wrapper: utils.AsyncSemaphoreWrapper
     _close_tasks: list[asyncio.Task[None]]
 
     def __init__(
@@ -92,10 +92,10 @@ class BasetenSession:
         self._cached_async_client = None
         self._sync_lock = threading.Lock()
         self._async_lock = asyncio.Lock()
-        self._sync_throttler = utils.ThreadThrottler(
+        self._sync_semaphore_wrapper = utils.ThreadSemaphoreWrapper(
             service_descriptor.options.concurrency_limit, service_descriptor.name
         )
-        self._async_throttler = utils.AsyncThrottler(
+        self._async_semaphore_wrapper = utils.AsyncSemaphoreWrapper(
             service_descriptor.options.concurrency_limit, service_descriptor.name
         )
         self._close_tasks = []
@@ -143,7 +143,7 @@ class BasetenSession:
         assert self._cached_sync_client is not None
         client = self._cached_sync_client[0]
 
-        with self._sync_throttler:
+        with self._sync_semaphore_wrapper:
             yield client
 
     @contextlib.asynccontextmanager
@@ -179,7 +179,7 @@ class BasetenSession:
         assert self._cached_async_client is not None
         client = self._cached_async_client[0]
 
-        async with self._async_throttler:
+        async with self._async_semaphore_wrapper:
             yield client
 
 

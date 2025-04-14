@@ -85,7 +85,9 @@ def populate_chainlet_service_predict_urls(
     return chainlet_to_deployed_service
 
 
-class _BaseThrottler:
+class _BaseSemaphoreWrapper:
+    """Add logging and metrics to semaphore."""
+
     _concurrency_limit: int
     _session_name: str
     _log_interval_sec: float
@@ -103,9 +105,7 @@ class _BaseThrottler:
         self._pending_count = 0
         self._wait_times = collections.deque(maxlen=1000)
 
-    def _maybe_log_throttling_stats(
-        self, ongoing_requests: int, queued_requests: int
-    ) -> None:
+    def _maybe_log_stats(self, ongoing_requests: int, queued_requests: int) -> None:
         now = time.time()
         if now - self._last_log_time < self._log_interval_sec:
             return
@@ -125,13 +125,13 @@ class _BaseThrottler:
         )
 
         if p50 >= 0.001 or p90 >= 0.001:
-            num_throttled = sum(1 for t in wait_list if t > 0.001)
+            num_waiting = sum(1 for t in wait_list if t > 0.001)
             logging.warning(
-                f"Throttling calls to `{self._session_name}`. Momentarily there are "
-                f"{ongoing_requests} ongoing requests and {queued_requests} throttled "
+                f"Queueing calls to `{self._session_name}`. Momentarily there are "
+                f"{ongoing_requests} ongoing requests and {queued_requests} waiting "
                 f"requests. Wait stats: p50={p50:.3f}s, p90={p90:.3f}s. "
-                f"Of the last {len(wait_list)} requests, {num_throttled} were throttled. "
-                f"In many uses cases throttling is fine and does not give a net latency "
+                f"Of the last {len(wait_list)} requests, {num_waiting} had to wait. "
+                f"In many uses cases queueing is fine and does not give a net latency "
                 "increase, because the dependency replicas cannot process burst of "
                 "requests instantly anyway. Redesigning you algorithm to send requests "
                 "more evenly spaced over time could be beneficial and remove this "
@@ -140,10 +140,10 @@ class _BaseThrottler:
                 "risk failures due to overload."
             )
         else:
-            logging.debug(f"No throttling of calls to `{self._session_name}`.")
+            logging.debug(f"No queueing of calls to `{self._session_name}`.")
 
 
-class AsyncThrottler(_BaseThrottler, AsyncContextManager):
+class AsyncSemaphoreWrapper(_BaseSemaphoreWrapper, AsyncContextManager):
     _lock: asyncio.Lock
     _semaphore: asyncio.Semaphore
 
@@ -174,7 +174,7 @@ class AsyncThrottler(_BaseThrottler, AsyncContextManager):
         async with self._lock:
             self._pending_count -= 1
             self._wait_times.append(wait_duration)
-            self._maybe_log_throttling_stats(
+            self._maybe_log_stats(
                 ongoing_requests=self.ongoing_requests,
                 queued_requests=self.queued_requests,
             )
@@ -183,7 +183,10 @@ class AsyncThrottler(_BaseThrottler, AsyncContextManager):
         self._semaphore.release()
 
 
-class ThreadThrottler(_BaseThrottler):
+class ThreadSemaphoreWrapper(_BaseSemaphoreWrapper):
+    _lock: threading.Lock
+    _semaphore: threading.Semaphore
+
     def __init__(
         self, concurrency_limit: int, session_name: str, log_interval_sec: float = 300.0
     ) -> None:
@@ -200,7 +203,7 @@ class ThreadThrottler(_BaseThrottler):
         with self._lock:
             self._pending_count -= 1
             self._wait_times.append(wait_duration)
-            self._maybe_log_throttling_stats(
+            self._maybe_log_stats(
                 ongoing_requests=self.ongoing_requests,
                 queued_requests=self.queued_requests,
             )

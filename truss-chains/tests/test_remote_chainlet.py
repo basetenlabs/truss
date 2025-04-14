@@ -22,12 +22,12 @@ def stub_session(event_loop: asyncio.AbstractEventLoop):
         ),
         api_key="dummy-API-key",
     )
-    stub._sync_throttler._log_interval_sec = 0.1
-    stub._async_throttler._log_interval_sec = 0.1
+    stub._sync_semaphore_wrapper._log_interval_sec = 0.1
+    stub._async_semaphore_wrapper._log_interval_sec = 0.1
     return stub
 
 
-def test_throttling_logging_sync(stub_session, caplog):
+def test_waiting_logging_sync(stub_session, caplog):
     def use_sync_client():
         with stub_session._client_sync():
             time.sleep(0.2)
@@ -46,44 +46,42 @@ def test_throttling_logging_sync(stub_session, caplog):
     print("Captured logs:", logs)
 
     pattern = re.compile(
-        r"Throttling calls to `(?P<session>[\w\-]+)`\. "
-        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<throttled_now>\d+) throttled requests\. "
+        r"Queueing calls to `(?P<session>[\w\-]+)`\. "
+        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<waiting_now>\d+) waiting requests\. "
         r"Wait stats: p50=(?P<p50>0\.\d{3})s, p90=(?P<p90>0\.\d{3})s\. "
-        r"Of the last (?P<total>\d+) requests, (?P<throttled>\d+) were throttled\."
+        r"Of the last (?P<total>\d+) requests, (?P<waiting>\d+) had to wait\."
     )
 
-    matching_logs = [pattern.search(m) for m in logs if "Throttling calls to" in m]
+    matching_logs = [pattern.search(m) for m in logs if "Queueing calls to" in m]
     matching_logs = [m for m in matching_logs if m]
 
-    assert matching_logs, (
-        "Expected throttling log in expected format. Logs:\n" + "\n".join(logs)
-    )
+    assert matching_logs, "Expected logs in expected format. Logs:\n" + "\n".join(logs)
 
     for match in matching_logs:
         ongoing = int(match.group("ongoing"))
-        throttled_now = int(match.group("throttled_now"))
-        throttled_total = int(match.group("throttled"))
+        waiting_now = int(match.group("waiting_now"))
+        waiting_total = int(match.group("waiting"))
         total = int(match.group("total"))
         p50 = float(match.group("p50"))
         p90 = float(match.group("p90"))
 
-        assert throttled_total >= 1, (
-            f"Expected at least one throttled request, got {throttled_total}"
+        assert waiting_total >= 1, (
+            f"Expected at least one waiting request, got {waiting_total}"
         )
         assert total >= 3, f"Expected at least 3 requests sampled, got {total}"
         assert 0.0 <= p50 <= p90, f"Invalid p50/p90 values: p50={p50}, p90={p90}"
         assert (
-            ongoing + throttled_now
-            <= stub_session._sync_throttler._concurrency_limit
-            + (total - throttled_total)
+            ongoing + waiting_now
+            <= stub_session._sync_semaphore_wrapper._concurrency_limit
+            + (total - waiting_total)
         ), (
-            f"Inconsistent live state: {ongoing} running + {throttled_now} throttled_now "
-            f"vs {throttled_total} throttled of {total} requests"
+            f"Inconsistent live state: {ongoing} running + {waiting_now} waiting_now "
+            f"vs {waiting_total} waiting of {total} requests"
         )
 
 
 @pytest.mark.asyncio
-async def test_throttling_logging_async(stub_session, caplog):
+async def test_waiting_logging_async(stub_session, caplog):
     async def use_async_client():
         async with stub_session._client_async():
             await asyncio.sleep(0.2)
@@ -97,43 +95,41 @@ async def test_throttling_logging_async(stub_session, caplog):
     print("Captured logs (async):", logs)
 
     pattern = re.compile(
-        r"Throttling calls to `(?P<session>[\w\-]+)`\. "
-        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<throttled_now>\d+) throttled requests\. "
+        r"Queueing calls to `(?P<session>[\w\-]+)`\. "
+        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<waiting_now>\d+) waiting requests\. "
         r"Wait stats: p50=(?P<p50>0\.\d{3})s, p90=(?P<p90>0\.\d{3})s\. "
-        r"Of the last (?P<total>\d+) requests, (?P<throttled>\d+) were throttled\."
+        r"Of the last (?P<total>\d+) requests, (?P<waiting>\d+) had to wait\."
     )
 
-    matching_logs = [pattern.search(m) for m in logs if "Throttling calls to" in m]
+    matching_logs = [pattern.search(m) for m in logs if "Queueing calls to" in m]
     matching_logs = [m for m in matching_logs if m]
 
-    assert matching_logs, (
-        "Expected throttling log in expected format. Logs:\n" + "\n".join(logs)
-    )
+    assert matching_logs, "Expected logs in expected format. Logs:\n" + "\n".join(logs)
 
     for match in matching_logs:
         ongoing = int(match.group("ongoing"))
-        throttled_now = int(match.group("throttled_now"))
-        throttled_total = int(match.group("throttled"))
+        waiting_now = int(match.group("waiting_now"))
+        waiting_total = int(match.group("waiting"))
         total = int(match.group("total"))
         p50 = float(match.group("p50"))
         p90 = float(match.group("p90"))
 
-        assert throttled_total >= 1, (
-            f"Expected at least one throttled request, got {throttled_total}"
+        assert waiting_total >= 1, (
+            f"Expected at least one waiting request, got {waiting_total}"
         )
         assert total >= 3, f"Expected at least 3 requests sampled, got {total}"
         assert 0.0 <= p50 <= p90, f"Invalid p50/p90 values: p50={p50}, p90={p90}"
         assert (
-            ongoing + throttled_now
-            <= stub_session._sync_throttler._concurrency_limit
-            + (total - throttled_total)
+            ongoing + waiting_now
+            <= stub_session._sync_semaphore_wrapper._concurrency_limit
+            + (total - waiting_total)
         ), (
-            f"Inconsistent live state: {ongoing} running + {throttled_now} throttled_now "
-            f"vs {throttled_total} throttled of {total} requests"
+            f"Inconsistent live state: {ongoing} running + {waiting_now} waiting_now "
+            f"vs {waiting_total} waiting of {total} requests"
         )
 
 
-def test_unthrottled_logging_sync(stub_session, caplog):
+def test_no_waiting_logging_sync(stub_session, caplog):
     caplog.set_level(logging.DEBUG)
 
     for _ in range(2):
@@ -145,11 +141,11 @@ def test_unthrottled_logging_sync(stub_session, caplog):
         pass
 
     logs = [r.message for r in caplog.records]
-    assert any("No throttling" in m for m in logs), logs
+    assert any("No queueing" in m for m in logs), logs
 
 
 @pytest.mark.asyncio
-async def test_unthrottled_logging_async(stub_session, caplog):
+async def test_no_waiting_logging_async(stub_session, caplog):
     caplog.set_level(logging.DEBUG)
 
     async def use():
@@ -163,4 +159,4 @@ async def test_unthrottled_logging_async(stub_session, caplog):
 
     logs = [r.message for r in caplog.records]
 
-    assert any("No throttling" in m for m in logs), logs
+    assert any("No queueing" in m for m in logs), logs

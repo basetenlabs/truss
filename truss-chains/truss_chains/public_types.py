@@ -443,7 +443,7 @@ class RPCOptions(custom_types.SafeModel):
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.
         concurrency_limit: The maximum number of concurrent requests to send to the
-          remote chainlet. Excessive requests will be throttled/queued and a warning
+          remote chainlet. Excessive requests will be queued and a warning
           will be shown. Try to design your algorithm in a way that spreads requests
           evenly over time so that this the default value can be used.
     """
