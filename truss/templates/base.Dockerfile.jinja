@@ -4,7 +4,6 @@ FROM {{base_image_name_and_tag}} AS truss_server
 ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
 
 {% block fail_fast %}
-RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
 RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == {{supported_python_major_version_in_custom_base_image}} and sys.version_info.minor >={{min_supported_python_minor_version_in_custom_base_image}} and sys.version_info.minor <={{max_supported_python_minor_version_in_custom_base_image}} else sys.exit(1)" \
     || { echo "ERROR: Supplied base image does not have {{min_supported_python_version_in_custom_base_image}} <= python <= {{max_supported_python_version_in_custom_base_image}}"; exit 1; }
 {% endblock %}
@@ -24,17 +23,6 @@ RUN pip install mkl
 
 {% block post_base %}
 {% endblock %}
-
-{% block install_system_requirements %}
-    {%- if should_install_system_requirements %}
-COPY ./{{system_packages_filename}} {{system_packages_filename}}
-RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{system_packages_filename}}) \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*
-    {%- endif %}
-{% endblock %}
-
 
 {% block install_requirements %}
     {%- if should_install_user_requirements_file %}

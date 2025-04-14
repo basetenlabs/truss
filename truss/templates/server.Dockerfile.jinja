@@ -11,17 +11,6 @@
 ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
 
-RUN apt update && \
-    apt install -y bash \
-                build-essential \
-                git \
-                curl \
-                ca-certificates \
-                software-properties-common \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
 RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
@@ -105,12 +94,6 @@ COPY ./{{ config.model_module_dir }} /app/model
 {%- endif %}
 {% endblock %}
 
-
-{% block run %}
-    {%- if config.docker_server %}
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl nginx python3-pip && \
-        rm -rf /var/lib/apt/lists/*
 COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
 RUN pip install -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
