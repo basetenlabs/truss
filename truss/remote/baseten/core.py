@@ -73,6 +73,7 @@ class ModelVersionHandle(NamedTuple):
     version_id: str
     model_id: str
     hostname: str
+    instance_type_name: Optional[str] = None
 
 
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
@@ -342,6 +343,7 @@ def create_truss_service(
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
+    preserve_env_instance_type: bool = True,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -375,6 +377,11 @@ def create_truss_service(
             version_id=model_version_json["id"],
             model_id=model_version_json["oracle"]["id"],
             hostname=model_version_json["oracle"]["hostname"],
+            instance_type_name=(
+                model_version_json["instance_type"]["name"]
+                if "instance_type" in model_version_json
+                else None
+            ),
         )
 
     if model_id is None:
@@ -396,6 +403,11 @@ def create_truss_service(
             version_id=model_version_json["id"],
             model_id=model_version_json["oracle"]["id"],
             hostname=model_version_json["oracle"]["hostname"],
+            instance_type_name=(
+                model_version_json["instance_type"]["name"]
+                if "instance_type" in model_version_json
+                else None
+            ),
         )
 
     try:
@@ -408,6 +420,7 @@ def create_truss_service(
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
             environment=environment,
+            preserve_env_instance_type=preserve_env_instance_type,
         )
     except ApiError as e:
         if (
@@ -424,6 +437,11 @@ def create_truss_service(
         version_id=model_version_json["id"],
         model_id=model_id,
         hostname=model_version_json["oracle"]["hostname"],
+        instance_type_name=(
+            model_version_json["instance_type"]["name"]
+            if "instance_type" in model_version_json
+            else None
+        ),
     )
 
 
