@@ -20,13 +20,15 @@ import pydantic
 
 from truss.base import custom_types, truss_config
 
+SECRET_DUMMY = "***"
+DEFAULT_TIMEOUT_SEC = 600.0
+DEFAULT_CONCURRENCY_LIMIT = 300
+
+
 CpuCountT = Literal["cpu_count"]
 CPU_COUNT: CpuCountT = "cpu_count"
 
-SECRET_DUMMY = "***"
 _BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
-_DEFAULT_TIMEOUT_SEC = 600.0
-
 
 _K = TypeVar("_K", contravariant=True)
 _V = TypeVar("_V", covariant=True)
@@ -199,6 +201,11 @@ class DockerImage(custom_types.SafeModelNonSerializable):
         external_package_dirs: A list of directories containing additional python
           packages outside the chain's workspace dir, e.g. a shared library. This code
           is copied into the docker image and importable at runtime.
+        truss_server_version_override: By default, deployed Chainlets use the truss
+          server implementation corresponding to the truss version of the user's CLI.
+          To use a specific version, e.g. pinning it for exact reproducibility, the
+          version can be overridden here. Valid versions correspond to truss releases
+          on PyPi: https://pypi.org/project/truss/#history, e.g. `"0.9.80"`.
     """
 
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
@@ -207,6 +214,7 @@ class DockerImage(custom_types.SafeModelNonSerializable):
     apt_requirements: list[str] = pydantic.Field(default_factory=list)
     data_dir: Optional[AbsPath] = None
     external_package_dirs: Optional[list[AbsPath]] = None
+    truss_server_version_override: Optional[str] = None
 
     @pydantic.model_validator(mode="before")
     @classmethod
@@ -434,11 +442,16 @@ class RPCOptions(custom_types.SafeModel):
          speedup and message size reduction (~25%) for numpy arrays. Use
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.
+        concurrency_limit: The maximum number of concurrent requests to send to the
+          remote chainlet. Excessive requests will be throttled/queued and a warning
+          will be shown. Try to design your algorithm in a way that spreads requests
+          evenly over time so that this the default value can be used.
     """
 
     retries: int = 1
-    timeout_sec: float = _DEFAULT_TIMEOUT_SEC
+    timeout_sec: float = DEFAULT_TIMEOUT_SEC
     use_binary: bool = False
+    concurrency_limit: int = DEFAULT_CONCURRENCY_LIMIT
 
 
 ### Interfaces #########################################################################
