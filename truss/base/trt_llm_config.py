@@ -50,6 +50,7 @@ class TrussTRTLLMQuantizationType(str, Enum):
     SMOOTH_QUANT = "smooth_quant"
     FP8 = "fp8"
     FP8_KV = "fp8_kv"
+    FP4 = "fp4"
 
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
@@ -591,6 +592,7 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
         elif config.trt_llm.build.quantization_type in [
             TrussTRTLLMQuantizationType.FP8,
             TrussTRTLLMQuantizationType.FP8_KV,
+            TrussTRTLLMQuantizationType.FP4,
         ] and config.resources.accelerator.accelerator in [
             truss_config.Accelerator.A10G,
             truss_config.Accelerator.A100,
@@ -599,6 +601,17 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
             raise ValueError(
                 "FP8 quantization is only supported on L4, H100, H200 "
                 "accelerators or newer (CUDA_COMPUTE>=89)"
+            )
+        elif config.trt_llm.build.quantization_type in [
+            TrussTRTLLMQuantizationType.FP4
+        ] and config.resources.accelerator.accelerator in [
+            truss_config.Accelerator.H100,
+            truss_config.Accelerator.L4,
+            truss_config.Accelerator.A100_40GB,
+        ]:
+            raise ValueError(
+                "FP4 quantization is only supported on B200 / Blackwell "
+                "accelerators or newer (CUDA_COMPUTE>=100)"
             )
         world_size = (
             config.trt_llm.build.tensor_parallel_count
