@@ -1,8 +1,9 @@
 import signal
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
+from rich.columns import Columns
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
@@ -45,15 +46,41 @@ class MetricsWatcher(TrainingPollerMixin):
             return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB", color_map[unit]
         return f"{bytes_val:.2f} bytes", color_map[unit]
 
+    def _format_utilization(self, utilization: float) -> Tuple[str, str]:
+        percent = round(utilization * 100, 2)
+        if percent > 90:
+            return f"{percent}%", "red"
+        elif percent > 70:
+            return f"{percent}%", "yellow"
+        return f"{percent}%", "green"
+
     def _get_latest_metric(self, metrics: List[Dict]) -> Optional[float]:
         """Get the most recent metric value"""
         if not metrics:
             return None
         return metrics[-1].get("value")
 
-    def create_metrics_table(self, metrics_data: Dict) -> Table:
+    def _maybe_format_storage_table_row(
+        self, table: Table, label: str, storage_data: Optional[dict]
+    ):
+        if not storage_data:
+            return
+        usage_value, usage_color = self._format_bytes(
+            cast(int, storage_data.get("usage_bytes"))
+        )
+        utilization_value, utilization_color = self._format_utilization(
+            cast(float, storage_data.get("utilization"))
+        )
+        table.add_row(
+            label,
+            Text(usage_value, style=usage_color),
+            Text(utilization_value, style=utilization_color),
+        )
+
+    def create_metrics_table(self, metrics_data: Dict) -> Columns:
         """Create a Rich table with the metrics"""
-        table = Table(title="Training Job Metrics")
+        tables = []
+        table = Table(title="Training Job Compute Metrics")
         table.add_column("Metric")
         table.add_column("Value")
 
@@ -105,8 +132,24 @@ class MetricsWatcher(TrainingPollerMixin):
         # Add separator before storage metrics
         if gpu_metrics or gpu_memory:
             table.add_section()
+        tables.append(table)
 
-        return table
+        ephemeral_storage_metrics = metrics_data.get("ephemeral_storage")
+        cache_storage_metrics = metrics_data.get("cache")
+        if ephemeral_storage_metrics or cache_storage_metrics:
+            storage_table = Table(title="Storage Metrics")
+            storage_table.add_column("Storage Type")
+            storage_table.add_column("Usage")
+            storage_table.add_column("Utilization")
+            self._maybe_format_storage_table_row(
+                storage_table, "Ephemeral Storage", ephemeral_storage_metrics
+            )
+            self._maybe_format_storage_table_row(
+                storage_table, "Cache Storage", cache_storage_metrics
+            )
+            tables.append(storage_table)
+
+        return Columns(tables)
 
     def watch(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
         """Display continuously updating metrics"""
