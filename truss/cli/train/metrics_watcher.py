@@ -46,7 +46,7 @@ class MetricsWatcher(TrainingPollerMixin):
             return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB", color_map[unit]
         return f"{bytes_val:.2f} bytes", color_map[unit]
 
-    def _format_utilization(self, utilization: float) -> Tuple[str, str]:
+    def _format_storage_utilization(self, utilization: float) -> Tuple[str, str]:
         percent = round(utilization * 100, 2)
         if percent > 90:
             return f"{percent}%", "red"
@@ -68,7 +68,7 @@ class MetricsWatcher(TrainingPollerMixin):
         usage_value, usage_color = self._format_bytes(
             cast(int, storage_data.get("usage_bytes"))
         )
-        utilization_value, utilization_color = self._format_utilization(
+        utilization_value, utilization_color = self._format_storage_utilization(
             cast(float, storage_data.get("utilization"))
         )
         table.add_row(
