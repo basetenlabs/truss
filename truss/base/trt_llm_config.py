@@ -51,6 +51,7 @@ class TrussTRTLLMQuantizationType(str, Enum):
     FP8 = "fp8"
     FP8_KV = "fp8_kv"
     FP4 = "fp4"
+    FP4_KV = "fp4_kv"
 
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
