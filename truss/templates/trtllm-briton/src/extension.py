@@ -36,8 +36,10 @@ class Extension:
 
     def __init__(self, *args, **kwargs):
         self._config = kwargs["config"]
+        self._lazy_data_resolver = kwargs["lazy_data_resolver"]
         trt_llm_config = self._config.get("trt_llm")
         config = TRTLLMConfiguration(**trt_llm_config)
+        self._lazy_data_resolver.block_until_download_complete()
         if (
             config.build.speculator is not None
             and config.build.speculator.speculative_decoding_mode

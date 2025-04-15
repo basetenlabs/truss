@@ -14,6 +14,7 @@ from truss.templates.control.control.helpers.custom_types import Patch
 from truss.truss_handle import truss_handle
 from truss.truss_handle.patch import signature
 
+# Note: logging is not picked up in logs UI, only prints.
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 working_dir = pathlib.Path("/")
@@ -28,17 +29,18 @@ def _fill_trt_llm_versions(
     tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
 ):
     assert tr.spec.config.trt_llm is not None
-    logging.info(f"Using TRT LLM image versions:\n`{image_versions}`")
     if (
         tr.spec.config.trt_llm.build.base_model
         == trt_llm_config.TrussTRTLLMModel.ENCODER
     ):
+        print(f"Using BEI image: {image_versions.bei_image}")
         tr.set_base_image(
             image_versions.bei_image, constants.BEI_TRTLLM_PYTHON_EXECUTABLE
         )
     else:
+        print(f"Using Briton image: {image_versions.briton_image}")
         tr.set_base_image(
-            image_versions.briton_image, constants.BEI_TRTLLM_PYTHON_EXECUTABLE
+            image_versions.briton_image, constants.TRTLLM_PYTHON_EXECUTABLE
         )
 
 
@@ -90,7 +92,6 @@ def docker_build_setup(
     tr.docker_build_setup(
         TRUSS_BUILD_CONTEXT_DIR, use_hf_secret="HUGGING_FACE_HUB_TOKEN" in os.environ
     )
-    print("Docker build context is set up for the truss.")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,9 @@
+environment_variables:
+  OTEL_TRACING_NDJSON_FILE: /tmp/otel_traces.ndjson
 model_name: Test
 python_version: py39
-environment_variables:
-  OTEL_TRACING_NDJSON_FILE: "/tmp/otel_traces.ndjson"
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false

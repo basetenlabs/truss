@@ -1,7 +1,7 @@
 import pathlib
 from typing import Optional
 
-from truss.templates.shared import secrets_resolver
+from truss.templates.shared import lazy_data_resolver, secrets_resolver
 from truss_chains import private_types, public_types
 from truss_chains.remote_chainlet import utils
 
@@ -15,6 +15,7 @@ class TrussChainletModel:
         config: dict,
         data_dir: pathlib.Path,
         secrets: secrets_resolver.Secrets,
+        lazy_data_resolver: lazy_data_resolver.LazyDataResolverV2,
         # TODO: Remove the default value once all truss versions are synced up.
         environment: Optional[dict] = None,
     ) -> None:
@@ -38,6 +39,7 @@ class TrussChainletModel:
             data_dir=data_dir,
             environment=deployment_environment,
         )
+        lazy_data_resolver.block_until_download_complete()
 
     # Below illustrated code will be added by code generation.
 
