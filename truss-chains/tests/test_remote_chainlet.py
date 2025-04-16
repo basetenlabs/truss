@@ -46,9 +46,9 @@ def test_waiting_logging_sync(stub_session, caplog):
     print("Captured logs:", logs)
 
     pattern = re.compile(
-        r"Queueing calls to `(?P<session>[\w\-]+)`\. "
-        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<waiting_now>\d+) waiting requests\. "
-        r"Wait stats: p50=(?P<p50>0\.\d{3})s, p90=(?P<p90>0\.\d{3})s\. "
+        r"Queueing calls to `(?P<name>[^`]+)` Chainlet\. "
+        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<waiting_now>\d+) waiting requests\.\n"
+        r"Wait stats: p50=(?P<p50>0\.\d{3})s, p90=(?P<p90>0\.\d{3})s\.\n"
         r"Of the last (?P<total>\d+) requests, (?P<waiting>\d+) had to wait\."
     )
 
@@ -95,9 +95,9 @@ async def test_waiting_logging_async(stub_session, caplog):
     print("Captured logs (async):", logs)
 
     pattern = re.compile(
-        r"Queueing calls to `(?P<session>[\w\-]+)`\. "
-        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<waiting_now>\d+) waiting requests\. "
-        r"Wait stats: p50=(?P<p50>0\.\d{3})s, p90=(?P<p90>0\.\d{3})s\. "
+        r"Queueing calls to `(?P<name>[^`]+)` Chainlet\. "
+        r"Momentarily there are (?P<ongoing>\d+) ongoing requests and (?P<waiting_now>\d+) waiting requests\.\n"
+        r"Wait stats: p50=(?P<p50>0\.\d{3})s, p90=(?P<p90>0\.\d{3})s\.\n"
         r"Of the last (?P<total>\d+) requests, (?P<waiting>\d+) had to wait\."
     )
 

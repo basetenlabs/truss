@@ -14,24 +14,54 @@ import traceback
 from collections.abc import AsyncIterator
 from typing import (
     Any,
-    AsyncContextManager,
+    Generic,
     Iterator,
     Mapping,
     NoReturn,
     Optional,
     Type,
     TypeVar,
+    Union,
 )
 
 import aiohttp
 import fastapi
 import httpx
+import prometheus_client
 import pydantic
 
 from truss.templates.shared import dynamic_config_resolver
 from truss_chains import private_types, public_types
 
 T = TypeVar("T")
+
+_LockT = TypeVar("_LockT", bound=Union[threading.Lock, asyncio.Lock])
+_SemaphoreT = TypeVar(
+    "_SemaphoreT", bound=Union[threading.Semaphore, asyncio.Semaphore]
+)
+
+
+_ONGOING_REQUESTS = prometheus_client.Gauge(
+    name="dependency_chainlet_ongoing_requests",
+    documentation="Number of ongoing (executing) requests to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
+
+_QUEUED_REQUESTS = prometheus_client.Gauge(
+    name="dependency_chainlet_queued_requests",
+    documentation="Number of queued (waiting) requests  to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
+_TOTAL_REQUESTS = prometheus_client.Gauge(
+    name="dependency_chainlet_total_requests",
+    documentation="Total number of requests (ongoing + queued)  to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
+_REQUESTS_TOTAL = prometheus_client.Counter(
+    name="dependency_chainlet_requests_total",
+    documentation="Total number of requests  to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
 
 
 def populate_chainlet_service_predict_urls(
@@ -85,25 +115,39 @@ def populate_chainlet_service_predict_urls(
     return chainlet_to_deployed_service
 
 
-class _BaseSemaphoreWrapper:
+class _BaseSemaphoreWrapper(Generic[_LockT, _SemaphoreT]):
     """Add logging and metrics to semaphore."""
 
+    _lock: _LockT
+    _semaphore: _SemaphoreT
+
     _concurrency_limit: int
-    _session_name: str
+    _dependency_chainlet_name: str
     _log_interval_sec: float
     _last_log_time: float
     _pending_count: int
     _wait_times: collections.deque[float]
 
     def __init__(
-        self, concurrency_limit: int, session_name: str, log_interval_sec: float = 300.0
+        self,
+        concurrency_limit: int,
+        dependency_chainlet_name: str,
+        log_interval_sec: float = 300.0,
     ) -> None:
         self._concurrency_limit = concurrency_limit
-        self._session_name = session_name
+        self._dependency_chainlet_name = dependency_chainlet_name
         self._log_interval_sec = log_interval_sec
         self._last_log_time = time.time()
         self._pending_count = 0
         self._wait_times = collections.deque(maxlen=1000)
+
+    @property
+    def ongoing_requests(self) -> int:
+        return self._concurrency_limit - self._semaphore._value
+
+    @property
+    def queued_requests(self) -> int:
+        return self._pending_count
 
     def _maybe_log_stats(self, ongoing_requests: int, queued_requests: int) -> None:
         now = time.time()
@@ -113,7 +157,9 @@ class _BaseSemaphoreWrapper:
         self._last_log_time = now
 
         if not self._wait_times:
-            logging.debug(f"[{self._session_name}] no recent requests to log.")
+            logging.debug(
+                f"[{self._dependency_chainlet_name}] no recent requests to log."
+            )
             return
 
         wait_list = list(self._wait_times)
@@ -127,98 +173,130 @@ class _BaseSemaphoreWrapper:
         if p50 >= 0.001 or p90 >= 0.001:
             num_waiting = sum(1 for t in wait_list if t > 0.001)
             logging.warning(
-                f"Queueing calls to `{self._session_name}`. Momentarily there are "
-                f"{ongoing_requests} ongoing requests and {queued_requests} waiting "
-                f"requests. Wait stats: p50={p50:.3f}s, p90={p90:.3f}s. "
+                f"Queueing calls to `{self._dependency_chainlet_name}` Chainlet. "
+                f"Momentarily there are {ongoing_requests} ongoing requests and "
+                f"{queued_requests} waiting requests.\n"
+                f"Wait stats: p50={p50:.3f}s, p90={p90:.3f}s.\n"
                 f"Of the last {len(wait_list)} requests, {num_waiting} had to wait. "
                 f"In many uses cases queueing is fine and does not give a net latency "
-                "increase, because the dependency replicas cannot process burst of "
-                "requests instantly anyway. Redesigning you algorithm to send requests "
-                "more evenly spaced over time could be beneficial and remove this "
-                "warning. Alternatively, you could increase `concurrency_limit` "
-                f"(currently {self._concurrency_limit}) for this dependency, but might "
+                "increase, because the dependency Chainlet replicas cannot process "
+                "bursts of requests instantly anyway. Redesigning you algorithm to "
+                "send requests more evenly spaced over time could be beneficial and "
+                "remove this warning. Alternatively, you could increase "
+                f"`concurrency_limit` (currently {self._concurrency_limit}) for "
+                f"the {self._dependency_chainlet_name} dependency, but might "
                 "risk failures due to overload."
             )
         else:
-            logging.debug(f"No queueing of calls to `{self._session_name}`.")
+            logging.debug(
+                f"No queueing of calls to `{self._dependency_chainlet_name}`."
+            )
 
 
-class AsyncSemaphoreWrapper(_BaseSemaphoreWrapper, AsyncContextManager):
-    _lock: asyncio.Lock
-    _semaphore: asyncio.Semaphore
-
+class AsyncSemaphoreWrapper(_BaseSemaphoreWrapper[asyncio.Lock, asyncio.Semaphore]):
     def __init__(
-        self, concurrency_limit: int, session_name: str, log_interval_sec: float = 300.0
+        self,
+        concurrency_limit: int,
+        dependency_chainlet_name: str,
+        log_interval_sec: float = 300.0,
     ) -> None:
-        super().__init__(concurrency_limit, session_name, log_interval_sec)
+        super().__init__(concurrency_limit, dependency_chainlet_name, log_interval_sec)
         self._lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(concurrency_limit)
-        self._pending_count = 0
 
-    @property
-    def ongoing_requests(self) -> int:
-        return self._concurrency_limit - self._semaphore._value
+    @contextlib.asynccontextmanager
+    async def __call__(self) -> AsyncIterator[None]:
+        _REQUESTS_TOTAL.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
+        _QUEUED_REQUESTS.labels(
+            dependency_chainlet=self._dependency_chainlet_name
+        ).inc()
+        _TOTAL_REQUESTS.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
 
-    @property
-    def queued_requests(self) -> int:
-        return self._pending_count
-
-    async def __aenter__(self) -> None:
         start_time = time.perf_counter()
+
         async with self._lock:
             self._pending_count += 1
 
-        await self._semaphore.acquire()
-        wait_duration = time.perf_counter() - start_time
+        async with self._semaphore:
+            wait_duration = time.perf_counter() - start_time
+            _QUEUED_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).dec()
+            _ONGOING_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).inc()
 
-        async with self._lock:
-            self._pending_count -= 1
-            self._wait_times.append(wait_duration)
-            self._maybe_log_stats(
-                ongoing_requests=self.ongoing_requests,
-                queued_requests=self.queued_requests,
-            )
+            async with self._lock:
+                self._pending_count -= 1
+                self._wait_times.append(wait_duration)
+                self._maybe_log_stats(
+                    ongoing_requests=self.ongoing_requests,
+                    queued_requests=self.queued_requests,
+                )
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        self._semaphore.release()
+            try:
+                yield
+            finally:
+                _ONGOING_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
+                _TOTAL_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
 
 
-class ThreadSemaphoreWrapper(_BaseSemaphoreWrapper):
-    _lock: threading.Lock
-    _semaphore: threading.Semaphore
-
+class ThreadSemaphoreWrapper(
+    _BaseSemaphoreWrapper[threading.Lock, threading.Semaphore]
+):
     def __init__(
-        self, concurrency_limit: int, session_name: str, log_interval_sec: float = 300.0
+        self,
+        concurrency_limit: int,
+        dependency_chainlet_name: str,
+        log_interval_sec: float = 300.0,
     ) -> None:
-        super().__init__(concurrency_limit, session_name, log_interval_sec)
+        super().__init__(concurrency_limit, dependency_chainlet_name, log_interval_sec)
         self._lock = threading.Lock()
         self._semaphore = threading.Semaphore(concurrency_limit)
 
-    def __enter__(self) -> None:
+    @contextlib.contextmanager
+    def __call__(self) -> Iterator[None]:
+        _REQUESTS_TOTAL.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
+        _QUEUED_REQUESTS.labels(
+            dependency_chainlet=self._dependency_chainlet_name
+        ).inc()
+        _TOTAL_REQUESTS.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
+
         start_time = time.perf_counter()
+
         with self._lock:
             self._pending_count += 1
-        self._semaphore.acquire()
-        wait_duration = time.perf_counter() - start_time
-        with self._lock:
-            self._pending_count -= 1
-            self._wait_times.append(wait_duration)
-            self._maybe_log_stats(
-                ongoing_requests=self.ongoing_requests,
-                queued_requests=self.queued_requests,
-            )
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self._semaphore.release()
+        with self._semaphore:
+            wait_duration = time.perf_counter() - start_time
+            _QUEUED_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).dec()
+            _ONGOING_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).inc()
 
-    @property
-    def ongoing_requests(self) -> int:
-        # Not accessible directly in threading.Semaphore, track if needed
-        return self._concurrency_limit - self._semaphore._value  # internal attr
+            with self._lock:
+                self._pending_count -= 1
+                self._wait_times.append(wait_duration)
+                self._maybe_log_stats(
+                    ongoing_requests=self.ongoing_requests,
+                    queued_requests=self.queued_requests,
+                )
 
-    @property
-    def queued_requests(self) -> int:
-        return self._pending_count
+            try:
+                yield
+            finally:
+                _ONGOING_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
+                _TOTAL_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
 
 
 _trace_parent_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(

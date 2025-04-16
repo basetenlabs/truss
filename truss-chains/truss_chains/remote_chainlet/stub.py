@@ -143,7 +143,7 @@ class BasetenSession:
         assert self._cached_sync_client is not None
         client = self._cached_sync_client[0]
 
-        with self._sync_semaphore_wrapper:
+        with self._sync_semaphore_wrapper():
             yield client
 
     @contextlib.asynccontextmanager
@@ -179,7 +179,7 @@ class BasetenSession:
         assert self._cached_async_client is not None
         client = self._cached_async_client[0]
 
-        async with self._async_semaphore_wrapper:
+        async with self._async_semaphore_wrapper():
             yield client
 
 
