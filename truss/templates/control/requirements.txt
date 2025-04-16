@@ -9,7 +9,7 @@ tenacity>=8.1.0
  # supporting still py3.8 trusses and newer truss-package releases requiring >=3.9.
  # A possible solution is to run the control server with a newer python verion even if the truss
  # server needs 3.8.
-truss==0.9.50
+truss==0.9.80
 uvicorn>=0.24.0
 uvloop>=0.19.0
 websockets>=10.0

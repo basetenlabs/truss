@@ -23,22 +23,27 @@ RUN apt update && \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
+
 RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
 
-    {%- if config.live_reload  and not config.docker_server%}
-RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
-    || { pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
+{%- if config.live_reload and not config.docker_server %}
+# --- Install Python 3.12 specifically for the control server ---
+# Ensure essential tools and the PPA for Python versions are available.
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+        software-properties-common \
+        ca-certificates \
     && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt update -y && apt install -y --no-install-recommends python$pythonVersion-venv \
+    && apt-get update -y \
+    && apt-get install -y --no-install-recommends python3.12 python3.12-venv \
     && apt-get autoremove -y \
     && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*; }
+    && rm -rf /var/lib/apt/lists/*
 # Create symlink for control server to start inference server process with correct python executable
 RUN readlink {{config.base_image.python_executable_path}} &>/dev/null \
     && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
 RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
-    {%- endif %}
+{%- endif %}
 {% endif %}
 
 {% endblock %}
@@ -95,11 +100,16 @@ COPY ./truss /app/truss
 {%- endif %}
 
 COPY ./config.yaml /app/config.yaml
-    {%- if config.live_reload and not config.docker_server%}
+
+{%- if config.live_reload and not config.docker_server%}
 COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-    {%- endif %}
+RUN python3.12 -m venv /control/.env \
+    && echo "Control server venv created using Python 3.12" \
+    # Upgrade pip within the venv and install requirements
+    && /control/.env/bin/pip install --upgrade pip \
+    && /control/.env/bin/pip install -r /control/requirements.txt
+{%- endif %}
+
 {%- if model_dir_exists %}
 COPY ./{{ config.model_module_dir }} /app/model
 {%- endif %}
@@ -107,7 +117,7 @@ COPY ./{{ config.model_module_dir }} /app/model
 
 
 {% block run %}
-    {%- if config.docker_server %}
+{%- if config.docker_server %}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl nginx python3-pip && \
         rm -rf /var/lib/apt/lists/*
@@ -123,15 +133,16 @@ COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="supervisord -c {{ supervisor_config_path }}"
 ENTRYPOINT ["supervisord", "-c", "{{ supervisor_config_path }}"]
-    {%- elif config.live_reload %}
+
+{%- elif config.live_reload %}
 ENV HASH_TRUSS="{{truss_hash}}"
 ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python3 /control/control/server.py"
 ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
-    {%- else %}
+{%- else %}
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/main.py"}}"
 ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "/app/main.py"]
-    {%- endif %}
+{%- endif %}
 {% endblock %}
