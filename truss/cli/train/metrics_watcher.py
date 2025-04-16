@@ -77,12 +77,12 @@ class MetricsWatcher(TrainingPollerMixin):
 
     def _maybe_format_storage_table_row(
         self, table: Table, label: str, storage_data: Optional[Dict[str, List[Dict]]]
-    ):
+    ) -> bool:
         if not storage_data:
-            return
+            return False
         maybe_values = self._get_latest_storage_metrics(storage_data)
         if not maybe_values:
-            return
+            return False
         raw_usage, raw_utilization = maybe_values
         usage_value, usage_color = self._format_bytes(raw_usage)
         utilization_value, utilization_color = self._format_storage_utilization(
@@ -93,6 +93,7 @@ class MetricsWatcher(TrainingPollerMixin):
             Text(usage_value, style=usage_color),
             Text(utilization_value, style=utilization_color),
         )
+        return True
 
     def create_metrics_table(self, metrics_data: Dict) -> Columns:
         """Create a Rich table with the metrics"""
@@ -158,13 +159,14 @@ class MetricsWatcher(TrainingPollerMixin):
             storage_table.add_column("Storage Type")
             storage_table.add_column("Usage")
             storage_table.add_column("Utilization")
-            self._maybe_format_storage_table_row(
+            did_add_ephemeral = self._maybe_format_storage_table_row(
                 storage_table, "Ephemeral Storage", ephemeral_storage_metrics
             )
-            self._maybe_format_storage_table_row(
+            did_add_cache = self._maybe_format_storage_table_row(
                 storage_table, "Cache Storage", cache_storage_metrics
             )
-            tables.append(storage_table)
+            if did_add_ephemeral or did_add_cache:
+                tables.append(storage_table)
 
         return Columns(tables, title="Training Job Metrics")
 
