@@ -47,7 +47,7 @@ class MetricsWatcher(TrainingPollerMixin):
         return f"{bytes_val:.2f} bytes", color_map[unit]
 
     def _format_storage_utilization(self, utilization: float) -> Tuple[str, str]:
-        percent = round(utilization * 100, 2)
+        percent = round(utilization * 100, 4)
         if percent > 90:
             return f"{percent}%", "red"
         elif percent > 70:
@@ -60,16 +60,33 @@ class MetricsWatcher(TrainingPollerMixin):
             return None
         return metrics[-1].get("value")
 
+    def _get_latest_storage_metrics(
+        self, storage_data: Optional[Dict[str, List[Dict]]]
+    ) -> Optional[Tuple[int, float]]:
+        if not storage_data:
+            return None
+        usage_data = storage_data.get("usage_bytes")
+        utilization_data = storage_data.get("utilization")
+        if not usage_data or not utilization_data:
+            return None
+        usage_value = usage_data[-1].get("value", None)
+        utilization_value = utilization_data[-1].get("value", None)
+        if not usage_value or not utilization_value:
+            return None
+        return cast(int, usage_value), cast(float, utilization_value)
+
     def _maybe_format_storage_table_row(
-        self, table: Table, label: str, storage_data: Optional[dict]
+        self, table: Table, label: str, storage_data: Optional[Dict[str, List[Dict]]]
     ):
         if not storage_data:
             return
-        usage_value, usage_color = self._format_bytes(
-            cast(int, storage_data.get("usage_bytes"))
-        )
+        maybe_values = self._get_latest_storage_metrics(storage_data)
+        if not maybe_values:
+            return
+        raw_usage, raw_utilization = maybe_values
+        usage_value, usage_color = self._format_bytes(raw_usage)
         utilization_value, utilization_color = self._format_storage_utilization(
-            cast(float, storage_data.get("utilization"))
+            raw_utilization
         )
         table.add_row(
             label,
@@ -80,7 +97,7 @@ class MetricsWatcher(TrainingPollerMixin):
     def create_metrics_table(self, metrics_data: Dict) -> Columns:
         """Create a Rich table with the metrics"""
         tables = []
-        table = Table(title="Training Job Compute Metrics")
+        table = Table(title="Compute Metrics")
         table.add_column("Metric")
         table.add_column("Value")
 
@@ -149,7 +166,7 @@ class MetricsWatcher(TrainingPollerMixin):
             )
             tables.append(storage_table)
 
-        return Columns(tables)
+        return Columns(tables, title="Training Job Metrics")
 
     def watch(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
         """Display continuously updating metrics"""
