@@ -262,6 +262,7 @@ class BasetenApi:
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
         is_draft: bool = False,
+        preserve_env_instance_type: bool = True,
     ):
         entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
 
@@ -282,6 +283,7 @@ class BasetenApi:
                     entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
                     truss_user_env: $trussUserEnv
+                    preserve_env_instance_type: {str(preserve_env_instance_type).lower()}
                 ) {{
                     chain_deployment {{
                         id

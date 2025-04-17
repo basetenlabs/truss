@@ -1,6 +1,5 @@
 import enum
 import time
-import urllib.parse
 import warnings
 from typing import Any, Dict, Iterator, NamedTuple, Optional
 
@@ -18,14 +17,6 @@ from truss.truss_handle.truss_handle import TrussHandle
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*enum.*")
 
 DEFAULT_STREAM_ENCODING = "utf-8"
-
-
-def _add_model_subdomain(rest_api_url: str, model_subdomain: str) -> str:
-    """E.g. `https://api.baseten.co` -> `https://{model_subdomain}.api.baseten.co`"""
-    parsed_url = urllib.parse.urlparse(rest_api_url)
-    new_netloc = f"{model_subdomain}.{parsed_url.netloc}"
-    model_url = parsed_url._replace(netloc=new_netloc)
-    return str(urllib.parse.urlunparse(model_url))
 
 
 class URLConfig(enum.Enum):

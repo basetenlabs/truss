@@ -307,6 +307,7 @@ def test_create_chain_with_no_publish(remote):
             truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=True,
             environment=None,
+            preserve_env_instance_type=True,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -347,6 +348,7 @@ def test_create_chain_with_no_publish(remote):
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
+                    preserve_env_instance_type: true
                 ) {{
                     chain_deployment {{
                         id
@@ -405,6 +407,7 @@ def test_create_chain_no_existing_chain(remote):
             truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=False,
             environment=None,
+            preserve_env_instance_type=True,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -443,6 +446,7 @@ def test_create_chain_no_existing_chain(remote):
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
+                    preserve_env_instance_type: true
                 ) {{
                     chain_deployment {{
                         id
@@ -508,6 +512,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false(r
             truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=True,
             environment="production",
+            preserve_env_instance_type=False,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -549,6 +554,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false(r
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
+                    preserve_env_instance_type: false
                 ) {{
                     chain_deployment {{
                         id
@@ -614,6 +620,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
             truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=False,
             environment=None,
+            preserve_env_instance_type=True,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -652,6 +659,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
+                    preserve_env_instance_type: true
                 ) {{
                     chain_deployment {{
                         id

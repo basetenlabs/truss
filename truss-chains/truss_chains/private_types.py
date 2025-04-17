@@ -265,6 +265,7 @@ class PushOptionsBaseten(PushOptions):
     environment: Optional[str]
     include_git_info: bool
     working_dir: pathlib.Path
+    preserve_env_instance_type: bool
 
     @classmethod
     def create(
@@ -277,6 +278,7 @@ class PushOptionsBaseten(PushOptions):
         include_git_info: bool,
         working_dir: pathlib.Path,
         environment: Optional[str] = None,
+        preserve_env_instance_type: bool = True,
     ) -> "PushOptionsBaseten":
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
@@ -290,6 +292,7 @@ class PushOptionsBaseten(PushOptions):
             environment=environment,
             include_git_info=include_git_info,
             working_dir=working_dir,
+            preserve_env_instance_type=preserve_env_instance_type,
         )
 
 
