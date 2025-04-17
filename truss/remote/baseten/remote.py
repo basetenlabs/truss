@@ -273,6 +273,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
+        preserve_env_instance_type: bool = True,
     ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -315,6 +316,7 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             truss_user_env=truss_user_env,
             environment=environment,
+            preserve_env_instance_type=preserve_env_instance_type,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle

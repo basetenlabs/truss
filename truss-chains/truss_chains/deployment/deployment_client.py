@@ -493,6 +493,7 @@ def _create_baseten_chain(
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,
+        preserve_env_instance_type=baseten_options.preserve_env_instance_type,
     )
     return BasetenChainService(
         baseten_options.chain_name, chain_deployment_handle, remote_provider

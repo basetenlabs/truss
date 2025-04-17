@@ -600,6 +600,21 @@ include_git_info_doc = (
     default=False,
     help=include_git_info_doc,
 )
+@click.option(
+    "--P/--NP",
+    "--preserve-env-instance-type/--no-preserve-env-instance-type",
+    "preserve_env_instance_type",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=None,
+    help=(
+        "When pushing a chain to an environment, whether to use the resources specified "
+        "in the chainlets definition to resolve the instance types or preserve the instance types "
+        "configured in the specified environment. It will be ignored if --environment is not specified. "
+        "Default is --preserve-env-instance-type."
+    ),
+)
 @log_level_option
 @error_handling
 def push_chain(
@@ -615,6 +630,7 @@ def push_chain(
     environment: Optional[str],
     experimental_watch_chainlet_names: Optional[str],
     include_git_info: bool = False,
+    preserve_env_instance_type: bool = True,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -650,6 +666,23 @@ def push_chain(
         )
         console.print(promote_warning, style="yellow")
 
+    # TODO extra check to methods and messags to constants
+    if preserve_env_instance_type is not None and not environment:
+        preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of `preserve-env-instance-type`"
+        console.print(preserve_env_warning, style="yellow")
+    if preserve_env_instance_type is None:
+        # If the flag is not specified, we set it to True by default. We handle the default here instead of in click.options
+        # to only print the warning above when the flag was specified by the user.
+        preserve_env_instance_type = True
+
+    if environment:
+        if preserve_env_instance_type:
+            preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and the current instance type of the '{environment}' environment will be used."
+            console.print(preserve_env_info)
+        else:
+            preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
+            console.print(preserve_env_info)
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -669,6 +702,7 @@ def push_chain(
             environment=environment,
             include_git_info=include_git_info,
             working_dir=source.parent if source.is_file() else source.resolve(),
+            preserve_env_instance_type=preserve_env_instance_type,
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
@@ -1317,7 +1351,9 @@ def run_python(script, target_directory):
 )
 @click.option("--tail", type=bool, is_flag=True)
 @click.option(
+    "--P/--NP",
     "--preserve-env-instance-type/--no-preserve-env-instance-type",
+    "preserve_env_instance_type",
     type=bool,
     is_flag=True,
     required=False,

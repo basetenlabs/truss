@@ -114,6 +114,7 @@ def create_chain_atomic(
     is_draft: bool,
     truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
+    preserve_env_instance_type: bool,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -149,6 +150,7 @@ def create_chain_atomic(
                 chain_id=chain_id,
                 environment=environment,
                 truss_user_env=truss_user_env,
+                preserve_env_instance_type=preserve_env_instance_type,
             )
         except ApiError as e:
             if (
@@ -164,6 +166,8 @@ def create_chain_atomic(
     elif environment and environment != PRODUCTION_ENVIRONMENT_NAME:
         raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
     else:
+        # Don't need to pass `preserve_env_instance_type` here, since
+        # it is only relevant for existing chains.
         res = api.deploy_chain_atomic(
             entrypoint=entrypoint,
             dependencies=dependencies,
