@@ -2,6 +2,8 @@ server {
     # We use the proxy_read_timeout directive here (instead of proxy_send_timeout) as it sets the timeout for reading a response from the proxied server vs. setting a timeout for sending a request to the proxied server.
     listen 8080;
     client_max_body_size {{client_max_body_size}};
+    proxy_buffering off;
+    proxy_set_header Connection "";
 
     # Liveness endpoint override
     location = / {
