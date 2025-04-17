@@ -97,7 +97,14 @@ class MetricsWatcher(TrainingPollerMixin):
 
     def create_metrics_table(self, metrics_data: Dict) -> Columns:
         """Create a Rich table with the metrics"""
-        tables = []
+        compute_table = self._create_compute_table(metrics_data)
+        storage_table = self._maybe_create_storage_table(metrics_data)
+        tables = [compute_table]
+        if storage_table:
+            tables.append(storage_table)
+        return Columns(tables, title="Training Job Metrics")
+
+    def _create_compute_table(self, metrics_data: Dict) -> Table:
         table = Table(title="Compute Metrics")
         table.add_column("Metric")
         table.add_column("Value")
@@ -150,8 +157,9 @@ class MetricsWatcher(TrainingPollerMixin):
         # Add separator before storage metrics
         if gpu_metrics or gpu_memory:
             table.add_section()
-        tables.append(table)
+        return table
 
+    def _maybe_create_storage_table(self, metrics_data: Dict) -> Optional[Table]:
         ephemeral_storage_metrics = metrics_data.get("ephemeral_storage")
         cache_storage_metrics = metrics_data.get("cache")
         if ephemeral_storage_metrics or cache_storage_metrics:
@@ -166,9 +174,8 @@ class MetricsWatcher(TrainingPollerMixin):
                 storage_table, "Cache Storage", cache_storage_metrics
             )
             if did_add_ephemeral or did_add_cache:
-                tables.append(storage_table)
-
-        return Columns(tables, title="Training Job Metrics")
+                return storage_table
+        return None
 
     def watch(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
         """Display continuously updating metrics"""
