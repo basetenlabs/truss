@@ -666,22 +666,18 @@ def push_chain(
         )
         console.print(promote_warning, style="yellow")
 
-    # TODO extra check to methods and messags to constants
-    if preserve_env_instance_type is not None and not environment:
-        preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of `preserve-env-instance-type`"
-        console.print(preserve_env_warning, style="yellow")
+    _warn_for_ignored_preserve_env_instance_type(
+        environment, preserve_env_instance_type
+    )
+
     if preserve_env_instance_type is None:
-        # If the flag is not specified, we set it to True by default. We handle the default here instead of in click.options
-        # to only print the warning above when the flag was specified by the user.
+        # If the flag is not specified, set it to True by default.
+        # Default handled here instead of in 'click.options'
+        # so warning is only printed when the flag was specified by
+        # the user.
         preserve_env_instance_type = True
 
-    if environment:
-        if preserve_env_instance_type:
-            preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and the current instance type of the '{environment}' environment will be used."
-            console.print(preserve_env_info)
-        else:
-            preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
-            console.print(preserve_env_info)
+    _output_preserve_env_instance_type(environment, preserve_env_instance_type)
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -1409,21 +1405,15 @@ def push(
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
 
-    if preserve_env_instance_type is not None and not environment:
-        preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of `preserve-env-instance-type`"
-        console.print(preserve_env_warning, style="yellow")
+    _warn_for_ignored_preserve_env_instance_type(
+        environment, preserve_env_instance_type
+    )
     if preserve_env_instance_type is None:
         # If the flag is not specified, we set it to True by default. We handle the default here instead of in click.options
         # to only print the warning above when the flag was specified by the user.
         preserve_env_instance_type = True
 
-    if environment:
-        if preserve_env_instance_type:
-            preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and the current instance type of the '{environment}' environment will be used."
-            console.print(preserve_env_info)
-        else:
-            preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
-            console.print(preserve_env_info)
+    _output_preserve_env_instance_type(environment, preserve_env_instance_type)
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
@@ -1658,6 +1648,26 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
     return load(truss_dir)
+
+
+def _output_preserve_env_instance_type(
+    environment: Optional[str], preserve_env_instance_type: bool
+):
+    if environment:
+        if preserve_env_instance_type:
+            preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and instance type of the '{environment}' environment will be used."
+            console.print(preserve_env_info)
+        else:
+            preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
+            console.print(preserve_env_info)
+
+
+def _warn_for_ignored_preserve_env_instance_type(
+    environment: Optional[str], preserve_env_instance_type: bool
+):
+    if preserve_env_instance_type is not None and not environment:
+        preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of 'preserve-env-instance-type'"
+        console.print(preserve_env_warning, style="yellow")
 
 
 truss_cli.add_command(container)
