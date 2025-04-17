@@ -118,7 +118,7 @@ def create_chain_atomic(
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
-            f"Automatically publishing Chain `{chain_name}` based on "
+            f"Automatically publishing Chain '{chain_name}' based on "
             "environment setting."
         )
         is_draft = False
@@ -158,7 +158,7 @@ def create_chain_atomic(
                 == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
             ):
                 raise ValueError(
-                    f"Environment `{environment}` does not exist. You can "
+                    f"Environment '{environment}' does not exist. You can "
                     f"create environments in the Chains UI."
                 ) from e
 
@@ -432,7 +432,7 @@ def create_truss_service(
             == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
         ):
             raise ValueError(
-                f"Environment `{environment}` does not exist. You can create "
+                f"Environment '{environment}' does not exist. You can create "
                 "environments in the Baseten UI."
             ) from e
         raise e

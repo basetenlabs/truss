@@ -161,7 +161,7 @@ class BasetenRemote(TrussRemote):
 
         if not promote and preserve_previous_prod_deployment:
             raise ValueError(
-                "preserve-previous-production-deployment can only be used "
+                "'preserve-previous-production-deployment' can only be used "
                 "with the '--promote' option"
             )
 
@@ -173,7 +173,7 @@ class BasetenRemote(TrussRemote):
         model_id = exists_model(self._api, model_name)
 
         if model_id is not None and disable_truss_download:
-            raise ValueError("disable-truss-download can only be used for new models")
+            raise ValueError("'disable-truss-download' can only be used for new models")
 
         temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
@@ -328,7 +328,7 @@ class BasetenRemote(TrussRemote):
             dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
                 raise RemoteError(
-                    "No development model found. Run `truss push` then try again."
+                    "No development model found. Run 'truss push' then try again."
                 )
             return dev_version
 
@@ -336,7 +336,7 @@ class BasetenRemote(TrussRemote):
         prod_version = get_prod_version_from_versions(model_versions)
         if not prod_version:
             raise RemoteError(
-                "No production model found. Run `truss push --publish` then try again."
+                "No production model found. Run 'truss push --publish' then try again."
             )
         return prod_version
 
@@ -421,7 +421,7 @@ class BasetenRemote(TrussRemote):
         dev_version = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
         if not dev_version:
             raise RemoteError(
-                "No development model found. Run `truss push` then try again."
+                "No development model found. Run 'truss push' then try again."
             )
 
         watch_path = Path(target_directory)
@@ -545,7 +545,7 @@ class BasetenRemote(TrussRemote):
             if needs_full_deploy:
                 message = (
                     f"Model {model_name} is not able to be patched: `{resp['error']}`. "
-                    f"Use `truss push` to deploy."
+                    f"Use 'truss push' to deploy."
                 )
             else:
                 message = (
