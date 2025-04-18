@@ -335,7 +335,6 @@ async def test_websocket_chain(anyio_backend):
             url = service.run_remote_url.replace("http", "ws").replace(
                 "v1/models/model:predict", "v1/websocket"
             )
-            time.sleep(0.3)  # Wait for server to be up.
             async with websockets.connect(url) as websocket:
                 await websocket.send("Test")
                 response = await websocket.recv()
@@ -388,3 +387,40 @@ HTTPException: 422: \(showing chained remote errors, root error at the bottom\)
                 )
                 == 1
             )
+
+
+@pytest.mark.integration
+async def test_throttling_chain(anyio_backend):
+    with ensure_kill_all():
+        chain_name = "throttling_chain"
+        chain_root = TEST_ROOT / chain_name / f"{chain_name}.py"
+        with framework.ChainletImporter.import_target(chain_root) as entrypoint:
+            service = deployment_client.push_debug_docker(entrypoint, chain_name)
+            assert service is not None
+            time.sleep(1.0)  # Wait for models to be ready.
+
+            # Call dependency below load limit.
+            response = service.run_remote({"num_requests": 2})
+            assert response.status_code == 200
+            runtime = response.json()
+            assert 0.5 <= runtime <= 0.53
+
+            response = service.run_remote({"num_requests": 4})
+            assert response.status_code == 200
+            runtime = response.json()
+            assert 0.5 <= runtime <= 0.53
+
+            time.sleep(0.5)  # Wait for log propagation.
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert "No queueing" in container_logs
+            assert "Queueing calls to `Dependency`" not in container_logs
+
+            # Now "overload" dependency.
+            response = service.run_remote({"num_requests": 8})
+            assert response.status_code == 200
+            runtime = response.json()
+            assert 1.0 <= runtime <= 1.3
+
+            time.sleep(0.5)  # Wait for log propagation.
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert "Queueing calls to `Dependency`" in container_logs

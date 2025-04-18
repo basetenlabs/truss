@@ -725,6 +725,11 @@ def _gen_truss_config(
     config.model_metadata = cast(dict[str, Any], remote_config.options.metadata) or {}
     config.environment_variables = dict(remote_config.options.env_variables)
 
+    if remote_config.docker_image.truss_server_version_override:
+        config.runtime.truss_server_version_override = (
+            remote_config.docker_image.truss_server_version_override
+        )
+
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
         config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
         truss_config.TrussConfig.model_validate(config)
