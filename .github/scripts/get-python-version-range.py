@@ -1,3 +1,4 @@
+import os
 import sys
 
 import tomlkit
@@ -16,5 +17,7 @@ matching = sorted([v for v in candidates if v in specifier])
 if not matching:
     sys.exit("::error ::No Python versions match the constraint!")
 
-print(f"::set-output name=min_supported_python_version::{matching[0]}")
-print(f"::set-output name=max_supported_python_version::{matching[-1]}")
+output_path = os.environ["GITHUB_OUTPUT"]
+with open(output_path, "a") as f:
+    f.write(f"min_supported_python_version={matching[0]}\n")
+    f.write(f"max_supported_python_version={matching[-1]}\n")
