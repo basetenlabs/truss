@@ -25,7 +25,7 @@ jobs:
 
   truss-integration-tests:
     needs: determine-python-versions
-    runs-on: ubuntu-22.04
+    runs-on: truss-runner
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +62,7 @@ jobs:
 
   chains-integration-tests:
     needs: determine-python-versions
-    runs-on: ubuntu-22.04
+    runs-on: truss-runner
     strategy:
       fail-fast: false
       matrix:
