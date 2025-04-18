@@ -5,7 +5,7 @@ import logging
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 from urllib.error import HTTPError
 
 import requests
@@ -14,7 +14,6 @@ from requests import exceptions
 from requests.exceptions import ConnectionError
 from requests.models import Response
 from tenacity import (
-    RetryError,
     Retrying,
     retry,
     retry_if_exception_type,
@@ -74,6 +73,10 @@ from truss.util.path import (
     load_trussignore_patterns,
 )
 
+if TYPE_CHECKING:
+    from python_on_whales.components.container.cli_wrapper import Container
+
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 if is_notebook_or_ipython():
@@ -94,6 +97,26 @@ class RunningContainer:
         from python_on_whales import docker
 
         return docker.wait(self.container)
+
+
+class DockerURLs:
+    def __init__(self, base_url):
+        self.base_url = base_url
+
+        self.predict_url = f"{base_url}/v1/models/model:predict"
+        self.completions_url = f"{base_url}/v1/completions"
+        self.chat_completions_url = f"{base_url}/v1/chat/completions"
+
+        self.schema_url = f"{base_url}/v1/models/model/schema"
+        self.metrics_url = f"{base_url}/metrics"
+
+        self.patch_url = f"{base_url}/control/patch"
+        self.hash_url = f"{base_url}/control/truss_hash"
+        self.has_partially_applied_patch_url = (
+            f"{base_url}/control/has_partially_applied_patch"
+        )
+
+        self.websockets_url = f"{base_url}/v1/websocket".replace("http", "ws")
 
 
 class TrussHandle:
@@ -126,20 +149,16 @@ class TrussHandle:
         ),
     )
     def _wait_for_predict(
-        model_base_url: str, request: Dict, binary: bool = False
+        urls: DockerURLs, request: Dict, binary: bool = False
     ) -> Response:
-        url = f"{model_base_url}/v1/models/model:predict"
-
         if binary:
             binary_data = truss_msgpack_serialize(request)
-
             return requests.post(
-                url,
+                urls.predict_url,
                 data=binary_data,
                 headers={"Content-Type": "application/octet-stream"},
             )
-
-        return requests.post(url, json=request)
+        return requests.post(urls.predict_url, json=request)
 
     @proxy_to_shadow_if_scattered
     def build_docker_build_context(self, build_dir: Optional[Path] = None):
@@ -234,7 +253,7 @@ class TrussHandle:
         self,
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
-        local_port: int = INFERENCE_SERVER_PORT,
+        local_port: Optional[int] = INFERENCE_SERVER_PORT,
         detach=True,
         patch_ping_url: Optional[str] = None,
         wait_for_server_ready: bool = True,
@@ -250,7 +269,7 @@ class TrussHandle:
         Args:
             build_dir: Directory to use for creating docker build context.
             tag: Tags to apply to docker image.
-            local_port: Local port to forward inference server to.
+            local_port: Local port to forward inference server to, if `None` any free is chosen.
             detach: Run docker container in detached mode.
             patch_ping_url:  Mostly for testing, if supplied then a live
                              reload capable truss queries for truss changes
@@ -266,6 +285,7 @@ class TrussHandle:
         """
         from python_on_whales.exceptions import DockerException
 
+        container: Union[Container, str]
         container_if_patched = self._try_patch()
         if container_if_patched is not None:
             container = container_if_patched
@@ -274,7 +294,11 @@ class TrussHandle:
                 build_dir=build_dir, tag=tag, network=network
             )
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
-            publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
+            publish_ports = (
+                [[local_port, INFERENCE_SERVER_PORT]]
+                if local_port is not None
+                else [[0, INFERENCE_SERVER_PORT]]
+            )
 
             # We are going to try running a new container, make sure previous one is gone
             self.kill_container()
@@ -332,16 +356,14 @@ class TrussHandle:
                 logger.warning("No GPU is available to docker. Running without a GPU.")
                 container = _run_docker(None)
 
+            urls = get_docker_urls(container)
             logger.info(
-                f"Model server started on port {local_port}, docker container id {container.id}"
+                f"Model server started on `{urls.base_url}`, docker container id {container}"
             )
-        model_base_url = f"http://localhost:{local_port}/v1/models/model"
+
         try:
             wait_for_truss(
-                model_base_url,
-                container,
-                wait_for_server_ready,
-                model_server_stop_retry_override,
+                container, wait_for_server_ready, model_server_stop_retry_override
             )
         except ContainerNotFoundError as err:
             raise err
@@ -350,6 +372,18 @@ class TrussHandle:
             raise err
 
         return container
+
+    def docker_run_for_test(
+        self, wait_for_server_ready=True, model_server_stop_retry_override=None
+    ) -> tuple["Container", DockerURLs]:
+        container = self.docker_run(
+            local_port=None,
+            detach=True,
+            wait_for_server_ready=wait_for_server_ready,
+            network="host",
+            model_server_stop_retry_override=model_server_stop_retry_override,
+        )
+        return container, get_docker_urls(container)
 
     def predict(
         self,
@@ -385,7 +419,7 @@ class TrussHandle:
         request: Dict,
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
-        local_port: int = INFERENCE_SERVER_PORT,
+        local_port: Optional[int] = INFERENCE_SERVER_PORT,
         detach: bool = True,
         patch_ping_url: Optional[str] = None,
         binary: bool = False,
@@ -419,10 +453,10 @@ class TrussHandle:
                 detach=detach,
                 patch_ping_url=patch_ping_url,
                 network=network,
+                wait_for_server_ready=True,
             )
-        model_base_url = _get_url_from_container(container)
-
-        resp = TrussHandle._wait_for_predict(model_base_url, request, binary)
+        urls = get_docker_urls(container)
+        resp = TrussHandle._wait_for_predict(urls, request, binary)
 
         if resp.status_code == 500:
             raise requests.exceptions.HTTPError("500 error", response=resp)
@@ -625,7 +659,7 @@ class TrussHandle:
     @proxy_to_shadow_if_scattered
     def get_serving_docker_containers_from_labels(
         self, all: bool = False, labels: Optional[dict] = None
-    ) -> list:
+    ) -> list["Container"]:
         """Get serving docker containers, with given labels.
 
         Args:
@@ -640,12 +674,13 @@ class TrussHandle:
 
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
-    def get_running_serving_container_ignore_hash(self):
+    def get_running_serving_container_ignore_hash(self) -> Optional["Container"]:
         containers = self.get_serving_docker_containers_from_labels(
             labels={TRUSS_DIR: str(self._truss_dir)}
         )
         if containers is not None and len(containers) > 0:
             return containers[0]
+        return None
 
     @proxy_to_shadow_if_scattered
     def kill_container(self):
@@ -697,11 +732,8 @@ class TrussHandle:
             raise ValueError(
                 "Only running trusses can be patched: no running containers found for this truss."
             )
-
-        model_base_url = _get_url_from_container(container)
-        resp = requests.post(
-            f"{model_base_url}/control/patch", json=patch_request.to_dict()
-        )
+        urls = get_docker_urls(container)
+        resp = requests.post(urls.patch_url, json=patch_request.to_dict())
         resp.raise_for_status()
         return resp.json()
 
@@ -718,8 +750,9 @@ class TrussHandle:
             )
 
         container = self.get_running_serving_container_ignore_hash()
-        model_base_url = _get_url_from_container(container)
-        resp = requests.get(f"{model_base_url}/control/truss_hash")
+        assert container
+        urls = get_docker_urls(container)
+        resp = requests.get(urls.hash_url)
         resp.raise_for_status()
         respj = resp.json()
         if "error" in respj:
@@ -741,8 +774,9 @@ class TrussHandle:
             raise ValueError("Not a control truss, operation not supported.")
 
         container = self.get_running_serving_container_ignore_hash()
-        model_base_url = _get_url_from_container(container)
-        resp = requests.get(f"{model_base_url}/control/has_partially_applied_patch")
+        assert container
+        urls = get_docker_urls(container)
+        resp = requests.get(urls.has_partially_applied_patch_url)
         resp.raise_for_status()
         respj = resp.json()
         if "error" in respj:
@@ -903,7 +937,7 @@ class TrussHandle:
         config.write_to_yaml_file(self._spec.config_path)
         self._spec = TrussSpec(self._truss_dir)  # Reload.
 
-    def _try_patch(self):
+    def _try_patch(self) -> Optional["Container"]:
         if not self.is_control_truss:
             return None
 
@@ -984,7 +1018,7 @@ class TrussHandle:
                     )
 
     def _validate_extensions(self):
-        # Only one extenstion right now.
+        # Only one extension right now.
         if self._spec.config.trt_llm is not None:
             validate(self._spec)
 
@@ -1001,7 +1035,9 @@ def _prediction_flow(model, request: Dict):
 
 
 def _wait_for_docker_build(container) -> None:
-    for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
+    for attempt in Retrying(
+        stop=stop_after_attempt(5), wait=wait_fixed(2), reraise=True
+    ):
         state = get_container_state(container)
         logger.info(f"Container state: {state}")
         if state == DockerStates.OOMKILLED or state == DockerStates.DEAD:
@@ -1011,7 +1047,7 @@ def _wait_for_docker_build(container) -> None:
                 raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
 
 
-def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:  # type: ignore[return]
+def _wait_for_model_server(url: str, stop: stop_after_delay) -> Response:  # type: ignore[return]
     for attempt in Retrying(
         stop=stop,
         wait=wait_fixed(2),
@@ -1019,6 +1055,7 @@ def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:  #
             retry_if_result(lambda response: response.status_code in [502, 503])
             | retry_if_exception_type(exceptions.ConnectionError)
         ),
+        reraise=True,
     ):
         with attempt:
             response = requests.get(url)
@@ -1026,8 +1063,7 @@ def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:  #
 
 
 def wait_for_truss(
-    url: str,
-    container: str,
+    container: Union[str, "Container"],
     wait_for_server_ready: bool = True,
     model_server_stop_retry_override=None,
 ) -> None:
@@ -1035,15 +1071,17 @@ def wait_for_truss(
 
     try:
         _wait_for_docker_build(container)
-        if wait_for_server_ready:
-            if model_server_stop_retry_override is not None:
-                _wait_for_model_server(url, stop=model_server_stop_retry_override)
-            else:
-                _wait_for_model_server(url)
+        urls = get_docker_urls(container)
     except NoSuchContainer:
         raise ContainerNotFoundError(message=f"Container {container} was not found")
-    except RetryError as retry_err:
-        retry_err.reraise()
+
+    if wait_for_server_ready:
+        if model_server_stop_retry_override is None:
+            stop = stop_after_delay(120)
+        else:
+            stop = model_server_stop_retry_override
+
+        _wait_for_model_server(urls.predict_url, stop)
 
 
 def _prepare_secrets_mount_dir() -> Path:
@@ -1058,8 +1096,9 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
     return None
 
 
-def _get_url_from_container(container) -> str:
-    return get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
+def get_docker_urls(container: Union[str, "Container"]) -> DockerURLs:
+    base_url = get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
+    return DockerURLs(base_url)
 
 
 def _create_rand_dir_in_dot_truss(subdir: str) -> Path:

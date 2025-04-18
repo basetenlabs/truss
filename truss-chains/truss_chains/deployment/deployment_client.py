@@ -34,7 +34,7 @@ from truss.remote.baseten import service as b10_service
 from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
-from truss_chains import framework, private_types, public_types, utils
+from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import code_gen
 
 if TYPE_CHECKING:
@@ -243,9 +243,7 @@ def push_debug_docker(
 class DockerChainletService(b10_service.TrussService):
     """This service is for Chainlets (not for Chains)."""
 
-    def __init__(self, port: int, **kwargs):
-        remote_url = f"http://localhost:{port}"
-
+    def __init__(self, remote_url: str, **kwargs):
         super().__init__(remote_url, is_draft=False, **kwargs)
 
     def authenticate(self) -> Dict[str, str]:
@@ -279,18 +277,18 @@ def _push_service_docker(
     truss_dir: pathlib.Path,
     chainlet_display_name: str,
     options: private_types.PushOptionsLocalDocker,
-    port: int,
-) -> None:
+) -> str:
     th = truss_handle.TrussHandle(truss_dir)
     th.add_secret(public_types._BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
-    th.docker_run(
-        local_port=port,
+    container = th.docker_run(
+        local_port=None,
         detach=True,
         wait_for_server_ready=True,
         network="host",
         container_name_prefix=chainlet_display_name,
         disable_json_logging=True,
     )
+    return truss_handle.get_docker_urls(container).base_url
 
 
 class DockerChainService(ChainService):
@@ -331,29 +329,27 @@ def _create_docker_chain(
     chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
     chainlet_to_service: Dict[str, DockerChainletService] = {}
     for chainlet_artifact in chainlet_artifacts:
-        port = utils.get_free_port()
-        service = DockerChainletService(port)
+        local_config_handler.LocalConfigHandler.set_dynamic_config(
+            private_types.DYNAMIC_CHAINLET_CONFIG_KEY,
+            json.dumps(chainlet_to_predict_url),
+        )
+        logging.info(
+            f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
+        )
+        base_url = _push_service_docker(
+            chainlet_artifact.truss_dir, chainlet_artifact.display_name, docker_options
+        )
+
+        service = DockerChainletService(base_url)
 
         docker_internal_url = service.predict_url.replace(
-            "localhost", "host.docker.internal"
+            "0.0.0.0", "host.docker.internal"
         )
         chainlet_to_predict_url[chainlet_artifact.display_name] = {
             "predict_url": docker_internal_url
         }
         chainlet_to_service[chainlet_artifact.name] = service
 
-        local_config_handler.LocalConfigHandler.set_dynamic_config(
-            private_types.DYNAMIC_CHAINLET_CONFIG_KEY,
-            json.dumps(chainlet_to_predict_url),
-        )
-
-        truss_dir = chainlet_artifact.truss_dir
-        logging.info(
-            f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
-        )
-        _push_service_docker(
-            truss_dir, chainlet_artifact.display_name, docker_options, port
-        )
         logging.info(
             f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
         )

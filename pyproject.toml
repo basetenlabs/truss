@@ -71,8 +71,7 @@ truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup
 #  isolated.
 [tool.poetry.dependencies]
 # "base" dependencies.
-# "When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
-python = ">=3.9,<3.13"
+python = ">=3.9,<=3.12.2"
 huggingface_hub = ">=0.25.0"
 pydantic = ">=2.10.0"
 PyYAML = ">=6.0"

@@ -1,20 +1,39 @@
 name: "Setup Python"
 description: "setups python, poetry and associated cache"
-
+inputs:
+  python-version:
+    description: Python version to setup
+    required: false
 
 runs:
   using: "composite"
   steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.9.21'
+    - name: Determine Python version
+      id: determine-version
+      shell: bash
+      run: |
+        if [[ -n "${{ inputs.python-version }}" ]]; then
+          echo "version=${{ inputs.python-version }}" >> "$GITHUB_OUTPUT"
+        else
+          fallback_version=$(grep '^python ' .tool-versions | cut -d' ' -f2)
+          if [[ -z "$fallback_version" ]]; then
+            echo "Failed to extract python version from .tool-versions" >&2
+            exit 1
+          fi
+          echo "version=$fallback_version" >> "$GITHUB_OUTPUT"
+        fi
 
-    - name: Get full Python version
-      id: full-python-version
+    - name: Install Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ steps.determine-version.outputs.version }}
+
+    - name: Show Python version
       shell: bash
       run: echo "version=$(python -c 'import sys; print(\"-\".join(str(v) for v in sys.version_info))')" >> $GITHUB_ENV
 
-    - run: curl -sSL https://install.python-poetry.org | python3 -
+    - name: Install Poetry
+      run: curl -sSL https://install.python-poetry.org | python3 -
       shell: bash
 
     - name: Configure poetry
