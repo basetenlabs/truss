@@ -61,3 +61,5 @@ jobs:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
     if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
     uses: ./.github/workflows/_integration_test_shared.yml
+    with:
+      run_only_integration: true
