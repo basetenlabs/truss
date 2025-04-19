@@ -4,7 +4,6 @@ import inspect
 import logging
 import os
 import random
-import socket
 from typing import Any, Iterable, Iterator, TypeVar, Union
 
 import pydantic
@@ -111,14 +110,6 @@ def expect_one(it: Iterable[T]) -> T:
         return element
 
     raise ValueError("Iterable has more than one element.")
-
-
-def get_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))  # Bind to a free port provided by the host.
-        s.listen(1)  # Not necessary but included for completeness.
-        port = s.getsockname()[1]  # Retrieve the port number assigned.
-        return port
 
 
 ########################################################################################

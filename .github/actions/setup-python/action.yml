@@ -1,13 +1,16 @@
 name: "Setup Python"
 description: "setups python, poetry and associated cache"
-
+inputs:
+  python-version:
+    description: Python version to setup
+    required: true
 
 runs:
   using: "composite"
   steps:
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.9.21'
+        python-version: ${{ inputs.python-version }}
 
     - name: Get full Python version
       id: full-python-version
