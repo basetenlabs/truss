@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,7 @@ from truss.base.constants import (
     SERVER_REQUIREMENTS_TXT_FILENAME,
     SHARED_SERVING_AND_TRAINING_CODE_DIR,
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+    SUPPORTED_PYTHON_VERSIONS,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
@@ -726,6 +728,7 @@ class ServingImageBuilder(ImageBuilder):
             should_install_user_requirements_file=should_install_user_requirements_file,
             config=config,
             python_version=python_version,
+            control_python_version=SUPPORTED_PYTHON_VERSIONS[-1],  # Use highest.
             live_reload=config.live_reload,
             data_dir_exists=data_dir.exists(),
             model_dir_exists=model_dir.exists(),
@@ -746,6 +749,9 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             **FILENAME_CONSTANTS_MAP,
         )
-
+        # Consolidate repeated empty lines to single empty lines.
+        dockerfile_contents = re.sub(
+            r"(\r?\n){3,}", r"\n\n", dockerfile_contents
+        ).strip()
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
