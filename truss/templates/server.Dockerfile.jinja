@@ -1,25 +1,3 @@
-{%- macro ensure_python_version_for_control(version) -%}
-{#
-# Macro to ensure a specific Python version (e.g., python3.10) interpreter is available.
-# Installs interpreter from deadsnakes PPA if not found.
-# Venv package installation is handled in a separate RUN step.
-#}
-ENV CONDA_DIR=/opt/conda-control
-RUN if ! command -v python{{ version }} > /dev/null; then \
-    echo "Python {{ version }} not found, installing via Miniforge..."; \
-    curl -fsSL -o miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh && \
-    bash miniforge.sh -b -p ${CONDA_DIR} && \
-    rm miniforge.sh && \
-    ${CONDA_DIR}/bin/conda install -y python={{ version }} && \
-    ln -s ${CONDA_DIR}/bin/python /usr/local/bin/python{{ version }} && \
-    ln -s ${CONDA_DIR}/bin/pip /usr/local/bin/pip{{ version }} && \
-    ${CONDA_DIR}/bin/conda clean -afy && \
-    rm -rf ${CONDA_DIR}/pkgs; \
-else \
-    echo "Python {{ version }} already present, skipping install."; \
-fi
-{%- endmacro -%} {#- endmacro ensure_python_version_for_control #}
-
 {%- if model_cache_v1 %}
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %} {#- endif model_cache_v1 #}
@@ -51,7 +29,7 @@ RUN pip install -r {{ base_server_requirements_filename }} --no-cache-dir && rm 
 
     {%- if config.live_reload and not config.docker_server %}
     {# Create symlink for inference server IF a user base image is supplied and live_reload is enabled. #}
-    {# This links the base image's primary python executable path to /usr/local/bin/python. #}
+    {# This links the base images primary python executable path to /usr/local/bin/python. #}
     {# This is specific to the user-provided base image scenario. #}
 RUN readlink {{ config.base_image.python_executable_path }} &>/dev/null \
     && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
@@ -114,10 +92,25 @@ COPY ./truss /app/truss
 COPY ./config.yaml /app/config.yaml
     {%- if config.live_reload and not config.docker_server %}
 COPY ./control /control
-{{ ensure_python_version_for_control(control_python_version) }}
-RUN python{{ version }} -m pip install virtualenv && \
-    python{{ version }} -m virtualenv /control/.env && \
-    /control/.env/bin/pip install -r /control/requirements.txt
+# Step 1: Ensure a usable python{{ control_python_version }} is available
+RUN if python{{ control_python_version }} -c 'import venv; venv.EnvBuilder(with_pip=True).create("/tmp/__probe_env")' > /dev/null 2>&1; then \
+      echo "Using system python{{ control_python_version }}"; \
+      python{{ control_python_version }} -m pip install --upgrade pip virtualenv && \
+      python{{ control_python_version }} -m virtualenv /control/.env; \
+    else \
+      echo "Installing Miniforge-based python{{ control_python_version }}..."; \
+      curl -fsSL -o miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh && \
+      bash miniforge.sh -b -p /opt/conda-control && \
+      rm miniforge.sh && \
+      /opt/conda-control/bin/conda create -y -p /opt/conda-control/envs/py{{ control_python_version }} python={{ control_python_version }} && \
+      /opt/conda-control/envs/py{{ control_python_version }}/bin/pip install --upgrade pip virtualenv && \
+      /opt/conda-control/bin/conda clean -afy && \
+      rm -rf /opt/conda-control/pkgs && \
+      /opt/conda-control/envs/py{{ control_python_version }}/bin/python -m virtualenv /control/.env; \
+    fi
+
+# Step 2: Install requirements into the freshly created venv
+RUN /control/.env/bin/pip install -r /control/requirements.txt
     {%- endif %} {#- endif config.live_reload and not config.docker_server (for control server setup) #}
 {%- if model_dir_exists %}
 COPY ./{{ config.model_module_dir }} /app/model

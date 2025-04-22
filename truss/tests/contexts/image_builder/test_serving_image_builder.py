@@ -46,7 +46,9 @@ def test_serving_image_dockerfile_from_user_base_image(
 
         # Remove both empty lines + comments
         def filter_unneeded_lines(lines):
-            return [x for x in lines if x.strip() and not x.strip().startswith("#")]
+            return [
+                x.strip() for x in lines if x.strip() and not x.strip().startswith("#")
+            ]
 
         gen_docker_lines = filter_unneeded_lines(gen_docker_lines)
         server_docker_lines = filter_unneeded_lines(server_docker_lines)
