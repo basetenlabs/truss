@@ -177,7 +177,7 @@ if __name__ == "__main__":
     if args.python_version == "all":
         python_versions = SUPPORTED_PYTHON_VERSIONS
     else:
-        python_versions = args.python_version
+        python_versions = [args.python_version]
 
     if args.job_type == "all":
         job_types = ["server"]
