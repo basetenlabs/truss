@@ -1455,7 +1455,7 @@ def test_truss_with_requests_and_invalid_signatures():
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.0)  # Wait for logs.
+        time.sleep(1.5)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
             "`predict` method with two arguments must have request as second argument",
@@ -1470,7 +1470,7 @@ def test_truss_with_requests_and_invalid_signatures():
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.0)  # Wait for logs.
+        time.sleep(1.5)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
             "`predict` method with two arguments is not allowed to have request as "
@@ -1486,7 +1486,7 @@ def test_truss_with_requests_and_invalid_signatures():
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.0)  # Wait for logs.
+        time.sleep(1.5)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
             "`predict` method cannot have more than two arguments",

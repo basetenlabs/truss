@@ -170,7 +170,7 @@ if __name__ == "__main__":
         "--skip-login",
         action=BooleanOptionalAction,
         default=False,
-        help="Skip docker login even if push is specire",
+        help="Skip docker login even if push is specified.",
     )
 
     args = parser.parse_args()
