@@ -6,7 +6,7 @@ import sys
 import tempfile
 from argparse import ArgumentParser, BooleanOptionalAction  # type: ignore
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Iterable, List, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -105,22 +105,13 @@ def _build(
 
 
 def _build_all(
-    job_types: Optional[List[str]] = None,
-    python_versions: Optional[Set[str]] = None,
-    use_gpu_values: Optional[List[bool]] = None,
+    job_types: Iterable[str] = ("server",),
+    python_versions: Iterable[str] = SUPPORTED_PYTHON_VERSIONS,
+    use_gpu_values: Iterable[bool] = (True, False),
     push: bool = False,
     version_tag: Optional[str] = None,
     dry_run: bool = False,
 ):
-    if job_types is None:
-        job_types = ["server"]
-
-    if python_versions is None:
-        python_versions = SUPPORTED_PYTHON_VERSIONS
-
-    if use_gpu_values is None:
-        use_gpu_values = [True, False]
-
     for job_type in job_types:
         for python_version in python_versions:
             for use_gpu in use_gpu_values:
@@ -186,7 +177,7 @@ if __name__ == "__main__":
     if args.python_version == "all":
         python_versions = SUPPORTED_PYTHON_VERSIONS
     else:
-        python_versions = {args.python_version}
+        python_versions = [args.python_version]
 
     if args.job_type == "all":
         job_types = ["server"]
