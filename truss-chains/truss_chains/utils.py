@@ -182,3 +182,12 @@ def get_pydantic_field_default_value(
     if field_info.default_factory is not None:
         return field_info.default_factory()  #  type: ignore[call-arg]
     return None
+
+
+def make_optional_import_error(module_name: str) ->public_types.ChainsRuntimeError:
+    public_types.ChainsRuntimeError(
+        f"Could not import `{module_name}`. For chains CLI (truss package) this is an "
+        "optional dependency. In deployed chainlets this dependency is "
+        "automatically added. If you happen to run into this error, "
+        f"install `{module_name}` manually."
+    )

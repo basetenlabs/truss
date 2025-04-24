@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncIterator,
     ClassVar,
@@ -20,21 +21,25 @@ from typing import (
     overload,
 )
 
-import aiohttp
 import httpx
 import pydantic
 import tenacity
 
 from truss.templates.shared import serialization
 from truss_chains import private_types, public_types
+from truss_chains import utils as chains_utils
 from truss_chains.remote_chainlet import utils
+
+if TYPE_CHECKING:
+    import aiohttp
+
 
 _RetryPolicyT = TypeVar("_RetryPolicyT", tenacity.AsyncRetrying, tenacity.Retrying)
 InputT = TypeVar("InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
 OutputModelT = TypeVar("OutputModelT", bound=pydantic.BaseModel)
 
 
-async def _safe_close(session: aiohttp.ClientSession, timeout_sec: float) -> None:
+async def _safe_close(session: "aiohttp.ClientSession", timeout_sec: float) -> None:
     try:
         await asyncio.wait_for(session.close(), timeout=timeout_sec)
     except asyncio.TimeoutError:
@@ -52,7 +57,7 @@ class BasetenSession:
     _service_descriptor: public_types.DeployedServiceDescriptor
     _client_limits: httpx.Limits
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
-    _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
+    _cached_async_client: Optional[tuple["aiohttp.ClientSession", int]]
     _sync_lock: threading.Lock
     _async_lock: asyncio.Lock
     _sync_semaphore_wrapper: utils.ThreadSemaphoreWrapper
@@ -147,7 +152,12 @@ class BasetenSession:
             yield client
 
     @contextlib.asynccontextmanager
-    async def _client_async(self) -> AsyncIterator[aiohttp.ClientSession]:
+    async def _client_async(self) -> AsyncIterator["aiohttp.ClientSession"]:
+        try:
+            import aiohttp
+        except ImportError:
+            raise chains_utils.make_optional_import_error("aiohttp")
+
         # Check `_client_cycle_needed` before and after locking to avoid
         # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_async_client):
@@ -370,7 +380,7 @@ class StubBase(BasetenSession, abc.ABC):
         params = self._make_request_params(inputs)
 
         async def _rpc() -> bytes:
-            client: aiohttp.ClientSession
+            client: "aiohttp.ClientSession"
             async with self._client_async() as client:
                 async with client.post(self._target_url, **params) as response:
                     await utils.async_response_raise_errors(response, self.name)
@@ -395,7 +405,7 @@ class StubBase(BasetenSession, abc.ABC):
         params = self._make_request_params(inputs)
 
         async def _rpc() -> AsyncIterator[bytes]:
-            client: aiohttp.ClientSession
+            client: "aiohttp.ClientSession"
             async with self._client_async() as client:
                 response = await client.post(self._target_url, **params)
                 await utils.async_response_raise_errors(response, self.name)
