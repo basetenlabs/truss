@@ -25,10 +25,16 @@ class Compute(custom_types.SafeModel):
         return data
 
 
+class CheckpointingConfig(custom_types.SafeModel):
+    enabled: bool = False
+    checkpoint_path: Optional[str] = None
+
+
 class Runtime(custom_types.SafeModel):
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: bool = False
+    checkpointing_config: CheckpointingConfig = CheckpointingConfig()
 
 
 class Image(custom_types.SafeModel):
