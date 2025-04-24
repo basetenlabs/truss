@@ -13,6 +13,7 @@ import time
 import traceback
 from collections.abc import AsyncIterator
 from typing import (
+    TYPE_CHECKING,
     Any,
     Generic,
     Iterator,
@@ -24,14 +25,44 @@ from typing import (
     Union,
 )
 
-import aiohttp
-import fastapi
 import httpx
-import prometheus_client
 import pydantic
 
 from truss.templates.shared import dynamic_config_resolver
-from truss_chains import private_types, public_types
+from truss_chains import private_types, public_types, utils
+
+if TYPE_CHECKING:
+    import aiohttp
+    import fastapi
+
+try:
+    import prometheus_client
+except ImportError:
+    logging.warning("Optional `prometheus_client` is not installed. ")
+
+    class _NoOpMetric:
+        def labels(self, *args: object, **kwargs: object) -> "_NoOpMetric":
+            return self
+
+        def inc(self, amount: float = 1.0) -> None:
+            pass
+
+        def dec(self, amount: float = 1.0) -> None:
+            pass
+
+        def set(self, value: float) -> None:
+            pass
+
+        def observe(self, value: float) -> None:
+            pass
+
+    class prometheus_client:  # type: ignore[no-redef]
+        def Gauge(*args, **kwargs) -> _NoOpMetric:
+            return _NoOpMetric()
+
+        def Counter(*args, **kwargs) -> _NoOpMetric:
+            return _NoOpMetric()
+
 
 T = TypeVar("T")
 
@@ -352,6 +383,11 @@ def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseM
 
 def _handle_exception(exception: Exception) -> NoReturn:
     """Raises `HTTPException` with `RemoteErrorDetail`."""
+    try:
+        import fastapi
+    except ImportError:
+        raise utils.make_optional_import_error("fastapi")
+
     if hasattr(exception, "__module__"):
         exception_module_name = exception.__module__
     else:
@@ -366,7 +402,7 @@ def _handle_exception(exception: Exception) -> NoReturn:
         if frame.filename.endswith("model/model.py") and frame.name == "predict":
             model_predict_index = i + 1
         if frame.filename.endswith("remote_chainlet/stub.py") and frame.name.startswith(
-            "predict"  # predict sycnc|async|stream.
+            "predict"  # predict sync|async|stream.
         ):
             first_stub_index = i - 1
             break
@@ -419,6 +455,11 @@ def _resolve_exception_class(error: public_types.RemoteErrorDetail) -> Type[Exce
 
 
 def _handle_response_error(response_json: dict, base_msg: str, http_status: int):
+    try:
+        import fastapi
+    except ImportError:
+        raise utils.make_optional_import_error("fastapi")
+
     try:
         error_json = response_json["error"]
     except KeyError as e:
@@ -510,7 +551,7 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
 
 
 async def async_response_raise_errors(
-    response: aiohttp.ClientResponse, remote_name: str
+    response: "aiohttp.ClientResponse", remote_name: str
 ) -> None:
     """Async version of `async_response_raise_errors`."""
     if response.status >= 400:
@@ -538,7 +579,7 @@ class WebsocketWrapperFastAPI:
     #  this is somewhat loopy, as `fastapi.WebSocketDisconnect` just passes through,
     #  but we have not documented either, so it's not directly a contradiction.
 
-    def __init__(self, websocket: fastapi.WebSocket) -> None:
+    def __init__(self, websocket: "fastapi.WebSocket") -> None:
         self._websocket = websocket
         self.headers: Mapping[str, str] = websocket.headers
 

@@ -395,6 +395,8 @@ async def test_throttling_chain(anyio_backend):
             assert service is not None
             time.sleep(1.0)  # Wait for models to be ready.
 
+            service.run_remote({"num_requests": 1})  # Warm up.
+
             # Call dependency below load limit.
             response = service.run_remote({"num_requests": 2})
             assert response.status_code == 200

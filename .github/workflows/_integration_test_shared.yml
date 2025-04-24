@@ -70,7 +70,9 @@ jobs:
       - uses: ./.github/actions/setup-python/
         with:
           python-version: ${{ matrix.python_version }}
-      - run: sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
+      - run: |
+          sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
+          sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
       - run: poetry install --with=dev,dev-server --extras=all
       - name: Run Pytest
         run: |
