@@ -151,7 +151,7 @@ def _set_logging_level(log_level: Union[str, int]) -> None:
     root_logger.addHandler(rich_handler)
     # Enable deprecation warnings raised in this module.
     warnings.filterwarnings(
-        "default", category=DeprecationWarning, module="^truss\.cli\\b"
+        "default", category=DeprecationWarning, module=r"^truss\.cli\\b"
     )
 
 
@@ -371,7 +371,7 @@ def whoami(remote: Optional[str]):
 
     user = whoami(remote)
 
-    console.print(f"{user.workspace_name}\{user.user_email}")
+    console.print(f"{user.workspace_name}\\{user.user_email}")
 
 
 @truss_cli.command()

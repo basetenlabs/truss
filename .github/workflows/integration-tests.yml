@@ -2,6 +2,12 @@ name: Integration Tests
 
 on:
   workflow_dispatch: # Allows running from actions tab
+    inputs:
+      store_durations_serially:
+        description: "Run truss integration tests serially and store durations."
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: main-${{ github.ref_name }}
@@ -63,3 +69,4 @@ jobs:
     uses: ./.github/workflows/_integration_test_shared.yml
     with:
       run_only_integration: true
+      store_durations_serially: ${{ inputs.store_durations_serially }}

@@ -7,6 +7,10 @@ on:
         type: boolean
         required: false
         default: true
+      store_durations_serially:
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   determine-python-versions:
@@ -23,7 +27,28 @@ jobs:
         run: |
           python .github/scripts/get-python-version-range.py
 
+  store-test-durations:
+    if: ${{ inputs.store_durations_serially }}
+    runs-on: ubuntu-22.04
+    needs: determine-python-versions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python/
+        with:
+          python-version: ${{ needs.determine-python-versions.outputs.max_supported_python_version }}
+      - run: poetry install --with=dev,dev-server --extras=all
+      - name: Run all tests serially and store durations
+        run: |
+          poetry run pytest truss/tests -m integration --store-durations --durations-path=test_durations.json
+      - name: Save test durations to cache
+        uses: actions/cache/save@v4
+        with:
+          path: test_durations.json
+          key: integration-test-durations-v1
+
+
   truss-integration-tests:
+    if: ${{ !inputs.store_durations_serially }}
     needs: determine-python-versions
     runs-on: ubuntu-22.04
     strategy:
@@ -36,6 +61,12 @@ jobs:
         split_group: ["1", "2", "3", "4", "5"]
     steps:
       - uses: actions/checkout@v4
+      - name: Restore test durations from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: test_durations.json
+          key: integration-test-durations-v1
+        continue-on-error: true
       - uses: ./.github/actions/setup-python/
         with:
           python-version: ${{ matrix.python_version }}
@@ -54,6 +85,8 @@ jobs:
             --junitxml=report-${{ matrix.python_version }}-${{ matrix.split_group }}.xml \
             --splits 5 \
             --group ${{ matrix.split_group }} \
+            --durations-path test_durations.json \
+            --splitting-algorithm=least_duration
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
         if: always()
@@ -62,6 +95,7 @@ jobs:
           report_paths: "report-${{ matrix.python_version }}-${{ matrix.split_group }}.xml"
 
   chains-integration-tests:
+    if: ${{ !inputs.store_durations_serially }}
     needs: determine-python-versions
     runs-on: ubuntu-22.04
     strategy:
