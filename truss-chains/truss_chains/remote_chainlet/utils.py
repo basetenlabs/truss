@@ -56,11 +56,11 @@ except ImportError:
         def observe(self, value: float) -> None:
             pass
 
-    class prometheus_client:
-        def Gauge(self, *args: object, **kwargs: object) -> _NoOpMetric:
+    class prometheus_client:  # type: ignore[no-redef]
+        def Gauge(*args, **kwargs) -> _NoOpMetric:
             return _NoOpMetric()
 
-        def Counter(self, *args: object, **kwargs: object) -> _NoOpMetric:
+        def Counter(*args, **kwargs) -> _NoOpMetric:
             return _NoOpMetric()
 
 
@@ -418,7 +418,7 @@ def _handle_exception(exception: Exception) -> NoReturn:
         exception_message=str(exception),
         user_stack_trace=list(stack),
     )
-    if isinstance(exception, "fastapi.HTTPException"):
+    if isinstance(exception, fastapi.HTTPException):
         status_code = exception.status_code
     else:
         status_code = fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -491,7 +491,7 @@ def _handle_response_error(response_json: dict, base_msg: str, http_status: int)
         f"{error_format}"
     )
 
-    if issubclass(exception_cls, "fastapi.HTTPException"):
+    if issubclass(exception_cls, fastapi.HTTPException):
         raise fastapi.HTTPException(status_code=http_status, detail=msg)
 
     try:
