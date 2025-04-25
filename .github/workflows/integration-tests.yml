@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_only_integration:
+        description: "Run only integration tests (i.e. excluding unittests)."
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: main-${{ github.ref_name }}
@@ -68,5 +73,5 @@ jobs:
     if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
     uses: ./.github/workflows/_integration_test_shared.yml
     with:
-      run_only_integration: true
+      run_only_integration: ${{ inputs.run_only_integration }}
       store_durations_serially: ${{ inputs.store_durations_serially }}
