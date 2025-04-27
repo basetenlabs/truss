@@ -256,7 +256,9 @@ def build_context(build_dir, target_directory: str) -> None:
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
-    tr.docker_build_setup(build_dir=Path(build_dir))
+    with console.status("Preparing Docker build context...", spinner="dots"):
+        tr.docker_build_setup(build_dir=Path(build_dir))
+    console.print("✅ Docker build context prepared.", style="green")
 
 
 @image.command()  # type: ignore
