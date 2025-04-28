@@ -1,10 +1,13 @@
-from typing import Optional, Tuple, cast
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, cast
 
 import rich
 import rich_click as click
 from InquirerPy import inquirer
+from jinja2 import Template
 from rich.console import Console
 
+from truss.base.truss_config import AcceleratorSpec
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.remote.baseten.remote import BasetenRemote
 
@@ -13,6 +16,34 @@ ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_CREATED",
     "TRAINING_JOB_DEPLOYING",
 ]
+
+TRUSS_TEMPLATE = Template("""
+base_image:
+  image:  vllm/vllm-openai:latest
+model_name: {{ base_model_id }}
+training_checkpoints:
+  download_folder: /tmp/training_checkpoints
+  checkpoints:
+  - id: {{ checkpoint_id }}
+    name: {{ checkpoint_id }}
+docker_server:
+  start_command: sh -c "HF_TOKEN=$(cat /secrets/{{ hf_secret_name }}) vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 16 --dtype {{ dtype }} --lora-modules {{ checkpoint_id }}=/tmp/training_checkpoints/{{ checkpoint_id }}"
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+  predict_endpoint: /v1/chat/completions
+  server_port: 8000
+resources:
+  accelerator: {{ accelerator }}
+  use_gpu: true
+runtime:
+  predict_concurrency : 256
+secrets:
+  hf_access_token: set token in baseten workspace
+environment_variables:
+  VLLM_LOGGING_LEVEL: WARNING
+  VLLM_USE_V1: 0
+  HF_HUB_ENABLE_HF_TRANSFER: 1
+""")
 
 
 def get_args_for_stop(
@@ -204,3 +235,100 @@ def view_training_job_metrics(
     )
     metrics_display = MetricsWatcher(remote_provider.api, project_id, job_id, console)
     metrics_display.watch()
+
+
+@dataclass
+class DeployCheckpointArgs:
+    base_model_id: Optional[str]
+    project_id: Optional[str]
+    job_id: Optional[str]
+    checkpoint_id: Optional[str]
+    hf_secret_name: Optional[str]
+    accelerator: Optional[str]
+    dtype: Optional[str]
+
+
+def deploy_checkpoint(
+    console: Console, remote_provider: BasetenRemote, args: DeployCheckpointArgs
+):
+    """
+    Deploy a checkpoint
+    """
+    project_id, job_id = get_args_for_monitoring(
+        console, remote_provider, args.project_id, args.job_id
+    )
+    deploy_args = {
+        "base_model_id": args.base_model_id,
+        "checkpoint_id": args.checkpoint_id,
+        "hf_secret_name": args.hf_secret_name,
+        "dtype": args.dtype,
+    }
+    deploy_args["accelerator"] = get_accelerator_str(args.accelerator)
+    if not args.base_model_id:
+        # prompt user for base model id
+        base_model_id = inquirer.text(message="Enter the base model id.").execute()
+        if not base_model_id:
+            raise click.UsageError("Base model id is required.")
+        deploy_args["base_model_id"] = base_model_id
+
+    # get all checkpoints for the training job
+    # response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
+    # response_checkpoints = response["checkpoints"]
+    response_checkpoints = [{"id": "checkpoint-1"}, {"id": "checkpoint-2"}]
+    checkpoint_ids = [checkpoint["id"] for checkpoint in response_checkpoints]
+    deploy_args["checkpoint_id"] = get_checkoint_id(args.checkpoint_id, checkpoint_ids)
+    deploy_args["dtype"] = args.dtype or "bfloat16"
+    deploy_args["hf_secret_name"] = get_hf_secret_name(console, args.hf_secret_name)
+    # generate the truss config for vllm
+    truss_config = TRUSS_TEMPLATE.render(**deploy_args)
+    console.print("Deploying checkpoint with the following truss config", style="cyan")
+    console.print(truss_config, style="green")
+
+
+def get_checkoint_id(user_input: Optional[str], checkpoint_ids: List[str]) -> str:
+    if user_input == "latest":
+        return checkpoint_ids[-1]
+    elif user_input:
+        if user_input not in checkpoint_ids:
+            raise click.UsageError(f"Invalid checkpoint id. Choices: {checkpoint_ids}")
+        return user_input
+    elif not user_input:
+        if len(checkpoint_ids) == 0:
+            raise click.UsageError("No checkpoints found for the training job.")
+        if len(checkpoint_ids) > 1:
+            checkpoint_id = inquirer.select(
+                message="Select the checkpoint to deploy.", choices=checkpoint_ids
+            ).execute()
+            if not checkpoint_id:
+                raise click.UsageError("Checkpoint id is required.")
+        return checkpoint_id
+
+
+def get_hf_secret_name(console: Console, user_input: Optional[str]) -> str:
+    if not user_input:
+        # prompt user for hf secret name
+        hf_secret_name = inquirer.select(
+            message="Enter the huggingface secret name.",
+            choices=["hf_access_token", None, "custom"],
+            default="hf_access_token",
+        ).execute()
+        if hf_secret_name == "custom":
+            hf_secret_name = inquirer.text(
+                message="Enter the huggingface secret name."
+            ).execute()
+        if not hf_secret_name:
+            console.print("No hf secret name.", style="yellow")
+        return hf_secret_name
+    return user_input
+
+
+def get_accelerator_str(user_input: Optional[str]) -> str:
+    if not user_input:
+        # prompt user for accelerator
+        raw_accelerator = inquirer.text(
+            message="Enter the accelerator to use for deployment."
+        ).execute()
+    accelerator_str = user_input or raw_accelerator
+    # use this as validation
+    AcceleratorSpec._from_string_spec(accelerator_str)
+    return accelerator_str

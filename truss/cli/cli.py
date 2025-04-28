@@ -1030,6 +1030,78 @@ def get_job_metrics(
     train_cli.view_training_job_metrics(console, remote_provider, project_id, job_id)
 
 
+@train.command(name="deploy_checkpoint")
+@click.option("--base-model-id", type=str, required=False, help="Base model ID")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option(
+    "--checkpoint-id", type=str, required=False, default=None, help="Checkpoint ID."
+)
+@click.option(
+    "--accelerator",
+    type=str,
+    required=False,
+    default=None,
+    help="Accelerator to use for deployment.",
+)
+@click.option(
+    "--hf_secret_name",
+    type=str,
+    required=False,
+    default=None,
+    help="Huggingface secret name.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--dtype",
+    type=str,
+    required=False,
+    default=None,
+    help="Data type to use for deployment.",
+)
+@log_level_option
+@error_handling
+def deploy_checkpoint(
+    base_model_id: Optional[str],
+    project_id: Optional[str],
+    job_id: Optional[str],
+    checkpoint_id: Optional[str],
+    accelerator: Optional[str],
+    hf_secret_name: Optional[str],
+    remote: Optional[str],
+    dtype: Optional[str],
+):
+    """
+    TODO(rcano): Can the above input just be *args, **kwargs? And then we pass that into the function?
+    Deploy a checkpoint. Some early assumptions about this are:
+    - We are deploying a vllm model
+    - The checkpoint is a lora
+    - We're deploying on GPU
+    - Base Model is coming from Huggingface
+    """
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    train_cli.deploy_checkpoint(
+        console,
+        remote_provider,
+        train_cli.DeployCheckpointArgs(
+            base_model_id=base_model_id,
+            project_id=project_id,
+            job_id=job_id,
+            checkpoint_id=checkpoint_id,
+            hf_secret_name=hf_secret_name,
+            accelerator=accelerator,
+            dtype=dtype,
+        ),
+    )
+
+
 # End Training Stuff #####################################################################
 
 

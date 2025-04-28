@@ -516,6 +516,16 @@ class DockerServer(custom_types.ConfigModel):
     liveness_endpoint: str
 
 
+class Checkpoint(custom_types.ConfigModel):
+    id: str
+    name: str
+
+
+class CheckpointConfiguration(custom_types.ConfigModel):
+    download_folder: str = "/tmp/checkpoints"
+    checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
+
+
 SUPPORTED_PYTHON_VERSIONS = {
     "py38": "3.8",
     "py39": "3.9",
@@ -549,6 +559,9 @@ class TrussConfig(custom_types.ConfigModel):
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
+
+    # deploying from checkpoint
+    training_checkpoints: Optional[CheckpointConfiguration] = None
 
     # Internal / Legacy.
     input_type: str = "Any"
