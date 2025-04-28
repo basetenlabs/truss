@@ -1,3 +1,5 @@
+import os
+import tempfile
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, cast
 
@@ -20,7 +22,7 @@ ACTIVE_JOB_STATUSES = [
 TRUSS_TEMPLATE = Template("""
 base_image:
   image:  vllm/vllm-openai:latest
-model_name: {{ base_model_id }}
+model_name: {{ model_name }}
 training_checkpoints:
   download_folder: /tmp/training_checkpoints
   checkpoints:
@@ -239,6 +241,7 @@ def view_training_job_metrics(
 
 @dataclass
 class DeployCheckpointArgs:
+    model_name: Optional[str]
     base_model_id: Optional[str]
     project_id: Optional[str]
     job_id: Optional[str]
@@ -248,12 +251,16 @@ class DeployCheckpointArgs:
     dtype: Optional[str]
 
 
-def deploy_checkpoint(
+@dataclass
+class PreparedCheckpointDeploy:
+    truss_directory: str
+    checkpoint_id: str
+    model_name: str
+
+
+def prepare_checkpoint_deploy(
     console: Console, remote_provider: BasetenRemote, args: DeployCheckpointArgs
-):
-    """
-    Deploy a checkpoint
-    """
+) -> PreparedCheckpointDeploy:
     project_id, job_id = get_args_for_monitoring(
         console, remote_provider, args.project_id, args.job_id
     )
@@ -276,13 +283,30 @@ def deploy_checkpoint(
     # response_checkpoints = response["checkpoints"]
     response_checkpoints = [{"id": "checkpoint-1"}, {"id": "checkpoint-2"}]
     checkpoint_ids = [checkpoint["id"] for checkpoint in response_checkpoints]
-    deploy_args["checkpoint_id"] = get_checkoint_id(args.checkpoint_id, checkpoint_ids)
+    checkpoint_id = get_checkoint_id(args.checkpoint_id, checkpoint_ids)
+    deploy_args["checkpoint_id"] = checkpoint_id
+    model_name = (
+        args.model_name
+        or f"{deploy_args['base_model_id']}-{deploy_args['checkpoint_id']}"
+    )
+    deploy_args["model_name"] = model_name
     deploy_args["dtype"] = args.dtype or "bfloat16"
     deploy_args["hf_secret_name"] = get_hf_secret_name(console, args.hf_secret_name)
     # generate the truss config for vllm
     truss_config = TRUSS_TEMPLATE.render(**deploy_args)
-    console.print("Deploying checkpoint with the following truss config", style="cyan")
+    truss_directory = tempfile.mkdtemp(
+        suffix=f"training-job-{job_id}-{deploy_args['checkpoint_id']}"
+    )
+    truss_config_path = os.path.join(truss_directory, "config.yaml")
+    with open(truss_config_path, "w") as f:
+        f.write(truss_config)
     console.print(truss_config, style="green")
+    console.print(f"Writing truss config to {truss_directory}", style="yellow")
+    return PreparedCheckpointDeploy(
+        truss_directory=truss_directory,
+        checkpoint_id=checkpoint_id,
+        model_name=model_name,
+    )
 
 
 def get_checkoint_id(user_input: Optional[str], checkpoint_ids: List[str]) -> str:

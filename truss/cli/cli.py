@@ -19,6 +19,7 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
+from rich.text import Text
 
 import truss
 import truss.cli.train.core as train_cli
@@ -1045,7 +1046,7 @@ def get_job_metrics(
     help="Accelerator to use for deployment.",
 )
 @click.option(
-    "--hf_secret_name",
+    "--hf-secret-name",
     type=str,
     required=False,
     default=None,
@@ -1059,6 +1060,13 @@ def get_job_metrics(
     default=None,
     help="Data type to use for deployment.",
 )
+@click.option(
+    "--model-name",
+    type=str,
+    required=False,
+    default=None,
+    help="Model name to use for deployment. Defaults to <base_model_id>-<checkpoint_id>.",
+)
 @log_level_option
 @error_handling
 def deploy_checkpoint(
@@ -1070,6 +1078,7 @@ def deploy_checkpoint(
     hf_secret_name: Optional[str],
     remote: Optional[str],
     dtype: Optional[str],
+    model_name: Optional[str],
 ):
     """
     Deploy a checkpoint. Some early assumptions about this are:
@@ -1086,7 +1095,7 @@ def deploy_checkpoint(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.deploy_checkpoint(
+    prepared_checkpoint_deploy = train_cli.prepare_checkpoint_deploy(
         console,
         remote_provider,
         train_cli.DeployCheckpointArgs(
@@ -1097,6 +1106,27 @@ def deploy_checkpoint(
             hf_secret_name=hf_secret_name,
             accelerator=accelerator,
             dtype=dtype,
+            model_name=model_name,
+        ),
+    )
+    ctx = click.Context(push, obj={})
+    ctx.params = {
+        "target_directory": prepared_checkpoint_deploy.truss_directory,
+        "remote": remote,
+        "model_name": prepared_checkpoint_deploy.model_name,
+        "publish": True,
+    }
+    push.invoke(ctx)
+    rich.print(
+        Text("\nTo run the model with the checkpoint,"),
+        Text("ensure your `model` parameter is set to"),
+        Text(f"{prepared_checkpoint_deploy.checkpoint_id}.", style="magenta"),
+        Text("An example request body might look like this:"),
+        Text(
+            "\n{"
+            + f'"model": {prepared_checkpoint_deploy.checkpoint_id}, "messages": [...]'
+            + "}",
+            style="green",
         ),
     )
 
