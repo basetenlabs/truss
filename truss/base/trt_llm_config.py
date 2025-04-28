@@ -10,6 +10,7 @@ from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import (
     BaseModel,
+    Field,
     PydanticDeprecatedSince20,
     StringConstraints,
     model_validator,
@@ -127,12 +128,16 @@ class TrussSpecDecMode(str, Enum):
 
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
-    kv_cache_host_memory_bytes: Optional[int] = None
+    kv_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
+        None
+    )
     enable_chunked_context: bool = True
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
-    request_default_max_tokens: Optional[int] = None
+    request_default_max_tokens: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
+        None
+    )
     served_model_name: Optional[str] = None
     total_token_limit: int = 500000
     webserver_default_route: Optional[
@@ -147,9 +152,9 @@ class TrussTRTLLMLoraConfiguration(BaseModel):
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
-    max_seq_len: Optional[int] = None
-    max_batch_size: int = 256
-    max_num_tokens: int = 8192
+    max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
+    max_batch_size: Annotated[int, Field(strict=True, ge=1)] = 256
+    max_num_tokens: Annotated[int, Field(strict=True, gt=64)] = 8192
     max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
@@ -161,13 +166,13 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     quantization_config: TrussTRTQuantizationConfiguration = (
         TrussTRTQuantizationConfiguration()
     )
-    tensor_parallel_count: int = 1
+    tensor_parallel_count: Annotated[int, Field(strict=True, ge=1)] = 1
     pipeline_parallel_count: int = 1
     sequence_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
-    num_builder_gpus: Optional[int] = None
+    num_builder_gpus: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
     lora_adapters: Optional[
         Dict[
@@ -308,13 +313,16 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
 class TrussSpeculatorConfiguration(BaseModel):
     speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
-    num_draft_tokens: Optional[int] = None
+    num_draft_tokens: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
     checkpoint_repository: Optional[CheckpointRepository] = None
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: Optional[TrussTRTLLMBuildConfiguration] = None
-    lookahead_windows_size: Optional[int] = None
-    lookahead_ngram_size: Optional[int] = None
-    lookahead_verification_set_size: Optional[int] = None
+    lookahead_windows_size: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
+    lookahead_ngram_size: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
+    lookahead_verification_set_size: Optional[
+        Annotated[int, Field(strict=True, ge=1)]
+    ] = None
+    enable_b10_lookahead: Optional[bool] = False
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -378,6 +386,12 @@ class TrussSpeculatorConfiguration(BaseModel):
             ):  # check that it has at least the required tokens. That way, it could have even higher at request time.
                 raise ValueError(
                     "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
+                )
+        else:
+            if self.enable_b10_lookahead:
+                logger.warning(
+                    "enable_b10_lookahead requires in `speculative_decoding_mode=LOOKAHEAD_DECODING`. "
+                    "Please enable both flags to use the Baseten lookahead algorithm."
                 )
 
         self._assert_draft_tokens()
