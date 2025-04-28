@@ -1,6 +1,8 @@
 import os
 import tempfile
+from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple, cast
 
 import rich
@@ -9,7 +11,7 @@ from InquirerPy import inquirer
 from jinja2 import Template
 from rich.console import Console
 
-from truss.base.truss_config import AcceleratorSpec
+from truss.base.truss_config import AcceleratorSpec, TrussConfig
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.remote.baseten.remote import BasetenRemote
 
@@ -36,7 +38,7 @@ docker_server:
   server_port: 8000
 resources:
   accelerator: {{ accelerator }}
-  use_gpu: true
+  use_gpu: {{ accelerator != None }}
 runtime:
   predict_concurrency : 256
 secrets:
@@ -270,21 +272,35 @@ def prepare_checkpoint_deploy(
         "hf_secret_name": args.hf_secret_name,
         "dtype": args.dtype,
     }
+
+    response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
+    response_checkpoints = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint)
+        for checkpoint in response["checkpoints"]
+    )
+    checkpoint_id = get_checkoint_id(
+        args.checkpoint_id, list(response_checkpoints.keys())
+    )
+    checkpoint = response_checkpoints[checkpoint_id]
+    deploy_args["checkpoint_id"] = checkpoint_id
+
     deploy_args["accelerator"] = get_accelerator_str(args.accelerator)
+
     if not args.base_model_id:
         # prompt user for base model id
-        base_model_id = inquirer.text(message="Enter the base model id.").execute()
+        if checkpoint.get("base_model"):
+            base_model_id = checkpoint["base_model"]
+            console.print(
+                f"Inferring base model id from checkpoint: {base_model_id}",
+                style="yellow",
+            )
+        else:
+            base_model_id = inquirer.text(message="Enter the base model id.").execute()
         if not base_model_id:
             raise click.UsageError("Base model id is required.")
         deploy_args["base_model_id"] = base_model_id
 
     # get all checkpoints for the training job
-    # response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
-    # response_checkpoints = response["checkpoints"]
-    response_checkpoints = [{"id": "checkpoint-1"}, {"id": "checkpoint-2"}]
-    checkpoint_ids = [checkpoint["id"] for checkpoint in response_checkpoints]
-    checkpoint_id = get_checkoint_id(args.checkpoint_id, checkpoint_ids)
-    deploy_args["checkpoint_id"] = checkpoint_id
     model_name = (
         args.model_name
         or f"{deploy_args['base_model_id']}-{deploy_args['checkpoint_id']}"
@@ -293,6 +309,12 @@ def prepare_checkpoint_deploy(
     deploy_args["dtype"] = args.dtype or "bfloat16"
     deploy_args["hf_secret_name"] = get_hf_secret_name(console, args.hf_secret_name)
     # generate the truss config for vllm
+
+    # update this yaml with the deploy args
+    TrussConfig.from_yaml(
+        Path(os.path.dirname(__file__), "deploy_from_checkpoint_config.yml")
+    )
+
     truss_config = TRUSS_TEMPLATE.render(**deploy_args)
     truss_directory = tempfile.mkdtemp(
         suffix=f"training-job-{job_id}-{deploy_args['checkpoint_id']}"
@@ -346,13 +368,15 @@ def get_hf_secret_name(console: Console, user_input: Optional[str]) -> str:
     return user_input
 
 
-def get_accelerator_str(user_input: Optional[str]) -> str:
+def get_accelerator_str(user_input: Optional[str]) -> Optional[str]:
     if not user_input:
         # prompt user for accelerator
         raw_accelerator = inquirer.text(
-            message="Enter the accelerator to use for deployment."
+            message="Enter the accelerator to use for deployment. Put `None` for CPU"
         ).execute()
     accelerator_str = user_input or raw_accelerator
+    if accelerator_str == "None":
+        return None
     # use this as validation
     AcceleratorSpec._from_string_spec(accelerator_str)
     return accelerator_str

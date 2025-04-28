@@ -1,0 +1,25 @@
+base_image:
+  image:  vllm/vllm-openai:latest
+# model_name: {{ model_name }}
+training_checkpoints:
+  download_folder: /tmp/training_checkpoints
+#   checkpoints:
+#   - id: {{ checkpoint_id }}
+#     name: {{ checkpoint_id }}
+docker_server:
+  start_command: sh -c "" #sh -c "HF_TOKEN=$(cat /secrets/{{ hf_secret_name }}) vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 16 --dtype {{ dtype }} --lora-modules {{ checkpoint_id }}=/tmp/training_checkpoints/{{ checkpoint_id }}"
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+  predict_endpoint: /v1/chat/completions
+  server_port: 8000
+# resources:
+#   accelerator: {{ accelerator }}
+#   use_gpu: {{ accelerator != None }}
+runtime:
+  predict_concurrency : 256
+# secrets:
+#   hf_access_token: set token in baseten workspace
+environment_variables:
+  VLLM_LOGGING_LEVEL: WARNING
+  VLLM_USE_V1: 0
+  HF_HUB_ENABLE_HF_TRANSFER: 1
