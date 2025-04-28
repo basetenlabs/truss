@@ -1072,7 +1072,6 @@ def deploy_checkpoint(
     dtype: Optional[str],
 ):
     """
-    TODO(rcano): Can the above input just be *args, **kwargs? And then we pass that into the function?
     Deploy a checkpoint. Some early assumptions about this are:
     - We are deploying a vllm model
     - The checkpoint is a lora
