@@ -66,12 +66,22 @@ def metadata_hf_repo(
     size=1519)]
     """
     api = hf_api.HfApi()
-    files: list[str] = api.list_repo_files(repo_id=repo, revision=revision)
+    model_info = api.model_info(repo_id=repo, revision=revision)
+    real_revision = model_info.sha
+    real_revision = real_revision or revision
+    if revision != real_revision:
+        print(
+            f"Warning: revision {revision} is moving, using {real_revision} instead. "
+            f"Please update your code to use `revision={real_revision}` instead otherwise you will keep moving. "
+        )
+    files: list[str] = api.list_repo_files(repo_id=repo, revision=real_revision)
     files = filter_repo_files(
         files, allow_patterns=allow_patterns, ignore_patterns=ignore_patterns
     )
 
-    hf_files_meta = {file: get_hf_metadata(api, repo, revision, file) for file in files}
+    hf_files_meta = {
+        file: get_hf_metadata(api, repo, real_revision, file) for file in files
+    }
 
     return hf_files_meta
 
@@ -136,9 +146,9 @@ if __name__ == "__main__":
     cache = ModelCache(
         [
             ModelRepo(
-                repo_id="intfloat/e5-mistral-7b-instruct",
+                repo_id="intfloat/llm-retriever-base",
                 revision="main",
-                ignore_patterns=["*.json", "*.txt", "*.md"],
+                ignore_patterns=["*.json", "*.txt", "*.md", "*.bin", "*.model"],
                 volume_folder="mistral_demo",
                 use_volume=True,
             )

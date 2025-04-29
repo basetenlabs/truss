@@ -3,10 +3,12 @@ import tempfile
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
 
+import packaging.version
 import pydantic
 import pytest
 import yaml
 
+from truss.base import constants
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import (
     DEFAULT_CPU,
@@ -877,3 +879,11 @@ def test_not_supported_python_minor_versions():
 def test_not_supported_python_major_versions():
     with pytest.raises(NotImplementedError, match="Only python version 3 is supported"):
         _map_to_supported_python_version("py211")
+
+
+def test_supported_versions_are_sorted():
+    semvers = [packaging.version.parse(v) for v in constants.SUPPORTED_PYTHON_VERSIONS]
+    semvers_sorted = sorted(semvers)
+    assert semvers == semvers_sorted, (
+        f"{constants.SUPPORTED_PYTHON_VERSIONS} must be sorted ascendingly"
+    )

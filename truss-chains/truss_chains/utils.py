@@ -4,7 +4,6 @@ import inspect
 import logging
 import os
 import random
-import socket
 from typing import Any, Iterable, Iterator, TypeVar, Union
 
 import pydantic
@@ -113,14 +112,6 @@ def expect_one(it: Iterable[T]) -> T:
     raise ValueError("Iterable has more than one element.")
 
 
-def get_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))  # Bind to a free port provided by the host.
-        s.listen(1)  # Not necessary but included for completeness.
-        port = s.getsockname()[1]  # Retrieve the port number assigned.
-        return port
-
-
 ########################################################################################
 
 
@@ -191,3 +182,12 @@ def get_pydantic_field_default_value(
     if field_info.default_factory is not None:
         return field_info.default_factory()  #  type: ignore[call-arg]
     return None
+
+
+def make_optional_import_error(module_name: str) -> public_types.ChainsRuntimeError:
+    return public_types.ChainsRuntimeError(
+        f"Could not import `{module_name}`. For chains CLI (truss package) this is an "
+        "optional dependency. In deployed chainlets this dependency is "
+        "automatically added. If you happen to run into this error, "
+        f"install `{module_name}` manually."
+    )

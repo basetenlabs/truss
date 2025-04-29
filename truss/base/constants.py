@@ -27,8 +27,8 @@ SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
 CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_chains"
 TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
-
-SUPPORTED_PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
+# Must be sorted ascendingly.
+SUPPORTED_PYTHON_VERSIONS = ["3.8", "3.9", "3.10", "3.11"]
 MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.12"
 MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.8"
 
@@ -84,10 +84,10 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-a464697"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-cd81637"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
-BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.22"
+BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.23"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 

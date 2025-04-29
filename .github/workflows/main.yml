@@ -60,10 +60,12 @@ jobs:
             --version-tag ${{ needs.detect-version-changed.outputs.new_base_image_version }} \
             --skip-login --push
 
-  integration-tests:
+  all-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
     if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
     uses: ./.github/workflows/_integration_test_shared.yml
+    with:
+      run_only_integration: false
 
   publish-rc-to-pypi:
     needs: [detect-version-changed]

@@ -40,10 +40,11 @@ runtime:
     restart_check_delay_seconds: null
     restart_threshold_seconds: null
     stop_traffic_threshold_seconds: null
-  transport:
-    kind: websocket
   predict_concurrency: 1
   streaming_read_timeout: 60
+  transport:
+    kind: websocket
+  truss_server_version_override: null
 secrets: {}
 spec_version: '2.0'
 system_packages: []
