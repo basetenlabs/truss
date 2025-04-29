@@ -45,7 +45,7 @@ class PrepareCheckpointResult:
 
 
 VLLM_LORA_START_COMMAND = Template(
-    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank {{ max_lora_rank }} --dtype {{ dtype }} --lora-modules {{ checkpoint_id }}=/tmp/training_checkpoints/{{ checkpoint_id }}"'
+    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank {{ max_lora_rank }} --dtype {{ dtype }} --lora-modules {{ checkpoint_name }}=/tmp/training_checkpoints/{{ checkpoint_id }}"'
 )
 DEFAULT_MAX_LORA_RANK = 16
 
@@ -312,6 +312,7 @@ def prepare_checkpoint_deploy(
 def render_vllm_lora_truss_config(
     args: DeployCheckpointTemplatingArgs,
 ) -> truss_config.TrussConfig:
+    fully_qualified_checkpoint_id = f"{args.training_job_id}/{args.checkpoint_id}"
     deploy_config = truss_config.TrussConfig.from_yaml(
         Path(os.path.dirname(__file__), "deploy_from_checkpoint_config.yml")
     )
@@ -321,7 +322,7 @@ def render_vllm_lora_truss_config(
         )
     deploy_config.training_checkpoints.checkpoints = [
         truss_config.Checkpoint(
-            id=f"{args.training_job_id}/{args.checkpoint_id}", name=args.checkpoint_id
+            id=fully_qualified_checkpoint_id, name=args.checkpoint_id
         )
     ]
     deploy_config.model_name = args.model_name
@@ -338,7 +339,8 @@ def render_vllm_lora_truss_config(
 
     start_command_args = {
         "base_model_id": args.base_model_id,
-        "checkpoint_id": args.checkpoint_id,
+        "checkpoint_id": fully_qualified_checkpoint_id,
+        "checkpoint_name": args.checkpoint_id,
         "envvars": start_command_envvars,
         "dtype": args.dtype,
         "max_lora_rank": args.max_lora_rank,
