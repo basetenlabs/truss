@@ -278,13 +278,9 @@ def test_traditional_truss():
         assert truss_handle.spec.config.resources.cpu == "4"
         assert truss_handle.spec.config.model_name == "OverridePassthroughModelName"
 
-        port = utils.get_free_port()
-        truss_handle.docker_run(local_port=port, detach=True, network="host")
+        _, urls = truss_handle.docker_run_for_test()
 
-        response = requests.post(
-            f"http://localhost:{port}/v1/models/model:predict",
-            json={"call_count_increment": 5},
-        )
+        response = requests.post(urls.predict_url, json={"call_count_increment": 5})
         assert response.status_code == 200
         assert response.json() == 5
 
@@ -398,6 +394,8 @@ async def test_throttling_chain(anyio_backend):
             service = deployment_client.push_debug_docker(entrypoint, chain_name)
             assert service is not None
             time.sleep(1.0)  # Wait for models to be ready.
+
+            service.run_remote({"num_requests": 1})  # Warm up.
 
             # Call dependency below load limit.
             response = service.run_remote({"num_requests": 2})

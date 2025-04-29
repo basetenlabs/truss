@@ -1,0 +1,12 @@
+name: Update the durations file for optimal splitting of integration tests.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # every Sunday at 03:00 UTC
+
+jobs:
+  call-integration-tests:
+    uses: ./.github/workflows/_integration_test_shared.yml
+    with:
+      run_only_integration: true
+      store_durations_serially: true

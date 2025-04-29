@@ -1,6 +1,6 @@
 import enum
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 if TYPE_CHECKING:
     from python_on_whales.components.container.cli_wrapper import Container
@@ -24,7 +24,7 @@ class Docker:
         return Docker._client
 
 
-def get_containers(labels: Dict, all: bool = False):
+def get_containers(labels: Dict, all: bool = False) -> list["Container"]:
     """Gets containers given labels."""
     return Docker.client().container.list(
         filters=_create_label_filters(labels), all=all
@@ -36,14 +36,19 @@ def get_images(labels: Dict):
     return Docker.client().image.list(filters=_create_label_filters(labels))
 
 
-def get_urls_from_container(container_details) -> Dict[int, List[str]]:
+def get_urls_from_container(container: Union[str, "Container"]) -> Dict[int, List[str]]:
     """Gets url where docker container is hosted."""
+    if isinstance(container, str):
+        container_inst = Docker.client().container.inspect(container)
+    else:
+        container_inst = container
+
     if (
-        container_details.network_settings is None
-        or container_details.network_settings.ports is None
+        container_inst.network_settings is None
+        or container_inst.network_settings.ports is None
     ):
         return {}
-    ports = container_details.network_settings.ports
+    ports = container_inst.network_settings.ports
 
     def parse_port(port_protocol) -> int:
         return int(port_protocol.split("/")[0])
@@ -74,6 +79,7 @@ def kill_containers(labels: Dict[str, bool]) -> None:
     containers = get_containers(labels)
     for container in containers:
         container_labels = container.config.labels
+        assert container_labels
         if TRUSS_DIR in container_labels:
             truss_dir = container_labels[TRUSS_DIR]
             logging.info(f"Killing Container: {container.id} for {truss_dir}")

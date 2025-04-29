@@ -18,18 +18,13 @@ def test_custom_server_truss(test_data_path):
         LocalConfigHandler.set_secret("hf_access_token", "123")
         try:
             print("Starting container")
-            _ = tr.docker_run(
-                local_port=8090,
-                detach=True,
-                wait_for_server_ready=True,
-                model_server_stop_retry_override=stop_after_attempt(3),
+            _, urls = tr.docker_run_for_test(
+                model_server_stop_retry_override=stop_after_attempt(3)
             )
         except Exception as e:
             raise Exception(f"Failed to start container: {e}")
-        truss_server_addr = "http://localhost:8090"
-        full_url = f"{truss_server_addr}/v1/models/model:predict"
 
-        response = requests.post(full_url, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 200
         assert response.json() == {
             "message": "Hello World",

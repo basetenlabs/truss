@@ -27,15 +27,11 @@ from requests.exceptions import RequestException
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_handle.truss_handle import TrussHandle, wait_for_truss
+from truss.truss_handle.truss_handle import TrussHandle, get_docker_urls, wait_for_truss
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_LOG_ERROR = "Internal Server Error"
-PREDICT_URL = "http://localhost:8090/v1/models/model:predict"
-COMPLETIONS_URL = "http://localhost:8090/v1/completions"
-CHAT_COMPLETIONS_URL = "http://localhost:8090/v1/chat/completions"
-WEBSOCKETS_URL = "ws://localhost:8090/v1/websocket"
 
 
 @pytest.fixture
@@ -121,8 +117,8 @@ def test_predict_python_versions(config_python_version, inspected_python_version
     config = f"python_version: {config_python_version}"
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-        response = requests.post(PREDICT_URL, json={})
+        container, urls = tr.docker_run_for_test()
+        response = requests.post(urls.predict_url, json={})
         assert inspected_python_version == response.json()
 
 
@@ -140,9 +136,7 @@ def test_model_load_logs(test_data_path):
     """
     config = "model_name: init-environment-truss"
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         logs = container.logs()
         _assert_logs_contain(logs, message="Executing model.load()")
         _assert_logs_contain(logs, message="Loading truss model from file")
@@ -156,12 +150,12 @@ def test_model_load_failure_truss(test_data_path):
         truss_dir = test_data_path / "model_load_failure_test"
         tr = TrussHandle(truss_dir)
 
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+        _, urls = tr.docker_run_for_test(wait_for_server_ready=False)
 
         # Sleep a few seconds to get the server some time to  wake up
         time.sleep(10)
 
-        truss_server_addr = "http://localhost:8090"
+        truss_server_addr = urls.base_url
 
         def handle_request_exception(func):
             def wrapper(*args, **kwargs):
@@ -219,14 +213,14 @@ def test_concurrency_truss(test_data_path):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_concurrency_truss"
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         # Each request takes 2 seconds, for this thread, we allow
         # a concurrency of 2. This means the first two requests will
         # succeed within the 2 seconds, and the third will fail, since
         # it cannot start until the first two have completed.
         def make_request():
-            requests.post(PREDICT_URL, json={}, timeout=3)
+            requests.post(urls.predict_url, json={}, timeout=3)
 
         successful_thread_1 = _PropagatingThread(target=make_request)
         successful_thread_2 = _PropagatingThread(target=make_request)
@@ -249,11 +243,11 @@ def test_requirements_file_truss(test_data_path):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_requirements_file_truss"
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
         time.sleep(3)  # Sleeping to allow the load to finish
 
         # The prediction imports torch which is specified in a requirements.txt and returns if GPU is available.
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 200
         assert response.json() is False
 
@@ -264,9 +258,9 @@ def test_requirements_pydantic(test_data_path, pydantic_major_version):
     with ensure_kill_all():
         truss_dir = test_data_path / f"test_pyantic_v{pydantic_major_version}"
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 200
         assert response.json() == '{\n    "foo": "bla",\n    "bar": 123\n}'
 
@@ -276,9 +270,9 @@ def test_async_truss(test_data_path):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_async_truss"
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.json() == {
             "preprocess_value": "value",
             "postprocess_value": "value",
@@ -290,16 +284,19 @@ def test_async_streaming(test_data_path):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_streaming_async_generator_truss"
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={}, stream=True)
+        response = requests.post(urls.predict_url, json={}, stream=True)
         assert response.headers.get("transfer-encoding") == "chunked"
         assert [
             byte_string.decode() for byte_string in list(response.iter_content())
         ] == ["0", "1", "2", "3", "4"]
 
         predict_non_stream_response = requests.post(
-            PREDICT_URL, json={}, stream=True, headers={"accept": "application/json"}
+            urls.predict_url,
+            json={},
+            stream=True,
+            headers={"accept": "application/json"},
         )
         assert "transfer-encoding" not in predict_non_stream_response.headers
         assert predict_non_stream_response.json() == "01234"
@@ -310,13 +307,10 @@ def test_async_streaming_timeout(test_data_path):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_streaming_read_timeout"
         tr = TrussHandle(truss_dir)
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-
+        container, urls = tr.docker_run_for_test()
         # ChunkedEncodingError is raised when the chunk does not get processed due to streaming read timeout
         with pytest.raises(requests.exceptions.ChunkedEncodingError):
-            response = requests.post(PREDICT_URL, json={}, stream=True)
+            response = requests.post(urls.predict_url, json={}, stream=True)
 
             for chunk in response.iter_content():
                 pass
@@ -335,12 +329,10 @@ def test_streaming_with_error_and_stacktrace(test_data_path):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_streaming_truss_with_error"
         tr = TrussHandle(truss_dir)
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
         predict_error_response = requests.post(
-            PREDICT_URL, json={"throw_error": True}, stream=True, timeout=2
+            urls.predict_url, json={"throw_error": True}, stream=True, timeout=2
         )
 
         # In error cases, the response will return whatever the stream returned,
@@ -353,7 +345,7 @@ def test_streaming_with_error_and_stacktrace(test_data_path):
 
         # Test that we are able to continue to make requests successfully
         predict_non_error_response = requests.post(
-            PREDICT_URL, json={"throw_error": False}, stream=True, timeout=2
+            urls.predict_url, json={"throw_error": False}, stream=True, timeout=2
         )
 
         assert [
@@ -397,9 +389,9 @@ secrets:
 
     with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
         LocalConfigHandler.set_secret("secret", "secret_value")
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
 
         assert response.json() == "secret_value"
 
@@ -409,11 +401,9 @@ secrets:
         _temp_truss(inspect.getsource(Model), config_with_no_secret) as tr,
     ):
         LocalConfigHandler.set_secret("secret", "secret_value")
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert "error" in response.json()
         _assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
@@ -423,11 +413,9 @@ secrets:
     # Case where the secret is not mounted
     with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
         LocalConfigHandler.remove_secret("secret")
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         _assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
@@ -459,11 +447,9 @@ def test_postprocess_with_streaming_predict():
     """
 
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={}, stream=True)
+        response = requests.post(urls.predict_url, json={}, stream=True)
         logging.info(response.content)
         _assert_logs_contain_error(
             container.logs(),
@@ -497,13 +483,13 @@ def test_streaming_postprocess():
     """
 
     with ensure_kill_all(), _temp_truss(model) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         def make_request(delay: int):
             # For streamed responses, requests does not start receiving content from server until
             # `iter_content` is called, so we must call this in order to get an actual timeout.
             time.sleep(delay)
-            response = requests.post(PREDICT_URL, json={}, stream=True)
+            response = requests.post(urls.predict_url, json={}, stream=True)
 
             assert response.status_code == 200
             assert response.content == b"0 modified1 modified"
@@ -552,11 +538,11 @@ def test_postprocess():
     """
 
     with ensure_kill_all(), _temp_truss(model) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         def make_request(delay: int):
             time.sleep(delay)
-            response = requests.post(PREDICT_URL, json={})
+            response = requests.post(urls.predict_url, json={})
             assert response.status_code == 200
             assert response.json() == ["0 modified", "1 modified"]
 
@@ -587,11 +573,9 @@ def test_truss_with_errors():
     """
 
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
 
@@ -611,11 +595,9 @@ def test_truss_with_errors():
     """
 
     with ensure_kill_all(), _temp_truss(model_preprocess_error) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
 
@@ -634,11 +616,9 @@ def test_truss_with_errors():
     """
 
     with ensure_kill_all(), _temp_truss(model_postprocess_error) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
         _assert_logs_contain_error(container.logs(), "ValueError: error")
@@ -653,11 +633,9 @@ def test_truss_with_errors():
     """
 
     with ensure_kill_all(), _temp_truss(model_async) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
 
@@ -680,11 +658,9 @@ def test_truss_with_user_errors():
     """
 
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
         assert response.headers["x-baseten-error-source"] == "04"
@@ -706,11 +682,9 @@ def test_truss_with_error_stacktrace(test_data_path):
     with ensure_kill_all():
         truss_dir = test_data_path / "test_truss_with_error"
         tr = TrussHandle(truss_dir)
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
 
@@ -741,9 +715,8 @@ def test_slow_truss(test_data_path):
         truss_dir = test_data_path / "server_conformance_test_truss"
         tr = TrussHandle(truss_dir)
 
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
-
-        truss_server_addr = "http://localhost:8090"
+        _, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        truss_server_addr = urls.base_url
 
         def _test_liveness_probe(expected_code):
             live = requests.get(f"{truss_server_addr}/")
@@ -831,11 +804,9 @@ def test_init_environment_parameter():
         staging_env = {"name": "staging"}
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         assert "Executing model.load with environment: staging" in container.logs()
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.json() == "staging"
         assert response.status_code == 200
         container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
@@ -843,11 +814,9 @@ def test_init_environment_parameter():
     # Test a truss deployment with no associated environment
     config = "model_name: init-no-environment-truss"
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         assert "Executing model.load with environment: None" in container.logs()
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.json() is None
         assert response.status_code == 200
 
@@ -867,9 +836,7 @@ def test_setup_environment():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         # Mimic environment changing to beta
         beta_env = {"name": "beta"}
         beta_env_str = json.dumps(beta_env)
@@ -913,9 +880,7 @@ def test_setup_environment():
         staging_env = {"name": "staging"}
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
         assert (
             f"Executing model.setup_environment with environment: {staging_env}"
@@ -958,7 +923,7 @@ def test_health_check_configuration():
     """
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
         assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1700
@@ -974,14 +939,14 @@ def test_health_check_configuration():
     """
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 1200
         assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 90
         assert tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 50
 
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds is None
         assert tr.spec.config.runtime.health_checks.restart_threshold_seconds is None
@@ -1004,14 +969,10 @@ def test_is_healthy():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
-
-        truss_server_addr = "http://localhost:8090"
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         for _ in range(5):
             time.sleep(1)
-            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            healthy = requests.get(f"{urls.base_url}/v1/models/model")
             if healthy.status_code == 503:
                 break
             assert healthy.status_code == 200
@@ -1029,9 +990,7 @@ def test_is_healthy():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(1)
         _assert_logs_contain_error(
             container.logs(),
@@ -1048,16 +1007,11 @@ def test_is_healthy():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
 
         # Sleep a few seconds to get the server some time to wake up
         time.sleep(10)
-
-        truss_server_addr = "http://localhost:8090"
-
-        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 503
         assert (
             "Exception while checking if model is healthy: not healthy"
@@ -1079,13 +1033,9 @@ def test_is_healthy():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
-        truss_server_addr = "http://localhost:8090"
-
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(5)
-        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 503
         # Ensure we only log after model.load is complete
         assert "Health check failed." not in container.logs()
@@ -1093,10 +1043,10 @@ def test_is_healthy():
         # Sleep a few seconds to get the server some time to wake up
         time.sleep(10)
 
-        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 503
         assert container.logs().count("Health check failed.") == 1
-        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 503
         assert container.logs().count("Health check failed.") == 2
 
@@ -1119,27 +1069,30 @@ def test_is_healthy():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(5)
-        truss_server_addr = "http://localhost:8090"
-        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 503
         time.sleep(10)
-        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 200
 
         healthy_responses = [True, "yessss", 34, {"woo": "hoo"}]
         for response in healthy_responses:
-            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
+            predict_response = requests.post(
+                urls.predict_url, json={"healthy": response}
+            )
             assert predict_response.status_code == 200
-            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            healthy = requests.get(f"{urls.base_url}/v1/models/model")
             assert healthy.status_code == 200
 
         not_healthy_responses = [False, "", 0, {}]
         for response in not_healthy_responses:
-            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
+            predict_response = requests.post(
+                urls.predict_url, json={"healthy": response}
+            )
             assert predict_response.status_code == 200
-            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            healthy = requests.get(f"{urls.base_url}/v1/models/model")
             assert healthy.status_code == 503
 
     model = """
@@ -1151,11 +1104,8 @@ def test_is_healthy():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-
-        truss_server_addr = "http://localhost:8090"
-
-        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        container, urls = tr.docker_run_for_test()
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 200
 
 
@@ -1171,12 +1121,9 @@ def test_instrument_metrics():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        metrics_url = "http://localhost:8090/metrics"
-        requests.post(PREDICT_URL, json={})
-        resp = requests.get(metrics_url)
+        container, urls = tr.docker_run_for_test()
+        requests.post(urls.predict_url, json={})
+        resp = requests.get(urls.metrics_url)
         assert resp.status_code == 200
         metric_names = [
             family.name for family in text_string_to_metric_families(resp.text)
@@ -1205,12 +1152,9 @@ def test_instrument_metrics():
     - opentelemetry-exporter-prometheus>=0.52b0
     """
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        metrics_url = "http://localhost:8090/metrics"
-        requests.post(PREDICT_URL, json={})
-        resp = requests.get(metrics_url)
+        _, urls = tr.docker_run_for_test()
+        requests.post(urls.predict_url, json={})
+        resp = requests.get(urls.metrics_url)
         assert resp.status_code == 200
         metric_names = {
             family.name for family in text_string_to_metric_families(resp.text)
@@ -1249,17 +1193,15 @@ async def test_graceful_shutdown(truss_container_fs):
             print(f"Done {request}")
             return request
     """
-
-    async def predict_request(data: dict):
-        async with httpx.AsyncClient() as client:
-            response = await client.post(PREDICT_URL, json=data)
-            response.raise_for_status()
-            return response.json()
-
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
+
+        async def predict_request(data: dict):
+            async with httpx.AsyncClient() as client:
+                response = await client.post(urls.predict_url, json=data)
+                response.raise_for_status()
+                return response.json()
+
         await predict_request({"seconds": 0, "task": 0})  # Warm up server.
 
         # Test starting two requests, each taking 2 seconds, then terminating server.
@@ -1285,12 +1227,21 @@ async def test_graceful_shutdown(truss_container_fs):
         _patch_termination_timeout(container, 3, truss_container_fs)
         # Now only one request should complete.
         container.restart()
-        wait_for_truss("http://localhost:8090", container, True)
-        await predict_request({"seconds": 0, "task": 0})  # Warm up server.
+        del predict_request  # The restarted container has a different port.
+        new_urls = get_docker_urls(container)
+        wait_for_truss(container, True)
 
-        task_2 = asyncio.create_task(predict_request({"seconds": 2, "task": 2}))
+        async def new_predict_request(data: dict):
+            async with httpx.AsyncClient() as client:
+                response = await client.post(new_urls.predict_url, json=data)
+                response.raise_for_status()
+                return response.json()
+
+        await new_predict_request({"seconds": 0, "task": 0})  # Warm up server.
+
+        task_2 = asyncio.create_task(new_predict_request({"seconds": 2, "task": 2}))
         await asyncio.sleep(0.1)  # Yield to event loop to make above task run.
-        task_3 = asyncio.create_task(predict_request({"seconds": 2, "task": 3}))
+        task_3 = asyncio.create_task(new_predict_request({"seconds": 2, "task": 3}))
         await asyncio.sleep(0.1)  # Yield to event loop to make above task run.
         t0 = time.perf_counter()
         container.stop(10)
@@ -1342,28 +1293,26 @@ def test_streaming_truss_with_user_tracing(test_data_path, enable_tracing_data):
             )
         )
 
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
         # A request for which response is not completely read
         headers_0 = _make_otel_headers()
         predict_response = requests.post(
-            PREDICT_URL, json={}, stream=True, headers=headers_0
+            urls.predict_url, json={}, stream=True, headers=headers_0
         )
         # We just read the first part and leave it hanging here
         next(predict_response.iter_content())
 
         headers_1 = _make_otel_headers()
         predict_response = requests.post(
-            PREDICT_URL, json={}, stream=True, headers=headers_1
+            urls.predict_url, json={}, stream=True, headers=headers_1
         )
         assert predict_response.headers.get("transfer-encoding") == "chunked"
 
         # When accept is set to application/json, the response is not streamed.
         headers_2 = _make_otel_headers()
         predict_non_stream_response = requests.post(
-            PREDICT_URL,
+            urls.predict_url,
             json={},
             stream=True,
             headers={**headers_2, "accept": "application/json"},
@@ -1423,15 +1372,17 @@ def test_truss_with_response():
     from fastapi import status
 
     with ensure_kill_all(), _temp_truss(model) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={"code": status.HTTP_204_NO_CONTENT})
+        response = requests.post(
+            urls.predict_url, json={"code": status.HTTP_204_NO_CONTENT}
+        )
         assert response.status_code == 204
         assert "x-baseten-error-source" not in response.headers
         assert "x-baseten-error-code" not in response.headers
 
         response = requests.post(
-            PREDICT_URL, json={"code": status.HTTP_500_INTERNAL_SERVER_ERROR}
+            urls.predict_url, json={"code": status.HTTP_500_INTERNAL_SERVER_ERROR}
         )
         assert response.status_code == 500
         assert response.headers["x-baseten-error-source"] == "04"
@@ -1453,10 +1404,10 @@ class Model:
     """
 
     with ensure_kill_all(), _temp_truss(model) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         # A request for which response is not completely read.
-        predict_response = requests.post(PREDICT_URL, json={}, stream=True)
+        predict_response = requests.post(urls.predict_url, json={}, stream=True)
         assert (
             predict_response.headers["Content-Type"]
             == "text/event-stream; charset=utf-8"
@@ -1485,9 +1436,9 @@ def test_truss_with_request():
              return {**inputs, "postprocess": "was here"}
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={"test": 123})
+        response = requests.post(urls.predict_url, json={"test": 123})
         assert response.status_code == 200
         assert response.json() == {
             "test": 123,
@@ -1503,10 +1454,8 @@ def test_truss_with_requests_and_invalid_signatures():
         def predict(self, inputs, invalid_arg): ...
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
-        time.sleep(1.0)  # Wait for logs.
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        time.sleep(1.5)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
             "`predict` method with two arguments must have request as second argument",
@@ -1520,10 +1469,8 @@ def test_truss_with_requests_and_invalid_signatures():
         def predict(self, request: fastapi.Request, invalid_arg): ...
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
-        time.sleep(1.0)  # Wait for logs.
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        time.sleep(1.5)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
             "`predict` method with two arguments is not allowed to have request as "
@@ -1538,10 +1485,8 @@ def test_truss_with_requests_and_invalid_signatures():
         def predict(self, inputs, request: fastapi.Request, something): ...
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
-        time.sleep(1.0)  # Wait for logs.
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        time.sleep(1.5)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
             "`predict` method cannot have more than two arguments",
@@ -1559,9 +1504,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         def predict(self, request: fastapi.Request): ...
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
@@ -1579,9 +1522,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         def postprocess(self, request: fastapi.Request): ...
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
@@ -1595,9 +1536,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         def preprocess(self, inputs): ...
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
@@ -1618,11 +1557,9 @@ def test_truss_forbid_postprocessing_with_response():
              return inputs
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={})
+        response = requests.post(urls.predict_url, json={})
         assert response.status_code == 500
         assert response.headers["x-baseten-error-source"] == "04"
         assert response.headers["x-baseten-error-code"] == "600"
@@ -1654,15 +1591,13 @@ def test_async_streaming_with_cancellation():
                     return
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         # For hard cancellation we need to use httpx, requests' timeouts don't work.
         with pytest.raises(httpx.ReadTimeout):
             with httpx.Client(
                 timeout=httpx.Timeout(1.0, connect=1.0, read=1.0)
             ) as client:
-                response = client.post(PREDICT_URL, json={}, timeout=1.0)
+                response = client.post(urls.predict_url, json={}, timeout=1.0)
                 response.raise_for_status()
 
         time.sleep(2)  # Wait a bit to get all logs.
@@ -1686,15 +1621,13 @@ def test_async_non_streaming_with_cancellation():
             return "Done"
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         # For hard cancellation we need to use httpx, requests' timeouts don't work.
         with pytest.raises(httpx.ReadTimeout):
             with httpx.Client(
                 timeout=httpx.Timeout(1.0, connect=1.0, read=1.0)
             ) as client:
-                response = client.post(PREDICT_URL, json={}, timeout=1.0)
+                response = client.post(urls.predict_url, json={}, timeout=1.0)
                 response.raise_for_status()
 
         time.sleep(2)  # Wait a bit to get all logs.
@@ -1729,7 +1662,7 @@ def test_limit_concurrency_with_sse():
         t0 = time.time()
         with httpx.Client() as client:
             with client.stream(
-                "POST", PREDICT_URL, json={"task_id": task_id}
+                "POST", urls.predict_url, json={"task_id": task_id}
             ) as response:
                 assert response.status_code == 200
                 if consume_chunks:
@@ -1746,7 +1679,7 @@ def test_limit_concurrency_with_sse():
                     print(f"waiting done ({task_id})")
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
         # Processing full request takes 0.5s.
         print("Make warmup request")
         make_request(consume_chunks=True, timeout=0.55, task_id=0)
@@ -1791,17 +1724,17 @@ def test_custom_openai_endpoints():
             return self._completions_count
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={"increment": 1})
+        response = requests.post(urls.predict_url, json={"increment": 1})
         assert response.status_code == 200
         assert response.json() == 1
 
-        response = requests.post(COMPLETIONS_URL, json={"increment": 2})
+        response = requests.post(urls.completions_url, json={"increment": 2})
         assert response.status_code == 200
         assert response.json() == 2
 
-        response = requests.post(CHAT_COMPLETIONS_URL, json={"increment": 3})
+        response = requests.post(urls.chat_completions_url, json={"increment": 3})
         assert response.status_code == 404
 
 
@@ -1823,9 +1756,11 @@ def test_postprocess_async_generator_streaming():
                 yield num
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]}, stream=True)
+        response = requests.post(
+            urls.predict_url, json={"nums": ["1", "2"]}, stream=True
+        )
         assert response.headers.get("transfer-encoding") == "chunked"
         assert [
             byte_string.decode() for byte_string in list(response.iter_content())
@@ -1849,9 +1784,9 @@ def test_preprocess_async_generator():
             return [num async for num in nums]
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]})
+        response = requests.post(urls.predict_url, json={"nums": ["1", "2"]})
         assert response.status_code == 200
         assert response.json() == ["1", "2"]
 
@@ -1873,10 +1808,10 @@ def test_openai_client_streaming():
             pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         response = requests.post(
-            CHAT_COMPLETIONS_URL,
+            urls.chat_completions_url,
             json={"nums": ["1", "2"]},
             stream=True,
             # Despite requesting json, we should still stream results back.
@@ -1903,9 +1838,7 @@ async def test_raise_predict_and_websocket_endpoint():
             pass
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(3)
         _assert_logs_contain_error(
             container.logs(),
@@ -1926,9 +1859,7 @@ async def test_raise_preprocess_and_websocket_endpoint():
             pass
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(3)
         _assert_logs_contain_error(
             container.logs(),
@@ -1945,9 +1876,7 @@ async def test_raise_no_endpoint():
        pass
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(1)
         _assert_logs_contain_error(
             container.logs(),
@@ -1976,8 +1905,8 @@ async def test_websocket_endpoint():
                 pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-        async with websockets.connect(WEBSOCKETS_URL) as websocket:
+        container, urls = tr.docker_run_for_test()
+        async with websockets.connect(urls.websockets_url) as websocket:
             # Send "hello" and verify response
             await websocket.send("hello")
             response = await websocket.recv()
@@ -2015,10 +1944,8 @@ async def test_websocket_endpoint_error_logs():
                 pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        async with websockets.connect(WEBSOCKETS_URL) as websocket:
+        container, urls = tr.docker_run_for_test()
+        async with websockets.connect(urls.websockets_url) as websocket:
             # Send "hello" and verify response
             await websocket.send("hello")
             response = await websocket.recv()
@@ -2058,11 +1985,9 @@ async def test_nonexistent_websocket_endpoint():
             pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
+        container, urls = tr.docker_run_for_test()
         with pytest.raises(websockets.ConnectionClosedError) as exc_info:
-            async with websockets.connect(WEBSOCKETS_URL) as ws:
+            async with websockets.connect(urls.websockets_url) as ws:
                 await ws.recv()
 
         assert exc_info.value.rcvd.code == 1003

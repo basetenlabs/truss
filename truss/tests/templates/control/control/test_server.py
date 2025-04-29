@@ -1,4 +1,5 @@
 import os
+import socket
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -41,8 +42,22 @@ def truss_original_hash():
     return "1234"
 
 
+def _get_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("", 0))
+        return sock.getsockname()[1]
+
+
 @pytest.fixture
-def app(truss_container_fs, truss_original_hash):
+def ports():
+    return {
+        "control_server_port": _get_free_port(),
+        "inference_server_port": _get_free_port(),
+    }
+
+
+@pytest.fixture
+def app(truss_container_fs, truss_original_hash, ports):
     with _env_var({"HASH_TRUSS": truss_original_hash}):
         inf_serv_home = truss_container_fs / "app"
         control_app = create_app(
@@ -50,8 +65,8 @@ def app(truss_container_fs, truss_original_hash):
                 "inference_server_home": inf_serv_home,
                 "inference_server_process_args": ["python", "main.py"],
                 "control_server_host": "*",
-                "control_server_port": 8081,
-                "inference_server_port": 8082,
+                "control_server_port": ports["control_server_port"],
+                "inference_server_port": ports["inference_server_port"],
                 "oversee_inference_server": False,
                 "pip_path": "pip",
             }
@@ -75,10 +90,10 @@ def anyio_backend(request):
 
 
 @pytest.fixture()
-async def client(app):
+async def client(app, ports):
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
-        transport=transport, base_url="http://localhost:8080"
+        transport=transport, base_url=f"http://localhost:{ports['control_server_port']}"
     ) as async_client:
         yield async_client
 

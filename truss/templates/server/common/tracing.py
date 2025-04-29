@@ -137,21 +137,22 @@ def section_as_event(
     """
     t0 = time.time()
     span.add_event(f"start: {section_name}")
-    detached_ctx = None
-    transient_token = None
+
+    maybe_ctx: Optional[tuple[context.Context, context.Token]] = None
 
     if detach:
-        detached_ctx = context.get_current()
-        transient_token = context.attach(trace.set_span_in_context(trace.INVALID_SPAN))
+        maybe_ctx = (
+            context.get_current(),
+            context.attach(trace.set_span_in_context(trace.INVALID_SPAN)),
+        )
 
     try:
-        yield detached_ctx
+        yield maybe_ctx[0] if maybe_ctx else None
     finally:
         t1 = time.time()
         span.add_event(
             f"done: {section_name}", attributes={ATTR_NAME_DURATION: t1 - t0}
         )
-        if detach:
-            assert detached_ctx is not None
-            context.detach(transient_token)
-            context.attach(detached_ctx)
+        if maybe_ctx:
+            context.detach(maybe_ctx[1])
+            context.attach(maybe_ctx[0])
