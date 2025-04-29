@@ -279,7 +279,7 @@ def prepare_checkpoint_deploy(
     )
     hf_secret_name = get_hf_secret_name(console, args.hf_secret_name)
     lora_adapter_config = checkpoint.get("lora_adapter_config") or {}
-    max_lora_rank = lora_adapter_config.get("rank") or DEFAULT_MAX_LORA_RANK
+    max_lora_rank = lora_adapter_config.get("r") or DEFAULT_MAX_LORA_RANK
     # generate the truss config for vllm
     template_args = DeployCheckpointTemplatingArgs(
         checkpoint_id=checkpoint_id,
