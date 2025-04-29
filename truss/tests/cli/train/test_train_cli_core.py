@@ -1,4 +1,8 @@
 from io import StringIO
+import os
+from pathlib import Path
+from truss.cli.train.core import DeployCheckpointTemplatingArgs, render_vllm_lora_truss_config
+from truss.base import truss_config
 from unittest.mock import Mock, patch
 
 from rich.console import Console
@@ -101,3 +105,22 @@ def test_view_training_job_metrics(time_sleep):
     )
     assert "Training job completed successfully" in string_io.getvalue()
     assert "Error fetching metrics" not in string_io.getvalue()
+
+def test_render_vllm_lora_truss_config():
+    template_args = DeployCheckpointTemplatingArgs(
+        checkpoint_id="checkpoint-1",
+        base_model_id="google/gemma-3-27b-it",
+        hf_secret_name="hf_access_token",
+        dtype="bfloat16",
+        model_name="gemma-3-27b-it-vLLM-LORA",
+        accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=4),
+    )
+    rendered_truss = render_vllm_lora_truss_config(template_args)
+    test_truss = truss_config.TrussConfig.from_yaml(Path(os.path.dirname(__file__), "resources/test_deploy_from_checkpoint_config.yml"))
+    assert test_truss.model_name == rendered_truss.model_name
+    assert test_truss.training_checkpoints.checkpoints[0].id == rendered_truss.training_checkpoints.checkpoints[0].id
+    assert test_truss.training_checkpoints.checkpoints[0].name == rendered_truss.training_checkpoints.checkpoints[0].name
+    assert test_truss.docker_server.start_command == rendered_truss.docker_server.start_command
+    assert test_truss.resources.accelerator == rendered_truss.resources.accelerator
+    assert test_truss.secrets == rendered_truss.secrets
+    assert test_truss.training_checkpoints == rendered_truss.training_checkpoints

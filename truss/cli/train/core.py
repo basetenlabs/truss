@@ -273,7 +273,7 @@ def prepare_checkpoint_deploy(
     # get all checkpoints for the training job
     model_name = (
         args.model_name
-        or f"{base_model_id}-vLLM-LORA"  # current scope for deploying from checkpoint
+        or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # current scope for deploying from checkpoint
     )
     hf_secret_name = get_hf_secret_name(console, args.hf_secret_name)
     # generate the truss config for vllm
