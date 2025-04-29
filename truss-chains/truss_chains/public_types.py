@@ -388,6 +388,7 @@ class ChainletOptions(custom_types.SafeModelNonSerializable):
         env_variables: static environment variables available to the deployed chainlet.
         health_checks: Configures health checks for the chainlet. See `guide <https://docs.baseten.co/truss/guides/custom-health-checks#chains>`_.
         metadata: Arbitrary JSON object to describe chainlet.
+        streaming_read_timeout: amount of time (in seconds) between each streamed chunk before a timeout is triggered
     """
 
     enable_b10_tracing: bool = False
@@ -395,6 +396,7 @@ class ChainletOptions(custom_types.SafeModelNonSerializable):
     env_variables: Mapping[str, str] = pydantic.Field(default_factory=dict)
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
     metadata: Optional[JsonType] = None
+    streaming_read_timeout: int = 60
 
 
 class RemoteConfig(custom_types.SafeModelNonSerializable):
