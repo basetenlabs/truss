@@ -357,16 +357,18 @@ def get_checkoint_id(user_input: Optional[str], checkpoint_ids: List[str]) -> st
         if user_input not in checkpoint_ids:
             raise click.UsageError(f"Invalid checkpoint id. Choices: {checkpoint_ids}")
         return user_input
-    elif not user_input:
-        if len(checkpoint_ids) == 0:
-            raise click.UsageError("No checkpoints found for the training job.")
-        if len(checkpoint_ids) > 1:
-            checkpoint_id = inquirer.select(
-                message="Select the checkpoint to deploy.", choices=checkpoint_ids
-            ).execute()
-            if not checkpoint_id:
-                raise click.UsageError("Checkpoint id is required.")
-        return checkpoint_id
+
+    if len(checkpoint_ids) == 0:
+        raise click.UsageError("No checkpoints found for the training job.")
+    if len(checkpoint_ids) > 1:
+        checkpoint_id = inquirer.select(
+            message="Select the checkpoint to deploy.", choices=checkpoint_ids
+        ).execute()
+        if not checkpoint_id:
+            raise click.UsageError("Checkpoint id is required.")
+    else:
+        checkpoint_id = checkpoint_ids[0]
+    return checkpoint_id
 
 
 def get_hf_secret_name(console: Console, user_input: Optional[str]) -> str:
