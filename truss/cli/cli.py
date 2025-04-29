@@ -1067,6 +1067,13 @@ def get_job_metrics(
     default=None,
     help="Model name to use for deployment. Defaults to <base_model_id>-<checkpoint_id>.",
 )
+@click.option(
+    "--deployment-name",
+    type=str,
+    required=False,
+    default=None,
+    help="Deployment name to use for deployment. Defaults to <checkpoint_id>.",
+)
 @log_level_option
 @error_handling
 def deploy_checkpoint(
@@ -1079,12 +1086,12 @@ def deploy_checkpoint(
     remote: Optional[str],
     dtype: Optional[str],
     model_name: Optional[str],
+    deployment_name: Optional[str],
 ):
     """
     Deploy a checkpoint. Some early assumptions about this are:
     - We are deploying a vllm model
     - The checkpoint is a lora
-    - We're deploying on GPU
     - Base Model is coming from Huggingface
     """
 
@@ -1095,10 +1102,10 @@ def deploy_checkpoint(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    prepared_checkpoint_deploy = train_cli.prepare_checkpoint_deploy(
+    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
         console,
         remote_provider,
-        train_cli.DeployCheckpointArgs(
+        train_cli.PrepareCheckpointArgs(
             base_model_id=base_model_id,
             project_id=project_id,
             job_id=job_id,
@@ -1107,24 +1114,26 @@ def deploy_checkpoint(
             accelerator=accelerator,
             dtype=dtype,
             model_name=model_name,
+            deployment_name=deployment_name,
         ),
     )
     ctx = click.Context(push, obj={})
     ctx.params = {
-        "target_directory": prepared_checkpoint_deploy.truss_directory,
+        "target_directory": prepare_checkpoint_result.truss_directory,
         "remote": remote,
-        "model_name": prepared_checkpoint_deploy.model_name,
+        "model_name": prepare_checkpoint_result.model_name,
         "publish": True,
+        "deployment_name": prepare_checkpoint_result.deployment_name,
     }
     push.invoke(ctx)
     rich.print(
         Text("\nTo run the model with the checkpoint,"),
         Text("ensure your `model` parameter is set to"),
-        Text(f"{prepared_checkpoint_deploy.checkpoint_id}.", style="magenta"),
+        Text(f"{prepare_checkpoint_result.checkpoint_id}.", style="magenta"),
         Text("An example request body might look like this:"),
         Text(
             "\n{"
-            + f'"model": {prepared_checkpoint_deploy.checkpoint_id}, "messages": [...]'
+            + f'"model": {prepare_checkpoint_result.checkpoint_id}, "messages": [...]'
             + "}",
             style="green",
         ),
