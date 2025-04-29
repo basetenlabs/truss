@@ -112,6 +112,7 @@ def test_view_training_job_metrics(time_sleep):
 
 def test_render_vllm_lora_truss_config():
     template_args = DeployCheckpointTemplatingArgs(
+        training_job_id="kowpeqj",
         checkpoint_id="checkpoint-1",
         base_model_id="google/gemma-3-27b-it",
         hf_secret_name="hf_access_token",

@@ -52,6 +52,7 @@ DEFAULT_MAX_LORA_RANK = 16
 
 @dataclass
 class DeployCheckpointTemplatingArgs:
+    training_job_id: str
     base_model_id: str
     checkpoint_id: str
     hf_secret_name: Optional[str]
@@ -282,6 +283,7 @@ def prepare_checkpoint_deploy(
     max_lora_rank = lora_adapter_config.get("r") or DEFAULT_MAX_LORA_RANK
     # generate the truss config for vllm
     template_args = DeployCheckpointTemplatingArgs(
+        training_job_id=job_id,
         checkpoint_id=checkpoint_id,
         base_model_id=base_model_id,
         hf_secret_name=hf_secret_name,
@@ -318,7 +320,9 @@ def render_vllm_lora_truss_config(
             "Unexpected checkpoint deployment config: missing training_checkpoints"
         )
     deploy_config.training_checkpoints.checkpoints = [
-        truss_config.Checkpoint(id=args.checkpoint_id, name=args.checkpoint_id)
+        truss_config.Checkpoint(
+            id=f"{args.training_job_id}/{args.checkpoint_id}", name=args.checkpoint_id
+        )
     ]
     deploy_config.model_name = args.model_name
     if args.accelerator:

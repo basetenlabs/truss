@@ -62,7 +62,7 @@ spec_version: '2.0'
 system_packages: []
 training_checkpoints:
   checkpoints:
-  - id: checkpoint-1
+  - id: kowpeqj/checkpoint-1
     name: checkpoint-1
   download_folder: /tmp/training_checkpoints
 trt_llm: null
