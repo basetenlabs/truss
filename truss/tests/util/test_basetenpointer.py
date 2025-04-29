@@ -172,6 +172,7 @@ def test_dolly_12b():
 
 
 def test_with_main():
+    # main should be resolved to 41dec486b25746052d3335decc8f5961607418a0
     cache = ModelCache(
         [
             ModelRepo(
