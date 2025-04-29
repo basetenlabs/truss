@@ -45,8 +45,9 @@ class PrepareCheckpointResult:
 
 
 VLLM_LORA_START_COMMAND = Template(
-    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 16 --dtype {{ dtype }} --lora-modules {{ checkpoint_id }}=/tmp/training_checkpoints/{{ checkpoint_id }}"'
+    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank {{ max_lora_rank }} --dtype {{ dtype }} --lora-modules {{ checkpoint_id }}=/tmp/training_checkpoints/{{ checkpoint_id }}"'
 )
+DEFAULT_MAX_LORA_RANK = 16
 
 
 @dataclass
@@ -57,6 +58,7 @@ class DeployCheckpointTemplatingArgs:
     dtype: str
     model_name: str
     accelerator: Optional[truss_config.AcceleratorSpec]  # if none, provided, use CPU
+    max_lora_rank: int
 
 
 def get_args_for_stop(
@@ -276,6 +278,8 @@ def prepare_checkpoint_deploy(
         or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # current scope for deploying from checkpoint
     )
     hf_secret_name = get_hf_secret_name(console, args.hf_secret_name)
+    lora_adapter_config = checkpoint.get("lora_adapter_config") or {}
+    max_lora_rank = lora_adapter_config.get("rank") or DEFAULT_MAX_LORA_RANK
     # generate the truss config for vllm
     template_args = DeployCheckpointTemplatingArgs(
         checkpoint_id=checkpoint_id,
@@ -284,6 +288,7 @@ def prepare_checkpoint_deploy(
         dtype=args.dtype or "bfloat16",
         model_name=model_name,
         accelerator=maybe_accelerator,
+        max_lora_rank=max_lora_rank,
     )
 
     rendered_truss = render_vllm_lora_truss_config(template_args)
@@ -332,6 +337,7 @@ def render_vllm_lora_truss_config(
         "checkpoint_id": args.checkpoint_id,
         "envvars": start_command_envvars,
         "dtype": args.dtype,
+        "max_lora_rank": args.max_lora_rank,
     }
     if not deploy_config.docker_server:
         raise ValueError(
