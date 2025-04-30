@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 import pytest
 import requests
 
-from truss.base.truss_config import ModelCache
+from truss.base.truss_config import ModelCache, ModelRepo
 from truss.util.basetenpointer import model_cache_hf_to_b10ptr
 
 
@@ -171,5 +171,49 @@ def test_dolly_12b():
         )
 
 
+def test_with_main():
+    # main should be resolved to 41dec486b25746052d3335decc8f5961607418a0
+    cache = ModelCache(
+        [
+            ModelRepo(
+                repo_id="intfloat/llm-retriever-base",
+                revision="main",
+                ignore_patterns=["*.json", "*.txt", "*.md", "*.bin", "*.model"],
+                volume_folder="mistral_demo",
+                use_volume=True,
+            )
+        ]
+    )
+    b10ptr = model_cache_hf_to_b10ptr(cache)
+    expected = {
+        "pointers": [
+            {
+                "resolution": {
+                    "url": "https://huggingface.co/intfloat/llm-retriever-base/resolve/41dec486b25746052d3335decc8f5961607418a0/.gitattributes",
+                    "expiration_timestamp": 4044816725,
+                },
+                "uid": "intfloat/llm-retriever-base:main:.gitattributes",
+                "file_name": "/app/model_cache/mistral_demo/.gitattributes",
+                "hashtype": "etag",
+                "hash": "a6344aac8c09253b3b630fb776ae94478aa0275b",
+                "size": 1519,
+            },
+            {
+                "resolution": {
+                    "url": "https://huggingface.co/intfloat/llm-retriever-base/resolve/41dec486b25746052d3335decc8f5961607418a0/model.safetensors",
+                    "expiration_timestamp": 4044816725,
+                },
+                "uid": "intfloat/llm-retriever-base:main:model.safetensors",
+                "file_name": "/app/model_cache/mistral_demo/model.safetensors",
+                "hashtype": "etag",
+                "hash": "565dd4f1cc6318ccf07af8680c27fd935b3b56ca2684d1af58abcd4e8bf6ecfa",
+                "size": 437955512,
+            },
+        ]
+    }
+    assert b10ptr.model_dump() == expected
+
+
 if __name__ == "__main__":
     test_dolly_12b()
+    test_with_main()

@@ -722,6 +722,7 @@ def _gen_truss_config(
     config.secrets = {k: v for k, v in assets.secrets.items()}
     config.runtime.enable_tracing_data = remote_config.options.enable_b10_tracing
     config.runtime.enable_debug_logs = remote_config.options.enable_debug_logs
+    config.runtime.streaming_read_timeout = remote_config.options.streaming_read_timeout
     config.model_metadata = cast(dict[str, Any], remote_config.options.metadata) or {}
     config.environment_variables = dict(remote_config.options.env_variables)
 
