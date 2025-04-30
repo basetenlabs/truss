@@ -29,10 +29,11 @@ from truss.base.constants import (
 from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
-from truss.cli import remote_cli
+from truss.cli import common, remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.utils import self_upgrade, user_config
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -94,6 +95,8 @@ error_console = Console(stderr=True, style="bold red")
 
 is_humanfriendly_log_level = True
 
+app_settings = user_config.SettingsWrapper.read_or_create()
+
 
 def error_handling(f: Callable[..., object]):
     @wraps(f)
@@ -113,6 +116,16 @@ def error_handling(f: Callable[..., object]):
 
             ctx = click.get_current_context()
             ctx.exit(1)
+
+    return wrapper
+
+
+def upgrade_dialogue(f: Callable[..., object]):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if common.check_is_interactive() and app_settings.b10_beta_features:
+            self_upgrade.upgrade_dialogue(truss.version(), console)
+        f(*args, **kwargs)
 
     return wrapper
 
@@ -183,6 +196,7 @@ def print_help() -> None:
 @click.pass_context
 @click.version_option(truss.version())
 @log_level_option
+@upgrade_dialogue
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
     if not ctx.invoked_subcommand:
@@ -217,6 +231,7 @@ def image():
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def init(target_directory, backend, name, python_config) -> None:
     """Create a new truss.
 
@@ -247,6 +262,7 @@ def init(target_directory, backend, name, python_config) -> None:
 @click.argument("target_directory", required=False)
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def build_context(build_dir, target_directory: str) -> None:
     """
     Create a docker build context for a Truss.
@@ -271,6 +287,7 @@ def build_context(build_dir, target_directory: str) -> None:
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None:
     """
     Builds the docker image for a Truss.
@@ -304,6 +321,7 @@ def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def run(
     target_directory: str, build_dir: Path, tag, port, attach, use_host_network
 ) -> None:
@@ -384,6 +402,7 @@ def whoami(remote: Optional[str]):
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def watch(target_directory: str, remote: str) -> None:
     """
     Seamless remote development with truss
@@ -602,6 +621,7 @@ include_git_info_doc = (
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def push_chain(
     source: Path,
     entrypoint: Optional[str],
@@ -654,7 +674,7 @@ def push_chain(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = remote_cli.determine_include_git_info_consent(remote)
+        include_git_info = app_settings.include_git_info
 
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
@@ -778,6 +798,7 @@ def push_chain(
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def watch_chains(
     source: Path,
     entrypoint: Optional[str],
@@ -822,6 +843,7 @@ def watch_chains(
 @click.argument("directory", type=Path, required=False)
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def init_chain(directory: Optional[Path]) -> None:
     """
     Initializes a chains project directory.
@@ -886,6 +908,7 @@ def train():
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -931,6 +954,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 @click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def get_job_logs(
     remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
 ):
@@ -965,6 +989,7 @@ def get_job_logs(
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def stop_job(
     project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
 ):
@@ -996,6 +1021,7 @@ def stop_job(
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def view_training(
     project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
 ):
@@ -1016,6 +1042,7 @@ def view_training(
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def get_job_metrics(
     project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
 ):
@@ -1393,6 +1420,7 @@ def run_python(script, target_directory):
 )
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def push(
     target_directory: str,
     remote: str,
@@ -1420,7 +1448,7 @@ def push(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = remote_cli.determine_include_git_info_consent(remote)
+        include_git_info = app_settings.include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
     tr = _get_truss_from_directory(target_directory=target_directory)
@@ -1587,6 +1615,7 @@ def push(
 @click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
 @log_level_option
 @error_handling
+@upgrade_dialogue
 def model_logs(
     remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
 ) -> None:

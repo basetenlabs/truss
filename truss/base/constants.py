@@ -1,15 +1,6 @@
 import pathlib
-from typing import Set
 
-SKLEARN = "sklearn"
-TENSORFLOW = "tensorflow"
-KERAS = "keras"
-XGBOOST = "xgboost"
-PYTORCH = "pytorch"
 CUSTOM = "custom"
-HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
-LIGHTGBM = "lightgbm"
-
 
 _TRUSS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
@@ -74,7 +65,6 @@ TRUSS_MODIFIED_TIME = "truss_modified_time"
 TRUSS_DIR = "truss_dir"
 TRUSS_HASH = "truss_hash"
 
-HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = set({})
 
 INFERENCE_SERVER_PORT = 8080
 
