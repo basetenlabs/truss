@@ -16,6 +16,7 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
+from click.core import ParameterSource
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
@@ -23,6 +24,7 @@ from rich.console import Console
 import truss
 import truss.cli.train.core as train_cli
 from truss.base.constants import (
+    PRESERVE_ENV_INSTANCE_TYPE_NAME,
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
@@ -563,9 +565,9 @@ include_git_info_doc = (
     default=False,
     help=(
         "Watches the chains source code and applies live patches. Using this option "
-        "will wait for the chain to be deployed (i.e. `--wait` flag is applied), "
+        "will wait for the chain to be deployed (i.e. '--wait' flag is applied), "
         "before starting to watch for changes. This option required the deployment "
-        "to be a development deployment (i.e. `--no-promote` and `--no-publish`."
+        "to be a development deployment (i.e. '--no-promote' and '--no-publish'."
     ),
 )
 @click.option(
@@ -586,7 +588,7 @@ include_git_info_doc = (
     type=str,
     required=False,
     help=(
-        "Runs `watch`, but only applies patches to specified chainlets. The option is "
+        "Runs 'watch', but only applies patches to specified chainlets. The option is "
         "a comma-separated list of chainlet (display) names. This option can give "
         "faster dev loops, but also lead to inconsistent deployments. Use with caution "
         "and refer to docs."
@@ -600,9 +602,26 @@ include_git_info_doc = (
     default=False,
     help=include_git_info_doc,
 )
+@click.option(
+    "--P/--NP",
+    "--preserve-env-instance-type/--no-preserve-env-instance-type",
+    PRESERVE_ENV_INSTANCE_TYPE_NAME,
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=None,
+    help=(
+        "When pushing a chain to an environment, whether to use the resources specified "
+        "in the chainlets definition to resolve the instance types or preserve the instance types "
+        "configured in the specified environment. It will be ignored if --environment is not specified. "
+        "Default is --preserve-env-instance-type."
+    ),
+)
+@click.pass_context
 @log_level_option
 @error_handling
 def push_chain(
+    click_context: click.Context,
     source: Path,
     entrypoint: Optional[str],
     name: Optional[str],
@@ -615,6 +634,7 @@ def push_chain(
     environment: Optional[str],
     experimental_watch_chainlet_names: Optional[str],
     include_git_info: bool = False,
+    preserve_env_instance_type: bool = True,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -635,20 +655,24 @@ def push_chain(
     if watch:
         if publish or promote:
             raise ValueError(
-                "When using `--watch`, the deployment cannot be published or promoted."
+                "When using '--watch', the deployment cannot be published or promoted."
             )
         if not wait:
             console.print(
-                "`--watch` is used. Will wait for deployment before watching files."
+                "'--watch' is used. Will wait for deployment before watching files."
             )
             wait = True
 
     if promote and environment:
         promote_warning = (
-            "`promote` flag and `environment` flag were both specified. "
-            "Ignoring the value of `promote`."
+            "'promote' flag and 'environment' flag were both specified. "
+            "Ignoring the value of 'promote'."
         )
         console.print(promote_warning, style="yellow")
+
+    _process_preserve_env_instance_type_flag(
+        click_context, environment, preserve_env_instance_type
+    )
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -669,6 +693,7 @@ def push_chain(
             environment=environment,
             include_git_info=include_git_info,
             working_dir=source.parent if source.is_file() else source.resolve(),
+            preserve_env_instance_type=preserve_env_instance_type,
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
@@ -770,7 +795,7 @@ def push_chain(
     type=str,
     required=False,
     help=(
-        "Runs `watch`, but only applies patches to specified chainlets. The option is "
+        "Runs 'watch', but only applies patches to specified chainlets. The option is "
         "a comma-separated list of chainlet (display) names. This option can give "
         "faster dev loops, but also lead to inconsistent deployments. Use with caution "
         "and refer to docs."
@@ -1287,7 +1312,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with `--publish` or `--promote`."
+        "used in combination with '--publish' or '--promote'."
     ),
 )
 @click.option(
@@ -1317,11 +1342,13 @@ def run_python(script, target_directory):
 )
 @click.option("--tail", type=bool, is_flag=True)
 @click.option(
+    "--P/--NP",
     "--preserve-env-instance-type/--no-preserve-env-instance-type",
+    "preserve_env_instance_type",
     type=bool,
     is_flag=True,
     required=False,
-    default=None,
+    default=True,
     help=(
         "When pushing a truss to an environment, whether to use the resources specified "
         "in the truss config to resolve the instance type or preserve the instance type "
@@ -1329,9 +1356,11 @@ def run_python(script, target_directory):
         "Default is --preserve-env-instance-type."
     ),
 )
+@click.pass_context
 @log_level_option
 @error_handling
 def push(
+    click_context: click.Context,
     target_directory: str,
     remote: str,
     model_name: str,
@@ -1368,26 +1397,14 @@ def push(
         model_name = remote_cli.inquire_model_name()
 
     if promote and environment:
-        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        promote_warning = "'promote' flag and 'environment' flag were both specified. Ignoring the value of 'promote'"
         console.print(promote_warning, style="yellow")
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
 
-    if preserve_env_instance_type is not None and not environment:
-        preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of `preserve-env-instance-type`"
-        console.print(preserve_env_warning, style="yellow")
-    if preserve_env_instance_type is None:
-        # If the flag is not specified, we set it to True by default. We handle the default here instead of in click.options
-        # to only print the warning above when the flag was specified by the user.
-        preserve_env_instance_type = True
-
-    if environment:
-        if preserve_env_instance_type:
-            preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and the current instance type of the '{environment}' environment will be used."
-            console.print(preserve_env_info)
-        else:
-            preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
-            console.print(preserve_env_info)
+    _process_preserve_env_instance_type_flag(
+        click_context, environment, preserve_env_instance_type
+    )
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
@@ -1396,19 +1413,19 @@ def push(
 
     # Log a warning if using --trusted.
     if trusted is not None:
-        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
+        trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
         if not publish:
-            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using '--publish'"
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
 
         if is_missing_secrets_for_trt_llm_builder(tr):
             missing_token_text = (
-                "`hf_access_token` must be provided in secrets to build a gated model. "
+                "'hf_access_token' must be provided in secrets to build a gated model. "
                 "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
             )
             console.print(missing_token_text, style="yellow")
@@ -1429,7 +1446,7 @@ def push(
                 fp8_and_num_builder_gpus_text = (
                     "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
                     "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
-                    "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+                    "'num_builder_gpus' can be used to specify the number of GPUs to use at build time."
                 )
                 console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
@@ -1459,8 +1476,8 @@ def push(
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
 | When you are ready to publish your deployed model as a new deployment,                |
-| pass `--publish` to the `truss push` command. To monitor changes to your model and    |
-| rapidly iterate, run the `truss watch` command.                                       |
+| pass '--publish' to the 'truss push' command. To monitor changes to your model and    |
+| rapidly iterate, run the 'truss watch' command.                                       |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """
@@ -1622,6 +1639,28 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
     return load(truss_dir)
+
+
+def _process_preserve_env_instance_type_flag(
+    click_context: click.Context,
+    environment: Optional[str],
+    preserve_env_instance_type: bool,
+):
+    if environment:
+        if preserve_env_instance_type:
+            preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and instance type of the '{environment}' environment will be used."
+            console.print(preserve_env_info)
+        else:
+            preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
+            console.print(preserve_env_info)
+    else:
+        flag_specified = (
+            click_context.get_parameter_source(PRESERVE_ENV_INSTANCE_TYPE_NAME)
+            == ParameterSource.COMMANDLINE
+        )
+        if flag_specified:
+            preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of 'preserve-env-instance-type'"
+            console.print(preserve_env_warning, style="yellow")
 
 
 truss_cli.add_command(container)

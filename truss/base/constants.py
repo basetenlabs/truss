@@ -96,3 +96,5 @@ OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecat
 
 
 PRODUCTION_ENVIRONMENT_NAME = "production"
+
+PRESERVE_ENV_INSTANCE_TYPE_NAME = "preserve_env_instance_type"
