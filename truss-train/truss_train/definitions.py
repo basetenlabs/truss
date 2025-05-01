@@ -57,3 +57,23 @@ class TrainingProject(custom_types.SafeModel):
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
+
+class Checkpoint(custom_types.SafeModel):
+    id: str
+    name: str
+
+class CheckpointDetails(custom_types.SafeModel):
+    download_directory: str = "/tmp/checkpoints"
+    base_model_id: Optional[str] = None
+    checkpoints: List[Checkpoint] = []
+
+class CheckpointDeployRuntime(custom_types.SafeModel):
+    environment_variables: Dict[str, Union[str, SecretReference]] = {}
+
+class CheckpointDeploy(custom_types.SafeModel):
+    checkpoint_details: Optional[CheckpointDetails] = None
+    model_name: Optional[str] = None
+    deployment_name: Optional[str] = None
+    runtime: Optional[CheckpointDeployRuntime] = None
+    compute: Optional[Compute] = None
+    

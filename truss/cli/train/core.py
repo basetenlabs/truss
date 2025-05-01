@@ -15,6 +15,8 @@ from rich.text import Text
 from truss.base import truss_config
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.remote.baseten.remote import BasetenRemote
+from truss_train.definitions import CheckpointDeploy, CheckpointDetails, Checkpoint
+from truss_train import loader
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -25,23 +27,16 @@ ACTIVE_JOB_STATUSES = [
 
 @dataclass
 class PrepareCheckpointArgs:
-    model_name: Optional[str]
-    base_model_id: Optional[str]
-    project_id: Optional[str]
-    job_id: Optional[str]
-    checkpoint_id: Optional[str]
-    hf_secret_name: Optional[str]
-    accelerator: Optional[str]
-    dtype: Optional[str]
-    deployment_name: Optional[str]
+    project_id: str
+    job_id: str
+    deploy_config_path: Optional[str]
+    config_output_path: Optional[str]
 
 
 @dataclass
 class PrepareCheckpointResult:
     truss_directory: Path
-    checkpoint_id: str
-    model_name: str
-    deployment_name: str
+    checkpoint_deploy: CheckpointDeploy
 
 
 VLLM_LORA_START_COMMAND = Template(
@@ -256,29 +251,61 @@ def view_training_job_metrics(
 def prepare_checkpoint_deploy(
     console: Console, remote_provider: BasetenRemote, args: PrepareCheckpointArgs
 ) -> PrepareCheckpointResult:
+    if not args.deploy_config_path:
+        result = _prepare_checkpoint_deploy(
+            console, remote_provider, CheckpointDeploy()
+        )
+        output_path = args.config_output_path
+        if not output_path:
+            # What does it look like to generate the python file? That feels weird. Would be 
+            # more natural to output a yml or json file.
+            output_path_raw = inquirer.text(
+                message="Enter the path to output the deploy config."
+            ).execute()
+            if os.path.isdir(output_path_raw):
+                output_path = Path(output_path_raw) / "deploy_config."
+            # TODO: generate the python file
+        return result
+    with loader.import_target(args.deploy_config_path, CheckpointDeploy) as checkpoint_deploy:
+        return _prepare_checkpoint_deploy(
+            console, remote_provider, checkpoint_deploy, args.project_id, args.job_id
+        )
+    
+def _prepare_checkpoint_deploy(
+    console: Console, remote_provider: BasetenRemote, checkpoint_deploy: CheckpointDeploy, project_id: str, job_id: str
+) -> PrepareCheckpointResult:
     project_id, job_id = get_args_for_monitoring(
-        console, remote_provider, args.project_id, args.job_id
+        console, remote_provider, project_id, job_id
     )
-
+    checkpoint_details = checkpoint_deploy.checkpoint_details
+    if not checkpoint_details:
+        checkpoint_details = CheckpointDetails()
     response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
     response_checkpoints = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint)
         for checkpoint in response["checkpoints"]
     )
-    checkpoint_id = get_checkoint_id(
-        args.checkpoint_id, list(response_checkpoints.keys())
-    )
-    checkpoint = response_checkpoints[checkpoint_id]
+    checkpoints_to_validate = checkpoint_details.checkpoints
+    if not checkpoint_details.checkpoints:
+        checkpoint_id = get_checkpoint_id(
+            None, list(response_checkpoints.keys())
+        )
+        checkpoint = response_checkpoints[checkpoint_id]
+        checkpoints_to_validate = [Checkpoint(id=checkpoint_id, name=checkpoint_id)]
+    
+    for checkpoint in checkpoints_to_validate:
+        # verify that the checkpoints exist 
+        get_checkpoint_id(checkpoint.id, list(response_checkpoints.keys()))
 
-    maybe_accelerator = get_accelerator_if_specified(args.accelerator)
-    base_model_id = get_base_model_id(args.base_model_id, checkpoint)
+    maybe_accelerator = get_accelerator_if_specified(checkpoint_deploy.compute.accelerator)
+    base_model_id = get_base_model_id(checkpoint_deploy.model_name, checkpoint)
 
     # get all checkpoints for the training job
     model_name = (
-        args.model_name
+        checkpoint_deploy.model_name
         or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # current scope for deploying from checkpoint
     )
-    hf_secret_name = get_hf_secret_name(console, args.hf_secret_name)
+    hf_secret_name = get_hf_secret_name(console, checkpoint_deploy.runtime.environment_variables.get("HF_TOKEN"))
     lora_adapter_config = checkpoint.get("lora_adapter_config") or {}
     max_lora_rank = lora_adapter_config.get("r") or DEFAULT_MAX_LORA_RANK
     # generate the truss config for vllm
@@ -356,7 +383,7 @@ def render_vllm_lora_truss_config(
     return deploy_config
 
 
-def get_checkoint_id(user_input: Optional[str], checkpoint_ids: List[str]) -> str:
+def get_checkpoint_id(user_input: Optional[str], checkpoint_ids: List[str]) -> str:
     if user_input == "latest":
         return checkpoint_ids[-1]
     elif user_input:

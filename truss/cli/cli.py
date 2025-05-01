@@ -57,6 +57,7 @@ from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
+from truss_train.definitions import TrainingProject
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
 rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
@@ -897,7 +898,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    with loader.import_target(config) as training_project:
+    with loader.import_target(config, TrainingProject) as training_project:
         with console.status("Creating training job...", spinner="dots"):
             project_resp = remote_provider.api.upsert_training_project(
                 training_project=training_project
@@ -1032,61 +1033,19 @@ def get_job_metrics(
 
 
 @train.command(name="deploy_checkpoint")
-@click.option("--base-model-id", type=str, required=False, help="Base model ID")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option(
-    "--checkpoint-id", type=str, required=False, default=None, help="Checkpoint ID."
-)
-@click.option(
-    "--accelerator",
-    type=str,
-    required=False,
-    default=None,
-    help="Accelerator to use for deployment.",
-)
-@click.option(
-    "--hf-secret-name",
-    type=str,
-    required=False,
-    default=None,
-    help="Huggingface secret name.",
-)
+@click.option("--config", type=str, required=False, help="Deploy config file")
+@click.option("--config-output-path", type=str, required=False, help="Path to output the deploy config generated if none is provided") # Note: the optionality means that their input might not be the resulting output. Then what? 
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option(
-    "--dtype",
-    type=str,
-    required=False,
-    default=None,
-    help="Data type to use for deployment.",
-)
-@click.option(
-    "--model-name",
-    type=str,
-    required=False,
-    default=None,
-    help="Model name to use for deployment. Defaults to <base_model_id>-<checkpoint_id>.",
-)
-@click.option(
-    "--deployment-name",
-    type=str,
-    required=False,
-    default=None,
-    help="Deployment name to use for deployment. Defaults to <checkpoint_id>.",
-)
 @log_level_option
 @error_handling
 def deploy_checkpoint(
-    base_model_id: Optional[str],
     project_id: Optional[str],
     job_id: Optional[str],
-    checkpoint_id: Optional[str],
-    accelerator: Optional[str],
-    hf_secret_name: Optional[str],
+    config: Optional[str],
+    config_output_path: Optional[str],
     remote: Optional[str],
-    dtype: Optional[str],
-    model_name: Optional[str],
-    deployment_name: Optional[str],
 ):
     """
     Deploy a checkpoint. Some early assumptions about this are:
@@ -1101,22 +1060,17 @@ def deploy_checkpoint(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-
     prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
         console,
         remote_provider,
         train_cli.PrepareCheckpointArgs(
-            base_model_id=base_model_id,
             project_id=project_id,
             job_id=job_id,
-            checkpoint_id=checkpoint_id,
-            hf_secret_name=hf_secret_name,
-            accelerator=accelerator,
-            dtype=dtype,
-            model_name=model_name,
-            deployment_name=deployment_name,
+            deploy_config=config,
+            config_output_path=config_output_path,
         ),
     )
+
     ctx = click.Context(push, obj={})
     ctx.params = {
         "target_directory": prepare_checkpoint_result.truss_directory,
