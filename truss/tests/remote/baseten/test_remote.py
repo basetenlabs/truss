@@ -19,7 +19,7 @@ _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
 
 @pytest.fixture
 def remote():
-    return BasetenRemote(_TEST_REMOTE_URL, "api_key", include_git_info=True)
+    return BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
 
 def assert_request_matches_expected_query(request, expected_query) -> None:
