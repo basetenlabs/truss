@@ -62,6 +62,7 @@ class TrainingProject(custom_types.SafeModel):
 
 
 class Checkpoint(custom_types.SafeModel):
+    training_job_id: str
     id: str
     name: str
     lora_rank: Optional[int] = (
@@ -70,7 +71,7 @@ class Checkpoint(custom_types.SafeModel):
 
 
 class CheckpointDetails(custom_types.SafeModel):
-    download_directory: str = "/tmp/training_checkpoints"
+    download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
 

@@ -944,7 +944,7 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id, job_id = train_cli.get_args_for_monitoring(
+    project_id, job_id = train_cli.get_most_recent_job(
         console, remote_provider, project_id, job_id
     )
 
