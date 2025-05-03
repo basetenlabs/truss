@@ -35,6 +35,8 @@ DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 
+DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/training_checkpoints"
+
 
 def _is_numeric(number_like: str) -> bool:
     try:
@@ -522,7 +524,7 @@ class Checkpoint(custom_types.ConfigModel):
 
 
 class CheckpointConfiguration(custom_types.ConfigModel):
-    download_folder: str = "/tmp/checkpoints"
+    download_folder: str = DEFAULT_TRAINING_CHECKPOINT_FOLDER
     checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
 
 

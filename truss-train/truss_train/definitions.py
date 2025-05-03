@@ -64,11 +64,13 @@ class TrainingProject(custom_types.SafeModel):
 class Checkpoint(custom_types.SafeModel):
     id: str
     name: str
-    lora_rank: int = DEFAULT_LORA_RANK
+    lora_rank: Optional[int] = (
+        None  # lora rank will be fetched through the API if available.
+    )
 
 
 class CheckpointDetails(custom_types.SafeModel):
-    download_directory: str = "/tmp/checkpoints"
+    download_directory: str = "/tmp/training_checkpoints"
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
 
@@ -77,7 +79,7 @@ class CheckpointDeployRuntime(custom_types.SafeModel):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
 
 
-class CheckpointDeploy(custom_types.SafeModel):
+class CheckpointDeployConfig(custom_types.SafeModel):
     checkpoint_details: Optional[CheckpointDetails] = None
     model_name: Optional[str] = None
     base_model_id: Optional[str] = None

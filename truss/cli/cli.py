@@ -1077,9 +1077,9 @@ def deploy_checkpoint(
     ctx.params = {
         "target_directory": prepare_checkpoint_result.truss_directory,
         "remote": remote,
-        "model_name": prepare_checkpoint_result.checkpoint_deploy.model_name,
+        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
         "publish": True,
-        "deployment_name": prepare_checkpoint_result.checkpoint_deploy.deployment_name,
+        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
     }
     if dry_run:
         console.print("--dry-run flag provided, not deploying", style="yellow")
@@ -1087,16 +1087,16 @@ def deploy_checkpoint(
         push.invoke(ctx)
 
     rich.print(
-        Text("\nTo run the model with the checkpoint,"),
+        Text("\nTo run the model with the LoRA adapter,"),
         Text("ensure your `model` parameter is set to one of"),
         Text(
-            f"{[x.id for x in prepare_checkpoint_result.checkpoint_deploy.checkpoint_details.checkpoints]}.",
+            f"{[x.id for x in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints]}",
             style="magenta",
         ),
-        Text("An example request body might look like this:"),
+        Text("in your request. An example request body might look like this:"),
         Text(
             "\n{"
-            + f'"model": {prepare_checkpoint_result.checkpoint_deploy.checkpoint_details.checkpoints[0].id}, "messages": [...]'
+            + f'"model": {prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints[0].id}, "messages": [...]'
             + "}",
             style="green",
         ),
