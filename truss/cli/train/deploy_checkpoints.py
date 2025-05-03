@@ -85,7 +85,6 @@ def _hydrate_deploy_config(
     return CheckpointDeployConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
-        base_model_id=base_model_id,
         deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,

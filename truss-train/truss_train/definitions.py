@@ -83,7 +83,6 @@ class CheckpointDeployRuntime(custom_types.SafeModel):
 class CheckpointDeployConfig(custom_types.SafeModel):
     checkpoint_details: Optional[CheckpointDetails] = None
     model_name: Optional[str] = None
-    base_model_id: Optional[str] = None
     deployment_name: Optional[str] = None
     runtime: Optional[CheckpointDeployRuntime] = None
     compute: Optional[Compute] = None

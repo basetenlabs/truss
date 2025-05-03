@@ -17,7 +17,6 @@ class PrepareCheckpointArgs:
     deploy_config_path: Optional[str]
 
 
-@dataclass
 class CheckpointDeployConfigComplete(CheckpointDeployConfig):
     """
     DeployCheckpointTrussArgs is a dataclass that mirrors CheckpointDeployConfig but
@@ -26,7 +25,6 @@ class CheckpointDeployConfigComplete(CheckpointDeployConfig):
 
     checkpoint_details: CheckpointDetails
     model_name: str
-    base_model_id: str
     deployment_name: str
     runtime: CheckpointDeployRuntime
     compute: Compute
