@@ -4,6 +4,8 @@ import pydantic
 
 from truss.base import custom_types, truss_config
 
+DEFAULT_LORA_RANK = 16
+
 
 class SecretReference(custom_types.SafeModel):
     name: str
@@ -58,22 +60,27 @@ class TrainingProject(custom_types.SafeModel):
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
 
+
 class Checkpoint(custom_types.SafeModel):
     id: str
     name: str
+    lora_rank: int = DEFAULT_LORA_RANK
+
 
 class CheckpointDetails(custom_types.SafeModel):
     download_directory: str = "/tmp/checkpoints"
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
 
+
 class CheckpointDeployRuntime(custom_types.SafeModel):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
+
 
 class CheckpointDeploy(custom_types.SafeModel):
     checkpoint_details: Optional[CheckpointDetails] = None
     model_name: Optional[str] = None
+    base_model_id: Optional[str] = None
     deployment_name: Optional[str] = None
     runtime: Optional[CheckpointDeployRuntime] = None
     compute: Optional[Compute] = None
-    

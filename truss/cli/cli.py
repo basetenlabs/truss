@@ -1036,7 +1036,12 @@ def get_job_metrics(
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--config", type=str, required=False, help="Deploy config file")
-@click.option("--config-output-path", type=str, required=False, help="Path to output the deploy config generated if none is provided") # Note: the optionality means that their input might not be the resulting output. Then what? 
+@click.option(
+    "--dry-run",
+    type=bool,
+    is_flag=True,
+    help="Generate a truss config without deploying",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
@@ -1044,8 +1049,8 @@ def deploy_checkpoint(
     project_id: Optional[str],
     job_id: Optional[str],
     config: Optional[str],
-    config_output_path: Optional[str],
     remote: Optional[str],
+    dry_run: bool,
 ):
     """
     Deploy a checkpoint. Some early assumptions about this are:
@@ -1064,10 +1069,7 @@ def deploy_checkpoint(
         console,
         remote_provider,
         train_cli.PrepareCheckpointArgs(
-            project_id=project_id,
-            job_id=job_id,
-            deploy_config=config,
-            config_output_path=config_output_path,
+            project_id=project_id, job_id=job_id, deploy_config_path=config
         ),
     )
 
@@ -1075,19 +1077,26 @@ def deploy_checkpoint(
     ctx.params = {
         "target_directory": prepare_checkpoint_result.truss_directory,
         "remote": remote,
-        "model_name": prepare_checkpoint_result.model_name,
+        "model_name": prepare_checkpoint_result.checkpoint_deploy.model_name,
         "publish": True,
-        "deployment_name": prepare_checkpoint_result.deployment_name,
+        "deployment_name": prepare_checkpoint_result.checkpoint_deploy.deployment_name,
     }
-    push.invoke(ctx)
+    if dry_run:
+        console.print("--dry-run flag provided, not deploying", style="yellow")
+    else:
+        push.invoke(ctx)
+
     rich.print(
         Text("\nTo run the model with the checkpoint,"),
-        Text("ensure your `model` parameter is set to"),
-        Text(f"{prepare_checkpoint_result.checkpoint_id}.", style="magenta"),
+        Text("ensure your `model` parameter is set to one of"),
+        Text(
+            f"{[x.id for x in prepare_checkpoint_result.checkpoint_deploy.checkpoint_details.checkpoints]}.",
+            style="magenta",
+        ),
         Text("An example request body might look like this:"),
         Text(
             "\n{"
-            + f'"model": {prepare_checkpoint_result.checkpoint_id}, "messages": [...]'
+            + f'"model": {prepare_checkpoint_result.checkpoint_deploy.checkpoint_details.checkpoints[0].id}, "messages": [...]'
             + "}",
             style="green",
         ),

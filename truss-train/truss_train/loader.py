@@ -4,8 +4,6 @@ import os
 import pathlib
 from typing import Iterator, Type, TypeVar
 
-from truss_train import definitions
-
 T = TypeVar("T")
 
 
@@ -26,9 +24,7 @@ def import_target(module_path: pathlib.Path, target_type: Type[T]) -> Iterator[T
     spec.loader.exec_module(module)
 
     module_vars = (getattr(module, name) for name in dir(module))
-    target = [
-        sym for sym in module_vars if isinstance(sym, target_type)
-    ]
+    target = [sym for sym in module_vars if isinstance(sym, target_type)]
 
     if len(target) == 0:
         raise ValueError(f"No `{target_type}` was found.")

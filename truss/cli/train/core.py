@@ -15,8 +15,16 @@ from rich.text import Text
 from truss.base import truss_config
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.remote.baseten.remote import BasetenRemote
-from truss_train.definitions import CheckpointDeploy, CheckpointDetails, Checkpoint
 from truss_train import loader
+from truss_train.definitions import (
+    DEFAULT_LORA_RANK,
+    Checkpoint,
+    CheckpointDeploy,
+    CheckpointDeployRuntime,
+    CheckpointDetails,
+    Compute,
+    SecretReference,
+)
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -27,10 +35,9 @@ ACTIVE_JOB_STATUSES = [
 
 @dataclass
 class PrepareCheckpointArgs:
-    project_id: str
-    job_id: str
+    project_id: Optional[str]
+    job_id: Optional[str]
     deploy_config_path: Optional[str]
-    config_output_path: Optional[str]
 
 
 @dataclass
@@ -40,21 +47,16 @@ class PrepareCheckpointResult:
 
 
 VLLM_LORA_START_COMMAND = Template(
-    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank {{ max_lora_rank }} --dtype {{ dtype }} --lora-modules {{ checkpoint_name }}=/tmp/training_checkpoints/{{ checkpoint_id }}"'
+    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank {{ max_lora_rank }} --dtype bfloat16 --lora-modules {{ lora_modules }}"'
 )
-DEFAULT_MAX_LORA_RANK = 16
+
+HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 
 
 @dataclass
 class DeployCheckpointTemplatingArgs:
     training_job_id: str
-    base_model_id: str
-    checkpoint_id: str
-    hf_secret_name: Optional[str]
-    dtype: str
-    model_name: str
-    accelerator: Optional[truss_config.AcceleratorSpec]  # if none, provided, use CPU
-    max_lora_rank: int
+    checkpoint_deploy: CheckpointDeploy
 
 
 def get_args_for_stop(
@@ -251,157 +253,186 @@ def view_training_job_metrics(
 def prepare_checkpoint_deploy(
     console: Console, remote_provider: BasetenRemote, args: PrepareCheckpointArgs
 ) -> PrepareCheckpointResult:
-    if not args.deploy_config_path:
-        result = _prepare_checkpoint_deploy(
-            console, remote_provider, CheckpointDeploy()
-        )
-        output_path = args.config_output_path
-        if not output_path:
-            # What does it look like to generate the python file? That feels weird. Would be 
-            # more natural to output a yml or json file.
-            output_path_raw = inquirer.text(
-                message="Enter the path to output the deploy config."
-            ).execute()
-            if os.path.isdir(output_path_raw):
-                output_path = Path(output_path_raw) / "deploy_config."
-            # TODO: generate the python file
-        return result
-    with loader.import_target(args.deploy_config_path, CheckpointDeploy) as checkpoint_deploy:
-        return _prepare_checkpoint_deploy(
-            console, remote_provider, checkpoint_deploy, args.project_id, args.job_id
-        )
-    
-def _prepare_checkpoint_deploy(
-    console: Console, remote_provider: BasetenRemote, checkpoint_deploy: CheckpointDeploy, project_id: str, job_id: str
-) -> PrepareCheckpointResult:
     project_id, job_id = get_args_for_monitoring(
-        console, remote_provider, project_id, job_id
+        console, remote_provider, args.project_id, args.job_id
     )
-    checkpoint_details = checkpoint_deploy.checkpoint_details
-    if not checkpoint_details:
-        checkpoint_details = CheckpointDetails()
+    if not args.deploy_config_path:
+        return _prepare_checkpoint_deploy(
+            console, remote_provider, CheckpointDeploy(), project_id, job_id
+        )
+    #### User provided a checkpoint deploy config file
+    with loader.import_target(
+        args.deploy_config_path, CheckpointDeploy
+    ) as checkpoint_deploy:
+        return _prepare_checkpoint_deploy(
+            console, remote_provider, checkpoint_deploy, project_id, job_id
+        )
+
+
+def _prepare_checkpoint_deploy(
+    console: Console,
+    remote_provider: BasetenRemote,
+    deploy_config: CheckpointDeploy,
+    project_id: str,
+    job_id: str,
+) -> PrepareCheckpointResult:
     response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
     response_checkpoints = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint)
         for checkpoint in response["checkpoints"]
     )
-    checkpoints_to_validate = checkpoint_details.checkpoints
+    checkpoint_details = deploy_config.checkpoint_details
+    if not checkpoint_details:
+        checkpoint_details = CheckpointDetails()
+    # first, gather all checkpoint ids the user wants to deploy
     if not checkpoint_details.checkpoints:
-        checkpoint_id = get_checkpoint_id(
-            None, list(response_checkpoints.keys())
+        # allow the user to select a checkpoint
+        checkpoint_ids = get_checkpoint_ids_to_deploy(list(response_checkpoints.keys()))
+        checkpoint_details.checkpoints = [
+            hydrate_checkpoints(checkpoint_id, response_checkpoints)
+            for checkpoint_id in checkpoint_ids
+        ]
+        checkpoint_details.base_model_id = get_base_model_id(
+            checkpoint_details.base_model_id, response_checkpoints[checkpoint_ids[0]]
         )
-        checkpoint = response_checkpoints[checkpoint_id]
-        checkpoints_to_validate = [Checkpoint(id=checkpoint_id, name=checkpoint_id)]
-    
-    for checkpoint in checkpoints_to_validate:
-        # verify that the checkpoints exist 
-        get_checkpoint_id(checkpoint.id, list(response_checkpoints.keys()))
-
-    maybe_accelerator = get_accelerator_if_specified(checkpoint_deploy.compute.accelerator)
-    base_model_id = get_base_model_id(checkpoint_deploy.model_name, checkpoint)
-
-    # get all checkpoints for the training job
-    model_name = (
-        checkpoint_deploy.model_name
-        or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # current scope for deploying from checkpoint
+        deploy_config.checkpoint_details = checkpoint_details
+    if not deploy_config.compute:
+        deploy_config.compute = Compute()
+    deploy_config.compute.accelerator = get_accelerator_if_specified(
+        deploy_config.compute.accelerator
     )
-    hf_secret_name = get_hf_secret_name(console, checkpoint_deploy.runtime.environment_variables.get("HF_TOKEN"))
-    lora_adapter_config = checkpoint.get("lora_adapter_config") or {}
-    max_lora_rank = lora_adapter_config.get("r") or DEFAULT_MAX_LORA_RANK
-    # generate the truss config for vllm
+    if not deploy_config.compute.accelerator:
+        # default to CPU for local testing
+        deploy_config.compute.node_count = 1
+        deploy_config.compute.cpu_count = 1
+        deploy_config.compute.memory = "0Mi"
+    deploy_config.model_name = (
+        deploy_config.model_name
+        or f"{deploy_config.checkpoint_details.base_model_id.split('/')[-1]}-vLLM-LORA"  # current scope for deploying from checkpoint
+    )
+    if not deploy_config.runtime:
+        deploy_config.runtime = CheckpointDeployRuntime()
+    if not deploy_config.runtime.environment_variables:
+        # Prompt the user for the huggingface secret name as a default. There's much more we could
+        # do here, but we're keeping it simple for now.
+        hf_secret_name = get_hf_secret_name(
+            console,
+            deploy_config.runtime.environment_variables.get(HF_TOKEN_ENVVAR_NAME),
+        )
+        deploy_config.runtime.environment_variables[HF_TOKEN_ENVVAR_NAME] = (
+            SecretReference(name=hf_secret_name)
+        )
+    if not deploy_config.deployment_name:
+        # use the first checkpoint id as the deployment name
+        deploy_config.deployment_name = deploy_config.checkpoint_details.checkpoints[
+            0
+        ].id
+
     template_args = DeployCheckpointTemplatingArgs(
-        training_job_id=job_id,
-        checkpoint_id=checkpoint_id,
-        base_model_id=base_model_id,
-        hf_secret_name=hf_secret_name,
-        dtype=args.dtype or "bfloat16",
-        model_name=model_name,
-        accelerator=maybe_accelerator,
-        max_lora_rank=max_lora_rank,
+        training_job_id=job_id, checkpoint_deploy=deploy_config
     )
 
     rendered_truss = render_vllm_lora_truss_config(template_args)
-    truss_directory = Path(
-        tempfile.mkdtemp(suffix=f"training-job-{job_id}-{checkpoint_id}")
-    )
+    truss_directory = Path(tempfile.mkdtemp(suffix=f"training-job-{job_id}"))
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
     console.print(rendered_truss, style="green")
     console.print(f"Writing truss config to {truss_config_path}", style="yellow")
     return PrepareCheckpointResult(
-        truss_directory=truss_directory,
-        checkpoint_id=checkpoint_id,
-        model_name=model_name,
-        deployment_name=args.deployment_name or checkpoint_id,
+        truss_directory=truss_directory, checkpoint_deploy=deploy_config
     )
 
 
 def render_vllm_lora_truss_config(
     args: DeployCheckpointTemplatingArgs,
 ) -> truss_config.TrussConfig:
-    fully_qualified_checkpoint_id = f"{args.training_job_id}/{args.checkpoint_id}"
     deploy_config = truss_config.TrussConfig.from_yaml(
         Path(os.path.dirname(__file__), "deploy_from_checkpoint_config.yml")
     )
-    if not deploy_config.training_checkpoints:
-        raise ValueError(
-            "Unexpected checkpoint deployment config: missing training_checkpoints"
-        )
-    deploy_config.training_checkpoints.checkpoints = [
-        truss_config.Checkpoint(
-            id=fully_qualified_checkpoint_id, name=args.checkpoint_id
-        )
-    ]
-    deploy_config.model_name = args.model_name
-    if args.accelerator:
-        deploy_config.resources.accelerator = args.accelerator
-    else:
-        # for local testing
-        deploy_config.resources.cpu = "0"
-        deploy_config.resources.memory = "1Mi"
-    start_command_envvars = ""
-    if args.hf_secret_name:
-        deploy_config.secrets[args.hf_secret_name] = "set token in baseten workspace"
-        start_command_envvars = f"HF_TOKEN=$(cat /secrets/{args.hf_secret_name})"
-
-    start_command_args = {
-        "base_model_id": args.base_model_id,
-        "checkpoint_id": fully_qualified_checkpoint_id,
-        "checkpoint_name": args.checkpoint_id,
-        "envvars": start_command_envvars,
-        "dtype": args.dtype,
-        "max_lora_rank": args.max_lora_rank,
-    }
     if not deploy_config.docker_server:
         raise ValueError(
             "Unexpected checkpoint deployment config: missing docker_server"
         )
+    if not deploy_config.training_checkpoints:
+        raise ValueError(
+            "Unexpected checkpoint deployment config: missing training_checkpoints"
+        )
+
+    for checkpoint in args.checkpoint_deploy.checkpoint_details.checkpoints:
+        fully_qualified_checkpoint_id = f"{args.training_job_id}/{checkpoint.id}"
+        deploy_config.training_checkpoints.checkpoints.append(
+            truss_config.Checkpoint(
+                id=fully_qualified_checkpoint_id, name=checkpoint.id
+            )
+        )
+    deploy_config.model_name = args.checkpoint_deploy.model_name
+    deploy_config.resources.accelerator = args.checkpoint_deploy.compute.accelerator
+    deploy_config.resources.cpu = str(args.checkpoint_deploy.compute.cpu_count)
+    deploy_config.resources.memory = args.checkpoint_deploy.compute.memory
+    deploy_config.resources.node_count = args.checkpoint_deploy.compute.node_count
+    for key, value in args.checkpoint_deploy.runtime.environment_variables.items():
+        if isinstance(value, SecretReference):
+            deploy_config.secrets[value.name] = "set token in baseten workspace"
+        else:
+            deploy_config.environment_variables[key] = value
+
+    start_command_envvars = ""
+    for key, value in args.checkpoint_deploy.runtime.environment_variables.items():
+        # this is a quirk of serving vllm with secrets - we need to export the secret by cat-ing it
+        if isinstance(value, SecretReference):
+            deploy_config.secrets[value.name] = "set token in baseten workspace"
+            start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
+
+    checkpoint_parts = []
+    for checkpoint in args.checkpoint_deploy.checkpoint_details.checkpoints:
+        ckpt_path = Path(
+            args.checkpoint_deploy.checkpoint_details.download_directory, checkpoint.id
+        )
+        checkpoint_parts.append(f"{checkpoint.name}={ckpt_path}")
+    checkpoint_str = " ".join(checkpoint_parts)
+    max_lora_rank = max(
+        [
+            checkpoint.lora_rank
+            for checkpoint in args.checkpoint_deploy.checkpoint_details.checkpoints
+        ]
+    )
+
+    start_command_args = {
+        "base_model_id": args.checkpoint_deploy.checkpoint_details.base_model_id,
+        "lora_modules": checkpoint_str,
+        "envvars": start_command_envvars,
+        "max_lora_rank": max_lora_rank,
+    }
     deploy_config.docker_server.start_command = VLLM_LORA_START_COMMAND.render(
         **start_command_args
     )
-
     return deploy_config
 
 
-def get_checkpoint_id(user_input: Optional[str], checkpoint_ids: List[str]) -> str:
-    if user_input == "latest":
-        return checkpoint_ids[-1]
-    elif user_input:
-        if user_input not in checkpoint_ids:
-            raise click.UsageError(f"Invalid checkpoint id. Choices: {checkpoint_ids}")
-        return user_input
-
-    if len(checkpoint_ids) == 0:
+def get_checkpoint_ids_to_deploy(checkpoint_id_options: List[str]) -> str:
+    if len(checkpoint_id_options) == 0:
         raise click.UsageError("No checkpoints found for the training job.")
-    if len(checkpoint_ids) > 1:
-        checkpoint_id = inquirer.select(
-            message="Select the checkpoint to deploy.", choices=checkpoint_ids
+    if len(checkpoint_id_options) > 1:
+        checkpoint_ids = inquirer.checkbox(
+            message="Select the checkpoint to deploy. Use spacebar to select/deselect.",
+            choices=checkpoint_id_options,
         ).execute()
-        if not checkpoint_id:
-            raise click.UsageError("Checkpoint id is required.")
+        if not checkpoint_ids:
+            raise click.UsageError("At least one checkpoint must be selected.")
     else:
-        checkpoint_id = checkpoint_ids[0]
-    return checkpoint_id
+        checkpoint_ids = [checkpoint_id_options[0]]
+    return checkpoint_ids
+
+
+def hydrate_checkpoints(
+    checkpoint_id: str, response_checkpoints: OrderedDict[str, dict]
+) -> Checkpoint:
+    if checkpoint_id == "latest":
+        checkpoint_id = list(response_checkpoints.keys())[-1]
+    checkpoint = response_checkpoints[checkpoint_id]
+    lora_adapter_config = checkpoint.get("lora_adapter_config") or {}
+    max_lora_rank = lora_adapter_config.get("r") or DEFAULT_LORA_RANK
+    return Checkpoint(id=checkpoint_id, name=checkpoint_id, lora_rank=max_lora_rank)
 
 
 def get_hf_secret_name(console: Console, user_input: Optional[str]) -> str:
@@ -423,18 +454,23 @@ def get_hf_secret_name(console: Console, user_input: Optional[str]) -> str:
 
 
 def get_accelerator_if_specified(
-    user_input: Optional[str],
+    user_input: Optional[truss_config.AcceleratorSpec],
 ) -> Optional[truss_config.AcceleratorSpec]:
-    if not user_input:
-        # prompt user for accelerator
-        raw_accelerator = inquirer.text(
-            message="Enter the accelerator to use for deployment. Leave blank for CPU"
-        ).execute()
-    accelerator_str = user_input or raw_accelerator
-    if not accelerator_str:
+    if user_input:
+        return user_input
+    # prompt user for accelerator
+    gpu_type = inquirer.select(
+        message="Select the GPU type to use for deployment. Select None for CPU.",
+        choices=[x.value for x in truss_config.Accelerator] + [None],
+    ).execute()
+    if gpu_type is None:
         return None
-    # use this as validation
-    return truss_config.AcceleratorSpec._from_string_spec(accelerator_str)
+    count = inquirer.text(
+        message="Enter the number of accelerators to use for deployment.",
+        default="1",
+        validate=lambda x: x.isdigit() and int(x) > 0 and int(x) <= 8,
+    ).execute()
+    return truss_config.AcceleratorSpec(accelerator=gpu_type, count=int(count))
 
 
 def get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
