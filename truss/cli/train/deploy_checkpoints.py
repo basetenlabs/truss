@@ -172,11 +172,7 @@ def _prompt_user_for_checkpoint_details(
     project_id, job_id = get_most_recent_job(
         console, remote_provider, project_id, job_id
     )
-    response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
-    response_checkpoints = OrderedDict(
-        (checkpoint["checkpoint_id"], checkpoint)
-        for checkpoint in response["checkpoints"]
-    )
+    response_checkpoints = _fetch_checkpoints(remote_provider, project_id, job_id)
     if not checkpoint_details:
         checkpoint_details = CheckpointDetails()
 
@@ -209,22 +205,20 @@ def _process_user_provided_checkpoints(
                 )
             job_response = details[0]
             project_id = job_response["training_project"]["id"]
-            checkpoints_for_job = remote_provider.api.list_training_job_checkpoints(
-                project_id, checkpoint.training_job_id
+            checkpoint_response = _fetch_checkpoints(
+                remote_provider, project_id, checkpoint.training_job_id
             )
             # add to map of checkpoints by training job id
             checkpoints_by_training_job_id[checkpoint.training_job_id] = (
-                checkpoints_for_job
+                checkpoint_response
             )
-        response_checkpoints = checkpoints_by_training_job_id[
-            checkpoint.training_job_id
-        ]
-        if checkpoint.id not in response_checkpoints:
+        checkpoint_response = checkpoints_by_training_job_id[checkpoint.training_job_id]
+        if checkpoint.id not in checkpoint_response:
             raise click.UsageError(f"Checkpoint {checkpoint.id} not found.")
         if not checkpoint.name:
             checkpoint.name = checkpoint.id
         if not checkpoint.lora_rank:
-            checkpoint.lora_rank = _get_lora_rank(response_checkpoints[checkpoint.id])
+            checkpoint.lora_rank = _get_lora_rank(checkpoint_response[checkpoint.id])
     return checkpoint_details
 
 
@@ -351,3 +345,15 @@ def _get_runtime(
             name=hf_secret_name
         )
     return runtime
+
+
+def _fetch_checkpoints(
+    remote_provider: BasetenRemote, project_id: str, job_id: str
+) -> OrderedDict[str, dict]:
+    rich.print(f"Fetching checkpoints for training job {job_id}...")
+    response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
+    response_checkpoints = OrderedDict(
+        (checkpoint["checkpoint_id"], checkpoint)
+        for checkpoint in response["checkpoints"]
+    )
+    return response_checkpoints
