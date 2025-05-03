@@ -26,6 +26,18 @@ class Compute(custom_types.SafeModel):
             }
         return data
 
+    def to_truss_config(self) -> truss_config.Resources:
+        if self.accelerator:
+            return truss_config.Resources(
+                cpu=str(self.cpu_count),
+                memory=self.memory,
+                accelerator=self.accelerator,
+                node_count=self.node_count,
+            )
+        return truss_config.Resources(
+            cpu=str(self.cpu_count), memory=self.memory, node_count=self.node_count
+        )
+
 
 class CheckpointingConfig(custom_types.SafeModel):
     enabled: bool = False
@@ -69,11 +81,22 @@ class Checkpoint(custom_types.SafeModel):
         None  # lora rank will be fetched through the API if available.
     )
 
+    def to_truss_config(self) -> truss_config.Checkpoint:
+        return truss_config.Checkpoint(
+            id=f"{self.training_job_id}/{self.id}", name=self.id
+        )
+
 
 class CheckpointDetails(custom_types.SafeModel):
     download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
+
+    def to_truss_config(self) -> truss_config.CheckpointConfiguration:
+        checkpoints = [checkpoint.to_truss_config() for checkpoint in self.checkpoints]
+        return truss_config.CheckpointConfiguration(
+            checkpoints=checkpoints, download_folder=self.download_folder
+        )
 
 
 class CheckpointDeployRuntime(custom_types.SafeModel):

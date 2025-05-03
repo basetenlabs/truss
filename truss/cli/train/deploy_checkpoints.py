@@ -102,26 +102,11 @@ def _render_vllm_lora_truss_config(
             "Unexpected checkpoint deployment config: missing docker_server"
         )
 
-    checkpoints = []
-    for checkpoint in checkpoint_deploy.checkpoint_details.checkpoints:
-        fully_qualified_checkpoint_id = f"{checkpoint.training_job_id}/{checkpoint.id}"
-        checkpoints.append(
-            truss_config.Checkpoint(
-                id=fully_qualified_checkpoint_id, name=checkpoint.id
-            )
-        )
-    truss_deploy_config.training_checkpoints = truss_config.CheckpointConfiguration(
-        checkpoints=checkpoints,
-        download_folder=checkpoint_deploy.checkpoint_details.download_folder,
-    )
     truss_deploy_config.model_name = checkpoint_deploy.model_name
-    if checkpoint_deploy.compute.accelerator:
-        truss_deploy_config.resources.accelerator = (
-            checkpoint_deploy.compute.accelerator
-        )
-    truss_deploy_config.resources.cpu = str(checkpoint_deploy.compute.cpu_count)
-    truss_deploy_config.resources.memory = checkpoint_deploy.compute.memory
-    truss_deploy_config.resources.node_count = checkpoint_deploy.compute.node_count
+    truss_deploy_config.training_checkpoints = (
+        checkpoint_deploy.checkpoint_details.to_truss_config()
+    )
+    truss_deploy_config.resources = checkpoint_deploy.compute.to_truss_config()
     for key, value in checkpoint_deploy.runtime.environment_variables.items():
         if isinstance(value, SecretReference):
             truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
@@ -136,9 +121,9 @@ def _render_vllm_lora_truss_config(
             start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
 
     checkpoint_parts = []
-    for truss_checkpoint in truss_deploy_config.training_checkpoints.checkpoints:
+    for truss_checkpoint in truss_deploy_config.training_checkpoints.checkpoints:  # type: ignore
         ckpt_path = Path(
-            truss_deploy_config.training_checkpoints.download_folder,
+            truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
             truss_checkpoint.id,
         )
         checkpoint_parts.append(f"{truss_checkpoint.name}={ckpt_path}")
