@@ -18,13 +18,7 @@ class PrepareCheckpointArgs:
 
 
 @dataclass
-class PrepareCheckpointResult:
-    truss_directory: Path
-    checkpoint_deploy_config: CheckpointDeployConfig
-
-
-@dataclass
-class DeployCheckpointTrussArgs(CheckpointDeployConfig):
+class CheckpointDeployConfigComplete(CheckpointDeployConfig):
     """
     DeployCheckpointTrussArgs is a dataclass that mirrors CheckpointDeployConfig but
     removes the optional fileds. This helps provide type safety internal handling.
@@ -36,3 +30,9 @@ class DeployCheckpointTrussArgs(CheckpointDeployConfig):
     deployment_name: str
     runtime: CheckpointDeployRuntime
     compute: Compute
+
+
+@dataclass
+class PrepareCheckpointResult:
+    truss_directory: Path
+    checkpoint_deploy_config: CheckpointDeployConfigComplete

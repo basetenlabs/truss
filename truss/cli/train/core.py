@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional, Tuple
 
 import rich
@@ -198,7 +199,7 @@ def prepare_checkpoint_deploy(
         )
     #### User provided a checkpoint deploy config file
     with loader.import_target(
-        args.deploy_config_path, CheckpointDeployConfig
+        Path(args.deploy_config_path), CheckpointDeployConfig
     ) as checkpoint_deploy:
         return deploy_checkpoints.prepare_checkpoint_deploy(
             console, remote_provider, checkpoint_deploy, args.project_id, args.job_id

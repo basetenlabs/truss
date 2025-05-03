@@ -13,7 +13,10 @@ from rich.text import Text
 
 from truss.base import truss_config
 from truss.cli.common import get_most_recent_job
-from truss.cli.train.types import DeployCheckpointTrussArgs, PrepareCheckpointResult
+from truss.cli.train.types import (
+    CheckpointDeployConfigComplete,
+    PrepareCheckpointResult,
+)
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     DEFAULT_LORA_RANK,
@@ -62,7 +65,7 @@ def _hydrate_deploy_config(
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
-) -> DeployCheckpointTrussArgs:
+) -> CheckpointDeployConfigComplete:
     checkpoint_details = _get_checkpoint_details(
         console, remote_provider, deploy_config.checkpoint_details, project_id, job_id
     )
@@ -79,7 +82,7 @@ def _hydrate_deploy_config(
     deployment_name = (
         deploy_config.deployment_name or checkpoint_details.checkpoints[0].id
     )
-    return DeployCheckpointTrussArgs(
+    return CheckpointDeployConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
         base_model_id=base_model_id,
@@ -90,7 +93,7 @@ def _hydrate_deploy_config(
 
 
 def _render_vllm_lora_truss_config(
-    checkpoint_deploy: DeployCheckpointTrussArgs,
+    checkpoint_deploy: CheckpointDeployConfigComplete,
 ) -> truss_config.TrussConfig:
     truss_deploy_config = truss_config.TrussConfig.from_yaml(
         Path(os.path.dirname(__file__), "deploy_from_checkpoint_config.yml")

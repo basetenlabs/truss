@@ -5,19 +5,24 @@ import truss_train.definitions as definitions
 from truss.base import truss_config
 from truss.cli.train.deploy_checkpoints import _render_vllm_lora_truss_config
 
+
 def test_render_vllm_lora_truss_config():
     training_job_id = "kowpeqj"
     deploy_config = definitions.CheckpointDeployConfig(
         checkpoint_details=definitions.CheckpointDetails(
-            checkpoints=[definitions.Checkpoint(id="checkpoint-1", name="checkpoint-1", lora_rank=16)],
+            checkpoints=[
+                definitions.Checkpoint(
+                    id="checkpoint-1", name="checkpoint-1", lora_rank=16
+                )
+            ],
             base_model_id="google/gemma-3-27b-it",
         ),
         model_name="gemma-3-27b-it-vLLM-LORA",
         compute=definitions.Compute(
-            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=4),
+            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=4)
         ),
         runtime=definitions.CheckpointDeployRuntime(
-            environment_variables={"HF_TOKEN": "hf_access_token"},
+            environment_variables={"HF_TOKEN": "hf_access_token"}
         ),
     )
     rendered_truss = _render_vllm_lora_truss_config(training_job_id, deploy_config)
