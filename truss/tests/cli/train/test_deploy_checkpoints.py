@@ -1,5 +1,4 @@
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -142,16 +141,14 @@ def test_prepare_checkpoint_deploy_empty_config(
     empty_config = definitions.DeployCheckpointsConfig()
 
     # Call function under test
-    with tempfile.TemporaryDirectory() as tmpdir:
-        result = prepare_checkpoint_deploy(
-            console=mock_console,
-            remote_provider=mock_remote,
-            checkpoint_deploy_config=empty_config,
-            project_id="project123",
-            job_id="job123",
-        )
+    result = prepare_checkpoint_deploy(
+        console=mock_console,
+        remote_provider=mock_remote,
+        checkpoint_deploy_config=empty_config,
+        project_id="project123",
+        job_id="job123",
+    )
 
-    # Verify result
     assert isinstance(result, PrepareCheckpointResult)
     assert result.checkpoint_deploy_config.model_name == "gemma-3-27b-it-vLLM-LORA"
     assert (
@@ -209,14 +206,13 @@ def test_prepare_checkpoint_deploy_complete_config(
     )
 
     # Call function under test
-    with tempfile.TemporaryDirectory() as tmpdir:
-        result = prepare_checkpoint_deploy(
-            console=mock_console,
-            remote_provider=mock_remote,
-            checkpoint_deploy_config=complete_config,
-            project_id="project123",
-            job_id="job123",
-        )
+    result = prepare_checkpoint_deploy(
+        console=mock_console,
+        remote_provider=mock_remote,
+        checkpoint_deploy_config=complete_config,
+        project_id="project123",
+        job_id="job123",
+    )
 
     # Verify result
     assert isinstance(result, PrepareCheckpointResult)
