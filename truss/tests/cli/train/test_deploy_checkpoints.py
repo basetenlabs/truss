@@ -4,11 +4,11 @@ from pathlib import Path
 import truss_train.definitions as definitions
 from truss.base import truss_config
 from truss.cli.train.deploy_checkpoints import _render_vllm_lora_truss_config
-from truss.cli.train.types import CheckpointDeployConfigComplete
+from truss.cli.train.types import DeployCheckpointsConfigComplete
 
 
 def test_render_vllm_lora_truss_config():
-    deploy_config = CheckpointDeployConfigComplete(
+    deploy_config = DeployCheckpointsConfigComplete(
         checkpoint_details=definitions.CheckpointDetails(
             checkpoints=[
                 definitions.Checkpoint(

@@ -14,14 +14,14 @@ from rich.text import Text
 from truss.base import truss_config
 from truss.cli.common import get_most_recent_job
 from truss.cli.train.types import (
-    CheckpointDeployConfigComplete,
+    DeployCheckpointsConfigComplete,
     PrepareCheckpointResult,
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     DEFAULT_LORA_RANK,
     Checkpoint,
-    CheckpointDeployConfig,
+    DeployCheckpointsConfig,
     CheckpointDeployRuntime,
     CheckpointDetails,
     Compute,
@@ -38,7 +38,7 @@ HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 def prepare_checkpoint_deploy(
     console: Console,
     remote_provider: BasetenRemote,
-    checkpoint_deploy_config: CheckpointDeployConfig,
+    checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
 ) -> PrepareCheckpointResult:
@@ -61,11 +61,11 @@ def prepare_checkpoint_deploy(
 
 def _hydrate_deploy_config(
     console: Console,
-    deploy_config: CheckpointDeployConfig,
+    deploy_config: DeployCheckpointsConfig,
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
-) -> CheckpointDeployConfigComplete:
+) -> DeployCheckpointsConfigComplete:
     checkpoint_details = _get_checkpoint_details(
         console, remote_provider, deploy_config.checkpoint_details, project_id, job_id
     )
@@ -82,7 +82,7 @@ def _hydrate_deploy_config(
     deployment_name = (
         deploy_config.deployment_name or checkpoint_details.checkpoints[0].id
     )
-    return CheckpointDeployConfigComplete(
+    return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
         deployment_name=deployment_name,
@@ -92,7 +92,7 @@ def _hydrate_deploy_config(
 
 
 def _render_vllm_lora_truss_config(
-    checkpoint_deploy: CheckpointDeployConfigComplete,
+    checkpoint_deploy: DeployCheckpointsConfigComplete,
 ) -> truss_config.TrussConfig:
     truss_deploy_config = truss_config.TrussConfig.from_yaml(
         Path(os.path.dirname(__file__), "deploy_from_checkpoint_config.yml")

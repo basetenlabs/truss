@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from truss_train.definitions import (
-    CheckpointDeployConfig,
+    DeployCheckpointsConfig,
     CheckpointDeployRuntime,
     CheckpointDetails,
     Compute,
@@ -17,9 +17,9 @@ class PrepareCheckpointArgs:
     deploy_config_path: Optional[str]
 
 
-class CheckpointDeployConfigComplete(CheckpointDeployConfig):
+class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
     """
-    DeployCheckpointTrussArgs is a dataclass that mirrors CheckpointDeployConfig but
+    DeployCheckpointTrussArgs is a dataclass that mirrors DeployCheckpointsConfig but
     removes the optional fileds. This helps provide type safety internal handling.
     """
 
@@ -33,4 +33,4 @@ class CheckpointDeployConfigComplete(CheckpointDeployConfig):
 @dataclass
 class PrepareCheckpointResult:
     truss_directory: Path
-    checkpoint_deploy_config: CheckpointDeployConfigComplete
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete

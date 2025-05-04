@@ -1032,10 +1032,10 @@ def get_job_metrics(
     train_cli.view_training_job_metrics(console, remote_provider, project_id, job_id)
 
 
-@train.command(name="deploy_checkpoint")
+@train.command(name="deploy_checkpoints")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--config", type=str, required=False, help="Deploy config file")
+@click.option("--config", type=str, required=False, help="path to a python file that defins a DeployCheckpointsConfig")
 @click.option(
     "--dry-run",
     type=bool,
@@ -1045,7 +1045,7 @@ def get_job_metrics(
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
-def deploy_checkpoint(
+def deploy_checkpoints(
     project_id: Optional[str],
     job_id: Optional[str],
     config: Optional[str],

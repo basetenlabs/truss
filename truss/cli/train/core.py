@@ -12,7 +12,7 @@ from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
-from truss_train.definitions import CheckpointDeployConfig
+from truss_train.definitions import DeployCheckpointsConfig
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -193,13 +193,13 @@ def prepare_checkpoint_deploy(
         return deploy_checkpoints.prepare_checkpoint_deploy(
             console,
             remote_provider,
-            CheckpointDeployConfig(),
+            DeployCheckpointsConfig(),
             args.project_id,
             args.job_id,
         )
     #### User provided a checkpoint deploy config file
     with loader.import_target(
-        Path(args.deploy_config_path), CheckpointDeployConfig
+        Path(args.deploy_config_path), DeployCheckpointsConfig
     ) as checkpoint_deploy:
         return deploy_checkpoints.prepare_checkpoint_deploy(
             console, remote_provider, checkpoint_deploy, args.project_id, args.job_id
