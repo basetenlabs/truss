@@ -1035,7 +1035,12 @@ def get_job_metrics(
 @train.command(name="deploy_checkpoints")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--config", type=str, required=False, help="path to a python file that defins a DeployCheckpointsConfig")
+@click.option(
+    "--config",
+    type=str,
+    required=False,
+    help="path to a python file that defins a DeployCheckpointsConfig",
+)
 @click.option(
     "--dry-run",
     type=bool,

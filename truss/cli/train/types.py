@@ -3,10 +3,10 @@ from pathlib import Path
 from typing import Optional
 
 from truss_train.definitions import (
-    DeployCheckpointsConfig,
     CheckpointDeployRuntime,
     CheckpointDetails,
     Compute,
+    DeployCheckpointsConfig,
 )
 
 

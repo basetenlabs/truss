@@ -21,10 +21,10 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     DEFAULT_LORA_RANK,
     Checkpoint,
-    DeployCheckpointsConfig,
     CheckpointDeployRuntime,
     CheckpointDetails,
     Compute,
+    DeployCheckpointsConfig,
     SecretReference,
 )
 
