@@ -223,6 +223,33 @@ def test_acc_spec_from_str(input_str, expected_acc):
                 },
             },
         ),
+        (
+            {
+                "image": "custom_base_image",
+                "python_executable_path": "/path/python",
+                "docker_auth": {
+                    "auth_method": "AWS_IAM",
+                    "registry": "some-ecr-docker-registry",
+                },
+            },
+            BaseImage(
+                image="custom_base_image",
+                python_executable_path="/path/python",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.AWS_IAM,
+                    registry="some-ecr-docker-registry",
+                ),
+            ),
+            {
+                "image": "custom_base_image",
+                "python_executable_path": "/path/python",
+                "docker_auth": {
+                    "auth_method": "GCP_SERVICE_ACCOUNT_JSON",
+                    "secret_name": "some-secret-name",
+                    "registry": "some-docker-registry",
+                },
+            },
+        ),
     ],
 )
 def test_parse_base_image(input_dict, expect_base_image, output_dict):
