@@ -479,6 +479,7 @@ class DockerAuthType(str, enum.Enum):
     authentication we support."""
 
     GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
+    AWS_IAM = "AWS_IAM"
 
 
 class DockerAuthSettings(custom_types.ConfigModel):
@@ -486,12 +487,23 @@ class DockerAuthSettings(custom_types.ConfigModel):
     the custom base image."""
 
     auth_method: DockerAuthType
-    secret_name: str
+    secret_name: Optional[str] = None
     registry: Optional[str] = ""
 
     @pydantic.field_validator("auth_method", mode="before")
     def _normalize_auth_method(cls, v: str) -> str:
         return v.upper() if isinstance(v, str) else v
+
+    @pydantic.model_validator(mode="after")
+    def validate_secret_name(self) -> "DockerAuthSettings":
+        if (
+            self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON
+            and self.secret_name is None
+        ):
+            raise ValueError(
+                "secret_name must be provided when auth_method is GCP_SERVICE_ACCOUNT_JSON"
+            )
+        return self
 
 
 class BaseImage(custom_types.ConfigModel):
