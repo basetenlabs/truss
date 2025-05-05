@@ -50,11 +50,15 @@ def _truss_is_git_branch() -> bool:
 class Preferences(pydantic.BaseModel):
     include_git_info: bool = False
     auto_upgrade_command_template: Optional[str] = None
-    b10_beta_features: bool = False
+
+
+class FeatureFlags(pydantic.BaseModel):
+    enable_auto_upgrade: bool = False
 
 
 class AppSettings(pydantic.BaseModel):
     preferences: Preferences = Preferences()
+    feature_flags: FeatureFlags = FeatureFlags()
 
 
 def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
@@ -80,7 +84,7 @@ def _update_toml_document(doc, data: dict[str, Any]) -> None:
                 doc[key] = value
 
 
-class SettingsWrapper:
+class _SettingsWrapper:
     def __init__(
         self, settings: AppSettings, toml_doc: tomlkit.TOMLDocument, write: bool = False
     ):
@@ -95,7 +99,7 @@ class SettingsWrapper:
         return _get_dir() / _SETTINGS_FiLE
 
     @classmethod
-    def read_or_create(cls) -> "SettingsWrapper":
+    def read_or_create(cls) -> "_SettingsWrapper":
         if cls.path().exists():
             toml_doc = tomlkit.parse(cls.path().read_text(encoding="utf-8"))
             settings = AppSettings(**toml_doc.unwrap())
@@ -127,8 +131,8 @@ class SettingsWrapper:
         return self._settings.preferences.include_git_info
 
     @property
-    def b10_beta_features(self) -> bool:
-        return self._settings.preferences.b10_beta_features
+    def enable_auto_upgrade(self) -> bool:
+        return self._settings.feature_flags.enable_auto_upgrade
 
     @property
     def auto_upgrade_command_template(self) -> Optional[str]:
@@ -184,7 +188,7 @@ class UpdateInfo(pydantic.BaseModel):
     latest_version: str
 
 
-class StateWrapper:
+class _StateWrapper:
     def __init__(self, state: State, write: bool = False):
         self._state = state
         if write:
@@ -268,3 +272,7 @@ class StateWrapper:
             reason=reason,
             latest_version=str(latest_version),
         )
+
+
+state = _StateWrapper.read_or_create()
+settings = _SettingsWrapper.read_or_create()

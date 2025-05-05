@@ -5,11 +5,10 @@ import shutil
 import subprocess
 import sys
 
-import rich.console
 import rich.prompt
 from InquirerPy import inquirer
 
-from truss.cli.utils import user_config
+from truss.util import user_config
 
 
 def _run_upgrade(command: str, console: rich.console.Console) -> bool:
@@ -62,15 +61,14 @@ def _make_upgrade_command_candidates(latest_version: str) -> list[tuple[str, str
 
 
 def upgrade_dialogue(current_version: str, console: rich.console.Console) -> None:
-    settings_wrapper = user_config.SettingsWrapper.read_or_create()
-    state_wrapper = user_config.StateWrapper.read_or_create()
-    update_info = state_wrapper.should_upgrade(current_version)
+    settings = user_config.settings
+    update_info = user_config.state.should_upgrade(current_version)
     latest_version = str(update_info.latest_version)
     logging.debug(f"Truss package update info: {update_info}")
     if not update_info.upgrade_recommended:
         return
 
-    if auto_upgrade_command_template := settings_wrapper.auto_upgrade_command_template:
+    if auto_upgrade_command_template := settings.auto_upgrade_command_template:
         console.print(
             f"[bold yellow]🪄 Automatically upgrading truss to '{latest_version}'.[/bold yellow]"
         )
@@ -81,7 +79,7 @@ def upgrade_dialogue(current_version: str, console: rich.console.Console) -> Non
             sys.exit(0)
         else:
             console.print(
-                f"[bold]🖊️  You can edit or remove 'auto_upgrade_command_template' in '{settings_wrapper.path()}'[/bold]"
+                f"[bold]🖊️  You can edit or remove 'auto_upgrade_command_template' in '{settings.path()}'[/bold]"
             )
             sys.exit(1)
 
@@ -113,15 +111,15 @@ def upgrade_dialogue(current_version: str, console: rich.console.Console) -> Non
         message="▶️  Run command in this shell?", default=True
     ).execute():
         if _run_upgrade(edited_cmd, console):
-            settings_path = settings_wrapper.path()
+            template = edited_cmd.replace(f"{latest_version}", "{version}")
             if inquirer.confirm(
-                message="💾 Do you want next time to run the same command automatically "
-                f"(with newer version)? After memorizing the command, you can edit the "
-                f"it in '{settings_path}'?",
+                message="💾 We can remember your choice and automatically upgrade next "
+                f"time, using:\n  '{template}' (and filling in a version).\n  You can edit or "
+                f"remove this command in '{settings.path()}'.\n  Would you like to enable "
+                "automatic upgrades?",
                 default=True,
             ).execute():
-                template = edited_cmd.replace(f"{latest_version}", "{version}")
-                settings_wrapper.auto_upgrade_command_template = template
+                settings.auto_upgrade_command_template = template
             sys.exit(0)
         else:
             sys.exit(1)

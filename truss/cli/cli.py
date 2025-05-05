@@ -33,7 +33,7 @@ from truss.cli import common, remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
-from truss.cli.utils import self_upgrade, user_config
+from truss.cli.utils import self_upgrade
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -55,7 +55,7 @@ from truss.trt_llm.config_checks import (
 from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
-from truss.util import docker
+from truss.util import docker, user_config
 from truss.util.log_utils import LogInterceptor
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
@@ -95,8 +95,6 @@ error_console = Console(stderr=True, style="bold red")
 
 is_humanfriendly_log_level = True
 
-app_settings = user_config.SettingsWrapper.read_or_create()
-
 
 def error_handling(f: Callable[..., object]):
     @wraps(f)
@@ -123,7 +121,7 @@ def error_handling(f: Callable[..., object]):
 def upgrade_dialogue(f: Callable[..., object]):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if common.check_is_interactive() and app_settings.b10_beta_features:
+        if common.check_is_interactive() and user_config.settings.enable_auto_upgrade:
             self_upgrade.upgrade_dialogue(truss.version(), console)
         f(*args, **kwargs)
 
@@ -674,7 +672,7 @@ def push_chain(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = app_settings.include_git_info
+        include_git_info = user_config.settings.include_git_info
 
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
@@ -1448,7 +1446,7 @@ def push(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = app_settings.include_git_info
+        include_git_info = user_config.settings.include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
     tr = _get_truss_from_directory(target_directory=target_directory)
