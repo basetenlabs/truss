@@ -1,12 +1,19 @@
-from typing import Optional, Tuple, cast
+from pathlib import Path
+from typing import Optional, Tuple
 
 import rich
 import rich_click as click
 from InquirerPy import inquirer
 from rich.console import Console
+from rich.text import Text
 
+import truss.cli.train.deploy_checkpoints as deploy_checkpoints
+from truss.cli.common import get_most_recent_job
 from truss.cli.train.metrics_watcher import MetricsWatcher
+from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
 from truss.remote.baseten.remote import BasetenRemote
+from truss_train import loader
+from truss_train.definitions import DeployCheckpointsConfig
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -36,32 +43,6 @@ def get_args_for_stop(
                 raise click.UsageError("Training job not stopped.")
         return project_id_for_job, job_id_to_stop
 
-    return project_id, job_id
-
-
-def get_args_for_monitoring(
-    console: Console,
-    remote_provider: BasetenRemote,
-    project_id: Optional[str],
-    job_id: Optional[str],
-) -> Tuple[str, str]:
-    if not project_id or not job_id:
-        jobs = remote_provider.api.search_training_jobs(
-            project_id=project_id, job_id=job_id
-        )
-        if not jobs:
-            raise click.UsageError("No jobs found.")
-        if len(jobs) > 1:
-            sorted_jobs = sorted(jobs, key=lambda x: x["created_at"], reverse=True)
-            job = sorted_jobs[0]
-            console.print(
-                f"Multiple jobs found. Showing the most recently created job: {job['id']}",
-                style="yellow",
-            )
-        else:
-            job = jobs[0]
-        project_id = cast(str, job["training_project"]["id"])
-        job_id = cast(str, job["id"])
     return project_id, job_id
 
 
@@ -199,8 +180,48 @@ def view_training_job_metrics(
     """
     view_training_job_metrics shows a list of metrics for a training job.
     """
-    project_id, job_id = get_args_for_monitoring(
+    project_id, job_id = get_most_recent_job(
         console, remote_provider, project_id, job_id
     )
     metrics_display = MetricsWatcher(remote_provider.api, project_id, job_id, console)
     metrics_display.watch()
+
+
+def prepare_checkpoint_deploy(
+    console: Console, remote_provider: BasetenRemote, args: PrepareCheckpointArgs
+) -> PrepareCheckpointResult:
+    if not args.deploy_config_path:
+        return deploy_checkpoints.prepare_checkpoint_deploy(
+            console,
+            remote_provider,
+            DeployCheckpointsConfig(),
+            args.project_id,
+            args.job_id,
+        )
+    #### User provided a checkpoint deploy config file
+    with loader.import_deploy_checkpoints_config(
+        Path(args.deploy_config_path)
+    ) as checkpoint_deploy:
+        return deploy_checkpoints.prepare_checkpoint_deploy(
+            console, remote_provider, checkpoint_deploy, args.project_id, args.job_id
+        )
+
+
+def print_deploy_checkpoints_success_message(
+    prepare_checkpoint_result: PrepareCheckpointResult,
+):
+    rich.print(
+        Text("\nTo run the model with the LoRA adapter,"),
+        Text("ensure your `model` parameter is set to one of"),
+        Text(
+            f"{[x.id for x in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints]}",
+            style="magenta",
+        ),
+        Text("in your request. An example request body might look like this:"),
+        Text(
+            "\n{"
+            + f'"model": {prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints[0].id}, "messages": [...]'
+            + "}",
+            style="green",
+        ),
+    )

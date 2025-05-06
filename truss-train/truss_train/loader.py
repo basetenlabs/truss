@@ -2,13 +2,31 @@ import contextlib
 import importlib.util
 import os
 import pathlib
-from typing import Iterator
+from typing import Iterator, Type, TypeVar
 
 from truss_train import definitions
 
+T = TypeVar("T")
+
 
 @contextlib.contextmanager
-def import_target(module_path: pathlib.Path) -> Iterator[definitions.TrainingProject]:
+def import_training_project(
+    module_path: pathlib.Path,
+) -> Iterator[definitions.TrainingProject]:
+    with import_target(module_path, definitions.TrainingProject) as project:
+        yield project
+
+
+@contextlib.contextmanager
+def import_deploy_checkpoints_config(
+    module_path: pathlib.Path,
+) -> Iterator[definitions.DeployCheckpointsConfig]:
+    with import_target(module_path, definitions.DeployCheckpointsConfig) as config:
+        yield config
+
+
+@contextlib.contextmanager
+def import_target(module_path: pathlib.Path, target_type: Type[T]) -> Iterator[T]:
     module_name = module_path.stem
     if not os.path.isfile(module_path):
         raise ImportError(
@@ -24,13 +42,11 @@ def import_target(module_path: pathlib.Path) -> Iterator[definitions.TrainingPro
     spec.loader.exec_module(module)
 
     module_vars = (getattr(module, name) for name in dir(module))
-    training_projects = [
-        sym for sym in module_vars if isinstance(sym, definitions.TrainingProject)
-    ]
+    target = [sym for sym in module_vars if isinstance(sym, target_type)]
 
-    if len(training_projects) == 0:
-        raise ValueError(f"No `{definitions.TrainingProject}` was found.")
-    elif len(training_projects) > 1:
-        raise ValueError(f"Multiple `{definitions.TrainingProject}`s were found.")
+    if len(target) == 0:
+        raise ValueError(f"No `{target_type}` was found.")
+    elif len(target) > 1:
+        raise ValueError(f"Multiple `{target_type}`s were found.")
 
-    yield training_projects[0]
+    yield target[0]

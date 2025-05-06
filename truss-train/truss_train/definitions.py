@@ -4,6 +4,8 @@ import pydantic
 
 from truss.base import custom_types, truss_config
 
+DEFAULT_LORA_RANK = 16
+
 
 class SecretReference(custom_types.SafeModel):
     name: str
@@ -23,6 +25,18 @@ class Compute(custom_types.SafeModel):
                 "count": self.accelerator.count,
             }
         return data
+
+    def to_truss_config(self) -> truss_config.Resources:
+        if self.accelerator:
+            return truss_config.Resources(
+                cpu=str(self.cpu_count),
+                memory=self.memory,
+                accelerator=self.accelerator,
+                node_count=self.node_count,
+            )
+        return truss_config.Resources(
+            cpu=str(self.cpu_count), memory=self.memory, node_count=self.node_count
+        )
 
 
 class CheckpointingConfig(custom_types.SafeModel):
@@ -57,3 +71,41 @@ class TrainingProject(custom_types.SafeModel):
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
+
+
+class Checkpoint(custom_types.SafeModel):
+    training_job_id: str
+    id: str
+    name: str
+    lora_rank: Optional[int] = (
+        None  # lora rank will be fetched through the API if available.
+    )
+
+    def to_truss_config(self) -> truss_config.Checkpoint:
+        return truss_config.Checkpoint(
+            id=f"{self.training_job_id}/{self.id}", name=self.id
+        )
+
+
+class CheckpointDetails(custom_types.SafeModel):
+    download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
+    base_model_id: Optional[str] = None
+    checkpoints: List[Checkpoint] = []
+
+    def to_truss_config(self) -> truss_config.CheckpointConfiguration:
+        checkpoints = [checkpoint.to_truss_config() for checkpoint in self.checkpoints]
+        return truss_config.CheckpointConfiguration(
+            checkpoints=checkpoints, download_folder=self.download_folder
+        )
+
+
+class DeployCheckpointsRuntime(custom_types.SafeModel):
+    environment_variables: Dict[str, Union[str, SecretReference]] = {}
+
+
+class DeployCheckpointsConfig(custom_types.SafeModel):
+    checkpoint_details: Optional[CheckpointDetails] = None
+    model_name: Optional[str] = None
+    deployment_name: Optional[str] = None
+    runtime: Optional[DeployCheckpointsRuntime] = None
+    compute: Optional[Compute] = None

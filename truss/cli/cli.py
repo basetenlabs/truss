@@ -896,7 +896,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    with loader.import_target(config) as training_project:
+    with loader.import_training_project(config) as training_project:
         with console.status("Creating training job...", spinner="dots"):
             project_resp = remote_provider.api.upsert_training_project(
                 training_project=training_project
@@ -942,7 +942,7 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id, job_id = train_cli.get_args_for_monitoring(
+    project_id, job_id = train_cli.get_most_recent_job(
         console, remote_provider, project_id, job_id
     )
 
@@ -1028,6 +1028,68 @@ def get_job_metrics(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     train_cli.view_training_job_metrics(console, remote_provider, project_id, job_id)
+
+
+@train.command(name="deploy_checkpoints")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option(
+    "--config",
+    type=str,
+    required=False,
+    help="path to a python file that defines a DeployCheckpointsConfig",
+)
+@click.option(
+    "--dry-run",
+    type=bool,
+    is_flag=True,
+    help="Generate a truss config without deploying",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def deploy_checkpoints(
+    project_id: Optional[str],
+    job_id: Optional[str],
+    config: Optional[str],
+    remote: Optional[str],
+    dry_run: bool,
+):
+    """
+    Deploy a checkpoint. Some early assumptions about this are:
+    - We are deploying a vllm model
+    - The checkpoint is a lora
+    - Base Model is coming from Huggingface
+    """
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+        console,
+        remote_provider,
+        train_cli.PrepareCheckpointArgs(
+            project_id=project_id, job_id=job_id, deploy_config_path=config
+        ),
+    )
+
+    ctx = click.Context(push, obj={})
+    ctx.params = {
+        "target_directory": prepare_checkpoint_result.truss_directory,
+        "remote": remote,
+        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
+        "publish": True,
+        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
+    }
+    if dry_run:
+        console.print("--dry-run flag provided, not deploying", style="yellow")
+    else:
+        push.invoke(ctx)
+
+    train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
 
 
 # End Training Stuff #####################################################################

@@ -35,6 +35,8 @@ DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 
+DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/training_checkpoints"
+
 
 def _is_numeric(number_like: str) -> bool:
     try:
@@ -516,6 +518,20 @@ class DockerServer(custom_types.ConfigModel):
     liveness_endpoint: str
 
 
+class Checkpoint(custom_types.ConfigModel):
+    # NB(rcano): The id here is a formatted string of the form <training_job_id>/<checkpoint_id>
+    # We do this because the vLLM command requires knowledge of where the checkpoint
+    # is downloaded. By using a formatted string instead of an additional "training_job_id"
+    # field, we provide a more transparent truss config.
+    id: str
+    name: str
+
+
+class CheckpointConfiguration(custom_types.ConfigModel):
+    download_folder: str = DEFAULT_TRAINING_CHECKPOINT_FOLDER
+    checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
+
+
 SUPPORTED_PYTHON_VERSIONS = {
     "py38": "3.8",
     "py39": "3.9",
@@ -549,6 +565,9 @@ class TrussConfig(custom_types.ConfigModel):
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
+
+    # deploying from checkpoint
+    training_checkpoints: Optional[CheckpointConfiguration] = None
 
     # Internal / Legacy.
     input_type: str = "Any"

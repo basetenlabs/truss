@@ -1,0 +1,14 @@
+base_image:
+  image:  vllm/vllm-openai:latest
+docker_server:
+  start_command: sh -c "" # replaced when deploying
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+  predict_endpoint: /v1/chat/completions
+  server_port: 8000
+runtime:
+  predict_concurrency : 256
+environment_variables:
+  VLLM_LOGGING_LEVEL: WARNING
+  VLLM_USE_V1: 0
+  HF_HUB_ENABLE_HF_TRANSFER: 1
