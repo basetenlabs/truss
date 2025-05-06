@@ -7,7 +7,7 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
             accelerator=truss_config.Accelerator.A10G, count=4
         )
     ),
-    runtime=definitions.CheckpointDeployRuntime(
+    runtime=definitions.DeployCheckpointsRuntime(
         environment_variables={
             "HF_TOKEN": definitions.SecretReference(name="hf_access_token")
         }

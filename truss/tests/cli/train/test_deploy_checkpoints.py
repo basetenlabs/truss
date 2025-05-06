@@ -98,7 +98,7 @@ def test_render_vllm_lora_truss_config():
         compute=definitions.Compute(
             accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=4)
         ),
-        runtime=definitions.CheckpointDeployRuntime(
+        runtime=definitions.DeployCheckpointsRuntime(
             environment_variables={
                 "HF_TOKEN": definitions.SecretReference(name="hf_access_token")
             }
@@ -197,7 +197,7 @@ def test_prepare_checkpoint_deploy_complete_config(
         compute=definitions.Compute(
             accelerator=truss_config.AcceleratorSpec(accelerator="A100", count=2)
         ),
-        runtime=definitions.CheckpointDeployRuntime(
+        runtime=definitions.DeployCheckpointsRuntime(
             environment_variables={
                 "HF_TOKEN": definitions.SecretReference(name="my_custom_secret"),
                 "CUSTOM_VAR": "custom_value",

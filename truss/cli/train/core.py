@@ -1,11 +1,11 @@
 from pathlib import Path
-from rich.text import Text
 from typing import Optional, Tuple
 
 import rich
 import rich_click as click
 from InquirerPy import inquirer
 from rich.console import Console
+from rich.text import Text
 
 import truss.cli.train.deploy_checkpoints as deploy_checkpoints
 from truss.cli.common import get_most_recent_job
@@ -206,8 +206,10 @@ def prepare_checkpoint_deploy(
             console, remote_provider, checkpoint_deploy, args.project_id, args.job_id
         )
 
-def print_deploy_checkpoints_success_message(prepare_checkpoint_result: PrepareCheckpointResult):
 
+def print_deploy_checkpoints_success_message(
+    prepare_checkpoint_result: PrepareCheckpointResult,
+):
     rich.print(
         Text("\nTo run the model with the LoRA adapter,"),
         Text("ensure your `model` parameter is set to one of"),

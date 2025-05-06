@@ -19,7 +19,6 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
-from rich.text import Text
 
 import truss
 import truss.cli.train.core as train_cli
@@ -1092,6 +1091,7 @@ def deploy_checkpoints(
         push.invoke(ctx)
 
     train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
+
 
 # End Training Stuff #####################################################################
 

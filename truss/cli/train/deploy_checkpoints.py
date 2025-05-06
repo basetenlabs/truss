@@ -21,21 +21,21 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     DEFAULT_LORA_RANK,
     Checkpoint,
-    CheckpointDeployRuntime,
     CheckpointDetails,
     Compute,
     DeployCheckpointsConfig,
+    DeployCheckpointsRuntime,
     SecretReference,
 )
 
 VLLM_LORA_START_COMMAND = Template(
-    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}' + 
-    ' --port 8000' + 
-    ' --tensor-parallel-size 4' + 
-    ' --enable-lora' + 
-    ' --max-lora-rank {{ max_lora_rank }}' + 
-    ' --dtype bfloat16' + 
-    ' --lora-modules {{ lora_modules }}"'
+    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'
+    + " --port 8000"
+    + " --tensor-parallel-size 4"
+    + " --enable-lora"
+    + " --max-lora-rank {{ max_lora_rank }}"
+    + " --dtype bfloat16"
+    + ' --lora-modules {{ lora_modules }}"'
 )
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
@@ -332,10 +332,10 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
 
 
 def _get_runtime(
-    console: Console, runtime: Optional[CheckpointDeployRuntime]
-) -> CheckpointDeployRuntime:
+    console: Console, runtime: Optional[DeployCheckpointsRuntime]
+) -> DeployCheckpointsRuntime:
     if not runtime:
-        runtime = CheckpointDeployRuntime()
+        runtime = DeployCheckpointsRuntime()
     if not runtime.environment_variables:
         # Prompt the user for the huggingface secret name as a default. There's much more we could
         # do here, but we're keeping it simple for now.

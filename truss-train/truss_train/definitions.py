@@ -99,7 +99,7 @@ class CheckpointDetails(custom_types.SafeModel):
         )
 
 
-class CheckpointDeployRuntime(custom_types.SafeModel):
+class DeployCheckpointsRuntime(custom_types.SafeModel):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
 
 
@@ -107,5 +107,5 @@ class DeployCheckpointsConfig(custom_types.SafeModel):
     checkpoint_details: Optional[CheckpointDetails] = None
     model_name: Optional[str] = None
     deployment_name: Optional[str] = None
-    runtime: Optional[CheckpointDeployRuntime] = None
+    runtime: Optional[DeployCheckpointsRuntime] = None
     compute: Optional[Compute] = None
