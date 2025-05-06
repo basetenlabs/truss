@@ -34,6 +34,8 @@ DEFAULT_BUNDLED_PACKAGES_DIR = "packages"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
+DEFAULT_AWS_ACCESS_KEY_SECRET_NAME = "aws_access_key_id"
+DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME = "aws_secret_access_key"
 
 
 def _is_numeric(number_like: str) -> bool:
@@ -494,8 +496,8 @@ class DockerAuthSettings(custom_types.ConfigModel):
     # These are only required for AWS_IAM, and only need to be
     # provided in cases where the user wants to use different secret
     # names for the AWS credentials.
-    aws_access_key_id_secret_name: Optional[str] = "aws_access_key_id"
-    aws_secret_access_key_secret_name: Optional[str] = "aws_secret_access_key"
+    aws_access_key_id_secret_name: str = DEFAULT_AWS_ACCESS_KEY_SECRET_NAME
+    aws_secret_access_key_secret_name: str = DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME
 
     @pydantic.field_validator("auth_method", mode="before")
     def _normalize_auth_method(cls, v: str) -> str:
