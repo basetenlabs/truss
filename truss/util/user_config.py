@@ -49,9 +49,7 @@ def _truss_is_git_branch() -> bool:
             check=True,
         )
         remote_url = result.stdout.strip().splitlines()[-1]
-        remote_matches = (
-            remote_url.rstrip("/") == "https://github.com/basetenlabs/truss"
-        )
+        remote_matches = "basetenlabs/truss" in remote_url
         if not remote_matches:
             logging.debug(f"Inside truss git repo with remote {remote_url}.")
         return remote_matches

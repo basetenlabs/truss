@@ -34,6 +34,8 @@ DEFAULT_BUNDLED_PACKAGES_DIR = "packages"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
+DEFAULT_AWS_ACCESS_KEY_SECRET_NAME = "aws_access_key_id"
+DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME = "aws_secret_access_key"
 
 DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/training_checkpoints"
 
@@ -481,6 +483,7 @@ class DockerAuthType(str, enum.Enum):
     authentication we support."""
 
     GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
+    AWS_IAM = "AWS_IAM"
 
 
 class DockerAuthSettings(custom_types.ConfigModel):
@@ -488,12 +491,30 @@ class DockerAuthSettings(custom_types.ConfigModel):
     the custom base image."""
 
     auth_method: DockerAuthType
-    secret_name: str
     registry: Optional[str] = ""
+    # Note that the secret_name is only required for GCP_SERVICE_ACCOUNT_JSON.
+    secret_name: Optional[str] = None
+
+    # These are only required for AWS_IAM, and only need to be
+    # provided in cases where the user wants to use different secret
+    # names for the AWS credentials.
+    aws_access_key_id_secret_name: str = DEFAULT_AWS_ACCESS_KEY_SECRET_NAME
+    aws_secret_access_key_secret_name: str = DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME
 
     @pydantic.field_validator("auth_method", mode="before")
     def _normalize_auth_method(cls, v: str) -> str:
         return v.upper() if isinstance(v, str) else v
+
+    @pydantic.model_validator(mode="after")
+    def validate_secret_name(self) -> "DockerAuthSettings":
+        if (
+            self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON
+            and self.secret_name is None
+        ):
+            raise ValueError(
+                "secret_name must be provided when auth_method is GCP_SERVICE_ACCOUNT_JSON"
+            )
+        return self
 
 
 class BaseImage(custom_types.ConfigModel):
