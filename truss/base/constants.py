@@ -1,15 +1,6 @@
 import pathlib
-from typing import Set
 
-SKLEARN = "sklearn"
-TENSORFLOW = "tensorflow"
-KERAS = "keras"
-XGBOOST = "xgboost"
-PYTORCH = "pytorch"
 CUSTOM = "custom"
-HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
-LIGHTGBM = "lightgbm"
-
 
 _TRUSS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
@@ -74,7 +65,6 @@ TRUSS_MODIFIED_TIME = "truss_modified_time"
 TRUSS_DIR = "truss_dir"
 TRUSS_HASH = "truss_hash"
 
-HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = set({})
 
 INFERENCE_SERVER_PORT = 8080
 
@@ -84,7 +74,7 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-cd81637"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-1856fb5"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
 BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.23"

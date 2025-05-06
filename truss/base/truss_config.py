@@ -34,6 +34,10 @@ DEFAULT_BUNDLED_PACKAGES_DIR = "packages"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
+DEFAULT_AWS_ACCESS_KEY_SECRET_NAME = "aws_access_key_id"
+DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME = "aws_secret_access_key"
+
+DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/training_checkpoints"
 
 
 def _is_numeric(number_like: str) -> bool:
@@ -479,6 +483,7 @@ class DockerAuthType(str, enum.Enum):
     authentication we support."""
 
     GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
+    AWS_IAM = "AWS_IAM"
 
 
 class DockerAuthSettings(custom_types.ConfigModel):
@@ -486,12 +491,30 @@ class DockerAuthSettings(custom_types.ConfigModel):
     the custom base image."""
 
     auth_method: DockerAuthType
-    secret_name: str
     registry: Optional[str] = ""
+    # Note that the secret_name is only required for GCP_SERVICE_ACCOUNT_JSON.
+    secret_name: Optional[str] = None
+
+    # These are only required for AWS_IAM, and only need to be
+    # provided in cases where the user wants to use different secret
+    # names for the AWS credentials.
+    aws_access_key_id_secret_name: str = DEFAULT_AWS_ACCESS_KEY_SECRET_NAME
+    aws_secret_access_key_secret_name: str = DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME
 
     @pydantic.field_validator("auth_method", mode="before")
     def _normalize_auth_method(cls, v: str) -> str:
         return v.upper() if isinstance(v, str) else v
+
+    @pydantic.model_validator(mode="after")
+    def validate_secret_name(self) -> "DockerAuthSettings":
+        if (
+            self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON
+            and self.secret_name is None
+        ):
+            raise ValueError(
+                "secret_name must be provided when auth_method is GCP_SERVICE_ACCOUNT_JSON"
+            )
+        return self
 
 
 class BaseImage(custom_types.ConfigModel):
@@ -514,6 +537,20 @@ class DockerServer(custom_types.ConfigModel):
     predict_endpoint: str
     readiness_endpoint: str
     liveness_endpoint: str
+
+
+class Checkpoint(custom_types.ConfigModel):
+    # NB(rcano): The id here is a formatted string of the form <training_job_id>/<checkpoint_id>
+    # We do this because the vLLM command requires knowledge of where the checkpoint
+    # is downloaded. By using a formatted string instead of an additional "training_job_id"
+    # field, we provide a more transparent truss config.
+    id: str
+    name: str
+
+
+class CheckpointConfiguration(custom_types.ConfigModel):
+    download_folder: str = DEFAULT_TRAINING_CHECKPOINT_FOLDER
+    checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
 
 
 SUPPORTED_PYTHON_VERSIONS = {
@@ -549,6 +586,9 @@ class TrussConfig(custom_types.ConfigModel):
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
+
+    # deploying from checkpoint
+    training_checkpoints: Optional[CheckpointConfiguration] = None
 
     # Internal / Legacy.
     input_type: str = "Any"

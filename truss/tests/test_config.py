@@ -220,6 +220,37 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "auth_method": "GCP_SERVICE_ACCOUNT_JSON",
                     "secret_name": "some-secret-name",
                     "registry": "some-docker-registry",
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": ("aws_secret_access_key"),
+                },
+            },
+        ),
+        (
+            {
+                "image": "custom_base_image",
+                "python_executable_path": "/path/python",
+                "docker_auth": {
+                    "auth_method": "AWS_IAM",
+                    "registry": "some-ecr-docker-registry",
+                },
+            },
+            BaseImage(
+                image="custom_base_image",
+                python_executable_path="/path/python",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.AWS_IAM,
+                    registry="some-ecr-docker-registry",
+                ),
+            ),
+            {
+                "image": "custom_base_image",
+                "python_executable_path": "/path/python",
+                "docker_auth": {
+                    "auth_method": "AWS_IAM",
+                    "registry": "some-ecr-docker-registry",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
                 },
             },
         ),

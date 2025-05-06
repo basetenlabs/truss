@@ -1,0 +1,69 @@
+apply_library_patches: true
+base_image:
+  docker_auth: null
+  image: vllm/vllm-openai:latest
+  python_executable_path: ''
+build:
+  arguments: {}
+  model_server: TrussServer
+  secret_to_path_mapping: {}
+build_commands: []
+bundled_packages_dir: packages
+cache_internal: []
+data_dir: data
+description: null
+docker_server:
+  liveness_endpoint: /health
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /health
+  server_port: 8000
+  start_command: sh -c "HF_TOKEN=$(cat /secrets/hf_access_token) vllm serve google/gemma-3-27b-it
+    --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 16 --dtype
+    bfloat16 --lora-modules checkpoint-1=/tmp/training_checkpoints/kowpeqj/checkpoint-1"
+environment_variables:
+  HF_HUB_ENABLE_HF_TRANSFER: '1'
+  VLLM_LOGGING_LEVEL: WARNING
+  VLLM_USE_V1: '0'
+examples_filename: examples.yaml
+external_data: null
+external_package_dirs: []
+input_type: Any
+live_reload: false
+model_cache: []
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_metadata: {}
+model_module_dir: model
+model_name: gemma-3-27b-it-vLLM-LORA
+model_type: Model
+python_version: py39
+requirements: []
+requirements_file: null
+resources:
+  accelerator: H100:4
+  use_gpu: True
+runtime:
+  enable_debug_logs: false
+  enable_tracing_data: false
+  health_checks:
+    restart_check_delay_seconds: null
+    restart_threshold_seconds: null
+    stop_traffic_threshold_seconds: null
+  is_websocket_endpoint: false
+  predict_concurrency: 256
+  streaming_read_timeout: 60
+  transport:
+    kind: http
+  truss_server_version_override: null
+secrets:
+  hf_access_token: set token in baseten workspace
+spec_version: '2.0'
+system_packages: []
+training_checkpoints:
+  checkpoints:
+  - id: kowpeqj/checkpoint-1
+    name: checkpoint-1
+  download_folder: /tmp/training_checkpoints
+trt_llm: null
+use_local_src: false

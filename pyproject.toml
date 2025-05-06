@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.87"
+version = "0.9.88"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -102,6 +102,7 @@ rich = { version = "^13.4.2", optional = false }
 rich-click = { version = "^1.6.1", optional = false }
 ruff = { version = ">=0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
 tenacity = { version = "^8.0.1", optional = false }
+tomlkit = { version = ">=0.13.2", optional = false }
 watchfiles = { version = "^0.19.0", optional = false }
 
 
@@ -127,6 +128,7 @@ rich = { components = "other" }
 rich-click = { components = "other" }
 ruff = { components = "other" }
 tenacity = { components = "other" }
+tomlkit = { components = "other" }
 watchfiles = { components = "other" }
 
 [tool.poetry.group.dev.dependencies]
@@ -146,7 +148,6 @@ pytest-check = "^2.4.1"
 pytest-cov = "^3.0.0"
 pytest-split = ">=0.10.0"
 requests-mock = ">=1.11.0"
-tomlkit = ">=0.12"
 types-PyYAML = "^6.0.12.12"
 types-aiofiles = ">=24.1.0"
 types-requests = "==2.31.0.2"
