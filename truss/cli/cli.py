@@ -56,7 +56,6 @@ from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
-from truss_train.definitions import TrainingProject
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
 rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
@@ -897,7 +896,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    with loader.import_target(config, TrainingProject) as training_project:
+    with loader.import_training_project(config) as training_project:
         with console.status("Creating training job...", spinner="dots"):
             project_resp = remote_provider.api.upsert_training_project(
                 training_project=training_project

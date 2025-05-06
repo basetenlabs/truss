@@ -4,7 +4,25 @@ import os
 import pathlib
 from typing import Iterator, Type, TypeVar
 
+from truss_train import definitions
+
 T = TypeVar("T")
+
+
+@contextlib.contextmanager
+def import_training_project(
+    module_path: pathlib.Path,
+) -> Iterator[definitions.TrainingProject]:
+    with import_target(module_path, definitions.TrainingProject) as project:
+        yield project
+
+
+@contextlib.contextmanager
+def import_deploy_checkpoints_config(
+    module_path: pathlib.Path,
+) -> Iterator[definitions.DeployCheckpointsConfig]:
+    with import_target(module_path, definitions.DeployCheckpointsConfig) as config:
+        yield config
 
 
 @contextlib.contextmanager

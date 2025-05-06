@@ -199,8 +199,8 @@ def prepare_checkpoint_deploy(
             args.job_id,
         )
     #### User provided a checkpoint deploy config file
-    with loader.import_target(
-        Path(args.deploy_config_path), DeployCheckpointsConfig
+    with loader.import_deploy_checkpoints_config(
+        Path(args.deploy_config_path)
     ) as checkpoint_deploy:
         return deploy_checkpoints.prepare_checkpoint_deploy(
             console, remote_provider, checkpoint_deploy, args.project_id, args.job_id
