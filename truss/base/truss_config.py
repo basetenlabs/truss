@@ -487,8 +487,15 @@ class DockerAuthSettings(custom_types.ConfigModel):
     the custom base image."""
 
     auth_method: DockerAuthType
-    secret_name: Optional[str] = None
     registry: Optional[str] = ""
+    # Note that the secret_name is only required for GCP_SERVICE_ACCOUNT_JSON.
+    secret_name: Optional[str] = None
+
+    # These are only required for AWS_IAM, and only need to be
+    # provided in cases where the user wants to use different secret
+    # names for the AWS credentials.
+    aws_access_key_id_secret_name: Optional[str] = "aws_access_key_id"
+    aws_secret_access_key_secret_name: Optional[str] = "aws_secret_access_key"
 
     @pydantic.field_validator("auth_method", mode="before")
     def _normalize_auth_method(cls, v: str) -> str:
