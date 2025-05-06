@@ -1,6 +1,7 @@
 """Tools to configure and track the Truss CLI state and behavior, e.g. auto-upgrades."""
 
 import datetime
+import logging
 import os
 import pathlib
 import shutil
@@ -35,14 +36,25 @@ def _get_dir() -> pathlib.Path:
 def _truss_is_git_branch() -> bool:
     if shutil.which("git") is None:
         return False
+    source_path = pathlib.Path(__file__).resolve()
+    source_dir = source_path.parent
     try:
-        subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            stdout=subprocess.DEVNULL,
+        result = subprocess.run(
+            "git rev-parse --is-inside-work-tree && git remote get-url origin",
+            cwd=source_dir,
+            shell=True,
+            text=True,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             check=True,
         )
-        return True
+        remote_url = result.stdout.strip().splitlines()[-1]
+        remote_matches = (
+            remote_url.rstrip("/") == "https://github.com/basetenlabs/truss"
+        )
+        if not remote_matches:
+            logging.debug(f"Inside truss git repo with remote {remote_url}.")
+        return remote_matches
     except subprocess.CalledProcessError:
         return False
 
