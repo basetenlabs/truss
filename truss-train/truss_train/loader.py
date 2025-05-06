@@ -3,9 +3,9 @@ import importlib.util
 import os
 import pathlib
 from typing import Iterator, Type, TypeVar
+from truss_train import definitions
 
 T = TypeVar("T")
-
 
 @contextlib.contextmanager
 def import_target(module_path: pathlib.Path, target_type: Type[T]) -> Iterator[T]:

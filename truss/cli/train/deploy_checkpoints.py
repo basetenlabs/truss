@@ -29,7 +29,13 @@ from truss_train.definitions import (
 )
 
 VLLM_LORA_START_COMMAND = Template(
-    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }} --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank {{ max_lora_rank }} --dtype bfloat16 --lora-modules {{ lora_modules }}"'
+    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}' + 
+    ' --port 8000' + 
+    ' --tensor-parallel-size 4' + 
+    ' --enable-lora' + 
+    ' --max-lora-rank {{ max_lora_rank }}' + 
+    ' --dtype bfloat16' + 
+    ' --lora-modules {{ lora_modules }}"'
 )
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
@@ -280,13 +286,8 @@ def _get_hf_secret_name(
 
 def _get_compute(compute: Optional[Compute]) -> Compute:
     if not compute:
-        compute = Compute()
+        compute = Compute(cpu_count=0, memory="0Mi")
     compute.accelerator = _get_accelerator_if_specified(compute.accelerator)
-    if not compute.accelerator:
-        # default to CPU for local testing
-        compute.node_count = 1
-        compute.cpu_count = 1
-        compute.memory = "0Mi"
     return compute
 
 
@@ -325,7 +326,7 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
         base_model_id = inquirer.text(message="Enter the base model id.").execute()
     if not base_model_id:
         raise click.UsageError(
-            "Base model id is required. Use --base-model-id to specify."
+            "Base model id is required. Please provide a base model id."
         )
     return base_model_id
 
