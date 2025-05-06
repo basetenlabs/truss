@@ -884,7 +884,9 @@ def test_resources_transport_correct_serialize_from(tmp_path):
         ("py39", "py39"),
         ("py310", "py310"),
         ("py311", "py311"),
-        ("py312", "py311"),
+        ("py312", "py312"),
+        ("py313", "py313"),
+        ("py314", "py313"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):

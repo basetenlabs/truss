@@ -31,5 +31,43 @@ jobs:
         with:
           token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
           fetch-depth: 2
-      - uses: ./.github/actions/detect-versions/
-        id: versions
+
+      - run: curl -sSL https://install.python-poetry.org | python3 -
+        shell: bash
+
+      - id: versions
+        shell: bash
+        run: |
+          NEW_VERSION=$(poetry version | awk '{print $2}')
+          NEW_BASE_IMAGE_VERSION=$(grep TRUSS_BASE_IMAGE_VERSION_TAG truss/contexts/image_builder/util.py | cut -d'=' -f2 | cut -d'"' -f2)
+
+          git checkout HEAD^1 -- pyproject.toml truss/contexts/image_builder/util.py
+          OLD_VERSION=$(poetry version | awk '{print $2}')
+          OLD_BASE_IMAGE_VERSION=$(grep TRUSS_BASE_IMAGE_VERSION_TAG truss/contexts/image_builder/util.py | cut -d'=' -f2 | cut -d'"' -f2)
+
+          git checkout HEAD -- pyproject.toml truss/contexts/image_builder/util.py
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_base_image_version=$NEW_BASE_IMAGE_VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "$NEW_VERSION" != "$OLD_VERSION" ]]; then
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            if [[ "$NEW_VERSION" == *"dev"* ]]; then
+              echo "release_version=false" >> $GITHUB_OUTPUT
+            else
+              echo "release_version=true" >> $GITHUB_OUTPUT
+              if [[ "$NEW_VERSION" == *"rc"* ]]; then
+                echo "is_prerelease_version=true" >> $GITHUB_OUTPUT
+              else
+                echo "is_prerelease_version=false" >> $GITHUB_OUTPUT
+              fi
+            fi
+          else
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ "$NEW_BASE_IMAGE_VERSION" != "$OLD_BASE_IMAGE_VERSION" ]]; then
+            echo "build_base_images=true" >> $GITHUB_OUTPUT
+          else
+            echo "build_base_images=false" >> $GITHUB_OUTPUT
+          fi
