@@ -2,7 +2,7 @@ import enum
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
 import yaml
 from requests import ReadTimeout
@@ -37,7 +37,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
-from truss.remote.truss_remote import RemoteConfig, RemoteUser, TrussRemote
+from truss.remote.truss_remote import RemoteUser, TrussRemote
 from truss.truss_handle import build as truss_build
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
@@ -71,21 +71,14 @@ class FinalPushData(custom_types.OracleData):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(
-        self, remote_url: str, api_key: str, include_git_info: Union[str, bool] = False
-    ):
+    def __init__(self, remote_url: str, api_key: str):
         super().__init__(remote_url)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
-        self._include_git_info = RemoteConfig.parse_bool(include_git_info)
 
     @property
     def api(self) -> BasetenApi:
         return self._api
-
-    @property
-    def include_git_info(self) -> bool:
-        return self._include_git_info
 
     def get_chainlets(
         self, chain_deployment_id: str
@@ -225,7 +218,7 @@ class BasetenRemote(TrussRemote):
             progress_bar=progress_bar,
         )
 
-        if self._include_git_info or include_git_info:
+        if include_git_info:
             truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
         else:
             truss_user_env = b10_types.TrussUserEnv.collect()

@@ -1,3 +1,4 @@
+import sys
 from typing import Optional, Tuple, cast
 
 import rich_click as click
@@ -6,6 +7,12 @@ from rich.console import Console
 from truss.remote.baseten.remote import BasetenRemote
 
 POLL_INTERVAL_SEC = 2
+
+
+def check_is_interactive() -> bool:
+    """Detects if CLI is operated interactively by human, so we can ask things,
+    that we would want to skip for automated subprocess/CI contexts."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 def get_most_recent_job(

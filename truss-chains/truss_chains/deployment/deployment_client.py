@@ -32,7 +32,7 @@ from truss.remote.baseten import error as b10_errors
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
 from truss.truss_handle import truss_handle
-from truss.util import log_utils
+from truss.util import log_utils, user_config
 from truss.util import path as truss_path
 from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import code_gen
@@ -472,7 +472,7 @@ def _create_baseten_chain(
         remote_factory.RemoteFactory.create(remote=baseten_options.remote),
     )
 
-    if remote_provider.include_git_info or baseten_options.include_git_info:
+    if user_config.settings.include_git_info or baseten_options.include_git_info:
         truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
             baseten_options.working_dir
         )
