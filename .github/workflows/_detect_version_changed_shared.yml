@@ -1,0 +1,35 @@
+name: Detect Version Changed
+
+on:
+  workflow_call:
+    outputs:
+      version_changed:
+        value: ${{ jobs.detect-version-changed.outputs.version_changed }}
+      new_version:
+        value: ${{ jobs.detect-version-changed.outputs.new_version }}
+      new_base_image_version:
+        value: ${{ jobs.detect-version-changed.outputs.new_base_image_version }}
+      build_base_images:
+        value: ${{ jobs.detect-version-changed.outputs.build_base_images }}
+      release_version:
+        value: ${{ jobs.detect-version-changed.outputs.release_version }}
+      is_prerelease_version:
+        value: ${{ jobs.detect-version-changed.outputs.is_prerelease_version }}
+
+jobs:
+  detect-version-changed:
+    runs-on: ubuntu-22.04
+    outputs:
+      version_changed: ${{ steps.versions.outputs.version_changed }}
+      new_version: ${{ steps.versions.outputs.new_version }}
+      new_base_image_version: ${{ steps.versions.outputs.new_base_image_version }}
+      build_base_images: ${{ steps.versions.outputs.build_base_images }}
+      release_version: ${{ steps.versions.outputs.release_version }}
+      is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
+          fetch-depth: 2
+      - uses: ./.github/actions/detect-versions/
+        id: versions

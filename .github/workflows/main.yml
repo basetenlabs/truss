@@ -12,57 +12,20 @@ concurrency:
 
 jobs:
   detect-version-changed:
-    runs-on: ubuntu-22.04
-    outputs:
-      version_changed: ${{ steps.versions.outputs.version_changed }}
-      new_version: ${{ steps.versions.outputs.new_version }}
-      new_base_image_version: ${{ steps.versions.outputs.new_base_image_version }}
-      build_base_images: ${{ steps.versions.outputs.build_base_images }}
-      release_version: ${{ steps.versions.outputs.release_version }}
-      is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
-          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-          fetch-depth: 2
-      - uses: ./.github/actions/detect-versions/
-        id: versions
+    uses: ./.github/workflows/_detect_version_changed_shared.yml
+    secrets: inherit
 
-  build-and-push-truss-base-images-if-needed:
-    needs: [detect-version-changed]
-    if: needs.detect-version-changed.outputs.build_base_images == 'true'
-    runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        python_version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-        use_gpu: ["y", "n"]
-        job_type: ["server"]
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install --with=dev,dev-server --extras=all
-      - shell: bash
-        run: |
-          poetry run bin/generate_base_images.py \
-            --use-gpu ${{ matrix.use_gpu }}  \
-            --python-version ${{ matrix.python_version }} \
-            --job-type ${{ matrix.job_type }} \
-            --version-tag ${{ needs.detect-version-changed.outputs.new_base_image_version }} \
-            --skip-login --push
+  build-truss-server-base-images-if-needed:
+    needs: detect-version-changed
+    uses: ./.github/workflows/_build_truss_server_base_images_if_needed_shared.yml
+    with:
+      new_base_image_version: ${{ needs.detect-version-changed.outputs.new_base_image_version }}
+      build_base_images: ${{ needs.detect-version-changed.outputs.build_base_images }}
+    secrets: inherit
 
   all-tests:
-    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    needs: [detect-version-changed, build-truss-server-base-images-if-needed]
+    if: ${{ !failure() && !cancelled() && (needs.build-truss-server-base-images-if-needed.result == 'success' || needs.build-truss-server-base-images-if-needed.result == 'skipped') }}
     uses: ./.github/workflows/_integration_test_shared.yml
     with:
       run_only_integration: false
