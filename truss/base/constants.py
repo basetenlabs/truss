@@ -19,9 +19,7 @@ CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_chains"
 TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
 # Must be sorted ascendingly.
-SUPPORTED_PYTHON_VERSIONS = ["3.8", "3.9", "3.10", "3.11"]
-MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.12"
-MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.8"
+SUPPORTED_PYTHON_VERSIONS = ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
 
 TRTLLM_PREDICT_CONCURRENCY = 512
 BEI_TRTLLM_CLIENT_BATCH_SIZE = 128
@@ -86,3 +84,5 @@ OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecat
 
 
 PRODUCTION_ENVIRONMENT_NAME = "production"
+
+TRUSS_BASE_IMAGE_NAME = "baseten/truss-server-base"
