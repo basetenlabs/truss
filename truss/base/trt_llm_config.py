@@ -14,7 +14,6 @@ from pydantic import (
     PydanticDeprecatedSince20,
     StringConstraints,
     model_validator,
-    validator,
 )
 
 if TYPE_CHECKING:
@@ -152,10 +151,12 @@ class TrussTRTLLMLoraConfiguration(BaseModel):
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
-    max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
-    max_batch_size: Annotated[int, Field(strict=True, ge=1)] = 256
-    max_num_tokens: Annotated[int, Field(strict=True, gt=64)] = 8192
-    max_beam_width: int = 1
+    max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
+    max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
+    max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=1048576)] = 8192
+    max_beam_width: Annotated[int, Field(strict=True, ge=1, le=1)] = (
+        1  # "max_beam_width greater than 1 is not currently supported"
+    )
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
     gather_all_token_logits: bool = False
@@ -192,15 +193,6 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     def model_post_init(self, __context):
         self._bei_specfic_migration()
-
-    @validator("max_beam_width")
-    def check_max_beam_width(cls, v: int):
-        if isinstance(v, int):
-            if v != 1:
-                raise ValueError(
-                    "max_beam_width greater than 1 is not currently supported"
-                )
-        return v
 
     @property
     def uses_lookahead_decoding(self) -> bool:
