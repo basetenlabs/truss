@@ -104,34 +104,6 @@ async def test_model_wrapper_streaming_timeout(app_path):
     assert model_wrapper._config.get("runtime").get("streaming_read_timeout") == 5
 
 
-# TODO(model-perf): figure out why this doesn't pass if integration tests are run in
-#  the same test suite, but it passes during unit tests.
-@pytest.mark.skip("Has flaky side effects, doesn't work properly.")
-@pytest.mark.anyio
-async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers):
-    app_path = trt_llm_truss_container_fs / "app"
-    packages_path = trt_llm_truss_container_fs / "packages"
-    with _clear_model_load_modules(), helpers.sys_paths(app_path, packages_path):
-        model_wrapper_module = importlib.import_module("model_wrapper")
-        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
-        config = yaml.safe_load((app_path / "config.yaml").read_text())
-        mock_extension = Mock()
-        mock_extension.load = Mock()
-        with patch.object(
-            model_wrapper_module, "_init_extension", return_value=mock_extension
-        ) as mock_init_extension:
-            model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
-            model_wrapper.load()
-            called_with_specific_extension = any(
-                call_args[0][0] == "trt_llm"
-                for call_args in mock_init_extension.call_args_list
-            )
-            assert called_with_specific_extension, (
-                f"'trt_llm' not passed to _init_extension; calls were: "
-                f"{[call_args[0] for call_args in mock_init_extension.call_args_list]}"
-            )
-
-
 @pytest.mark.anyio
 async def test_trt_llm_truss_predict(
     trt_llm_truss_container_fs, helpers, connected_request
