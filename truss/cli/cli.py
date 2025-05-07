@@ -1505,7 +1505,7 @@ def init_chain(directory: Optional[Path]) -> None:
         "Next steps:\n",
         f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
         "execution.\n"
-        f"🚢 Run [bold green]`truss chains deploy {filepath}`[/bold green] "
+        f"🚢 Run [bold green]`truss chains push {filepath}`[/bold green] "
         "to deploy the chain to Baseten.\n",
     )
 
