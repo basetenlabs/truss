@@ -176,7 +176,7 @@ class ModelRepo(custom_types.ConfigModel):
                 "the key `revision: str` is required for use_volume=True repos."
             )
             raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
-        if v.get("volume_folder") is None:
+        if v.get("volume_folder") is None or len(v["volume_folder"]) == 0:
             raise ValueError(
                 "the key `volume_folder: str` is required for `use_volume=True` repos."
             )
@@ -207,7 +207,7 @@ class ModelCache(pydantic.RootModel[list[ModelRepo]]):
         if len(self.models) == 0:
             return
         if not all(
-            model.volume_folder == self.models[0].volume_folder for model in self.models
+            model.use_volume == self.models[0].use_volume for model in self.models
         ):
             raise ValueError(
                 "All models in the `model_cache` must either use `use_volume=True` or `use_volume=False`."
