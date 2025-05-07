@@ -342,9 +342,10 @@ def _get_runtime(
         hf_secret_name = _get_hf_secret_name(
             console, runtime.environment_variables.get(HF_TOKEN_ENVVAR_NAME)
         )
-        runtime.environment_variables[HF_TOKEN_ENVVAR_NAME] = SecretReference(
-            name=hf_secret_name
-        )
+        if hf_secret_name:
+            runtime.environment_variables[HF_TOKEN_ENVVAR_NAME] = SecretReference(
+                name=hf_secret_name
+            )
     return runtime
 
 
