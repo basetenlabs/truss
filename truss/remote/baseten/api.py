@@ -109,6 +109,8 @@ class BasetenApi:
         if errors:
             message = errors[0]["message"]
             error_code = errors[0].get("extensions", {}).get("code")
+            if errors[0].get("extensions", {}).get("description") is not None:
+                message = errors[0].get("extensions", {}).get("description")
             raise ApiError(message, error_code)
 
         return resp_dict
