@@ -83,7 +83,7 @@ def deploy_checkpoints_mock_checkbox(create_mock_prompt):
 
 def test_render_vllm_lora_truss_config():
     deploy_config = DeployCheckpointsConfigComplete(
-        checkpoint_details=definitions.CheckpointDetails(
+        checkpoint_details=definitions.CheckpointList(
             checkpoints=[
                 definitions.Checkpoint(
                     id="checkpoint-1",
@@ -181,7 +181,7 @@ def test_prepare_checkpoint_deploy_complete_config(
 ):
     # Create complete config with all fields specified
     complete_config = definitions.DeployCheckpointsConfig(
-        checkpoint_details=definitions.CheckpointDetails(
+        checkpoint_details=definitions.CheckpointList(
             checkpoints=[
                 definitions.Checkpoint(
                     id="checkpoint-1",

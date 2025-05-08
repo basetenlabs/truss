@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from truss_train.definitions import (
-    CheckpointDetails,
+    CheckpointList,
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
@@ -23,7 +23,7 @@ class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
     removes the optional fileds. This helps provide type safety internal handling.
     """
 
-    checkpoint_details: CheckpointDetails
+    checkpoint_details: CheckpointList
     model_name: str
     deployment_name: str
     runtime: DeployCheckpointsRuntime

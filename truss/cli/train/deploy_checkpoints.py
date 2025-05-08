@@ -21,7 +21,7 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     DEFAULT_LORA_RANK,
     Checkpoint,
-    CheckpointDetails,
+    CheckpointList,
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
@@ -156,10 +156,10 @@ def _render_vllm_lora_truss_config(
 def _get_checkpoint_details(
     console: Console,
     remote_provider: BasetenRemote,
-    checkpoint_details: Optional[CheckpointDetails],
+    checkpoint_details: Optional[CheckpointList],
     project_id: Optional[str],
     job_id: Optional[str],
-) -> CheckpointDetails:
+) -> CheckpointList:
     if checkpoint_details and checkpoint_details.checkpoints:
         return _process_user_provided_checkpoints(checkpoint_details, remote_provider)
     else:
@@ -171,16 +171,16 @@ def _get_checkpoint_details(
 def _prompt_user_for_checkpoint_details(
     console: Console,
     remote_provider: BasetenRemote,
-    checkpoint_details: Optional[CheckpointDetails],
+    checkpoint_details: Optional[CheckpointList],
     project_id: Optional[str],
     job_id: Optional[str],
-) -> CheckpointDetails:
+) -> CheckpointList:
     project_id, job_id = get_most_recent_job(
         console, remote_provider, project_id, job_id
     )
     response_checkpoints = _fetch_checkpoints(remote_provider, project_id, job_id)
     if not checkpoint_details:
-        checkpoint_details = CheckpointDetails()
+        checkpoint_details = CheckpointList()
 
     # first, gather all checkpoint ids the user wants to deploy
     # allow the user to select a checkpoint
@@ -196,8 +196,8 @@ def _prompt_user_for_checkpoint_details(
 
 
 def _process_user_provided_checkpoints(
-    checkpoint_details: CheckpointDetails, remote_provider: BasetenRemote
-) -> CheckpointDetails:
+    checkpoint_details: CheckpointList, remote_provider: BasetenRemote
+) -> CheckpointList:
     # check if the user-provided checkpoint details are valid. Fill in missing values.
     checkpoints_by_training_job_id = {}
     for checkpoint in checkpoint_details.checkpoints:

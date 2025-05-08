@@ -87,14 +87,14 @@ class Checkpoint(custom_types.SafeModel):
         )
 
 
-class CheckpointDetails(custom_types.SafeModel):
+class CheckpointList(custom_types.SafeModel):
     download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
 
-    def to_truss_config(self) -> truss_config.CheckpointConfiguration:
+    def to_truss_config(self) -> truss_config.CheckpointList:
         checkpoints = [checkpoint.to_truss_config() for checkpoint in self.checkpoints]
-        return truss_config.CheckpointConfiguration(
+        return truss_config.CheckpointList(
             checkpoints=checkpoints, download_folder=self.download_folder
         )
 
@@ -104,7 +104,7 @@ class DeployCheckpointsRuntime(custom_types.SafeModel):
 
 
 class DeployCheckpointsConfig(custom_types.SafeModel):
-    checkpoint_details: Optional[CheckpointDetails] = None
+    checkpoint_details: Optional[CheckpointList] = None
     model_name: Optional[str] = None
     deployment_name: Optional[str] = None
     runtime: Optional[DeployCheckpointsRuntime] = None
