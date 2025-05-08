@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, List, Optional, Tuple, cast
 
 import rich
 import rich.live
@@ -109,7 +109,8 @@ _log_level_str_to_level = {
 }
 
 
-def _set_logging_level(log_level: Union[str, int]) -> None:
+def _set_logging_level() -> None:
+    log_level = click.get_current_context().obj["log"]
     if isinstance(log_level, str):
         level = _log_level_str_to_level[log_level]
     else:
@@ -134,18 +135,41 @@ def _set_logging_level(log_level: Union[str, int]) -> None:
     )
 
 
-def _log_level_option(f: Callable[..., object]) -> Callable[..., object]:
-    def callback(ctx: click.Context, param: click.Parameter, value: str) -> str:
-        _set_logging_level(value)
-        return value
+def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str):
+    # We use this for params that are not "exposed" to the signature of the subcommands.
+    # therefore we store them directly on the context (not in contex.params).
+    ctx.ensure_object(dict)[param.name] = value
 
+
+def _get_required_option(ctx: click.Context, name: str) -> object:
+    value = ctx.find_root().obj.get(name)
+    if value is None:
+        raise RuntimeError(
+            f"Required option '{name}' was not set in click context. "
+            "This is a bug, all commands must use `common_options` decorator."
+        )
+    return value
+
+
+def _log_level_option(f: Callable[..., object]) -> Callable[..., object]:
     return click.option(
         "--log",
         default=_HUMANFRIENDLY_LOG_LEVEL,
         help="Customizes logging.",
         type=click.Choice(list(_log_level_str_to_level.keys()), case_sensitive=False),
-        callback=callback,
+        callback=_store_param_callback,
         expose_value=False,
+    )(f)
+
+
+def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
+    return click.option(
+        "--non-interactive",
+        is_flag=True,
+        default=False,
+        help="Disables interactive prompts, use in CI / automated execution contexts.",
+        expose_value=False,
+        callback=_store_param_callback,
     )(f)
 
 
@@ -158,7 +182,7 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
             raise e
         except Exception as e:
             ctx = click.get_current_context()
-            log_level = ctx.params.get("log")
+            log_level = _get_required_option(ctx, "log")
             if log_level == _HUMANFRIENDLY_LOG_LEVEL:
                 console.print(
                     f"[bold red]ERROR {type(e).__name__}[/bold red]: {e}",
@@ -171,53 +195,38 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     return wrapper
 
 
-def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
-    return click.option(
-        "--non-interactive",
-        is_flag=True,
-        default=False,
-        help="Disables interactive prompts, use in CI / automated execution contexts.",
-        expose_value=False,
-    )(f)
-
-
-def _upgrade_dialogue(f: Callable[..., object]) -> Callable[..., object]:
-    @wraps(f)
-    def wrapper(*args: object, **kwargs: object) -> None:
-        ctx = click.get_current_context()
-        if (
-            not ctx.params.get("non_interactive", False)
-            and common.check_is_interactive()
-            and user_config.settings.enable_auto_upgrade
-        ):
-            self_upgrade.upgrade_dialogue(truss.version(), console)
-        f(*args, **kwargs)
-
-    return wrapper
+def _upgrade_dialogue():
+    ctx = click.get_current_context()
+    if (
+        not _get_required_option(ctx, "non_interactive")
+        and common.check_is_interactive()
+        and user_config.settings.enable_auto_upgrade
+    ):
+        self_upgrade.upgrade_dialogue(truss.version(), console)
 
 
 def common_options(
-    with_error_handling: bool = True, with_upgrade_dialogue: bool = True
+    add_middleware: bool = False,
 ) -> Callable[[Callable[..., object]], Callable[..., object]]:
     def decorator(f: Callable[..., object]) -> Callable[..., object]:
-        if with_error_handling:
-            f = _error_handling(f)
-        if with_upgrade_dialogue:
-            f = _upgrade_dialogue(f)
-        f = _log_level_option(f)
-        f = _non_interactive_option(f)
-        return f
+        @wraps(f)
+        @_log_level_option
+        @_non_interactive_option
+        @_error_handling
+        def wrapper(*args: object, **kwargs: object) -> Any:
+            if add_middleware:
+                _set_logging_level()
+                _upgrade_dialogue()
+
+            return f(*args, **kwargs)
+
+        return wrapper
 
     return decorator
 
 
 def _format_link(text: str) -> str:
     return f"[link={text}]{text}[/link]"
-
-
-def _print_help() -> None:
-    ctx = click.get_current_context()
-    click.echo(ctx.get_help())
 
 
 def _get_truss_from_directory(target_directory: Optional[str] = None):
@@ -239,10 +248,15 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
 @click.version_option(truss.version())
-@common_options()
+@common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
+    # Click "stacks" the root command and group/subcommands, to avoid running the
+    # middleware twice, we don't add it via decorator to the root command, but instead
+    # selective run it here inline.
     if not ctx.invoked_subcommand:
+        _set_logging_level()
+        _upgrade_dialogue()
         click.echo(ctx.get_help())
 
 
@@ -1389,7 +1403,8 @@ def push_chain(
                     remote,
                     console,
                     _error_console,
-                    show_stack_trace=ctx.params.get("log") != _HUMANFRIENDLY_LOG_LEVEL,
+                    show_stack_trace=_get_required_option(ctx, "log")
+                    != _HUMANFRIENDLY_LOG_LEVEL,
                     included_chainlets=included_chainlets,
                 )
         else:
@@ -1466,7 +1481,7 @@ def watch_chains(
         remote,
         console,
         _error_console,
-        show_stack_trace=ctx.params.get("log") != _HUMANFRIENDLY_LOG_LEVEL,
+        show_stack_trace=_get_required_option(ctx, "log") != _HUMANFRIENDLY_LOG_LEVEL,
         included_chainlets=included_chainlets,
     )
 
@@ -1505,7 +1520,7 @@ def init_chain(directory: Optional[Path]) -> None:
         "Next steps:\n",
         f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
         "execution.\n"
-        f"🚢 Run [bold green]`truss chains deploy {filepath}`[/bold green] "
+        f"🚢 Run [bold green]`truss chains push {filepath}`[/bold green] "
         "to deploy the chain to Baseten.\n",
     )
 
