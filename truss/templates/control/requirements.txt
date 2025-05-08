@@ -6,7 +6,8 @@ loguru>=0.7.2
 python-json-logger>=2.0.2
 tenacity>=8.1.0
  # To avoid divergence, this should follow the latest release.
-truss==0.9.84
+ # WARNING: In the next release PR that includes py 3.13 support, this needs to be updated to that version itself.
+truss==0.9.87
 uvicorn>=0.24.0
 uvloop>=0.19.0
 websockets>=10.0

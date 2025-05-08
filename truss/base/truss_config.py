@@ -553,12 +553,13 @@ class CheckpointConfiguration(custom_types.ConfigModel):
     checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
 
 
-SUPPORTED_PYTHON_VERSIONS = {
-    "py38": "3.8",
-    "py39": "3.9",
-    "py310": "3.10",
-    "py311": "3.11",
-}
+# TODO: remove just use normal python version instead of this.
+def to_dotted_python_version(truss_python_version: str) -> str:
+    """Converts python version string using in truss config to the conventional dotted form.
+
+    e.g. py39 to 3.9
+    """
+    return f"{truss_python_version[2]}.{truss_python_version[3:]}"
 
 
 class TrussConfig(custom_types.ConfigModel):
@@ -611,7 +612,7 @@ class TrussConfig(custom_types.ConfigModel):
 
     @property
     def canonical_python_version(self) -> str:
-        return SUPPORTED_PYTHON_VERSIONS[self.python_version]
+        return to_dotted_python_version(self.python_version)
 
     @property
     def parsed_trt_llm_build_configs(
@@ -688,7 +689,7 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.field_validator("python_version")
     def _validate_python_version(cls, v: str) -> str:
-        valid = ["py38", "py39", "py310", "py311"]
+        valid = {f"py{x.replace('.', '')}" for x in constants.SUPPORTED_PYTHON_VERSIONS}
         if v not in valid:
             raise ValueError(f"Please ensure that `python_version` is one of {valid}")
         return v
@@ -724,7 +725,7 @@ class TrussConfig(custom_types.ConfigModel):
 def _map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.
 
-    Currently, it maps any versions greater than 3.11 to 3.11.
+    Currently, it maps any versions greater than max supported version to max.
 
     Args:
         python_version: in the form py[major_version][minor_version] e.g. py39,
@@ -733,20 +734,23 @@ def _map_to_supported_python_version(python_version: str) -> str:
     python_major_version = int(python_version[2:3])
     python_minor_version = int(python_version[3:])
 
+    max_minor = packaging.version.parse(constants.SUPPORTED_PYTHON_VERSIONS[-1]).minor
+    min_minor = packaging.version.parse(constants.SUPPORTED_PYTHON_VERSIONS[0]).minor
+
     if python_major_version != 3:
         raise NotImplementedError("Only python version 3 is supported")
 
-    if python_minor_version > 11:
+    if python_minor_version > max_minor:
         logger.info(
             f"Mapping python version {python_major_version}.{python_minor_version}"
-            " to 3.11, the highest version that Truss currently supports."
+            f" to {constants.SUPPORTED_PYTHON_VERSIONS[-1]}, the highest version that Truss currently supports."
         )
-        return "py311"
+        return f"py{constants.SUPPORTED_PYTHON_VERSIONS[-1].replace('.', '')}"
 
-    if python_minor_version < 8:
+    if python_minor_version < min_minor:
         raise ValueError(
             f"Mapping python version {python_major_version}.{python_minor_version}"
-            " to 3.8, the lowest version that Truss currently supports."
+            f" to {constants.SUPPORTED_PYTHON_VERSIONS[0]}, the lowest version that Truss currently supports."
         )
 
     return python_version
