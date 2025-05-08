@@ -9,6 +9,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, cast
 
+import pydantic
 import rich
 import rich.live
 import rich.logging
@@ -19,6 +20,7 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
+from rich.markup import escape
 
 import truss
 import truss.cli.train.core as train_cli
@@ -173,6 +175,20 @@ def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
     )(f)
 
 
+# def _format_validation_error(e: pydantic.ValidationError) -> str:
+#     lines = []
+#     for err in e.errors():
+#         loc = ".".join(str(x) for x in err["loc"])
+#         msg = err["msg"]
+#         typ = err.get("type", "unknown")
+#         input_value = repr(err.get("input", "<missing>"))
+#         input_type = type(err.get("input")).__name__ if "input" in err else "unknown"
+#         lines.append(
+#             f"{loc}: {msg} [type={typ}, input_value={input_value}, input_type={input_type}]"
+#         )
+#     return "\n".join(lines)
+
+
 def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     @wraps(f)
     def wrapper(*args: object, **kwargs: object) -> None:
@@ -183,13 +199,26 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
         except Exception as e:
             ctx = click.get_current_context()
             log_level = _get_required_option(ctx, "log")
+            escaped_e = escape(str(e))
             if log_level == _HUMANFRIENDLY_LOG_LEVEL:
                 console.print(
-                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {e}",
+                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {escaped_e}",
                     highlight=True,
                 )
             else:
                 console.print_exception(show_locals=True)
+
+            if isinstance(e, pydantic.ValidationError):
+                console.print(
+                    "[bold yellow]In case of 'ValidationErrors' there are two common issues:[/bold yellow]\n"
+                    "[yellow]"
+                    " * 'Extra inputs are not permitted...': using a new 'TrussConfig' "
+                    "field that is not yet in your local truss CLI version -> upgrade truss version.\n"
+                    " * 'Input should be ...': using muddy types, e.g. a float where a string "
+                    "is expected -> check the exact message above and fix.[/yellow]",
+                    highlight=True,
+                )
+
             ctx.exit(1)
 
     return wrapper

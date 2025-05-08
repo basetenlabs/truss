@@ -19,6 +19,7 @@ from typing import (
 
 import packaging.version
 import pydantic
+import pydantic_core
 import yaml
 from pydantic import json_schema
 from pydantic_core import core_schema
@@ -62,25 +63,18 @@ class Accelerator(str, enum.Enum):
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
+    model_config = pydantic.ConfigDict(validate_assignment=True)
+
     accelerator: Optional[Accelerator] = None
     count: int = pydantic.Field(default=1, ge=0)
 
-    def _to_string_spec(self) -> Optional[str]:
-        if self.accelerator is None or self.count <= 0:
-            return None
-        elif self.count > 1:
-            return f"{self.accelerator.value}:{self.count}"
-        return self.accelerator.value
-
     @classmethod
-    def _from_string_spec(cls, value: str) -> "AcceleratorSpec":
+    def _from_string_spec(cls, value: str) -> dict:
         parts = value.strip().split(":")
         if not parts[0]:
             raise ValueError("Accelerator type cannot be empty.")
-        if len(parts) > 2:
-            raise ValueError("Expected format: `Accelerator` or `Accelerator:count`.")
         try:
-            acc = Accelerator(parts[0])
+            accelerator = Accelerator(parts[0])
         except ValueError:
             available = ", ".join(a.value for a in Accelerator)
             raise ValueError(
@@ -93,54 +87,38 @@ class AcceleratorSpec(custom_types.ConfigModel):
                     f"Invalid count: '{parts[1]}'. Must be positive integer."
                 )
             count = int(parts[1])
-        return cls(accelerator=acc, count=count)
+        return {"accelerator": accelerator, "count": count}
 
+    @pydantic.model_validator(mode="before")
     @classmethod
-    def _validate_input(
-        cls,
-        value: Any,
-        handler: core_schema.ValidatorFunctionWrapHandler,
-        info: core_schema.ValidationInfo,
-    ) -> "AcceleratorSpec":
+    def _parse_combined_spec(cls, value: object) -> object:
         if isinstance(value, str):
             return cls._from_string_spec(value)
+        if isinstance(value, AcceleratorSpec):
+            return value.dict()
         if isinstance(value, dict):
-            return handler(value)
-        if isinstance(value, cls):
             return value
         if value is None:
-            return cls()
+            return {}
         raise TypeError(
-            f"Expected string, dict, None or AcceleratorSpec; got {type(value)}."
+            f"Expected string, dict, AcceleratorSpec, or None; got {type(value)}"
         )
 
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: pydantic.GetCoreSchemaHandler
-    ) -> core_schema.CoreSchema:
-        # Hooks up custom parsing and serialization with pydantic.
-        schema = core_schema.with_info_wrap_validator_function(
-            cls._validate_input, handler(source_type)
-        )
-        return core_schema.json_or_python_schema(
-            json_schema=schema,
-            python_schema=schema,
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                function=cls._to_string_spec,
-                info_arg=False,
-                return_schema=core_schema.str_schema(),
-                when_used="json-unless-none",
-            ),
-        )
+    @pydantic.model_serializer(mode="plain")
+    def _to_string_spec(self) -> Optional[str]:
+        if self.accelerator is None or self.count <= 0:
+            return None
+        if self.count > 1:
+            return f"{self.accelerator.value}:{self.count}"
+        return self.accelerator.value
 
     @classmethod
-    def __get_pydantic_json_schema__(
+    def model_json_schema(  # type: ignore[override]
         cls,
-        core_schema_obj: core_schema.CoreSchema,
+        core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
-        # Hooks up differing JSON schema from python fields with pydantic.
-        schema = handler(core_schema_obj)
+        schema = handler(core_schema)
         schema.update(
             type="string",
             examples=["A100", "T4:2", "H100:8"],
@@ -291,9 +269,18 @@ class Runtime(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def sync_is_websocket(self) -> "Runtime":
+        transport = self.transport
         if self.is_websocket_endpoint is True:
-            self.transport = WebsocketOptions()
-        self.is_websocket_endpoint = self.transport.kind == TransportKind.WEBSOCKET
+            transport = WebsocketOptions()
+        is_websocket_endpoint = transport.kind == TransportKind.WEBSOCKET
+
+        # Only update if values actually change and bypass validation to avoid inifite
+        # recursion.
+        if transport != self.transport:
+            object.__setattr__(self, "transport", transport)
+        if is_websocket_endpoint != self.is_websocket_endpoint:
+            object.__setattr__(self, "is_websocket_endpoint", is_websocket_endpoint)
+
         return self
 
     @pydantic.field_validator("transport", mode="before")
@@ -402,6 +389,16 @@ class Resources(custom_types.ConfigModel):
         assert match
         unit = match.group(1)
         return math.ceil(float(self.memory.strip(unit)) * self._MEMORY_UNITS[unit])
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def strip_use_gpu(cls, data: Any) -> Any:
+        # We want `use_gpu` to be serialized, but don't allow extra inputs when parsing,
+        # so we have to drop it here to allow roundtrips.
+        if isinstance(data, dict):
+            data = data.copy()
+            data.pop("use_gpu", None)
+        return data
 
     @pydantic.field_validator("cpu")
     def _validate_cpu(cls, cpu_spec: str) -> str:

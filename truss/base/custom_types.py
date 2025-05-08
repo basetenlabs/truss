@@ -37,6 +37,10 @@ class SafeModelNonSerializable(pydantic.BaseModel):
 
 
 class ConfigModel(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(
+        validate_assignment=True, extra="forbid", arbitrary_types_allowed=False
+    )
+
     def to_dict(self, verbose: bool = False) -> dict[str, Any]:
         kwargs: dict[str, Any] = (
             {"mode": "json"}
