@@ -4,7 +4,6 @@ model_name: x-4
 python_version: py39
 resources:
   accelerator: null
-  cpu: 10000
+  cpu: '1'
   memory: 2Gi
   use_gpu: false
-  lalal: True

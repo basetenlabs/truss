@@ -175,20 +175,6 @@ def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
     )(f)
 
 
-# def _format_validation_error(e: pydantic.ValidationError) -> str:
-#     lines = []
-#     for err in e.errors():
-#         loc = ".".join(str(x) for x in err["loc"])
-#         msg = err["msg"]
-#         typ = err.get("type", "unknown")
-#         input_value = repr(err.get("input", "<missing>"))
-#         input_type = type(err.get("input")).__name__ if "input" in err else "unknown"
-#         lines.append(
-#             f"{loc}: {msg} [type={typ}, input_value={input_value}, input_type={input_type}]"
-#         )
-#     return "\n".join(lines)
-
-
 def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     @wraps(f)
     def wrapper(*args: object, **kwargs: object) -> None:
@@ -231,11 +217,11 @@ def _upgrade_dialogue():
         and common.check_is_interactive()
         and user_config.settings.enable_auto_upgrade
     ):
-        self_upgrade.upgrade_dialogue(truss.version(), console)
+        self_upgrade.upgrade_dialogue(truss.__version__, console)
 
 
 def common_options(
-    add_middleware: bool = False,
+    add_middleware: bool = True,
 ) -> Callable[[Callable[..., object]], Callable[..., object]]:
     def decorator(f: Callable[..., object]) -> Callable[..., object]:
         @wraps(f)
@@ -276,7 +262,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
-@click.version_option(truss.version())
+@click.version_option(truss.__version__)
 @common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
