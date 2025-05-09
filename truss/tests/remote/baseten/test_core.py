@@ -235,13 +235,13 @@ def test_validate_truss_config():
     api = MagicMock()
     api.validate_truss.side_effect = mock_validate_truss
 
-    assert core.validate_truss_config(api, {}) is None
+    assert core.validate_truss_config_against_backend(api, {}) is None
     with pytest.raises(
         ValidationError, match="Validation failed with the following errors:\n  error"
     ):
-        core.validate_truss_config(api, {"hi": "hi"})
+        core.validate_truss_config_against_backend(api, {"hi": "hi"})
     with pytest.raises(
         ValidationError,
         match="Validation failed with the following errors:\n  error\n  and another one",
     ):
-        core.validate_truss_config(api, {"should_error": "hi"})
+        core.validate_truss_config_against_backend(api, {"should_error": "hi"})

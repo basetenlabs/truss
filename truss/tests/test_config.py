@@ -892,6 +892,24 @@ def test_validate_on_assignment():
         config.resources.node_count = -10
 
 
+def test_validate_extra_fields(tmp_path):
+    yaml_with_extra_content = """
+    model_name: My Model
+    what_is_this_field: true
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_with_extra_content)
+
+    # Plain parsing should pass.
+    config = TrussConfig.from_yaml(config_path)
+    # Explicit validation with extras not.
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="Extra fields not allowed: \[what_is_this_field\]",
+    ):
+        config.validate_forbid_extra()
+
+
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [

@@ -1,3 +1,4 @@
+import pydantic
 import pytest
 import requests_mock
 
@@ -699,3 +700,29 @@ def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
                 publish=publish,
                 disable_truss_download=True,
             )
+
+
+def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+    model_name: Hello
+    extra_field: 123
+    who_am_i: 0.2
+    """)
+    th = TrussHandle(tmp_path)
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Extra fields not allowed: \[extra_field, who_am_i\]",
+        ):
+            remote.push(th, "model_name", th.truss_dir)
