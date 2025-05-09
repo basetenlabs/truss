@@ -11,22 +11,8 @@ concurrency:
 
 jobs:
   detect-version-changed:
-    runs-on: ubuntu-22.04
-    outputs:
-      version_changed: ${{ steps.versions.outputs.version_changed }}
-      new_version: ${{ steps.versions.outputs.new_version }}
-      new_base_image_version: ${{ steps.versions.outputs.new_base_image_version }}
-      build_base_images: ${{ steps.versions.outputs.build_base_images }}
-      release_version: ${{ steps.versions.outputs.release_version }}
-      is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
-        token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-        fetch-depth: 2
-    - uses: ./.github/actions/detect-versions/
-      id: versions
+    uses: ./.github/workflows/_detect_version_changed_shared.yml
+    secrets: inherit
 
   build-n-push-context-builder-image:
     needs: [detect-version-changed]
@@ -46,7 +32,7 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: baseten/truss-context-builder
 

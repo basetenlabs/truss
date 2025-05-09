@@ -445,7 +445,7 @@ def create_truss_service(
     )
 
 
-def validate_truss_config(api: BasetenApi, config: str):
+def validate_truss_config_against_backend(api: BasetenApi, config: str):
     """
     Validate a truss config as well as the truss version.
 

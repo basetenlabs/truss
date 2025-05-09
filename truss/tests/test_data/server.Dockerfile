@@ -6,9 +6,9 @@ RUN $PYTHON_EXECUTABLE -c "import sys; \
     sys.exit(0) \
     if sys.version_info.major == 3 \
     and sys.version_info.minor >= 8 \
-    and sys.version_info.minor <= 12 \
+    and sys.version_info.minor <= 13 \
     else sys.exit(1)" \
-    || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.12"; exit 1; }
+    || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.13"; exit 1; }
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
 ENV PYTHONUNBUFFERED="True"

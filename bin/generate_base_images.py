@@ -10,11 +10,8 @@ from typing import Iterable, List, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
-from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
-from truss.contexts.image_builder.util import (
-    truss_base_image_name,
-    truss_base_image_tag,
-)
+from truss.base.constants import SUPPORTED_PYTHON_VERSIONS, TRUSS_BASE_IMAGE_NAME
+from truss.contexts.image_builder.util import truss_base_image_tag
 
 base_path = Path(__file__).parent.parent
 templates_path = base_path / "truss" / "templates"
@@ -40,47 +37,39 @@ def _docker_login():
     subprocess.run(["docker", "login", "-u", "basetenservice", "-p", pw])
 
 
-def _render_dockerfile(job_type: str, python_version: str, use_gpu: bool) -> str:
+def _render_dockerfile(python_version: str, use_gpu: bool) -> str:
     # Render jinja
     jinja_env = Environment(
         loader=FileSystemLoader(str(base_path / "docker" / "base_images"))
     )
     template = jinja_env.get_template("base_image.Dockerfile.jinja")
-    return template.render(
-        use_gpu=use_gpu, job_type=job_type, python_version=python_version
-    )
+    return template.render(use_gpu=use_gpu, python_version=python_version)
 
 
 def _build(
     python_version: str,
     use_gpu: bool = False,
-    job_type: str = "server",
     push: bool = False,
     version_tag: Optional[str] = None,
     dry_run: bool = True,
 ):
-    image_name = truss_base_image_name(job_type=job_type)
     tag = truss_base_image_tag(
         python_version=python_version, use_gpu=use_gpu, version_tag=version_tag
     )
-    image_with_tag = f"{image_name}:{tag}"
+    image_with_tag = f"{TRUSS_BASE_IMAGE_NAME}:{tag}"
     print(f"Building image :: {image_with_tag}")
     if dry_run:
         return
 
     dockerfile_content = _render_dockerfile(
-        job_type=job_type, python_version=python_version, use_gpu=use_gpu
+        python_version=python_version, use_gpu=use_gpu
     )
     with tempfile.TemporaryDirectory() as temp_dir:
         build_ctx_path = Path(temp_dir)
         with (build_ctx_path / "Dockerfile").open("w") as dockerfile_file:
             dockerfile_file.write(dockerfile_content)
 
-        if job_type == "server":
-            reqs_copy_from = templates_path / "server" / "requirements.txt"
-        else:
-            raise ValueError(f"Unknown job type {job_type}")
-
+        reqs_copy_from = templates_path / "server" / "requirements.txt"
         shutil.copyfile(str(reqs_copy_from), str(build_ctx_path / "requirements.txt"))
         shutil.copytree(
             str(templates_path / "control"), str(build_ctx_path / "control")
@@ -105,24 +94,21 @@ def _build(
 
 
 def _build_all(
-    job_types: Iterable[str] = ("server",),
     python_versions: Iterable[str] = SUPPORTED_PYTHON_VERSIONS,
     use_gpu_values: Iterable[bool] = (True, False),
     push: bool = False,
     version_tag: Optional[str] = None,
     dry_run: bool = False,
 ):
-    for job_type in job_types:
-        for python_version in python_versions:
-            for use_gpu in use_gpu_values:
-                _build(
-                    job_type=job_type,
-                    python_version=python_version,
-                    use_gpu=use_gpu,
-                    push=push,
-                    version_tag=version_tag,
-                    dry_run=dry_run,
-                )
+    for python_version in python_versions:
+        for use_gpu in use_gpu_values:
+            _build(
+                python_version=python_version,
+                use_gpu=use_gpu,
+                push=push,
+                version_tag=version_tag,
+                dry_run=dry_run,
+            )
 
 
 if __name__ == "__main__":
@@ -144,13 +130,6 @@ if __name__ == "__main__":
         action=BooleanOptionalAction,
         default=False,
         help="Print only the image names that will be built",
-    )
-    parser.add_argument(
-        "--job-type",
-        nargs="?",
-        default="all",
-        choices=["server", "all"],
-        help="Create images for server",
     )
     parser.add_argument(
         "--use-gpu",
@@ -179,11 +158,6 @@ if __name__ == "__main__":
     else:
         python_versions = [args.python_version]
 
-    if args.job_type == "all":
-        job_types = ["server"]
-    else:
-        job_types = [args.job_type]
-
     use_gpu_values = _bool_arg_str_to_values(args.use_gpu)
 
     if args.push and not args.skip_login:
@@ -191,7 +165,6 @@ if __name__ == "__main__":
 
     _build_all(
         python_versions=python_versions,
-        job_types=job_types,
         use_gpu_values=use_gpu_values,
         push=args.push,
         version_tag=args.version_tag,
