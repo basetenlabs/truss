@@ -59,8 +59,7 @@ from truss.truss_handle.truss_handle import TrussHandle
         (
             {"accelerator": "V100"},
             Resources(
-                accelerator=AcceleratorSpec(accelerator=Accelerator.V100, count=1),
-                use_gpu=True,
+                accelerator=AcceleratorSpec(accelerator=Accelerator.V100, count=1)
             ),
             {
                 "cpu": DEFAULT_CPU,
@@ -71,10 +70,7 @@ from truss.truss_handle.truss_handle import TrussHandle
         ),
         (
             {"accelerator": "T4:1"},
-            Resources(
-                accelerator=AcceleratorSpec(accelerator=Accelerator.T4, count=1),
-                use_gpu=True,
-            ),
+            Resources(accelerator=AcceleratorSpec(accelerator=Accelerator.T4, count=1)),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -85,8 +81,7 @@ from truss.truss_handle.truss_handle import TrussHandle
         (
             {"accelerator": "A10G:4"},
             Resources(
-                accelerator=AcceleratorSpec(accelerator=Accelerator.A10G, count=4),
-                use_gpu=True,
+                accelerator=AcceleratorSpec(accelerator=Accelerator.A10G, count=4)
             ),
             {
                 "cpu": DEFAULT_CPU,
@@ -875,6 +870,44 @@ def test_resources_transport_correct_serialize_from(tmp_path):
     dumped = yaml.safe_load(out_path.read_text())
     assert dumped["runtime"]["transport"]["kind"] == "websocket"
     assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_validate_on_assignment():
+    config = TrussConfig()
+    with pytest.raises(pydantic.ValidationError, match="should be a valid boolean"):
+        config.runtime.is_websocket_endpoint = 123
+
+    with pytest.raises(pydantic.ValidationError):
+        config.python_version = "3.7"
+
+    with pytest.raises(pydantic.ValidationError):
+        config.python_version = "py27"
+
+    with pytest.raises(pydantic.ValidationError):
+        config.python_version = "py27"
+
+    with pytest.raises(
+        pydantic.ValidationError, match="should be greater than or equal to 1"
+    ):
+        config.resources.node_count = -10
+
+
+def test_validate_extra_fields(tmp_path):
+    yaml_with_extra_content = """
+    model_name: My Model
+    what_is_this_field: true
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_with_extra_content)
+
+    # Plain parsing should pass.
+    config = TrussConfig.from_yaml(config_path)
+    # Explicit validation with extras not.
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="Extra fields not allowed: \[what_is_this_field\]",
+    ):
+        config.validate_forbid_extra()
 
 
 @pytest.mark.parametrize(

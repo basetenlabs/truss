@@ -669,7 +669,7 @@ def _make_requirements(image: public_types.DockerImage) -> list[str]:
         )
 
     if not (truss_git or truss_pypy):
-        truss_pip = f"truss=={truss.version()}"
+        truss_pip = f"truss=={truss.__version__}"
         logging.debug(
             f"Truss not found in pip requirements, auto-adding: `{truss_pip}`."
         )

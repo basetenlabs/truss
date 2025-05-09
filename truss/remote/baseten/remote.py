@@ -32,7 +32,7 @@ from truss.remote.baseten.core import (
     get_prod_version_from_versions,
     get_truss_watch_state,
     upload_truss,
-    validate_truss_config,
+    validate_truss_config_against_backend,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
@@ -168,13 +168,13 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
+        config = truss_handle._spec._config
+
+        config.validate_forbid_extra()
+        encoded_config_str = base64_encoded_json_str(config.to_dict())
+        validate_truss_config_against_backend(self._api, encoded_config_str)
         temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
-        encoded_config_str = base64_encoded_json_str(
-            truss_handle._spec._config.to_dict()
-        )
-
-        validate_truss_config(self._api, encoded_config_str)
 
         return FinalPushData(
             model_name=model_name,

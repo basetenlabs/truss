@@ -75,7 +75,7 @@ python = ">=3.9,<=3.13.3"
 huggingface_hub = ">=0.25.0"
 pydantic = ">=2.10.0"
 PyYAML = ">=6.0"
-single-source = "^0.3.0"
+tomlkit = ">=0.13.2"
 # "non-base" dependencies.
 # TODO: until we have resolved the question on how users can install the local tools frictionless
 #  (extras cannot be marked to be included by default), all below packages are non-optional.
@@ -102,7 +102,6 @@ rich = { version = "^13.4.2", optional = false }
 rich-click = { version = "^1.6.1", optional = false }
 ruff = { version = ">=0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
 tenacity = { version = "^8.0.1", optional = false }
-tomlkit = { version = ">=0.13.2", optional = false }
 watchfiles = { version = "^0.19.0", optional = false }
 
 
@@ -128,7 +127,6 @@ rich = { components = "other" }
 rich-click = { components = "other" }
 ruff = { components = "other" }
 tenacity = { components = "other" }
-tomlkit = { components = "other" }
 watchfiles = { components = "other" }
 
 [tool.poetry.group.dev.dependencies]
