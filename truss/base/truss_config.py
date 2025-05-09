@@ -545,7 +545,7 @@ class Checkpoint(custom_types.ConfigModel):
     name: str
 
 
-class CheckpointConfiguration(custom_types.ConfigModel):
+class CheckpointList(custom_types.ConfigModel):
     download_folder: str = DEFAULT_TRAINING_CHECKPOINT_FOLDER
     checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
 
@@ -586,7 +586,7 @@ class TrussConfig(custom_types.ConfigModel):
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
 
     # deploying from checkpoint
-    training_checkpoints: Optional[CheckpointConfiguration] = None
+    training_checkpoints: Optional[CheckpointList] = None
 
     # Internal / Legacy.
     input_type: str = "Any"
