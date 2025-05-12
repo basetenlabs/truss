@@ -108,6 +108,7 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
         ("python:3.8", "/usr/local/bin/python3", False),
         ("python:3.10", "/usr/local/bin/python3", False),
         ("python:3.11", "/usr/local/bin/python3", False),
+        ("python:3.13", "/usr/local/bin/python3", False),
         ("python:alpine", "/usr/local/bin/python3", True),
         ("python:2.7-slim", "/usr/local/bin/python", True),
         ("python:3.7-slim", "/usr/local/bin/python3", True),

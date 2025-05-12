@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
+import packaging.version
 import yaml
 from botocore import UNSIGNED
 from botocore.client import Config
@@ -15,7 +16,7 @@ from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 
-from truss.base import constants
+from truss.base import constants, truss_config
 from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
@@ -27,8 +28,6 @@ from truss.base.constants import (
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
-    MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
-    MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -44,6 +43,7 @@ from truss.base.constants import (
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
+    TRUSS_BASE_IMAGE_NAME,
     TRUSS_CODE_DIR,
     TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
@@ -64,8 +64,6 @@ from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
     TRUSS_BASE_IMAGE_VERSION_TAG,
     file_is_not_empty,
-    to_dotted_python_version,
-    truss_base_image_name,
     truss_base_image_tag,
 )
 from truss.contexts.truss_context import TrussContext
@@ -677,17 +675,16 @@ class ServingImageBuilder(ImageBuilder):
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
-        python_version = to_dotted_python_version(config.python_version)
+        python_version = truss_config.to_dotted_python_version(config.python_version)
         if config.base_image:
             base_image_name_and_tag = config.base_image.image
         else:
-            base_image_name = truss_base_image_name(job_type="server")
             tag = truss_base_image_tag(
                 python_version=python_version,
                 use_gpu=config.resources.use_gpu,  # type: ignore  # computed field.
                 version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
             )
-            base_image_name_and_tag = f"{base_image_name}:{tag}"
+            base_image_name_and_tag = f"{TRUSS_BASE_IMAGE_NAME}:{tag}"
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
         )
@@ -698,31 +695,18 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
         )
 
-        max_supported_python_version_in_custom_base_image = (
-            MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE
-        )
-        min_supported_python_version_in_custom_base_image = (
-            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE
-        )
-        max_supported_python_minor_version_in_custom_base_image = (
-            MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[1]
-        )
-        min_supported_python_minor_version_in_custom_base_image = (
-            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[1]
-        )
-        supported_python_major_version_in_custom_base_image = (
-            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[0]
-        )
+        min_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[0])
+        max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
         hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
-            max_supported_python_version_in_custom_base_image=max_supported_python_version_in_custom_base_image,
-            min_supported_python_version_in_custom_base_image=min_supported_python_version_in_custom_base_image,
-            max_supported_python_minor_version_in_custom_base_image=max_supported_python_minor_version_in_custom_base_image,
-            min_supported_python_minor_version_in_custom_base_image=min_supported_python_minor_version_in_custom_base_image,
-            supported_python_major_version_in_custom_base_image=supported_python_major_version_in_custom_base_image,
+            max_supported_python_version_in_custom_base_image=max_py_version,
+            min_supported_python_version_in_custom_base_image=min_py_version,
+            max_supported_python_minor_version_in_custom_base_image=max_py_version.minor,
+            min_supported_python_minor_version_in_custom_base_image=min_py_version.minor,
+            supported_python_major_version_in_custom_base_image=min_py_version.major,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
             should_install_user_requirements_file=should_install_user_requirements_file,

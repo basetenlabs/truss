@@ -31,10 +31,6 @@ def _is_hash_style_comment(line: str) -> bool:
     return line.lstrip().startswith("#")
 
 
-def truss_base_image_name(job_type: str) -> str:
-    return f"baseten/truss-{job_type}-base"
-
-
 def truss_base_image_tag(
     python_version: str, use_gpu: bool, version_tag: Optional[str] = None
 ) -> str:
@@ -45,11 +41,3 @@ def truss_base_image_tag(
     if use_gpu:
         base_tag = f"{base_tag}-gpu"
     return f"{base_tag}-{version_tag}"
-
-
-def to_dotted_python_version(truss_python_version: str) -> str:
-    """Converts python version string using in truss config to the conventional dotted form.
-
-    e.g. py39 to 3.9
-    """
-    return f"{truss_python_version[2]}.{truss_python_version[3:]}"

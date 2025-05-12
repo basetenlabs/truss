@@ -19,6 +19,7 @@ from typing import (
 
 import packaging.version
 import pydantic
+import pydantic_core
 import yaml
 from pydantic import json_schema
 from pydantic_core import core_schema
@@ -62,25 +63,18 @@ class Accelerator(str, enum.Enum):
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
+    model_config = pydantic.ConfigDict(validate_assignment=True)
+
     accelerator: Optional[Accelerator] = None
     count: int = pydantic.Field(default=1, ge=0)
 
-    def _to_string_spec(self) -> Optional[str]:
-        if self.accelerator is None or self.count <= 0:
-            return None
-        elif self.count > 1:
-            return f"{self.accelerator.value}:{self.count}"
-        return self.accelerator.value
-
     @classmethod
-    def _from_string_spec(cls, value: str) -> "AcceleratorSpec":
+    def _from_string_spec(cls, value: str) -> dict:
         parts = value.strip().split(":")
         if not parts[0]:
             raise ValueError("Accelerator type cannot be empty.")
-        if len(parts) > 2:
-            raise ValueError("Expected format: `Accelerator` or `Accelerator:count`.")
         try:
-            acc = Accelerator(parts[0])
+            accelerator = Accelerator(parts[0])
         except ValueError:
             available = ", ".join(a.value for a in Accelerator)
             raise ValueError(
@@ -93,54 +87,38 @@ class AcceleratorSpec(custom_types.ConfigModel):
                     f"Invalid count: '{parts[1]}'. Must be positive integer."
                 )
             count = int(parts[1])
-        return cls(accelerator=acc, count=count)
+        return {"accelerator": accelerator, "count": count}
 
+    @pydantic.model_validator(mode="before")
     @classmethod
-    def _validate_input(
-        cls,
-        value: Any,
-        handler: core_schema.ValidatorFunctionWrapHandler,
-        info: core_schema.ValidationInfo,
-    ) -> "AcceleratorSpec":
+    def _parse_combined_spec(cls, value: object) -> object:
         if isinstance(value, str):
             return cls._from_string_spec(value)
+        if isinstance(value, AcceleratorSpec):
+            return value.dict()
         if isinstance(value, dict):
-            return handler(value)
-        if isinstance(value, cls):
             return value
         if value is None:
-            return cls()
+            return {}
         raise TypeError(
-            f"Expected string, dict, None or AcceleratorSpec; got {type(value)}."
+            f"Expected string, dict, AcceleratorSpec, or None; got {type(value)}"
         )
 
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: pydantic.GetCoreSchemaHandler
-    ) -> core_schema.CoreSchema:
-        # Hooks up custom parsing and serialization with pydantic.
-        schema = core_schema.with_info_wrap_validator_function(
-            cls._validate_input, handler(source_type)
-        )
-        return core_schema.json_or_python_schema(
-            json_schema=schema,
-            python_schema=schema,
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                function=cls._to_string_spec,
-                info_arg=False,
-                return_schema=core_schema.str_schema(),
-                when_used="json-unless-none",
-            ),
-        )
+    @pydantic.model_serializer(mode="plain")
+    def _to_string_spec(self) -> Optional[str]:
+        if self.accelerator is None or self.count <= 0:
+            return None
+        if self.count > 1:
+            return f"{self.accelerator.value}:{self.count}"
+        return self.accelerator.value
 
     @classmethod
-    def __get_pydantic_json_schema__(
+    def model_json_schema(  # type: ignore[override]
         cls,
-        core_schema_obj: core_schema.CoreSchema,
+        core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
-        # Hooks up differing JSON schema from python fields with pydantic.
-        schema = handler(core_schema_obj)
+        schema = handler(core_schema)
         schema.update(
             type="string",
             examples=["A100", "T4:2", "H100:8"],
@@ -291,9 +269,18 @@ class Runtime(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def sync_is_websocket(self) -> "Runtime":
+        transport = self.transport
         if self.is_websocket_endpoint is True:
-            self.transport = WebsocketOptions()
-        self.is_websocket_endpoint = self.transport.kind == TransportKind.WEBSOCKET
+            transport = WebsocketOptions()
+        is_websocket_endpoint = transport.kind == TransportKind.WEBSOCKET
+
+        # Only update if values actually change and bypass validation to avoid inifite
+        # recursion.
+        if transport != self.transport:
+            object.__setattr__(self, "transport", transport)
+        if is_websocket_endpoint != self.is_websocket_endpoint:
+            object.__setattr__(self, "is_websocket_endpoint", is_websocket_endpoint)
+
         return self
 
     @pydantic.field_validator("transport", mode="before")
@@ -402,6 +389,16 @@ class Resources(custom_types.ConfigModel):
         assert match
         unit = match.group(1)
         return math.ceil(float(self.memory.strip(unit)) * self._MEMORY_UNITS[unit])
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def strip_use_gpu(cls, data: Any) -> Any:
+        # We want `use_gpu` to be serialized, but don't allow extra inputs when parsing,
+        # so we have to drop it here to allow roundtrips.
+        if isinstance(data, dict):
+            data = data.copy()
+            data.pop("use_gpu", None)
+        return data
 
     @pydantic.field_validator("cpu")
     def _validate_cpu(cls, cpu_spec: str) -> str:
@@ -553,12 +550,13 @@ class CheckpointConfiguration(custom_types.ConfigModel):
     checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
 
 
-SUPPORTED_PYTHON_VERSIONS = {
-    "py38": "3.8",
-    "py39": "3.9",
-    "py310": "3.10",
-    "py311": "3.11",
-}
+# TODO: remove just use normal python version instead of this.
+def to_dotted_python_version(truss_python_version: str) -> str:
+    """Converts python version string using in truss config to the conventional dotted form.
+
+    e.g. py39 to 3.9
+    """
+    return f"{truss_python_version[2]}.{truss_python_version[3:]}"
 
 
 class TrussConfig(custom_types.ConfigModel):
@@ -611,7 +609,7 @@ class TrussConfig(custom_types.ConfigModel):
 
     @property
     def canonical_python_version(self) -> str:
-        return SUPPORTED_PYTHON_VERSIONS[self.python_version]
+        return to_dotted_python_version(self.python_version)
 
     @property
     def parsed_trt_llm_build_configs(
@@ -688,7 +686,7 @@ class TrussConfig(custom_types.ConfigModel):
 
     @pydantic.field_validator("python_version")
     def _validate_python_version(cls, v: str) -> str:
-        valid = ["py38", "py39", "py310", "py311"]
+        valid = {f"py{x.replace('.', '')}" for x in constants.SUPPORTED_PYTHON_VERSIONS}
         if v not in valid:
             raise ValueError(f"Please ensure that `python_version` is one of {valid}")
         return v
@@ -724,7 +722,7 @@ class TrussConfig(custom_types.ConfigModel):
 def _map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.
 
-    Currently, it maps any versions greater than 3.11 to 3.11.
+    Currently, it maps any versions greater than max supported version to max.
 
     Args:
         python_version: in the form py[major_version][minor_version] e.g. py39,
@@ -733,20 +731,23 @@ def _map_to_supported_python_version(python_version: str) -> str:
     python_major_version = int(python_version[2:3])
     python_minor_version = int(python_version[3:])
 
+    max_minor = packaging.version.parse(constants.SUPPORTED_PYTHON_VERSIONS[-1]).minor
+    min_minor = packaging.version.parse(constants.SUPPORTED_PYTHON_VERSIONS[0]).minor
+
     if python_major_version != 3:
         raise NotImplementedError("Only python version 3 is supported")
 
-    if python_minor_version > 11:
+    if python_minor_version > max_minor:
         logger.info(
             f"Mapping python version {python_major_version}.{python_minor_version}"
-            " to 3.11, the highest version that Truss currently supports."
+            f" to {constants.SUPPORTED_PYTHON_VERSIONS[-1]}, the highest version that Truss currently supports."
         )
-        return "py311"
+        return f"py{constants.SUPPORTED_PYTHON_VERSIONS[-1].replace('.', '')}"
 
-    if python_minor_version < 8:
+    if python_minor_version < min_minor:
         raise ValueError(
             f"Mapping python version {python_major_version}.{python_minor_version}"
-            " to 3.8, the lowest version that Truss currently supports."
+            f" to {constants.SUPPORTED_PYTHON_VERSIONS[0]}, the lowest version that Truss currently supports."
         )
 
     return python_version

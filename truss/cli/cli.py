@@ -9,6 +9,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, cast
 
+import pydantic
 import rich
 import rich.live
 import rich.logging
@@ -19,6 +20,7 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
+from rich.markup import escape
 
 import truss
 import truss.cli.train.core as train_cli
@@ -183,13 +185,26 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
         except Exception as e:
             ctx = click.get_current_context()
             log_level = _get_required_option(ctx, "log")
+            escaped_e = escape(str(e))
             if log_level == _HUMANFRIENDLY_LOG_LEVEL:
                 console.print(
-                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {e}",
+                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {escaped_e}",
                     highlight=True,
                 )
             else:
                 console.print_exception(show_locals=True)
+
+            if isinstance(e, pydantic.ValidationError):
+                console.print(
+                    "[bold yellow]In case of 'ValidationErrors' there are two common issues:[/bold yellow]\n"
+                    "[yellow]"
+                    " * 'Extra inputs are not permitted...': using a new 'TrussConfig' "
+                    "field that is not yet in your local truss CLI version -> upgrade truss version.\n"
+                    " * 'Input should be ...': using muddy types, e.g. a float where a string "
+                    "is expected -> check the exact message above and fix.[/yellow]",
+                    highlight=True,
+                )
+
             ctx.exit(1)
 
     return wrapper
@@ -202,11 +217,11 @@ def _upgrade_dialogue():
         and common.check_is_interactive()
         and user_config.settings.enable_auto_upgrade
     ):
-        self_upgrade.upgrade_dialogue(truss.version(), console)
+        self_upgrade.upgrade_dialogue(truss.__version__, console)
 
 
 def common_options(
-    add_middleware: bool = False,
+    add_middleware: bool = True,
 ) -> Callable[[Callable[..., object]], Callable[..., object]]:
     def decorator(f: Callable[..., object]) -> Callable[..., object]:
         @wraps(f)
@@ -247,7 +262,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
-@click.version_option(truss.version())
+@click.version_option(truss.__version__)
 @common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""

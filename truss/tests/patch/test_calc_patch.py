@@ -250,8 +250,8 @@ def test_calc_truss_patch_handles_requirements_file_name_change(
         filename = "requirements.txt"
         with (custom_model_truss_dir / filename).open("w") as req_file:
             req_file.write(requirements_contents)
-        config.requirements_file = filename
         config.requirements.clear()
+        config.requirements_file = filename
 
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir, config_op=config_op, config_pre_op=pre_config_op
@@ -445,8 +445,8 @@ def test_calc_truss_patch_handles_requirements_file_added_no_change(
         filename = "requirements.txt"
         with (custom_model_truss_dir / filename).open("w") as req_file:
             req_file.write(requirements_contents)
-        config.requirements_file = filename
         config.requirements.clear()
+        config.requirements_file = filename
 
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir, config_op=config_op, config_pre_op=pre_config_op
