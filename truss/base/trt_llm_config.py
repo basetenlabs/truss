@@ -472,6 +472,10 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
                     if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
                         logger.warning(f"Found runtime.{key}: {value} in build config")
                         extra_runtime_fields[key] = value
+                    else:
+                        logger.warning(
+                            f"Found unknown field `{key}: {value}` in build config, ignoring."
+                        )
             if extra_runtime_fields:
                 logger.warning(
                     f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."

@@ -697,6 +697,17 @@ class TrussConfig(custom_types.ConfigModel):
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
 
+    @pydantic.field_serializer("trt_llm")
+    def _serialize_trt_llm(
+        self,
+        trt_llm: Optional[trt_llm_config.TRTLLMConfiguration],
+        info: core_schema.FieldSerializationInfo,
+    ) -> Optional[dict[str, Any]]:
+        if not trt_llm:
+            return None
+        exclude_unset = bool(info.context and "verbose" in info.context)
+        return trt_llm.model_dump(exclude_unset=exclude_unset)
+
 
 def _map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.
