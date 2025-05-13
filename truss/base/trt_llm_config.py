@@ -4,7 +4,7 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Dict, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -459,44 +459,6 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
         self.add_bei_default_route()
         self.chunked_context_fix()
 
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_runtime_fields(cls, data: Any) -> Any:
-        extra_runtime_fields = {}
-        valid_build_fields = {}
-        if isinstance(data.get("build"), dict):
-            for key, value in data.get("build").items():
-                if key in TrussTRTLLMBuildConfiguration.__annotations__:
-                    valid_build_fields[key] = value
-                else:
-                    if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
-                        logger.warning(f"Found runtime.{key}: {value} in build config")
-                        extra_runtime_fields[key] = value
-                    else:
-                        logger.warning(
-                            f"Found unknown field `{key}: {value}` in build config, ignoring."
-                        )
-            if extra_runtime_fields:
-                logger.warning(
-                    f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."
-                    " This configuration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
-                )
-                if data.get("runtime"):
-                    data.get("runtime").update(
-                        {
-                            k: v
-                            for k, v in extra_runtime_fields.items()
-                            if k not in data.get("runtime")
-                        }
-                    )
-                else:
-                    data.update(
-                        {"runtime": {k: v for k, v in extra_runtime_fields.items()}}
-                    )
-            data.update({"build": valid_build_fields})
-            return data
-        return data
-
     def chunked_context_fix(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
         """check if there is an error wrt. runtime.enable_chunked_context"""
         if (
@@ -507,16 +469,8 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
                 and self.build.plugin_configuration.paged_kv_cache
             )
         ):
-            logger.warning(
-                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
-                "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
-            )
-            self.build = self.build.model_copy(
-                update={
-                    "plugin_configuration": self.build.plugin_configuration.model_copy(
-                        update={"use_paged_context_fmha": True, "paged_kv_cache": True}
-                    )
-                }
+            raise ValueError(
+                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
             )
 
         return self
