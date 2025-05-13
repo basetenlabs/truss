@@ -1,27 +1,13 @@
 import requests
 
 from truss.base.constants import (
-    HF_ACCESS_TOKEN_KEY,
     HF_MODELS_API_URL,
     OPENAI_COMPATIBLE_TAG,
     OPENAI_NON_COMPATIBLE_TAG,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
-from truss.base.trt_llm_config import CheckpointSource, TrussTRTLLMModel
+from truss.base.trt_llm_config import TrussTRTLLMModel
 from truss.truss_handle.truss_handle import TrussHandle
-
-
-def is_missing_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
-        source = trt_llm_build_config.checkpoint_repository.source
-        hf_model_id = trt_llm_build_config.checkpoint_repository.repo
-        if (
-            source == CheckpointSource.HF
-            and HF_ACCESS_TOKEN_KEY not in tr.spec.secrets
-            and not _is_model_public(hf_model_id)
-        ):
-            return True
-    return False
 
 
 def has_no_tags_trt_llm_builder(tr: TrussHandle) -> str:

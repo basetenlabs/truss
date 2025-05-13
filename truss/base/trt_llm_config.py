@@ -309,6 +309,12 @@ class TrussTRTLLMBuildConfiguration(BASEMODEL):
             return self.speculator.num_draft_tokens
         return None
 
+    @property
+    def parsed_trt_llm_build_configs(self) -> list["TrussTRTLLMBuildConfiguration"]:
+        if self.speculator and self.speculator.build:
+            return [self, self.speculator.build]
+        return [self]
+
 
 class TrussSpeculatorConfiguration(BASEMODEL):
     speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
@@ -436,8 +442,8 @@ class ImageVersions(BASEMODEL):
 
 
 class TRTLLMConfiguration(BASEMODEL):
-    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
+    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     # If versions are not set, the baseten backend will insert current defaults.
     version_overrides: VersionsOverrides = VersionsOverrides()
 

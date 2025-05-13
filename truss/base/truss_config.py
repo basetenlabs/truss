@@ -611,16 +611,6 @@ class TrussConfig(custom_types.ConfigModel):
     def canonical_python_version(self) -> str:
         return to_dotted_python_version(self.python_version)
 
-    @property
-    def parsed_trt_llm_build_configs(
-        self,
-    ) -> list[trt_llm_config.TrussTRTLLMBuildConfiguration]:
-        if self.trt_llm:
-            if self.trt_llm.build.speculator and self.trt_llm.build.speculator.build:
-                return [self.trt_llm.build, self.trt_llm.build.speculator.build]
-            return [self.trt_llm.build]
-        return []
-
     def to_dict(self, verbose: bool = True) -> dict:
         self.runtime.sync_is_websocket()  # type: ignore[operator]  # This is callable.
         data = super().to_dict(verbose)
@@ -707,16 +697,16 @@ class TrussConfig(custom_types.ConfigModel):
     def _validate_trt_llm_resources(self) -> "TrussConfig":
         return trt_llm_config.trt_llm_validation(self)
 
-    @pydantic.field_serializer("trt_llm")
-    def _serialize_trt_llm(
-        self,
-        trt_llm: Optional[trt_llm_config.TRTLLMConfiguration],
-        info: core_schema.FieldSerializationInfo,
-    ) -> Optional[dict[str, Any]]:
-        if not trt_llm:
-            return None
-        exclude_unset = bool(info.context and "verbose" in info.context)
-        return trt_llm.model_dump(exclude_unset=exclude_unset)
+    # @pydantic.field_serializer("trt_llm")
+    # def _serialize_trt_llm(
+    #     self,
+    #     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration],
+    #     info: core_schema.FieldSerializationInfo,
+    # ) -> Optional[dict[str, Any]]:
+    #     if not trt_llm:
+    #         return None
+    #     exclude_unset = bool(info.context and "verbose" in info.context)
+    #     return trt_llm.model_dump(exclude_unset=exclude_unset)
 
 
 def _map_to_supported_python_version(python_version: str) -> str:
