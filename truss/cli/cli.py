@@ -756,10 +756,12 @@ def push(
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
-        message_oai = has_no_tags_trt_llm_builder(tr)
+        message_oai, raised_message_oai = has_no_tags_trt_llm_builder(tr)
         if message_oai:
-            console.print(message_oai, style="red")
-            sys.exit(1)
+            console.print(message_oai, style="yellow")
+            if raised_message_oai:
+                console.print(message_oai, style="red")
+                sys.exit(1)
 
         for (
             trt_llm_build_config
