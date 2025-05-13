@@ -361,7 +361,6 @@ def cleanup() -> None:
 @click.option("-n", "--name", type=click.STRING)
 @click.option(
     "--python-config/--no-python-config",
-    type=bool,
     default=False,
     help="Uses the code first tooling to build models.",
 )
@@ -453,7 +452,6 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
 )
 @click.option(
     "--published",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
@@ -580,7 +578,6 @@ def run_python(script, target_directory):
 @click.option("--model-name", type=str, required=False, help="Name of the model")
 @click.option(
     "--publish",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
@@ -592,7 +589,6 @@ def run_python(script, target_directory):
 )
 @click.option(
     "--promote",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
@@ -613,7 +609,6 @@ def run_python(script, target_directory):
 )
 @click.option(
     "--preserve-previous-production-deployment",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
@@ -625,7 +620,6 @@ def run_python(script, target_directory):
 )
 @click.option(
     "--trusted",
-    type=bool,
     is_flag=True,
     required=False,
     default=None,
@@ -633,7 +627,6 @@ def run_python(script, target_directory):
 )
 @click.option(
     "--disable-truss-download",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
@@ -650,7 +643,6 @@ def run_python(script, target_directory):
 )
 @click.option(
     "--wait/--no-wait",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
@@ -667,16 +659,14 @@ def run_python(script, target_directory):
 )
 @click.option(
     "--include-git-info",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
     help=_INCLUDE_GIT_INFO_DOC,
 )
-@click.option("--tail", type=bool, is_flag=True)
+@click.option("--tail", is_flag=True)
 @click.option(
     "--preserve-env-instance-type/--no-preserve-env-instance-type",
-    type=bool,
     is_flag=True,
     required=False,
     default=None,
@@ -879,7 +869,7 @@ def push(
 @click.option("--remote", type=str, required=False)
 @click.option("--model-id", type=str, required=True)
 @click.option("--deployment-id", type=str, required=True)
-@click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
+@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
 @common_options()
 def model_logs(
     remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
@@ -1212,13 +1202,11 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--publish/--no-publish",
-    type=bool,
     default=False,
     help="Create chainlets as published deployments.",
 )
 @click.option(
     "--promote/--no-promote",
-    type=bool,
     default=False,
     help="Replace production chainlets with newly deployed chainlets.",
 )
@@ -1233,13 +1221,11 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--wait/--no-wait",
-    type=bool,
     default=True,
     help="Wait until all chainlets are ready (or deployment failed).",
 )
 @click.option(
     "--watch/--no-watch",
-    type=bool,
     default=False,
     help=(
         "Watches the chains source code and applies live patches. Using this option "
@@ -1250,7 +1236,6 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--dryrun",
-    type=bool,
     default=False,
     is_flag=True,
     help="Produces only generated files, but doesn't deploy anything.",
@@ -1274,7 +1259,6 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--include-git-info",
-    type=bool,
     is_flag=True,
     required=False,
     default=False,
@@ -1554,9 +1538,7 @@ truss_cli.add_command(train)
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option(
-    "--tail", type=bool, is_flag=True, help="Tail for status + logs after push."
-)
+@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @common_options()
 def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
@@ -1600,7 +1582,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--tail", type=bool, is_flag=True, help="Tail for ongoing logs.")
+@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
 @common_options()
 def get_job_logs(
     remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
@@ -1632,7 +1614,7 @@ def get_job_logs(
 @train.command(name="stop")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--all", type=bool, is_flag=True, help="Stop all running jobs.")
+@click.option("--all", is_flag=True, help="Stop all running jobs.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common_options()
 def stop_job(
@@ -1708,10 +1690,7 @@ def get_job_metrics(
     help="path to a python file that defines a DeployCheckpointsConfig",
 )
 @click.option(
-    "--dry-run",
-    type=bool,
-    is_flag=True,
-    help="Generate a truss config without deploying",
+    "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common_options()
