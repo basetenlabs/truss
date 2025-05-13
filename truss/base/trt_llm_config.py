@@ -29,10 +29,10 @@ ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
 try:
     from truss.base import custom_types
 
-    BASEMODEL = custom_types.ConfigModel
+    PydanticTrTBaseModel = custom_types.ConfigModel
 except ImportError:
     # fallback for briton
-    BASEMODEL = BaseModel  # type: ignore[assignment,misc]
+    PydanticTrTBaseModel = BaseModel  # type: ignore[assignment,misc]
 
 
 class TrussTRTLLMModel(str, Enum):
@@ -61,13 +61,13 @@ class TrussTRTLLMQuantizationType(str, Enum):
     FP4_KV = "fp4_kv"
 
 
-class TrussTRTLLMPluginConfiguration(BASEMODEL):
+class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
     paged_kv_cache: bool = True
     use_paged_context_fmha: bool = True
     use_fp8_context_fmha: bool = False
 
 
-class TrussTRTQuantizationConfiguration(BASEMODEL):
+class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     """Configuration for quantization of TRT models
 
     Args:
@@ -103,7 +103,7 @@ class CheckpointSource(str, Enum):
     REMOTE_URL = "REMOTE_URL"
 
 
-class CheckpointRepository(BASEMODEL):
+class CheckpointRepository(PydanticTrTBaseModel):
     source: CheckpointSource
     repo: str
     revision: Optional[str] = None
@@ -132,7 +132,7 @@ class TrussSpecDecMode(str, Enum):
     LOOKAHEAD_DECODING = "LOOKAHEAD_DECODING"
 
 
-class TrussTRTLLMRuntimeConfiguration(BASEMODEL):
+class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     kv_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
         None
@@ -151,12 +151,12 @@ class TrussTRTLLMRuntimeConfiguration(BASEMODEL):
     ] = None
 
 
-class TrussTRTLLMLoraConfiguration(BASEMODEL):
+class TrussTRTLLMLoraConfiguration(PydanticTrTBaseModel):
     max_lora_rank: int = 64
     lora_target_modules: list[str] = []
 
 
-class TrussTRTLLMBuildConfiguration(BASEMODEL):
+class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
@@ -316,7 +316,7 @@ class TrussTRTLLMBuildConfiguration(BASEMODEL):
         return [self]
 
 
-class TrussSpeculatorConfiguration(BASEMODEL):
+class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
     speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
     num_draft_tokens: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
     checkpoint_repository: Optional[CheckpointRepository] = None
@@ -421,7 +421,7 @@ class TrussSpeculatorConfiguration(BASEMODEL):
             )
 
 
-class VersionsOverrides(BASEMODEL):
+class VersionsOverrides(PydanticTrTBaseModel):
     # If an override is specified, it takes precedence over the backend's current
     # default version. The version is used to create a full image ref and should look
     # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
@@ -440,7 +440,7 @@ class VersionsOverrides(BASEMODEL):
         return data
 
 
-class ImageVersions(BASEMODEL):
+class ImageVersions(PydanticTrTBaseModel):
     # Required versions for patching truss config during docker build setup.
     # The schema of this model must be such that it can parse the values serialized
     # from the backend. The inserted values are full image references, resolved using
@@ -449,7 +449,7 @@ class ImageVersions(BASEMODEL):
     briton_image: str
 
 
-class TRTLLMConfiguration(BASEMODEL):
+class TRTLLMConfiguration(PydanticTrTBaseModel):
     build: TrussTRTLLMBuildConfiguration
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     # If versions are not set, the baseten backend will insert current defaults.
