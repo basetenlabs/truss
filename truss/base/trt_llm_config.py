@@ -431,6 +431,14 @@ class VersionsOverrides(BASEMODEL):
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
 
+    @model_validator(mode="before")
+    def version_must_start_with_number(cls, data):
+        for field in ["engine_builder_version", "briton_version", "bei_version"]:
+            v = data.get(field)
+            if v is not None and (not v or not v[0].isdigit()):
+                raise ValueError(f"{field.name} must start with a number")
+        return data
+
 
 class ImageVersions(BASEMODEL):
     # Required versions for patching truss config during docker build setup.
