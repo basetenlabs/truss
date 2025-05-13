@@ -7,7 +7,6 @@ from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TrussSpecDecMode,
     TrussSpeculatorConfiguration,
-    TrussTRTLLMBatchSchedulerPolicy,
     TrussTRTLLMBuildConfiguration,
     TrussTRTLLMRuntimeConfiguration,
 )
@@ -47,10 +46,11 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
         "kv_cache_free_gpu_mem_fraction": 0.1,
         "kv_cache_host_memory_bytes": None,
         "enable_chunked_context": True,
-        "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
+        "batch_scheduler_policy": "max_utilization",
         "request_default_max_tokens": 10,
         "served_model_name": None,
         "webserver_default_route": None,
+        "total_token_limit": 100,
     }
 
 
