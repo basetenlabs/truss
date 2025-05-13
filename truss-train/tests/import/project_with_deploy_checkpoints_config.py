@@ -12,7 +12,7 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
             "HF_TOKEN": definitions.SecretReference(name="hf_access_token")
         }
     ),
-    checkpoint_details=definitions.CheckpointDetails(
+    checkpoint_details=definitions.CheckpointList(
         base_model_id="unsloth/gemma-3-1b-it",
         checkpoints=[
             definitions.Checkpoint(
