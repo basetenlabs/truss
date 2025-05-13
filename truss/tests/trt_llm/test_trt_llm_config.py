@@ -1,12 +1,12 @@
 import copy
 
+import pydantic
 import pytest
 
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TrussSpecDecMode,
     TrussSpeculatorConfiguration,
-    TrussTRTLLMBatchSchedulerPolicy,
     TrussTRTLLMBuildConfiguration,
     TrussTRTLLMRuntimeConfiguration,
 )
@@ -46,11 +46,11 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
         "kv_cache_free_gpu_mem_fraction": 0.1,
         "kv_cache_host_memory_bytes": None,
         "enable_chunked_context": True,
-        "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
+        "batch_scheduler_policy": "max_utilization",
         "request_default_max_tokens": 10,
-        "total_token_limit": 50,
         "served_model_name": None,
         "webserver_default_route": None,
+        "total_token_limit": 100,
     }
 
 
@@ -92,20 +92,20 @@ def test_trt_llm_chunked_prefill_fix(trtllm_config):
     trt_llm2 = copy.deepcopy(trt_llm_config)
     trt_llm2.build.plugin_configuration.paged_kv_cache = False
     trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
-    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
-    print(trt_llm_fixed.build)
-    assert trt_llm_fixed.build.plugin_configuration.paged_kv_cache is True
+    with pytest.raises(pydantic.ValidationError):
+        trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
 
     # fixed for user
     trt_llm2 = copy.deepcopy(trt_llm_config)
     trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
-    trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
-    assert trt_llm_fixed.build.plugin_configuration.use_paged_context_fmha is True
+    with pytest.raises(pydantic.ValidationError):
+        trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
 
     trt_llm2 = copy.deepcopy(trt_llm_config)
     trt_llm2.runtime.enable_chunked_context = False
     trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
     trt_llm2.build.plugin_configuration.paged_kv_cache = False
+
     trt_llm_fixed = TRTLLMConfiguration(**trt_llm2.model_dump())
     assert trt_llm_fixed.build.plugin_configuration.use_paged_context_fmha is False
     assert trt_llm_fixed.runtime.enable_chunked_context is False

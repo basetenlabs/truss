@@ -780,45 +780,16 @@ def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
             "base_model": "llama",
             "max_seq_len": 2048,
             "max_batch_size": 512,
-            # start deprecated fields
-            "kv_cache_free_gpu_mem_fraction": 0.1,
-            "enable_chunked_context": True,
-            "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
-            "request_default_max_tokens": 10,
-            "total_token_limit": 50,
-            # end deprecated fields
-            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
-            "gather_all_token_logits": False,
-        }
-    }
-    return trtllm_config
-
-
-@pytest.fixture
-def deprecated_trtllm_config_with_runtime_existing(default_config) -> Dict[str, Any]:
-    trtllm_config = default_config
-    trtllm_config["resources"] = {
-        "accelerator": Accelerator.L4.value,
-        "cpu": "1",
-        "memory": "24Gi",
-        "use_gpu": True,
-    }
-    trtllm_config["trt_llm"] = {
-        "build": {
-            "base_model": "llama",
-            "max_seq_len": 2048,
-            "max_batch_size": 512,
-            # start deprecated fields
-            "kv_cache_free_gpu_mem_fraction": 0.1,
-            "enable_chunked_context": True,
-            "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
-            "request_default_max_tokens": 10,
-            "total_token_limit": 50,
-            # end deprecated fields
             "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "gather_all_token_logits": False,
         },
-        "runtime": {"total_token_limit": 100},
+        "runtime": {
+            "total_token_limit": 100,
+            "kv_cache_free_gpu_mem_fraction": 0.1,
+            "enable_chunked_context": True,
+            "batch_scheduler_policy": "max_utilization",
+            "request_default_max_tokens": 10,
+        },
     }
     return trtllm_config
 

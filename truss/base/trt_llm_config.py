@@ -4,7 +4,7 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Dict, Literal, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -26,6 +26,13 @@ warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
     os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
 )
+try:
+    from truss.base import custom_types
+
+    PydanticTrTBaseModel = custom_types.ConfigModel
+except ImportError:
+    # fallback for briton
+    PydanticTrTBaseModel = BaseModel  # type: ignore[assignment,misc]
 
 
 class TrussTRTLLMModel(str, Enum):
@@ -54,13 +61,13 @@ class TrussTRTLLMQuantizationType(str, Enum):
     FP4_KV = "fp4_kv"
 
 
-class TrussTRTLLMPluginConfiguration(BaseModel):
+class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
     paged_kv_cache: bool = True
     use_paged_context_fmha: bool = True
     use_fp8_context_fmha: bool = False
 
 
-class TrussTRTQuantizationConfiguration(BaseModel):
+class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     """Configuration for quantization of TRT models
 
     Args:
@@ -96,7 +103,7 @@ class CheckpointSource(str, Enum):
     REMOTE_URL = "REMOTE_URL"
 
 
-class CheckpointRepository(BaseModel):
+class CheckpointRepository(PydanticTrTBaseModel):
     source: CheckpointSource
     repo: str
     revision: Optional[str] = None
@@ -125,7 +132,7 @@ class TrussSpecDecMode(str, Enum):
     LOOKAHEAD_DECODING = "LOOKAHEAD_DECODING"
 
 
-class TrussTRTLLMRuntimeConfiguration(BaseModel):
+class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     kv_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
         None
@@ -144,12 +151,12 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
     ] = None
 
 
-class TrussTRTLLMLoraConfiguration(BaseModel):
+class TrussTRTLLMLoraConfiguration(PydanticTrTBaseModel):
     max_lora_rank: int = 64
     lora_target_modules: list[str] = []
 
 
-class TrussTRTLLMBuildConfiguration(BaseModel):
+class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
@@ -302,8 +309,14 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             return self.speculator.num_draft_tokens
         return None
 
+    @property
+    def parsed_trt_llm_build_configs(self) -> list["TrussTRTLLMBuildConfiguration"]:
+        if self.speculator and self.speculator.build:
+            return [self, self.speculator.build]
+        return [self]
 
-class TrussSpeculatorConfiguration(BaseModel):
+
+class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
     speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
     num_draft_tokens: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
     checkpoint_repository: Optional[CheckpointRepository] = None
@@ -408,7 +421,7 @@ class TrussSpeculatorConfiguration(BaseModel):
             )
 
 
-class VersionsOverrides(BaseModel):
+class VersionsOverrides(PydanticTrTBaseModel):
     # If an override is specified, it takes precedence over the backend's current
     # default version. The version is used to create a full image ref and should look
     # like a semver, e.g. for the briton the version `0.17.0-fd30ac1` could be specified
@@ -418,8 +431,16 @@ class VersionsOverrides(BaseModel):
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
 
+    @model_validator(mode="before")
+    def version_must_start_with_number(cls, data):
+        for field in ["engine_builder_version", "briton_version", "bei_version"]:
+            v = data.get(field)
+            if v is not None and (not v or not v[0].isdigit()):
+                raise ValueError(f"{field.name} must start with a number")
+        return data
 
-class ImageVersions(BaseModel):
+
+class ImageVersions(PydanticTrTBaseModel):
     # Required versions for patching truss config during docker build setup.
     # The schema of this model must be such that it can parse the values serialized
     # from the backend. The inserted values are full image references, resolved using
@@ -428,49 +449,15 @@ class ImageVersions(BaseModel):
     briton_image: str
 
 
-class TRTLLMConfiguration(BaseModel):
-    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
+class TRTLLMConfiguration(PydanticTrTBaseModel):
     build: TrussTRTLLMBuildConfiguration
+    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     # If versions are not set, the baseten backend will insert current defaults.
     version_overrides: VersionsOverrides = VersionsOverrides()
 
     def model_post_init(self, __context):
         self.add_bei_default_route()
         self.chunked_context_fix()
-
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_runtime_fields(cls, data: Any) -> Any:
-        extra_runtime_fields = {}
-        valid_build_fields = {}
-        if isinstance(data.get("build"), dict):
-            for key, value in data.get("build").items():
-                if key in TrussTRTLLMBuildConfiguration.__annotations__:
-                    valid_build_fields[key] = value
-                else:
-                    if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
-                        logger.warning(f"Found runtime.{key}: {value} in build config")
-                        extra_runtime_fields[key] = value
-            if extra_runtime_fields:
-                logger.warning(
-                    f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."
-                    " This configuration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
-                )
-                if data.get("runtime"):
-                    data.get("runtime").update(
-                        {
-                            k: v
-                            for k, v in extra_runtime_fields.items()
-                            if k not in data.get("runtime")
-                        }
-                    )
-                else:
-                    data.update(
-                        {"runtime": {k: v for k, v in extra_runtime_fields.items()}}
-                    )
-            data.update({"build": valid_build_fields})
-            return data
-        return data
 
     def chunked_context_fix(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
         """check if there is an error wrt. runtime.enable_chunked_context"""
@@ -482,16 +469,8 @@ class TRTLLMConfiguration(BaseModel):
                 and self.build.plugin_configuration.paged_kv_cache
             )
         ):
-            logger.warning(
-                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
-                "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
-            )
-            self.build = self.build.model_copy(
-                update={
-                    "plugin_configuration": self.build.plugin_configuration.model_copy(
-                        update={"use_paged_context_fmha": True, "paged_kv_cache": True}
-                    )
-                }
+            raise ValueError(
+                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
             )
 
         return self
