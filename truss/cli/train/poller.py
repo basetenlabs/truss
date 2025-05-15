@@ -9,8 +9,8 @@ from truss.remote.baseten.api import BasetenApi
 # NB(nikhil): When a job ends, we poll for this many seconds after to capture
 # any trailing logs that contain information about errors.
 JOB_TERMINATION_GRACE_PERIOD_SEC = 10
-JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_DEPLOYING"]
-JOB_RUNNING_STATES = ["TRAINING_JOB_RUNNING"]
+JOB_STARTING_STATES = ["CREATED", "DEPLOYING"]
+JOB_RUNNING_STATES = ["RUNNING"]
 
 
 class TrainingPollerMixin:
@@ -58,11 +58,11 @@ class TrainingPollerMixin:
         return int(time.time()) <= self._poll_stop_time
 
     def after_polling(self) -> None:
-        if self._current_status == "TRAINING_JOB_COMPLETED":
+        if self._current_status == "COMPLETED":
             self.console.print("Training job completed successfully.", style="green")
-        elif self._current_status == "TRAINING_JOB_FAILED":
+        elif self._current_status == "FAILED":
             self.console.print("Training job failed.", style="red")
-        elif self._current_status == "TRAINING_JOB_STOPPED":
+        elif self._current_status == "STOPPED":
             self.console.print("Training job stopped by user.", style="yellow")
 
     def _get_current_job_status(self) -> str:

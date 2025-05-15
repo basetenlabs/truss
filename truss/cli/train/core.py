@@ -16,9 +16,9 @@ from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
 
 ACTIVE_JOB_STATUSES = [
-    "TRAINING_JOB_RUNNING",
-    "TRAINING_JOB_CREATED",
-    "TRAINING_JOB_DEPLOYING",
+    "RUNNING",
+    "CREATED",
+    "DEPLOYING",
 ]
 
 

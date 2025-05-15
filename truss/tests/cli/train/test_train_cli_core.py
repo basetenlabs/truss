@@ -29,14 +29,14 @@ def test_view_training_job_metrics(time_sleep):
             "training_job": {
                 "id": "job123",
                 "training_project": {"id": "proj456"},
-                "current_status": "TRAINING_JOB_RUNNING",
+                "current_status": "RUNNING",
             }
         },
         {
             "training_job": {
                 "id": "job123",
                 "training_project": {"id": "proj456"},
-                "current_status": "TRAINING_JOB_COMPLETED",
+                "current_status": "COMPLETED",
             }
         },
     ]
@@ -46,7 +46,7 @@ def test_view_training_job_metrics(time_sleep):
             "training_job": {
                 "id": "job123",
                 "training_project": {"id": "proj456"},
-                "current_status": "TRAINING_JOB_RUNNING",
+                "current_status": "RUNNING",
             },
             "cpu_usage": [{"timestamp": "", "value": 3.2}],
             "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1234}],
@@ -63,7 +63,7 @@ def test_view_training_job_metrics(time_sleep):
             "training_job": {
                 "id": "job123",
                 "training_project": {"id": "proj456"},
-                "current_status": "TRAINING_JOB_COMPLETED",
+                "current_status": "COMPLETED",
             },
             "cpu_usage": [{"timestamp": "", "value": 3.2}],
             "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1234}],
@@ -80,7 +80,7 @@ def test_view_training_job_metrics(time_sleep):
             "training_job": {
                 "id": "job123",
                 "training_project": {"id": "proj456"},
-                "current_status": "TRAINING_JOB_COMPLETED",
+                "current_status": "COMPLETED",
             },
             "cpu_usage": [{"timestamp": "", "value": 3.2}],
             "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1234}],
