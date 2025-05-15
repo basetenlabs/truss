@@ -763,3 +763,18 @@ def test_raises_engine_builder_validation():
                 assets=chains.Assets(secret_keys=["hf_access_token"]),
             )
             engine_builder_config = 123
+
+
+def test_raises_invalid_display_name():
+    match = (
+        rf"{TEST_FILE}:\d+ \(InvalidDisplayName\) \[kind: INVALID_CONFIG_ERROR\].*"
+        r"Chainlet display name `Name with space` must match .* regex."
+    )
+
+    with pytest.raises(public_types.ChainsUsageError, match=match), _raise_errors():
+
+        class InvalidDisplayName(chains.ChainletBase):
+            remote_config = chains.RemoteConfig(name="Name with space")
+
+            def run_remote(self) -> int:
+                return 123

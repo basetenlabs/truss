@@ -2,6 +2,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
+from truss.contexts.local_loader.dockerfile_parser import (
+    DockerInstruction,
+    parse_dockerfile,
+)
 from truss.util.path import copy_tree_or_file
 
 
@@ -23,9 +27,7 @@ class DockerBuildEmulator:
     """
 
     def __init__(self, dockerfile_path: Path, context_dir: Path) -> None:
-        import dockerfile
-
-        self._commands = dockerfile.parse_file(str(dockerfile_path))
+        self._commands = parse_dockerfile(dockerfile_path)
         self._context_dir = context_dir
 
     def run(self, fs_root_dir: Path) -> DockerBuildEmulatorResult:
@@ -41,18 +43,20 @@ class DockerBuildEmulator:
 
         result = DockerBuildEmulatorResult()
         for cmd in self._commands:
-            if cmd.cmd not in ["ENV", "ENTRYPOINT", "COPY", "WORKDIR"]:
+            if not cmd.is_supported:
                 continue
             values = _resolve_values(cmd.value)
-            if cmd.cmd == "ENV":
+            if cmd.instruction == DockerInstruction.ENV:
+                if "=" in values[0]:
+                    values = values[0].split("=", 1)
                 result.env[values[0]] = values[1]
-            if cmd.cmd == "ENTRYPOINT":
+            if cmd.instruction == DockerInstruction.ENTRYPOINT:
                 result.entrypoint = list(values)
-            if cmd.cmd == "COPY":
+            if cmd.instruction == DockerInstruction.COPY:
                 src, dst = values
                 src = src.replace("./", "", 1)
                 dst = dst.replace("/", "", 1)
                 copy_tree_or_file(self._context_dir / src, fs_root_dir / dst)
-            if cmd.cmd == "WORKDIR":
+            if cmd.instruction == DockerInstruction.WORKDIR:
                 result.workdir = result.workdir / values[0]
         return result

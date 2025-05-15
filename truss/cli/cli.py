@@ -7,8 +7,9 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, List, Optional, Tuple, cast
 
+import pydantic
 import rich
 import rich.live
 import rich.logging
@@ -19,8 +20,10 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
+from rich.markup import escape
 
 import truss
+import truss.cli.train.core as train_cli
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
@@ -28,11 +31,11 @@ from truss.base.constants import (
 from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
-from truss.cli.remote_cli import (
-    inquire_model_name,
-    inquire_remote_config,
-    inquire_remote_name,
-)
+from truss.cli import common, remote_cli
+from truss.cli.logs import utils as cli_log_utils
+from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.utils import self_upgrade
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -46,14 +49,14 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
-    is_missing_secrets_for_trt_llm_builder,
+    has_no_tags_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
 from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
-from truss.util import docker
+from truss.util import docker, user_config
 from truss.util.log_utils import LogInterceptor
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
@@ -66,64 +69,35 @@ click.rich_click.COMMAND_GROUPS = {
     "truss": [
         {
             "name": "Main usage",
-            "commands": ["init", "push", "watch", "predict"],
-            "table_styles": {  # type: ignore
-                "row_styles": ["green"]
-            },
+            "commands": ["init", "push", "watch", "predict", "model_logs"],
+            "table_styles": {"row_styles": ["green"]},  # type: ignore
         },
         {
             "name": "Advanced Usage",
             "commands": ["image", "container", "cleanup"],
-            "table_styles": {  # type: ignore
-                "row_styles": ["yellow"]
-            },
+            "table_styles": {"row_styles": ["yellow"]},  # type: ignore
         },
         {
             "name": "Chains",
             "commands": ["chains"],
-            "table_styles": {  # type: ignore
-                "row_styles": ["red"]
-            },
+            "table_styles": {"row_styles": ["red"]},  # type: ignore
         },
         {
             "name": "Train",
             "commands": ["train"],
-            "table_styles": {  # type: ignore
-                "row_styles": ["magenta"]
-            },
+            "table_styles": {"row_styles": ["magenta"]},  # type: ignore
         },
     ]
 }
 
+_INCLUDE_GIT_INFO_DOC = (
+    "Whether to attach git versioning info (sha, branch, tag) to deployments made from "
+    "within a git repo. If set to True in `.trussrc`, it will always be attached."
+)
+
+
 console = Console()
-
-error_console = Console(stderr=True, style="bold red")
-
-is_humanfriendly_log_level = True
-
-
-def error_handling(f: Callable[..., object]):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        try:
-            f(*args, **kwargs)
-        except click.UsageError as e:
-            raise e  # You can re-raise the exception or handle it different
-        except Exception as e:
-            if is_humanfriendly_log_level:
-                console.print(
-                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {e}",
-                    highlight=True,
-                )
-            else:
-                console.print_exception(show_locals=True)
-
-            ctx = click.get_current_context()
-            ctx.exit(1)
-
-    return wrapper
-
-
+_error_console = Console(stderr=True, style="bold red")
 _HUMANFRIENDLY_LOG_LEVEL = "humanfriendly"
 _log_level_str_to_level = {
     _HUMANFRIENDLY_LOG_LEVEL: logging.INFO,
@@ -136,13 +110,16 @@ _log_level_str_to_level = {
 }
 
 
-def _set_logging_level(log_level: Union[str, int]) -> None:
+def _set_logging_level() -> None:
+    log_level = click.get_current_context().obj["log"]
     if isinstance(log_level, str):
         level = _log_level_str_to_level[log_level]
     else:
         level = log_level
+
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
+    root_logger.handlers.clear()
 
     if log_level == _HUMANFRIENDLY_LOG_LEVEL:
         rich_handler = rich.logging.RichHandler(
@@ -151,59 +128,224 @@ def _set_logging_level(log_level: Union[str, int]) -> None:
     else:
         # Rich handler adds time, levels, file location etc.
         rich_handler = rich.logging.RichHandler()
-        global is_humanfriendly_log_level
-        is_humanfriendly_log_level = False
 
-    root_logger.handlers = []  # Clear existing handlers
     root_logger.addHandler(rich_handler)
     # Enable deprecation warnings raised in this module.
     warnings.filterwarnings(
-        "default", category=DeprecationWarning, module="^truss\.cli\\b"
+        "default", category=DeprecationWarning, module=r"^truss\.cli\\b"
     )
 
 
-def log_level_option(f):
-    def callback(ctx, param, value):
-        _set_logging_level(value)
-        return value
+def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str):
+    # We use this for params that are not "exposed" to the signature of the subcommands.
+    # therefore we store them directly on the context (not in contex.params).
+    ctx.ensure_object(dict)[param.name] = value
 
+
+def _get_required_option(ctx: click.Context, name: str) -> object:
+    value = ctx.find_root().obj.get(name)
+    if value is None:
+        raise RuntimeError(
+            f"Required option '{name}' was not set in click context. "
+            "This is a bug, all commands must use `common_options` decorator."
+        )
+    return value
+
+
+def _log_level_option(f: Callable[..., object]) -> Callable[..., object]:
     return click.option(
         "--log",
         default=_HUMANFRIENDLY_LOG_LEVEL,
-        expose_value=False,
         help="Customizes logging.",
         type=click.Choice(list(_log_level_str_to_level.keys()), case_sensitive=False),
-        callback=callback,
+        callback=_store_param_callback,
+        expose_value=False,
     )(f)
+
+
+def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
+    return click.option(
+        "--non-interactive",
+        is_flag=True,
+        default=False,
+        help="Disables interactive prompts, use in CI / automated execution contexts.",
+        expose_value=False,
+        callback=_store_param_callback,
+    )(f)
+
+
+def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
+    @wraps(f)
+    def wrapper(*args: object, **kwargs: object) -> None:
+        try:
+            f(*args, **kwargs)
+        except click.UsageError as e:
+            raise e
+        except Exception as e:
+            ctx = click.get_current_context()
+            log_level = _get_required_option(ctx, "log")
+            escaped_e = escape(str(e))
+            if log_level == _HUMANFRIENDLY_LOG_LEVEL:
+                console.print(
+                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {escaped_e}",
+                    highlight=True,
+                )
+            else:
+                console.print_exception(show_locals=True)
+
+            if isinstance(e, pydantic.ValidationError):
+                console.print(
+                    "[bold yellow]In case of 'ValidationErrors' there are two common issues:[/bold yellow]\n"
+                    "[yellow]"
+                    " * 'Extra inputs are not permitted...': using a new 'TrussConfig' "
+                    "field that is not yet in your local truss CLI version -> upgrade truss version.\n"
+                    " * 'Input should be ...': using muddy types, e.g. a float where a string "
+                    "is expected -> check the exact message above and fix.[/yellow]",
+                    highlight=True,
+                )
+
+            ctx.exit(1)
+
+    return wrapper
+
+
+def _upgrade_dialogue():
+    ctx = click.get_current_context()
+    if (
+        not _get_required_option(ctx, "non_interactive")
+        and common.check_is_interactive()
+        and user_config.settings.enable_auto_upgrade
+    ):
+        self_upgrade.upgrade_dialogue(truss.__version__, console)
+
+
+def common_options(
+    add_middleware: bool = True,
+) -> Callable[[Callable[..., object]], Callable[..., object]]:
+    def decorator(f: Callable[..., object]) -> Callable[..., object]:
+        @wraps(f)
+        @_log_level_option
+        @_non_interactive_option
+        @_error_handling
+        def wrapper(*args: object, **kwargs: object) -> Any:
+            if add_middleware:
+                _set_logging_level()
+                _upgrade_dialogue()
+
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def _format_link(text: str) -> str:
     return f"[link={text}]{text}[/link]"
 
 
-def print_help() -> None:
-    ctx = click.get_current_context()
-    click.echo(ctx.get_help())
+def _get_truss_from_directory(target_directory: Optional[str] = None):
+    """Gets Truss from directory. If none, use the current directory"""
+    if target_directory is None:
+        target_directory = os.getcwd()
+    if not os.path.isfile(target_directory):
+        return load(target_directory)
+    # These imports are delayed, to handle pydantic v1 envs gracefully.
+    from truss_chains.deployment import code_gen
+
+    truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
+    return load(truss_dir)
+
+
+### Top-level & utility commands. ######################################################
 
 
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
-@click.version_option(truss.version())
-@log_level_option
+@click.version_option(truss.__version__)
+@common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
+    # Click "stacks" the root command and group/subcommands, to avoid running the
+    # middleware twice, we don't add it via decorator to the root command, but instead
+    # selective run it here inline.
     if not ctx.invoked_subcommand:
+        _set_logging_level()
+        _upgrade_dialogue()
         click.echo(ctx.get_help())
 
 
-@click.group()
-def container():
-    """Subcommands for truss container"""
+@truss_cli.command()
+@click.option(
+    "--api-key",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to patch changes to",
+)
+@common_options()
+def login(api_key: Optional[str]):
+    from truss.api import login
+
+    if not api_key:
+        remote_config = remote_cli.inquire_remote_config()
+        RemoteFactory.update_remote_config(remote_config)
+    else:
+        login(api_key)
 
 
-@click.group()
-def image():
-    """Subcommands for truss image"""
+@truss_cli.command()
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to check whoami.",
+)
+@common_options()
+def whoami(remote: Optional[str]):
+    """
+    Shows user information and exit.
+    """
+    from truss.api import whoami
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    user = whoami(remote)
+
+    console.print(f"{user.workspace_name}\\{user.user_email}")
+
+
+@truss_cli.command()
+def configure():
+    # Read the original file content
+    with open(USER_TRUSSRC_PATH, "r") as f:
+        original_content = f.read()
+
+    # Open the editor and get the modified content
+    edited_content = click.edit(original_content)
+
+    # If the content was modified, save it
+    if edited_content is not None and edited_content != original_content:
+        with open(USER_TRUSSRC_PATH, "w") as f:
+            f.write(edited_content)
+            click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
+    else:
+        click.echo("No changes made.")
+
+
+@truss_cli.command()
+@common_options()
+def cleanup() -> None:
+    """
+    Clean up truss data.
+
+    Truss creates temporary directories for various operations
+    such as for building docker images. This command clears
+    that data to free up disk space.
+    """
+    _cleanup()
+
+
+### Truss (model) commands. ############################################################
 
 
 @truss_cli.command()
@@ -218,12 +360,10 @@ def image():
 @click.option("-n", "--name", type=click.STRING)
 @click.option(
     "--python-config/--no-python-config",
-    type=bool,
     default=False,
     help="Uses the code first tooling to build models.",
 )
-@log_level_option
-@error_handling
+@common_options()
 def init(target_directory, backend, name, python_config) -> None:
     """Create a new truss.
 
@@ -239,7 +379,7 @@ def init(target_directory, backend, name, python_config) -> None:
     if name:
         model_name = name
     else:
-        model_name = inquire_model_name()
+        model_name = remote_cli.inquire_model_name()
     _init(
         target_directory=target_directory,
         build_config=build_config,
@@ -249,11 +389,575 @@ def init(target_directory, backend, name, python_config) -> None:
     click.echo(f"Truss {model_name} was created in {tr_path.absolute()}")
 
 
+def _extract_and_validate_model_identifier(
+    target_directory: str,
+    model_id: Optional[str],
+    model_version_id: Optional[str],
+    published: Optional[bool],
+) -> ModelIdentifier:
+    if published and (model_id or model_version_id):
+        raise click.UsageError(
+            "Cannot use --published with --model or --model-deployment."
+        )
+
+    model_identifier: ModelIdentifier
+    if model_version_id:
+        model_identifier = ModelVersionId(model_version_id)
+    elif model_id:
+        model_identifier = ModelId(model_id)
+    else:
+        tr = _get_truss_from_directory(target_directory=target_directory)
+        model_name = tr.spec.config.model_name
+        if not model_name:
+            raise click.UsageError("Truss config is missing a model name.")
+        model_identifier = ModelName(model_name)
+    return model_identifier
+
+
+def _extract_request_data(data: Optional[str], file: Optional[Path]):
+    try:
+        if data is not None:
+            return json.loads(data)
+        if file is not None:
+            return json.loads(Path(file).read_text())
+    except json.JSONDecodeError:
+        raise click.UsageError("Request data must be valid json.")
+
+    raise click.UsageError(
+        "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+    )
+
+
+@truss_cli.command()
+@click.option("--target-directory", required=False, help="Directory of truss")
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to",
+)
+@click.option(
+    "-d",
+    "--data",
+    type=str,
+    required=False,
+    help="String formatted as json that represents request",
+)
+@click.option(
+    "-f",
+    "--file",
+    type=click.Path(exists=True),
+    help="Path to json file containing the request",
+)
+@click.option(
+    "--published",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Call the published model deployment.",
+)
+@click.option(
+    "--model-version",
+    type=str,
+    required=False,
+    help=(
+        "[DEPRECATED] Use --model-deployment instead, this will be  "
+        "removed in future release. ID of model deployment"
+    ),
+)
+@click.option(
+    "--model-deployment",
+    type=str,
+    required=False,
+    help="ID of model deployment to call",
+)
+@click.option("--model", type=str, required=False, help="ID of model to call")
+@_log_level_option
+def predict(
+    target_directory: str,
+    remote: str,
+    data: Optional[str],
+    file: Optional[Path],
+    published: Optional[bool],
+    model_version: Optional[str],
+    model_deployment: Optional[str],
+    model: Optional[str],
+):
+    """
+    Calls the packaged model
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+
+    REQUEST: String formatted as json that represents request
+
+    REQUEST_FILE: Path to json file containing the request
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider = RemoteFactory.create(remote=remote)
+
+    if model_version:
+        console.print(
+            "[DEPRECATED] --model-version is deprecated, "
+            "use --model-deployment instead.",
+            style="yellow",
+        )
+        model_deployment = model_version
+
+    model_identifier = _extract_and_validate_model_identifier(
+        target_directory,
+        model_id=model,
+        model_version_id=model_deployment,
+        published=published,
+    )
+
+    request_data = _extract_request_data(data=data, file=file)
+
+    service = remote_provider.get_service(
+        model_identifier=model_identifier, published=published
+    )
+
+    # Log deployment ID for Baseten models.
+    if isinstance(service, BasetenService):
+        console.print(
+            f"Calling predict on {'[cyan]development[/cyan] ' if service.is_draft else ''}"
+            f"deployment ID {service.model_version_id}..."
+        )
+
+    result = service.predict(request_data)
+    if inspect.isgenerator(result):
+        for chunk in result:
+            click.echo(chunk, nl=False)
+        return
+    console.print_json(data=result)
+
+
+@truss_cli.command()
+@click.argument("script", required=True)
+@click.argument("target_directory", required=False, default=os.getcwd())
+def run_python(script, target_directory):
+    if not Path(script).exists():
+        raise click.BadParameter(
+            f"File {script} does not exist. Please provide a valid file."
+        )
+
+    if not Path(target_directory).exists():
+        raise click.BadParameter(f"Directory {target_directory} does not exist.")
+
+    if not (Path(target_directory) / "config.yaml").exists():
+        raise click.BadParameter(
+            f"Directory {target_directory} does not contain a valid Truss."
+        )
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    container_ = tr.run_python_script(Path(script))
+    for output in container_.logs():
+        output_type = output[0]
+        output_content = output[1]
+
+        options = {}
+
+        if output_type == "stderr":
+            options["fg"] = "red"
+
+        click.secho(output_content.decode("utf-8", "replace"), nl=False, **options)
+    exit_code = container.wait()
+    sys.exit(exit_code)
+
+
+@truss_cli.command()
+@click.argument("target_directory", required=False, default=os.getcwd())
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to",
+)
+@click.option("--model-name", type=str, required=False, help="Name of the model")
+@click.option(
+    "--publish",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a published deployment. If no production "
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
+    ),
+)
+@click.option(
+    "--promote",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a published deployment. Even if a production "
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
+    ),
+)
+@click.option(
+    "--environment",
+    type=str,
+    required=False,
+    help=(
+        "Push the truss as a published deployment to the specified environment."
+        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+    ),
+)
+@click.option(
+    "--preserve-previous-production-deployment",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Preserve the previous production deployment's autoscaling setting. When "
+        "not specified, the previous production deployment will be updated to allow "
+        "it to scale to zero. Can only be use in combination with --promote option."
+    ),
+)
+@click.option(
+    "--trusted",
+    is_flag=True,
+    required=False,
+    default=None,
+    help="[DEPRECATED] All models are trusted by default.",
+)
+@click.option(
+    "--disable-truss-download",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Disable downloading the truss directory from the UI.",
+)
+@click.option(
+    "--deployment-name",
+    type=str,
+    required=False,
+    help=(
+        "Name of the deployment created by the push. Can only be "
+        "used in combination with `--publish` or `--promote`."
+    ),
+)
+@click.option(
+    "--wait/--no-wait",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Wait for the deployment to complete before returning.",
+)
+@click.option(
+    "--timeout-seconds",
+    type=int,
+    required=False,
+    help=(
+        "Maximum time to wait for deployment to complete in seconds. Without "
+        "specifying, the command will not complete until the deployment is complete."
+    ),
+)
+@click.option(
+    "--include-git-info",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=_INCLUDE_GIT_INFO_DOC,
+)
+@click.option("--tail", is_flag=True)
+@click.option(
+    "--preserve-env-instance-type/--no-preserve-env-instance-type",
+    is_flag=True,
+    required=False,
+    default=None,
+    help=(
+        "When pushing a truss to an environment, whether to use the resources specified "
+        "in the truss config to resolve the instance type or preserve the instance type "
+        "configured in the specified environment. It will be ignored if --environment is not specified. "
+        "Default is --preserve-env-instance-type."
+    ),
+)
+@common_options()
+def push(
+    target_directory: str,
+    remote: str,
+    model_name: str,
+    publish: bool = False,
+    trusted: Optional[bool] = None,
+    disable_truss_download: bool = False,
+    promote: bool = False,
+    preserve_previous_production_deployment: bool = False,
+    deployment_name: Optional[str] = None,
+    wait: bool = False,
+    timeout_seconds: Optional[int] = None,
+    environment: Optional[str] = None,
+    include_git_info: bool = False,
+    tail: bool = False,
+    preserve_env_instance_type: bool = True,
+) -> None:
+    """
+    Pushes a truss to a TrussRemote.
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    if not include_git_info:
+        include_git_info = user_config.settings.include_git_info
+
+    remote_provider = RemoteFactory.create(remote=remote)
+    tr = _get_truss_from_directory(target_directory=target_directory)
+
+    model_name = model_name or tr.spec.config.model_name
+    if not model_name:
+        model_name = remote_cli.inquire_model_name()
+
+    if promote and environment:
+        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        console.print(promote_warning, style="yellow")
+    if promote and not environment:
+        environment = PRODUCTION_ENVIRONMENT_NAME
+
+    if preserve_env_instance_type is not None and not environment:
+        preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of `preserve-env-instance-type`"
+        console.print(preserve_env_warning, style="yellow")
+    if preserve_env_instance_type is None:
+        # If the flag is not specified, we set it to True by default. We handle the default here instead of in click.options
+        # to only print the warning above when the flag was specified by the user.
+        preserve_env_instance_type = True
+
+    if environment:
+        if preserve_env_instance_type:
+            preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and the current instance type of the '{environment}' environment will be used."
+            console.print(preserve_env_info)
+        else:
+            preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
+            console.print(preserve_env_info)
+
+    # Write model name to config if it's not already there
+    if model_name != tr.spec.config.model_name:
+        tr.spec.config.model_name = model_name
+        tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
+
+    # Log a warning if using --trusted.
+    if trusted is not None:
+        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
+        console.print(trusted_deprecation_notice, style="yellow")
+
+    # trt-llm engine builder checks
+    if uses_trt_llm_builder(tr):
+        if not publish:
+            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+            console.print(live_reload_disabled_text, style="red")
+            sys.exit(1)
+
+        if memory_updated_for_trt_llm_builder(tr):
+            console.print(
+                f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
+            )
+        message_oai, raised_message_oai = has_no_tags_trt_llm_builder(tr)
+        if message_oai:
+            console.print(message_oai, style="yellow")
+            if raised_message_oai:
+                console.print(message_oai, style="red")
+                sys.exit(1)
+
+        for (
+            trt_llm_build_config
+        ) in tr.spec.config.trt_llm.build.parsed_trt_llm_build_configs:
+            if (
+                trt_llm_build_config.quantization_type
+                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+                and not trt_llm_build_config.num_builder_gpus
+            ):
+                fp8_and_num_builder_gpus_text = (
+                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
+                    "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
+                    "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+                )
+                console.print(fp8_and_num_builder_gpus_text, style="yellow")
+
+    source = Path(target_directory)
+    # TODO(Abu): This needs to be refactored to be more generic
+    service = remote_provider.push(
+        tr,
+        model_name=model_name,
+        working_dir=source.parent if source.is_file() else source.resolve(),
+        publish=publish,
+        promote=promote,
+        preserve_previous_prod_deployment=preserve_previous_production_deployment,
+        deployment_name=deployment_name,
+        environment=environment,
+        disable_truss_download=disable_truss_download,
+        progress_bar=progress.Progress,
+        include_git_info=include_git_info,
+        preserve_env_instance_type=preserve_env_instance_type,
+    )  # type: ignore
+
+    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+
+    if service.is_draft:
+        draft_model_text = """
+|---------------------------------------------------------------------------------------|
+| Your model is deploying as a development model. Development models allow you to  |
+| iterate quickly during the deployment process.                                        |
+|                                                                                       |
+| When you are ready to publish your deployed model as a new deployment,                |
+| pass `--publish` to the `truss push` command. To monitor changes to your model and    |
+| rapidly iterate, run the `truss watch` command.                                       |
+|                                                                                       |
+|---------------------------------------------------------------------------------------|
+"""
+
+        click.echo(draft_model_text)
+
+    if environment:
+        promotion_text = (
+            f"Your Truss has been deployed into the {environment} environment. After it successfully "
+            f"deploys, it will become the next {environment} deployment of your model."
+        )
+        console.print(promotion_text, style="green")
+
+    console.print(
+        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+    )
+    if wait:
+        start_time = time.time()
+        with console.status("[bold green]Deploying...") as status:
+            try:
+                # Poll for the deployment status until we have reached. Either ACTIVE,
+                # or a non-deploying status (in which case the deployment has failed).
+                for deployment_status in service.poll_deployment_status():
+                    if (
+                        timeout_seconds is not None
+                        and time.time() - start_time > timeout_seconds
+                    ):
+                        console.print("Deployment timed out.", style="red")
+                        sys.exit(1)
+
+                    status.update(
+                        f"[bold green]Deploying...Current Status: {deployment_status}"
+                    )
+
+                    if deployment_status == ACTIVE_STATUS:
+                        console.print("Deployment succeeded.", style="bold green")
+                        return
+
+                    if deployment_status not in DEPLOYING_STATUSES:
+                        console.print(
+                            f"Deployment failed with status {deployment_status}.",
+                            style="red",
+                        )
+                        sys.exit(1)
+
+            except RemoteNetworkError:
+                console.print("Deployment failed: Could not reach remote.", style="red")
+                sys.exit(1)
+    elif tail and isinstance(service, BasetenService):
+        bt_remote = cast(BasetenRemote, remote_provider)
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id, console
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
+
+
+@truss_cli.command()
+@click.option("--remote", type=str, required=False)
+@click.option("--model-id", type=str, required=True)
+@click.option("--deployment-id", type=str, required=True)
+@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
+@common_options()
+def model_logs(
+    remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
+) -> None:
+    """
+    Fetches logs for the packaged model
+    """
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+    if not tail:
+        logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log, console)
+    else:
+        log_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api, model_id, deployment_id, console
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
+
+
+@truss_cli.command()
+@click.argument("target_directory", required=False, default=os.getcwd())
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to patch changes to",
+)
+@common_options()
+def watch(target_directory: str, remote: str) -> None:
+    """
+    Seamless remote development with truss
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+    """
+    # TODO: ensure that provider support draft
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider = RemoteFactory.create(remote=remote)
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    model_name = tr.spec.config.model_name
+    if not model_name:
+        console.print(
+            "🧐 NoneType model_name provided in config.yaml. "
+            "Please check that you have the correct model name in your config file."
+        )
+        sys.exit(1)
+
+    service = remote_provider.get_service(model_identifier=ModelName(model_name))
+    console.print(
+        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+    )
+
+    if not os.path.isfile(target_directory):
+        remote_provider.sync_truss_to_dev_version_by_name(
+            model_name, target_directory, console, _error_console
+        )
+    else:
+        # These imports are delayed, to handle pydantic v1 envs gracefully.
+        from truss_chains.deployment import deployment_client
+
+        deployment_client.watch_model(
+            source=Path(target_directory),
+            model_name=model_name,
+            remote_provider=remote_provider,
+            console=console,
+            error_console=_error_console,
+        )
+
+
+### Image commands. ####################################################################
+
+
+@click.group()
+def image():
+    """Subcommands for truss image"""
+
+
+truss_cli.add_command(image)
+
+
 @image.command()  # type: ignore
 @click.argument("build_dir")
 @click.argument("target_directory", required=False)
-@log_level_option
-@error_handling
+@common_options()
 def build_context(build_dir, target_directory: str) -> None:
     """
     Create a docker build context for a Truss.
@@ -276,8 +980,7 @@ def build_context(build_dir, target_directory: str) -> None:
     default=False,
     help="Use host network for docker build",
 )
-@log_level_option
-@error_handling
+@common_options()
 def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None:
     """
     Builds the docker image for a Truss.
@@ -309,8 +1012,7 @@ def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None
     default=False,
     help="Use host network for docker build",
 )
-@log_level_option
-@error_handling
+@common_options()
 def run(
     target_directory: str, build_dir: Path, tag, port, attach, use_host_network
 ) -> None:
@@ -341,97 +1043,48 @@ def run(
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
 
 
-@truss_cli.command()
-@click.option(
-    "--api-key",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to patch changes to",
-)
-@error_handling
-def login(api_key: Optional[str]):
-    from truss.api import login
-
-    if not api_key:
-        remote_config = inquire_remote_config()
-        RemoteFactory.update_remote_config(remote_config)
-    else:
-        login(api_key)
+# Container commands. ##################################################################
 
 
-@truss_cli.command()
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to check whoami.",
-)
-@error_handling
-def whoami(remote: Optional[str]):
+@click.group()
+def container():
+    """Subcommands for truss container"""
+
+
+truss_cli.add_command(container)
+
+
+@container.command()  # type: ignore
+@click.argument("target_directory", required=False)
+@common_options()
+def logs(target_directory) -> None:
     """
-    Shows user information and exit.
-    """
-    from truss.api import whoami
-
-    if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
-
-    user = whoami(remote)
-
-    console.print(f"{user.workspace_name}\{user.user_email}")
-
-
-@truss_cli.command()
-@click.argument("target_directory", required=False, default=os.getcwd())
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to patch changes to",
-)
-@log_level_option
-@error_handling
-def watch(target_directory: str, remote: str) -> None:
-    """
-    Seamless remote development with truss
+    Get logs in a container is running for a truss
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
-    # TODO: ensure that provider support draft
-    if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+    for log in _get_truss_from_directory(
+        target_directory=target_directory
+    ).serving_container_logs():
+        click.echo(log)
 
-    remote_provider = RemoteFactory.create(remote=remote)
 
+@container.command()  # type: ignore
+@click.argument("target_directory", required=False)
+def kill(target_directory: str) -> None:
+    """
+    Kills containers related to truss.
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+    """
     tr = _get_truss_from_directory(target_directory=target_directory)
-    model_name = tr.spec.config.model_name
-    if not model_name:
-        console.print(
-            "🧐 NoneType model_name provided in config.yaml. "
-            "Please check that you have the correct model name in your config file."
-        )
-        sys.exit(1)
+    tr.kill_container()
 
-    service = remote_provider.get_service(model_identifier=ModelName(model_name))
-    console.print(
-        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
-    )
 
-    if not os.path.isfile(target_directory):
-        remote_provider.sync_truss_to_dev_version_by_name(
-            model_name, target_directory, console, error_console
-        )
-    else:
-        # These imports are delayed, to handle pydantic v1 envs gracefully.
-        from truss_chains.deployment import deployment_client
-
-        deployment_client.watch_model(
-            source=Path(target_directory),
-            model_name=model_name,
-            remote_provider=remote_provider,
-            console=console,
-            error_console=error_console,
-        )
+@container.command()  # type: ignore
+def kill_all() -> None:
+    """Kills all truss containers that are not manually persisted."""
+    docker.kill_all()
 
 
 # Chains Stuff #########################################################################
@@ -440,6 +1093,20 @@ def watch(target_directory: str, remote: str) -> None:
 @click.group()
 def chains():
     """Subcommands for truss chains"""
+
+
+truss_cli.add_command(chains)
+
+
+def _load_example_chainlet_code() -> str:
+    try:
+        from truss_chains.reference_code import reference_chainlet
+    # if the example is faulty, a validation error would be raised
+    except Exception as e:
+        raise Exception("Failed to load starter code. Please notify support.") from e
+
+    source = Path(reference_chainlet.__file__).read_text()
+    return source
 
 
 def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
@@ -533,13 +1200,11 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--publish/--no-publish",
-    type=bool,
     default=False,
     help="Create chainlets as published deployments.",
 )
 @click.option(
     "--promote/--no-promote",
-    type=bool,
     default=False,
     help="Replace production chainlets with newly deployed chainlets.",
 )
@@ -554,13 +1219,11 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--wait/--no-wait",
-    type=bool,
     default=True,
     help="Wait until all chainlets are ready (or deployment failed).",
 )
 @click.option(
     "--watch/--no-watch",
-    type=bool,
     default=False,
     help=(
         "Watches the chains source code and applies live patches. Using this option "
@@ -571,7 +1234,6 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--dryrun",
-    type=bool,
     default=False,
     is_flag=True,
     help="Produces only generated files, but doesn't deploy anything.",
@@ -593,9 +1255,17 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         "and refer to docs."
     ),
 )
-@log_level_option
-@error_handling
+@click.option(
+    "--include-git-info",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=_INCLUDE_GIT_INFO_DOC,
+)
+@click.pass_context
+@common_options()
 def push_chain(
+    ctx: click.Context,
     source: Path,
     entrypoint: Optional[str],
     name: Optional[str],
@@ -607,6 +1277,7 @@ def push_chain(
     remote: Optional[str],
     environment: Optional[str],
     experimental_watch_chainlet_names: Optional[str],
+    include_git_info: bool = False,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -643,7 +1314,10 @@ def push_chain(
         console.print(promote_warning, style="yellow")
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
+
+    if not include_git_info:
+        include_git_info = user_config.settings.include_git_info
 
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
@@ -656,6 +1330,8 @@ def push_chain(
             only_generate_trusses=dryrun,
             remote=remote,
             environment=environment,
+            include_git_info=include_git_info,
+            working_dir=source.parent if source.is_file() else source.resolve(),
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
@@ -723,8 +1399,9 @@ def push_chain(
                     name,
                     remote,
                     console,
-                    error_console,
-                    show_stack_trace=not is_humanfriendly_log_level,
+                    _error_console,
+                    show_stack_trace=_get_required_option(ctx, "log")
+                    != _HUMANFRIENDLY_LOG_LEVEL,
                     included_chainlets=included_chainlets,
                 )
         else:
@@ -763,9 +1440,10 @@ def push_chain(
         "and refer to docs."
     ),
 )
-@log_level_option
-@error_handling
+@click.pass_context
+@common_options()
 def watch_chains(
+    ctx: click.Context,
     source: Path,
     entrypoint: Optional[str],
     name: Optional[str],
@@ -786,7 +1464,7 @@ def watch_chains(
     from truss_chains.deployment import deployment_client
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     if experimental_chainlet_names:
         included_chainlets = [x.strip() for x in experimental_chainlet_names.split(",")]
@@ -799,16 +1477,15 @@ def watch_chains(
         name,
         remote,
         console,
-        error_console,
-        show_stack_trace=not is_humanfriendly_log_level,
+        _error_console,
+        show_stack_trace=_get_required_option(ctx, "log") != _HUMANFRIENDLY_LOG_LEVEL,
         included_chainlets=included_chainlets,
     )
 
 
 @chains.command(name="init")  # type: ignore
 @click.argument("directory", type=Path, required=False)
-@log_level_option
-@error_handling
+@common_options()
 def init_chain(directory: Optional[Path]) -> None:
     """
     Initializes a chains project directory.
@@ -840,569 +1517,224 @@ def init_chain(directory: Optional[Path]) -> None:
         "Next steps:\n",
         f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
         "execution.\n"
-        f"🚢 Run [bold green]`truss chains deploy {filepath}`[/bold green] "
+        f"🚢 Run [bold green]`truss chains push {filepath}`[/bold green] "
         "to deploy the chain to Baseten.\n",
     )
 
 
-def _load_example_chainlet_code() -> str:
-    try:
-        from truss_chains.reference_code import reference_chainlet
-    # if the example is faulty, a validation error would be raised
-    except Exception as e:
-        raise Exception("Failed to load starter code. Please notify support.") from e
-
-    source = Path(reference_chainlet.__file__).read_text()
-    return source
+### Training Commands. #################################################################
 
 
-# End Chains Stuff #####################################################################
-
-
-# Start Training Stuff ####################################################################
 @click.group()
 def train():
     """Subcommands for truss train"""
 
 
+truss_cli.add_command(train)
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@log_level_option
-@error_handling
-def push_training_job(config: Path, remote: Optional[str]):
+@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@common_options()
+def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
     from truss_train import deployment, loader
 
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    with loader.import_target(config) as training_project:
-        training_resp = remote_provider.api.upsert_training_project(
-            training_project=training_project
+    with loader.import_training_project(config) as training_project:
+        with console.status("Creating training job...", spinner="dots"):
+            project_resp = remote_provider.api.upsert_training_project(
+                training_project=training_project
+            )
+
+            prepared_job = deployment.prepare_push(
+                remote_provider.api, config, training_project.job
+            )
+            job_resp = remote_provider.api.create_training_job(
+                project_id=project_resp["id"], job=prepared_job
+            )
+
+        console.print("✨ Training job successfully created!", style="green")
+        console.print(
+            f"🪵 View logs for your job via "
+            f"[cyan]`truss train logs --job-id {job_resp['id']} [--tail]`[/cyan]\n"
+            f"🔍 View metrics for your job via "
+            f"[cyan]`truss train metrics --job-id {job_resp['id']}`[/cyan]"
         )
 
-        prepared_job = deployment.prepare_push(
-            remote_provider.api, config, training_project.job
-        )
-        remote_provider.api.create_training_job(
-            project_id=training_resp["id"], job=prepared_job
-        )
+    if tail:
+        project_id, job_id = project_resp["id"], job_resp["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id, console)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log, console)
 
 
-# End Training Stuff #####################################################################
+@train.command(name="logs")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
+@common_options()
+def get_job_logs(
+    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+):
+    """Fetch logs for a training job"""
 
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
 
-def _extract_and_validate_model_identifier(
-    target_directory: str,
-    model_id: Optional[str],
-    model_version_id: Optional[str],
-    published: Optional[bool],
-) -> ModelIdentifier:
-    if published and (model_id or model_version_id):
-        raise click.UsageError(
-            "Cannot use --published with --model or --model-deployment."
-        )
-
-    model_identifier: ModelIdentifier
-    if model_version_id:
-        model_identifier = ModelVersionId(model_version_id)
-    elif model_id:
-        model_identifier = ModelId(model_id)
-    else:
-        tr = _get_truss_from_directory(target_directory=target_directory)
-        model_name = tr.spec.config.model_name
-        if not model_name:
-            raise click.UsageError("Truss config is missing a model name.")
-        model_identifier = ModelName(model_name)
-    return model_identifier
-
-
-def _extract_request_data(data: Optional[str], file: Optional[Path]):
-    try:
-        if data is not None:
-            return json.loads(data)
-        if file is not None:
-            return json.loads(Path(file).read_text())
-    except json.JSONDecodeError:
-        raise click.UsageError("Request data must be valid json.")
-
-    raise click.UsageError(
-        "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    project_id, job_id = train_cli.get_most_recent_job(
+        console, remote_provider, project_id, job_id
     )
 
+    if not tail:
+        logs = remote_provider.api.get_training_job_logs(project_id, job_id)
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log, console)
+    else:
+        log_watcher = TrainingLogWatcher(
+            remote_provider.api, project_id, job_id, console
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log, console)
 
-@truss_cli.command()
-@click.option("--target-directory", required=False, help="Directory of truss")
+
+@train.command(name="stop")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--all", is_flag=True, help="Stop all running jobs.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common_options()
+def stop_job(
+    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
+):
+    """Stop a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    if all:
+        train_cli.stop_all_jobs(console, remote_provider, project_id)
+    else:
+        project_id, job_id = train_cli.get_args_for_stop(
+            console, remote_provider, project_id, job_id
+        )
+        remote_provider.api.stop_training_job(project_id, job_id)
+        console.print("Training job stopped successfully.", style="green")
+
+
+@train.command(name="view")
 @click.option(
-    "--remote",
+    "--project-id", type=str, required=False, help="View training jobs for a project."
+)
+@click.option(
+    "--job-id", type=str, required=False, help="View a specific training job."
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common_options()
+def view_training(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
+    """List all training jobs for a project"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    train_cli.view_training_details(console, remote_provider, project_id, job_id)
+
+
+@train.command(name="metrics")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common_options()
+def get_job_metrics(
+    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+):
+    """Get metrics for a training job"""
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    train_cli.view_training_job_metrics(console, remote_provider, project_id, job_id)
+
+
+@train.command(name="deploy_checkpoints")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option(
+    "--config",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="path to a python file that defines a DeployCheckpointsConfig",
 )
 @click.option(
-    "-d",
-    "--data",
-    type=str,
-    required=False,
-    help="String formatted as json that represents request",
+    "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
-@click.option(
-    "-f",
-    "--file",
-    type=click.Path(exists=True),
-    help="Path to json file containing the request",
-)
-@click.option(
-    "--published",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help="Call the published model deployment.",
-)
-@click.option(
-    "--model-version",
-    type=str,
-    required=False,
-    help=(
-        "[DEPRECATED] Use --model-deployment instead, this will be  "
-        "removed in future release. ID of model deployment"
-    ),
-)
-@click.option(
-    "--model-deployment",
-    type=str,
-    required=False,
-    help="ID of model deployment to call",
-)
-@click.option("--model", type=str, required=False, help="ID of model to call")
-@log_level_option
-def predict(
-    target_directory: str,
-    remote: str,
-    data: Optional[str],
-    file: Optional[Path],
-    published: Optional[bool],
-    model_version: Optional[str],
-    model_deployment: Optional[str],
-    model: Optional[str],
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common_options()
+def deploy_checkpoints(
+    project_id: Optional[str],
+    job_id: Optional[str],
+    config: Optional[str],
+    remote: Optional[str],
+    dry_run: bool,
 ):
     """
-    Calls the packaged model
-
-    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-    REQUEST: String formatted as json that represents request
-
-    REQUEST_FILE: Path to json file containing the request
+    Deploy a checkpoint. Some early assumptions about this are:
+    - We are deploying a vllm model
+    - The checkpoint is a lora
+    - Base Model is coming from Huggingface
     """
+
     if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+        remote = remote_cli.inquire_remote_name()
 
-    remote_provider = RemoteFactory.create(remote=remote)
-
-    if model_version:
-        console.print(
-            "[DEPRECATED] --model-version is deprecated, "
-            "use --model-deployment instead.",
-            style="yellow",
-        )
-        model_deployment = model_version
-
-    model_identifier = _extract_and_validate_model_identifier(
-        target_directory,
-        model_id=model,
-        model_version_id=model_deployment,
-        published=published,
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+        console,
+        remote_provider,
+        train_cli.PrepareCheckpointArgs(
+            project_id=project_id, job_id=job_id, deploy_config_path=config
+        ),
     )
 
-    request_data = _extract_request_data(data=data, file=file)
-
-    service = remote_provider.get_service(
-        model_identifier=model_identifier, published=published
-    )
-
-    # Log deployment ID for Baseten models.
-    if isinstance(service, BasetenService):
-        console.print(
-            f"Calling predict on {'[cyan]development[/cyan] ' if service.is_draft else ''}"
-            f"deployment ID {service.model_version_id}..."
-        )
-
-    result = service.predict(request_data)
-    if inspect.isgenerator(result):
-        for chunk in result:
-            click.echo(chunk, nl=False)
-        return
-    console.print_json(data=result)
-
-
-@truss_cli.command()
-@click.argument("script", required=True)
-@click.argument("target_directory", required=False, default=os.getcwd())
-def run_python(script, target_directory):
-    if not Path(script).exists():
-        raise click.BadParameter(
-            f"File {script} does not exist. Please provide a valid file."
-        )
-
-    if not Path(target_directory).exists():
-        raise click.BadParameter(f"Directory {target_directory} does not exist.")
-
-    if not (Path(target_directory) / "config.yaml").exists():
-        raise click.BadParameter(
-            f"Directory {target_directory} does not contain a valid Truss."
-        )
-
-    tr = _get_truss_from_directory(target_directory=target_directory)
-    container = tr.run_python_script(Path(script))
-    for output in container.logs():
-        output_type = output[0]
-        output_content = output[1]
-
-        options = {}
-
-        if output_type == "stderr":
-            options["fg"] = "red"
-
-        click.secho(output_content.decode("utf-8", "replace"), nl=False, **options)
-    exit_code = container.wait()
-    sys.exit(exit_code)
-
-
-@truss_cli.command()
-@click.argument("target_directory", required=False, default=os.getcwd())
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to push to",
-)
-@click.option("--model-name", type=str, required=False, help="Name of the model")
-@click.option(
-    "--publish",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help=(
-        "Push the truss as a published deployment. If no production "
-        "deployment exists, promote the truss to production "
-        "after deploy completes."
-    ),
-)
-@click.option(
-    "--promote",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help=(
-        "Push the truss as a published deployment. Even if a production "
-        "deployment exists, promote the truss to production "
-        "after deploy completes."
-    ),
-)
-@click.option(
-    "--environment",
-    type=str,
-    required=False,
-    help=(
-        "Push the truss as a published deployment to the specified environment."
-        "If specified, --publish is implied and the supplied value of --promote will be ignored."
-    ),
-)
-@click.option(
-    "--preserve-previous-production-deployment",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help=(
-        "Preserve the previous production deployment's autoscaling setting. When "
-        "not specified, the previous production deployment will be updated to allow "
-        "it to scale to zero. Can only be use in combination with --promote option."
-    ),
-)
-@click.option(
-    "--trusted",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=None,
-    help="[DEPRECATED] All models are trusted by default.",
-)
-@click.option(
-    "--disable-truss-download",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help="Disable downloading the truss directory from the UI.",
-)
-@click.option(
-    "--deployment-name",
-    type=str,
-    required=False,
-    help=(
-        "Name of the deployment created by the push. Can only be "
-        "used in combination with `--publish` or `--promote`."
-    ),
-)
-@click.option(
-    "--wait/--no-wait",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help="Wait for the deployment to complete before returning.",
-)
-@click.option(
-    "--timeout-seconds",
-    type=int,
-    required=False,
-    help=(
-        "Maximum time to wait for deployment to complete in seconds. Without "
-        "specifying, the command will not complete until the deployment is complete."
-    ),
-)
-@log_level_option
-@error_handling
-def push(
-    target_directory: str,
-    remote: str,
-    model_name: str,
-    publish: bool = False,
-    trusted: Optional[bool] = None,
-    disable_truss_download: bool = False,
-    promote: bool = False,
-    preserve_previous_production_deployment: bool = False,
-    deployment_name: Optional[str] = None,
-    wait: bool = False,
-    timeout_seconds: Optional[int] = None,
-    environment: Optional[str] = None,
-) -> None:
-    """
-    Pushes a truss to a TrussRemote.
-
-    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-    """
-    if not remote:
-        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
-
-    remote_provider = RemoteFactory.create(remote=remote)
-    tr = _get_truss_from_directory(target_directory=target_directory)
-
-    model_name = model_name or tr.spec.config.model_name
-    if not model_name:
-        model_name = inquire_model_name()
-
-    if promote and environment:
-        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
-        console.print(promote_warning, style="yellow")
-    if promote and not environment:
-        environment = PRODUCTION_ENVIRONMENT_NAME
-
-    # Write model name to config if it's not already there
-    if model_name != tr.spec.config.model_name:
-        tr.spec.config.model_name = model_name
-        tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
-
-    # Log a warning if using --trusted.
-    if trusted is not None:
-        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
-        console.print(trusted_deprecation_notice, style="yellow")
-
-    # trt-llm engine builder checks
-    if uses_trt_llm_builder(tr):
-        if not publish:
-            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
-            console.print(live_reload_disabled_text, style="red")
-            sys.exit(1)
-        if is_missing_secrets_for_trt_llm_builder(tr):
-            missing_token_text = (
-                "`hf_access_token` must be provided in secrets to build a gated model. "
-                "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
-            )
-            console.print(missing_token_text, style="red")
-            sys.exit(1)
-        if memory_updated_for_trt_llm_builder(tr):
-            console.print(
-                f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
-            )
-        for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
-            if (
-                trt_llm_build_config.quantization_type
-                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-                and not trt_llm_build_config.num_builder_gpus
-            ):
-                fp8_and_num_builder_gpus_text = (
-                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
-                    "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
-                    "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
-                )
-                console.print(fp8_and_num_builder_gpus_text, style="yellow")
-
-    # TODO(Abu): This needs to be refactored to be more generic
-    service = remote_provider.push(
-        tr,
-        model_name=model_name,
-        publish=publish,
-        promote=promote,
-        preserve_previous_prod_deployment=preserve_previous_production_deployment,
-        deployment_name=deployment_name,
-        environment=environment,
-        disable_truss_download=disable_truss_download,
-        progress_bar=progress.Progress,
-    )  # type: ignore
-
-    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
-
-    if service.is_draft:
-        draft_model_text = """
-|---------------------------------------------------------------------------------------|
-| Your model is deploying as a development model. Development models allow you to  |
-| iterate quickly during the deployment process.                                        |
-|                                                                                       |
-| When you are ready to publish your deployed model as a new deployment,                |
-| pass `--publish` to the `truss push` command. To monitor changes to your model and    |
-| rapidly iterate, run the `truss watch` command.                                       |
-|                                                                                       |
-|---------------------------------------------------------------------------------------|
-"""
-
-        click.echo(draft_model_text)
-
-    if environment:
-        promotion_text = (
-            f"Your Truss has been deployed into the {environment} environment. After it successfully "
-            f"deploys, it will become the next {environment} deployment of your model."
-        )
-        console.print(promotion_text, style="green")
-
-    console.print(
-        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
-    )
-    if wait:
-        start_time = time.time()
-        with console.status("[bold green]Deploying...") as status:
-            try:
-                # Poll for the deployment status until we have reached. Either ACTIVE,
-                # or a non-deploying status (in which case the deployment has failed).
-                for deployment_status in service.poll_deployment_status():
-                    if (
-                        timeout_seconds is not None
-                        and time.time() - start_time > timeout_seconds
-                    ):
-                        console.print("Deployment timed out.", style="red")
-                        sys.exit(1)
-
-                    status.update(
-                        f"[bold green]Deploying...Current Status: {deployment_status}"
-                    )
-
-                    if deployment_status == ACTIVE_STATUS:
-                        console.print("Deployment succeeded.", style="bold green")
-                        return
-
-                    if deployment_status not in DEPLOYING_STATUSES:
-                        console.print(
-                            f"Deployment failed with status {deployment_status}.",
-                            style="red",
-                        )
-                        sys.exit(1)
-
-            except RemoteNetworkError:
-                console.print("Deployment failed: Could not reach remote.", style="red")
-                sys.exit(1)
-
-
-@truss_cli.command()
-def configure():
-    # Read the original file content
-    with open(USER_TRUSSRC_PATH, "r") as f:
-        original_content = f.read()
-
-    # Open the editor and get the modified content
-    edited_content = click.edit(original_content)
-
-    # If the content was modified, save it
-    if edited_content is not None and edited_content != original_content:
-        with open(USER_TRUSSRC_PATH, "w") as f:
-            f.write(edited_content)
-            click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
+    ctx = click.Context(push, obj={})
+    ctx.params = {
+        "target_directory": prepare_checkpoint_result.truss_directory,
+        "remote": remote,
+        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
+        "publish": True,
+        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
+    }
+    if dry_run:
+        console.print("--dry-run flag provided, not deploying", style="yellow")
     else:
-        click.echo("No changes made.")
+        push.invoke(ctx)
 
+    train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
 
-@container.command()  # type: ignore
-@click.argument("target_directory", required=False)
-@error_handling
-def logs(target_directory) -> None:
-    """
-    Get logs in a container is running for a truss
-
-    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-    """
-    for log in _get_truss_from_directory(
-        target_directory=target_directory
-    ).serving_container_logs():
-        click.echo(log)
-
-
-@container.command()  # type: ignore
-@click.argument("target_directory", required=False)
-def kill(target_directory: str) -> None:
-    """
-    Kills containers related to truss.
-
-    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-    """
-    tr = _get_truss_from_directory(target_directory=target_directory)
-    tr.kill_container()
-
-
-@container.command()  # type: ignore
-def kill_all() -> None:
-    """Kills all truss containers that are not manually persisted."""
-    docker.kill_all()
-
-
-@truss_cli.command()
-@error_handling
-def cleanup() -> None:
-    """
-    Clean up truss data.
-
-    Truss creates temporary directories for various operations
-    such as for building docker images. This command clears
-    that data to free up disk space.
-    """
-    _cleanup()
-
-
-def _get_truss_from_directory(target_directory: Optional[str] = None):
-    """Gets Truss from directory. If none, use the current directory"""
-    if target_directory is None:
-        target_directory = os.getcwd()
-    if not os.path.isfile(target_directory):
-        return load(target_directory)
-    # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains.deployment import code_gen
-
-    truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
-    return load(truss_dir)
-
-
-truss_cli.add_command(container)
-truss_cli.add_command(image)
-truss_cli.add_command(chains)
-truss_cli.add_command(train)
 
 if __name__ == "__main__":
     truss_cli()

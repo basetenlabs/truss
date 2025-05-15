@@ -310,7 +310,6 @@ def custom_model_external_data_access_tuple_fixture_gpu(tmp_path: Path):
             h.add_external_data_item(
                 url=url_with_get_params, local_data_path="test.txt"
             )
-            h.enable_gpu()
 
         yield (
             _custom_model_from_code(
@@ -375,7 +374,6 @@ def no_params_init_custom_model(tmp_path):
 def custom_model_trt_llm(tmp_path):
     def modify_handle(h: TrussHandle):
         with _modify_yaml(h.spec.config_path) as content:
-            h.enable_gpu()
             content["trt_llm"] = {
                 "build": {
                     "base_model": "llama",
@@ -393,7 +391,7 @@ def custom_model_trt_llm(tmp_path):
                     "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT.value,
                 },
             }
-            content["resources"]["accelerator"] = "H100:1"
+            content["resources"] = {"accelerator": "H100:1"}
 
     yield _custom_model_from_code(
         tmp_path,
@@ -529,7 +527,6 @@ def custom_model_truss_dir_with_pre_and_post_description(tmp_path):
 def custom_model_truss_dir_for_gpu(tmp_path):
     dir_path = tmp_path / "custom_truss"
     th = TrussHandle(init_directory(dir_path))
-    th.enable_gpu()
     th.spec.model_class_filepath.write_text(CUSTOM_MODEL_CODE_FOR_GPU_TESTING)
     yield dir_path
 
@@ -710,27 +707,19 @@ def _modify_yaml(yaml_path: Path):
         content = yaml.safe_load(yaml_file)
     yield content
     with yaml_path.open("w") as yaml_file:
-        yaml.dump(content, yaml_file)
+        yaml.safe_dump(content, yaml_file)
 
 
 @pytest.fixture
 def default_config() -> Dict[str, Any]:
     return {
-        "build_commands": [],
-        "environment_variables": {},
-        "external_package_dirs": [],
-        "model_metadata": {},
-        "model_name": None,
         "python_version": "py39",
-        "requirements": [],
         "resources": {
             "accelerator": None,
             "cpu": "1",
             "memory": "2Gi",
             "use_gpu": False,
         },
-        "secrets": {},
-        "system_packages": [],
     }
 
 
@@ -758,6 +747,26 @@ def trtllm_config(default_config) -> Dict[str, Any]:
 
 
 @pytest.fixture
+def trtllm_config_encoder(default_config) -> Dict[str, Any]:
+    trtllm_config = default_config
+    trtllm_config["resources"] = {
+        "accelerator": Accelerator.L4.value,
+        "cpu": "1",
+        "memory": "24Gi",
+        "use_gpu": True,
+        "node_count": 1,
+    }
+    trtllm_config["trt_llm"] = {
+        "build": {
+            "base_model": "encoder",
+            "checkpoint_repository": {"source": "HF", "repo": "BAAI/bge-m3"},
+        },
+        "runtime": {},
+    }
+    return trtllm_config
+
+
+@pytest.fixture
 def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
     trtllm_config = default_config
     trtllm_config["resources"] = {
@@ -771,45 +780,16 @@ def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
             "base_model": "llama",
             "max_seq_len": 2048,
             "max_batch_size": 512,
-            # start deprecated fields
-            "kv_cache_free_gpu_mem_fraction": 0.1,
-            "enable_chunked_context": True,
-            "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
-            "request_default_max_tokens": 10,
-            "total_token_limit": 50,
-            # end deprecated fields
-            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
-            "gather_all_token_logits": False,
-        }
-    }
-    return trtllm_config
-
-
-@pytest.fixture
-def deprecated_trtllm_config_with_runtime_existing(default_config) -> Dict[str, Any]:
-    trtllm_config = default_config
-    trtllm_config["resources"] = {
-        "accelerator": Accelerator.L4.value,
-        "cpu": "1",
-        "memory": "24Gi",
-        "use_gpu": True,
-    }
-    trtllm_config["trt_llm"] = {
-        "build": {
-            "base_model": "llama",
-            "max_seq_len": 2048,
-            "max_batch_size": 512,
-            # start deprecated fields
-            "kv_cache_free_gpu_mem_fraction": 0.1,
-            "enable_chunked_context": True,
-            "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
-            "request_default_max_tokens": 10,
-            "total_token_limit": 50,
-            # end deprecated fields
             "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "gather_all_token_logits": False,
         },
-        "runtime": {"total_token_limit": 100},
+        "runtime": {
+            "total_token_limit": 100,
+            "kv_cache_free_gpu_mem_fraction": 0.1,
+            "enable_chunked_context": True,
+            "batch_scheduler_policy": "max_utilization",
+            "request_default_max_tokens": 10,
+        },
     }
     return trtllm_config
 

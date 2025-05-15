@@ -23,7 +23,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     kill_all_with_retries,
 )
 from truss.truss_handle.patch.custom_types import PatchRequest
-from truss.truss_handle.truss_handle import TrussHandle, wait_for_truss
+from truss.truss_handle.truss_handle import DockerURLs, TrussHandle, wait_for_truss
 from truss.util.docker import Docker, DockerStates
 
 
@@ -108,6 +108,7 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
         ("python:3.8", "/usr/local/bin/python3", False),
         ("python:3.10", "/usr/local/bin/python3", False),
         ("python:3.11", "/usr/local/bin/python3", False),
+        ("python:3.13", "/usr/local/bin/python3", False),
         ("python:alpine", "/usr/local/bin/python3", True),
         ("python:2.7-slim", "/usr/local/bin/python", True),
         ("python:3.7-slim", "/usr/local/bin/python3", True),
@@ -133,7 +134,7 @@ def test_docker_predict_custom_base_image(custom_model_truss_dir_with_pre_and_po
         "wallies/python-cuda:3.10-cuda11.7-runtime", "/usr/local/bin/python"
     )
     with ensure_kill_all():
-        result = th.docker_predict([1, 2])
+        result = th.docker_predict([1, 2], local_port=None)
         assert result == {"predictions": [4, 5]}
 
 
@@ -160,7 +161,7 @@ def test_build_docker_image_control_gpu(custom_model_truss_dir_for_gpu, tmp_path
 def test_docker_run(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-run-tag:0.0.1"
-    container = th.docker_run(tag=tag)
+    container = th.docker_run(tag=tag, local_port=None)
     try:
         assert _container_exists(container)
     finally:
@@ -172,7 +173,7 @@ def test_docker_run(custom_model_truss_dir_with_pre_and_post):
 def test_docker_run_gpu(custom_model_truss_dir_for_gpu):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-docker-run-gpu-tag:0.0.1"
-    container = th.docker_run(tag=tag)
+    container = th.docker_run(tag=tag, local_port=None)
     try:
         assert _container_exists(container)
     finally:
@@ -182,7 +183,7 @@ def test_docker_run_gpu(custom_model_truss_dir_for_gpu):
 @pytest.mark.integration
 def test_docker_run_without_tag(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    container = th.docker_run()
+    container = th.docker_run(local_port=None)
     try:
         assert _container_exists(container)
     finally:
@@ -194,9 +195,9 @@ def get_docker_containers_from_labels(custom_model_truss_dir_with_pre_and_post):
     with ensure_kill_all():
         t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
         assert len(t1.get_serving_docker_containers_from_labels()) == 0
-        t1.docker_run()
+        t1.docker_run(local_port=None)
         assert len(t1.get_serving_docker_containers_from_labels()) == 1
-        t1.docker_run(local_port=3000)
+        t1.docker_run(local_port=None)
         assert len(t1.get_serving_docker_containers_from_labels()) == 2
         t1.kill_container()
         assert len(t1.get_serving_docker_containers_from_labels()) == 0
@@ -216,7 +217,7 @@ def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1, 2], tag=tag)
+        result = th.docker_predict([1, 2], tag=tag, local_port=None)
         assert result == {"predictions": [4, 5]}
 
 
@@ -227,7 +228,7 @@ def test_docker_predict_model_with_external_packages(
     th = TrussHandle(custom_model_with_external_package)
     tag = "test-docker-predict-ext-pkg-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1, 2], tag=tag)
+        result = th.docker_predict([1, 2], tag=tag, local_port=None)
         assert result == [1, 1]
 
 
@@ -238,7 +239,7 @@ def test_docker_predict_with_bundled_packages(
     th = TrussHandle(custom_model_truss_dir_with_bundled_packages)
     tag = "test-docker-predict-bundled-packages-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1, 2], tag=tag)
+        result = th.docker_predict([1, 2], tag=tag, local_port=None)
         assert result == {"predictions": [1]}
 
 
@@ -247,8 +248,8 @@ def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
-        r1 = th.docker_predict([1, 2], tag=tag)
-        r2 = th.docker_predict([3, 4], tag=tag)
+        r1 = th.docker_predict([1, 2], tag=tag, local_port=None)
+        r2 = th.docker_predict([3, 4], tag=tag, local_port=None)
         assert r1 == {"predictions": [4, 5]}
         assert r2 == {"predictions": [6, 7]}
         assert len(th.get_serving_docker_containers_from_labels()) == 1
@@ -259,9 +260,9 @@ def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_po
     t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     t2 = TrussHandle(custom_model_truss_dir)
     with ensure_kill_all():
-        t1.docker_run()
+        t1.docker_run(local_port=None)
         assert len(t1.get_serving_docker_containers_from_labels()) == 1
-        t2.docker_run(local_port=3000)
+        t2.docker_run(local_port=None)
         assert len(t2.get_serving_docker_containers_from_labels()) == 1
         kill_all_with_retries()
         assert len(t1.get_serving_docker_containers_from_labels()) == 0
@@ -274,7 +275,7 @@ def test_docker_predict_gpu(custom_model_truss_dir_for_gpu):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-docker-predict-gpu-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result["predictions"][0]["cuda_version"].startswith("11")
 
 
@@ -285,7 +286,9 @@ def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
     LocalConfigHandler.set_secret("secret_name", "secret_value")
     with ensure_kill_all():
         try:
-            result = th.docker_predict({"instances": ["secret_name"]}, tag=tag)
+            result = th.docker_predict(
+                {"instances": ["secret_name"]}, tag=tag, local_port=None
+            )
             assert result["predictions"][0] == "secret_value"
         finally:
             LocalConfigHandler.remove_secret("secret_name")
@@ -296,7 +299,7 @@ def test_docker_no_preprocess_custom_model(no_preprocess_custom_model):
     th = TrussHandle(no_preprocess_custom_model)
     tag = "test-docker-no-preprocess-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result["predictions"][0] == 2
 
 
@@ -305,7 +308,7 @@ def test_docker_long_load(long_load_model):
     th = TrussHandle(long_load_model)
     tag = "test-docker-long-load-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result["predictions"][0] == 1
 
 
@@ -321,7 +324,7 @@ def test_docker_no_postprocess_custom_model(no_postprocess_custom_model):
     th = TrussHandle(no_postprocess_custom_model)
     tag = "test-docker-no-postprocess-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result["predictions"][0] == 2
 
 
@@ -337,7 +340,7 @@ def test_docker_no_load_custom_model(no_load_custom_model):
     th = TrussHandle(no_load_custom_model)
     tag = "test-docker-no-load-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result["predictions"][0] == 1
 
 
@@ -353,7 +356,7 @@ def test_docker_no_params_init_custom_model(no_params_init_custom_model):
     th = TrussHandle(no_params_init_custom_model)
     tag = "test-docker-no-params-init-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result["predictions"][0] == 1
 
 
@@ -370,7 +373,7 @@ def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post):
     th.add_python_requirement("theano")
     th.add_python_requirement("scipy")
     tag = "test-custom-python-req-tag:0.0.1"
-    container = th.docker_run(tag=tag)
+    container = th.docker_run(tag=tag, local_port=None)
     try:
         verify_python_requirement_installed_on_container(container, "theano")
         verify_python_requirement_installed_on_container(container, "scipy")
@@ -384,18 +387,12 @@ def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
     th.add_system_package("jq")
     th.add_system_package("fzf")
     tag = "test-custom-system-package-tag:0.0.1"
-    container = th.docker_run(tag=tag)
+    container = th.docker_run(tag=tag, local_port=None)
     try:
         verify_system_package_installed_on_container(container, "jq")
         verify_system_package_installed_on_container(container, "fzf")
     finally:
         Docker.client().kill(container)
-
-
-def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
-    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.enable_gpu()
-    assert th.spec.config.resources.use_gpu
 
 
 @pytest.mark.parametrize(
@@ -443,7 +440,7 @@ def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.add_environment_variable("test_env", "test_value")
     tag = "test-add-env-var-tag:0.0.1"
-    container = th.docker_run(tag=tag)
+    container = th.docker_run(tag=tag, local_port=None)
     try:
         verify_environment_variable_on_container(container, "test_env", "test_value")
     finally:
@@ -455,7 +452,7 @@ def test_build_commands(test_data_path):
     truss_dir = test_data_path / "test_build_commands"
     tr = TrussHandle(truss_dir)
     with ensure_kill_all():
-        r1 = tr.docker_predict([1, 2])
+        r1 = tr.docker_predict([1, 2], local_port=None)
         assert r1 == {"predictions": [1, 2]}
 
 
@@ -464,7 +461,7 @@ def test_build_commands_failure(test_data_path):
     truss_dir = test_data_path / "test_build_commands_failure"
     tr = TrussHandle(truss_dir)
     try:
-        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        tr.docker_run(local_port=None, detach=True, wait_for_server_ready=True)
     except DockerException as exc:
         assert "It returned with code 1" in str(exc)
 
@@ -551,7 +548,7 @@ def test_model_without_pre_post(custom_model_truss_dir):
 def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     with ensure_kill_all():
-        resp = th.docker_predict([1, 2, 3, 4])
+        resp = th.docker_predict([1, 2, 3, 4], local_port=None)
         assert resp == [1, 1, 1, 1]
 
 
@@ -560,7 +557,7 @@ def test_control_truss_apply_patch(custom_model_control):
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result[0] == 1
 
         running_hash = th.truss_hash_on_serving_container()
@@ -583,7 +580,7 @@ class Model:
         )
 
         th.patch_container(patch_request)
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result[0] == 2
 
 
@@ -592,12 +589,12 @@ def test_regular_truss_local_update_flow(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     tag = "test-docker-custom-model-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result[0] == 1
         orig_num_truss_images = len(th.get_all_docker_images())
 
         # No new docker images on second predict
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert orig_num_truss_images == len(th.get_all_docker_images())
 
         with (custom_model_truss_dir / "model" / "model.py").open(
@@ -610,7 +607,7 @@ class Model:
         return [2 for i in model_input]
 """
             )
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result[0] == 2
         # A new image should have been created
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
@@ -634,19 +631,25 @@ def test_truss_hash_caching_based_on_max_mod_time(
     directory_content_patcher.call_count == 2
 
 
+@patch("truss.truss_handle.truss_handle.get_docker_urls")
 @patch("truss.truss_handle.truss_handle.get_container_state")
-def test_container_oom_caught_during_waiting(container_state_mock):
+def test_container_oom_caught_during_waiting(
+    container_state_mock, get_docker_urls_mock
+):
     container_state_mock.return_value = DockerStates.OOMKILLED
+    get_docker_urls_mock.return_value = DockerURLs("http://localhost:8080")
     with pytest.raises(ContainerIsDownError):
-        wait_for_truss(url="localhost:8000", container=MagicMock())
+        wait_for_truss(container=MagicMock())
 
 
+@patch("truss.truss_handle.truss_handle.get_docker_urls")
 @patch("truss.truss_handle.truss_handle.get_container_state")
 @pytest.mark.integration
-def test_container_stuck_in_created(container_state_mock):
+def test_container_stuck_in_created(container_state_mock, get_docker_urls_mock):
     container_state_mock.return_value = DockerStates.CREATED
+    get_docker_urls_mock.return_value = DockerURLs("http://localhost:8080")
     with pytest.raises(ContainerIsDownError):
-        wait_for_truss(url="localhost:8000", container=MagicMock())
+        wait_for_truss(container=MagicMock())
 
 
 @pytest.mark.integration
@@ -654,7 +657,7 @@ def test_control_truss_local_update_that_crashes_inference_server(custom_model_c
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result[0] == 1
 
         bad_model_code = """
@@ -665,10 +668,13 @@ class Model:
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(bad_model_code)
         with pytest.raises(RetryError) as exc_info:
-            th.docker_predict([1], tag=tag)
+            th.docker_predict([1], tag=tag, local_port=None)
         resp = exc_info.value.last_attempt.result()
         assert resp.status_code == 503
-        assert "Model load failed" in resp.text
+        assert (
+            "Model load failed" in resp.text
+            or "It appears your model has stopped running" in resp.text
+        )
 
         # Should be able to fix code after
         good_model_code = """
@@ -678,7 +684,7 @@ class Model:
 """
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(good_model_code)
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result[0] == 2
 
 
@@ -695,7 +701,9 @@ def test_patch_ping_flow(
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag, patch_ping_url=patch_ping_url)
+        result = th.docker_predict(
+            [1], tag=tag, patch_ping_url=patch_ping_url, local_port=None
+        )
         assert result == [1]
 
         # Make sure the patch ping url was actually hit
@@ -712,7 +720,7 @@ def test_handle_if_container_dne(custom_model_truss_dir):
         pytest.raises(ContainerNotFoundError),
     ):
         truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
-        truss_handle.docker_run(local_port=3000)
+        truss_handle.docker_run(local_port=None)
     kill_all_with_retries()
 
 
@@ -725,7 +733,7 @@ def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
         pytest.raises(ContainerNotFoundError),
     ):
         truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
-        truss_handle.docker_predict([1], local_port=3000)
+        truss_handle.docker_predict([1], local_port=None)
     kill_all_with_retries()
 
 
@@ -735,7 +743,7 @@ def test_external_data(custom_model_external_data_access_tuple_fixture):
     th = TrussHandle(truss_dir)
     tag = "test-external-data-access-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([], tag=tag, network="host")
+        result = th.docker_predict([], tag=tag, network="host", local_port=None)
         assert result == expected_content
 
 
@@ -745,7 +753,7 @@ def test_external_data_gpu(custom_model_external_data_access_tuple_fixture_gpu):
     th = TrussHandle(truss_dir)
     tag = "test-external-data-access-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([], tag=tag, network="host")
+        result = th.docker_predict([], tag=tag, network="host", local_port=None)
         assert result == expected_content
 
 
@@ -796,21 +804,13 @@ def generate_default_config():
     # The test fixture varies with host version.
     python_version = map_local_to_supported_python_version()
     config = {
-        "build_commands": [],
-        "environment_variables": {},
-        "external_package_dirs": [],
-        "model_metadata": {},
-        "model_name": None,
         "python_version": python_version,
-        "requirements": [],
         "resources": {
             "accelerator": None,
             "cpu": "1",
             "memory": "2Gi",
             "use_gpu": False,
         },
-        "secrets": {},
-        "system_packages": [],
     }
     return config
 

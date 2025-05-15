@@ -1,12 +1,16 @@
-ARG PYVERSION={{config.python_version}}
-FROM {{base_image_name_and_tag}} AS truss_server
-
+ARG PYVERSION={{ config.python_version }}
+FROM {{ base_image_name_and_tag }} AS truss_server
 ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == {{supported_python_major_version_in_custom_base_image}} and sys.version_info.minor >={{min_supported_python_minor_version_in_custom_base_image}} and sys.version_info.minor <={{max_supported_python_minor_version_in_custom_base_image}} else sys.exit(1)" \
-    || { echo "ERROR: Supplied base image does not have {{min_supported_python_version_in_custom_base_image}} <= python <= {{max_supported_python_version_in_custom_base_image}}"; exit 1; }
+RUN $PYTHON_EXECUTABLE -c "import sys; \
+    sys.exit(0) \
+    if sys.version_info.major == {{ supported_python_major_version_in_custom_base_image }} \
+    and sys.version_info.minor >= {{ min_supported_python_minor_version_in_custom_base_image }} \
+    and sys.version_info.minor <= {{ max_supported_python_minor_version_in_custom_base_image }} \
+    else sys.exit(1)" \
+    || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
 {%- if not config.docker_server %}
@@ -22,15 +26,15 @@ RUN pip install --upgrade pip --no-cache-dir \
 # HuggingFace pytorch gpu support needs mkl
 RUN pip install mkl
     {% endif %}
-{% endif%}
+{% endif %}
 
 {% block post_base %}
 {% endblock %}
 
 {% block install_system_requirements %}
     {%- if should_install_system_requirements %}
-COPY ./{{system_packages_filename}} {{system_packages_filename}}
-RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{system_packages_filename}}) \
+COPY ./{{ system_packages_filename }} {{ system_packages_filename }}
+RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ system_packages_filename }}) \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
@@ -40,13 +44,13 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{syst
 
 {% block install_requirements %}
     {%- if should_install_user_requirements_file %}
-COPY ./{{user_supplied_requirements_filename}} {{user_supplied_requirements_filename}}
-RUN pip install -r {{user_supplied_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
+COPY ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
+RUN pip install -r {{ user_supplied_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
     {%- if should_install_requirements %}
-COPY ./{{config_requirements_filename}} {{config_requirements_filename}}
-RUN pip install -r {{config_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
-    {%- endif %}
+COPY ./{{ config_requirements_filename }} {{ config_requirements_filename }}
+RUN pip install -r {{ config_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
+{%- endif %}
 {% endblock %}
 
 
@@ -62,8 +66,8 @@ WORKDIR $APP_HOME
 
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY ./{{config.bundled_packages_dir}} /packages
-    {%- endif %}
+COPY ./{{ config.bundled_packages_dir }} /packages
+{%- endif %}
 {% endblock %}
 
 

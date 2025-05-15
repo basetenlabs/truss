@@ -11,9 +11,6 @@ from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.truss_handle import TrussHandle
 
 DEFAULT_CONFIG = """model_name: test-truss"""
-TRUSS_SERVER_ADDR = "http://localhost:8090"
-INFERENCE_URL = f"{TRUSS_SERVER_ADDR}/v1/models/model:predict"
-SCHEMA_URL = f"{TRUSS_SERVER_ADDR}/v1/models/model/schema"
 
 
 @pytest.mark.integration
@@ -23,12 +20,12 @@ def test_truss_with_no_annotations(test_data_path):
     tr = TrussHandle(truss_dir)
 
     with ensure_kill_all():
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        response = requests.post(urls.predict_url, json={"prompt": "value"})
         assert response.json() == {"prompt": "value"}
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
         assert schema_response.status_code == 404
 
         assert schema_response.json()["error"] == "No schema found"
@@ -50,12 +47,12 @@ class Model:
         create_truss(truss_dir, DEFAULT_CONFIG, truss_non_pydantic_annotations)
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        response = requests.post(urls.predict_url, json={"prompt": "value"})
         assert response.json() == ["hello"]
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
         assert schema_response.status_code == 404
         assert schema_response.json()["error"] == "No schema found"
         assert schema_response.headers["x-baseten-error-source"] == "04"
@@ -79,12 +76,12 @@ class Model:
         create_truss(truss_dir, DEFAULT_CONFIG, truss_long_load)
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
 
         # Wait a bit for the server to start
         time.sleep(2)
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
 
         # If the load has not successfully completed,
         # we return a 503 instead of 404, so that clients
@@ -99,24 +96,24 @@ def test_truss_with_annotated_inputs_outputs(test_data_path):
     tr = TrussHandle(truss_dir)
 
     with ensure_kill_all():
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
         # Valid JSON input.
         json_input = {"prompt": "value"}
-        response = requests.post(INFERENCE_URL, json=json_input)
+        response = requests.post(urls.predict_url, json=json_input)
         assert response.json() == {"generated_text": "value"}
 
         # Valid binary input.
         byte_input = serialization.truss_msgpack_serialize(json_input)
         print(byte_input)
         response = requests.post(
-            INFERENCE_URL,
+            urls.predict_url,
             data=byte_input,
             headers={"Content-Type": "application/octet-stream"},
         )
         assert response.content == b"\x81\xaegenerated_text\xa5value"
 
         # An invalid input
-        response = requests.post(INFERENCE_URL, json={"bad_key": "value"})
+        response = requests.post(urls.predict_url, json={"bad_key": "value"})
         assert response.status_code == 400
         assert "error" in response.json()
         assert (
@@ -127,7 +124,7 @@ def test_truss_with_annotated_inputs_outputs(test_data_path):
         assert response.headers["x-baseten-error-code"] == "700"
 
         # Schema response.
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
         schema = schema_response.json()
         assert schema["input_schema"] == {
             "properties": {"prompt": {"title": "Prompt", "type": "string"}},
@@ -169,12 +166,12 @@ class Model:
         create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        container, urls = tr.docker_run_for_test()
+        response = requests.post(urls.predict_url, json={"prompt": "value"})
 
         assert response.json() == {"generated_text": "value"}
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
 
         schema = schema_response.json()
 
@@ -221,13 +218,13 @@ class Model:
 
         create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        response = requests.post(urls.predict_url, json={"prompt": "value"})
 
         assert response.content == b"01"
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
 
         schema = schema_response.json()
 
@@ -266,13 +263,13 @@ class Model:
 
         create_truss(truss_dir, DEFAULT_CONFIG, truss_contents)
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        response = requests.post(urls.predict_url, json={"prompt": "value"})
 
         assert response.json() == {"generated_text": "value"}
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
 
         schema = schema_response.json()
 
@@ -317,13 +314,13 @@ class Model:
 
         create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
-        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        response = requests.post(urls.predict_url, json={"prompt": "value"})
 
         assert response.content == b"01"
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
 
         schema = schema_response.json()
 
@@ -368,23 +365,23 @@ class Model:
         create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         response = requests.post(
-            INFERENCE_URL, json={"prompt": "value", "stream": False}
+            urls.predict_url, json={"prompt": "value", "stream": False}
         )
 
         assert response.json() == {"generated_text": "value"}
         assert response.status_code == 200
 
         response = requests.post(
-            INFERENCE_URL, json={"prompt": "value", "stream": True}
+            urls.predict_url, json={"prompt": "value", "stream": True}
         )
 
         assert response.status_code == 200
         assert response.content == b"01"
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
 
         schema = schema_response.json()
 
@@ -437,16 +434,16 @@ class Model:
         create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container, urls = tr.docker_run_for_test()
 
         response = requests.post(
-            INFERENCE_URL, json={"prompt": "value", "stream": False}
+            urls.predict_url, json={"prompt": "value", "stream": False}
         )
 
         assert response.json() == {"generated_text": "value"}
         assert response.status_code == 200
 
-        schema_response = requests.get(SCHEMA_URL)
+        schema_response = requests.get(urls.schema_url)
 
         schema = schema_response.json()
 

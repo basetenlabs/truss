@@ -7,6 +7,7 @@ import pytest
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.errors import ValidationError
 from truss.remote.baseten import core
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import create_truss_service
 from truss.remote.baseten.error import ApiError
@@ -97,6 +98,7 @@ def test_create_truss_service_handles_eligible_environment_values(environment):
         "model_name",
         "s3_key",
         "config",
+        b10_types.TrussUserEnv.collect(),
         preserve_previous_prod_deployment=False,
         is_draft=False,
         model_id=None,
@@ -114,6 +116,7 @@ def test_create_truss_services_handles_is_draft(model_id):
     return_value = {
         "id": "model_version_id",
         "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
     }
     api.create_development_model_from_truss.return_value = return_value
     version_handle = create_truss_service(
@@ -121,6 +124,7 @@ def test_create_truss_services_handles_is_draft(model_id):
         "model_name",
         "s3_key",
         "config",
+        b10_types.TrussUserEnv.collect(),
         preserve_previous_prod_deployment=False,
         is_draft=True,
         model_id=model_id,
@@ -156,6 +160,7 @@ def test_create_truss_service_handles_existing_model(inputs):
     return_value = {
         "id": "model_version_id",
         "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
     }
     api.create_model_version_from_truss.return_value = return_value
     version_handle = create_truss_service(
@@ -163,6 +168,7 @@ def test_create_truss_service_handles_existing_model(inputs):
         "model_name",
         "s3_key",
         "config",
+        b10_types.TrussUserEnv.collect(),
         is_draft=False,
         model_id="model_id",
         **inputs,
@@ -194,6 +200,7 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
         "model_name",
         "s3_key",
         "config",
+        b10_types.TrussUserEnv.collect(),
         preserve_previous_prod_deployment=False,
         is_draft=is_draft,
         model_id=None,
@@ -228,13 +235,13 @@ def test_validate_truss_config():
     api = MagicMock()
     api.validate_truss.side_effect = mock_validate_truss
 
-    assert core.validate_truss_config(api, {}) is None
+    assert core.validate_truss_config_against_backend(api, {}) is None
     with pytest.raises(
         ValidationError, match="Validation failed with the following errors:\n  error"
     ):
-        core.validate_truss_config(api, {"hi": "hi"})
+        core.validate_truss_config_against_backend(api, {"hi": "hi"})
     with pytest.raises(
         ValidationError,
         match="Validation failed with the following errors:\n  error\n  and another one",
     ):
-        core.validate_truss_config(api, {"should_error": "hi"})
+        core.validate_truss_config_against_backend(api, {"should_error": "hi"})

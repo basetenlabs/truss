@@ -2,6 +2,16 @@ name: Build Context Builder Image
 
 on:
   workflow_dispatch:
+    inputs:
+      target_platforms:
+        description: 'Select target platforms. NOTE: Only change default if performing local testing.'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: choice
+        options:
+          - linux/amd64
+          - linux/arm64
+          - linux/amd64,linux/arm64
 
 jobs:
   detect-version:
@@ -50,7 +60,7 @@ jobs:
 
     - name: Docker meta
       id: meta
-      uses: docker/metadata-action@v4
+      uses: docker/metadata-action@v5
       with:
         images: baseten/truss-context-builder
 
@@ -63,3 +73,4 @@ jobs:
         push: true
         tags: ${{ steps.generate_image_tag.outputs.tag }}
         labels: ${{ steps.meta.outputs.labels }}
+        platforms: ${{ github.event.inputs.target_platforms }}

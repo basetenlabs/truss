@@ -3,25 +3,31 @@ import tempfile
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
 
+import packaging.version
+import pydantic
 import pytest
 import yaml
 
-from truss.base.custom_types import ModelFrameworkType
+from truss.base import constants
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
-    DEFAULT_USE_GPU,
     Accelerator,
     AcceleratorSpec,
     BaseImage,
+    Build,
     CacheInternal,
     DockerAuthSettings,
     DockerAuthType,
+    HTTPOptions,
     ModelCache,
     ModelRepo,
     Resources,
+    Runtime,
+    TransportKind,
     TrussConfig,
+    WebsocketOptions,
     _map_to_supported_python_version,
 )
 from truss.truss_handle.truss_handle import TrussHandle
@@ -36,7 +42,7 @@ from truss.truss_handle.truss_handle import TrussHandle
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
-                "use_gpu": DEFAULT_USE_GPU,
+                "use_gpu": False,
                 "accelerator": None,
             },
         ),
@@ -46,13 +52,15 @@ from truss.truss_handle.truss_handle import TrussHandle
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
-                "use_gpu": DEFAULT_USE_GPU,
+                "use_gpu": False,
                 "accelerator": None,
             },
         ),
         (
             {"accelerator": "V100"},
-            Resources(accelerator=AcceleratorSpec(Accelerator.V100, 1), use_gpu=True),
+            Resources(
+                accelerator=AcceleratorSpec(accelerator=Accelerator.V100, count=1)
+            ),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -62,7 +70,7 @@ from truss.truss_handle.truss_handle import TrussHandle
         ),
         (
             {"accelerator": "T4:1"},
-            Resources(accelerator=AcceleratorSpec(Accelerator.T4, 1), use_gpu=True),
+            Resources(accelerator=AcceleratorSpec(accelerator=Accelerator.T4, count=1)),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -72,7 +80,9 @@ from truss.truss_handle.truss_handle import TrussHandle
         ),
         (
             {"accelerator": "A10G:4"},
-            Resources(accelerator=AcceleratorSpec(Accelerator.A10G, 4), use_gpu=True),
+            Resources(
+                accelerator=AcceleratorSpec(accelerator=Accelerator.A10G, count=4)
+            ),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -94,25 +104,72 @@ from truss.truss_handle.truss_handle import TrussHandle
     ],
 )
 def test_parse_resources(input_dict, expect_resources, output_dict):
-    parsed_result = Resources.from_dict(input_dict)
+    parsed_result = Resources.model_validate(input_dict)
     assert parsed_result == expect_resources
-    assert parsed_result.to_dict() == output_dict
+    assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+@pytest.mark.parametrize(
+    "cpu_spec, expected_valid",
+    [
+        (None, False),
+        ("", False),
+        ("1", True),
+        ("1.5", True),
+        ("1.5m", True),
+        (1, False),
+        ("1m", True),
+        ("1M", False),
+        ("M", False),
+        ("M1", False),
+    ],
+)
+def test_validate_cpu_spec(cpu_spec, expected_valid):
+    if not expected_valid:
+        with pytest.raises(pydantic.ValidationError):
+            Resources(cpu=cpu_spec)
+    else:
+        Resources(cpu=cpu_spec)
+
+
+@pytest.mark.parametrize(
+    "mem_spec, expected_valid, memory_in_bytes",
+    [
+        (None, False, None),
+        (1, False, None),
+        ("1m", False, None),
+        ("1k", True, 10**3),
+        ("512k", True, 512 * 10**3),
+        ("512M", True, 512 * 10**6),
+        ("1.5Gi", True, 1.5 * 1024**3),
+        ("abc", False, None),
+        ("1024", True, 1024),
+    ],
+)
+def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
+    if not expected_valid:
+        with pytest.raises(pydantic.ValidationError):
+            Resources(memory=mem_spec)
+    else:
+        assert memory_in_bytes == Resources(memory=mem_spec).memory_in_bytes
 
 
 @pytest.mark.parametrize(
     "input_str, expected_acc",
     [
-        (None, AcceleratorSpec(None, 0)),
-        ("T4", AcceleratorSpec(Accelerator.T4, 1)),
-        ("A10G:4", AcceleratorSpec(Accelerator.A10G, 4)),
-        ("A100:8", AcceleratorSpec(Accelerator.A100, 8)),
-        ("H100", AcceleratorSpec(Accelerator.H100, 1)),
-        ("H200", AcceleratorSpec(Accelerator.H200, 1)),
-        ("H100_40GB", AcceleratorSpec(Accelerator.H100_40GB, 1)),
+        # ("", AcceleratorSpec(accelerator=None, count=0)),
+        ("T4", AcceleratorSpec(accelerator=Accelerator.T4, count=1)),
+        ("A10G:4", AcceleratorSpec(accelerator=Accelerator.A10G, count=4)),
+        ("A100:8", AcceleratorSpec(accelerator=Accelerator.A100, count=8)),
+        ("A100_40GB", AcceleratorSpec(accelerator=Accelerator.A100_40GB, count=1)),
+        ("H100", AcceleratorSpec(accelerator=Accelerator.H100, count=1)),
+        ("H200", AcceleratorSpec(accelerator=Accelerator.H200, count=1)),
+        ("H100_40GB", AcceleratorSpec(accelerator=Accelerator.H100_40GB, count=1)),
+        ("B200", AcceleratorSpec(accelerator=Accelerator.B200, count=1)),
     ],
 )
 def test_acc_spec_from_str(input_str, expected_acc):
-    assert AcceleratorSpec.from_str(input_str) == expected_acc
+    assert AcceleratorSpec.model_validate(input_str) == expected_acc
 
 
 @pytest.mark.parametrize(
@@ -158,54 +215,61 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "auth_method": "GCP_SERVICE_ACCOUNT_JSON",
                     "secret_name": "some-secret-name",
                     "registry": "some-docker-registry",
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": ("aws_secret_access_key"),
+                },
+            },
+        ),
+        (
+            {
+                "image": "custom_base_image",
+                "python_executable_path": "/path/python",
+                "docker_auth": {
+                    "auth_method": "AWS_IAM",
+                    "registry": "some-ecr-docker-registry",
+                },
+            },
+            BaseImage(
+                image="custom_base_image",
+                python_executable_path="/path/python",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.AWS_IAM,
+                    registry="some-ecr-docker-registry",
+                ),
+            ),
+            {
+                "image": "custom_base_image",
+                "python_executable_path": "/path/python",
+                "docker_auth": {
+                    "auth_method": "AWS_IAM",
+                    "registry": "some-ecr-docker-registry",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
                 },
             },
         ),
     ],
 )
 def test_parse_base_image(input_dict, expect_base_image, output_dict):
-    parsed_result = BaseImage.from_dict(input_dict)
+    parsed_result = BaseImage.model_validate(input_dict)
     assert parsed_result == expect_base_image
-    assert parsed_result.to_dict() == output_dict
+    assert parsed_result.to_dict(verbose=True) == output_dict
 
 
 def test_default_config_not_crowded_end_to_end():
     config = TrussConfig(python_version="py39", requirements=[])
 
-    config_yaml = """build_commands: []
-environment_variables: {}
-external_package_dirs: []
-model_metadata: {}
-model_name: null
+    config_yaml = """
 python_version: py39
-requirements: []
 resources:
   accelerator: null
   cpu: '1'
   memory: 2Gi
   use_gpu: false
-secrets: {}
-system_packages: []
 """
 
     assert config_yaml.strip() == yaml.dump(config.to_dict(verbose=False)).strip()
-
-
-@pytest.mark.parametrize(
-    "model_framework",
-    [ModelFrameworkType.CUSTOM, ModelFrameworkType.SKLEARN, ModelFrameworkType.PYTORCH],
-)
-def test_model_framework(model_framework, default_config):
-    config = TrussConfig(
-        python_version="py39", requirements=[], model_framework=model_framework
-    )
-
-    new_config = default_config
-    if model_framework == ModelFrameworkType.CUSTOM:
-        assert new_config == config.to_dict(verbose=False)
-    else:
-        new_config["model_framework"] = model_framework.value
-        assert new_config == config.to_dict(verbose=False)
 
 
 def test_null_cache_internal_key():
@@ -213,31 +277,22 @@ def test_null_cache_internal_key():
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
         yaml.safe_dump(config_yaml_dict, tmp_file)
     config = TrussConfig.from_yaml(Path(tmp_file.name))
-    assert config.cache_internal == CacheInternal.from_list([])
+    assert config.cache_internal.models == []
 
 
-def test_null_model_cache_key():
-    config_yaml_dict = {"model_cache": None}
+def test_empty_model_cache_key():
+    config_yaml_dict = {"model_cache": []}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
         yaml.safe_dump(config_yaml_dict, tmp_file)
     config = TrussConfig.from_yaml(Path(tmp_file.name))
-    assert config.model_cache == ModelCache.from_list([])
-
-
-def test_null_hf_cache_key():
-    config_yaml_dict = {"hf_cache": None}
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
-        yaml.safe_dump(config_yaml_dict, tmp_file)
-    config = TrussConfig.from_yaml(Path(tmp_file.name))
-    assert config.model_cache == ModelCache.from_list([])
+    assert config.model_cache.models == []
 
 
 def test_cache_internal_with_models(default_config):
     config = TrussConfig(
         python_version="py39",
-        requirements=[],
         cache_internal=CacheInternal(
-            models=[ModelRepo("test/model"), ModelRepo("test/model2")]
+            [ModelRepo(repo_id="test/model"), ModelRepo(repo_id="test/model2")]
         ),
     )
     new_config = default_config
@@ -250,9 +305,7 @@ def test_cache_internal_with_models(default_config):
 
 def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-        model_cache=ModelCache(models=[ModelRepo("test/model")]),
+        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id="test/model")])
     )
 
     new_config = default_config
@@ -262,11 +315,11 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
 
 
-def test_huggingface_cache_single_model_non_default_revision():
+def test_huggingface_cache_single_model_non_default_revision_v1():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=ModelCache(models=[ModelRepo("test/model", "not-main")]),
+        model_cache=ModelCache([ModelRepo(repo_id="test/model", revision="not-main")]),
     )
 
     assert config.to_dict(verbose=False)["model_cache"][0].get("revision") == "not-main"
@@ -275,9 +328,11 @@ def test_huggingface_cache_single_model_non_default_revision():
 def test_huggingface_cache_multiple_models_default_revision(default_config):
     config = TrussConfig(
         python_version="py39",
-        requirements=[],
         model_cache=ModelCache(
-            models=[ModelRepo("test/model1", "main"), ModelRepo("test/model2")]
+            [
+                ModelRepo(repo_id="test/model1", revision="main"),
+                ModelRepo(repo_id="test/model2"),
+            ]
         ),
     )
 
@@ -288,6 +343,9 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
     ]
 
     assert new_config == config.to_dict(verbose=False)
+    assert config.to_dict(verbose=True)["model_cache"], config.to_dict(verbose=True)[
+        "model_cache"
+    ]
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
 
@@ -295,9 +353,11 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
 def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     config = TrussConfig(
         python_version="py39",
-        requirements=[],
         model_cache=ModelCache(
-            models=[ModelRepo("test/model1"), ModelRepo("test/model2", "not-main2")]
+            [
+                ModelRepo(repo_id="test/model1"),
+                ModelRepo(repo_id="test/model2", revision="not-main2"),
+            ]
         ),
     )
 
@@ -310,6 +370,35 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
+
+
+def test_huggingface_cache_v2_use_volume(default_config):
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        model_cache=ModelCache(
+            [
+                dict(
+                    repo_id="test/model1",
+                    revision="main",
+                    use_volume=True,
+                    volume_folder="test_model1",
+                )
+            ]
+        ),
+    )
+
+    new_config = default_config
+    new_config["model_cache"] = [
+        {
+            "repo_id": "test/model1",
+            "revision": "main",
+            "volume_folder": "test_model1",
+            "use_volume": True,
+        }
+    ]
+
+    assert new_config == config.to_dict(verbose=False)
 
 
 def test_empty_config(default_config):
@@ -405,10 +494,44 @@ def test_secret_to_path_mapping_correct_type(default_config):
         assert truss_config.build.secret_to_path_mapping == {"foo": "/bar"}
 
 
+@pytest.mark.parametrize(
+    "secret_name, should_error",
+    [
+        (None, True),
+        (1, True),
+        ("", True),
+        (".", True),
+        ("..", True),
+        ("a" * 253, False),
+        ("a" * 254, True),
+        ("-", False),
+        ("-.", False),
+        ("a-.", False),
+        ("-.a", False),
+        ("a-foo", False),
+        ("a.foo", False),
+        (".foo", False),
+        ("x\\", True),
+        ("a_b", False),
+        ("_a", False),
+        ("a_", False),
+        ("sd#^Y5^%", True),
+    ],
+)
+def test_validate_secret_name(secret_name, should_error):
+    does_error = False
+    try:
+        Build.validate_secret_name(secret_name)
+    except:  # noqa
+        does_error = True
+
+    assert does_error == should_error
+
+
 def test_secret_to_path_mapping_invalid_secret_name(default_config):
     data = {
         "description": "this is a test",
-        "build": {"secret_to_path_mapping": {"foo_bar": "/bar"}},
+        "build": {"secret_to_path_mapping": {"!foo_bar": "/bar"}},
     }
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
         yaml_path = Path(yaml_file.name)
@@ -434,7 +557,7 @@ def test_secret_to_path_mapping_incorrect_type(default_config):
 def test_max_beam_width_check(trtllm_config):
     trtllm_config["trt_llm"]["build"]["max_beam_width"] = 2
     with pytest.raises(ValueError):
-        TrussConfig.from_dict(trtllm_config)
+        TrussConfig.model_validate(trtllm_config)
 
 
 def test_plugin_paged_context_fmha_check(trtllm_config):
@@ -444,7 +567,7 @@ def test_plugin_paged_context_fmha_check(trtllm_config):
         "use_fp8_context_fmha": False,
     }
     with pytest.raises(ValueError):
-        TrussConfig.from_dict(trtllm_config)
+        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize(
@@ -462,7 +585,7 @@ def test_invalid_hf_repo(trtllm_config, repo):
     trtllm_config["trt_llm"]["build"]["checkpoint_repository"]["source"] = "HF"
     trtllm_config["trt_llm"]["build"]["checkpoint_repository"]["repo"] = repo
     with pytest.raises(ValueError):
-        TrussConfig.from_dict(trtllm_config)
+        TrussConfig.model_validate(trtllm_config)
 
 
 def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
@@ -472,14 +595,14 @@ def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
         "use_fp8_context_fmha": True,
     }
     with pytest.raises(ValueError):
-        TrussConfig.from_dict(trtllm_config)
+        TrussConfig.model_validate(trtllm_config)
     trtllm_config["trt_llm"]["build"]["plugin_configuration"] = {
         "paged_kv_cache": True,
         "use_paged_context_fmha": False,
         "use_fp8_context_fmha": True,
     }
     with pytest.raises(ValueError):
-        TrussConfig.from_dict(trtllm_config)
+        TrussConfig.model_validate(trtllm_config)
 
 
 def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
@@ -491,46 +614,51 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
     trtllm_config["trt_llm"]["build"]["quantization_type"] = (
         TrussTRTLLMQuantizationType.FP8_KV.value
     )
-    TrussConfig.from_dict(trtllm_config)
+    TrussConfig.model_validate(trtllm_config)
 
     del trtllm_config["trt_llm"]["build"]["quantization_type"]
     with pytest.raises(ValueError):
-        TrussConfig.from_dict(trtllm_config)
+        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
-def test_to_dict_trtllm(
-    verbose,
-    expect_equal,
-    trtllm_config,
-    trtllm_spec_dec_config,
-    trtllm_spec_dec_config_full,
-):
+def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
     assert (
-        TrussConfig.from_dict(trtllm_config).to_dict(verbose=verbose) == trtllm_config
+        TrussConfig.model_validate(trtllm_config).to_dict(verbose=verbose)
+        == trtllm_config
     ) == expect_equal
+
+
+@pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
+def test_to_dict_trtllm_spec_dec(verbose, expect_equal, trtllm_spec_dec_config):
     assert (
-        TrussConfig.from_dict(trtllm_spec_dec_config).to_dict(verbose=verbose)
+        TrussConfig.model_validate(trtllm_spec_dec_config).to_dict(verbose=verbose)
         == trtllm_spec_dec_config
     ) == expect_equal
+
+
+@pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
+def test_to_dict_trtllm_spec_dec_full(
+    verbose, expect_equal, trtllm_spec_dec_config_full
+):
     assert (
-        TrussConfig.from_dict(trtllm_spec_dec_config_full).to_dict(verbose=verbose)
+        TrussConfig.model_validate(trtllm_spec_dec_config_full).to_dict(verbose=verbose)
         == trtllm_spec_dec_config_full
     ) == expect_equal
 
 
 @pytest.mark.parametrize("should_raise", [False, True])
-def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
+def test_model_validate_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
     test_config = copy.deepcopy(trtllm_spec_dec_config)
     if should_raise:
         test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
             None
         )
         with pytest.raises(ValueError):
-            TrussConfig.from_dict(test_config)
+            TrussConfig.model_validate(test_config)
         test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = None
         with pytest.raises(ValueError):
-            TrussConfig.from_dict(test_config)
+            TrussConfig.model_validate(test_config)
         test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = (
             trtllm_spec_dec_config["trt_llm"]["build"]["speculator"][
                 "checkpoint_repository"
@@ -540,7 +668,7 @@ def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
             "use_paged_context_fmha"
         ] = False
         with pytest.raises(ValueError):
-            TrussConfig.from_dict(test_config)
+            TrussConfig.model_validate(test_config)
         test_config["trt_llm"]["build"]["plugin_configuration"][
             "use_paged_context_fmha"
         ] = True
@@ -551,9 +679,9 @@ def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
         )
         test_config["trt_llm"]["build"]["speculator"]["num_draft_tokens"] = None
         with pytest.raises(ValueError):
-            TrussConfig.from_dict(test_config)
+            TrussConfig.model_validate(test_config)
     else:
-        TrussConfig.from_dict(trtllm_spec_dec_config)
+        TrussConfig.model_validate(trtllm_spec_dec_config)
 
 
 def test_from_yaml_invalid_requirements_configuration():
@@ -578,18 +706,22 @@ def test_from_yaml_invalid_requirements_configuration():
         (
             TrussTRTLLMQuantizationType.NO_QUANT,
             Accelerator.T4,
-            pytest.raises(ValueError),
+            pytest.raises(pydantic.ValidationError),
         ),
         (
             TrussTRTLLMQuantizationType.NO_QUANT,
             Accelerator.V100,
-            pytest.raises(ValueError),
+            pytest.raises(pydantic.ValidationError),
         ),
-        (TrussTRTLLMQuantizationType.FP8, Accelerator.A100, pytest.raises(ValueError)),
+        (
+            TrussTRTLLMQuantizationType.FP8,
+            Accelerator.A100,
+            pytest.raises(pydantic.ValidationError),
+        ),
         (
             TrussTRTLLMQuantizationType.FP8_KV,
             Accelerator.A100,
-            pytest.raises(ValueError),
+            pytest.raises(pydantic.ValidationError),
         ),
     ],
 )
@@ -600,7 +732,182 @@ def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
     config.trt_llm.build.quantization_type = quant_format
     config.resources.accelerator.accelerator = accelerator
     with expectation:
-        TrussConfig.from_dict(config.to_dict())
+        TrussConfig.model_validate(config.to_dict())
+
+
+def test_resources_transport_read_from_new_yaml(tmp_path):
+    yaml_content = """
+    runtime:
+      transport:
+        kind: websocket
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, WebsocketOptions)
+    assert config.runtime.transport.kind == TransportKind.WEBSOCKET
+    assert config.runtime.is_websocket_endpoint is True
+
+    config_dict = config.to_dict(verbose=False)
+    config_new = TrussConfig.from_dict(config_dict)
+    assert config_new.runtime.transport.kind == TransportKind.WEBSOCKET
+    assert config_new.runtime.is_websocket_endpoint is True
+
+
+def test_resources_transport_read_unspecified(tmp_path):
+    yaml_content = """
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, HTTPOptions)
+    assert config.runtime.transport.kind == TransportKind.HTTP
+    assert config.runtime.is_websocket_endpoint is False
+
+    config_dict = config.to_dict(verbose=False)
+    config_new = TrussConfig.from_dict(config_dict)
+    assert config_new.runtime.transport.kind == TransportKind.HTTP
+    assert config_new.runtime.is_websocket_endpoint is False
+
+
+def test_resources_transport_read_empty(tmp_path):
+    yaml_content = """
+    runtime:
+        transport: {}
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, HTTPOptions)
+    assert config.runtime.transport.kind == TransportKind.HTTP
+    assert config.runtime.is_websocket_endpoint is False
+
+    config_dict = config.to_dict(verbose=False)
+    config_new = TrussConfig.from_dict(config_dict)
+    assert config_new.runtime.transport.kind == TransportKind.HTTP
+    assert config_new.runtime.is_websocket_endpoint is False
+
+
+def test_resources_transport_read_from_legacy_yaml(tmp_path):
+    yaml_content = """
+    runtime:
+      is_websocket_endpoint: true
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    with pytest.warns(DeprecationWarning, match="is_websocket_endpoint"):
+        config = TrussConfig.from_yaml(config_path)
+    assert isinstance(config.runtime.transport, WebsocketOptions)
+    assert config.runtime.transport.kind == TransportKind.WEBSOCKET
+    assert config.runtime.is_websocket_endpoint is True
+
+
+def test_resources_transport_serialize_from_new_way(tmp_path):
+    config = TrussConfig(runtime=Runtime(transport=WebsocketOptions()))
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path, verbose=False)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_resources_transport_serialize_from_old_way(tmp_path):
+    yaml_content = """
+    runtime:
+      is_websocket_endpoint: true
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path, verbose=False)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_resources_transport_correct_serialize_from_legacy(tmp_path):
+    config = TrussConfig()
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path, verbose=False)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert "runtime" not in dumped
+
+    config_new = TrussConfig.from_yaml(out_path)
+    assert config_new.runtime.transport.kind == TransportKind.HTTP
+    assert config_new.runtime.is_websocket_endpoint is False
+
+
+def test_resources_transport_correct_serialize(tmp_path):
+    config = TrussConfig()
+    config.runtime.is_websocket_endpoint = True
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path, verbose=False)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_resources_transport_correct_serialize_from(tmp_path):
+    config = TrussConfig()
+    config.runtime.transport = WebsocketOptions()
+
+    out_path = tmp_path / "out.yaml"
+    config.write_to_yaml_file(out_path, verbose=False)
+
+    dumped = yaml.safe_load(out_path.read_text())
+    assert dumped["runtime"]["transport"]["kind"] == "websocket"
+    assert dumped["runtime"]["is_websocket_endpoint"] is True
+
+
+def test_validate_on_assignment():
+    config = TrussConfig()
+    with pytest.raises(pydantic.ValidationError, match="should be a valid boolean"):
+        config.runtime.is_websocket_endpoint = 123
+
+    with pytest.raises(pydantic.ValidationError):
+        config.python_version = "3.7"
+
+    with pytest.raises(pydantic.ValidationError):
+        config.python_version = "py27"
+
+    with pytest.raises(pydantic.ValidationError):
+        config.python_version = "py27"
+
+    with pytest.raises(
+        pydantic.ValidationError, match="should be greater than or equal to 1"
+    ):
+        config.resources.node_count = -10
+
+
+def test_validate_extra_fields(tmp_path):
+    yaml_with_extra_content = """
+    model_name: My Model
+    what_is_this_field: true
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_with_extra_content)
+
+    # Plain parsing should pass.
+    config = TrussConfig.from_yaml(config_path)
+    # Explicit validation with extras not.
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="Extra fields not allowed: \[what_is_this_field\]",
+    ):
+        config.validate_forbid_extra()
 
 
 @pytest.mark.parametrize(
@@ -610,7 +917,9 @@ def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
         ("py39", "py39"),
         ("py310", "py310"),
         ("py311", "py311"),
-        ("py312", "py311"),
+        ("py312", "py312"),
+        ("py313", "py313"),
+        ("py314", "py313"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):
@@ -636,3 +945,11 @@ def test_not_supported_python_minor_versions():
 def test_not_supported_python_major_versions():
     with pytest.raises(NotImplementedError, match="Only python version 3 is supported"):
         _map_to_supported_python_version("py211")
+
+
+def test_supported_versions_are_sorted():
+    semvers = [packaging.version.parse(v) for v in constants.SUPPORTED_PYTHON_VERSIONS]
+    semvers_sorted = sorted(semvers)
+    assert semvers == semvers_sorted, (
+        f"{constants.SUPPORTED_PYTHON_VERSIONS} must be sorted ascendingly"
+    )

@@ -12,6 +12,7 @@ import logging
 import os
 import pathlib
 import pprint
+import re
 import sys
 import types
 import warnings
@@ -38,8 +39,7 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss.base import truss_config
-from truss.shared import types as shared_types
+from truss.base import custom_types, trt_llm_config
 from truss_chains import private_types, public_types, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
@@ -58,6 +58,7 @@ _DUMMY_ENDPOINT_DESCRIPTOR = private_types.EndpointAPIDescriptor(
     input_args=[], output_types=[], is_async=False, is_streaming=False
 )
 
+_DISPLAY_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 ChainletT = TypeVar("ChainletT", bound=private_types.ABCChainlet)
 _P = ParamSpec("_P")
@@ -74,7 +75,7 @@ class _ErrorKind(str, enum.Enum):
     INVALID_CONFIG_ERROR = enum.auto()
 
 
-class _ErrorLocation(shared_types.SafeModel):
+class _ErrorLocation(custom_types.SafeModel):
     src_path: str
     line: Optional[int] = None
     chainlet_name: Optional[str] = None
@@ -91,7 +92,7 @@ class _ErrorLocation(shared_types.SafeModel):
         return value
 
 
-class _ValidationError(shared_types.SafeModel):
+class _ValidationError(custom_types.SafeModel):
     msg: str
     kind: _ErrorKind
     location: _ErrorLocation
@@ -825,6 +826,20 @@ def _validate_config_class_variable(
         )
 
 
+def _validate_display_name(
+    cls: Type[private_types.ABCChainlet], location: _ErrorLocation
+) -> None:
+    if cls.entity_type == private_types.EntityType.MODEL:
+        return  # Model can have any name.
+
+    if not bool(_DISPLAY_NAME_RE.match(cls.display_name)):
+        _collect_error(
+            f"Chainlet display name `{cls.display_name}` must match `{_DISPLAY_NAME_RE.pattern}` regex.",
+            _ErrorKind.INVALID_CONFIG_ERROR,
+            location,
+        )
+
+
 def _validate_engine_builder_fields(
     remote_config: public_types.RemoteConfig, location: _ErrorLocation
 ) -> None:
@@ -832,24 +847,23 @@ def _validate_engine_builder_fields(
     #  a better way to do this.
     violations = []
     # `model_fields_set` does not work reliably here, so we compare against defaults.
-    if (
-        remote_config.docker_image
-        != public_types.RemoteConfig.model_fields["docker_image"].default
+    if remote_config.docker_image != utils.get_pydantic_field_default_value(
+        public_types.RemoteConfig, "docker_image"
     ):
         violations.append("docker_image")
-    if (
-        remote_config.assets.get_spec().cached
-        != public_types.AssetSpec.model_fields["cached"].default
+    if remote_config.assets.get_spec().cached != utils.get_pydantic_field_default_value(
+        public_types.AssetSpec, "cached"
     ):
         violations.append("assets.cached")
     if (
         remote_config.assets.get_spec().external_data
-        != public_types.AssetSpec.model_fields["external_data"].default
+        != utils.get_pydantic_field_default_value(
+            public_types.AssetSpec, "external_data"
+        )
     ):
         violations.append("assets.external_data")
-    if (
-        remote_config.options.health_checks
-        != public_types.ChainletOptions.model_fields["health_checks"].default
+    if remote_config.options.health_checks != utils.get_pydantic_field_default_value(
+        public_types.ChainletOptions, "health_checks"
     ):
         violations.append("options.health_checks")
     if violations:
@@ -933,13 +947,14 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         "EngineBuilderLLMChainlet",
     ]
     if cls.__name__ in _skip_class_name:
-        print(f"Skipping {cls}")
+        logging.debug(f"Skipping chainlet class validation for `{cls}`.")
         return
 
     src_path = os.path.abspath(inspect.getfile(cls))
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
 
+    _validate_display_name(cls, location)
     _validate_config_class_variable(
         cls, location, private_types.REMOTE_CONFIG_NAME, public_types.RemoteConfig
     )
@@ -948,7 +963,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
             cls,
             location,
             private_types.ENGINE_BUILDER_CONFIG_NAME,
-            truss_config.TRTLLMConfiguration,
+            trt_llm_config.TRTLLMConfiguration,
         )
         _validate_engine_builder_fields(cls.remote_config, location)
 
@@ -1620,7 +1635,7 @@ class EngineBuilderChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
     We do not support customization, because that should be done caller-side for chains.
     """
 
-    engine_builder_config: ClassVar[truss_config.TRTLLMConfiguration]
+    engine_builder_config: ClassVar[trt_llm_config.TRTLLMConfiguration]
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)

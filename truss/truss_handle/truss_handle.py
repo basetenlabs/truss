@@ -4,9 +4,8 @@ import json
 import logging
 import sys
 import uuid
-from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
 from urllib.error import HTTPError
 
 import requests
@@ -15,7 +14,6 @@ from requests import exceptions
 from requests.exceptions import ConnectionError
 from requests.models import Response
 from tenacity import (
-    RetryError,
     Retrying,
     retry,
     retry_if_exception_type,
@@ -34,14 +32,8 @@ from truss.base.constants import (
 )
 from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
-from truss.base.truss_config import (
-    BaseImage,
-    ExternalData,
-    ExternalDataItem,
-    TrussConfig,
-)
+from truss.base.truss_config import BaseImage, ExternalData, ExternalDataItem
 from truss.base.truss_spec import TrussSpec
-from truss.base.validation import validate_secret_name
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
@@ -81,6 +73,10 @@ from truss.util.path import (
     load_trussignore_patterns,
 )
 
+if TYPE_CHECKING:
+    from python_on_whales.components.container.cli_wrapper import Container
+
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 if is_notebook_or_ipython():
@@ -103,6 +99,26 @@ class RunningContainer:
         return docker.wait(self.container)
 
 
+class DockerURLs:
+    def __init__(self, base_url):
+        self.base_url = base_url
+
+        self.predict_url = f"{base_url}/v1/models/model:predict"
+        self.completions_url = f"{base_url}/v1/completions"
+        self.chat_completions_url = f"{base_url}/v1/chat/completions"
+
+        self.schema_url = f"{base_url}/v1/models/model/schema"
+        self.metrics_url = f"{base_url}/metrics"
+
+        self.patch_url = f"{base_url}/control/patch"
+        self.hash_url = f"{base_url}/control/truss_hash"
+        self.has_partially_applied_patch_url = (
+            f"{base_url}/control/has_partially_applied_patch"
+        )
+
+        self.websockets_url = f"{base_url}/v1/websocket".replace("http", "ws")
+
+
 class TrussHandle:
     def __init__(self, truss_dir: Path, validate: bool = True) -> None:
         self._truss_dir = truss_dir
@@ -110,6 +126,10 @@ class TrussHandle:
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
         if validate:
             self.validate()
+
+    @property
+    def truss_dir(self) -> Path:
+        return self._truss_dir
 
     def validate(self):
         self._validate_external_packages()
@@ -129,20 +149,16 @@ class TrussHandle:
         ),
     )
     def _wait_for_predict(
-        model_base_url: str, request: Dict, binary: bool = False
+        urls: DockerURLs, request: Dict, binary: bool = False
     ) -> Response:
-        url = f"{model_base_url}/v1/models/model:predict"
-
         if binary:
             binary_data = truss_msgpack_serialize(request)
-
             return requests.post(
-                url,
+                urls.predict_url,
                 data=binary_data,
                 headers={"Content-Type": "application/octet-stream"},
             )
-
-        return requests.post(url, json=request)
+        return requests.post(urls.predict_url, json=request)
 
     @proxy_to_shadow_if_scattered
     def build_docker_build_context(self, build_dir: Optional[Path] = None):
@@ -222,7 +238,11 @@ class TrussHandle:
             return RunningContainer(container)
 
         try:
-            return _docker_run("all" if self._spec.config.resources.use_gpu else None)
+            return _docker_run(
+                "all"
+                if self._spec.config.resources.use_gpu  # type: ignore[truthy-function]  # Is computed field.
+                else None
+            )
         except DockerException:
             # The reason we'd wind up here is if the Truss needs
             # a GPU, but the host does not have one that can attach.
@@ -233,7 +253,7 @@ class TrussHandle:
         self,
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
-        local_port: int = INFERENCE_SERVER_PORT,
+        local_port: Optional[int] = INFERENCE_SERVER_PORT,
         detach=True,
         patch_ping_url: Optional[str] = None,
         wait_for_server_ready: bool = True,
@@ -249,7 +269,7 @@ class TrussHandle:
         Args:
             build_dir: Directory to use for creating docker build context.
             tag: Tags to apply to docker image.
-            local_port: Local port to forward inference server to.
+            local_port: Local port to forward inference server to, if `None` any free is chosen.
             detach: Run docker container in detached mode.
             patch_ping_url:  Mostly for testing, if supplied then a live
                              reload capable truss queries for truss changes
@@ -265,6 +285,7 @@ class TrussHandle:
         """
         from python_on_whales.exceptions import DockerException
 
+        container: Union[Container, str]
         container_if_patched = self._try_patch()
         if container_if_patched is not None:
             container = container_if_patched
@@ -273,7 +294,11 @@ class TrussHandle:
                 build_dir=build_dir, tag=tag, network=network
             )
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
-            publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
+            publish_ports = (
+                [[local_port, INFERENCE_SERVER_PORT]]
+                if local_port is not None
+                else [[0, INFERENCE_SERVER_PORT]]
+            )
 
             # We are going to try running a new container, make sure previous one is gone
             self.kill_container()
@@ -323,24 +348,22 @@ class TrussHandle:
 
             try:
                 container = _run_docker(
-                    "all" if self._spec.config.resources.use_gpu else None
+                    "all" if self._spec.config.resources.use_gpu else None  # type: ignore[truthy-function]  # Is computed field.
                 )
             except DockerException:
                 # This is in the case of testing where the Codespace doesn't have a GPU
                 # and we need to run it anyways
-                logger.warn("No GPU is available to docker. Running without a GPU.")
+                logger.warning("No GPU is available to docker. Running without a GPU.")
                 container = _run_docker(None)
 
+            urls = get_docker_urls(container)
             logger.info(
-                f"Model server started on port {local_port}, docker container id {container.id}"
+                f"Model server started on `{urls.base_url}`, docker container id {container}"
             )
-        model_base_url = f"http://localhost:{local_port}/v1/models/model"
+
         try:
             wait_for_truss(
-                model_base_url,
-                container,
-                wait_for_server_ready,
-                model_server_stop_retry_override,
+                container, wait_for_server_ready, model_server_stop_retry_override
             )
         except ContainerNotFoundError as err:
             raise err
@@ -349,6 +372,18 @@ class TrussHandle:
             raise err
 
         return container
+
+    def docker_run_for_test(
+        self, wait_for_server_ready=True, model_server_stop_retry_override=None
+    ) -> tuple["Container", DockerURLs]:
+        container = self.docker_run(
+            local_port=None,
+            detach=True,
+            wait_for_server_ready=wait_for_server_ready,
+            network="host",
+            model_server_stop_retry_override=model_server_stop_retry_override,
+        )
+        return container, get_docker_urls(container)
 
     def predict(
         self,
@@ -384,7 +419,7 @@ class TrussHandle:
         request: Dict,
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
-        local_port: int = INFERENCE_SERVER_PORT,
+        local_port: Optional[int] = INFERENCE_SERVER_PORT,
         detach: bool = True,
         patch_ping_url: Optional[str] = None,
         binary: bool = False,
@@ -418,10 +453,10 @@ class TrussHandle:
                 detach=detach,
                 patch_ping_url=patch_ping_url,
                 network=network,
+                wait_for_server_ready=True,
             )
-        model_base_url = _get_url_from_container(container)
-
-        resp = TrussHandle._wait_for_predict(model_base_url, request, binary)
+        urls = get_docker_urls(container)
+        resp = TrussHandle._wait_for_predict(urls, request, binary)
 
         if resp.status_code == 500:
             raise requests.exceptions.HTTPError("500 error", response=resp)
@@ -451,51 +486,34 @@ class TrussHandle:
         return image_builder.docker_build_command(build_dir)
 
     def add_python_requirement(self, python_requirement: str):
-        """Add a python requirement to truss model's config."""
-
         self._update_config(
-            lambda conf: replace(
-                conf, requirements=[*conf.requirements, python_requirement]
-            )
+            requirements=[*self._spec.config.requirements, python_requirement]
         )
 
     def remove_python_requirement(self, python_requirement: str):
-        """Remove a python requirement to truss model's config.
-
-        Note that the requirement has to match exactly, with version included.
-        TODO(pankaj) Make this work with just the name of python_requirement.
-        """
         self._update_config(
-            lambda conf: replace(
-                conf,
-                requirements=[
-                    req for req in conf.requirements if req != python_requirement
-                ],
-            )
+            requirements=[
+                req
+                for req in self._spec.config.requirements
+                if req != python_requirement
+            ]
         )
 
     def add_environment_variable(self, env_var_name: str, env_var_value: str):
-        """Add an environment variable to truss model's config."""
         if not env_var_value:
-            logger.info("Enviroment value should not empty or none!")
+            logger.info("Environment value should not be empty or None!")
             return
 
         self._update_config(
-            lambda conf: replace(
-                conf,
-                environment_variables={
-                    **conf.environment_variables,
-                    env_var_name: env_var_value,
-                },
-            )
+            environment_variables={
+                **self._spec.config.environment_variables,
+                env_var_name: env_var_value,
+            }
         )
 
     def add_secret(self, secret_name: str, default_secret_value: str = ""):
-        validate_secret_name(secret_name)
         self._update_config(
-            lambda conf: replace(
-                conf, secrets={**conf.secrets, secret_name: default_secret_value}
-            )
+            secrets={**self._spec.config.secrets, secret_name: default_secret_value}
         )
 
     def add_external_data_item(
@@ -506,29 +524,25 @@ class TrussHandle:
         name: Optional[str] = None,
     ):
         # todo: write tests for this
-        item = ExternalDataItem(url=url, local_data_path=local_data_path)
-        if backend is not None:
-            item = replace(item, backend=backend)
-        if name is not None:
-            item = replace(item, name=name)
-
-        current_external_data: ExternalData = (
-            self._spec.config.external_data or ExternalData([])
+        item = ExternalDataItem(
+            url=url,
+            local_data_path=local_data_path,
+            backend=backend or "http_public",
+            name=name,
         )
-        new_external_data = replace(
-            current_external_data, items=current_external_data.items + [item]
-        )
-        self._update_config(lambda conf: replace(conf, external_data=new_external_data))
+        current_data = self._spec.config.external_data or ExternalData([])
+        updated_data = ExternalData([*current_data.items, item])
+        self._update_config(external_data=updated_data)
 
     def remove_all_external_data(self):
-        self._update_config(lambda conf: replace(conf, external_data=None))
+        self._update_config(external_data=None)
 
     def update_requirements(self, requirements: List[str]):
         """Update requirements in truss model's config.
 
         Replaces requirements in truss model's config with the provided list.
         """
-        self._update_config(lambda conf: replace(conf, requirements=requirements))
+        self._update_config(requirements=requirements)
 
     def update_requirements_from_file(self, requirements_filepath: str):
         """Update requirements in truss model's config.
@@ -546,22 +560,17 @@ class TrussHandle:
             )
 
     def add_system_package(self, system_package: str):
-        """Add a system package requirement to truss model's config."""
         self._update_config(
-            lambda conf: replace(
-                conf, system_packages=[*conf.system_packages, system_package]
-            )
+            system_packages=[*self._spec.config.system_packages, system_package]
         )
 
     def remove_system_package(self, system_package: str):
-        """Remove a system package requirement from truss model's config."""
         self._update_config(
-            lambda conf: replace(
-                conf,
-                system_packages=[
-                    pkg for pkg in conf.system_packages if pkg != system_package
-                ],
-            )
+            system_packages=[
+                pkg
+                for pkg in self._spec.config.system_packages
+                if pkg != system_package
+            ]
         )
 
     def add_data(self, file_dir_or_glob: str):
@@ -582,14 +591,14 @@ class TrussHandle:
 
     def add_external_package(self, external_dir_path: str):
         self._update_config(
-            lambda conf: replace(
-                conf,
-                external_package_dirs=[*conf.external_package_dirs, external_dir_path],
-            )
+            external_package_dirs=[
+                *self._spec.config.external_package_dirs,
+                external_dir_path,
+            ]
         )
 
     def clear_external_packages(self):
-        self._update_config(lambda conf: replace(conf, external_package_dirs=[]))
+        self._update_config(external_package_dirs=[])
 
     def examples(self) -> List[Example]:
         """List truss model's examples.
@@ -605,7 +614,7 @@ class TrussHandle:
         """
         with self._spec.examples_path.open("w") as examples_file:
             examples_to_write = [example.to_dict() for example in examples]
-            examples_file.write(yaml.dump(examples_to_write))
+            yaml.safe_dump(examples_to_write, stream=examples_file)
 
     def example(self, name_or_index: Union[str, int]) -> Example:
         """Return lookup an example by name or index.
@@ -650,7 +659,7 @@ class TrussHandle:
     @proxy_to_shadow_if_scattered
     def get_serving_docker_containers_from_labels(
         self, all: bool = False, labels: Optional[dict] = None
-    ) -> list:
+    ) -> list["Container"]:
         """Get serving docker containers, with given labels.
 
         Args:
@@ -665,12 +674,13 @@ class TrussHandle:
 
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
-    def get_running_serving_container_ignore_hash(self):
+    def get_running_serving_container_ignore_hash(self) -> Optional["Container"]:
         containers = self.get_serving_docker_containers_from_labels(
             labels={TRUSS_DIR: str(self._truss_dir)}
         )
         if containers is not None and len(containers) > 0:
             return containers[0]
+        return None
 
     @proxy_to_shadow_if_scattered
     def kill_container(self):
@@ -693,37 +703,19 @@ class TrussHandle:
             raise ValueError("No Container is running for truss!")
         return get_container_logs(containers[-1], follow, stream)
 
-    def enable_gpu(self):
-        """Enable gpu use for given model.
-
-        This is suggestive, model serving environment may still use cpu, e.g. if
-        the setup doesn't have access to a GPU.
-
-        Note that truss would typically use a larger docker base image when this
-        is enabled, for example to include the cuda libraries.
-        """
-
-        def enable_gpu_fn(conf: TrussConfig):
-            new_resources = replace(conf.resources, use_gpu=True)
-            return replace(conf, resources=new_resources)
-
-        self._update_config(enable_gpu_fn)
-
     def set_base_image(self, image: str, python_executable_path: str):
-        """Set the base image for a given truss"""
-
-        def define_base_image_fn(conf: TrussConfig):
-            if conf.base_image:
-                new_base_image = replace(
-                    conf.base_image,
-                    image=image,
-                    python_executable_path=python_executable_path,
-                )
-                return replace(conf, base_image=new_base_image)
-            new_base_image = BaseImage(image, python_executable_path)
-            return replace(conf, base_image=new_base_image)
-
-        self._update_config(define_base_image_fn)
+        current = self._spec.config.base_image
+        new_base_image = (
+            current.model_copy(
+                update={
+                    "image": image,
+                    "python_executable_path": python_executable_path,
+                }
+            )
+            if current
+            else BaseImage(image=image, python_executable_path=python_executable_path)
+        )
+        self._update_config(base_image=new_base_image)
 
     @proxy_to_shadow_if_scattered
     def patch_container(self, patch_request: PatchRequest):
@@ -740,11 +732,8 @@ class TrussHandle:
             raise ValueError(
                 "Only running trusses can be patched: no running containers found for this truss."
             )
-
-        model_base_url = _get_url_from_container(container)
-        resp = requests.post(
-            f"{model_base_url}/control/patch", json=patch_request.to_dict()
-        )
+        urls = get_docker_urls(container)
+        resp = requests.post(urls.patch_url, json=patch_request.to_dict())
         resp.raise_for_status()
         return resp.json()
 
@@ -761,8 +750,9 @@ class TrussHandle:
             )
 
         container = self.get_running_serving_container_ignore_hash()
-        model_base_url = _get_url_from_container(container)
-        resp = requests.get(f"{model_base_url}/control/truss_hash")
+        assert container
+        urls = get_docker_urls(container)
+        resp = requests.get(urls.hash_url)
         resp.raise_for_status()
         respj = resp.json()
         if "error" in respj:
@@ -771,15 +761,12 @@ class TrussHandle:
         return respj["result"]
 
     def update_python_version(self, python_version: str):
-        inferred_python_version = python_version
         if not python_version.startswith("py"):
             # support 3.9 style versions
             version_parts = python_version.split(".")
-            inferred_python_version = f"py{version_parts[0]}{version_parts[1]}"
+            python_version = f"py{version_parts[0]}{version_parts[1]}"
 
-        self._update_config(
-            lambda conf: replace(conf, python_version=inferred_python_version)
-        )
+        self._update_config(python_version=python_version)
 
     def _control_serving_container_has_partially_applied_patch(self) -> Optional[bool]:
         """Check if there is a partially applied patch on the running live_reload capable container."""
@@ -787,8 +774,9 @@ class TrussHandle:
             raise ValueError("Not a control truss, operation not supported.")
 
         container = self.get_running_serving_container_ignore_hash()
-        model_base_url = _get_url_from_container(container)
-        resp = requests.get(f"{model_base_url}/control/has_partially_applied_patch")
+        assert container
+        urls = get_docker_urls(container)
+        resp = requests.get(urls.has_partially_applied_patch_url)
         resp.raise_for_status()
         respj = resp.json()
         if "error" in respj:
@@ -814,7 +802,7 @@ class TrussHandle:
         return generate_readme(self._spec)
 
     def update_description(self, description: str):
-        self._update_config(lambda conf: replace(conf, description=description))
+        self._update_config(description=description)
 
     def live_reload(self, enable: bool = True):
         """Enable control plane.
@@ -823,11 +811,7 @@ class TrussHandle:
         container. This is useful during development to iterate on model changes
         quickly.
         """
-
-        def enable_live_reload_fn(conf: TrussConfig):
-            return replace(conf, live_reload=enable)
-
-        self._update_config(enable_live_reload_fn)
+        self._update_config(live_reload=enable)
 
     @proxy_to_shadow_if_scattered
     def calc_patch(
@@ -948,13 +932,12 @@ class TrussHandle:
         )
         return build_image_result
 
-    def _update_config(self, update_config_fn: Callable[[TrussConfig], TrussConfig]):
-        config = update_config_fn(self._spec.config)
+    def _update_config(self, **fields_to_update):
+        config = self._spec.config.model_copy(update=fields_to_update)
         config.write_to_yaml_file(self._spec.config_path)
-        # reload spec
-        self._spec = TrussSpec(self._truss_dir)
+        self._spec = TrussSpec(self._truss_dir)  # Reload.
 
-    def _try_patch(self):
+    def _try_patch(self) -> Optional["Container"]:
         if not self.is_control_truss:
             return None
 
@@ -1035,7 +1018,7 @@ class TrussHandle:
                     )
 
     def _validate_extensions(self):
-        # Only one extenstion right now.
+        # Only one extension right now.
         if self._spec.config.trt_llm is not None:
             validate(self._spec)
 
@@ -1052,7 +1035,9 @@ def _prediction_flow(model, request: Dict):
 
 
 def _wait_for_docker_build(container) -> None:
-    for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
+    for attempt in Retrying(
+        stop=stop_after_attempt(5), wait=wait_fixed(2), reraise=True
+    ):
         state = get_container_state(container)
         logger.info(f"Container state: {state}")
         if state == DockerStates.OOMKILLED or state == DockerStates.DEAD:
@@ -1062,7 +1047,7 @@ def _wait_for_docker_build(container) -> None:
                 raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
 
 
-def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:  # type: ignore[return]
+def _wait_for_model_server(url: str, stop: stop_after_delay) -> Response:  # type: ignore[return]
     for attempt in Retrying(
         stop=stop,
         wait=wait_fixed(2),
@@ -1070,6 +1055,7 @@ def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:  #
             retry_if_result(lambda response: response.status_code in [502, 503])
             | retry_if_exception_type(exceptions.ConnectionError)
         ),
+        reraise=True,
     ):
         with attempt:
             response = requests.get(url)
@@ -1077,8 +1063,7 @@ def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:  #
 
 
 def wait_for_truss(
-    url: str,
-    container: str,
+    container: Union[str, "Container"],
     wait_for_server_ready: bool = True,
     model_server_stop_retry_override=None,
 ) -> None:
@@ -1086,15 +1071,17 @@ def wait_for_truss(
 
     try:
         _wait_for_docker_build(container)
-        if wait_for_server_ready:
-            if model_server_stop_retry_override is not None:
-                _wait_for_model_server(url, stop=model_server_stop_retry_override)
-            else:
-                _wait_for_model_server(url)
+        urls = get_docker_urls(container)
     except NoSuchContainer:
         raise ContainerNotFoundError(message=f"Container {container} was not found")
-    except RetryError as retry_err:
-        retry_err.reraise()
+
+    if wait_for_server_ready:
+        if model_server_stop_retry_override is None:
+            stop = stop_after_delay(120)
+        else:
+            stop = model_server_stop_retry_override
+
+        _wait_for_model_server(urls.predict_url, stop)
 
 
 def _prepare_secrets_mount_dir() -> Path:
@@ -1109,8 +1096,9 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
     return None
 
 
-def _get_url_from_container(container) -> str:
-    return get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
+def get_docker_urls(container: Union[str, "Container"]) -> DockerURLs:
+    base_url = get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
+    return DockerURLs(base_url)
 
 
 def _create_rand_dir_in_dot_truss(subdir: str) -> Path:

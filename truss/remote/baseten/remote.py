@@ -8,11 +8,11 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base import validation
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
@@ -32,7 +32,7 @@ from truss.remote.baseten.core import (
     get_prod_version_from_versions,
     get_truss_watch_state,
     upload_truss,
-    validate_truss_config,
+    validate_truss_config_against_backend,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
@@ -168,13 +168,13 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
+        config = truss_handle._spec._config
+
+        config.validate_forbid_extra()
+        encoded_config_str = base64_encoded_json_str(config.to_dict())
+        validate_truss_config_against_backend(self._api, encoded_config_str)
         temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
-        encoded_config_str = base64_encoded_json_str(
-            truss_handle._spec._config.to_dict()
-        )
-
-        validate_truss_config(self._api, encoded_config_str)
 
         return FinalPushData(
             model_name=model_name,
@@ -193,6 +193,7 @@ class BasetenRemote(TrussRemote):
         self,
         truss_handle: TrussHandle,
         model_name: str,
+        working_dir: Path,
         publish: bool = True,
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
@@ -201,6 +202,8 @@ class BasetenRemote(TrussRemote):
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
+        include_git_info: bool = False,
+        preserve_env_instance_type: bool = True,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -214,6 +217,11 @@ class BasetenRemote(TrussRemote):
             environment=environment,
             progress_bar=progress_bar,
         )
+
+        if include_git_info:
+            truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
+        else:
+            truss_user_env = b10_types.TrussUserEnv.collect()
 
         # TODO(Tyron): This set of args is duplicated across
         # many functions. We should consolidate them into a
@@ -231,7 +239,14 @@ class BasetenRemote(TrussRemote):
             deployment_name=push_data.version_name,
             origin=push_data.origin,
             environment=push_data.environment,
+            truss_user_env=truss_user_env,
+            preserve_env_instance_type=preserve_env_instance_type,
         )
+
+        if model_version_handle.instance_type_name:
+            logging.info(
+                f"Deploying truss using {model_version_handle.instance_type_name} instance type."
+            )
 
         return BasetenService(
             model_version_handle=model_version_handle,
@@ -247,6 +262,7 @@ class BasetenRemote(TrussRemote):
         chain_name: str,
         entrypoint_artifact: custom_types.ChainletArtifact,
         dependency_artifacts: List[custom_types.ChainletArtifact],
+        truss_user_env: b10_types.TrussUserEnv,
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
@@ -261,8 +277,7 @@ class BasetenRemote(TrussRemote):
         for artifact in [entrypoint_artifact, *dependency_artifacts]:
             truss_handle = truss_build.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
-
-            assert model_name and validation.is_valid_model_name(model_name)
+            assert model_name, "Per creation of artifacts should not be empty."
 
             push_data = self._prepare_push(
                 truss_handle=truss_handle,
@@ -291,6 +306,7 @@ class BasetenRemote(TrussRemote):
             entrypoint=chainlet_data[0],
             dependencies=chainlet_data[1:],
             is_draft=not publish,
+            truss_user_env=truss_user_env,
             environment=environment,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")

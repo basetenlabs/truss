@@ -1,25 +1,98 @@
 import asyncio
 import builtins
+import collections
 import contextlib
 import contextvars
 import json
 import logging
+import statistics
 import sys
 import textwrap
 import threading
+import time
 import traceback
 from collections.abc import AsyncIterator
-from typing import Any, Iterator, Mapping, NoReturn, Optional, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    Iterator,
+    Mapping,
+    NoReturn,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
-import aiohttp
-import fastapi
 import httpx
 import pydantic
 
 from truss.templates.shared import dynamic_config_resolver
-from truss_chains import private_types, public_types
+from truss_chains import private_types, public_types, utils
+
+if TYPE_CHECKING:
+    import aiohttp
+    import fastapi
+
+try:
+    import prometheus_client
+except ImportError:
+    logging.warning("Optional `prometheus_client` is not installed. ")
+
+    class _NoOpMetric:
+        def labels(self, *args: object, **kwargs: object) -> "_NoOpMetric":
+            return self
+
+        def inc(self, amount: float = 1.0) -> None:
+            pass
+
+        def dec(self, amount: float = 1.0) -> None:
+            pass
+
+        def set(self, value: float) -> None:
+            pass
+
+        def observe(self, value: float) -> None:
+            pass
+
+    class prometheus_client:  # type: ignore[no-redef]
+        def Gauge(*args, **kwargs) -> _NoOpMetric:
+            return _NoOpMetric()
+
+        def Counter(*args, **kwargs) -> _NoOpMetric:
+            return _NoOpMetric()
+
 
 T = TypeVar("T")
+
+_LockT = TypeVar("_LockT", bound=Union[threading.Lock, asyncio.Lock])
+_SemaphoreT = TypeVar(
+    "_SemaphoreT", bound=Union[threading.Semaphore, asyncio.Semaphore]
+)
+
+
+_ONGOING_REQUESTS = prometheus_client.Gauge(
+    name="dependency_chainlet_ongoing_requests",
+    documentation="Number of ongoing (executing) requests to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
+
+_QUEUED_REQUESTS = prometheus_client.Gauge(
+    name="dependency_chainlet_queued_requests",
+    documentation="Number of queued (waiting) requests  to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
+_TOTAL_REQUESTS = prometheus_client.Gauge(
+    name="dependency_chainlet_total_requests",
+    documentation="Total number of requests (ongoing + queued)  to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
+_REQUESTS_TOTAL = prometheus_client.Counter(
+    name="dependency_chainlet_requests_total",
+    documentation="Total number of requests  to dependency Chainlet.",
+    labelnames=["dependency_chainlet"],
+)
 
 
 def populate_chainlet_service_predict_urls(
@@ -73,48 +146,188 @@ def populate_chainlet_service_predict_urls(
     return chainlet_to_deployed_service
 
 
-class AsyncSafeCounter:
-    def __init__(self, initial: int = 0) -> None:
-        self._counter = initial
+class _BaseSemaphoreWrapper(Generic[_LockT, _SemaphoreT]):
+    """Add logging and metrics to semaphore."""
+
+    _lock: _LockT
+    _semaphore: _SemaphoreT
+
+    _concurrency_limit: int
+    _dependency_chainlet_name: str
+    _log_interval_sec: float
+    _last_log_time: float
+    _pending_count: int
+    _wait_times: collections.deque[float]
+
+    def __init__(
+        self,
+        concurrency_limit: int,
+        dependency_chainlet_name: str,
+        log_interval_sec: float = 300.0,
+    ) -> None:
+        self._concurrency_limit = concurrency_limit
+        self._dependency_chainlet_name = dependency_chainlet_name
+        self._log_interval_sec = log_interval_sec
+        self._last_log_time = time.time()
+        self._pending_count = 0
+        self._wait_times = collections.deque(maxlen=1000)
+
+    @property
+    def ongoing_requests(self) -> int:
+        return self._concurrency_limit - self._semaphore._value
+
+    @property
+    def queued_requests(self) -> int:
+        return self._pending_count
+
+    def _maybe_log_stats(self, ongoing_requests: int, queued_requests: int) -> None:
+        now = time.time()
+        if now - self._last_log_time < self._log_interval_sec:
+            return
+
+        self._last_log_time = now
+
+        if not self._wait_times:
+            logging.debug(
+                f"[{self._dependency_chainlet_name}] no recent requests to log."
+            )
+            return
+
+        wait_list = list(self._wait_times)
+        p50 = statistics.median(wait_list)
+        p90 = (
+            statistics.quantiles(wait_list, n=10)[8]
+            if len(wait_list) >= 10
+            else max(wait_list)
+        )
+
+        if p50 >= 0.001 or p90 >= 0.001:
+            num_waiting = sum(1 for t in wait_list if t > 0.001)
+            logging.warning(
+                f"Queueing calls to `{self._dependency_chainlet_name}` Chainlet. "
+                f"Momentarily there are {ongoing_requests} ongoing requests and "
+                f"{queued_requests} waiting requests.\n"
+                f"Wait stats: p50={p50:.3f}s, p90={p90:.3f}s.\n"
+                f"Of the last {len(wait_list)} requests, {num_waiting} had to wait. "
+                f"In many uses cases queueing is fine and does not give a net latency "
+                "increase, because the dependency Chainlet replicas cannot process "
+                "bursts of requests instantly anyway. Redesigning you algorithm to "
+                "send requests more evenly spaced over time could be beneficial and "
+                "remove this warning. Alternatively, you could increase "
+                f"`concurrency_limit` (currently {self._concurrency_limit}) for "
+                f"the {self._dependency_chainlet_name} dependency, but might "
+                "risk failures due to overload."
+            )
+        else:
+            logging.debug(
+                f"No queueing of calls to `{self._dependency_chainlet_name}`."
+            )
+
+
+class AsyncSemaphoreWrapper(_BaseSemaphoreWrapper[asyncio.Lock, asyncio.Semaphore]):
+    def __init__(
+        self,
+        concurrency_limit: int,
+        dependency_chainlet_name: str,
+        log_interval_sec: float = 300.0,
+    ) -> None:
+        super().__init__(concurrency_limit, dependency_chainlet_name, log_interval_sec)
         self._lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(concurrency_limit)
 
-    async def increment(self) -> int:
+    @contextlib.asynccontextmanager
+    async def __call__(self) -> AsyncIterator[None]:
+        _REQUESTS_TOTAL.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
+        _QUEUED_REQUESTS.labels(
+            dependency_chainlet=self._dependency_chainlet_name
+        ).inc()
+        _TOTAL_REQUESTS.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
+
+        start_time = time.perf_counter()
+
         async with self._lock:
-            self._counter += 1
-            return self._counter
+            self._pending_count += 1
 
-    async def decrement(self) -> int:
-        async with self._lock:
-            self._counter -= 1
-            return self._counter
+        async with self._semaphore:
+            wait_duration = time.perf_counter() - start_time
+            _QUEUED_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).dec()
+            _ONGOING_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).inc()
 
-    async def __aenter__(self) -> int:
-        return await self.increment()
+            async with self._lock:
+                self._pending_count -= 1
+                self._wait_times.append(wait_duration)
+                self._maybe_log_stats(
+                    ongoing_requests=self.ongoing_requests,
+                    queued_requests=self.queued_requests,
+                )
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self.decrement()
+            try:
+                yield
+            finally:
+                _ONGOING_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
+                _TOTAL_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
 
 
-class ThreadSafeCounter:
-    def __init__(self, initial: int = 0) -> None:
-        self._counter = initial
+class ThreadSemaphoreWrapper(
+    _BaseSemaphoreWrapper[threading.Lock, threading.Semaphore]
+):
+    def __init__(
+        self,
+        concurrency_limit: int,
+        dependency_chainlet_name: str,
+        log_interval_sec: float = 300.0,
+    ) -> None:
+        super().__init__(concurrency_limit, dependency_chainlet_name, log_interval_sec)
         self._lock = threading.Lock()
+        self._semaphore = threading.Semaphore(concurrency_limit)
 
-    def increment(self) -> int:
+    @contextlib.contextmanager
+    def __call__(self) -> Iterator[None]:
+        _REQUESTS_TOTAL.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
+        _QUEUED_REQUESTS.labels(
+            dependency_chainlet=self._dependency_chainlet_name
+        ).inc()
+        _TOTAL_REQUESTS.labels(dependency_chainlet=self._dependency_chainlet_name).inc()
+
+        start_time = time.perf_counter()
+
         with self._lock:
-            self._counter += 1
-            return self._counter
+            self._pending_count += 1
 
-    def decrement(self) -> int:
-        with self._lock:
-            self._counter -= 1
-            return self._counter
+        with self._semaphore:
+            wait_duration = time.perf_counter() - start_time
+            _QUEUED_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).dec()
+            _ONGOING_REQUESTS.labels(
+                dependency_chainlet=self._dependency_chainlet_name
+            ).inc()
 
-    def __enter__(self) -> int:
-        return self.increment()
+            with self._lock:
+                self._pending_count -= 1
+                self._wait_times.append(wait_duration)
+                self._maybe_log_stats(
+                    ongoing_requests=self.ongoing_requests,
+                    queued_requests=self.queued_requests,
+                )
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.decrement()
+            try:
+                yield
+            finally:
+                _ONGOING_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
+                _TOTAL_REQUESTS.labels(
+                    dependency_chainlet=self._dependency_chainlet_name
+                ).dec()
 
 
 _trace_parent_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
@@ -170,6 +383,11 @@ def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseM
 
 def _handle_exception(exception: Exception) -> NoReturn:
     """Raises `HTTPException` with `RemoteErrorDetail`."""
+    try:
+        import fastapi
+    except ImportError:
+        raise utils.make_optional_import_error("fastapi")
+
     if hasattr(exception, "__module__"):
         exception_module_name = exception.__module__
     else:
@@ -184,7 +402,7 @@ def _handle_exception(exception: Exception) -> NoReturn:
         if frame.filename.endswith("model/model.py") and frame.name == "predict":
             model_predict_index = i + 1
         if frame.filename.endswith("remote_chainlet/stub.py") and frame.name.startswith(
-            "predict"  # predict sycnc|async|stream.
+            "predict"  # predict sync|async|stream.
         ):
             first_stub_index = i - 1
             break
@@ -200,17 +418,14 @@ def _handle_exception(exception: Exception) -> NoReturn:
         exception_message=str(exception),
         user_stack_trace=list(stack),
     )
+    if isinstance(exception, fastapi.HTTPException):
+        status_code = exception.status_code
+    else:
+        status_code = fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR
+
     raise fastapi.HTTPException(
-        status_code=500, detail=error.model_dump()
+        status_code=status_code, detail=error.model_dump()
     ) from exception
-
-
-@contextlib.contextmanager
-def _exception_to_http_error() -> Iterator[None]:
-    try:
-        yield
-    except Exception as e:
-        _handle_exception(e)
 
 
 def _resolve_exception_class(error: public_types.RemoteErrorDetail) -> Type[Exception]:
@@ -239,7 +454,12 @@ def _resolve_exception_class(error: public_types.RemoteErrorDetail) -> Type[Exce
     return exception_cls
 
 
-def _handle_response_error(response_json: dict, base_msg: str):
+def _handle_response_error(response_json: dict, base_msg: str, http_status: int):
+    try:
+        import fastapi
+    except ImportError:
+        raise utils.make_optional_import_error("fastapi")
+
     try:
         error_json = response_json["error"]
     except KeyError as e:
@@ -270,7 +490,17 @@ def _handle_response_error(response_json: dict, base_msg: str):
         f"├─ {base_msg}\n"
         f"{error_format}"
     )
-    raise exception_cls(msg)
+
+    if issubclass(exception_cls, fastapi.HTTPException):
+        raise fastapi.HTTPException(status_code=http_status, detail=msg)
+
+    try:
+        exc = exception_cls(msg)
+    except Exception:  # ruff
+        # Some exceptions cannot be directly instantiated with message, fallback.
+        exc = public_types.GenericRemoteException(msg)
+
+    raise exc
 
 
 def _make_base_error_message(remote_name: str, http_status: int) -> str:
@@ -317,11 +547,11 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
             response_json = response.json()
         except Exception as e:
             raise ValueError(base_msg) from e
-        _handle_response_error(response_json, base_msg)
+        _handle_response_error(response_json, base_msg, response.status_code)
 
 
 async def async_response_raise_errors(
-    response: aiohttp.ClientResponse, remote_name: str
+    response: "aiohttp.ClientResponse", remote_name: str
 ) -> None:
     """Async version of `async_response_raise_errors`."""
     if response.status >= 400:
@@ -330,13 +560,16 @@ async def async_response_raise_errors(
             response_json = await response.json()
         except Exception as e:
             raise ValueError(base_msg) from e
-        _handle_response_error(response_json, base_msg)
+        _handle_response_error(response_json, base_msg, response.status)
 
 
 @contextlib.contextmanager
 def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
-    with _trace_parent(headers), _exception_to_http_error():
-        yield
+    with _trace_parent(headers):
+        try:
+            yield
+        except Exception as e:
+            _handle_exception(e)
 
 
 class WebsocketWrapperFastAPI:
@@ -346,7 +579,7 @@ class WebsocketWrapperFastAPI:
     #  this is somewhat loopy, as `fastapi.WebSocketDisconnect` just passes through,
     #  but we have not documented either, so it's not directly a contradiction.
 
-    def __init__(self, websocket: fastapi.WebSocket) -> None:
+    def __init__(self, websocket: "fastapi.WebSocket") -> None:
         self._websocket = websocket
         self.headers: Mapping[str, str] = websocket.headers
 

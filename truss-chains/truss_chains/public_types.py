@@ -18,16 +18,17 @@ from typing import (
 
 import pydantic
 
-from truss.base import truss_config
-from truss.shared import types
+from truss.base import custom_types, truss_config
+
+SECRET_DUMMY = "***"
+DEFAULT_TIMEOUT_SEC = 600.0
+DEFAULT_CONCURRENCY_LIMIT = 300
+
 
 CpuCountT = Literal["cpu_count"]
 CPU_COUNT: CpuCountT = "cpu_count"
 
-SECRET_DUMMY = "***"
 _BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
-_DEFAULT_TIMEOUT_SEC = 600.0
-
 
 _K = TypeVar("_K", contravariant=True)
 _V = TypeVar("_V", covariant=True)
@@ -66,13 +67,13 @@ class GenericRemoteException(Exception):
     to re-raise the same exception that was raise remotely in the caller."""
 
 
-class RemoteErrorDetail(types.SafeModel):
+class RemoteErrorDetail(custom_types.SafeModel):
     """When a remote chainlet raises an exception, this pydantic model contains
     information about the error and stack trace and is included in JSON form in the
     error response.
     """
 
-    class StackFrame(types.SafeModel):
+    class StackFrame(custom_types.SafeModel):
         filename: str
         lineno: Optional[int]
         name: str
@@ -167,7 +168,7 @@ class BasetenImage(enum.Enum):
     PY311 = "py311"
 
 
-class CustomImage(types.SafeModel):
+class CustomImage(custom_types.SafeModel):
     """Configures the usage of a custom image hosted on dockerhub."""
 
     image: str
@@ -175,7 +176,7 @@ class CustomImage(types.SafeModel):
     docker_auth: Optional[truss_config.DockerAuthSettings] = None
 
 
-class DockerImage(types.SafeModelNonSerializable):
+class DockerImage(custom_types.SafeModelNonSerializable):
     """Configures the docker image in which a remoted chainlet is deployed.
 
     Note:
@@ -200,6 +201,11 @@ class DockerImage(types.SafeModelNonSerializable):
         external_package_dirs: A list of directories containing additional python
           packages outside the chain's workspace dir, e.g. a shared library. This code
           is copied into the docker image and importable at runtime.
+        truss_server_version_override: By default, deployed Chainlets use the truss
+          server implementation corresponding to the truss version of the user's CLI.
+          To use a specific version, e.g. pinning it for exact reproducibility, the
+          version can be overridden here. Valid versions correspond to truss releases
+          on PyPi: https://pypi.org/project/truss/#history, e.g. `"0.9.80"`.
     """
 
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
@@ -208,6 +214,7 @@ class DockerImage(types.SafeModelNonSerializable):
     apt_requirements: list[str] = pydantic.Field(default_factory=list)
     data_dir: Optional[AbsPath] = None
     external_package_dirs: Optional[list[AbsPath]] = None
+    truss_server_version_override: Optional[str] = None
 
     @pydantic.model_validator(mode="before")
     @classmethod
@@ -240,7 +247,7 @@ class Compute:
         Not all combinations can be exactly satisfied by available hardware, in some
         cases more powerful machine types are chosen to make sure requirements are met
         or over-provisioned. Refer to the
-        `baseten instance reference <https://docs.baseten.co/performance/instances>`_.
+        `baseten instance reference <https://docs.baseten.co/deployment/resources>`_.
     """
 
     # Builder to create ComputeSpec.
@@ -303,10 +310,10 @@ class Compute:
         return self._spec.model_copy(deep=True)
 
 
-class AssetSpec(types.SafeModel):
+class AssetSpec(custom_types.SafeModel):
     """Parsed and validated assets. See ``Assets`` for more information."""
 
-    secrets: dict[str, str] = pydantic.Field(default_factory=dict)
+    secrets: Mapping[str, str] = pydantic.Field(default_factory=dict)
     cached: list[truss_config.ModelRepo] = pydantic.Field(default_factory=list)
     external_data: list[truss_config.ExternalDataItem] = pydantic.Field(
         default_factory=list
@@ -363,23 +370,36 @@ class Assets:
         return self._spec.model_copy(deep=True)
 
 
-class ChainletOptions(types.SafeModelNonSerializable):
+try:
+    # Was only introduced in 2.5.0
+    JsonType = pydantic.JsonValue
+except AttributeError:
+    JsonType = dict[str, Any]  # type: ignore[misc]
+
+
+class ChainletOptions(custom_types.SafeModelNonSerializable):
     """
     Args:
         enable_b10_tracing: enables baseten-internal trace data collection. This
           helps baseten engineers better analyze chain performance in case of issues.
           It is independent of a potentially user-configured tracing instrumentation.
           Turning this on, could add performance overhead.
+        enable_debug_logs: Sets log level to debug in deployed server.
         env_variables: static environment variables available to the deployed chainlet.
         health_checks: Configures health checks for the chainlet. See `guide <https://docs.baseten.co/truss/guides/custom-health-checks#chains>`_.
+        metadata: Arbitrary JSON object to describe chainlet.
+        streaming_read_timeout: Amount of time (in seconds) between each streamed chunk before a timeout is triggered.
     """
 
     enable_b10_tracing: bool = False
+    enable_debug_logs: bool = False
     env_variables: Mapping[str, str] = pydantic.Field(default_factory=dict)
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
+    metadata: Optional[JsonType] = None
+    streaming_read_timeout: int = 60
 
 
-class RemoteConfig(types.SafeModelNonSerializable):
+class RemoteConfig(custom_types.SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
     This is specified as a class variable for each chainlet class, e.g.::
@@ -411,7 +431,7 @@ class RemoteConfig(types.SafeModelNonSerializable):
         return self.assets.get_spec()
 
 
-class RPCOptions(types.SafeModel):
+class RPCOptions(custom_types.SafeModel):
     """Options to customize RPCs to dependency chainlets.
 
     Args:
@@ -424,11 +444,16 @@ class RPCOptions(types.SafeModel):
          speedup and message size reduction (~25%) for numpy arrays. Use
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.
+        concurrency_limit: The maximum number of concurrent requests to send to the
+          remote chainlet. Excessive requests will be queued and a warning
+          will be shown. Try to design your algorithm in a way that spreads requests
+          evenly over time so that this the default value can be used.
     """
 
     retries: int = 1
-    timeout_sec: float = _DEFAULT_TIMEOUT_SEC
+    timeout_sec: float = DEFAULT_TIMEOUT_SEC
     use_binary: bool = False
+    concurrency_limit: int = DEFAULT_CONCURRENCY_LIMIT
 
 
 ### Interfaces #########################################################################
@@ -625,11 +650,11 @@ class EngineBuilderLLMInput(pydantic.BaseModel):
     lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
 
 
-class DeployedServiceDescriptor(types.SafeModel):
+class DeployedServiceDescriptor(custom_types.SafeModel):
     """Bundles values to establish an RPC session to a dependency chainlet,
     specifically with ``StubBase``."""
 
-    class InternalURL(types.SafeModel):
+    class InternalURL(custom_types.SafeModel):
         gateway_run_remote_url: str  # Includes `https` and endpoint.
         hostname: str  # Does not include `https`.
 
@@ -655,7 +680,7 @@ class DeployedServiceDescriptor(types.SafeModel):
         return self
 
 
-class Environment(types.SafeModel):
+class Environment(custom_types.SafeModel):
     """The environment the chainlet is deployed in.
 
     Args:
@@ -666,7 +691,7 @@ class Environment(types.SafeModel):
     # can add more fields here as we add them to dynamic_config configmap
 
 
-class DeploymentContext(types.SafeModelNonSerializable):
+class DeploymentContext(custom_types.SafeModelNonSerializable):
     """Bundles config values and resources needed to instantiate Chainlets.
 
     The context can optionally be added as a trailing argument in a Chainlet's
@@ -674,21 +699,21 @@ class DeploymentContext(types.SafeModelNonSerializable):
     an access token for downloading model weights).
 
     Args:
-        data_dir: The directory where the chainlet can store and access data,
-          e.g. for downloading model weights.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
           This is used to create RPC sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
+        data_dir: The directory where the chainlet can store and access data,
+          e.g. for downloading model weights.
         environment: The environment that the chainlet is deployed in.
           None if the chainlet is not associated with an environment.
     """
 
-    data_dir: Optional[pathlib.Path] = None
     chainlet_to_service: Mapping[str, DeployedServiceDescriptor]
     secrets: _MappingNoIter[str, str]
+    data_dir: Optional[pathlib.Path] = None
     environment: Optional[Environment] = None
 
     def get_service_descriptor(self, chainlet_name: str) -> DeployedServiceDescriptor:

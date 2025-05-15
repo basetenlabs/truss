@@ -1,4 +1,4 @@
-from typing import List
+import sys
 
 import rich
 from InquirerPy import inquirer
@@ -6,6 +6,12 @@ from InquirerPy.validator import ValidationError, Validator
 
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
+
+
+def check_is_interactive() -> bool:
+    """Detects if CLI is operated interactively by human, so we can ask things,
+    that we would want to skip for automated subprocess/CI contexts."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 class NonEmptyValidator(Validator):
@@ -26,7 +32,6 @@ def inquire_remote_config() -> RemoteConfig:
     api_key = inquirer.secret(
         message="🤫 Quietly paste your API_KEY:", qmark="", validate=NonEmptyValidator()
     ).execute()
-
     return RemoteConfig(
         name="baseten",
         configs={
@@ -37,7 +42,8 @@ def inquire_remote_config() -> RemoteConfig:
     )
 
 
-def inquire_remote_name(available_remotes: List[str]) -> str:
+def inquire_remote_name() -> str:
+    available_remotes = RemoteFactory.get_available_config_names()
     if len(available_remotes) > 1:
         remote = inquirer.select(
             "🎮 Which remote do you want to connect to?",
@@ -50,7 +56,9 @@ def inquire_remote_name(available_remotes: List[str]) -> str:
     remote_config = inquire_remote_config()
     RemoteFactory.update_remote_config(remote_config)
 
-    rich.print(f"💾 Remote config saved to {USER_TRUSSRC_PATH}")
+    rich.print(
+        f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
+    )
     return remote_config.name
 
 

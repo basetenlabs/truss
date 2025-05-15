@@ -32,9 +32,9 @@ from truss.remote.baseten import error as b10_errors
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
 from truss.truss_handle import truss_handle
-from truss.util import log_utils
+from truss.util import log_utils, user_config
 from truss.util import path as truss_path
-from truss_chains import framework, private_types, public_types, utils
+from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import code_gen
 
 if TYPE_CHECKING:
@@ -227,8 +227,10 @@ def push(
 
 
 def push_debug_docker(
-    entrypoint: Type[private_types.ABCChainlet], chain_name: str
+    entrypoint: Type[private_types.ABCChainlet], chain_name: Optional[str] = None
 ) -> ChainService:
+    if not chain_name:
+        chain_name = entrypoint.name.lower()
     options = private_types.PushOptionsLocalDocker(
         chain_name=chain_name, only_generate_trusses=False, use_local_src=True
     )
@@ -241,9 +243,7 @@ def push_debug_docker(
 class DockerChainletService(b10_service.TrussService):
     """This service is for Chainlets (not for Chains)."""
 
-    def __init__(self, port: int, **kwargs):
-        remote_url = f"http://localhost:{port}"
-
+    def __init__(self, remote_url: str, **kwargs):
         super().__init__(remote_url, is_draft=False, **kwargs)
 
     def authenticate(self) -> Dict[str, str]:
@@ -277,18 +277,18 @@ def _push_service_docker(
     truss_dir: pathlib.Path,
     chainlet_display_name: str,
     options: private_types.PushOptionsLocalDocker,
-    port: int,
-) -> None:
+) -> str:
     th = truss_handle.TrussHandle(truss_dir)
     th.add_secret(public_types._BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
-    th.docker_run(
-        local_port=port,
+    container = th.docker_run(
+        local_port=None,
         detach=True,
         wait_for_server_ready=True,
         network="host",
         container_name_prefix=chainlet_display_name,
         disable_json_logging=True,
     )
+    return truss_handle.get_docker_urls(container).base_url
 
 
 class DockerChainService(ChainService):
@@ -329,29 +329,27 @@ def _create_docker_chain(
     chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
     chainlet_to_service: Dict[str, DockerChainletService] = {}
     for chainlet_artifact in chainlet_artifacts:
-        port = utils.get_free_port()
-        service = DockerChainletService(port)
+        local_config_handler.LocalConfigHandler.set_dynamic_config(
+            private_types.DYNAMIC_CHAINLET_CONFIG_KEY,
+            json.dumps(chainlet_to_predict_url),
+        )
+        logging.info(
+            f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
+        )
+        base_url = _push_service_docker(
+            chainlet_artifact.truss_dir, chainlet_artifact.display_name, docker_options
+        )
+
+        service = DockerChainletService(base_url)
 
         docker_internal_url = service.predict_url.replace(
-            "localhost", "host.docker.internal"
+            "0.0.0.0", "host.docker.internal"
         )
         chainlet_to_predict_url[chainlet_artifact.display_name] = {
             "predict_url": docker_internal_url
         }
         chainlet_to_service[chainlet_artifact.name] = service
 
-        local_config_handler.LocalConfigHandler.set_dynamic_config(
-            private_types.DYNAMIC_CHAINLET_CONFIG_KEY,
-            json.dumps(chainlet_to_predict_url),
-        )
-
-        truss_dir = chainlet_artifact.truss_dir
-        logging.info(
-            f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
-        )
-        _push_service_docker(
-            truss_dir, chainlet_artifact.display_name, docker_options, port
-        )
         logging.info(
             f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
         )
@@ -473,12 +471,21 @@ def _create_baseten_chain(
         b10_remote.BasetenRemote,
         remote_factory.RemoteFactory.create(remote=baseten_options.remote),
     )
+
+    if user_config.settings.include_git_info or baseten_options.include_git_info:
+        truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
+            baseten_options.working_dir
+        )
+    else:
+        truss_user_env = b10_types.TrussUserEnv.collect()
+
     _create_chains_secret_if_missing(remote_provider)
 
     chain_deployment_handle = remote_provider.push_chain_atomic(
-        chain_name=baseten_options.chain_name,
-        entrypoint_artifact=entrypoint_artifact,
-        dependency_artifacts=dependency_artifacts,
+        baseten_options.chain_name,
+        entrypoint_artifact,
+        dependency_artifacts,
+        truss_user_env,
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,

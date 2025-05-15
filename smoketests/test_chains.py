@@ -78,9 +78,14 @@ def run_command(truss_rc_path: pathlib.Path, command: str) -> tuple[str, str]:
         stderr=subprocess.PIPE,
         text=True,
     )
-    result.check_returncode()
     stdout = result.stdout.strip()
     stderr = result.stderr.strip()
+    if result.returncode != 0:
+        logging.error(f"Command failed with exit code {result.returncode}")
+        logging.error(f"STDOUT:\n{stdout}")
+        logging.error(f"STDERR:\n{stderr}")
+        result.check_returncode()
+
     logging.info("Command subprocess finished.")
     return stdout, stderr
 

@@ -20,6 +20,19 @@ def lazy_data_loader(download_dir: str):
         raise
 ```
 
+Environment variables:
+
+```bash
+# If b10fs is enabled and mounted to `/cache/org/artifacts`. Can be 1 or 0.
+BASETEN_FS_ENABLED=0
+# if the file path is a relative path e.g. "model.safetensors", what path to preceed it with. No effect if the path in the manifest is absolute (`/tmp/mymodel/model.safetensors`)
+TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/bptr-resolved"
+# after how much time since the last access of the file,
+# deleting all files from other tenants in the org to make space for this deployment.
+# "/cache/org/artifacts/truss_transfer_managed_v1";
+TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR="48" # sets it to two days.
+```
+
 ### Running the CLI as binary
 
 Compiling the libary as musl-linux target for cross-platform usage.

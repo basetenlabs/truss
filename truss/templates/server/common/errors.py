@@ -17,6 +17,8 @@ _BASETEN_UNEXPECTED_ERROR = 500
 _BASETEN_DOWNSTREAM_ERROR_CODE = 600
 _BASETEN_CLIENT_ERROR_CODE = 700
 
+MODEL_ERROR_MESSAGE = "Internal Server Error (in model/chainlet)."
+
 
 class ModelMissingError(Exception):
     def __init__(self, path):
@@ -97,7 +99,7 @@ async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Respo
     if isinstance(exc, UserCodeError):
         return _make_baseten_response(
             HTTPStatus.INTERNAL_SERVER_ERROR.value,
-            "Internal Server Error",
+            MODEL_ERROR_MESSAGE,
             _BASETEN_DOWNSTREAM_ERROR_CODE,
         )
     if isinstance(exc, ModelMethodNotImplemented):
@@ -170,9 +172,17 @@ def intercept_exceptions(
         #  we have to add a special-case here.
         if "user_stack_trace" in e.detail:
             try:
-                from truss_chains import public_types
+                try:
+                    from truss_chains import public_types
 
-                chains_error = public_types.RemoteErrorDetail.model_validate(e.detail)
+                    error_cls = public_types.RemoteErrorDetail
+                except ImportError:
+                    # For pre 0.9.67 usage.
+                    from truss_chains import definitions  # type: ignore[attr-defined]
+
+                    error_cls = definitions.RemoteErrorDetail
+
+                chains_error = error_cls.model_validate(e.detail)
                 # The formatted error contains a (potentially chained) stack trace
                 # with all framework code removed, see
                 # truss_chains/remote_chainlet/utils.py::response_raise_errors.
@@ -193,9 +203,7 @@ def intercept_exceptions(
         )
         raise
     except Exception as exc:
-        logger.error(
-            "Internal Server Error", exc_info=filter_traceback(model_file_name)
-        )
+        logger.error(MODEL_ERROR_MESSAGE, exc_info=filter_traceback(model_file_name))
         raise UserCodeError(str(exc))
 
 

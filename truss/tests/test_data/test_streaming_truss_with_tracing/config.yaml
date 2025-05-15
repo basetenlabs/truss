@@ -6,6 +6,7 @@ build:
   secret_to_path_mapping: {}
 build_commands: []
 bundled_packages_dir: packages
+cache_internal: []
 data_dir: data
 description: null
 docker_server: null
@@ -29,15 +30,22 @@ requirements: []
 requirements_file: null
 resources:
   accelerator: null
-  cpu: '1'
+  cpu: "1"
   memory: 2Gi
   use_gpu: false
 runtime:
+  enable_debug_logs: false
   enable_tracing_data: false
-  num_workers: 1
+  health_checks:
+    restart_check_delay_seconds: null
+    restart_threshold_seconds: null
+    stop_traffic_threshold_seconds: null
   predict_concurrency: 1
   streaming_read_timeout: 60
+  transport:
+    kind: websocket
+  truss_server_version_override: null
 secrets: {}
-spec_version: '2.0'
+spec_version: "2.0"
 system_packages: []
-trt_llm: null
+use_local_src: false

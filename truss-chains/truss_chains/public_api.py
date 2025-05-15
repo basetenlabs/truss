@@ -1,3 +1,4 @@
+import inspect
 import pathlib
 from typing import (
     TYPE_CHECKING,
@@ -45,8 +46,9 @@ def depends_context() -> public_types.DeploymentContext:
 def depends(
     chainlet_cls: Type[framework.ChainletT],
     retries: int = 1,
-    timeout_sec: float = public_types._DEFAULT_TIMEOUT_SEC,
+    timeout_sec: float = public_types.DEFAULT_TIMEOUT_SEC,
     use_binary: bool = False,
+    concurrency_limit: int = public_types.DEFAULT_CONCURRENCY_LIMIT,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
     dependency of another chainlet. The return value of ``depends`` is intended to be
@@ -75,13 +77,20 @@ def depends(
          speedup and message size reduction (~25%) for numpy arrays. Use
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.
+        concurrency_limit: The maximum number of concurrent requests to send to the
+          remote chainlet. Excessive requests will be queued and a warning
+          will be shown. Try to design your algorithm in a way that spreads requests
+          evenly over time so that this the default value can be used.
 
     Returns:
         A "symbolic marker" to be used as a default argument in a chainlet's
         initializer.
     """
     options = public_types.RPCOptions(
-        retries=retries, timeout_sec=timeout_sec, use_binary=use_binary
+        retries=retries,
+        timeout_sec=timeout_sec,
+        use_binary=use_binary,
+        concurrency_limit=concurrency_limit,
     )
     # The type error is silenced to because chains framework will at runtime inject
     # a corresponding instance. Nonetheless, we want to use a type annotation here,
@@ -141,6 +150,7 @@ def push(
     remote: str = "baseten",
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
+    include_git_info: bool = False,
 ) -> deployment_client.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
@@ -159,6 +169,9 @@ def push(
           inquired.
         environment: The name of an environment to promote deployment into.
         progress_bar: Optional `rich.progress.Progress` if output is desired.
+        include_git_info: Whether to attach git versioning info (sha, branch, tag) to
+          deployments made from within a git repo. If set to True in `.trussrc`, it
+          will always be attached.
 
     Returns:
         A chain service handle to the deployed chain.
@@ -171,6 +184,8 @@ def push(
         only_generate_trusses=only_generate_trusses,
         remote=remote,
         environment=environment,
+        include_git_info=include_git_info,
+        working_dir=pathlib.Path(inspect.getfile(entrypoint)).parent,
     )
     service = deployment_client.push(entrypoint, options, progress_bar=progress_bar)
     assert isinstance(

@@ -1,3 +1,4 @@
+import pathlib
 from unittest import mock
 
 import pytest
@@ -33,6 +34,19 @@ def mock_graphql_error_response():
     return response
 
 
+def mock_graphql_error_response_with_description():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={
+            "errors": [
+                {"message": "error", "extensions": {"description": "descriptive_error"}}
+            ]
+        }
+    )
+    return response
+
+
 def mock_unsuccessful_response():
     response = Response()
     response.status_code = 400
@@ -45,7 +59,17 @@ def mock_create_model_version_response():
     response.json = mock.Mock(
         return_value={
             "data": {
-                "create_model_version_from_truss": {"model_version": {"id": "12345"}}
+                "create_model_version_from_truss": {
+                    "model_version": {
+                        "id": "12345",
+                        "oracle": {
+                            "id": "67890",
+                            "name": "model-1",
+                            "hostname": "localhost:1234",
+                        },
+                        "instance_type": {"name": "1x4"},
+                    }
+                }
             }
         }
     )
@@ -57,7 +81,19 @@ def mock_create_model_response():
     response.status_code = 200
     response.json = mock.Mock(
         return_value={
-            "data": {"create_model_from_truss": {"model_version": {"id": "12345"}}}
+            "data": {
+                "create_model_from_truss": {
+                    "model_version": {
+                        "id": "12345",
+                        "oracle": {
+                            "id": "67890",
+                            "name": "model-1",
+                            "hostname": "localhost:1234",
+                        },
+                        "instance_type": {"name": "1x4"},
+                    }
+                }
+            }
         }
     )
     return response
@@ -118,6 +154,17 @@ def test_post_graphql_query_error(mock_post, baseten_api):
         baseten_api._post_graphql_query("sample_query_string")
 
 
+@mock.patch(
+    "requests.post", return_value=mock_graphql_error_response_with_description()
+)
+def test_post_graphql_query_error_with_description(mock_post, baseten_api):
+    with pytest.raises(ApiError) as exc_info:
+        baseten_api._post_graphql_query("sample_query_string")
+
+    exception = exc_info.value
+    assert str(exception) == "descriptive_error"
+
+
 @mock.patch("requests.post", return_value=mock_unsuccessful_response())
 def test_post_requests_error(mock_post, baseten_api):
     with pytest.raises(requests.exceptions.HTTPError):
@@ -131,6 +178,7 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
         "s3key",
         "config_str",
         "semver_bump",
+        b10_types.TrussUserEnv.collect(),
         False,
         "deployment_name",
         "production",
@@ -147,6 +195,7 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
     assert 'environment_name: "production"' in gql_mutation
+    assert "preserve_env_instance_type: true" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -154,7 +203,14 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     mock_post, baseten_api
 ):
     baseten_api.create_model_version_from_truss(
-        "model_id", "s3key", "config_str", "semver_bump", False, deployment_name=None
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        False,
+        deployment_name=None,
+        preserve_env_instance_type=False,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -168,6 +224,7 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert "scale_down_old_production: true" in gql_mutation
     assert " name: " not in gql_mutation
     assert "environment_name: " not in gql_mutation
+    assert "preserve_env_instance_type: false" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -179,12 +236,15 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
         "s3key",
         "config_str",
         "semver_bump",
+        b10_types.TrussUserEnv.collect(),
         True,
         deployment_name=None,
         environment="staging",
+        preserve_env_instance_type=True,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
+
     assert 'model_id: "model_id"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
@@ -195,6 +255,7 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert "scale_down_old_production: false" in gql_mutation
     assert " name: " not in gql_mutation
     assert 'environment_name: "staging"' in gql_mutation
+    assert "preserve_env_instance_type: true" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
@@ -204,6 +265,7 @@ def test_create_model_from_truss(mock_post, baseten_api):
         "s3key",
         "config_str",
         "semver_bump",
+        b10_types.TrussUserEnv.collect(),
         deployment_name="deployment_name",
     )
 
@@ -223,7 +285,12 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     mock_post, baseten_api
 ):
     baseten_api.create_model_from_truss(
-        "model_name", "s3key", "config_str", "semver_bump", deployment_name=None
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        deployment_name=None,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -240,7 +307,12 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
 @mock.patch("requests.post", return_value=mock_create_model_response())
 def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_api):
     baseten_api.create_model_from_truss(
-        "model_name", "s3key", "config_str", "semver_bump", allow_truss_download=False
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        allow_truss_download=False,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -259,7 +331,11 @@ def test_create_development_model_from_truss_with_allow_truss_download(
     mock_post, baseten_api
 ):
     baseten_api.create_development_model_from_truss(
-        "model_name", "s3key", "config_str", allow_truss_download=False
+        "model_name",
+        "s3key",
+        "config_str",
+        b10_types.TrussUserEnv.collect(),
+        allow_truss_download=False,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -286,6 +362,32 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
                 encoded_config_str="encoded-config-str-1",
             ),
         ),
+        truss_user_env=b10_types.TrussUserEnv.collect(),
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+
+    assert 'environment: "production"' in gql_mutation
+    assert 'chain_id: "chain_id"' in gql_mutation
+    assert "dependencies:" in gql_mutation
+    assert "entrypoint:" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
+def test_deploy_chain_deployment_with_gitinfo(mock_post, baseten_api):
+    baseten_api.deploy_chain_atomic(
+        environment="production",
+        chain_id="chain_id",
+        dependencies=[],
+        entrypoint=ChainletDataAtomic(
+            name="chainlet-1",
+            oracle=OracleData(
+                model_name="model-1",
+                s3_key="s3-key-1",
+                encoded_config_str="encoded-config-str-1",
+            ),
+        ),
+        truss_user_env=b10_types.TrussUserEnv.collect_with_git_info(pathlib.Path(".")),
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -309,6 +411,7 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
                 encoded_config_str="encoded-config-str-1",
             ),
         ),
+        truss_user_env=b10_types.TrussUserEnv.collect(),
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]

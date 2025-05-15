@@ -68,6 +68,7 @@ class StringGenerator(chains.ChainletBase):
         yield "last."
 
 
+@chains.mark_entrypoint
 class Consumer(chains.ChainletBase):
     """Consume that reads the raw streams and parses them."""
 

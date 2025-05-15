@@ -17,16 +17,7 @@ from helpers.custom_types import (
 from helpers.errors import UnsupportedPatch
 from helpers.truss_patch.model_code_patch_applier import apply_code_patch
 
-# TODO(marius/TaT): remove try-except after TaT.
-try:
-    from truss.base.truss_config import ExternalData, ExternalDataItem, TrussConfig
-except ImportError:
-    from truss.truss_config import (  # type: ignore[no-redef]
-        ExternalData,
-        ExternalDataItem,
-        TrussConfig,
-    )
-
+from truss.base.truss_config import ExternalData, ExternalDataItem, TrussConfig
 from truss.util.download import download_external_data
 
 
@@ -162,12 +153,14 @@ class ModelContainerPatchApplier:
             raise ValueError(f"Unknown patch action {action}")
 
     def _apply_external_data_patch(self, external_data_patch: ExternalDataPatch):
-        self._app_logger.debug(
-            f"Applying external data patch {external_data_patch.to_dict()}"
-        )
+        self._app_logger.debug(f"Applying external data patch {external_data_patch}")
         action = external_data_patch.action
+        try:
+            item = ExternalDataItem.model_validate(external_data_patch.item)
+        except Exception:
+            item = ExternalDataItem.from_dict(external_data_patch.item)  # type: ignore[attr-defined]
+
         if action == Action.REMOVE:
-            item = ExternalDataItem.from_dict(external_data_patch.item)
             filepath = self._data_dir / item.local_data_path
             if not filepath.exists():
                 self._app_logger.warning(
@@ -177,9 +170,7 @@ class ModelContainerPatchApplier:
                 self._app_logger.debug(f"Deleting file {filepath}")
                 filepath.unlink()
         elif action == Action.ADD:
-            download_external_data(
-                ExternalData.from_list([external_data_patch.item]), self._data_dir
-            )
+            download_external_data(ExternalData([item]), self._data_dir)
         else:
             raise ValueError(f"Unknown patch action {action}")
 

@@ -1,10 +1,9 @@
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
-from truss.base.truss_config import ExternalDataItem
+from truss.base.truss_config import ExternalData, ExternalDataItem
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (
@@ -58,11 +57,11 @@ class Model:
 """
 
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag, binary=binary)
+        result = th.docker_predict([1], tag=tag, binary=binary, local_port=None)
         assert result[0] == 1
         orig_num_truss_images = len(th.get_all_docker_images())
         update_model_code(custom_model_control, new_model_code)
-        result = th.docker_predict([1], tag=tag, binary=binary)
+        result = th.docker_predict([1], tag=tag, binary=binary, local_port=None)
         assert result[0] == 2
         assert orig_num_truss_images == current_num_docker_images(th)
 
@@ -85,10 +84,10 @@ def test_control_truss_empty_dir_patch(
     def predict_with_added_empty_directory():
         # Adding empty directory should work
         (custom_model_control / "model" / "dir").mkdir()
-        return th.docker_predict([1], tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary, local_port=None)
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag, binary=binary)
+        th.docker_predict([1], tag=tag, binary=binary, local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
 
         predict_with_added_empty_directory()
@@ -115,10 +114,10 @@ def test_control_truss_unpatchable(
         # Changes that are not expressible with patch should also work
         # Changes to data dir are not currently patch expressible
         (custom_model_control / "data" / "dummy").touch()
-        return th.docker_predict([1], tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary, local_port=None)
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag, binary=binary)
+        th.docker_predict([1], tag=tag, binary=binary, local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
 
         predict_with_unpatchable_change()
@@ -142,22 +141,22 @@ def test_control_truss_python_sys_req_patch(
 
     def predict_with_python_requirement_added(req: str):
         th.add_python_requirement(req)
-        return th.docker_predict([1], tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary, local_port=None)
 
     def predict_with_python_requirement_removed(req):
         th.remove_python_requirement(req)
-        return th.docker_predict([1], tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary, local_port=None)
 
     def predict_with_system_requirement_added(pkg):
         th.add_system_package(pkg)
-        return th.docker_predict([1], tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary, local_port=None)
 
     def predict_with_system_requirement_removed(pkg):
         th.remove_system_package(pkg)
-        return th.docker_predict([1], tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary, local_port=None)
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag, binary=binary)
+        th.docker_predict([1], tag=tag, binary=binary, local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
 
         container = th.get_running_serving_container_ignore_hash()
@@ -203,10 +202,10 @@ def test_control_truss_patch_ignored_changes(
         model_pycache_path = custom_model_control / "model" / "__pycache__"
         model_pycache_path.mkdir()
         (model_pycache_path / "foo.pyc").touch()
-        return th.docker_predict([1], tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary, local_port=None)
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag, binary=binary)
+        th.docker_predict([1], tag=tag, binary=binary, local_port=None)
         orig_num_truss_images = current_num_docker_images(th)
 
         predict_with_ignored_changes()
@@ -224,10 +223,10 @@ def test_patch_added_model_dir(
         code_file_dir.mkdir(parents=True)
         with (code_file_dir / "foo.bar").open("w") as model_code_file:
             model_code_file.write("foobar")
-        return th.docker_predict([1], build_dir=tmp_path, tag=tag)
+        return th.docker_predict([1], build_dir=tmp_path, tag=tag, local_port=None)
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag)
+        th.docker_predict([1], tag=tag, local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
 
         predict_with_added_model_dir_file()
@@ -244,15 +243,15 @@ def test_patch_data_dir(control_model_handle_tag_tuple):
     def predict_with_data_dir_change():
         path = custom_model_control / "data" / "dummy"
         path.touch()
-        th.docker_predict([1], tag=tag)
+        th.docker_predict([1], tag=tag, local_port=None)
         with path.open("w") as file:
             file.write("foobar")
-        th.docker_predict([1], tag=tag)
+        th.docker_predict([1], tag=tag, local_port=None)
         path.unlink()
-        return th.docker_predict([1], tag=tag)
+        return th.docker_predict([1], tag=tag, local_port=None)
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag)
+        th.docker_predict([1], tag=tag, local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
 
         predict_with_data_dir_change()
@@ -265,17 +264,17 @@ def test_patch_env_var(control_model_handle_tag_tuple):
 
     def predict_with_environment_variables_change():
         th.add_environment_variable("foo", "bar")
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result == "bar"
         th.add_environment_variable("foo", "bar2")
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result == "bar2"
         config_path = truss_dir / "config.yaml"
         with config_path.open("w") as file:
             file.write("{}")
 
         assert th._serving_hash() != th.truss_hash_on_serving_container()
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result == "No foo :("
 
     with ensure_kill_all():
@@ -287,7 +286,7 @@ class Model:
         return os.environ.get("foo", "No foo :(")
 """
         update_model_code(truss_dir, new_model_code)
-        result = th.docker_predict([1], tag=tag)
+        result = th.docker_predict([1], tag=tag, local_port=None)
         assert result == "No foo :("
         orig_num_truss_images = len(th.get_all_docker_images())
 
@@ -301,7 +300,7 @@ def test_patch_external_package_dirs(custom_model_with_external_package):
     tag = "test-docker-custom-model-control-external-package-tag:0.0.1"
     th.live_reload()
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag)
+        th.docker_predict([1], tag=tag, local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
         th.clear_external_packages()
         th.add_external_package("../ext_pkg_patched")
@@ -323,7 +322,7 @@ class Model:
         return [1 for i in model_input]
 """
         update_model_code(custom_model_with_external_package, new_model_code)
-        th.docker_predict([1], tag=tag)
+        th.docker_predict([1], tag=tag, local_port=None)
         assert orig_num_truss_images == current_num_docker_images(th)
         shadow_truss_path = (
             LocalConfigHandler.shadow_trusses_dir_path()
@@ -345,10 +344,10 @@ def test_patch_secrets(control_model_handle_tag_tuple):
 
     def predict_with_secrets():
         th.add_secret("foo", "bar")
-        return th.docker_predict([1], tag=tag)
+        return th.docker_predict([1], tag=tag, local_port=None)
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag)
+        th.docker_predict([1], tag=tag, local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
 
         predict_with_secrets()
@@ -364,7 +363,7 @@ def test_predict_with_external_data_change(
     th.live_reload()
     tag = "test-external-data-access-tag:0.0.1"
     with ensure_kill_all():
-        th.docker_predict([], tag=tag, network="host")
+        th.docker_predict([], tag=tag, network="host", local_port=None)
         orig_num_truss_images = len(th.get_all_docker_images())
         th.remove_all_external_data()
         assert th._serving_hash() != th.truss_hash_on_serving_container()
@@ -378,7 +377,7 @@ class Model:
         return None
 """
         update_model_code(truss_dir, new_model_code)
-        th.docker_predict([], tag=tag, network="host")
+        th.docker_predict([], tag=tag, network="host", local_port=None)
         content = "foobar"
         filename = "foobar.txt"
         (tmp_path / filename).write_text(content)
@@ -394,24 +393,21 @@ class Model:
         update_model_code(truss_dir, new_model_code)
         url = f"http://host.docker.internal:9089/{filename}"
         th.add_external_data_item(url, filename)
-        result = th.docker_predict([], tag=tag, network="host")
+        result = th.docker_predict([], tag=tag, network="host", local_port=None)
         assert result == content
 
         content = "patched content"
         new_filename = "foobar-patched.txt"
         (tmp_path / new_filename).write_text(content)
-        current_external_data = th._spec.config.external_data
-        new_external_data = replace(
-            current_external_data,
-            items=[
+        new_external_data = ExternalData(
+            [
                 ExternalDataItem(
                     url=f"http://host.docker.internal:9089/{new_filename}",
                     local_data_path=filename,
                 )
-            ],
+            ]
         )
-        th._update_config(lambda conf: replace(conf, external_data=new_external_data))
-        result = th.docker_predict([], tag=tag, network="host")
-        assert result == content and orig_num_truss_images == current_num_docker_images(
-            th
-        )
+        th._update_config(external_data=new_external_data)
+        result = th.docker_predict([], tag=tag, network="host", local_port=None)
+        assert orig_num_truss_images == current_num_docker_images(th)
+        assert result == content

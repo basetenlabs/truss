@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncIterator,
     ClassVar,
@@ -20,17 +21,17 @@ from typing import (
     overload,
 )
 
-import aiohttp
 import httpx
 import pydantic
 import tenacity
 
 from truss.templates.shared import serialization
 from truss_chains import private_types, public_types
+from truss_chains import utils as chains_utils
 from truss_chains.remote_chainlet import utils
 
-DEFAULT_MAX_CONNECTIONS = 1000
-DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 400
+if TYPE_CHECKING:
+    import aiohttp
 
 
 _RetryPolicyT = TypeVar("_RetryPolicyT", tenacity.AsyncRetrying, tenacity.Retrying)
@@ -38,25 +39,36 @@ InputT = TypeVar("InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
 OutputModelT = TypeVar("OutputModelT", bound=pydantic.BaseModel)
 
 
-class BasetenSession:
-    """Provides configured HTTP clients, retries rate limit warning etc."""
+async def _safe_close(session: "aiohttp.ClientSession", timeout_sec: float) -> None:
+    try:
+        await asyncio.wait_for(session.close(), timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        logging.info("Timeout while closing cycled-out aiohttp session.")
+    except Exception as e:
+        logging.info(f"Unexpected error while closing cycled-out aiohttp session: {e}")
 
-    _client_cycle_time_sec: ClassVar[int] = 3600 * 1  # 1 hour.
-    _client_limits: ClassVar[httpx.Limits] = httpx.Limits(
-        max_connections=DEFAULT_MAX_CONNECTIONS,
-        max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
-    )
+
+class BasetenSession:
+    """Provides configured HTTP clients, retries, queueing etc."""
+
+    _client_cycle_time_sec: ClassVar[int] = 3600  # 1 hour.
     _target_url: str
     _headers: Mapping[str, str]
     _service_descriptor: public_types.DeployedServiceDescriptor
+    _client_limits: httpx.Limits
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
-    _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
+    _cached_async_client: Optional[tuple["aiohttp.ClientSession", int]]
+    _sync_lock: threading.Lock
+    _async_lock: asyncio.Lock
+    _sync_semaphore_wrapper: utils.ThreadSemaphoreWrapper
+    _async_semaphore_wrapper: utils.AsyncSemaphoreWrapper
+    _close_tasks: list[asyncio.Task[None]]
 
     def __init__(
         self, service_descriptor: public_types.DeployedServiceDescriptor, api_key: str
     ) -> None:
         headers = {"Authorization": f"Api-Key {api_key}"}
-        # `internal_url`, if present, takes precedence!
+        # If `internal_url` is present, it takes precedence.
         if service_descriptor.internal_url:
             target_msg = str(service_descriptor.internal_url)
             headers["Host"] = service_descriptor.internal_url.hostname
@@ -77,27 +89,29 @@ class BasetenSession:
         self._target_url = target_url
         self._headers = headers
         self._service_descriptor = service_descriptor
+        self._client_limits = httpx.Limits(
+            max_connections=service_descriptor.options.concurrency_limit,
+            max_keepalive_connections=50,
+        )
         self._cached_sync_client = None
         self._cached_async_client = None
         self._sync_lock = threading.Lock()
         self._async_lock = asyncio.Lock()
-        self._sync_num_requests = utils.ThreadSafeCounter()
-        self._async_num_requests = utils.AsyncSafeCounter()
+        self._sync_semaphore_wrapper = utils.ThreadSemaphoreWrapper(
+            service_descriptor.options.concurrency_limit, service_descriptor.name
+        )
+        self._async_semaphore_wrapper = utils.AsyncSemaphoreWrapper(
+            service_descriptor.options.concurrency_limit, service_descriptor.name
+        )
+        self._close_tasks = []
 
     @property
     def name(self) -> str:
         return self._service_descriptor.name
 
-    def _maybe_warn_for_overload(self, num_requests: int) -> None:
-        if self._client_limits.max_connections is None:
-            return
-        if num_requests > self._client_limits.max_connections * 0.8:
-            logging.warning(
-                f"High number of concurrently outgoing HTTP connections: "
-                f"`{num_requests}`. Close to or above connection limit of "
-                f"`{self._client_limits.max_connections}`. To avoid overload and "
-                f"timeouts, use more replicas/autoscaling for this chainlet."
-            )
+    async def shut_down(self) -> None:
+        # TODO: integrate this with the uvicorn server.
+        await asyncio.gather(*self._close_tasks)
 
     def _client_cycle_needed(self, cached_client: Optional[tuple[Any, int]]) -> bool:
         return (
@@ -134,18 +148,34 @@ class BasetenSession:
         assert self._cached_sync_client is not None
         client = self._cached_sync_client[0]
 
-        with self._sync_num_requests as num_requests:
-            self._maybe_warn_for_overload(num_requests)
+        with self._sync_semaphore_wrapper():
             yield client
 
     @contextlib.asynccontextmanager
-    async def _client_async(self) -> AsyncIterator[aiohttp.ClientSession]:
+    async def _client_async(self) -> AsyncIterator["aiohttp.ClientSession"]:
+        try:
+            import aiohttp
+        except ImportError:
+            raise chains_utils.make_optional_import_error("aiohttp")
+
         # Check `_client_cycle_needed` before and after locking to avoid
         # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
-                    connector = aiohttp.TCPConnector(limit=DEFAULT_MAX_CONNECTIONS)
+                    if self._cached_async_client is not None:
+                        # Close with same timeout as connections, but add some buffer.
+                        self._close_tasks.append(
+                            asyncio.create_task(
+                                _safe_close(
+                                    self._cached_async_client[0],
+                                    self._service_descriptor.options.timeout_sec * 1.1,
+                                )
+                            )
+                        )
+                    limit = self._client_limits.max_connections
+                    assert limit is not None
+                    connector = aiohttp.TCPConnector(limit=limit)
                     self._cached_async_client = (
                         aiohttp.ClientSession(
                             headers=self._headers,
@@ -159,8 +189,7 @@ class BasetenSession:
         assert self._cached_async_client is not None
         client = self._cached_async_client[0]
 
-        async with self._async_num_requests as num_requests:
-            self._maybe_warn_for_overload(num_requests)
+        async with self._async_semaphore_wrapper():
             yield client
 
 
@@ -300,10 +329,12 @@ class StubBase(BasetenSession, abc.ABC):
     @overload
     def predict_sync(
         self, inputs: InputT, output_model: Type[OutputModelT]
-    ) -> OutputModelT: ...
+    ) -> OutputModelT:
+        """Returns a validated pydantic model. Inputs can be pydantic or JSON dict."""
 
-    @overload  # Returns JSON
-    def predict_sync(self, inputs: InputT, output_model: None = None) -> Any: ...
+    @overload
+    def predict_sync(self, inputs: InputT, output_model: None = None) -> Any:
+        """Returns a raw JSON dict. Inputs can be pydantic or JSON dict."""
 
     def predict_sync(
         self, inputs: InputT, output_model: Optional[Type[OutputModelT]] = None
@@ -335,10 +366,12 @@ class StubBase(BasetenSession, abc.ABC):
     @overload
     async def predict_async(
         self, inputs: InputT, output_model: Type[OutputModelT]
-    ) -> OutputModelT: ...
+    ) -> OutputModelT:
+        """Returns a validated pydantic model. Inputs can be pydantic or JSON dict."""
 
-    @overload  # Returns JSON.
-    async def predict_async(self, inputs: InputT, output_model: None = None) -> Any: ...
+    @overload
+    async def predict_async(self, inputs: InputT, output_model: None = None) -> Any:
+        """Returns a validated pydantic model. Inputs can be pydantic or JSON dict."""
 
     async def predict_async(
         self, inputs: InputT, output_model: Optional[Type[OutputModelT]] = None
@@ -347,7 +380,7 @@ class StubBase(BasetenSession, abc.ABC):
         params = self._make_request_params(inputs)
 
         async def _rpc() -> bytes:
-            client: aiohttp.ClientSession
+            client: "aiohttp.ClientSession"
             async with self._client_async() as client:
                 async with client.post(self._target_url, **params) as response:
                     await utils.async_response_raise_errors(response, self.name)
@@ -372,7 +405,7 @@ class StubBase(BasetenSession, abc.ABC):
         params = self._make_request_params(inputs)
 
         async def _rpc() -> AsyncIterator[bytes]:
-            client: aiohttp.ClientSession
+            client: "aiohttp.ClientSession"
             async with self._client_async() as client:
                 response = await client.post(self._target_url, **params)
                 await utils.async_response_raise_errors(response, self.name)

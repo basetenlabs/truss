@@ -5,7 +5,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import opentelemetry.sdk.trace as sdk_trace
 import pytest
@@ -16,6 +16,13 @@ from starlette.requests import Request
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture
+def connected_request():
+    mock_request = MagicMock(spec=Request)
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+    return mock_request
 
 
 @pytest.fixture
@@ -44,7 +51,7 @@ class Model:
 
 
 @pytest.mark.anyio
-async def test_model_wrapper_load_error_once(app_path):
+async def test_model_wrapper_load_error_once(app_path, connected_request):
     if "model_wrapper" in sys.modules:
         model_wrapper_module = sys.modules["model_wrapper"]
         importlib.reload(model_wrapper_module)
@@ -57,7 +64,7 @@ async def test_model_wrapper_load_error_once(app_path):
     model_wrapper.load()
     # Allow load thread to execute
     time.sleep(1)
-    output = await model_wrapper.predict({}, MagicMock(spec=Request))
+    output = await model_wrapper.predict({}, connected_request)
     assert output == {}
     assert model_wrapper._model.load_count == 2
 
@@ -98,31 +105,9 @@ async def test_model_wrapper_streaming_timeout(app_path):
 
 
 @pytest.mark.anyio
-async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers):
-    app_path = trt_llm_truss_container_fs / "app"
-    packages_path = trt_llm_truss_container_fs / "packages"
-    with _clear_model_load_modules(), helpers.sys_paths(app_path, packages_path):
-        model_wrapper_module = importlib.import_module("model_wrapper")
-        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
-        config = yaml.safe_load((app_path / "config.yaml").read_text())
-        mock_extension = Mock()
-        mock_extension.load = Mock()
-        with patch.object(
-            model_wrapper_module, "_init_extension", return_value=mock_extension
-        ) as mock_init_extension:
-            model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
-            model_wrapper.load()
-            called_with_specific_extension = any(
-                call_args[0][0] == "trt_llm"
-                for call_args in mock_init_extension.call_args_list
-            )
-            assert called_with_specific_extension, (
-                "Expected extension_name was not called"
-            )
-
-
-@pytest.mark.anyio
-async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
+async def test_trt_llm_truss_predict(
+    trt_llm_truss_container_fs, helpers, connected_request
+):
     app_path = trt_llm_truss_container_fs / "app"
     packages_path = trt_llm_truss_container_fs / "packages"
     with (
@@ -151,7 +136,7 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
-            resp = await model_wrapper.predict({}, MagicMock(spec=Request))
+            resp = await model_wrapper.predict({}, connected_request)
             mock_extension.load.assert_called()
             mock_extension.model_args.assert_called()
             assert mock_predict_called
@@ -159,7 +144,9 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
 
 
 @pytest.mark.anyio
-async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helpers):
+async def test_trt_llm_truss_missing_model_py(
+    trt_llm_truss_container_fs, helpers, connected_request
+):
     app_path = trt_llm_truss_container_fs / "app"
     (app_path / "model" / "model.py").unlink()
 
@@ -190,7 +177,7 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
-            resp = await model_wrapper.predict({}, MagicMock(spec=Request))
+            resp = await model_wrapper.predict({}, connected_request)
             mock_extension.load.assert_called()
             mock_extension.model_override.assert_called()
             assert mock_predict_called
@@ -198,7 +185,9 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
 
 
 @pytest.mark.anyio
-async def test_open_ai_completion_endpoints(open_ai_container_fs, helpers):
+async def test_open_ai_completion_endpoints(
+    open_ai_container_fs, helpers, connected_request
+):
     app_path = open_ai_container_fs / "app"
     with (
         _clear_model_load_modules(),
@@ -212,14 +201,15 @@ async def test_open_ai_completion_endpoints(open_ai_container_fs, helpers):
         model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
         model_wrapper.load()
 
-        mock_req = MagicMock(spec=Request)
-        predict_resp = await model_wrapper.predict({}, mock_req)
+        predict_resp = await model_wrapper.predict({}, connected_request)
         assert predict_resp == "predict"
 
-        completions_resp = await model_wrapper.completions({}, mock_req)
+        completions_resp = await model_wrapper.completions({}, connected_request)
         assert completions_resp == "completions"
 
-        chat_completions_resp = await model_wrapper.chat_completions({}, mock_req)
+        chat_completions_resp = await model_wrapper.chat_completions(
+            {}, connected_request
+        )
         assert chat_completions_resp == "chat_completions"
 
 
