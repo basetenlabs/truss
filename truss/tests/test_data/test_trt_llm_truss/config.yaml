@@ -1,4 +1,7 @@
 model_name: Test
+model_metadata:
+  tags:
+    - openai-compatible
 resources:
   accelerator: A100
   use_gpu: True

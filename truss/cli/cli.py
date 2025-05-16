@@ -50,7 +50,6 @@ from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
-    is_missing_secrets_for_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
@@ -151,6 +150,16 @@ def _get_required_option(ctx: click.Context, name: str) -> object:
             "This is a bug, all commands must use `common_options` decorator."
         )
     return value
+
+
+def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
+    """create new click context for invoking a command via f.invoke(ctx)"""
+    current_ctx = click.get_current_context()
+    current_obj = current_ctx.find_root().obj
+
+    ctx = click.Context(f, obj=current_obj)
+    ctx.params = params
+    return ctx
 
 
 def _log_level_option(f: Callable[..., object]) -> Callable[..., object]:
@@ -753,21 +762,20 @@ def push(
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
 
-        if is_missing_secrets_for_trt_llm_builder(tr):
-            missing_token_text = (
-                "`hf_access_token` must be provided in secrets to build a gated model. "
-                "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
-            )
-            console.print(missing_token_text, style="yellow")
         if memory_updated_for_trt_llm_builder(tr):
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
-        message_oai = has_no_tags_trt_llm_builder(tr)
+        message_oai, raised_message_oai = has_no_tags_trt_llm_builder(tr)
         if message_oai:
-            console.print(message_oai, style="red")
-            sys.exit(1)
-        for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
+            console.print(message_oai, style="yellow")
+            if raised_message_oai:
+                console.print(message_oai, style="red")
+                sys.exit(1)
+
+        for (
+            trt_llm_build_config
+        ) in tr.spec.config.trt_llm.build.parsed_trt_llm_build_configs:
             if (
                 trt_llm_build_config.quantization_type
                 in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
@@ -1722,19 +1730,18 @@ def deploy_checkpoints(
         ),
     )
 
-    ctx = click.Context(push, obj={})
-    ctx.params = {
+    params = {
         "target_directory": prepare_checkpoint_result.truss_directory,
         "remote": remote,
         "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
         "publish": True,
         "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
     }
+    ctx = _prepare_click_context(push, params)
     if dry_run:
         console.print("--dry-run flag provided, not deploying", style="yellow")
     else:
         push.invoke(ctx)
-
     train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
 
 
