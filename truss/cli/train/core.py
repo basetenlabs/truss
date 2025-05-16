@@ -15,11 +15,7 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
 
-ACTIVE_JOB_STATUSES = [
-    "RUNNING",
-    "CREATED",
-    "DEPLOYING",
-]
+ACTIVE_JOB_STATUSES = ["RUNNING", "CREATED", "DEPLOYING"]
 
 
 def get_args_for_stop(
