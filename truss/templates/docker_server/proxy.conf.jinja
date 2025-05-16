@@ -3,7 +3,6 @@ server {
     listen 8080;
     client_max_body_size {{client_max_body_size}};
     proxy_buffering off;
-    proxy_set_header Connection "";
 
     # Liveness endpoint override
     location = / {
