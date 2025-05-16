@@ -152,6 +152,16 @@ def _get_required_option(ctx: click.Context, name: str) -> object:
     return value
 
 
+def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
+    """create new click context for invoking a command via f.invoke(ctx)"""
+    current_ctx = click.get_current_context()
+    current_obj = current_ctx.find_root().obj
+
+    ctx = click.Context(f, obj=current_obj)
+    ctx.params = params
+    return ctx
+
+
 def _log_level_option(f: Callable[..., object]) -> Callable[..., object]:
     return click.option(
         "--log",
@@ -1720,19 +1730,18 @@ def deploy_checkpoints(
         ),
     )
 
-    ctx = click.Context(push, obj={})
-    ctx.params = {
+    params = {
         "target_directory": prepare_checkpoint_result.truss_directory,
         "remote": remote,
         "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
         "publish": True,
         "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
     }
+    ctx = _prepare_click_context(push, params)
     if dry_run:
         console.print("--dry-run flag provided, not deploying", style="yellow")
     else:
         push.invoke(ctx)
-
     train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
 
 
