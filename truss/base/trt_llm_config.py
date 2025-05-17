@@ -436,7 +436,7 @@ class VersionsOverrides(PydanticTrTBaseModel):
         for field in ["engine_builder_version", "briton_version", "bei_version"]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
-                raise ValueError(f"{field.name} must start with a number")
+                raise ValueError(f"{field} must start with a number")
         return data
 
 
