@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import rich
 import rich_click as click
@@ -63,7 +64,20 @@ def _get_active_job(
     return jobs[0]
 
 
-def display_training_jobs(console: Console, jobs, title="Training Job Details"):
+@dataclass
+class DisplayTableColumn:
+    name: str
+    style: dict
+    accessor: Callable[[dict], str]
+
+
+def display_training_jobs(
+    console: Console,
+    jobs,
+    checkpoints_by_job_id={},
+    omit_columns={"Error Message", "Checkpoints"},
+    title="Training Job Details",
+):
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
@@ -71,23 +85,44 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
-    table.add_column("Project ID", style="cyan")
-    table.add_column("Project Name", style="cyan")
-    table.add_column("Job ID", style="cyan")
-    table.add_column("Status")
-    table.add_column("Instance Type")
-    table.add_column("Created At")
-    table.add_column("Updated At")
+    base_columns = [
+        DisplayTableColumn(
+            "Project ID", {"style": "cyan"}, lambda job: job["training_project"]["id"]
+        ),
+        DisplayTableColumn(
+            "Project Name",
+            {"style": "cyan"},
+            lambda job: job["training_project"]["name"],
+        ),
+        DisplayTableColumn("Job ID", {"style": "cyan"}, lambda job: job["id"]),
+        DisplayTableColumn("Status", {}, lambda job: job["current_status"]),
+        DisplayTableColumn(
+            "Error Message", {}, lambda job: job.get("error_message", "")
+        ),
+        DisplayTableColumn(
+            "Instance Type", {}, lambda job: job["instance_type"]["name"]
+        ),
+        DisplayTableColumn("Created At", {}, lambda job: job["created_at"]),
+        DisplayTableColumn("Updated At", {}, lambda job: job["updated_at"]),
+        DisplayTableColumn(
+            "Checkpoints",
+            {},
+            lambda job: ", ".join(
+                [
+                    checkpoint["checkpoint_id"]
+                    for checkpoint in checkpoints_by_job_id.get(job["id"], [])
+                ]
+            ),
+        ),
+    ]
+    columns = [x for x in base_columns if x.name not in omit_columns]
+    for column in columns:
+        table.add_column(column.name, **column.style)
     for job in jobs:
-        table.add_row(
-            job["training_project"]["id"],
-            job["training_project"]["name"],
-            job["id"],
-            job["current_status"],
-            job["instance_type"]["name"],
-            job["created_at"],
-            job["updated_at"],
-        )
+        row = []
+        for column in columns:
+            row.append(column.accessor(job))
+        table.add_row(*row)
     console.print(table)
 
 
@@ -145,7 +180,12 @@ def view_training_details(
             checkpoints = remote_provider.api.list_training_job_checkpoints(
                 training_job["training_project"]["id"], training_job["id"]
             )
-            display_training_job(console, training_job, checkpoints["checkpoints"])
+            display_training_jobs(
+                console,
+                [training_job],
+                checkpoints_by_job_id={training_job["id"]: checkpoints["checkpoints"]},
+                omit_columns={},
+            )
         else:
             display_training_jobs(console, jobs_response)
     else:
@@ -236,10 +276,10 @@ def print_deploy_checkpoints_success_message(
     )
 
 
-def display_training_job(console: Console, job: dict, checkpoints: list[dict]):
+def display_training_job(console: Console, job: dict, checkpoints: list[dict] = []):
     table = rich.table.Table(
         show_header=False,
-        title="Training Job Details",
+        title=f"Training Job Details: {job['id']}",
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
