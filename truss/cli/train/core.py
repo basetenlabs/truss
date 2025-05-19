@@ -138,7 +138,14 @@ def view_training_details(
         )
         if len(jobs_response) == 0:
             raise click.UsageError("No training jobs found")
-        display_training_jobs(console, jobs_response)
+        if len(jobs_response) == 1:
+            training_job = jobs_response[0]
+            checkpoints = remote_provider.api.list_training_job_checkpoints(
+                training_job["training_project"]["id"], training_job["id"]
+            )
+            display_training_job(console, training_job, checkpoints["checkpoints"])
+        else:
+            display_training_jobs(console, jobs_response)
     else:
         projects = remote_provider.api.list_training_projects()
         display_training_projects(console, projects)
@@ -225,3 +232,36 @@ def print_deploy_checkpoints_success_message(
             style="green",
         ),
     )
+
+
+def display_training_job(console: Console, job: dict, checkpoints: list[dict]):
+    table = rich.table.Table(
+        show_header=False,
+        title="Training Job Details",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Field", style="bold cyan")
+    table.add_column("Value", style="white")
+
+    # Basic job details
+    table.add_row("Project ID", job["training_project"]["id"])
+    table.add_row("Project Name", job["training_project"]["name"])
+    table.add_row("Job ID", job["id"])
+    table.add_row("Status", job["current_status"])
+    table.add_row("Instance Type", job["instance_type"]["name"])
+    table.add_row("Created At", job["created_at"])
+    table.add_row("Updated At", job["updated_at"])
+
+    # Add error message if present
+    if job.get("error_message"):
+        table.add_row("Error Message", Text(job["error_message"], style="red"))
+
+    # Add checkpoints if present
+    if checkpoints:
+        checkpoint_text = ", ".join(
+            [checkpoint["checkpoint_id"] for checkpoint in checkpoints]
+        )
+        table.add_row("Checkpoints", checkpoint_text)
+
+    console.print(table)
