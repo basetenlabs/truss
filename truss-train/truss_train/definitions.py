@@ -8,14 +8,10 @@ DEFAULT_LORA_RANK = 16
 
 
 class SecretReference(custom_types.SafeModel):
-    """Reference to a secret value."""
-
     name: str
 
 
 class Compute(custom_types.SafeModel):
-    """Compute resource specifications for training jobs."""
-
     node_count: int = 1
     cpu_count: int = 1
     memory: str = "2Gi"
@@ -44,15 +40,11 @@ class Compute(custom_types.SafeModel):
 
 
 class CheckpointingConfig(custom_types.SafeModel):
-    """Configuration for model checkpointing during training."""
-
     enabled: bool = False
     checkpoint_path: Optional[str] = None
 
 
 class Runtime(custom_types.SafeModel):
-    """Runtime configuration for training environment."""
-
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: bool = False
@@ -60,14 +52,10 @@ class Runtime(custom_types.SafeModel):
 
 
 class Image(custom_types.SafeModel):
-    """Container image specification."""
-
     base_image: str
 
 
 class TrainingJob(custom_types.SafeModel):
-    """Configuration for a model training job."""
-
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
@@ -79,8 +67,6 @@ class TrainingJob(custom_types.SafeModel):
 
 
 class TrainingProject(custom_types.SafeModel):
-    """Project wrapper containing training job configuration."""
-
     name: str
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
@@ -88,8 +74,6 @@ class TrainingProject(custom_types.SafeModel):
 
 
 class Checkpoint(custom_types.SafeModel):
-    """Model checkpoint metadata."""
-
     training_job_id: str
     id: str
     name: str
@@ -104,8 +88,6 @@ class Checkpoint(custom_types.SafeModel):
 
 
 class CheckpointList(custom_types.SafeModel):
-    """Collection of model checkpoints with download configuration."""
-
     download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
@@ -118,14 +100,10 @@ class CheckpointList(custom_types.SafeModel):
 
 
 class DeployCheckpointsRuntime(custom_types.SafeModel):
-    """Runtime configuration for checkpoint deployment."""
-
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
 
 
 class DeployCheckpointsConfig(custom_types.SafeModel):
-    """Configuration for deploying model checkpoints."""
-
     checkpoint_details: Optional[CheckpointList] = None
     model_name: Optional[str] = None
     deployment_name: Optional[str] = None
