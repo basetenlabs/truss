@@ -26,7 +26,7 @@ class TrainingPollerMixin:
     project_id: str
     job_id: str
     console: Console
-    _current_status: Optional[Status]
+    _current_status: Status
     _poll_stop_time: Optional[int]
 
     def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
@@ -34,13 +34,11 @@ class TrainingPollerMixin:
         self.project_id = project_id
         self.job_id = job_id
         self.console = console
-        self._current_status = None
+        self._current_status = Status(status="", error_message=None)
 
     def before_polling(self) -> None:
         self._update_from_current_status()
         status_str = "Waiting for job to run, currently {current_status}..."
-        if not self._current_status:
-            return None
         with self.console.status(
             status_str.format(current_status=self._current_status.status),
             spinner="dots",
@@ -58,19 +56,15 @@ class TrainingPollerMixin:
 
     def _maybe_update_poll_stop_time(self) -> None:
         if (
-            self._current_status
-            and self._current_status.status not in JOB_RUNNING_STATES
+            self._current_status.status not in JOB_RUNNING_STATES
             and self._poll_stop_time is None
         ):
             self._poll_stop_time = int(time.time()) + JOB_TERMINATION_GRACE_PERIOD_SEC
 
     def should_poll_again(self) -> bool:
         return bool(
-            self._current_status
-            and (
-                self._current_status.status in JOB_RUNNING_STATES
-                or self._do_cleanup_polling()
-            )
+            self._current_status.status in JOB_RUNNING_STATES
+            or self._do_cleanup_polling()
         )
 
     def _do_cleanup_polling(self):
@@ -80,8 +74,6 @@ class TrainingPollerMixin:
         return int(time.time()) <= self._poll_stop_time
 
     def after_polling(self) -> None:
-        if not self._current_status:
-            return None
         if (
             self._current_status.status in STATES_WITH_ERROR_MESSAGES
             and self._current_status.error_message
