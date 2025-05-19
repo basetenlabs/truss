@@ -1710,10 +1710,7 @@ def deploy_checkpoints(
     dry_run: bool,
 ):
     """
-    Deploy a checkpoint. Some early assumptions about this are:
-    - We are deploying a vllm model
-    - The checkpoint is a lora
-    - Base Model is coming from Huggingface
+    Deploy a LoRA checkpoint via vLLM.
     """
 
     if not remote:

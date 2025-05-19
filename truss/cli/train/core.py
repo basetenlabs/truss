@@ -74,10 +74,10 @@ def display_training_jobs(console: Console, jobs, title="Training Job Details"):
     table.add_column("Project ID", style="cyan")
     table.add_column("Project Name", style="cyan")
     table.add_column("Job ID", style="cyan")
-    table.add_column("Status", style="white")
-    table.add_column("Instance Type", style="white")
-    table.add_column("Created At", style="white")
-    table.add_column("Updated At", style="white")
+    table.add_column("Status")
+    table.add_column("Instance Type")
+    table.add_column("Created At")
+    table.add_column("Updated At")
     for job in jobs:
         table.add_row(
             job["training_project"]["id"],
@@ -104,6 +104,7 @@ def display_training_projects(console: Console, projects):
     table.add_column("Created At")
     table.add_column("Updated At")
     table.add_column("Latest Job ID")
+    table.add_column("Latest Job Status")
 
     # most recent projects at bottom of terminal
     for project in projects[::-1]:
@@ -114,6 +115,7 @@ def display_training_projects(console: Console, projects):
             project["created_at"],
             project["updated_at"],
             latest_job.get("id", ""),
+            latest_job.get("current_status", ""),
         )
 
     console.print(table)
