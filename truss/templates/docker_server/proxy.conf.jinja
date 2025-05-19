@@ -1,9 +1,18 @@
+map $http_upgrade $upgrade_header {
+    default        $http_upgrade;
+    ''             '';
+}
+
+map $http_connection $connection_header {
+    default        $http_connection;
+    ''             '';
+}
+
 server {
     # We use the proxy_read_timeout directive here (instead of proxy_send_timeout) as it sets the timeout for reading a response from the proxied server vs. setting a timeout for sending a request to the proxied server.
     listen 8080;
     client_max_body_size {{client_max_body_size}};
     proxy_buffering off;
-    proxy_set_header Connection "";
 
     # Liveness endpoint override
     location = / {
@@ -37,6 +46,9 @@ server {
     location / {
         proxy_redirect off;
         proxy_read_timeout 300s;
+
+        proxy_set_header Upgrade $upgrade_header;
+        proxy_set_header Connection $connection_header;
 
         proxy_pass http://127.0.0.1:{{server_port}};
     }
