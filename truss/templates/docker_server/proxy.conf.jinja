@@ -18,6 +18,7 @@ server {
     location = / {
         proxy_redirect off;
         proxy_read_timeout 18030s;
+        proxy_http_version 1.1;
 
         rewrite ^/$ {{liveness_endpoint}} break;
 
@@ -27,6 +28,7 @@ server {
     location ~ ^/v1/models/model$ {
         proxy_redirect off;
         proxy_read_timeout 18000s;
+        proxy_http_version 1.1;
 
         rewrite ^/v1/models/model$ {{readiness_endpoint}} break;
 
@@ -36,6 +38,7 @@ server {
     location ~ ^/v1/models/model:predict$ {
         proxy_redirect off;
         proxy_read_timeout 18030s;
+        proxy_http_version 1.1;
 
         rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
 
@@ -46,6 +49,7 @@ server {
     location / {
         proxy_redirect off;
         proxy_read_timeout 18030s;
+        proxy_http_version 1.1;
 
         proxy_set_header Upgrade $upgrade_header;
         proxy_set_header Connection $connection_header;
