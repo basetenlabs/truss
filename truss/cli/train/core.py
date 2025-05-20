@@ -72,58 +72,11 @@ class DisplayTableColumn:
 
 
 def display_training_jobs(
-    console: Console,
-    jobs,
-    checkpoints_by_job_id={},
-    omit_columns={"Error Message", "Checkpoints"},
-    title="Training Job Details",
+    console: Console, jobs, checkpoints_by_job_id={}, title="Training Job Details"
 ):
-    table = rich.table.Table(
-        show_header=True,
-        header_style="bold magenta",
-        title=title,
-        box=rich.table.box.ROUNDED,
-        border_style="blue",
-    )
-    base_columns = [
-        DisplayTableColumn(
-            "Project ID", {"style": "cyan"}, lambda job: job["training_project"]["id"]
-        ),
-        DisplayTableColumn(
-            "Project Name",
-            {"style": "cyan"},
-            lambda job: job["training_project"]["name"],
-        ),
-        DisplayTableColumn("Job ID", {"style": "cyan"}, lambda job: job["id"]),
-        DisplayTableColumn("Status", {}, lambda job: job["current_status"]),
-        DisplayTableColumn(
-            "Error Message", {}, lambda job: job.get("error_message", "")
-        ),
-        DisplayTableColumn(
-            "Instance Type", {}, lambda job: job["instance_type"]["name"]
-        ),
-        DisplayTableColumn("Created At", {}, lambda job: job["created_at"]),
-        DisplayTableColumn("Updated At", {}, lambda job: job["updated_at"]),
-        DisplayTableColumn(
-            "Checkpoints",
-            {},
-            lambda job: ", ".join(
-                [
-                    checkpoint["checkpoint_id"]
-                    for checkpoint in checkpoints_by_job_id.get(job["id"], [])
-                ]
-            ),
-        ),
-    ]
-    columns = [x for x in base_columns if x.name not in omit_columns]
-    for column in columns:
-        table.add_column(column.name, **column.style)
+    console.print(title, style="bold magenta")
     for job in jobs:
-        row = []
-        for column in columns:
-            row.append(column.accessor(job))
-        table.add_row(*row)
-    console.print(table)
+        display_training_job(console, job, checkpoints_by_job_id.get(job["id"], []))
 
 
 def display_training_projects(console: Console, projects):
@@ -180,12 +133,7 @@ def view_training_details(
             checkpoints = remote_provider.api.list_training_job_checkpoints(
                 training_job["training_project"]["id"], training_job["id"]
             )
-            display_training_jobs(
-                console,
-                [training_job],
-                checkpoints_by_job_id={training_job["id"]: checkpoints["checkpoints"]},
-                omit_columns={},
-            )
+            display_training_job(console, training_job, checkpoints["checkpoints"])
         else:
             display_training_jobs(console, jobs_response)
     else:
@@ -279,12 +227,13 @@ def print_deploy_checkpoints_success_message(
 def display_training_job(console: Console, job: dict, checkpoints: list[dict] = []):
     table = rich.table.Table(
         show_header=False,
-        title=f"Training Job Details: {job['id']}",
+        title=f"Training Job: {job['id']}",
         box=rich.table.box.ROUNDED,
         border_style="blue",
+        title_style="bold magenta",
     )
     table.add_column("Field", style="bold cyan")
-    table.add_column("Value", style="white")
+    table.add_column("Value")
 
     # Basic job details
     table.add_row("Project ID", job["training_project"]["id"])

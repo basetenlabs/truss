@@ -35,6 +35,7 @@ class TrainingPollerMixin:
         self.job_id = job_id
         self.console = console
         self._current_status = Status(status="", error_message=None)
+        self._poll_stop_time = None
 
     def before_polling(self) -> None:
         self._update_from_current_status()
