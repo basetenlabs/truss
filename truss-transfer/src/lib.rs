@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -22,7 +22,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Semaphore;
 // For logging
 use env_logger::Builder;
-use log::{debug, error, info, warn, LevelFilter};
+use fs2;
+use log::{debug, error, info, warn, LevelFilter}; // Add this line
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
@@ -32,11 +33,11 @@ static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
-static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 4 * 24; // 14 days
+static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 4 * 24; // 4 days
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
-static TRUSS_TRANSFER_B10FS_MAX_DISK_USAGE_GB: u64 = 400;
 static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 400.0;
+static TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB: u64 = 100;
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a “double start” scenario),
@@ -120,12 +121,8 @@ struct BasetenPointerManifest {
 #[pyfunction]
 #[pyo3(signature = (download_dir=None))]
 fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
-    Python::with_gil(|py| {
-        py.allow_threads(|| {
-            lazy_data_resolve_entrypoint(download_dir)
-        })
-    })
-    .map_err(|err| PyException::new_err(err.to_string()))
+    Python::with_gil(|py| py.allow_threads(|| lazy_data_resolve_entrypoint(download_dir)))
+        .map_err(|err| PyException::new_err(err.to_string()))
 }
 
 /// Shared entrypoint for both Python and CLI
@@ -212,14 +209,43 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         use rand::seq::SliceRandom;
         resolution_map.shuffle(&mut rand::rng());
 
-        // Clean up cache files that have not been accessed within the threshold
         let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        let (cache_size, _) = cleanup_b10cache_and_calculate_size(&current_hashes).await?;
-        // warn if cache size is over 425GB, disabling write to b10cache
-        if cache_size > TRUSS_TRANSFER_B10FS_MAX_DISK_USAGE_GB * 1024 * 1024 * 1024 {
-            warn!("b10cache size is over {}GB. Disabling write to b10cache.", TRUSS_TRANSFER_B10FS_MAX_DISK_USAGE_GB);
+        let manifest_hash_to_size_map: HashMap<String, u64> = bptr_manifest
+            .pointers
+            .iter()
+            .map(|p| (p.hash.clone(), p.size))
+            .collect();
+
+        let sum_manifest_size_bytes: u64 = bptr_manifest.pointers.iter().map(|p| p.size).sum();
+
+        // Clean up cache and get space statistics
+        let (available_volume_bytes, manifest_files_in_cache_bytes) =
+            cleanup_b10cache_and_get_space_stats(&current_hashes, &manifest_hash_to_size_map)
+                .await?;
+
+        let additional_bytes_to_cache =
+            sum_manifest_size_bytes.saturating_sub(manifest_files_in_cache_bytes);
+        let min_required_headroom_bytes =
+            TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB * 1024 * 1024 * 1024;
+
+        if available_volume_bytes > additional_bytes_to_cache + min_required_headroom_bytes {
+            info!(
+                "Sufficient space for b10cache write: Available on volume: {:.2}GB, Additional for current manifest: {:.2}GB, Required headroom: {}GB. Enabling write to b10cache.",
+                available_volume_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                additional_bytes_to_cache as f64 / (1024.0 * 1024.0 * 1024.0),
+                TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB
+            );
+            // write_to_b10cache remains true (its default if allowed_b10_cache is true)
+        } else {
+            warn!(
+                "Insufficient space for b10cache write: Available on volume: {:.2}GB, Additional for current manifest: {:.2}GB, Required headroom: {}GB. Disabling write to b10cache.",
+                available_volume_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                additional_bytes_to_cache as f64 / (1024.0 * 1024.0 * 1024.0),
+                TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB
+            );
             write_to_b10cache = false;
         }
+
         // todo: check speed of b10cache (e.g. is faster than 100MB/s)
         // and stop using b10cache if download speed is faster
         match is_b10cache_fast_heuristic(&bptr_manifest).await {
@@ -400,7 +426,7 @@ async fn download_file_with_cache(
         match handle_write_b10cache(&destination, &cache_path).await {
             Ok(_) => debug!("b10cache handled successfully."),
             Err(e) => {
-                 // even if the handle_write_b10cache fails, we still continue.
+                // even if the handle_write_b10cache fails, we still continue.
                 warn!("Failed to handle b10cache: {}", e);
             }
         }
@@ -520,25 +546,30 @@ fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
 }
 
 /// cleans up cache files and calculates total cache utilization.
-/// Returns a tuple of (bytes_used, files_count) after cleanup.
+/// Returns a tuple: (available_volume_bytes, manifest_files_in_cache_bytes).
 /// Files are cleaned up if they:
-/// - Have not been accessed within the threshold
-/// - Their filename (assumed to be the file's hash) is not in `current_hashes`
-pub async fn cleanup_b10cache_and_calculate_size(
+/// - Have not been accessed within the threshold AND are not in `current_hashes`
+pub async fn cleanup_b10cache_and_get_space_stats(
     current_hashes: &HashSet<String>,
-) -> Result<(u64, usize)> {
+    manifest_hash_to_size_map: &HashMap<String, u64>,
+) -> Result<(u64, u64)> {
+    // Returns (available_volume_bytes, manifest_files_in_cache_bytes)
     let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
-    let cache_dir = Path::new(CACHE_DIR);
+    let cache_dir_path = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
-    let mut dir = fs::read_dir(cache_dir).await?;
+    let mut dir = fs::read_dir(cache_dir_path)
+        .await
+        .with_context(|| format!("Failed to read cache directory: {:?}", cache_dir_path))?;
 
-    let mut total_bytes = 0u64;
-    let mut total_files = 0usize;
+    let mut total_bytes_managed_in_cache = 0u64; // All files kept in cache (manifest or not old enough)
+    let mut total_files_managed_in_cache = 0usize;
+    let mut manifest_files_in_cache_bytes = 0u64; // Size of files from current manifest, correctly cached
 
     info!(
-        "Analyzing b10cache with a threshold of {} hours ({} days)",
+        "Analyzing b10cache at {} with a cleanup threshold of {} hours ({} days)",
+        CACHE_DIR,
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
@@ -548,38 +579,75 @@ pub async fn cleanup_b10cache_and_calculate_size(
         // Only process files
         if path.is_file() {
             let metadata = fs::metadata(&path).await?;
-            let file_size = metadata.len();
+            let actual_file_size = metadata.len();
             let atime = get_atime(&metadata)?;
 
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                if now - atime > threshold_seconds as i64 && !current_hashes.contains(file_name) {
+            if let Some(file_name_hash) = path.file_name().and_then(|n| n.to_str()) {
+                if let Some(expected_size) = manifest_hash_to_size_map.get(file_name_hash) {
+                    // File is part of the current manifest
+                    total_bytes_managed_in_cache += actual_file_size;
+                    total_files_managed_in_cache += 1;
+                    if actual_file_size == *expected_size {
+                        manifest_files_in_cache_bytes += actual_file_size;
+                    } else {
+                        warn!(
+                            "Cached file {} (hash: {}) has incorrect size. Expected {}, got {}. Not counting towards current manifest cache size.",
+                            path.display(), file_name_hash, expected_size, actual_file_size
+                        );
+                        // This file, though in manifest, is corrupted in cache.
+                        // It won't be deleted by age here, but download logic might replace it if it tries to use it.
+                    }
+                } else if now - atime > threshold_seconds as i64
+                    && !current_hashes.contains(file_name_hash)
+                {
+                    // File is NOT in current manifest AND is older than threshold
                     info!(
-                        "Deleting cached file {} ({} bytes): not accessed for over {} hours",
-                        file_name, file_size, cleanup_threshold_hours
+                        "Deleting old cached file {} ({} bytes): not in current manifest and not accessed for over {} hours",
+                        file_name_hash, actual_file_size, cleanup_threshold_hours
                     );
-                    fs::remove_file(&path).await?;
+                    if let Err(e) = fs::remove_file(&path).await {
+                        warn!("Failed to delete cached file {:?}: {}", path, e);
+                    }
                 } else {
-                    debug!(
-                        "Keeping file {} ({} bytes): last accessed {} minutes ago",
-                        file_name,
-                        file_size,
-                        (now - atime) / 60
-                    );
-                    total_bytes += file_size;
-                    total_files += 1;
+                    // File is NOT in current manifest but is NOT old enough to delete OR
+                    // it IS in current_hashes but somehow not in manifest_hash_to_size_map (should not happen if maps are consistent)
+                    // or it was in manifest_hash_to_size_map but had wrong size (already handled above for manifest_files_in_cache_bytes)
+                    if !manifest_hash_to_size_map.contains_key(file_name_hash) {
+                        // only log if truly not in manifest
+                        debug!(
+                            "Keeping non-manifest file {} ({} bytes): last accessed {} minutes ago.",
+                            file_name_hash,
+                            actual_file_size,
+                            (now - atime) / 60
+                        );
+                        total_bytes_managed_in_cache += actual_file_size;
+                        total_files_managed_in_cache += 1;
+                    }
                 }
             }
         }
     }
 
     info!(
-        "Cache utilization after cleanup: {} files using {} bytes ({:.2} GB)",
-        total_files,
-        total_bytes,
-        total_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+        "Cache analysis complete: {} files managed in cache totaling {:.2} GB. Correctly cached files from current manifest: {:.2} GB.",
+        total_files_managed_in_cache,
+        total_bytes_managed_in_cache as f64 / (1024.0 * 1024.0 * 1024.0),
+        manifest_files_in_cache_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
     );
 
-    Ok((total_bytes, total_files))
+    // Get available disk space for CACHE_DIR's volume
+    let stats = fs2::statvfs(cache_dir_path)
+        .with_context(|| format!("Failed to get volume stats for {:?}", cache_dir_path))?;
+    let available_bytes = stats.available_space(); // f_bavail * f_frsize (available to non-root)
+
+    info!(
+        "Total available space on volume for {}: {:.2} GB ({} bytes)",
+        CACHE_DIR,
+        available_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+        available_bytes
+    );
+
+    Ok((available_bytes, manifest_files_in_cache_bytes))
 }
 /// handling new b10cache:
 /// 1. Copy the local file (download_path) to a temporary cache file with a “.incomplete” suffix.
@@ -714,15 +782,16 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
 /// Otherwise, it returns false.
 async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
     let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
-    // random number, uniform between 25 and 400 MB/s as a threshold
-    // using random instead of fixed number to e.g. avoid catastrophic
-    // events e.g. huggingface is down, where b10cache will have more load.
-    let desired_speed: f64 = 25.0 + rand::random::<f64>() * (TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS - 25.0);
+                                                   // random number, uniform between 25 and 400 MB/s as a threshold
+                                                   // using random instead of fixed number to e.g. avoid catastrophic
+                                                   // events e.g. huggingface is down, where b10cache will have more load.
+    let desired_speed: f64 =
+        25.0 + rand::random::<f64>() * (TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS - 25.0);
 
     for bptr in &manifest.pointers {
         let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
 
-        if bptr.size > (2*benchmark_size as u64) && cache_path.exists() {
+        if bptr.size > (2 * benchmark_size as u64) && cache_path.exists() {
             let metadata = fs::metadata(&cache_path).await?;
             let file_size = metadata.len();
             if file_size == bptr.size as u64 {
