@@ -34,6 +34,9 @@ if TYPE_CHECKING:
     import aiohttp
 
 
+DEFAULT_DNS_CACHE_TIMEOUT_SECONDS = 300
+
+
 _RetryPolicyT = TypeVar("_RetryPolicyT", tenacity.AsyncRetrying, tenacity.Retrying)
 InputT = TypeVar("InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
 OutputModelT = TypeVar("OutputModelT", bound=pydantic.BaseModel)
@@ -175,7 +178,9 @@ class BasetenSession:
                         )
                     limit = self._client_limits.max_connections
                     assert limit is not None
-                    connector = aiohttp.TCPConnector(limit=limit)
+                    connector = aiohttp.TCPConnector(
+                        limit=limit, ttl_dns_cache=DEFAULT_DNS_CACHE_TIMEOUT_SECONDS
+                    )
                     self._cached_async_client = (
                         aiohttp.ClientSession(
                             headers=self._headers,
