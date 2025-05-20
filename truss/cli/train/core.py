@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import rich
 import rich_click as click
@@ -63,32 +64,19 @@ def _get_active_job(
     return jobs[0]
 
 
-def display_training_jobs(console: Console, jobs, title="Training Job Details"):
-    table = rich.table.Table(
-        show_header=True,
-        header_style="bold magenta",
-        title=title,
-        box=rich.table.box.ROUNDED,
-        border_style="blue",
-    )
-    table.add_column("Project ID", style="cyan")
-    table.add_column("Project Name", style="cyan")
-    table.add_column("Job ID", style="cyan")
-    table.add_column("Status", style="white")
-    table.add_column("Instance Type", style="white")
-    table.add_column("Created At", style="white")
-    table.add_column("Updated At", style="white")
+@dataclass
+class DisplayTableColumn:
+    name: str
+    style: dict
+    accessor: Callable[[dict], str]
+
+
+def display_training_jobs(
+    console: Console, jobs, checkpoints_by_job_id={}, title="Training Job Details"
+):
+    console.print(title, style="bold magenta")
     for job in jobs:
-        table.add_row(
-            job["training_project"]["id"],
-            job["training_project"]["name"],
-            job["id"],
-            job["current_status"],
-            job["instance_type"]["name"],
-            job["created_at"],
-            job["updated_at"],
-        )
-    console.print(table)
+        display_training_job(console, job, checkpoints_by_job_id.get(job["id"], []))
 
 
 def display_training_projects(console: Console, projects):
@@ -104,6 +92,7 @@ def display_training_projects(console: Console, projects):
     table.add_column("Created At")
     table.add_column("Updated At")
     table.add_column("Latest Job ID")
+    table.add_column("Latest Job Status")
 
     # most recent projects at bottom of terminal
     for project in projects[::-1]:
@@ -114,6 +103,7 @@ def display_training_projects(console: Console, projects):
             project["created_at"],
             project["updated_at"],
             latest_job.get("id", ""),
+            latest_job.get("current_status", ""),
         )
 
     console.print(table)
@@ -138,7 +128,14 @@ def view_training_details(
         )
         if len(jobs_response) == 0:
             raise click.UsageError("No training jobs found")
-        display_training_jobs(console, jobs_response)
+        if len(jobs_response) == 1:
+            training_job = jobs_response[0]
+            checkpoints = remote_provider.api.list_training_job_checkpoints(
+                training_job["training_project"]["id"], training_job["id"]
+            )
+            display_training_job(console, training_job, checkpoints["checkpoints"])
+        else:
+            display_training_jobs(console, jobs_response)
     else:
         projects = remote_provider.api.list_training_projects()
         display_training_projects(console, projects)
@@ -225,3 +222,37 @@ def print_deploy_checkpoints_success_message(
             style="green",
         ),
     )
+
+
+def display_training_job(console: Console, job: dict, checkpoints: list[dict] = []):
+    table = rich.table.Table(
+        show_header=False,
+        title=f"Training Job: {job['id']}",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+        title_style="bold magenta",
+    )
+    table.add_column("Field", style="bold cyan")
+    table.add_column("Value")
+
+    # Basic job details
+    table.add_row("Project ID", job["training_project"]["id"])
+    table.add_row("Project Name", job["training_project"]["name"])
+    table.add_row("Job ID", job["id"])
+    table.add_row("Status", job["current_status"])
+    table.add_row("Instance Type", job["instance_type"]["name"])
+    table.add_row("Created At", job["created_at"])
+    table.add_row("Updated At", job["updated_at"])
+
+    # Add error message if present
+    if job.get("error_message"):
+        table.add_row("Error Message", Text(job["error_message"], style="red"))
+
+    # Add checkpoints if present
+    if checkpoints:
+        checkpoint_text = ", ".join(
+            [checkpoint["checkpoint_id"] for checkpoint in checkpoints]
+        )
+        table.add_row("Checkpoints", checkpoint_text)
+
+    console.print(table)

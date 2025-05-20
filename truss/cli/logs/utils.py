@@ -22,7 +22,7 @@ def output_log(log: ParsedLog, console: rich_console.Console):
     formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
 
     time_text = text.Text(f"[{formatted_time}]: ", style="blue")
-    message_text = text.Text(f"{log.message.strip()}", style="white")
+    message_text = text.Text(f"{log.message.strip()}")
     if log.replica:
         replica_text = text.Text(f"({log.replica}) ", style="green")
     else:
