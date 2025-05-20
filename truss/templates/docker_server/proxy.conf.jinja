@@ -17,7 +17,7 @@ server {
     # Liveness endpoint override
     location = / {
         proxy_redirect off;
-        proxy_read_timeout 300s;
+        proxy_read_timeout 18030s;
 
         rewrite ^/$ {{liveness_endpoint}} break;
 
@@ -26,7 +26,7 @@ server {
     # Readiness endpoint override
     location ~ ^/v1/models/model$ {
         proxy_redirect off;
-        proxy_read_timeout 300s;
+        proxy_read_timeout 18000s;
 
         rewrite ^/v1/models/model$ {{readiness_endpoint}} break;
 
@@ -35,7 +35,7 @@ server {
     # Predict
     location ~ ^/v1/models/model:predict$ {
         proxy_redirect off;
-        proxy_read_timeout 300s;
+        proxy_read_timeout 18030s;
 
         rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
 
@@ -45,7 +45,7 @@ server {
     # Forward all other paths
     location / {
         proxy_redirect off;
-        proxy_read_timeout 300s;
+        proxy_read_timeout 18030s;
 
         proxy_set_header Upgrade $upgrade_header;
         proxy_set_header Connection $connection_header;
