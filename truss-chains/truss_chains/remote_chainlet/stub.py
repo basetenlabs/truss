@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     import aiohttp
 
 
-DEFAULT_DNS_CACHE_TIMEOUT = 300
+DEFAULT_DNS_CACHE_TIMEOUT_SECONDS = 300
 
 
 _RetryPolicyT = TypeVar("_RetryPolicyT", tenacity.AsyncRetrying, tenacity.Retrying)
@@ -179,7 +179,7 @@ class BasetenSession:
                     limit = self._client_limits.max_connections
                     assert limit is not None
                     connector = aiohttp.TCPConnector(
-                        limit=limit, ttl_dns_cache=DEFAULT_DNS_CACHE_TIMEOUT
+                        limit=limit, ttl_dns_cache=DEFAULT_DNS_CACHE_TIMEOUT_SECONDS
                     )
                     self._cached_async_client = (
                         aiohttp.ClientSession(
