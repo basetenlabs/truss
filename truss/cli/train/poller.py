@@ -80,9 +80,10 @@ class TrainingPollerMixin:
             and self._current_status.error_message
         ):
             self.console.print(self._current_status.error_message, style="red")
+
         if self._current_status.status == "TRAINING_JOB_COMPLETED":
             self.console.print("Training job completed successfully.", style="green")
-        elif self._current_status == "TRAINING_JOB_FAILED":
+        elif self._current_status.status == "TRAINING_JOB_FAILED":
             self.console.print("Training job failed during execution.", style="red")
         elif self._current_status.status == "TRAINING_JOB_STOPPED":
             self.console.print("Training job stopped by user.", style="yellow")
@@ -91,7 +92,7 @@ class TrainingPollerMixin:
 
     def _update_from_current_status(self) -> None:
         current_job = self.api.get_training_job(self.project_id, self.job_id)
-        self._status = Status(
+        self._current_status = Status(
             status=current_job["training_job"]["current_status"],
             error_message=current_job["training_job"].get("error_message"),
         )
