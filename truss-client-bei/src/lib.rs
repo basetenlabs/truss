@@ -345,8 +345,9 @@ async fn process_embeddings_requests(
 #[pymodule]
 fn truss_client_bei(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SyncClient>()?;
-    m.add_class::<OpenAIEmbeddingsResponse>()?; // Add class to module
-    m.add_class::<OpenAIEmbeddingData>()?;    // Add class to module
-    m.add_class::<OpenAIUsage>()?;             // Add class to module
+    m.add_class::<OpenAIEmbeddingsResponse>()?;
+    m.add_class::<OpenAIEmbeddingData>()?;
+    m.add_class::<OpenAIUsage>()?;
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

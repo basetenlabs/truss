@@ -1,6 +1,6 @@
 [package]
 name = "truss_client_bei"
-version = "0.0.12"
+version = "0.0.1-rc0"
 edition = "2021"
 
 [dependencies]
