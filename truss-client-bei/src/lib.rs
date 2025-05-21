@@ -258,7 +258,7 @@ impl SyncClient {
         Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 
-    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
     fn rerank(
         &self,
         py: Python,
@@ -313,7 +313,7 @@ impl SyncClient {
         Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
     }
 
-    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
     fn classify(
         &self,
         py: Python,

@@ -9,12 +9,17 @@ api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production"
 api_base_rerank = "https://model-4q9d4yx3.api.baseten.co/environments/production"
 
 
-def is_deployment_reachable(api_base):
+def is_deployment_reachable(api_base, route="/sync/v1/embeddings"):
     try:
         response = requests.post(
-            f"{api_base}/sync/v1/embeddings",
+            f"{api_base}{route}",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": "my_model", "input": ["Hello world", "Hello world 2"]},
+            json={
+                "model": "my_model",
+                "input": ["Hello world", "Hello world 2"],
+                "query": "Hello world",
+                "texts": ["Hello world", "Hello world 2"],
+            },
         )
         return response.status_code == 200
     except requests.RequestException:
@@ -37,7 +42,7 @@ def test_invalid_concurrency_settings(batch_size, max_concurrent_requests):
 
 
 @pytest.mark.skipif(
-    not is_deployment_reachable(api_base_embed),
+    not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
     reason="Deployment is not reachable. Skipping test.",
 )
 def test_truss_client_bei_embeddings():
@@ -62,7 +67,7 @@ def test_truss_client_bei_embeddings():
 
 
 @pytest.mark.skipif(
-    not is_deployment_reachable(api_base_rerank),
+    not is_deployment_reachable(api_base_rerank, "/sync/rerank"),
     reason="Deployment is not reachable. Skipping test.",
 )
 def test_truss_client_bei_rerank():
