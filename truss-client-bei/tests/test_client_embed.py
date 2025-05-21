@@ -20,6 +20,22 @@ def is_deployment_reachable():
         return False
 
 
+@pytest.mark.parametrize(
+    "batch_size,max_concurrent_requests", [(1, 300), (300, 1), (300, 300)]
+)
+def test_invalid_concurrency_settings(batch_size, max_concurrent_requests):
+    client = SyncClient(api_base="https://bla.bla", api_key=api_key)
+
+    assert client.api_key == os.environ["BASETEN_API_KEY"]
+    with pytest.raises(ValueError):
+        client.embed(
+            ["Hello world", "Hello world 2"],
+            model="my_model",
+            batch_size=batch_size,
+            max_concurrent_requests=max_concurrent_requests,
+        )
+
+
 @pytest.mark.skipif(
     not is_deployment_reachable(), reason="Deployment is not reachable. Skipping test."
 )
