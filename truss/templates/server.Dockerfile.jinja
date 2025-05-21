@@ -50,7 +50,6 @@ RUN pip install -r {{ server_requirements_filename }} --no-cache-dir && rm -rf /
 
 {% block app_copy %}
 {%- if model_cache_v1 %}
-RUN "echo hash {{model_cache_hash}}"
 # Copy data before code for better caching
 {%- include "copy_cache_files.Dockerfile.jinja" -%}
 {%- endif %} {#- endif model_cache_v1 #}

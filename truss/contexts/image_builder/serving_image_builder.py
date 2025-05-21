@@ -321,9 +321,9 @@ def build_model_cache_v2_and_copy_bptr_manifest(
     # builds BasetenManifest for caching
     basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
     # write json of bastenpointers into build dir
-    with open(build_dir / "bptr-manifest", "w") as f:
-        f.write(basetenpointers.model_dump_json())
-    return hashlib.sha256(basetenpointers.model_dump_json().encode("utf-8")).hexdigest()
+    basetenpointers_json = basetenpointers.model_dump_json()
+    (build_dir / "bptr-manifest").write_text(basetenpointers_json)
+    return hashlib.sha256(basetenpointers_json.encode("utf-8")).hexdigest()
 
 
 def generate_docker_server_nginx_config(build_dir, config):
@@ -550,8 +550,8 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
         # No model cache provided, initialize empty
-        model_files = {}
-        cached_files = []
+        model_files: Dict[str, Any] = {}
+        cached_files: List[str] = []
         model_cache_hash = ""
         if config.model_cache.is_v1:
             logging.warning(
