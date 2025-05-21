@@ -1,21 +1,20 @@
 // implements client for openai embeddings
 // as python api that fans out to multiple requests
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use tokio::runtime::Runtime;
-use tokio::sync::Semaphore;
-use std::sync::Arc;
 use futures::future::join_all;
 use once_cell::sync::Lazy; // Import Lazy
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::sync::mpsc; // Add this import
-use std::time::Duration; // Add this for timeout support
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::runtime::Runtime;
+use tokio::sync::Semaphore; // Add this for timeout support
 
 // --- Global Tokio Runtime ---
-static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
-    Arc::new(Runtime::new().expect("Failed to create global Tokio runtime"))
-});
+static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> =
+    Lazy::new(|| Arc::new(Runtime::new().expect("Failed to create global Tokio runtime")));
 
 // --- OpenAI Compatible Structures ---
 #[derive(Serialize, Debug, Clone)]
@@ -139,7 +138,9 @@ impl SyncClient {
         if let Ok(key) = std::env::var("OPENAI_API_KEY") {
             return Ok(key);
         }
-        Err(PyValueError::new_err("API key not provided and no environment variable `BASETEN_API_KEY` found"))
+        Err(PyValueError::new_err(
+            "API key not provided and no environment variable `BASETEN_API_KEY` found",
+        ))
     }
 
     fn validate_and_get_timeout_duration(timeout_s: Option<f64>) -> Result<Duration, PyErr> {
@@ -153,12 +154,21 @@ impl SyncClient {
         Ok(Duration::from_secs_f64(resolved_timeout_s))
     }
 
-    fn validate_concurrency_parameters(max_concurrent_requests: usize, batch_size: usize) -> PyResult<()> {
-        if max_concurrent_requests == 0 || max_concurrent_requests > 256 {
-            return Err(PyValueError::new_err("max_concurrent_requests must be greater than 0 and less than 256"));
+    fn validate_concurrency_parameters(
+        max_concurrent_requests: usize,
+        batch_size: usize,
+    ) -> PyResult<()> {
+        if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY {
+            return Err(PyValueError::new_err(format!(
+                "max_concurrent_requests must be greater than 0 and less than {}",
+                MAX_CONCURRENCY
+            )));
         }
-        if batch_size == 0 || batch_size > 256 {
-            return Err(PyValueError::new_err("batch_size must be greater than 0 and less than 256"));
+        if batch_size == 0 || batch_size > MAX_BATCH_SIZE {
+            return Err(PyValueError::new_err(format!(
+                "batch_size must be greater than 0 and less than {}",
+                MAX_BATCH_SIZE
+            )));
         }
         Ok(())
     }
@@ -194,7 +204,7 @@ impl SyncClient {
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
-        timeout_s: Option<f64>  // New timeout parameter
+        timeout_s: Option<f64>, // New timeout parameter
     ) -> PyResult<PyObject> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -211,146 +221,146 @@ impl SyncClient {
         let api_base = self.api_base.clone();
         let rt = Arc::clone(&self.runtime);
 
-        let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> = py.allow_threads(move || {
-            let (tx, rx) = mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
+        let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> =
+            py.allow_threads(move || {
+                let (tx, rx) = mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
 
-            rt.spawn(async move {
-                let res = process_embeddings_requests(
-                    client,
-                    input,
-                    model_string,
-                    api_key,
-                    api_base,
-                    encoding_format,
-                    dimensions,
-                    user,
-                    max_concurrent_requests,
-                    batch_size,
-                    timeout_duration, // Pass timeout to overall processing
-                )
-                .await;
-                if tx.send(res).is_err() {
-                    // Receiver dropped, nothing to do.
+                rt.spawn(async move {
+                    let res = process_embeddings_requests(
+                        client,
+                        input,
+                        model_string,
+                        api_key,
+                        api_base,
+                        encoding_format,
+                        dimensions,
+                        user,
+                        max_concurrent_requests,
+                        batch_size,
+                        timeout_duration, // Pass timeout to overall processing
+                    )
+                    .await;
+                    if tx.send(res).is_err() {
+                        // Receiver dropped, nothing to do.
+                    }
+                });
+
+                match rx.recv() {
+                    Ok(res) => res,
+                    Err(e) => Err(PyValueError::new_err(format!(
+                        "Failed to receive result from async task: {}",
+                        e
+                    ))),
                 }
             });
-
-            match rx.recv() {
-                Ok(res) => res,
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive result from async task: {}",
-                    e
-                ))),
-            }
-        });
 
         let successful_response = result_from_async_task?;
         Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 
-//     #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false,
-//                      truncation_direction = "right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
-//     fn rerank(
-//         &self,
-//         py: Python,
-//         query: String,
-//         texts: Vec<String>,
-//         raw_scores: bool,
-//         return_text: bool,
-//         truncate: bool,
-//         truncation_direction_param: &str, // Changed name and type
-//         max_concurrent_requests: usize,
-//         batch_size: usize,
-//         timeout_s: Option<f64>
-//     ) -> PyResult<PyObject> {
-//         if texts.is_empty() {
-//             return Err(PyValueError::new_err("Texts list cannot be empty"));
-//         }
-//         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-//         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
-//         let client = self.client.clone();
-//         let api_key = self.api_key.clone();
-//         let api_base = self.api_base.clone();
-//         let rt = Arc::clone(&self.runtime);
+    //     #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false,
+    //                      truncation_direction = "right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    //     fn rerank(
+    //         &self,
+    //         py: Python,
+    //         query: String,
+    //         texts: Vec<String>,
+    //         raw_scores: bool,
+    //         return_text: bool,
+    //         truncate: bool,
+    //         truncation_direction_param: &str, // Changed name and type
+    //         max_concurrent_requests: usize,
+    //         batch_size: usize,
+    //         timeout_s: Option<f64>
+    //     ) -> PyResult<PyObject> {
+    //         if texts.is_empty() {
+    //             return Err(PyValueError::new_err("Texts list cannot be empty"));
+    //         }
+    //         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+    //         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
+    //         let client = self.client.clone();
+    //         let api_key = self.api_key.clone();
+    //         let api_base = self.api_base.clone();
+    //         let rt = Arc::clone(&self.runtime);
 
-//         let truncation_direction = truncation_direction_param.to_string(); // Convert to String
+    //         let truncation_direction = truncation_direction_param.to_string(); // Convert to String
 
-//         let result_from_async_task: Result<Vec<RerankResult>, PyErr> =
-//             py.allow_threads(move || {
-//                 let (tx, rx) = mpsc::channel::<Result<Vec<RerankResult>, PyErr>>();
-//                 rt.spawn(async move {
-//                     let res = process_rerank_requests( // unfinished
-//                         client,
-//                         query,
-//                         texts,
-//                         raw_scores,
-//                         return_text,
-//                         truncate,
-//                         truncation_direction, // Now this is a String
-//                         api_key,
-//                         api_base,
-//                         max_concurrent_requests,
-//                         batch_size,
-//                         timeout_duration,
-//                     )
-//                     .await;
-//                     let _ = tx.send(res);
-//                 });
-//                 rx.recv()
-//                     .map_err(|e| PyValueError::new_err(format!("Failed to receive rerank result: {}", e)))
-//             })?;
+    //         let result_from_async_task: Result<Vec<RerankResult>, PyErr> =
+    //             py.allow_threads(move || {
+    //                 let (tx, rx) = mpsc::channel::<Result<Vec<RerankResult>, PyErr>>();
+    //                 rt.spawn(async move {
+    //                     let res = process_rerank_requests( // unfinished
+    //                         client,
+    //                         query,
+    //                         texts,
+    //                         raw_scores,
+    //                         return_text,
+    //                         truncate,
+    //                         truncation_direction, // Now this is a String
+    //                         api_key,
+    //                         api_base,
+    //                         max_concurrent_requests,
+    //                         batch_size,
+    //                         timeout_duration,
+    //                     )
+    //                     .await;
+    //                     let _ = tx.send(res);
+    //                 });
+    //                 rx.recv()
+    //                     .map_err(|e| PyValueError::new_err(format!("Failed to receive rerank result: {}", e)))
+    //             })?;
 
-//         Python::with_gil(|py| Ok(result_from_async_task?.into_pyobject(py)))
-//     }
+    //         Python::with_gil(|py| Ok(result_from_async_task?.into_pyobject(py)))
+    //     }
 
-//     #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "right",
-//                      max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
-//     fn classify(
-//         &self,
-//         py: Python,
-//         inputs: Vec<String>,
-//         raw_scores: bool,
-//         truncate: bool,
-//         truncation_direction_param: &str, // Changed name and type
-//         max_concurrent_requests: usize,
-//         batch_size: usize,
-//         timeout_s: Option<f64>
-//     ) -> PyResult<PyObject> {
-//         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-//         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
-//         let client = self.client.clone();
-//         let api_key = self.api_key.clone();
-//         let api_base = self.api_base.clone();
-//         let rt = Arc::clone(&self.runtime);
+    //     #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "right",
+    //                      max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    //     fn classify(
+    //         &self,
+    //         py: Python,
+    //         inputs: Vec<String>,
+    //         raw_scores: bool,
+    //         truncate: bool,
+    //         truncation_direction_param: &str, // Changed name and type
+    //         max_concurrent_requests: usize,
+    //         batch_size: usize,
+    //         timeout_s: Option<f64>
+    //     ) -> PyResult<PyObject> {
+    //         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+    //         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
+    //         let client = self.client.clone();
+    //         let api_key = self.api_key.clone();
+    //         let api_base = self.api_base.clone();
+    //         let rt = Arc::clone(&self.runtime);
 
-//         let truncation_direction = truncation_direction_param.to_string(); // Convert to String
+    //         let truncation_direction = truncation_direction_param.to_string(); // Convert to String
 
-//         let result_from_async_task: Result<Vec<ClassificationResult>, PyErr> =
-//             py.allow_threads(move || {
-//                 let (tx, rx) = mpsc::channel::<Result<Vec<ClassificationResult>, PyErr>>();
-//                 rt.spawn(async move {
-//                     let res = process_classify_requests( // unfinished
-//                         client,
-//                         inputs,
-//                         raw_scores,
-//                         truncate,
-//                         truncation_direction, // Now this is a String
-//                         api_key,
-//                         api_base,
-//                         max_concurrent_requests,
-//                         batch_size,
-//                         timeout_duration,
-//                     )
-//                     .await;
-//                     let _ = tx.send(res);
-//                 });
-//                 rx.recv()
-//                     .map_err(|e| PyValueError::new_err(format!("Failed to receive classify result: {}", e)))
-//             })?;
+    //         let result_from_async_task: Result<Vec<ClassificationResult>, PyErr> =
+    //             py.allow_threads(move || {
+    //                 let (tx, rx) = mpsc::channel::<Result<Vec<ClassificationResult>, PyErr>>();
+    //                 rt.spawn(async move {
+    //                     let res = process_classify_requests( // unfinished
+    //                         client,
+    //                         inputs,
+    //                         raw_scores,
+    //                         truncate,
+    //                         truncation_direction, // Now this is a String
+    //                         api_key,
+    //                         api_base,
+    //                         max_concurrent_requests,
+    //                         batch_size,
+    //                         timeout_duration,
+    //                     )
+    //                     .await;
+    //                     let _ = tx.send(res);
+    //                 });
+    //                 rx.recv()
+    //                     .map_err(|e| PyValueError::new_err(format!("Failed to receive classify result: {}", e)))
+    //             })?;
 
-//         Python::with_gil(|py| Ok(result_from_async_task?.into_pyobject(py)))
-//     }
+    //         Python::with_gil(|py| Ok(result_from_async_task?.into_pyobject(py)))
+    //     }
 }
-
 
 // --- Modification in send_single_embedding_request ---
 async fn send_single_embedding_request(
@@ -362,7 +372,7 @@ async fn send_single_embedding_request(
     encoding_format: Option<String>,
     dimensions: Option<u32>,
     user: Option<String>,
-    request_timeout: Duration,  // New parameter for individual request timeout
+    request_timeout: Duration, // New parameter for individual request timeout
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let request_payload = OpenAIEmbeddingsRequest {
         input: texts_batch,
@@ -385,7 +395,10 @@ async fn send_single_embedding_request(
 
     if !response.status().is_success() {
         let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(PyValueError::new_err(format!(
             "API request failed with status {}: {}",
             status, error_text
@@ -430,7 +443,10 @@ async fn process_embeddings_requests(
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
-            let _permit = semaphore_clone.acquire().await.expect("Semaphore acquire failed");
+            let _permit = semaphore_clone
+                .acquire()
+                .await
+                .expect("Semaphore acquire failed");
             let mut response = send_single_embedding_request(
                 client_clone,
                 user_text_batch_owned,
@@ -462,11 +478,18 @@ async fn process_embeddings_requests(
                 match result {
                     Ok(Ok((data_part, usage_part))) => {
                         all_embedding_data.extend(data_part);
-                        aggregated_prompt_tokens = aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
-                        aggregated_total_tokens = aggregated_total_tokens.saturating_add(usage_part.total_tokens);
+                        aggregated_prompt_tokens =
+                            aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
+                        aggregated_total_tokens =
+                            aggregated_total_tokens.saturating_add(usage_part.total_tokens);
                     }
                     Ok(Err(py_err)) => return Err(py_err),
-                    Err(join_err) => return Err(PyValueError::new_err(format!("Tokio task join error: {}", join_err))),
+                    Err(join_err) => {
+                        return Err(PyValueError::new_err(format!(
+                            "Tokio task join error: {}",
+                            join_err
+                        )))
+                    }
                 }
             }
             all_embedding_data.sort_by_key(|d| d.index);
@@ -504,3 +527,5 @@ fn truss_client_bei(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
+const MAX_CONCURRENCY: usize = 512;
+const MAX_BATCH_SIZE: usize = 128;
