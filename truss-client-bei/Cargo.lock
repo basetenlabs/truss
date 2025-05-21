@@ -1359,6 +1359,7 @@ dependencies = [
 name = "truss_client_bei"
 version = "0.0.12"
 dependencies = [
+ "base64",
  "futures",
  "once_cell",
  "pyo3",

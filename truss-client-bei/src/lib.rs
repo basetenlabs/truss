@@ -30,14 +30,35 @@ struct OpenAIEmbeddingsRequest {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)] // Allows Serde to attempt deserializing as String, then Vec<f32>
+enum EmbeddingVariant {
+    Base64(String),
+    FloatVector(Vec<f32>),
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[pyclass]
 struct OpenAIEmbeddingData {
     #[pyo3(get)]
     object: String,
-    #[pyo3(get)]
-    embedding: Vec<f32>,
+    // The 'embedding' field in JSON will be deserialized into this internal field.
+    // The original `#[pyo3(get)] embedding: Vec<f32>` is replaced by this mechanism.
+    #[serde(rename = "embedding")]
+    embedding_internal: EmbeddingVariant,
     #[pyo3(get)]
     index: usize,
+}
+
+// ADD this impl block for OpenAIEmbeddingData to provide a Python getter for the embedding
+#[pymethods]
+impl OpenAIEmbeddingData {
+    #[getter]
+    fn embedding(&self, py: Python) -> PyObject {
+        match &self.embedding_internal {
+            EmbeddingVariant::Base64(s) => s.to_object(py),
+            EmbeddingVariant::FloatVector(v) => v.to_object(py),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
