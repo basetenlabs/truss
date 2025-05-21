@@ -77,7 +77,7 @@ def test_truss_client_bei_rerank():
     response = client.rerank(
         query="Who let the dogs out?",
         texts=["who, who?", "Paris france"],
-        batch_size=1,
+        batch_size=2,
         max_concurrent_requests=2,
     )
     assert response is not None

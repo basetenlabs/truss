@@ -98,7 +98,7 @@ struct RerankResult {
     #[pyo3(get)]
     score: f64,
     #[pyo3(get)]
-    text: String,
+    text: Option<String>,
 }
 
 #[derive(Serialize, Debug)]
