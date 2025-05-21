@@ -121,7 +121,7 @@ impl RerankResponse {
 
 #[derive(Serialize, Debug)]
 struct ClassifyRequest {
-    inputs: String,
+    inputs: Vec<Vec<String>>, // changed from String
     raw_scores: bool,
     truncate: bool,
     truncation_direction: String,
@@ -140,13 +140,14 @@ struct ClassificationResult {
 #[derive(Debug, Clone)]
 struct ClassificationResponse {
     object: String,
-    data: Vec<ClassificationResult>,
+    data: Vec<Vec<ClassificationResult>>, // Changed to Vec<Vec<ClassificationResult>>
 }
 
 #[pymethods]
 impl ClassificationResponse {
     #[new]
-    fn new(data: Vec<ClassificationResult>) -> Self {
+    fn new(data: Vec<Vec<ClassificationResult>>) -> Self {
+        // Changed parameter type
         ClassificationResponse {
             object: "list".to_string(),
             data,
@@ -307,7 +308,8 @@ impl SyncClient {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: Option<f64>,
-    ) -> PyResult<PyObject> { // Changed return type to PyObject
+    ) -> PyResult<PyObject> {
+        // Changed return type to PyObject
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
@@ -320,47 +322,50 @@ impl SyncClient {
 
         let truncation_direction = truncation_direction.to_string(); // Convert to String
 
-        let result_from_async_task: Result<RerankResponse, PyErr> =
-            py.allow_threads(move || {
-                let (tx, rx) = mpsc::channel::<Result<RerankResponse, PyErr>>();
-                rt.spawn(async move {
-                    let res = process_rerank_requests(
-                        client,
-                        query,
-                        texts,
-                        raw_scores,
-                        return_text,
-                        truncate,
-                        truncation_direction, // Now this is a String
-                        api_key,
-                        api_base,
-                        max_concurrent_requests,
-                        batch_size,
-                        timeout_duration,
-                    )
-                    .await;
-                    let _ = tx.send(res);
-                });
-                rx.recv().map_err(|e| {
-                    PyValueError::new_err(format!("Failed to receive rerank result: {}", e))
-                })? // Propagate error from recv itself
+        let result_from_async_task: Result<RerankResponse, PyErr> = py.allow_threads(move || {
+            let (tx, rx) = mpsc::channel::<Result<RerankResponse, PyErr>>();
+            rt.spawn(async move {
+                let res = process_rerank_requests(
+                    client,
+                    query,
+                    texts,
+                    raw_scores,
+                    return_text,
+                    truncate,
+                    truncation_direction, // Now this is a String
+                    api_key,
+                    api_base,
+                    max_concurrent_requests,
+                    batch_size,
+                    timeout_duration,
+                )
+                .await;
+                let _ = tx.send(res);
             });
-            let successful_response = result_from_async_task?;
-            Python::with_gil(|py| Ok(successful_response.into_py(py))) // Use into_py_object
+            rx.recv().map_err(|e| {
+                PyValueError::new_err(format!("Failed to receive rerank result: {}", e))
+            })? // Propagate error from recv itself
+        });
+        let successful_response = result_from_async_task?;
+        Python::with_gil(|py| Ok(successful_response.into_py(py))) // Use into_py_object
     }
 
     #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
     fn classify(
         &self,
         py: Python,
-        inputs: Vec<String>,
+        inputs: Vec<String>, // This remains Vec<String> as input from Python
         raw_scores: bool,
         truncate: bool,
-        truncation_direction: &str, // Changed name and type
+        truncation_direction: &str,
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: Option<f64>,
     ) -> PyResult<PyObject> {
+        if inputs.is_empty() {
+            // Add check for empty inputs
+            return Err(PyValueError::new_err("Inputs list cannot be empty"));
+        }
         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
@@ -368,18 +373,18 @@ impl SyncClient {
         let api_base = self.api_base.clone();
         let rt = Arc::clone(&self.runtime);
 
-        let truncation_direction = truncation_direction.to_string(); // Convert to String
+        let truncation_direction = truncation_direction.to_string();
 
-        let result_from_async_task: Result<ClassificationResponse, PyErr> = // Changed type here
+        let result_from_async_task: Result<ClassificationResponse, PyErr> =
             py.allow_threads(move || {
-                let (tx, rx) = mpsc::channel::<Result<ClassificationResponse, PyErr>>(); // Changed channel type
+                let (tx, rx) = mpsc::channel::<Result<ClassificationResponse, PyErr>>();
                 rt.spawn(async move {
                     let res = process_classify_requests(
                         client,
-                        inputs,
+                        inputs, // Pass Vec<String>
                         raw_scores,
                         truncate,
-                        truncation_direction, // Now this is a String
+                        truncation_direction,
                         api_key,
                         api_base,
                         max_concurrent_requests,
@@ -391,10 +396,10 @@ impl SyncClient {
                 });
                 rx.recv().map_err(|e| {
                     PyValueError::new_err(format!("Failed to receive classify result: {}", e))
-                })? // Propagate error from recv itself
+                })?
             });
 
-        Python::with_gil(|py| Ok(result_from_async_task?.into_py(py))) // Use into_py_object
+        Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
     }
 }
 
@@ -661,7 +666,8 @@ async fn process_rerank_requests(
                 }
             }
             all_results.sort_by_key(|d| d.index);
-            Ok(RerankResponse { // Construct RerankResponse
+            Ok(RerankResponse {
+                // Construct RerankResponse
                 object: "list".to_string(),
                 data: all_results,
             })
@@ -676,22 +682,23 @@ async fn process_rerank_requests(
 // --- Send Single Classify Request ---
 async fn send_single_classify_request(
     client: Client,
-    input: String,
+    inputs: Vec<Vec<String>>,
     raw_scores: bool,
     truncate: bool,
     truncation_direction: String,
     api_key: String,
     api_base: String,
     request_timeout: Duration,
-) -> Result<Vec<ClassificationResult>, PyErr> {
+) -> Result<Vec<Vec<ClassificationResult>>, PyErr> {
+    // Changed return type
     let request_payload = ClassifyRequest {
-        inputs: input,
+        inputs,
         raw_scores,
         truncate,
         truncation_direction,
     };
 
-    let url = format!("{}/sync/predict", api_base.trim_end_matches('/')); // route for classify is /predict
+    let url = format!("{}/sync/predict", api_base.trim_end_matches('/'));
 
     let response = client
         .post(&url)
@@ -715,7 +722,7 @@ async fn send_single_classify_request(
     }
 
     response
-        .json::<Vec<ClassificationResult>>()
+        .json::<Vec<Vec<ClassificationResult>>>() // Changed to deserialize Vec<Vec<ClassificationResult>>
         .await
         .map_err(|e| {
             PyValueError::new_err(format!("Failed to parse classify response JSON: {}", e))
@@ -734,16 +741,21 @@ async fn process_classify_requests(
     max_concurrent_requests: usize,
     batch_size: usize,
     overall_timeout: Duration,
-) -> Result<ClassificationResponse, PyErr> { // Changed return type
+) -> Result<ClassificationResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
 
-    for input in inputs.chunks(batch_size) {
+    // Store original indices to re-sort later if necessary, though the API might return them in order.
+    // For now, we'll assume the order of concatenated results from batches is acceptable.
+    // If strict input-order mapping is needed across batches for the outer list,
+    // this would require more complex handling with original indices.
+
+    for input_chunk in inputs.chunks(batch_size) {
         let client_clone = client.clone();
         let api_key_clone = api_key.clone();
         let api_base_clone = api_base.clone();
         let truncation_direction_clone = truncation_direction.clone();
-        let input_owned = input.join("\n"); // Assuming each input is a string, join for batch
+        let inputs_owned: Vec<Vec<String>> = input_chunk.iter().map(|s| vec![s.clone()]).collect();
         let semaphore_clone = Arc::clone(&semaphore);
 
         tasks.push(tokio::spawn(async move {
@@ -753,13 +765,13 @@ async fn process_classify_requests(
                 .expect("Semaphore acquire failed");
             send_single_classify_request(
                 client_clone,
-                input_owned,
+                inputs_owned,
                 raw_scores,
                 truncate,
                 truncation_direction_clone,
                 api_key_clone,
                 api_base_clone,
-                overall_timeout,
+                overall_timeout, // This is overall_timeout, consider if individual requests need separate, shorter timeouts
             )
             .await
         }));
@@ -767,10 +779,13 @@ async fn process_classify_requests(
 
     match tokio::time::timeout(overall_timeout, join_all(tasks)).await {
         Ok(task_results) => {
-            let mut all_results: Vec<ClassificationResult> = Vec::new();
+            let mut all_results: Vec<Vec<ClassificationResult>> = Vec::new(); // Changed to Vec<Vec<>>
             for result in task_results {
                 match result {
-                    Ok(Ok(mut batch_results)) => all_results.append(&mut batch_results),
+                    Ok(Ok(mut batch_results)) => {
+                        // batch_results is Vec<Vec<ClassificationResult>>
+                        all_results.append(&mut batch_results); // Append the list of lists
+                    }
                     Ok(Err(py_err)) => return Err(py_err),
                     Err(join_err) => {
                         return Err(PyValueError::new_err(format!(
@@ -780,9 +795,9 @@ async fn process_classify_requests(
                     }
                 }
             }
-            // Note: ClassificationResult does not have an 'index' field for sorting.
-            // The order will be based on the concatenation of batch results.
-            Ok(ClassificationResponse { // Construct ClassificationResponse
+            // The order of `all_results` will be the order of processed batches.
+            // Each element of `all_results` is a `Vec<ClassificationResult>` for an input string from that batch.
+            Ok(ClassificationResponse {
                 object: "list".to_string(),
                 data: all_results,
             })

@@ -29,6 +29,8 @@ response = client.embed(
 ### Develop
 
 ```
-pip install maturin
-maturin develop && pytest
+apt-get install patchelf
+pip install maturin[patchelf]
+maturin develop
+pytest tests
 ```
