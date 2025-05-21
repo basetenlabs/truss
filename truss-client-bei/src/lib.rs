@@ -10,6 +10,7 @@ use std::sync::Arc;
 use futures::future::join_all;
 use once_cell::sync::Lazy; // Import Lazy
 use std::sync::mpsc; // Add this import
+use std::time::Duration; // Add this for timeout support
 
 // --- Global Tokio Runtime ---
 static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
@@ -120,7 +121,7 @@ impl SyncClient {
             api_key,
             api_base,
             client: Client::new(),
-            runtime: Arc::clone(&GLOBAL_RUNTIME), // Clone the Arc to the global runtime
+            runtime: Arc::clone(&GLOBAL_RUNTIME),
         })
     }
 
@@ -129,7 +130,7 @@ impl SyncClient {
         Ok(self.api_key.clone())
     }
 
-    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = 64, batch_size = 4))]
+    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
     fn embed(
         &self,
         py: Python,
@@ -140,6 +141,7 @@ impl SyncClient {
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
+        timeout_s: Option<f64>  // New timeout parameter
     ) -> PyResult<PyObject> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -151,47 +153,48 @@ impl SyncClient {
             return Err(PyValueError::new_err("batch_size must be greater than 0 and less than 256"));
         }
 
-        let model_string: String = model.to_string(); // Convert &str to String
+        // Validate and set the request timeout.
+        let resolved_timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
+        if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&resolved_timeout_s) {
+            return Err(PyValueError::new_err(format!(
+                "Timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
+                resolved_timeout_s, MIN_REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
+            )));
+        }
+        let timeout_duration = Duration::from_secs_f64(resolved_timeout_s);
+
+        let model_string: String = model.to_string();
 
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
         let rt = Arc::clone(&self.runtime);
 
-        // py.allow_threads releases the GIL, allowing the current thread to block
-        // on rx.recv() without freezing other Python threads.
         let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> = py.allow_threads(move || {
-            // Create a channel to receive the result from the spawned Tokio task.
             let (tx, rx) = mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
 
-            // Spawn the asynchronous processing onto the Tokio runtime.
             rt.spawn(async move {
                 let res = process_embeddings_requests(
                     client,
-                    input, // `input` is moved here
-                    model_string, // Use the owned String
+                    input,
+                    model_string,
                     api_key,
                     api_base,
                     encoding_format,
                     dimensions,
                     user,
                     max_concurrent_requests,
-                    batch_size
+                    batch_size,
+                    timeout_duration, // Pass timeout to overall processing
                 )
                 .await;
-                // Send the result back to the waiting synchronous thread.
-                // If sending fails, it means the receiver has been dropped,
-                // which would happen if rx.recv() itself errors or the thread panics.
                 if tx.send(res).is_err() {
-                    // Optional: Log an error if the receiver is gone.
-                    // eprintln!("Failed to send async result: receiver dropped.");
+                    // Receiver dropped, nothing to do.
                 }
             });
 
-            // Block the current thread (which has released the GIL)
-            // waiting for the result from the spawned task.
             match rx.recv() {
-                Ok(res) => res, // This is the Result<OpenAIEmbeddingsResponse, PyErr>
+                Ok(res) => res,
                 Err(e) => Err(PyValueError::new_err(format!(
                     "Failed to receive result from async task: {}",
                     e
@@ -199,19 +202,12 @@ impl SyncClient {
             }
         });
 
-        // Handle the Result before accessing its fields.
-        // If result_from_async_task is an Err, the `?` will propagate it.
-        // Otherwise, successful_response will be OpenAIEmbeddingsResponse.
         let successful_response = result_from_async_task?;
-
-        // Convert the successful result to Python objects.
-        Python::with_gil(|py| {
-            // Directly convert successful_response to a PyObject
-            Ok(successful_response.into_py(py))
-        })
+        Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 }
 
+// --- Modification in send_single_embedding_request ---
 async fn send_single_embedding_request(
     client: Client,
     texts_batch: Vec<String>,
@@ -221,6 +217,7 @@ async fn send_single_embedding_request(
     encoding_format: Option<String>,
     dimensions: Option<u32>,
     user: Option<String>,
+    request_timeout: Duration,  // New parameter for individual request timeout
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let request_payload = OpenAIEmbeddingsRequest {
         input: texts_batch,
@@ -236,6 +233,7 @@ async fn send_single_embedding_request(
         .post(&url)
         .bearer_auth(api_key)
         .json(&request_payload)
+        .timeout(request_timeout) // Apply the timeout here.
         .send()
         .await
         .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
@@ -255,6 +253,7 @@ async fn send_single_embedding_request(
         .map_err(|e| PyValueError::new_err(format!("Failed to parse response JSON: {}", e)))
 }
 
+// --- Modification in process_embeddings_requests ---
 async fn process_embeddings_requests(
     client: Client,
     texts: Vec<String>,
@@ -266,12 +265,12 @@ async fn process_embeddings_requests(
     user: Option<String>,
     max_concurrent_requests: usize,
     batch_size: usize,
+    overall_timeout: Duration, // New overall timeout parameter
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
 
-    // This loop iterates through chunks based on user-defined batch_size
     for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
         let client_clone = client.clone();
         let model_clone = model.clone();
@@ -283,62 +282,64 @@ async fn process_embeddings_requests(
         let user_text_batch_owned = user_text_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
 
-        // Calculate the absolute start index for items in this specific user_textBatch
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
             let _permit = semaphore_clone.acquire().await.expect("Semaphore acquire failed");
             let mut response = send_single_embedding_request(
                 client_clone,
-                user_text_batch_owned, // Send the user-defined batch
+                user_text_batch_owned,
                 model_clone,
                 api_key_clone,
                 api_base_clone,
                 encoding_format_clone,
                 dimensions_clone,
                 user_clone,
+                overall_timeout, // Use the overall timeout for the individual request
             )
             .await?;
 
-            // Adjust indices: the response from send_single_embedding_request will have indices starting from 0
-            // relative to user_text_batch_owned. We need to shift them to be absolute.
             for item in &mut response.data {
                 item.index += current_batch_absolute_start_index;
             }
-            // Return the processed data and usage for this batch
             Result::<_, PyErr>::Ok((response.data, response.usage))
         }));
     }
 
-    let results = join_all(tasks).await;
+    // Wrap joining tasks with overall_timeout, so the entire operation fails if not finished in time.
+    match tokio::time::timeout(overall_timeout, join_all(tasks)).await {
+        Ok(task_results) => {
+            let mut all_embedding_data: Vec<OpenAIEmbeddingData> = Vec::with_capacity(total_texts);
+            let mut aggregated_prompt_tokens: u32 = 0;
+            let mut aggregated_total_tokens: u32 = 0;
 
-    let mut all_embedding_data: Vec<OpenAIEmbeddingData> = Vec::with_capacity(total_texts);
-    let mut aggregated_prompt_tokens: u32 = 0;
-    let mut aggregated_total_tokens: u32 = 0;
-
-    for result in results {
-        match result {
-            Ok(Ok((data_part, usage_part))) => { // Adjusted to expect a tuple
-                all_embedding_data.extend(data_part);
-                aggregated_prompt_tokens = aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
-                aggregated_total_tokens = aggregated_total_tokens.saturating_add(usage_part.total_tokens);
+            for result in task_results {
+                match result {
+                    Ok(Ok((data_part, usage_part))) => {
+                        all_embedding_data.extend(data_part);
+                        aggregated_prompt_tokens = aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
+                        aggregated_total_tokens = aggregated_total_tokens.saturating_add(usage_part.total_tokens);
+                    }
+                    Ok(Err(py_err)) => return Err(py_err),
+                    Err(join_err) => return Err(PyValueError::new_err(format!("Tokio task join error: {}", join_err))),
+                }
             }
-            Ok(Err(py_err)) => return Err(py_err),
-            Err(join_err) => return Err(PyValueError::new_err(format!("Tokio join error: {}", join_err))),
+            all_embedding_data.sort_by_key(|d| d.index);
+            Ok(OpenAIEmbeddingsResponse {
+                object: "list".to_string(),
+                data: all_embedding_data,
+                model,
+                usage: OpenAIUsage {
+                    prompt_tokens: aggregated_prompt_tokens,
+                    total_tokens: aggregated_total_tokens,
+                },
+            })
         }
+        Err(_) => Err(PyValueError::new_err(format!(
+            "Overall embedding operation timed out after {:?}",
+            overall_timeout
+        ))),
     }
-
-    all_embedding_data.sort_by_key(|d| d.index);
-
-    Ok(OpenAIEmbeddingsResponse {
-        object: "list".to_string(),
-        data: all_embedding_data,
-        model,
-        usage: OpenAIUsage {
-            prompt_tokens: aggregated_prompt_tokens,
-            total_tokens: aggregated_total_tokens,
-        },
-    })
 }
 
 // --- PyO3 Module Definition ---
