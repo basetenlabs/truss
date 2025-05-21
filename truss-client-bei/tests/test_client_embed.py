@@ -33,14 +33,14 @@ def is_deployment_reachable(api_base, route="/sync/v1/embeddings", timeout=5):
         return False
 
 
-is_deployment_reachable(api_base_embed, "/sync/v1/embeddings", 1)
-is_deployment_reachable(api_base_rerank, "/sync/rerank", 1)
+is_deployment_reachable(api_base_embed, "/sync/v1/embeddings", 0.1)
+is_deployment_reachable(api_base_rerank, "/sync/rerank", 0.1)
 
 
 @pytest.mark.parametrize(
     "batch_size,max_concurrent_requests", [(1, 300), (300, 1), (300, 300)]
 )
-def test_invalid_concurrency_settings(batch_size, max_concurrent_requests):
+def invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
     client = SyncClient(api_base="https://bla.bla", api_key=api_key)
     assert client.api_key == api_key
     with pytest.raises(ValueError):
@@ -56,7 +56,7 @@ def test_invalid_concurrency_settings(batch_size, max_concurrent_requests):
     not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def test_truss_client_bei_embeddings():
+def truss_client_bei_embeddings_test():
     client = SyncClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
@@ -78,7 +78,7 @@ def test_truss_client_bei_embeddings():
     not is_deployment_reachable(api_base_rerank, "/sync/rerank"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def test_truss_client_bei_rerank():
+def truss_client_bei_rerank_test():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
@@ -97,7 +97,7 @@ def test_truss_client_bei_rerank():
     not is_deployment_reachable(api_base_rerank, "/sync/predict"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def test_truss_client_bei_predict():
+def truss_client_bei_predict_test():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
@@ -109,3 +109,26 @@ def test_truss_client_bei_predict():
     assert response is not None
     assert isinstance(response, ClassificationResponse)
     assert len(response.data) == 5
+
+
+@pytest.mark.skipif(
+    not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
+    reason="Deployment is not reachable. Skipping test.",
+)
+def embedding_high_volume_test():
+    client = SyncClient(api_base=api_base_embed, api_key=api_key)
+
+    assert client.api_key == api_key
+    n_requests = 200
+    response = client.embed(
+        ["Hello world"] * n_requests,
+        model="my_model",
+        batch_size=1,
+        max_concurrent_requests=512,
+    )
+    assert response is not None
+    assert isinstance(response, OpenAIEmbeddingsResponse)
+    data = response.data
+    assert len(data) == n_requests
+    assert len(data[0].embedding) > 10
+    assert isinstance(data[0].embedding[0], float)

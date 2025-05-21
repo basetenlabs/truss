@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "truss_client_bei"
 authors = [  {name = "Michael Feil", email = "no-reply@baseten.co"},]
-description = "Speed up queries to Baseten-Embeddings."
+description = "A ultra-high performance package for sending requests to Baseten Embedding Inference'"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.8"
