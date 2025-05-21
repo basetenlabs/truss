@@ -92,7 +92,7 @@ def test_correct_hf_files_accessed_for_caching():
 
         hf_path = Path("root/.cache/huggingface/hub")
 
-        model_files, files_to_cache = get_files_to_model_cache_v1(
+        model_files, files_to_cache, _ = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
@@ -127,7 +127,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_model_cache_v1(
+        model_files, files_to_cache, _ = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
@@ -162,7 +162,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_model_cache_v1(
+        model_files, files_to_cache, _ = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
@@ -197,7 +197,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_model_cache_v1(
+        model_files, files_to_cache, _ = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)
@@ -236,7 +236,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = get_files_to_model_cache_v1(
+        model_files, files_to_cache, _ = get_files_to_model_cache_v1(
             config, truss_path, build_path
         )
         files_to_cache = flatten_cached_files(files_to_cache)

@@ -2,7 +2,7 @@ FROM python:3.11-slim AS cache_warmer
 
 RUN mkdir -p /app/model_cache
 WORKDIR /app
-
+RUN "echo hash {{model_cache_hash}}"
 {% if hf_access_token %}
 ENV HUGGING_FACE_HUB_TOKEN="{{hf_access_token}}"
 {% endif %}
