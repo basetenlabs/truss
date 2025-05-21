@@ -59,14 +59,31 @@ struct SyncClient {
     runtime: Arc<Runtime>, // This will now hold a clone of the global runtime's Arc
 }
 
+impl SyncClient {
+    fn get_api_key(api_key: Option<String>) -> Result<String, PyErr> {
+        // Check if api_key is provided
+        if let Some(key) = api_key {
+            return Ok(key);
+        }
+        // Check if BASETEN_API_KEY is set in the environment
+        if let Ok(key) = std::env::var("BASETEN_API_KEY") {
+            return Ok(key);
+        }
+        // Check if OPENAI_API_KEY is set in the environment
+        if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+            return Ok(key);
+        }
+        // If none of the above, return an error
+        Err(PyValueError::new_err("API key not provided and no environment variable `BASETEN_API_KEY` found"))
+    }
+}
+
 #[pymethods]
 impl SyncClient {
     #[new]
     #[pyo3(signature = (api_key, api_base = "https://model-yqv0rjjw.api.baseten.co/environments/production".to_string()))]
-    fn new(api_key: String, api_base: String) -> PyResult<Self> {
-        // TODO if api_key not set
-        // BASETEN_API_KEY as fallback, and then OPENAI_API_KEY as fallback to that
-
+    fn new(api_key: Option<String>, api_base: String) -> PyResult<Self> {
+        let api_key = SyncClient::get_api_key(api_key)?;
         Ok(SyncClient {
             api_key,
             api_base,
@@ -75,7 +92,12 @@ impl SyncClient {
         })
     }
 
-    #[pyo3(signature = (input, model = "", encoding_format = None, dimensions = None, user = None, max_concurrent_requests = 64, batch_size = 4))]
+    #[getter]
+    fn api_key(&self) -> PyResult<String> {
+        Ok(self.api_key.clone())
+    }
+
+    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = 64, batch_size = 4))]
     fn embed(
         &self,
         py: Python,
@@ -97,6 +119,8 @@ impl SyncClient {
             return Err(PyValueError::new_err("batch_size must be greater than 0 and less than 256"));
         }
 
+        let model_string: String = model.to_string(); // Convert &str to String
+
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
@@ -113,7 +137,7 @@ impl SyncClient {
                 let res = process_embeddings_requests(
                     client,
                     input, // `input` is moved here
-                    model,
+                    model_string, // Use the owned String
                     api_key,
                     api_base,
                     encoding_format,
@@ -216,46 +240,54 @@ async fn process_embeddings_requests(
     dimensions: Option<u32>,
     user: Option<String>,
     max_concurrent_requests: usize,
-    batch_size: usize, // TODO implement this
+    batch_size: usize,
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
 
-    for (chunk_index, text_chunk) in texts.chunks(OPENAI_MAX_INPUT_ITEMS_PER_REQUEST).enumerate() {
-        let client_clone = client.clone();
-        let model_clone = model.clone();
-        let api_key_clone = api_key.clone();
-        let api_base_clone = api_base.clone();
-        let encoding_format_clone = encoding_format.clone();
-        let dimensions_clone = dimensions;
-        let user_clone = user.clone();
-        let text_chunk_owned = text_chunk.to_vec();
-        let semaphore_clone = Arc::clone(&semaphore);
-        let current_chunk_start_index = chunk_index * OPENAI_MAX_INPUT_ITEMS_PER_REQUEST;
+    // This outer loop iterates through chunks that respect OPENAI_MAX_INPUT_ITEMS_PER_REQUEST
+    for (api_chunk_index, api_text_chunk) in texts.chunks(OPENAI_MAX_INPUT_ITEMS_PER_REQUEST).enumerate() {
+        let api_chunk_start_index = api_chunk_index * OPENAI_MAX_INPUT_ITEMS_PER_REQUEST;
 
-        // Tasks are spawned on the global runtime by default if not explicitly on another.
-        // If send_single_embedding_request needs to be spawned on the specific runtime
-        // held by SyncClient (which is the GLOBAL_RUNTIME), it's implicitly handled.
-        tasks.push(tokio::spawn(async move { // This will use the ambient runtime context
-            let _permit = semaphore_clone.acquire().await.expect("Semaphore acquire failed");
-            let mut response = send_single_embedding_request(
-                client_clone,
-                text_chunk_owned,
-                model_clone,
-                api_key_clone,
-                api_base_clone,
-                encoding_format_clone,
-                dimensions_clone,
-                user_clone,
-            )
-            .await?;
+        // This inner loop further breaks down api_text_chunk into user-defined batch_size
+        for (batch_index_in_api_chunk, user_text_batch) in api_text_chunk.chunks(batch_size).enumerate() {
+            let client_clone = client.clone();
+            let model_clone = model.clone();
+            let api_key_clone = api_key.clone();
+            let api_base_clone = api_base.clone();
+            let encoding_format_clone = encoding_format.clone();
+            let dimensions_clone = dimensions;
+            let user_clone = user.clone();
+            let user_text_batch_owned = user_text_batch.to_vec();
+            let semaphore_clone = Arc::clone(&semaphore);
 
-            for item in &mut response.data {
-                item.index += current_chunk_start_index;
-            }
-            Result::<OpenAIEmbeddingsResponse, PyErr>::Ok(response)
-        }));
+            // Calculate the absolute start index for items in this specific user_text_batch
+            let current_batch_absolute_start_index = api_chunk_start_index + (batch_index_in_api_chunk * batch_size);
+
+            tasks.push(tokio::spawn(async move {
+                let _permit = semaphore_clone.acquire().await.expect("Semaphore acquire failed");
+                let mut response = send_single_embedding_request(
+                    client_clone,
+                    user_text_batch_owned, // Send the smaller, user-defined batch
+                    model_clone,
+                    api_key_clone,
+                    api_base_clone,
+                    encoding_format_clone,
+                    dimensions_clone,
+                    user_clone,
+                )
+                .await?;
+
+                // Adjust indices: the response from send_single_embedding_request will have indices starting from 0
+                // relative to user_text_batch_owned. We need to shift them to be absolute.
+                for item in &mut response.data {
+                    item.index += current_batch_absolute_start_index;
+                }
+                // Return the processed data and usage for this batch
+                Result::<_, PyErr>::Ok((response.data, response.usage))
+            }));
+        }
     }
 
     let results = join_all(tasks).await;
@@ -266,10 +298,10 @@ async fn process_embeddings_requests(
 
     for result in results {
         match result {
-            Ok(Ok(response_part)) => {
-                all_embedding_data.extend(response_part.data);
-                aggregated_prompt_tokens = aggregated_prompt_tokens.saturating_add(response_part.usage.prompt_tokens);
-                aggregated_total_tokens = aggregated_total_tokens.saturating_add(response_part.usage.total_tokens);
+            Ok(Ok((data_part, usage_part))) => { // Adjusted to expect a tuple
+                all_embedding_data.extend(data_part);
+                aggregated_prompt_tokens = aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
+                aggregated_total_tokens = aggregated_total_tokens.saturating_add(usage_part.total_tokens);
             }
             Ok(Err(py_err)) => return Err(py_err),
             Err(join_err) => return Err(PyValueError::new_err(format!("Tokio join error: {}", join_err))),
