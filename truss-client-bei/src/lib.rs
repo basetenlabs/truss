@@ -532,7 +532,7 @@ async fn send_single_rerank_request(
         truncation_direction,
     };
 
-    let url = format!("{}/sync/v1/rerank", api_base.trim_end_matches('/'));
+    let url = format!("{}/sync/rerank", api_base.trim_end_matches('/'));
 
     let response = client
         .post(&url)
@@ -652,7 +652,7 @@ async fn send_single_classify_request(
         truncation_direction,
     };
 
-    let url = format!("{}/sync/v1/classify", api_base.trim_end_matches('/'));
+    let url = format!("{}/sync/predict", api_base.trim_end_matches('/')); // route for classify is /predict
 
     let response = client
         .post(&url)
