@@ -51,9 +51,8 @@ struct OpenAIEmbeddingsResponse {
     usage: OpenAIUsage,
 }
 
-// --- SyncBeiClient Class ---
 #[pyclass]
-struct SyncBeiClient {
+struct SyncClient {
     api_key: String,
     api_base: String,
     client: Client,
@@ -61,11 +60,14 @@ struct SyncBeiClient {
 }
 
 #[pymethods]
-impl SyncBeiClient {
+impl SyncClient {
     #[new]
-    #[pyo3(signature = (api_key, api_base = "https://api.openai.com".to_string()))]
+    #[pyo3(signature = (api_key, api_base = "https://model-yqv0rjjw.api.baseten.co/environments/production".to_string()))]
     fn new(api_key: String, api_base: String) -> PyResult<Self> {
-        Ok(SyncBeiClient {
+        // TODO if api_key not set
+        // BASETEN_API_KEY as fallback, and then OPENAI_API_KEY as fallback to that
+
+        Ok(SyncClient {
             api_key,
             api_base,
             client: Client::new(),
@@ -73,22 +75,26 @@ impl SyncBeiClient {
         })
     }
 
-    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = 64))]
-    fn embeddings(
+    #[pyo3(signature = (input, model = "", encoding_format = None, dimensions = None, user = None, max_concurrent_requests = 64, batch_size = 4))]
+    fn embed(
         &self,
         py: Python,
-        input: Vec<String>, // Will be moved into the async task
-        model: String,     // Will be moved
-        encoding_format: Option<String>, // Will be moved
-        dimensions: Option<u32>,         // Is Copy
-        user: Option<String>,            // Will be moved
-        max_concurrent_requests: usize,  // Is Copy
+        input: Vec<String>,
+        model: String,
+        encoding_format: Option<String>,
+        dimensions: Option<u32>,
+        user: Option<String>,
+        max_concurrent_requests: usize,
+        batch_size: usize,
     ) -> PyResult<PyObject> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
-        if max_concurrent_requests == 0 {
-            return Err(PyValueError::new_err("max_concurrent_requests must be greater than 0"));
+        if max_concurrent_requests == 0 || max_concurrent_requests > 256 {
+            return Err(PyValueError::new_err("max_concurrent_requests must be greater than 0 and less than 256"));
+        }
+        if batch_size == 0 || batch_size > 256 {
+            return Err(PyValueError::new_err("batch_size must be greater than 0 and less than 256"));
         }
 
         let client = self.client.clone();
@@ -114,6 +120,7 @@ impl SyncBeiClient {
                     dimensions,
                     user,
                     max_concurrent_requests,
+                    batch_size
                 )
                 .await;
                 // Send the result back to the waiting synchronous thread.
@@ -209,6 +216,7 @@ async fn process_embeddings_requests(
     dimensions: Option<u32>,
     user: Option<String>,
     max_concurrent_requests: usize,
+    batch_size: usize, // TODO implement this
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
@@ -228,7 +236,7 @@ async fn process_embeddings_requests(
 
         // Tasks are spawned on the global runtime by default if not explicitly on another.
         // If send_single_embedding_request needs to be spawned on the specific runtime
-        // held by SyncBeiClient (which is the GLOBAL_RUNTIME), it's implicitly handled.
+        // held by SyncClient (which is the GLOBAL_RUNTIME), it's implicitly handled.
         tasks.push(tokio::spawn(async move { // This will use the ambient runtime context
             let _permit = semaphore_clone.acquire().await.expect("Semaphore acquire failed");
             let mut response = send_single_embedding_request(
@@ -283,7 +291,7 @@ async fn process_embeddings_requests(
 
 // --- PyO3 Module Definition ---
 #[pymodule]
-fn truss_bei_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<SyncBeiClient>()?;
+fn truss_client_bei(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<SyncClient>()?;
     Ok(())
 }
