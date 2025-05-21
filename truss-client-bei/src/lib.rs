@@ -81,8 +81,8 @@ impl SyncClient {
 #[pymethods]
 impl SyncClient {
     #[new]
-    #[pyo3(signature = (api_key, api_base = "https://model-yqv0rjjw.api.baseten.co/environments/production".to_string()))]
-    fn new(api_key: Option<String>, api_base: String) -> PyResult<Self> {
+    #[pyo3(signature = (api_base, api_key = None ))]
+    fn new(api_base: String, api_key: Option<String>) -> PyResult<Self> {
         let api_key = SyncClient::get_api_key(api_key)?;
         Ok(SyncClient {
             api_key,
@@ -205,7 +205,7 @@ async fn send_single_embedding_request(
         user,
     };
 
-    let url = format!("{}/v1/embeddings", api_base.trim_end_matches('/'));
+    let url = format!("{}/sync/v1/embeddings", api_base.trim_end_matches('/'));
 
     let response = client
         .post(&url)
