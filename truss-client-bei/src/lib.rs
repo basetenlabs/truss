@@ -101,6 +101,24 @@ struct RerankResult {
     text: Option<String>,
 }
 
+#[pyclass(get_all, frozen)]
+#[derive(Debug, Clone)]
+struct RerankResponse {
+    object: String,
+    data: Vec<RerankResult>,
+}
+
+#[pymethods]
+impl RerankResponse {
+    #[new]
+    fn new(data: Vec<RerankResult>) -> Self {
+        RerankResponse {
+            object: "list".to_string(),
+            data,
+        }
+    }
+}
+
 #[derive(Serialize, Debug)]
 struct ClassifyRequest {
     inputs: String,
@@ -116,6 +134,24 @@ struct ClassificationResult {
     label: String,
     #[pyo3(get)]
     score: f64,
+}
+
+#[pyclass(get_all, frozen)]
+#[derive(Debug, Clone)]
+struct ClassificationResponse {
+    object: String,
+    data: Vec<ClassificationResult>,
+}
+
+#[pymethods]
+impl ClassificationResponse {
+    #[new]
+    fn new(data: Vec<ClassificationResult>) -> Self {
+        ClassificationResponse {
+            object: "list".to_string(),
+            data,
+        }
+    }
 }
 
 // --- SyncClient Definition ---
@@ -267,11 +303,11 @@ impl SyncClient {
         raw_scores: bool,
         return_text: bool,
         truncate: bool,
-        truncation_direction: &str, // Changed name and type
+        truncation_direction: &str,
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: Option<f64>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<PyObject> { // Changed return type to PyObject
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
@@ -284,9 +320,9 @@ impl SyncClient {
 
         let truncation_direction = truncation_direction.to_string(); // Convert to String
 
-        let result_from_async_task: Result<Vec<RerankResult>, PyErr> =
+        let result_from_async_task: Result<RerankResponse, PyErr> =
             py.allow_threads(move || {
-                let (tx, rx) = mpsc::channel::<Result<Vec<RerankResult>, PyErr>>();
+                let (tx, rx) = mpsc::channel::<Result<RerankResponse, PyErr>>();
                 rt.spawn(async move {
                     let res = process_rerank_requests(
                         client,
@@ -307,10 +343,10 @@ impl SyncClient {
                 });
                 rx.recv().map_err(|e| {
                     PyValueError::new_err(format!("Failed to receive rerank result: {}", e))
-                })
-            })?;
-
-        Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
+                })? // Propagate error from recv itself
+            });
+            let successful_response = result_from_async_task?;
+            Python::with_gil(|py| Ok(successful_response.into_py(py))) // Use into_py_object
     }
 
     #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
@@ -334,9 +370,9 @@ impl SyncClient {
 
         let truncation_direction = truncation_direction.to_string(); // Convert to String
 
-        let result_from_async_task: Result<Vec<ClassificationResult>, PyErr> =
+        let result_from_async_task: Result<ClassificationResponse, PyErr> = // Changed type here
             py.allow_threads(move || {
-                let (tx, rx) = mpsc::channel::<Result<Vec<ClassificationResult>, PyErr>>();
+                let (tx, rx) = mpsc::channel::<Result<ClassificationResponse, PyErr>>(); // Changed channel type
                 rt.spawn(async move {
                     let res = process_classify_requests(
                         client,
@@ -355,10 +391,10 @@ impl SyncClient {
                 });
                 rx.recv().map_err(|e| {
                     PyValueError::new_err(format!("Failed to receive classify result: {}", e))
-                })
-            })?;
+                })? // Propagate error from recv itself
+            });
 
-        Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
+        Python::with_gil(|py| Ok(result_from_async_task?.into_py(py))) // Use into_py_object
     }
 }
 
@@ -575,11 +611,11 @@ async fn process_rerank_requests(
     max_concurrent_requests: usize,
     batch_size: usize,
     overall_timeout: Duration,
-) -> Result<Vec<RerankResult>, PyErr> {
+) -> Result<RerankResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
 
-    for (batch_index, texts_batch) in texts.chunks(batch_size).enumerate() {
+    for (_, texts_batch) in texts.chunks(batch_size).enumerate() {
         let client_clone = client.clone();
         let query_clone = query.clone();
         let api_key_clone = api_key.clone();
@@ -625,7 +661,10 @@ async fn process_rerank_requests(
                 }
             }
             all_results.sort_by_key(|d| d.index);
-            Ok(all_results)
+            Ok(RerankResponse { // Construct RerankResponse
+                object: "list".to_string(),
+                data: all_results,
+            })
         }
         Err(_) => Err(PyValueError::new_err(format!(
             "Overall rerank operation timed out after {:?}",
@@ -695,7 +734,7 @@ async fn process_classify_requests(
     max_concurrent_requests: usize,
     batch_size: usize,
     overall_timeout: Duration,
-) -> Result<Vec<ClassificationResult>, PyErr> {
+) -> Result<ClassificationResponse, PyErr> { // Changed return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
 
@@ -741,7 +780,12 @@ async fn process_classify_requests(
                     }
                 }
             }
-            Ok(all_results)
+            // Note: ClassificationResult does not have an 'index' field for sorting.
+            // The order will be based on the concatenation of batch results.
+            Ok(ClassificationResponse { // Construct ClassificationResponse
+                object: "list".to_string(),
+                data: all_results,
+            })
         }
         Err(_) => Err(PyValueError::new_err(format!(
             "Overall classify operation timed out after {:?}",
@@ -758,7 +802,9 @@ fn truss_client_bei(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;
     m.add_class::<RerankResult>()?;
+    m.add_class::<RerankResponse>()?; // Add RerankResponse
     m.add_class::<ClassificationResult>()?;
+    m.add_class::<ClassificationResponse>()?; // Add ClassificationResponse
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

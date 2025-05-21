@@ -2,7 +2,7 @@ import os
 
 import pytest
 import requests
-from truss_client_bei import OpenAIEmbeddingsResponse, RerankResult, SyncClient
+from truss_client_bei import OpenAIEmbeddingsResponse, RerankResponse, SyncClient
 
 api_key = os.environ.get("BASETEN_API_KEY")
 api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production"
@@ -58,12 +58,9 @@ def test_truss_client_bei_embeddings():
     assert response is not None
     assert isinstance(response, OpenAIEmbeddingsResponse)
     data = response.data
-    # assert len(response.data.embeddings) == 2
-    # assert len(response.embeddings[0]) > 10
-    # assert len(response.embeddings[1]) > 10
-    # assert response.embeddings[0] != response.embeddings[1]
     assert len(data) == 2
     assert len(data[0].embedding) > 10
+    assert isinstance(data[0].embedding[0], float)
 
 
 @pytest.mark.skipif(
@@ -81,4 +78,5 @@ def test_truss_client_bei_rerank():
         max_concurrent_requests=2,
     )
     assert response is not None
-    assert isinstance(response, RerankResult)
+    assert isinstance(response, RerankResponse)
+    assert len(response.data) == 2
