@@ -258,108 +258,108 @@ impl SyncClient {
         Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 
-    //     #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false,
-    //                      truncation_direction = "right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
-    //     fn rerank(
-    //         &self,
-    //         py: Python,
-    //         query: String,
-    //         texts: Vec<String>,
-    //         raw_scores: bool,
-    //         return_text: bool,
-    //         truncate: bool,
-    //         truncation_direction_param: &str, // Changed name and type
-    //         max_concurrent_requests: usize,
-    //         batch_size: usize,
-    //         timeout_s: Option<f64>
-    //     ) -> PyResult<PyObject> {
-    //         if texts.is_empty() {
-    //             return Err(PyValueError::new_err("Texts list cannot be empty"));
-    //         }
-    //         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-    //         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
-    //         let client = self.client.clone();
-    //         let api_key = self.api_key.clone();
-    //         let api_base = self.api_base.clone();
-    //         let rt = Arc::clone(&self.runtime);
+    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    fn rerank(
+        &self,
+        py: Python,
+        query: String,
+        texts: Vec<String>,
+        raw_scores: bool,
+        return_text: bool,
+        truncate: bool,
+        truncation_direction: &str, // Changed name and type
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: Option<f64>,
+    ) -> PyResult<PyObject> {
+        if texts.is_empty() {
+            return Err(PyValueError::new_err("Texts list cannot be empty"));
+        }
+        SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
+        let client = self.client.clone();
+        let api_key = self.api_key.clone();
+        let api_base = self.api_base.clone();
+        let rt = Arc::clone(&self.runtime);
 
-    //         let truncation_direction = truncation_direction_param.to_string(); // Convert to String
+        let truncation_direction = truncation_direction.to_string(); // Convert to String
 
-    //         let result_from_async_task: Result<Vec<RerankResult>, PyErr> =
-    //             py.allow_threads(move || {
-    //                 let (tx, rx) = mpsc::channel::<Result<Vec<RerankResult>, PyErr>>();
-    //                 rt.spawn(async move {
-    //                     let res = process_rerank_requests( // unfinished
-    //                         client,
-    //                         query,
-    //                         texts,
-    //                         raw_scores,
-    //                         return_text,
-    //                         truncate,
-    //                         truncation_direction, // Now this is a String
-    //                         api_key,
-    //                         api_base,
-    //                         max_concurrent_requests,
-    //                         batch_size,
-    //                         timeout_duration,
-    //                     )
-    //                     .await;
-    //                     let _ = tx.send(res);
-    //                 });
-    //                 rx.recv()
-    //                     .map_err(|e| PyValueError::new_err(format!("Failed to receive rerank result: {}", e)))
-    //             })?;
+        let result_from_async_task: Result<Vec<RerankResult>, PyErr> =
+            py.allow_threads(move || {
+                let (tx, rx) = mpsc::channel::<Result<Vec<RerankResult>, PyErr>>();
+                rt.spawn(async move {
+                    let res = process_rerank_requests(
+                        client,
+                        query,
+                        texts,
+                        raw_scores,
+                        return_text,
+                        truncate,
+                        truncation_direction, // Now this is a String
+                        api_key,
+                        api_base,
+                        max_concurrent_requests,
+                        batch_size,
+                        timeout_duration,
+                    )
+                    .await;
+                    let _ = tx.send(res);
+                });
+                rx.recv().map_err(|e| {
+                    PyValueError::new_err(format!("Failed to receive rerank result: {}", e))
+                })
+            })?;
 
-    //         Python::with_gil(|py| Ok(result_from_async_task?.into_pyobject(py)))
-    //     }
+        Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
+    }
 
-    //     #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "right",
-    //                      max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
-    //     fn classify(
-    //         &self,
-    //         py: Python,
-    //         inputs: Vec<String>,
-    //         raw_scores: bool,
-    //         truncate: bool,
-    //         truncation_direction_param: &str, // Changed name and type
-    //         max_concurrent_requests: usize,
-    //         batch_size: usize,
-    //         timeout_s: Option<f64>
-    //     ) -> PyResult<PyObject> {
-    //         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-    //         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
-    //         let client = self.client.clone();
-    //         let api_key = self.api_key.clone();
-    //         let api_base = self.api_base.clone();
-    //         let rt = Arc::clone(&self.runtime);
+    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    fn classify(
+        &self,
+        py: Python,
+        inputs: Vec<String>,
+        raw_scores: bool,
+        truncate: bool,
+        truncation_direction: &str, // Changed name and type
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: Option<f64>,
+    ) -> PyResult<PyObject> {
+        SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
+        let client = self.client.clone();
+        let api_key = self.api_key.clone();
+        let api_base = self.api_base.clone();
+        let rt = Arc::clone(&self.runtime);
 
-    //         let truncation_direction = truncation_direction_param.to_string(); // Convert to String
+        let truncation_direction = truncation_direction.to_string(); // Convert to String
 
-    //         let result_from_async_task: Result<Vec<ClassificationResult>, PyErr> =
-    //             py.allow_threads(move || {
-    //                 let (tx, rx) = mpsc::channel::<Result<Vec<ClassificationResult>, PyErr>>();
-    //                 rt.spawn(async move {
-    //                     let res = process_classify_requests( // unfinished
-    //                         client,
-    //                         inputs,
-    //                         raw_scores,
-    //                         truncate,
-    //                         truncation_direction, // Now this is a String
-    //                         api_key,
-    //                         api_base,
-    //                         max_concurrent_requests,
-    //                         batch_size,
-    //                         timeout_duration,
-    //                     )
-    //                     .await;
-    //                     let _ = tx.send(res);
-    //                 });
-    //                 rx.recv()
-    //                     .map_err(|e| PyValueError::new_err(format!("Failed to receive classify result: {}", e)))
-    //             })?;
+        let result_from_async_task: Result<Vec<ClassificationResult>, PyErr> =
+            py.allow_threads(move || {
+                let (tx, rx) = mpsc::channel::<Result<Vec<ClassificationResult>, PyErr>>();
+                rt.spawn(async move {
+                    let res = process_classify_requests(
+                        client,
+                        inputs,
+                        raw_scores,
+                        truncate,
+                        truncation_direction, // Now this is a String
+                        api_key,
+                        api_base,
+                        max_concurrent_requests,
+                        batch_size,
+                        timeout_duration,
+                    )
+                    .await;
+                    let _ = tx.send(res);
+                });
+                rx.recv().map_err(|e| {
+                    PyValueError::new_err(format!("Failed to receive classify result: {}", e))
+                })
+            })?;
 
-    //         Python::with_gil(|py| Ok(result_from_async_task?.into_pyobject(py)))
-    //     }
+        Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
+    }
 }
 
 // --- Modification in send_single_embedding_request ---
@@ -505,6 +505,246 @@ async fn process_embeddings_requests(
         }
         Err(_) => Err(PyValueError::new_err(format!(
             "Overall embedding operation timed out after {:?}",
+            overall_timeout
+        ))),
+    }
+}
+
+// --- Send Single Rerank Request ---
+async fn send_single_rerank_request(
+    client: Client,
+    query: String,
+    texts_batch: Vec<String>,
+    raw_scores: bool,
+    return_text: bool,
+    truncate: bool,
+    truncation_direction: String,
+    api_key: String,
+    api_base: String,
+    request_timeout: Duration,
+) -> Result<Vec<RerankResult>, PyErr> {
+    let request_payload = RerankRequest {
+        query,
+        raw_scores,
+        return_text,
+        texts: texts_batch,
+        truncate,
+        truncation_direction,
+    };
+
+    let url = format!("{}/sync/v1/rerank", api_base.trim_end_matches('/'));
+
+    let response = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&request_payload)
+        .timeout(request_timeout)
+        .send()
+        .await
+        .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(PyValueError::new_err(format!(
+            "API request failed with status {}: {}",
+            status, error_text
+        )));
+    }
+
+    response
+        .json::<Vec<RerankResult>>()
+        .await
+        .map_err(|e| PyValueError::new_err(format!("Failed to parse rerank response JSON: {}", e)))
+}
+
+// --- Process Rerank Requests ---
+async fn process_rerank_requests(
+    client: Client,
+    query: String,
+    texts: Vec<String>,
+    raw_scores: bool,
+    return_text: bool,
+    truncate: bool,
+    truncation_direction: String,
+    api_key: String,
+    api_base: String,
+    max_concurrent_requests: usize,
+    batch_size: usize,
+    overall_timeout: Duration,
+) -> Result<Vec<RerankResult>, PyErr> {
+    let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+    let mut tasks = Vec::new();
+
+    for (batch_index, texts_batch) in texts.chunks(batch_size).enumerate() {
+        let client_clone = client.clone();
+        let query_clone = query.clone();
+        let api_key_clone = api_key.clone();
+        let api_base_clone = api_base.clone();
+        let truncation_direction_clone = truncation_direction.clone();
+        let texts_batch_owned = texts_batch.to_vec();
+        let semaphore_clone = Arc::clone(&semaphore);
+
+        tasks.push(tokio::spawn(async move {
+            let _permit = semaphore_clone
+                .acquire()
+                .await
+                .expect("Semaphore acquire failed");
+            send_single_rerank_request(
+                client_clone,
+                query_clone,
+                texts_batch_owned,
+                raw_scores,
+                return_text,
+                truncate,
+                truncation_direction_clone,
+                api_key_clone,
+                api_base_clone,
+                overall_timeout,
+            )
+            .await
+        }));
+    }
+
+    match tokio::time::timeout(overall_timeout, join_all(tasks)).await {
+        Ok(task_results) => {
+            let mut all_results: Vec<RerankResult> = Vec::new();
+            for result in task_results {
+                match result {
+                    Ok(Ok(mut batch_results)) => all_results.append(&mut batch_results),
+                    Ok(Err(py_err)) => return Err(py_err),
+                    Err(join_err) => {
+                        return Err(PyValueError::new_err(format!(
+                            "Tokio task join error: {}",
+                            join_err
+                        )))
+                    }
+                }
+            }
+            all_results.sort_by_key(|d| d.index);
+            Ok(all_results)
+        }
+        Err(_) => Err(PyValueError::new_err(format!(
+            "Overall rerank operation timed out after {:?}",
+            overall_timeout
+        ))),
+    }
+}
+
+// --- Send Single Classify Request ---
+async fn send_single_classify_request(
+    client: Client,
+    input: String,
+    raw_scores: bool,
+    truncate: bool,
+    truncation_direction: String,
+    api_key: String,
+    api_base: String,
+    request_timeout: Duration,
+) -> Result<Vec<ClassificationResult>, PyErr> {
+    let request_payload = ClassifyRequest {
+        inputs: input,
+        raw_scores,
+        truncate,
+        truncation_direction,
+    };
+
+    let url = format!("{}/sync/v1/classify", api_base.trim_end_matches('/'));
+
+    let response = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&request_payload)
+        .timeout(request_timeout)
+        .send()
+        .await
+        .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(PyValueError::new_err(format!(
+            "API request failed with status {}: {}",
+            status, error_text
+        )));
+    }
+
+    response
+        .json::<Vec<ClassificationResult>>()
+        .await
+        .map_err(|e| {
+            PyValueError::new_err(format!("Failed to parse classify response JSON: {}", e))
+        })
+}
+
+// --- Process Classify Requests ---
+async fn process_classify_requests(
+    client: Client,
+    inputs: Vec<String>,
+    raw_scores: bool,
+    truncate: bool,
+    truncation_direction: String,
+    api_key: String,
+    api_base: String,
+    max_concurrent_requests: usize,
+    batch_size: usize,
+    overall_timeout: Duration,
+) -> Result<Vec<ClassificationResult>, PyErr> {
+    let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+    let mut tasks = Vec::new();
+
+    for input in inputs.chunks(batch_size) {
+        let client_clone = client.clone();
+        let api_key_clone = api_key.clone();
+        let api_base_clone = api_base.clone();
+        let truncation_direction_clone = truncation_direction.clone();
+        let input_owned = input.join("\n"); // Assuming each input is a string, join for batch
+        let semaphore_clone = Arc::clone(&semaphore);
+
+        tasks.push(tokio::spawn(async move {
+            let _permit = semaphore_clone
+                .acquire()
+                .await
+                .expect("Semaphore acquire failed");
+            send_single_classify_request(
+                client_clone,
+                input_owned,
+                raw_scores,
+                truncate,
+                truncation_direction_clone,
+                api_key_clone,
+                api_base_clone,
+                overall_timeout,
+            )
+            .await
+        }));
+    }
+
+    match tokio::time::timeout(overall_timeout, join_all(tasks)).await {
+        Ok(task_results) => {
+            let mut all_results: Vec<ClassificationResult> = Vec::new();
+            for result in task_results {
+                match result {
+                    Ok(Ok(mut batch_results)) => all_results.append(&mut batch_results),
+                    Ok(Err(py_err)) => return Err(py_err),
+                    Err(join_err) => {
+                        return Err(PyValueError::new_err(format!(
+                            "Tokio task join error: {}",
+                            join_err
+                        )))
+                    }
+                }
+            }
+            Ok(all_results)
+        }
+        Err(_) => Err(PyValueError::new_err(format!(
+            "Overall classify operation timed out after {:?}",
             overall_timeout
         ))),
     }
