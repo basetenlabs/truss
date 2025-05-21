@@ -2,7 +2,6 @@
 // as python api that fans out to multiple requests
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use pyo3::types::{PyList, PyFloat};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
@@ -31,23 +30,35 @@ struct OpenAIEmbeddingsRequest {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[pyclass]
 struct OpenAIEmbeddingData {
+    #[pyo3(get)]
     object: String,
+    #[pyo3(get)]
     embedding: Vec<f32>,
+    #[pyo3(get)]
     index: usize,
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[pyclass]
 struct OpenAIUsage {
+    #[pyo3(get)]
     prompt_tokens: u32,
+    #[pyo3(get)]
     total_tokens: u32,
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[pyclass]
 struct OpenAIEmbeddingsResponse {
+    #[pyo3(get)]
     object: String,
+    #[pyo3(get)]
     data: Vec<OpenAIEmbeddingData>,
+    #[pyo3(get)]
     model: String,
+    #[pyo3(get)]
     usage: OpenAIUsage,
 }
 
@@ -165,7 +176,7 @@ impl SyncClient {
                     e
                 ))),
             }
-        }); // Removed ? here, assuming py.allow_threads flattens PyResult<PyResult<T>> to PyResult<T>
+        });
 
         // Handle the Result before accessing its fields.
         // If result_from_async_task is an Err, the `?` will propagate it.
@@ -174,18 +185,11 @@ impl SyncClient {
 
         // Convert the successful result to Python objects.
         Python::with_gil(|py| {
-            let py_embeddings_list = PyList::empty_bound(py);
-            for embedding_data in successful_response.data { // Now using successful_response
-                let py_embedding = PyList::new_bound(py, embedding_data.embedding.iter().map(|&f| PyFloat::new_bound(py, f.into())));
-                py_embeddings_list.append(py_embedding)?;
-            }
-            Ok(py_embeddings_list.to_object(py))
+            // Directly convert successful_response to a PyObject
+            Ok(successful_response.into_py(py))
         })
     }
 }
-
-// Max number of input items per OpenAI API request
-const OPENAI_MAX_INPUT_ITEMS_PER_REQUEST: usize = 2048;
 
 async fn send_single_embedding_request(
     client: Client,
@@ -246,48 +250,43 @@ async fn process_embeddings_requests(
     let mut tasks = Vec::new();
     let total_texts = texts.len();
 
-    // This outer loop iterates through chunks that respect OPENAI_MAX_INPUT_ITEMS_PER_REQUEST
-    for (api_chunk_index, api_text_chunk) in texts.chunks(OPENAI_MAX_INPUT_ITEMS_PER_REQUEST).enumerate() {
-        let api_chunk_start_index = api_chunk_index * OPENAI_MAX_INPUT_ITEMS_PER_REQUEST;
+    // This loop iterates through chunks based on user-defined batch_size
+    for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
+        let client_clone = client.clone();
+        let model_clone = model.clone();
+        let api_key_clone = api_key.clone();
+        let api_base_clone = api_base.clone();
+        let encoding_format_clone = encoding_format.clone();
+        let dimensions_clone = dimensions;
+        let user_clone = user.clone();
+        let user_text_batch_owned = user_text_batch.to_vec();
+        let semaphore_clone = Arc::clone(&semaphore);
 
-        // This inner loop further breaks down api_text_chunk into user-defined batch_size
-        for (batch_index_in_api_chunk, user_text_batch) in api_text_chunk.chunks(batch_size).enumerate() {
-            let client_clone = client.clone();
-            let model_clone = model.clone();
-            let api_key_clone = api_key.clone();
-            let api_base_clone = api_base.clone();
-            let encoding_format_clone = encoding_format.clone();
-            let dimensions_clone = dimensions;
-            let user_clone = user.clone();
-            let user_text_batch_owned = user_text_batch.to_vec();
-            let semaphore_clone = Arc::clone(&semaphore);
+        // Calculate the absolute start index for items in this specific user_textBatch
+        let current_batch_absolute_start_index = batch_index * batch_size;
 
-            // Calculate the absolute start index for items in this specific user_text_batch
-            let current_batch_absolute_start_index = api_chunk_start_index + (batch_index_in_api_chunk * batch_size);
+        tasks.push(tokio::spawn(async move {
+            let _permit = semaphore_clone.acquire().await.expect("Semaphore acquire failed");
+            let mut response = send_single_embedding_request(
+                client_clone,
+                user_text_batch_owned, // Send the user-defined batch
+                model_clone,
+                api_key_clone,
+                api_base_clone,
+                encoding_format_clone,
+                dimensions_clone,
+                user_clone,
+            )
+            .await?;
 
-            tasks.push(tokio::spawn(async move {
-                let _permit = semaphore_clone.acquire().await.expect("Semaphore acquire failed");
-                let mut response = send_single_embedding_request(
-                    client_clone,
-                    user_text_batch_owned, // Send the smaller, user-defined batch
-                    model_clone,
-                    api_key_clone,
-                    api_base_clone,
-                    encoding_format_clone,
-                    dimensions_clone,
-                    user_clone,
-                )
-                .await?;
-
-                // Adjust indices: the response from send_single_embedding_request will have indices starting from 0
-                // relative to user_text_batch_owned. We need to shift them to be absolute.
-                for item in &mut response.data {
-                    item.index += current_batch_absolute_start_index;
-                }
-                // Return the processed data and usage for this batch
-                Result::<_, PyErr>::Ok((response.data, response.usage))
-            }));
-        }
+            // Adjust indices: the response from send_single_embedding_request will have indices starting from 0
+            // relative to user_text_batch_owned. We need to shift them to be absolute.
+            for item in &mut response.data {
+                item.index += current_batch_absolute_start_index;
+            }
+            // Return the processed data and usage for this batch
+            Result::<_, PyErr>::Ok((response.data, response.usage))
+        }));
     }
 
     let results = join_all(tasks).await;
@@ -325,5 +324,8 @@ async fn process_embeddings_requests(
 #[pymodule]
 fn truss_client_bei(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SyncClient>()?;
+    m.add_class::<OpenAIEmbeddingsResponse>()?; // Add class to module
+    m.add_class::<OpenAIEmbeddingData>()?;    // Add class to module
+    m.add_class::<OpenAIUsage>()?;             // Add class to module
     Ok(())
 }
