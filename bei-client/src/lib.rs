@@ -263,18 +263,14 @@ impl SyncClient {
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
-        timeout_s: Option<f64>, // New timeout parameter
+        timeout_s: Option<f64>,
     ) -> PyResult<PyObject> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-
-        // Validate and set the request timeout.
         let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
-
         let model_string: String = model.to_string();
-
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
@@ -282,7 +278,7 @@ impl SyncClient {
 
         let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> =
             py.allow_threads(move || {
-                let (tx, rx) = mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
+                let (tx, rx) = std::sync::mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
 
                 rt.spawn(async move {
                     let res = process_embeddings_requests(
@@ -296,18 +292,16 @@ impl SyncClient {
                         user,
                         max_concurrent_requests,
                         batch_size,
-                        timeout_duration, // Pass timeout to overall processing
+                        timeout_duration,
                     )
                     .await;
-                    if tx.send(res).is_err() {
-                        // Receiver dropped, nothing to do.
-                    }
+                    let _ = tx.send(res); // Errors on send typically mean receiver dropped.
                 });
 
                 match rx.recv() {
-                    Ok(res) => res,
+                    Ok(inner_result) => inner_result,
                     Err(e) => Err(PyValueError::new_err(format!(
-                        "Failed to receive result from async task: {}",
+                        "Failed to receive result from async task (channel error): {}",
                         e
                     ))),
                 }
@@ -331,7 +325,6 @@ impl SyncClient {
         batch_size: usize,
         timeout_s: Option<f64>,
     ) -> PyResult<PyObject> {
-        // Changed return type to PyObject
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
@@ -341,11 +334,10 @@ impl SyncClient {
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
         let rt = Arc::clone(&self.runtime);
-
-        let truncation_direction = truncation_direction.to_string(); // Convert to String
+        let truncation_direction = truncation_direction.to_string();
 
         let result_from_async_task: Result<RerankResponse, PyErr> = py.allow_threads(move || {
-            let (tx, rx) = mpsc::channel::<Result<RerankResponse, PyErr>>();
+            let (tx, rx) = std::sync::mpsc::channel::<Result<RerankResponse, PyErr>>();
             rt.spawn(async move {
                 let res = process_rerank_requests(
                     client,
@@ -354,7 +346,7 @@ impl SyncClient {
                     raw_scores,
                     return_text,
                     truncate,
-                    truncation_direction, // Now this is a String
+                    truncation_direction,
                     api_key,
                     api_base,
                     max_concurrent_requests,
@@ -364,19 +356,19 @@ impl SyncClient {
                 .await;
                 let _ = tx.send(res);
             });
-            rx.recv().map_err(|e| {
-                PyValueError::new_err(format!("Failed to receive rerank result: {}", e))
-            })? // Propagate error from recv itself
+            rx.recv() // Returns Result<Result<RerankResponse, PyErr>, RecvError>
+                .map_err(|e| PyValueError::new_err(format!("Failed to receive rerank result (channel error): {}", e)))
+                .and_then(|inner_result| inner_result) // Flattens to Result<RerankResponse, PyErr>
         });
         let successful_response = result_from_async_task?;
-        Python::with_gil(|py| Ok(successful_response.into_py(py))) // Use into_py_object
+        Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 
     #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
     fn classify(
         &self,
         py: Python,
-        inputs: Vec<String>, // This remains Vec<String> as input from Python
+        inputs: Vec<String>,
         raw_scores: bool,
         truncate: bool,
         truncation_direction: &str,
@@ -385,7 +377,6 @@ impl SyncClient {
         timeout_s: Option<f64>,
     ) -> PyResult<PyObject> {
         if inputs.is_empty() {
-            // Add check for empty inputs
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
         SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
@@ -394,16 +385,15 @@ impl SyncClient {
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
         let rt = Arc::clone(&self.runtime);
-
         let truncation_direction = truncation_direction.to_string();
 
         let result_from_async_task: Result<ClassificationResponse, PyErr> =
             py.allow_threads(move || {
-                let (tx, rx) = mpsc::channel::<Result<ClassificationResponse, PyErr>>();
+                let (tx, rx) = std::sync::mpsc::channel::<Result<ClassificationResponse, PyErr>>();
                 rt.spawn(async move {
                     let res = process_classify_requests(
                         client,
-                        inputs, // Pass Vec<String>
+                        inputs,
                         raw_scores,
                         truncate,
                         truncation_direction,
@@ -416,9 +406,9 @@ impl SyncClient {
                     .await;
                     let _ = tx.send(res);
                 });
-                rx.recv().map_err(|e| {
-                    PyValueError::new_err(format!("Failed to receive classify result: {}", e))
-                })?
+                rx.recv() // Returns Result<Result<ClassificationResponse, PyErr>, RecvError>
+                    .map_err(|e| PyValueError::new_err(format!("Failed to receive classify result (channel error): {}", e)))
+                    .and_then(|inner_result| inner_result) // Flattens to Result<ClassificationResponse, PyErr>
             });
 
         Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
