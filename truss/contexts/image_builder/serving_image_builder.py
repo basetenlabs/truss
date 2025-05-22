@@ -142,8 +142,10 @@ class GCSCache(RemoteCache):
         else:
             storage_client = storage.Client.create_anonymous_client()
 
-        bucket_name, prefix = split_path(self.repo_name, prefix="gs://")
-        blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
+        bucket_name, path = split_path(self.repo_name, prefix="gs://")
+        if path and not path.endswith("/"):
+            path += "/"
+        blobs = storage_client.list_blobs(bucket_name, prefix=path)
 
         all_objects = []
         for blob in blobs:
@@ -185,6 +187,8 @@ class S3Cache(RemoteCache):
 
         # path may be like "folderA/folderB"
         bucket_name, path = split_path(self.repo_name, prefix="s3://")
+        if path and not path.endswith("/"):
+            path += "/"
         bucket = s3.Bucket(bucket_name)
 
         all_objects = []
