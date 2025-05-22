@@ -51,6 +51,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "bei_client"
+version = "0.0.1-rc0"
+dependencies = [
+ "futures",
+ "once_cell",
+ "openssl",
+ "pyo3",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1334,20 +1348,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e672c95779cf947c5311f83787af4fa8fffd12fb27e4993211a84bdfd9610f9c"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "truss_client_bei"
-version = "0.0.1-rc0"
-dependencies = [
- "futures",
- "once_cell",
- "openssl",
- "pyo3",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

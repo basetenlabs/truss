@@ -12,6 +12,15 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::sync::Semaphore; // Add this for timeout support
 
+// --- Constants ---
+const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
+const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
+const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
+const MAX_CONCURRENCY: usize = 384;
+const DEFAULT_CONCURRENCY: usize = 32;
+const MAX_BATCH_SIZE: usize = 128;
+const DEFAULT_BATCH_SIZE: usize = 16;
+
 // --- Global Tokio Runtime ---
 static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> =
     Lazy::new(|| Arc::new(Runtime::new().expect("Failed to create global Tokio runtime")));
@@ -230,7 +239,7 @@ impl SyncClient {
         Ok(self.api_key.clone())
     }
 
-    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
     fn embed(
         &self,
         py: Python,
@@ -295,7 +304,7 @@ impl SyncClient {
         Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 
-    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
     fn rerank(
         &self,
         py: Python,
@@ -350,7 +359,7 @@ impl SyncClient {
         Python::with_gil(|py| Ok(successful_response.into_py(py))) // Use into_py_object
     }
 
-    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = 64, batch_size = 4, timeout_s = None))]
+    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
     fn classify(
         &self,
         py: Python,
@@ -818,10 +827,3 @@ fn bei_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
-
-// --- Timeout Constants ---
-const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
-const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MAX_CONCURRENCY: usize = 512;
-const MAX_BATCH_SIZE: usize = 128;
