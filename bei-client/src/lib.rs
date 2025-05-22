@@ -43,6 +43,7 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     runtime
 });
 
+
 // --- OpenAI Compatible Structures ---
 #[derive(Serialize, Debug, Clone)]
 struct OpenAIEmbeddingsRequest {
@@ -492,7 +493,7 @@ async fn process_embeddings_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
-    let cancel_token = Arc::new(AtomicBool::new(false));
+    let cancel_token = Arc::new(AtomicBool::new(false)); // This is the per-operation token
     let model_for_response = model.clone();
 
     for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
@@ -505,18 +506,13 @@ async fn process_embeddings_requests(
         let user_clone = user.clone();
         let user_text_batch_owned = user_text_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
-        let cancel_token_clone = Arc::clone(&cancel_token);
+        let cancel_token_clone = Arc::clone(&cancel_token); // Local cancel token
         let individual_request_timeout = request_timeout_duration;
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
-            let _permit = semaphore_clone.acquire_owned().await.map_err(|e| { // Renamed to _permit to signify it's not returned
-                PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
-            })?;
+            let _permit = acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
-            if cancel_token_clone.load(Ordering::SeqCst) {
-                return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
-            }
 
             let result = send_single_embedding_request(
                 client_clone,
@@ -531,13 +527,12 @@ async fn process_embeddings_requests(
             )
             .await;
 
-            // _permit goes out of scope here if task returns, releasing the semaphore slot.
             match result {
                 Ok(mut response) => {
                     for item in &mut response.data {
                         item.index += current_batch_absolute_start_index;
                     }
-                    Ok((response.data, response.usage)) // Return only data and usage
+                    Ok((response.data, response.usage))
                 }
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
@@ -651,7 +646,6 @@ async fn process_rerank_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
-    // let original_indices: Vec<_> = (0..texts.len()).collect(); // If needed for re-sorting later
 
     for (_batch_index, texts_batch) in texts.chunks(batch_size).enumerate() {
         let client_clone = client.clone();
@@ -663,21 +657,14 @@ async fn process_rerank_requests(
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
         let individual_request_timeout = request_timeout_duration;
-        // let current_batch_absolute_start_index = batch_index * batch_size; // Needed if RerankResult.index is relative to batch
 
         tasks.push(tokio::spawn(async move {
-            let _permit = semaphore_clone.acquire_owned().await.map_err(|e| { // Renamed to _permit
-                PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
-            })?;
-
-            if cancel_token_clone.load(Ordering::SeqCst) {
-                return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
-            }
+            let _permit = acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let result = send_single_rerank_request(
                 client_clone,
                 query_clone,
-                texts_batch_owned, // This is Vec<String> for the current batch
+                texts_batch_owned,
                 raw_scores,
                 return_text,
                 truncate,
@@ -689,15 +676,7 @@ async fn process_rerank_requests(
             .await;
 
             match result {
-                Ok(mut batch_results) => {
-                    // If RerankResult.index is 0-based for the batch and needs to be global:
-                    // This assumes RerankResult.index is already correctly set by the API or doesn't need batch offset.
-                    // If it *does* need adjustment (e.g., if API returns 0-based index for the batch):
-                    // for (i, item) in batch_results.iter_mut().enumerate() {
-                    //     item.index = current_batch_absolute_start_index + i; // Or however the API sets index
-                    // }
-                    Ok(batch_results) // Return only batch_results
-                }
+                Ok(batch_results) => Ok(batch_results),
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
                     Err(e)
@@ -809,13 +788,7 @@ async fn process_classify_requests(
         let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
-            let _permit = semaphore_clone.acquire_owned().await.map_err(|e| { // Renamed to _permit
-                PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
-            })?;
-
-            if cancel_token_clone.load(Ordering::SeqCst) {
-                return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
-            }
+            let _permit = acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let result = send_single_classify_request(
                 client_clone,
@@ -830,7 +803,7 @@ async fn process_classify_requests(
             .await;
 
             match result {
-                Ok(batch_results) => Ok(batch_results), // Return only batch_results
+                Ok(batch_results) => Ok(batch_results),
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
                     Err(e)
@@ -920,6 +893,50 @@ fn process_task_outcome<D>(
             // as the panicked task itself wouldn't have set the cancel_token.
             cancel_token.store(true, Ordering::SeqCst);
             None
+        }
+    }
+}
+
+
+// --- Helper function to acquire permit and check for cancellation ---
+async fn acquire_permit_or_cancel(
+    semaphore: Arc<Semaphore>,
+    local_cancel_token: Arc<AtomicBool>,
+) -> Result<OwnedSemaphorePermit, PyErr> {
+    // Select between acquiring a permit and a cancellation signal.
+    // This avoids holding a permit if a cancellation signal is already present or arrives quickly.
+    tokio::select! {
+        biased; // Prioritize checking cancellation signals first.
+
+        // Check for global Ctrl+C
+        _ = tokio::time::sleep(Duration::from_millis(1)), if CTRL_C_RECEIVED.load(Ordering::SeqCst) => {
+            local_cancel_token.store(true, Ordering::SeqCst); // Signal local tasks too
+            return Err(PyValueError::new_err(CTRL_C_ERROR_MESSAGE_DETAIL));
+        }
+
+        // Check for local cancellation token
+        _ = tokio::time::sleep(Duration::from_millis(1)), if local_cancel_token.load(Ordering::SeqCst) => {
+            return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
+        }
+
+        // Try to acquire the permit
+        permit_result = semaphore.acquire_owned() => {
+            let permit = permit_result.map_err(|e| {
+                PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
+            })?;
+
+            // Re-check cancellation signals after acquiring the permit, in case they occurred
+            // while waiting for the permit.
+            if CTRL_C_RECEIVED.load(Ordering::SeqCst) {
+                local_cancel_token.store(true, Ordering::SeqCst);
+                // Permit is dropped here as it goes out of scope if we return Err.
+                return Err(PyValueError::new_err(CTRL_C_ERROR_MESSAGE_DETAIL));
+            }
+            if local_cancel_token.load(Ordering::SeqCst) {
+                // Permit is dropped here.
+                return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
+            }
+            Ok(permit)
         }
     }
 }

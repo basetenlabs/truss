@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest
 import requests
@@ -161,7 +162,7 @@ def test_embedding_high_volume():
     client = SyncClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
-    n_requests = 193
+    n_requests = 253
     response = client.embed(
         ["Hello world"] * n_requests,
         model="my_model",
@@ -176,21 +177,21 @@ def test_embedding_high_volume():
     assert isinstance(data[0].embedding[0], float)
 
 
-# def test_embedding_high_volume_return_instant():
-#     api_key = "wrong"
-#     api_base_wrong = "https://bla.notexist"
-#     client = SyncClient(api_base=api_base_wrong, api_key=api_key)
+def test_embedding_high_volume_return_instant():
+    api_key = "wrong"
+    api_base_wrong = "https://bla.notexist"
+    client = SyncClient(api_base=api_base_wrong, api_key=api_key)
 
-#     assert client.api_key == api_key
-#     t_0 = time.time()
-#     with pytest.raises(Exception) as excinfo:
-#         client.embed(
-#             ["Hello world"] * 10,
-#             model="my_model",
-#             batch_size=1,
-#             max_concurrent_requests=1,
-#         )
-#     assert "HTTP" in str(excinfo.value)
-#     assert time.time() - t_0 < 5, (
-#         "Request took too long to fail seems like you didn't implement drop on first error"
-#     )
+    assert client.api_key == api_key
+    t_0 = time.time()
+    with pytest.raises(Exception) as excinfo:
+        client.embed(
+            ["Hello world"] * 10,
+            model="my_model",
+            batch_size=1,
+            max_concurrent_requests=1,
+        )
+    assert "failed" in str(excinfo.value)
+    assert time.time() - t_0 < 5, (
+        "Request took too long to fail seems like you didn't implement drop on first error"
+    )
