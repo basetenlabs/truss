@@ -745,11 +745,6 @@ async fn process_classify_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
 
-    // Store original indices to re-sort later if necessary, though the API might return them in order.
-    // For now, we'll assume the order of concatenated results from batches is acceptable.
-    // If strict input-order mapping is needed across batches for the outer list,
-    // this would require more complex handling with original indices.
-
     for input_chunk in inputs.chunks(batch_size) {
         let client_clone = client.clone();
         let api_key_clone = api_key.clone();
@@ -759,7 +754,7 @@ async fn process_classify_requests(
         let semaphore_clone = Arc::clone(&semaphore);
 
         tasks.push(tokio::spawn(async move {
-            let _permit = semaphore_clone
+            let _permit: tokio::sync::SemaphorePermit<'_> = semaphore_clone
                 .acquire()
                 .await
                 .expect("Semaphore acquire failed");
@@ -811,7 +806,7 @@ async fn process_classify_requests(
 
 // --- PyO3 Module Definition ---
 #[pymodule]
-fn truss_client_bei(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn bei_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SyncClient>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;

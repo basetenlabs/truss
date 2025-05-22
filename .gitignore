@@ -79,4 +79,4 @@ yarn.lock
 .hypothesis
 
 truss-transfer/target/
-truss-client-bei/target/
+bei-client/target/

@@ -2,7 +2,7 @@ import os
 
 import pytest
 import requests
-from truss_client_bei import (
+from bei_client import (
     ClassificationResponse,
     OpenAIEmbeddingsResponse,
     RerankResponse,
@@ -56,7 +56,7 @@ def invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
     not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def truss_client_bei_embeddings_test():
+def bei_client_embeddings_test():
     client = SyncClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
@@ -78,7 +78,7 @@ def truss_client_bei_embeddings_test():
     not is_deployment_reachable(api_base_rerank, "/sync/rerank"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def truss_client_bei_rerank_test():
+def bei_client_rerank_test():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
@@ -97,7 +97,7 @@ def truss_client_bei_rerank_test():
     not is_deployment_reachable(api_base_rerank, "/sync/predict"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def truss_client_bei_predict_test():
+def bei_client_predict_test():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key

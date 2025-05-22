@@ -1,5 +1,5 @@
 [package]
-name = "truss_client_bei"
+name = "bei_client"
 version = "0.0.1-rc0"
 edition = "2021"
 
@@ -14,5 +14,5 @@ futures = "0.3"
 once_cell = "1.21"
 
 [lib]
-name = "truss_client_bei"
+name = "bei_client"
 crate-type = ["cdylib"]
