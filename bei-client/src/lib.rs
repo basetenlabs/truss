@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore}; // Add OwnedSemaphorePermit
+use tokio::task::JoinError; // Add JoinError
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
@@ -23,6 +24,9 @@ const MAX_BATCH_SIZE: usize = 128;
 const DEFAULT_BATCH_SIZE: usize = 16;
 
 // --- Global Tokio Runtime ---
+// Add this constant
+const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
+
 static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> =
     Lazy::new(|| Arc::new(Runtime::new().expect("Failed to create global Tokio runtime")));
 
@@ -474,17 +478,17 @@ async fn process_embeddings_requests(
     user: Option<String>,
     max_concurrent_requests: usize,
     batch_size: usize,
-    request_timeout_duration: Duration, // Renamed from overall_timeout
+    request_timeout_duration: Duration,
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
     let cancel_token = Arc::new(AtomicBool::new(false));
-    let model_for_response = model.clone(); // Clone for the final response object
+    let model_for_response = model.clone();
 
     for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
         let client_clone = client.clone();
-        let model_for_task = model.clone(); // Each task gets a clone of the model string
+        let model_for_task = model.clone();
         let api_key_clone = api_key.clone();
         let api_base_clone = api_base.clone();
         let encoding_format_clone = encoding_format.clone();
@@ -494,17 +498,16 @@ async fn process_embeddings_requests(
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
         let individual_request_timeout = request_timeout_duration;
-
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
             let permit = semaphore_clone
-                .acquire_owned() // Use owned permit
+                .acquire_owned()
                 .await
                 .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
 
             if cancel_token_clone.load(Ordering::SeqCst) {
-                return Err(PyValueError::new_err("Operation cancelled due to a previous error"));
+                return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
             }
 
             let result = send_single_embedding_request(
@@ -525,7 +528,7 @@ async fn process_embeddings_requests(
                     for item in &mut response.data {
                         item.index += current_batch_absolute_start_index;
                     }
-                    Ok(((response.data, response.usage), permit)) // Return permit with data
+                    Ok(((response.data, response.usage), permit))
                 }
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
@@ -535,7 +538,7 @@ async fn process_embeddings_requests(
         }));
     }
 
-    let task_join_results = join_all(tasks).await; // No overall timeout wrapper
+    let task_join_results = join_all(tasks).await;
 
     let mut all_embedding_data: Vec<OpenAIEmbeddingData> = Vec::with_capacity(total_texts);
     let mut aggregated_prompt_tokens: u32 = 0;
@@ -543,31 +546,14 @@ async fn process_embeddings_requests(
     let mut first_error: Option<PyErr> = None;
 
     for result in task_join_results {
-        match result {
-            Ok(Ok(((data_part, usage_part), _permit))) => { // _permit is dropped here
-                if first_error.is_none() {
-                    all_embedding_data.extend(data_part);
-                    aggregated_prompt_tokens =
-                        aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
-                    aggregated_total_tokens =
-                        aggregated_total_tokens.saturating_add(usage_part.total_tokens);
-                }
-            }
-            Ok(Err(py_err)) => {
-                if first_error.is_none() {
-                    first_error = Some(py_err);
-                    // cancel_token was already set by the task that errored.
-                }
-            }
-            Err(join_err) => {
-                if first_error.is_none() {
-                    first_error = Some(PyValueError::new_err(format!(
-                        "Tokio task panicked: {}",
-                        join_err
-                    )));
-                }
-                cancel_token.store(true, Ordering::SeqCst); // Ensure cancellation on panic
-            }
+        if let Some((data_part, usage_part)) =
+            process_task_outcome(result, &mut first_error, &cancel_token)
+        {
+            all_embedding_data.extend(data_part);
+            aggregated_prompt_tokens =
+                aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
+            aggregated_total_tokens =
+                aggregated_total_tokens.saturating_add(usage_part.total_tokens);
         }
     }
 
@@ -587,7 +573,7 @@ async fn process_embeddings_requests(
     })
 }
 
-// --- Send Single Rerank Request ---
+// --- Modification in send_single_rerank_request ---
 async fn send_single_rerank_request(
     client: Client,
     query: String,
@@ -651,7 +637,7 @@ async fn process_rerank_requests(
     api_base: String,
     max_concurrent_requests: usize,
     batch_size: usize,
-    request_timeout_duration: Duration, // Renamed from overall_timeout
+    request_timeout_duration: Duration,
 ) -> Result<RerankResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
@@ -667,7 +653,7 @@ async fn process_rerank_requests(
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
         let individual_request_timeout = request_timeout_duration;
-        // let current_batch_absolute_start_index = batch_index * batch_size; // If needed for index adjustment
+        // let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
             let permit = semaphore_clone
@@ -676,7 +662,7 @@ async fn process_rerank_requests(
                 .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
 
             if cancel_token_clone.load(Ordering::SeqCst) {
-                return Err(PyValueError::new_err("Operation cancelled due to a previous error"));
+                return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
             }
 
             let result = send_single_rerank_request(
@@ -694,8 +680,8 @@ async fn process_rerank_requests(
             .await;
 
             match result {
-                Ok(mut batch_results) => {
-                    // If RerankResult.index needs adjustment based on original batch position:
+                Ok(batch_results) => {
+                    // If RerankResult.index needs adjustment:
                     // for item in &mut batch_results { item.index += current_batch_absolute_start_index; }
                     Ok((batch_results, permit))
                 }
@@ -713,26 +699,10 @@ async fn process_rerank_requests(
     let mut first_error: Option<PyErr> = None;
 
     for result in task_join_results {
-        match result {
-            Ok(Ok((mut batch_results_part, _permit))) => {
-                if first_error.is_none() {
-                    all_results.append(&mut batch_results_part);
-                }
-            }
-            Ok(Err(py_err)) => {
-                if first_error.is_none() {
-                    first_error = Some(py_err);
-                }
-            }
-            Err(join_err) => {
-                if first_error.is_none() {
-                    first_error = Some(PyValueError::new_err(format!(
-                        "Tokio task for rerank panicked: {}",
-                        join_err
-                    )));
-                }
-                cancel_token.store(true, Ordering::SeqCst);
-            }
+        if let Some(mut batch_results_part) =
+            process_task_outcome(result, &mut first_error, &cancel_token)
+        {
+            all_results.append(&mut batch_results_part);
         }
     }
 
@@ -832,7 +802,7 @@ async fn process_classify_requests(
                 .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
 
             if cancel_token_clone.load(Ordering::SeqCst) {
-                return Err(PyValueError::new_err("Operation cancelled due to a previous error"));
+                return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
             }
 
             let result = send_single_classify_request(
@@ -848,7 +818,7 @@ async fn process_classify_requests(
             .await;
 
             match result {
-                Ok(batch_results) => Ok((batch_results, permit)), // batch_results is Vec<Vec<ClassificationResult>>
+                Ok(batch_results) => Ok((batch_results, permit)),
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
                     Err(e)
@@ -863,26 +833,10 @@ async fn process_classify_requests(
     let mut first_error: Option<PyErr> = None;
 
     for result in task_join_results {
-        match result {
-            Ok(Ok((mut batch_results_part, _permit))) => {
-                if first_error.is_none() {
-                    all_results.append(&mut batch_results_part);
-                }
-            }
-            Ok(Err(py_err)) => {
-                if first_error.is_none() {
-                    first_error = Some(py_err);
-                }
-            }
-            Err(join_err) => {
-                if first_error.is_none() {
-                    first_error = Some(PyValueError::new_err(format!(
-                        "Tokio task for classify panicked: {}",
-                        join_err
-                    )));
-                }
-                cancel_token.store(true, Ordering::SeqCst);
-            }
+        if let Some(mut batch_results_part) =
+            process_task_outcome(result, &mut first_error, &cancel_token)
+        {
+            all_results.append(&mut batch_results_part);
         }
     }
 
@@ -894,6 +848,59 @@ async fn process_classify_requests(
         object: "list".to_string(),
         data: all_results,
     })
+}
+
+// Helper function to process task results and manage errors
+fn process_task_outcome<D>(
+    task_join_result: Result<Result<(D, OwnedSemaphorePermit), PyErr>, JoinError>,
+    first_error: &mut Option<PyErr>,
+    cancel_token: &Arc<AtomicBool>,
+) -> Option<D> {
+    match task_join_result {
+        Ok(Ok((data, _permit))) => { // Task succeeded, permit is dropped here
+            if first_error.is_none() {
+                Some(data)
+            } else {
+                // A dominant error already occurred, discard this successful result
+                None
+            }
+        }
+        Ok(Err(current_err)) => { // Task returned a PyErr (API error or deliberate cancellation)
+            let is_current_err_cancellation = current_err.to_string().ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
+
+            if let Some(ref existing_err) = first_error {
+                let is_existing_err_cancellation = existing_err.to_string().ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
+                if is_existing_err_cancellation && !is_current_err_cancellation {
+                    // If existing error is the generic cancellation message,
+                    // and current error is a more specific one, replace it.
+                    *first_error = Some(current_err);
+                }
+                // Otherwise, keep the `first_error` as is.
+            } else {
+                // No error recorded yet, take this one.
+                *first_error = Some(current_err);
+            }
+            None
+        }
+        Err(join_err) => { // Task panicked
+            let panic_py_err = PyValueError::new_err(format!("Tokio task panicked: {}", join_err));
+            if let Some(ref existing_err) = first_error {
+                let is_existing_err_cancellation = existing_err.to_string().ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
+                if is_existing_err_cancellation {
+                    // If existing error is the generic cancellation, prefer the panic error.
+                    *first_error = Some(panic_py_err);
+                }
+                // Otherwise (existing error is specific), keep the existing specific error.
+            } else {
+                // No error recorded yet, take the panic error.
+                *first_error = Some(panic_py_err);
+            }
+            // Ensure other tasks are signalled to cancel if one panics,
+            // as the panicked task itself wouldn't have set the cancel_token.
+            cancel_token.store(true, Ordering::SeqCst);
+            None
+        }
+    }
 }
 
 // --- PyO3 Module Definition ---

@@ -60,23 +60,23 @@ def test_wrong_api_key(method):
     with pytest.raises(Exception) as excinfo:
         if method == "embed":
             client.embed(
-                ["Hello world", "Hello world 2"],
+                ["Hello world", "Hello world 2"] * 32,
                 model="my_model",
                 batch_size=1,
-                max_concurrent_requests=2,
+                max_concurrent_requests=32,
             )
         elif method == "rerank":
             client.rerank(
                 query="Who let the dogs out?",
-                texts=["who, who?", "Paris france"],
-                batch_size=2,
-                max_concurrent_requests=2,
+                texts=["who, who?", "Paris france"] * 32,
+                batch_size=1,
+                max_concurrent_requests=32,
             )
         elif method == "classify":
             client.classify(
-                inputs=["who, who?", "Paris france", "hi", "who", "who?"],
-                batch_size=2,
-                max_concurrent_requests=2,
+                inputs=["who, who?", "Paris france"] * 32,
+                batch_size=1,
+                max_concurrent_requests=32,
             )
     assert "403 Forbidden" in str(excinfo.value)
 
@@ -144,7 +144,8 @@ def bei_client_predict_test():
     not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def embedding_high_volume_test():
+def test_embedding_high_volume():
+    api_key = "wrong"
     client = SyncClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
