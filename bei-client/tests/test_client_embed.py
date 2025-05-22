@@ -24,7 +24,7 @@ except ImportError:
     pass
 
 
-def is_deployment_reachable(api_base, route="/sync/v1/embeddings", timeout=5):
+def is_deployment_reachable(api_base, route="/v1/embeddings", timeout=5):
     try:
         response = requests.post(
             f"{api_base}{route}",
@@ -43,10 +43,10 @@ def is_deployment_reachable(api_base, route="/sync/v1/embeddings", timeout=5):
         return False
 
 
-is_deployment_reachable(api_base_embed, "/sync/v1/embeddings", 0.1)
-is_deployment_reachable(api_base_rerank, "/sync/rerank", 0.1)
-EMBEDDINGS_REACHABLE = is_deployment_reachable(api_base_embed, "/sync/v1/embeddings")
-RERANK_REACHABLE = is_deployment_reachable(api_base_rerank, "/sync/rerank")
+is_deployment_reachable(api_base_embed, "/v1/embeddings", 0.1)
+is_deployment_reachable(api_base_rerank, "/rerank", 0.1)
+EMBEDDINGS_REACHABLE = is_deployment_reachable(api_base_embed, "/v1/embeddings")
+RERANK_REACHABLE = is_deployment_reachable(api_base_rerank, "/rerank")
 CLASSIFY_REACHABLE = RERANK_REACHABLE
 
 
