@@ -1,6 +1,8 @@
 // implements client for openai embeddings
 // as python api that fans out to multiple requests
 use futures::future::join_all;
+use ndarray::Array2;
+use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy; // Import Lazy
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -27,7 +29,7 @@ const DEFAULT_BATCH_SIZE: usize = 16;
 
 // --- Global Tokio Runtime ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
-// Add this constant
+                                                             // Add this constant
 const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
 const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C"; // New constant for Ctrl+C
 
@@ -42,7 +44,6 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     });
     runtime
 });
-
 
 // --- OpenAI Compatible Structures ---
 #[derive(Serialize, Debug, Clone)]
@@ -106,6 +107,81 @@ struct OpenAIEmbeddingsResponse {
     model: String,
     #[pyo3(get)]
     usage: OpenAIUsage,
+}
+
+#[pymethods]
+impl OpenAIEmbeddingsResponse {
+    /// Converts the embeddings data into a 2D NumPy array.
+    ///
+    /// Each row in the array corresponds to an embedding. The data type of the array
+    /// will be float32. The shape will be (number_of_embeddings, embedding_dimension).
+    ///
+    /// Returns:
+    ///     numpy.ndarray: A 2D NumPy array of f32.
+    ///
+    /// Raises:
+    ///     PyValueError: If any embedding is not a float vector (e.g., base64 encoded),
+    ///                   if embeddings have inconsistent dimensions, or if data is empty
+    ///                   and an array cannot be formed (though empty data returns a (0,0) array).
+    ///     ImportError: (At runtime from Python) If NumPy is not installed in the Python environment.
+    fn numpy<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f32>>> {
+        if self.data.is_empty() {
+            // error if empty data
+            return Err(PyValueError::new_err(
+                "Cannot convert to array: contains no embedding responses",
+            ));
+        }
+
+        let num_embeddings = self.data.len();
+        let mut embedding_dim_opt: Option<usize> = None;
+        let mut flat_data: Vec<f32> = Vec::new(); // Reserve capacity later if dim is known
+
+        for (idx, item_data) in self.data.iter().enumerate() {
+            match &item_data.embedding_internal {
+                EmbeddingVariant::FloatVector(v) => {
+                    if idx == 0 {
+                        // Determine dimension from the first embedding
+                        let dim = v.len();
+                        embedding_dim_opt = Some(dim);
+                        // Pre-allocate assuming all vectors have this dimension.
+                        // Only reserve if dim > 0 to avoid issues with 0 * num_embeddings.
+                        if dim > 0 {
+                            flat_data.reserve_exact(num_embeddings * dim);
+                        }
+                    }
+
+                    // embedding_dim_opt is guaranteed to be Some if self.data is not empty
+                    // and the first element is a FloatVector.
+                    let expected_dim = embedding_dim_opt.unwrap(); // Safe if first element was FloatVector
+
+                    if v.len() != expected_dim {
+                        return Err(PyValueError::new_err(format!(
+                            "All embeddings must have the same dimension. Expected {} but got {} at index {}.",
+                            expected_dim, v.len(), item_data.index
+                        )));
+                    }
+                    flat_data.extend_from_slice(v);
+                }
+                EmbeddingVariant::Base64(_) => {
+                    return Err(PyValueError::new_err(format!(
+                        "Cannot convert to array: found Base64 encoded embedding at index {}. Only float vectors are supported.",
+                        item_data.index
+                    )));
+                }
+            }
+        }
+
+        // If the loop completed, all items were FloatVectors of consistent dimension.
+        // embedding_dim_opt will be Some(actual_dimension) or Some(0) if all embeddings were empty.
+        let final_embedding_dim = embedding_dim_opt.unwrap_or(0); // Should be Some if data was not empty and no error.
+
+        let array = Array2::from_shape_vec((num_embeddings, final_embedding_dim), flat_data)
+            .map_err(|e| {
+                PyValueError::new_err(format!("Failed to create ndarray from embeddings: {}", e))
+            })?;
+
+        Ok(array.into_pyarray_bound(py))
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -208,8 +284,8 @@ impl SyncClient {
         ))
     }
 
-    fn validate_and_get_timeout_duration(timeout_s: Option<f64>) -> Result<Duration, PyErr> {
-        let resolved_timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
+    fn validate_and_get_timeout_duration(timeout_s: f64) -> Result<Duration, PyErr> {
+        let resolved_timeout_s = timeout_s;
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&resolved_timeout_s) {
             return Err(PyValueError::new_err(format!(
                 "Timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
@@ -275,7 +351,7 @@ impl SyncClient {
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
-        timeout_s: Option<f64>,
+        timeout_s: f64,
     ) -> PyResult<PyObject> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -290,7 +366,8 @@ impl SyncClient {
 
         let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> =
             py.allow_threads(move || {
-                let (tx, rx) = std::sync::mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
+                let (tx, rx) =
+                    std::sync::mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
 
                 rt.spawn(async move {
                     let res = process_embeddings_requests(
@@ -335,7 +412,7 @@ impl SyncClient {
         truncation_direction: &str,
         max_concurrent_requests: usize,
         batch_size: usize,
-        timeout_s: Option<f64>,
+        timeout_s: f64,
     ) -> PyResult<PyObject> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
@@ -369,7 +446,12 @@ impl SyncClient {
                 let _ = tx.send(res);
             });
             rx.recv() // Returns Result<Result<RerankResponse, PyErr>, RecvError>
-                .map_err(|e| PyValueError::new_err(format!("Failed to receive rerank result (channel error): {}", e)))
+                .map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to receive rerank result (channel error): {}",
+                        e
+                    ))
+                })
                 .and_then(|inner_result| inner_result) // Flattens to Result<RerankResponse, PyErr>
         });
         let successful_response = result_from_async_task?;
@@ -386,7 +468,7 @@ impl SyncClient {
         truncation_direction: &str,
         max_concurrent_requests: usize,
         batch_size: usize,
-        timeout_s: Option<f64>,
+        timeout_s: f64,
     ) -> PyResult<PyObject> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
@@ -419,7 +501,12 @@ impl SyncClient {
                     let _ = tx.send(res);
                 });
                 rx.recv() // Returns Result<Result<ClassificationResponse, PyErr>, RecvError>
-                    .map_err(|e| PyValueError::new_err(format!("Failed to receive classify result (channel error): {}", e)))
+                    .map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to receive classify result (channel error): {}",
+                            e
+                        ))
+                    })
                     .and_then(|inner_result| inner_result) // Flattens to Result<ClassificationResponse, PyErr>
             });
 
@@ -447,7 +534,7 @@ async fn send_single_embedding_request(
         user,
     };
 
-    let url = format!("{}/sync/v1/embeddings", api_base.trim_end_matches('/'));
+    let url = format!("{}/v1/embeddings", api_base.trim_end_matches('/'));
 
     let response = client
         .post(&url)
@@ -511,8 +598,8 @@ async fn process_embeddings_requests(
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
-            let _permit = acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-
+            let _permit =
+                acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let result = send_single_embedding_request(
                 client_clone,
@@ -599,7 +686,7 @@ async fn send_single_rerank_request(
         truncation_direction,
     };
 
-    let url = format!("{}/sync/rerank", api_base.trim_end_matches('/'));
+    let url = format!("{}/rerank", api_base.trim_end_matches('/'));
 
     let response = client
         .post(&url)
@@ -659,7 +746,8 @@ async fn process_rerank_requests(
         let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
-            let _permit = acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
+            let _permit =
+                acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let result = send_single_rerank_request(
                 client_clone,
@@ -728,7 +816,7 @@ async fn send_single_classify_request(
         truncation_direction,
     };
 
-    let url = format!("{}/sync/predict", api_base.trim_end_matches('/'));
+    let url = format!("{}/predict", api_base.trim_end_matches('/'));
 
     let response = client
         .post(&url)
@@ -788,7 +876,8 @@ async fn process_classify_requests(
         let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
-            let _permit = acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
+            let _permit =
+                acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let result = send_single_classify_request(
                 client_clone,
@@ -842,7 +931,8 @@ fn process_task_outcome<D>(
     cancel_token: &Arc<AtomicBool>,
 ) -> Option<D> {
     match task_join_result {
-        Ok(Ok(data)) => { // Changed from Ok(Ok((data, _permit)))
+        Ok(Ok(data)) => {
+            // Changed from Ok(Ok((data, _permit)))
             // Task succeeded
             if first_error.is_none() {
                 Some(data)
@@ -896,7 +986,6 @@ fn process_task_outcome<D>(
         }
     }
 }
-
 
 // --- Helper function to acquire permit and check for cancellation ---
 async fn acquire_permit_or_cancel(

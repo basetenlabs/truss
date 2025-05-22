@@ -11,9 +11,17 @@ from bei_client import (
 )
 
 api_key = os.environ.get("BASETEN_API_KEY")
-api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production"
-api_base_rerank = "https://model-4q9d4yx3.api.baseten.co/environments/production"
+api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
+api_base_rerank = "https://model-4q9d4yx3.api.baseten.co/environments/production/sync"
 api_base_fake = "fake_url"
+
+IS_NUMPY_AVAILABLE = False
+try:
+    import numpy as np
+
+    IS_NUMPY_AVAILABLE = True
+except ImportError:
+    pass
 
 
 def is_deployment_reachable(api_base, route="/sync/v1/embeddings", timeout=5):
@@ -37,6 +45,9 @@ def is_deployment_reachable(api_base, route="/sync/v1/embeddings", timeout=5):
 
 is_deployment_reachable(api_base_embed, "/sync/v1/embeddings", 0.1)
 is_deployment_reachable(api_base_rerank, "/sync/rerank", 0.1)
+EMBEDDINGS_REACHABLE = is_deployment_reachable(api_base_embed, "/sync/v1/embeddings")
+RERANK_REACHABLE = is_deployment_reachable(api_base_rerank, "/sync/rerank")
+CLASSIFY_REACHABLE = RERANK_REACHABLE
 
 
 @pytest.mark.parametrize(
@@ -97,10 +108,10 @@ def test_wrong_api_key(method):
 
 
 @pytest.mark.skipif(
-    not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
-    reason="Deployment is not reachable. Skipping test.",
+    not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
-def test_bei_client_embeddings_test():
+@pytest.mark.parametrize("try_numpy", [True, False])
+def test_bei_client_embeddings_test(try_numpy):
     client = SyncClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
@@ -116,11 +127,16 @@ def test_bei_client_embeddings_test():
     assert len(data) == 2
     assert len(data[0].embedding) > 10
     assert isinstance(data[0].embedding[0], float)
+    if try_numpy:
+        if IS_NUMPY_AVAILABLE:
+            pytest.mark.skip("Numpy is not available")
+        array = response.numpy()
+        assert isinstance(array, np.ndarray)
+        assert array.shape == (2, len(data[0].embedding))
 
 
 @pytest.mark.skipif(
-    not is_deployment_reachable(api_base_rerank, "/sync/rerank"),
-    reason="Deployment is not reachable. Skipping test.",
+    not RERANK_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_bei_client_rerank():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
@@ -138,8 +154,7 @@ def test_bei_client_rerank():
 
 
 @pytest.mark.skipif(
-    not is_deployment_reachable(api_base_rerank, "/sync/predict"),
-    reason="Deployment is not reachable. Skipping test.",
+    not CLASSIFY_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_bei_client_predict():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
@@ -155,8 +170,7 @@ def test_bei_client_predict():
 
 
 @pytest.mark.skipif(
-    not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
-    reason="Deployment is not reachable. Skipping test.",
+    not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_embedding_high_volume():
     client = SyncClient(api_base=api_base_embed, api_key=api_key)
