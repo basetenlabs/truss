@@ -38,18 +38,19 @@ is_deployment_reachable(api_base_rerank, "/sync/rerank", 0.1)
 
 
 @pytest.mark.parametrize(
-    "batch_size,max_concurrent_requests", [(1, 300), (300, 1), (300, 300)]
+    "batch_size,max_concurrent_requests", [(1, 1000), (1000, 1), (1000, 1000), (0, 0)]
 )
 def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
     client = SyncClient(api_base="https://bla.bla", api_key=api_key)
     assert client.api_key == api_key
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as excinfo:
         client.embed(
             ["Hello world", "Hello world 2"],
             model="my_model",
             batch_size=batch_size,
             max_concurrent_requests=max_concurrent_requests,
         )
+    assert "must be greater" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("method", ["embed", "rerank", "classify"])
