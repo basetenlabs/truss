@@ -166,8 +166,8 @@ def test_embedding_high_volume():
     response = client.embed(
         ["Hello world"] * n_requests,
         model="my_model",
-        batch_size=1,
-        max_concurrent_requests=192,
+        batch_size=3,
+        max_concurrent_requests=37,
     )
     assert response is not None
     assert isinstance(response, OpenAIEmbeddingsResponse)
