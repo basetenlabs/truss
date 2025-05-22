@@ -6,11 +6,12 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::sync::mpsc; // Add this import
+use std::sync::atomic::{AtomicBool, Ordering}; // Add this
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tokio::sync::Semaphore; // Add this for timeout support
+use tokio::sync::{OwnedSemaphorePermit, Semaphore}; // Add OwnedSemaphorePermit
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
@@ -473,15 +474,17 @@ async fn process_embeddings_requests(
     user: Option<String>,
     max_concurrent_requests: usize,
     batch_size: usize,
-    overall_timeout: Duration, // New overall timeout parameter
+    request_timeout_duration: Duration, // Renamed from overall_timeout
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    let model_for_response = model.clone(); // Clone for the final response object
 
     for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
         let client_clone = client.clone();
-        let model_clone = model.clone();
+        let model_for_task = model.clone(); // Each task gets a clone of the model string
         let api_key_clone = api_key.clone();
         let api_base_clone = api_base.clone();
         let encoding_format_clone = encoding_format.clone();
@@ -489,75 +492,99 @@ async fn process_embeddings_requests(
         let user_clone = user.clone();
         let user_text_batch_owned = user_text_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
+        let cancel_token_clone = Arc::clone(&cancel_token);
+        let individual_request_timeout = request_timeout_duration;
 
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
-            let _permit = semaphore_clone
-                .acquire()
+            let permit = semaphore_clone
+                .acquire_owned() // Use owned permit
                 .await
-                .expect("Semaphore acquire failed");
-            let mut response = send_single_embedding_request(
+                .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
+
+            if cancel_token_clone.load(Ordering::SeqCst) {
+                return Err(PyValueError::new_err("Operation cancelled due to a previous error"));
+            }
+
+            let result = send_single_embedding_request(
                 client_clone,
                 user_text_batch_owned,
-                model_clone,
+                model_for_task,
                 api_key_clone,
                 api_base_clone,
                 encoding_format_clone,
                 dimensions_clone,
                 user_clone,
-                overall_timeout, // Use the overall timeout for the individual request
+                individual_request_timeout,
             )
-            .await?;
+            .await;
 
-            for item in &mut response.data {
-                item.index += current_batch_absolute_start_index;
+            match result {
+                Ok(mut response) => {
+                    for item in &mut response.data {
+                        item.index += current_batch_absolute_start_index;
+                    }
+                    Ok(((response.data, response.usage), permit)) // Return permit with data
+                }
+                Err(e) => {
+                    cancel_token_clone.store(true, Ordering::SeqCst);
+                    Err(e)
+                }
             }
-            Result::<_, PyErr>::Ok((response.data, response.usage))
         }));
     }
 
-    // Wrap joining tasks with overall_timeout, so the entire operation fails if not finished in time.
-    match tokio::time::timeout(overall_timeout, join_all(tasks)).await {
-        Ok(task_results) => {
-            let mut all_embedding_data: Vec<OpenAIEmbeddingData> = Vec::with_capacity(total_texts);
-            let mut aggregated_prompt_tokens: u32 = 0;
-            let mut aggregated_total_tokens: u32 = 0;
+    let task_join_results = join_all(tasks).await; // No overall timeout wrapper
 
-            for result in task_results {
-                match result {
-                    Ok(Ok((data_part, usage_part))) => {
-                        all_embedding_data.extend(data_part);
-                        aggregated_prompt_tokens =
-                            aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
-                        aggregated_total_tokens =
-                            aggregated_total_tokens.saturating_add(usage_part.total_tokens);
-                    }
-                    Ok(Err(py_err)) => return Err(py_err),
-                    Err(join_err) => {
-                        return Err(PyValueError::new_err(format!(
-                            "Tokio task join error: {}",
-                            join_err
-                        )))
-                    }
+    let mut all_embedding_data: Vec<OpenAIEmbeddingData> = Vec::with_capacity(total_texts);
+    let mut aggregated_prompt_tokens: u32 = 0;
+    let mut aggregated_total_tokens: u32 = 0;
+    let mut first_error: Option<PyErr> = None;
+
+    for result in task_join_results {
+        match result {
+            Ok(Ok(((data_part, usage_part), _permit))) => { // _permit is dropped here
+                if first_error.is_none() {
+                    all_embedding_data.extend(data_part);
+                    aggregated_prompt_tokens =
+                        aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
+                    aggregated_total_tokens =
+                        aggregated_total_tokens.saturating_add(usage_part.total_tokens);
                 }
             }
-            all_embedding_data.sort_by_key(|d| d.index);
-            Ok(OpenAIEmbeddingsResponse {
-                object: "list".to_string(),
-                data: all_embedding_data,
-                model,
-                usage: OpenAIUsage {
-                    prompt_tokens: aggregated_prompt_tokens,
-                    total_tokens: aggregated_total_tokens,
-                },
-            })
+            Ok(Err(py_err)) => {
+                if first_error.is_none() {
+                    first_error = Some(py_err);
+                    // cancel_token was already set by the task that errored.
+                }
+            }
+            Err(join_err) => {
+                if first_error.is_none() {
+                    first_error = Some(PyValueError::new_err(format!(
+                        "Tokio task panicked: {}",
+                        join_err
+                    )));
+                }
+                cancel_token.store(true, Ordering::SeqCst); // Ensure cancellation on panic
+            }
         }
-        Err(_) => Err(PyValueError::new_err(format!(
-            "Overall embedding operation timed out after {:?}",
-            overall_timeout
-        ))),
     }
+
+    if let Some(err) = first_error {
+        return Err(err);
+    }
+
+    all_embedding_data.sort_by_key(|d| d.index);
+    Ok(OpenAIEmbeddingsResponse {
+        object: "list".to_string(),
+        data: all_embedding_data,
+        model: model_for_response,
+        usage: OpenAIUsage {
+            prompt_tokens: aggregated_prompt_tokens,
+            total_tokens: aggregated_total_tokens,
+        },
+    })
 }
 
 // --- Send Single Rerank Request ---
@@ -624,12 +651,13 @@ async fn process_rerank_requests(
     api_base: String,
     max_concurrent_requests: usize,
     batch_size: usize,
-    overall_timeout: Duration,
+    request_timeout_duration: Duration, // Renamed from overall_timeout
 ) -> Result<RerankResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
+    let cancel_token = Arc::new(AtomicBool::new(false));
 
-    for (_, texts_batch) in texts.chunks(batch_size).enumerate() {
+    for (_batch_index, texts_batch) in texts.chunks(batch_size).enumerate() {
         let client_clone = client.clone();
         let query_clone = query.clone();
         let api_key_clone = api_key.clone();
@@ -637,13 +665,21 @@ async fn process_rerank_requests(
         let truncation_direction_clone = truncation_direction.clone();
         let texts_batch_owned = texts_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
+        let cancel_token_clone = Arc::clone(&cancel_token);
+        let individual_request_timeout = request_timeout_duration;
+        // let current_batch_absolute_start_index = batch_index * batch_size; // If needed for index adjustment
 
         tasks.push(tokio::spawn(async move {
-            let _permit = semaphore_clone
-                .acquire()
+            let permit = semaphore_clone
+                .acquire_owned()
                 .await
-                .expect("Semaphore acquire failed");
-            send_single_rerank_request(
+                .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
+
+            if cancel_token_clone.load(Ordering::SeqCst) {
+                return Err(PyValueError::new_err("Operation cancelled due to a previous error"));
+            }
+
+            let result = send_single_rerank_request(
                 client_clone,
                 query_clone,
                 texts_batch_owned,
@@ -653,39 +689,62 @@ async fn process_rerank_requests(
                 truncation_direction_clone,
                 api_key_clone,
                 api_base_clone,
-                overall_timeout,
+                individual_request_timeout,
             )
-            .await
+            .await;
+
+            match result {
+                Ok(mut batch_results) => {
+                    // If RerankResult.index needs adjustment based on original batch position:
+                    // for item in &mut batch_results { item.index += current_batch_absolute_start_index; }
+                    Ok((batch_results, permit))
+                }
+                Err(e) => {
+                    cancel_token_clone.store(true, Ordering::SeqCst);
+                    Err(e)
+                }
+            }
         }));
     }
 
-    match tokio::time::timeout(overall_timeout, join_all(tasks)).await {
-        Ok(task_results) => {
-            let mut all_results: Vec<RerankResult> = Vec::new();
-            for result in task_results {
-                match result {
-                    Ok(Ok(mut batch_results)) => all_results.append(&mut batch_results),
-                    Ok(Err(py_err)) => return Err(py_err),
-                    Err(join_err) => {
-                        return Err(PyValueError::new_err(format!(
-                            "Tokio task join error: {}",
-                            join_err
-                        )))
-                    }
+    let task_join_results = join_all(tasks).await;
+
+    let mut all_results: Vec<RerankResult> = Vec::new();
+    let mut first_error: Option<PyErr> = None;
+
+    for result in task_join_results {
+        match result {
+            Ok(Ok((mut batch_results_part, _permit))) => {
+                if first_error.is_none() {
+                    all_results.append(&mut batch_results_part);
                 }
             }
-            all_results.sort_by_key(|d| d.index);
-            Ok(RerankResponse {
-                // Construct RerankResponse
-                object: "list".to_string(),
-                data: all_results,
-            })
+            Ok(Err(py_err)) => {
+                if first_error.is_none() {
+                    first_error = Some(py_err);
+                }
+            }
+            Err(join_err) => {
+                if first_error.is_none() {
+                    first_error = Some(PyValueError::new_err(format!(
+                        "Tokio task for rerank panicked: {}",
+                        join_err
+                    )));
+                }
+                cancel_token.store(true, Ordering::SeqCst);
+            }
         }
-        Err(_) => Err(PyValueError::new_err(format!(
-            "Overall rerank operation timed out after {:?}",
-            overall_timeout
-        ))),
     }
+
+    if let Some(err) = first_error {
+        return Err(err);
+    }
+
+    all_results.sort_by_key(|d| d.index);
+    Ok(RerankResponse {
+        object: "list".to_string(),
+        data: all_results,
+    })
 }
 
 // --- Send Single Classify Request ---
@@ -741,7 +800,7 @@ async fn send_single_classify_request(
 // --- Process Classify Requests ---
 async fn process_classify_requests(
     client: Client,
-    inputs: Vec<String>,
+    inputs: Vec<String>, // Python provides Vec<String>
     raw_scores: bool,
     truncate: bool,
     truncation_direction: String,
@@ -749,68 +808,92 @@ async fn process_classify_requests(
     api_base: String,
     max_concurrent_requests: usize,
     batch_size: usize,
-    overall_timeout: Duration,
+    request_timeout_duration: Duration, // Renamed from overall_timeout
 ) -> Result<ClassificationResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
+    let cancel_token = Arc::new(AtomicBool::new(false));
 
-    for input_chunk in inputs.chunks(batch_size) {
+    for input_chunk_slice in inputs.chunks(batch_size) {
         let client_clone = client.clone();
         let api_key_clone = api_key.clone();
         let api_base_clone = api_base.clone();
         let truncation_direction_clone = truncation_direction.clone();
-        let inputs_owned: Vec<Vec<String>> = input_chunk.iter().map(|s| vec![s.clone()]).collect();
+        let inputs_for_api_owned: Vec<Vec<String>> =
+            input_chunk_slice.iter().map(|s| vec![s.clone()]).collect();
         let semaphore_clone = Arc::clone(&semaphore);
+        let cancel_token_clone = Arc::clone(&cancel_token);
+        let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
-            let _permit: tokio::sync::SemaphorePermit<'_> = semaphore_clone
-                .acquire()
+            let permit = semaphore_clone
+                .acquire_owned()
                 .await
-                .expect("Semaphore acquire failed");
-            send_single_classify_request(
+                .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
+
+            if cancel_token_clone.load(Ordering::SeqCst) {
+                return Err(PyValueError::new_err("Operation cancelled due to a previous error"));
+            }
+
+            let result = send_single_classify_request(
                 client_clone,
-                inputs_owned,
+                inputs_for_api_owned,
                 raw_scores,
                 truncate,
                 truncation_direction_clone,
                 api_key_clone,
                 api_base_clone,
-                overall_timeout, // This is overall_timeout, consider if individual requests need separate, shorter timeouts
+                individual_request_timeout,
             )
-            .await
+            .await;
+
+            match result {
+                Ok(batch_results) => Ok((batch_results, permit)), // batch_results is Vec<Vec<ClassificationResult>>
+                Err(e) => {
+                    cancel_token_clone.store(true, Ordering::SeqCst);
+                    Err(e)
+                }
+            }
         }));
     }
 
-    match tokio::time::timeout(overall_timeout, join_all(tasks)).await {
-        Ok(task_results) => {
-            let mut all_results: Vec<Vec<ClassificationResult>> = Vec::new(); // Changed to Vec<Vec<>>
-            for result in task_results {
-                match result {
-                    Ok(Ok(mut batch_results)) => {
-                        // batch_results is Vec<Vec<ClassificationResult>>
-                        all_results.append(&mut batch_results); // Append the list of lists
-                    }
-                    Ok(Err(py_err)) => return Err(py_err),
-                    Err(join_err) => {
-                        return Err(PyValueError::new_err(format!(
-                            "Tokio task join error: {}",
-                            join_err
-                        )))
-                    }
+    let task_join_results = join_all(tasks).await;
+
+    let mut all_results: Vec<Vec<ClassificationResult>> = Vec::new();
+    let mut first_error: Option<PyErr> = None;
+
+    for result in task_join_results {
+        match result {
+            Ok(Ok((mut batch_results_part, _permit))) => {
+                if first_error.is_none() {
+                    all_results.append(&mut batch_results_part);
                 }
             }
-            // The order of `all_results` will be the order of processed batches.
-            // Each element of `all_results` is a `Vec<ClassificationResult>` for an input string from that batch.
-            Ok(ClassificationResponse {
-                object: "list".to_string(),
-                data: all_results,
-            })
+            Ok(Err(py_err)) => {
+                if first_error.is_none() {
+                    first_error = Some(py_err);
+                }
+            }
+            Err(join_err) => {
+                if first_error.is_none() {
+                    first_error = Some(PyValueError::new_err(format!(
+                        "Tokio task for classify panicked: {}",
+                        join_err
+                    )));
+                }
+                cancel_token.store(true, Ordering::SeqCst);
+            }
         }
-        Err(_) => Err(PyValueError::new_err(format!(
-            "Overall classify operation timed out after {:?}",
-            overall_timeout
-        ))),
     }
+
+    if let Some(err) = first_error {
+        return Err(err);
+    }
+
+    Ok(ClassificationResponse {
+        object: "list".to_string(),
+        data: all_results,
+    })
 }
 
 // --- PyO3 Module Definition ---
