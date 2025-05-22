@@ -26,11 +26,22 @@ const MAX_BATCH_SIZE: usize = 128;
 const DEFAULT_BATCH_SIZE: usize = 16;
 
 // --- Global Tokio Runtime ---
+static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
 // Add this constant
 const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
+const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C"; // New constant for Ctrl+C
 
-static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> =
-    Lazy::new(|| Arc::new(Runtime::new().expect("Failed to create global Tokio runtime")));
+static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
+    let runtime = Arc::new(Runtime::new().expect("Failed to create global Tokio runtime"));
+    let runtime_clone_for_signal = Arc::clone(&runtime);
+    // Spawn a task to listen for Ctrl+C
+    runtime_clone_for_signal.spawn(async {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            CTRL_C_RECEIVED.store(true, Ordering::SeqCst);
+        }
+    });
+    runtime
+});
 
 // --- OpenAI Compatible Structures ---
 #[derive(Serialize, Debug, Clone)]
