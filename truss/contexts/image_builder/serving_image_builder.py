@@ -259,7 +259,7 @@ def get_credentials_to_cache(data_dir: Path) -> List[str]:
 
 
 def split_path(path, prefix="gs://"):
-    # Ensure path ends in slash
+    # Ensure path ends in slash so exact directory is retrieved when downloading model cache
     if path and not path.endswith("/"):
         path += "/"
 
