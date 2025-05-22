@@ -499,7 +499,7 @@ async fn process_embeddings_requests(
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
-            let permit = semaphore_clone.acquire_owned().await.map_err(|e| {
+            let _permit = semaphore_clone.acquire_owned().await.map_err(|e| { // Renamed to _permit to signify it's not returned
                 PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
             })?;
 
@@ -520,12 +520,13 @@ async fn process_embeddings_requests(
             )
             .await;
 
+            // _permit goes out of scope here if task returns, releasing the semaphore slot.
             match result {
                 Ok(mut response) => {
                     for item in &mut response.data {
                         item.index += current_batch_absolute_start_index;
                     }
-                    Ok(((response.data, response.usage), permit))
+                    Ok((response.data, response.usage)) // Return only data and usage
                 }
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
@@ -639,6 +640,7 @@ async fn process_rerank_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
+    // let original_indices: Vec<_> = (0..texts.len()).collect(); // If needed for re-sorting later
 
     for (_batch_index, texts_batch) in texts.chunks(batch_size).enumerate() {
         let client_clone = client.clone();
@@ -650,10 +652,10 @@ async fn process_rerank_requests(
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
         let individual_request_timeout = request_timeout_duration;
-        // let current_batch_absolute_start_index = batch_index * batch_size;
+        // let current_batch_absolute_start_index = batch_index * batch_size; // Needed if RerankResult.index is relative to batch
 
         tasks.push(tokio::spawn(async move {
-            let permit = semaphore_clone.acquire_owned().await.map_err(|e| {
+            let _permit = semaphore_clone.acquire_owned().await.map_err(|e| { // Renamed to _permit
                 PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
             })?;
 
@@ -664,7 +666,7 @@ async fn process_rerank_requests(
             let result = send_single_rerank_request(
                 client_clone,
                 query_clone,
-                texts_batch_owned,
+                texts_batch_owned, // This is Vec<String> for the current batch
                 raw_scores,
                 return_text,
                 truncate,
@@ -676,10 +678,14 @@ async fn process_rerank_requests(
             .await;
 
             match result {
-                Ok(batch_results) => {
-                    // If RerankResult.index needs adjustment:
-                    // for item in &mut batch_results { item.index += current_batch_absolute_start_index; }
-                    Ok((batch_results, permit))
+                Ok(mut batch_results) => {
+                    // If RerankResult.index is 0-based for the batch and needs to be global:
+                    // This assumes RerankResult.index is already correctly set by the API or doesn't need batch offset.
+                    // If it *does* need adjustment (e.g., if API returns 0-based index for the batch):
+                    // for (i, item) in batch_results.iter_mut().enumerate() {
+                    //     item.index = current_batch_absolute_start_index + i; // Or however the API sets index
+                    // }
+                    Ok(batch_results) // Return only batch_results
                 }
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
@@ -774,7 +780,7 @@ async fn process_classify_requests(
     api_base: String,
     max_concurrent_requests: usize,
     batch_size: usize,
-    request_timeout_duration: Duration, // Renamed from overall_timeout
+    request_timeout_duration: Duration,
 ) -> Result<ClassificationResponse, PyErr> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
@@ -792,7 +798,7 @@ async fn process_classify_requests(
         let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
-            let permit = semaphore_clone.acquire_owned().await.map_err(|e| {
+            let _permit = semaphore_clone.acquire_owned().await.map_err(|e| { // Renamed to _permit
                 PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
             })?;
 
@@ -813,7 +819,7 @@ async fn process_classify_requests(
             .await;
 
             match result {
-                Ok(batch_results) => Ok((batch_results, permit)),
+                Ok(batch_results) => Ok(batch_results), // Return only batch_results
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
                     Err(e)
@@ -847,13 +853,13 @@ async fn process_classify_requests(
 
 // Helper function to process task results and manage errors
 fn process_task_outcome<D>(
-    task_join_result: Result<Result<(D, OwnedSemaphorePermit), PyErr>, JoinError>,
+    task_join_result: Result<Result<D, PyErr>, JoinError>, // Removed OwnedSemaphorePermit from here
     first_error: &mut Option<PyErr>,
     cancel_token: &Arc<AtomicBool>,
 ) -> Option<D> {
     match task_join_result {
-        Ok(Ok((data, _permit))) => {
-            // Task succeeded, permit is dropped here
+        Ok(Ok(data)) => { // Changed from Ok(Ok((data, _permit)))
+            // Task succeeded
             if first_error.is_none() {
                 Some(data)
             } else {

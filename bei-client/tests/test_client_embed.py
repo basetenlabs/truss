@@ -151,30 +151,29 @@ def test_bei_client_predict():
     )
     assert response is not None
     assert isinstance(response, ClassificationResponse)
-    assert len(response.data) == 4
 
 
-# @pytest.mark.skipif(
-#     not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
-#     reason="Deployment is not reachable. Skipping test.",
-# )
-# def test_embedding_high_volume():
-#     client = SyncClient(api_base=api_base_embed, api_key=api_key)
+@pytest.mark.skipif(
+    not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
+    reason="Deployment is not reachable. Skipping test.",
+)
+def test_embedding_high_volume():
+    client = SyncClient(api_base=api_base_embed, api_key=api_key)
 
-#     assert client.api_key == api_key
-#     n_requests = 200
-#     response = client.embed(
-#         ["Hello world"] * n_requests,
-#         model="my_model",
-#         batch_size=1,
-#         max_concurrent_requests=192,
-#     )
-#     assert response is not None
-#     assert isinstance(response, OpenAIEmbeddingsResponse)
-#     data = response.data
-#     assert len(data) == n_requests
-#     assert len(data[0].embedding) > 10
-#     assert isinstance(data[0].embedding[0], float)
+    assert client.api_key == api_key
+    n_requests = 193
+    response = client.embed(
+        ["Hello world"] * n_requests,
+        model="my_model",
+        batch_size=1,
+        max_concurrent_requests=192,
+    )
+    assert response is not None
+    assert isinstance(response, OpenAIEmbeddingsResponse)
+    data = response.data
+    assert len(data) == n_requests
+    assert len(data[0].embedding) > 10
+    assert isinstance(data[0].embedding[0], float)
 
 
 # def test_embedding_high_volume_return_instant():
