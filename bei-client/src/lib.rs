@@ -18,7 +18,9 @@ use tokio::task::JoinError; // Add JoinError
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MAX_CONCURRENCY: usize = 384;
+const MAX_CONCURRENCY_HIGH_BATCH: usize = 512;
+const MAX_CONCURRENCY_LOW_BATCH: usize = 192;
+const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 const DEFAULT_CONCURRENCY: usize = 32;
 const MAX_BATCH_SIZE: usize = 128;
 const DEFAULT_BATCH_SIZE: usize = 16;
@@ -209,16 +211,22 @@ impl SyncClient {
         max_concurrent_requests: usize,
         batch_size: usize,
     ) -> PyResult<()> {
-        if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY {
+        if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
             return Err(PyValueError::new_err(format!(
                 "max_concurrent_requests must be greater than 0 and less than {}",
-                MAX_CONCURRENCY
+                MAX_CONCURRENCY_HIGH_BATCH
             )));
-        }
-        if batch_size == 0 || batch_size > MAX_BATCH_SIZE {
+        } else if batch_size == 0 || batch_size > MAX_BATCH_SIZE {
             return Err(PyValueError::new_err(format!(
                 "batch_size must be greater than 0 and less than {}",
                 MAX_BATCH_SIZE
+            )));
+        } else if max_concurrent_requests > MAX_CONCURRENCY_LOW_BATCH
+            && batch_size < CONCURRENCY_HIGH_BATCH_SWITCH
+        {
+            return Err(PyValueError::new_err(format!(
+                "max_concurrent_requests must be less than {} when batch_size is less than {}. Please be nice to the server side.",
+                MAX_CONCURRENCY_LOW_BATCH, CONCURRENCY_HIGH_BATCH_SWITCH
             )));
         }
         Ok(())
@@ -501,10 +509,9 @@ async fn process_embeddings_requests(
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
-            let permit = semaphore_clone
-                .acquire_owned()
-                .await
-                .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
+            let permit = semaphore_clone.acquire_owned().await.map_err(|e| {
+                PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
+            })?;
 
             if cancel_token_clone.load(Ordering::SeqCst) {
                 return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
@@ -656,10 +663,9 @@ async fn process_rerank_requests(
         // let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
-            let permit = semaphore_clone
-                .acquire_owned()
-                .await
-                .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
+            let permit = semaphore_clone.acquire_owned().await.map_err(|e| {
+                PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
+            })?;
 
             if cancel_token_clone.load(Ordering::SeqCst) {
                 return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
@@ -796,10 +802,9 @@ async fn process_classify_requests(
         let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
-            let permit = semaphore_clone
-                .acquire_owned()
-                .await
-                .map_err(|e| PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e)))?;
+            let permit = semaphore_clone.acquire_owned().await.map_err(|e| {
+                PyValueError::new_err(format!("Semaphore acquire_owned failed: {}", e))
+            })?;
 
             if cancel_token_clone.load(Ordering::SeqCst) {
                 return Err(PyValueError::new_err(CANCELLATION_ERROR_MESSAGE_DETAIL));
@@ -857,7 +862,8 @@ fn process_task_outcome<D>(
     cancel_token: &Arc<AtomicBool>,
 ) -> Option<D> {
     match task_join_result {
-        Ok(Ok((data, _permit))) => { // Task succeeded, permit is dropped here
+        Ok(Ok((data, _permit))) => {
+            // Task succeeded, permit is dropped here
             if first_error.is_none() {
                 Some(data)
             } else {
@@ -865,11 +871,16 @@ fn process_task_outcome<D>(
                 None
             }
         }
-        Ok(Err(current_err)) => { // Task returned a PyErr (API error or deliberate cancellation)
-            let is_current_err_cancellation = current_err.to_string().ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
+        Ok(Err(current_err)) => {
+            // Task returned a PyErr (API error or deliberate cancellation)
+            let is_current_err_cancellation = current_err
+                .to_string()
+                .ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
 
             if let Some(ref existing_err) = first_error {
-                let is_existing_err_cancellation = existing_err.to_string().ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
+                let is_existing_err_cancellation = existing_err
+                    .to_string()
+                    .ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
                 if is_existing_err_cancellation && !is_current_err_cancellation {
                     // If existing error is the generic cancellation message,
                     // and current error is a more specific one, replace it.
@@ -882,10 +893,13 @@ fn process_task_outcome<D>(
             }
             None
         }
-        Err(join_err) => { // Task panicked
+        Err(join_err) => {
+            // Task panicked
             let panic_py_err = PyValueError::new_err(format!("Tokio task panicked: {}", join_err));
             if let Some(ref existing_err) = first_error {
-                let is_existing_err_cancellation = existing_err.to_string().ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
+                let is_existing_err_cancellation = existing_err
+                    .to_string()
+                    .ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
                 if is_existing_err_cancellation {
                     // If existing error is the generic cancellation, prefer the panic error.
                     *first_error = Some(panic_py_err);

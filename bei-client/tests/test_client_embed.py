@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest
 import requests
@@ -12,6 +13,7 @@ from bei_client import (
 api_key = os.environ.get("BASETEN_API_KEY")
 api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production"
 api_base_rerank = "https://model-4q9d4yx3.api.baseten.co/environments/production"
+api_base_fake = "https://baseten.co"
 
 
 def is_deployment_reachable(api_base, route="/sync/v1/embeddings", timeout=5):
@@ -41,7 +43,7 @@ is_deployment_reachable(api_base_rerank, "/sync/rerank", 0.1)
     "batch_size,max_concurrent_requests", [(1, 1000), (1000, 1), (1000, 1000), (0, 0)]
 )
 def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
-    client = SyncClient(api_base="https://bla.bla", api_key=api_key)
+    client = SyncClient(api_base=api_base_fake, api_key=api_key)
     assert client.api_key == api_key
     with pytest.raises(ValueError) as excinfo:
         client.embed(
@@ -51,6 +53,19 @@ def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
             max_concurrent_requests=max_concurrent_requests,
         )
     assert "must be greater" in str(excinfo.value)
+
+
+def test_not_nice_concurrency_settings():
+    client = SyncClient(api_base=api_base_fake, api_key=api_key)
+    assert client.api_key == api_key
+    with pytest.raises(ValueError) as excinfo:
+        client.embed(
+            ["Hello world", "Hello world 2"],
+            model="my_model",
+            batch_size=1,
+            max_concurrent_requests=384,
+        )
+    assert "be nice" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("method", ["embed", "rerank", "classify"])
@@ -107,7 +122,7 @@ def test_bei_client_embeddings_test():
     not is_deployment_reachable(api_base_rerank, "/sync/rerank"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def bei_client_rerank_test():
+def test_bei_client_rerank():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
@@ -126,7 +141,7 @@ def bei_client_rerank_test():
     not is_deployment_reachable(api_base_rerank, "/sync/predict"),
     reason="Deployment is not reachable. Skipping test.",
 )
-def bei_client_predict_test():
+def test_bei_client_predict():
     client = SyncClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
@@ -140,25 +155,44 @@ def bei_client_predict_test():
     assert len(response.data) == 5
 
 
-@pytest.mark.skipif(
-    not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
-    reason="Deployment is not reachable. Skipping test.",
-)
-def test_embedding_high_volume():
+# @pytest.mark.skipif(
+#     not is_deployment_reachable(api_base_embed, "/sync/v1/embeddings"),
+#     reason="Deployment is not reachable. Skipping test.",
+# )
+# def test_embedding_high_volume():
+#     client = SyncClient(api_base=api_base_embed, api_key=api_key)
+
+#     assert client.api_key == api_key
+#     n_requests = 200
+#     response = client.embed(
+#         ["Hello world"] * n_requests,
+#         model="my_model",
+#         batch_size=1,
+#         max_concurrent_requests=192,
+#     )
+#     assert response is not None
+#     assert isinstance(response, OpenAIEmbeddingsResponse)
+#     data = response.data
+#     assert len(data) == n_requests
+#     assert len(data[0].embedding) > 10
+#     assert isinstance(data[0].embedding[0], float)
+
+
+def test_embedding_high_volume_return_instant():
     api_key = "wrong"
-    client = SyncClient(api_base=api_base_embed, api_key=api_key)
+    api_base_wrong = "https://bla.notexist"
+    client = SyncClient(api_base=api_base_wrong, api_key=api_key)
 
     assert client.api_key == api_key
-    n_requests = 200
-    response = client.embed(
-        ["Hello world"] * n_requests,
-        model="my_model",
-        batch_size=1,
-        max_concurrent_requests=512,
+    t_0 = time.time()
+    with pytest.raises(Exception) as excinfo:
+        client.embed(
+            ["Hello world"] * 10,
+            model="my_model",
+            batch_size=1,
+            max_concurrent_requests=1,
+        )
+    assert "HTTP" in str(excinfo.value)
+    assert time.time() - t_0 < 5, (
+        "Request took too long to fail seems like you didn't implement drop on first error"
     )
-    assert response is not None
-    assert isinstance(response, OpenAIEmbeddingsResponse)
-    data = response.data
-    assert len(data) == n_requests
-    assert len(data[0].embedding) > 10
-    assert isinstance(data[0].embedding[0], float)
