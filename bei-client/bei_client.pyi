@@ -340,5 +340,49 @@ class PerformanceClient:
         """
         ...
 
+    def batch_post(
+        self,
+        url_path: builtins.str,
+        payloads: builtins.list[typing.Any],
+        max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
+        timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
+    ) -> builtins.list[typing.Any]:
+        """
+        Sends a list of generic JSON payloads to a specified URL path concurrently.
+
+        Each payload is sent as an individual POST request. The responses are
+        returned as a list of Python objects, corresponding to the JSON responses
+        from the server.
+
+        Args:
+            url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
+            payloads: A list of Python objects that are JSON-serializable.
+                      Each object will be the body of a POST request.
+            max_concurrent_requests: Maximum number of parallel requests.
+            timeout_s: Total timeout in seconds for the entire batch operation,
+                       also used as the timeout for each individual request.
+
+        Returns:
+            A list of Python objects, where each object is the deserialized
+            JSON response from the server for the corresponding request payload.
+            The order of responses matches the order of input payloads.
+
+        Raises:
+            ValueError: If the payloads list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If any of the underlying HTTP requests fail.
+            # Note: Other PyO3/Rust errors might be raised for serialization/deserialization issues.
+
+        Example:
+            >>> client = PerformanceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> custom_payloads = [
+            ...     {"data": "request1_data", "id": 1},
+            ...     {"data": "request2_data", "id": 2}
+            ... ]
+            >>> responses = client.batch_post("/v1/process_item", custom_payloads)
+            >>> for resp in responses:
+            ...     print(resp)
+        """
+        ...
+
 __version__: builtins.str
 """The version of the bei_client library."""

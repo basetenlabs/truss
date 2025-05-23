@@ -217,6 +217,26 @@ def test_embedding_high_volume_return_instant():
 @pytest.mark.skipif(
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
+def test_batch_post():
+    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+
+    assert client.api_key == api_key
+
+    openai_request_embed = {"model": "my_model", "input": ["Hello world"]}
+
+    response = client.batch_post(
+        url_path="/v1/embeddings",
+        payloads=[openai_request_embed, openai_request_embed],
+        max_concurrent_requests=1,
+    )
+    assert response is not None
+    assert len(response) == 2
+    assert response[0]
+
+
+@pytest.mark.skipif(
+    not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
+)
 def test_embed_gil_release():
     client_embed = PerformanceClient(api_base=api_base_embed, api_key=api_key)
 
