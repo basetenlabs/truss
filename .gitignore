@@ -80,3 +80,4 @@ yarn.lock
 
 truss-transfer/target/
 bei-client/target/
+baseten-inference-client/target/
