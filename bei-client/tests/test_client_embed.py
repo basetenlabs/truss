@@ -6,8 +6,8 @@ import pytest
 import requests
 from bei_client import (
     ClassificationResponse,
+    InferenceClient,
     OpenAIEmbeddingsResponse,
-    PerformanceClient,
     RerankResponse,
 )
 from requests.exceptions import HTTPError
@@ -56,7 +56,7 @@ CLASSIFY_REACHABLE = RERANK_REACHABLE
     "batch_size,max_concurrent_requests", [(1, 1000), (1000, 1), (1000, 1000), (0, 0)]
 )
 def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
-    client = PerformanceClient(api_base=api_base_fake, api_key=api_key)
+    client = InferenceClient(api_base=api_base_fake, api_key=api_key)
     assert client.api_key == api_key
     with pytest.raises(ValueError) as excinfo:
         client.embed(
@@ -69,7 +69,7 @@ def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
 
 
 def test_not_nice_concurrency_settings():
-    client = PerformanceClient(api_base=api_base_fake, api_key=api_key)
+    client = InferenceClient(api_base=api_base_fake, api_key=api_key)
     assert client.api_key == api_key
     with pytest.raises(ValueError) as excinfo:
         client.embed(
@@ -83,7 +83,7 @@ def test_not_nice_concurrency_settings():
 
 @pytest.mark.parametrize("method", ["embed", "rerank", "classify"])
 def test_wrong_api_key(method):
-    client = PerformanceClient(api_base=api_base_embed, api_key="wrong_api_key")
+    client = InferenceClient(api_base=api_base_embed, api_key="wrong_api_key")
     assert client.api_key == "wrong_api_key"
     with pytest.raises(HTTPError) as excinfo:
         if method == "embed":
@@ -115,7 +115,7 @@ def test_wrong_api_key(method):
 )
 @pytest.mark.parametrize("try_numpy", [True, False])
 def test_bei_client_embeddings_test(try_numpy):
-    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+    client = InferenceClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
     response = client.embed(
@@ -142,7 +142,7 @@ def test_bei_client_embeddings_test(try_numpy):
     not RERANK_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_bei_client_rerank():
-    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
+    client = InferenceClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
     response = client.rerank(
@@ -160,7 +160,7 @@ def test_bei_client_rerank():
     not CLASSIFY_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_bei_client_predict():
-    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
+    client = InferenceClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
     response = client.classify(
@@ -176,7 +176,7 @@ def test_bei_client_predict():
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_embedding_high_volume():
-    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+    client = InferenceClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
     n_requests = 253
@@ -197,7 +197,7 @@ def test_embedding_high_volume():
 def test_embedding_high_volume_return_instant():
     api_key = "wrong"
     api_base_wrong = "https://bla.notexist"
-    client = PerformanceClient(api_base=api_base_wrong, api_key=api_key)
+    client = InferenceClient(api_base=api_base_wrong, api_key=api_key)
 
     assert client.api_key == api_key
     t_0 = time.time()
@@ -218,7 +218,7 @@ def test_embedding_high_volume_return_instant():
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_batch_post():
-    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+    client = InferenceClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
 
@@ -238,7 +238,7 @@ def test_batch_post():
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_embed_gil_release():
-    client_embed = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+    client_embed = InferenceClient(api_base=api_base_embed, api_key=api_key)
 
     def embed_job(start_time):
         time.sleep(0.01)
@@ -271,7 +271,7 @@ def test_embed_gil_release():
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 async def test_embed_async():
-    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+    client = InferenceClient(api_base=api_base_embed, api_key=api_key)
 
     response = await client.aembed(
         ["Hello world", "Hello world 2"],
@@ -292,7 +292,7 @@ async def test_embed_async():
     not CLASSIFY_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 async def test_classify_async():
-    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
+    client = InferenceClient(api_base=api_base_rerank, api_key=api_key)
 
     response = await client.aclassify(
         inputs=["who, who?", "Paris france"], batch_size=2, max_concurrent_requests=2
@@ -308,7 +308,7 @@ async def test_classify_async():
     not RERANK_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 async def test_rerank_async():
-    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
+    client = InferenceClient(api_base=api_base_rerank, api_key=api_key)
 
     response = await client.arerank(
         query="Who let the dogs out?",
