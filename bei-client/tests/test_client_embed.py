@@ -288,6 +288,43 @@ async def test_embed_async():
     print("async test passed", data[0].embedding[0])
 
 
+@pytest.mark.skipif(
+    not CLASSIFY_REACHABLE, reason="Deployment is not reachable. Skipping test."
+)
+async def test_classify_async():
+    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
+
+    response = await client.aclassify(
+        inputs=["who, who?", "Paris france"], batch_size=2, max_concurrent_requests=2
+    )
+    assert response is not None
+    assert isinstance(response, ClassificationResponse)
+    data = response.data
+    assert len(data) == 2
+    assert len(data[0].embedding) > 10
+    assert isinstance(data[0].embedding[0], float)
+    print("async test passed", data[0].embedding[0])
+
+
+@pytest.mark.skipif(
+    not RERANK_REACHABLE, reason="Deployment is not reachable. Skipping test."
+)
+async def test_rerank_async():
+    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
+
+    response = await client.arerank(
+        query="Who let the dogs out?",
+        texts=["who, who?", "Paris france"],
+        batch_size=2,
+        max_concurrent_requests=2,
+    )
+    assert response is not None
+    assert isinstance(response, RerankResponse)
+    data = response.data
+    assert len(data) == 2
+    print("async test passed", data[0].embedding[0])
+
+
 if __name__ == "__main__":
     import asyncio
 
