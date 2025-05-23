@@ -4,3 +4,4 @@ def test_bei_client_bindings_basic_test():
     PerformanceClient.embed
     PerformanceClient.rerank
     PerformanceClient.classify
+    PerformanceClient.post_batch

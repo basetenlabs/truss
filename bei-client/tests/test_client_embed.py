@@ -265,3 +265,30 @@ def test_embed_gil_release():
     # as we implment server side batching.
     # unless the gil is not released and no-thread-concurrency == sequential
     assert seq_times[-1] > 4 * max(parallel_times)
+
+
+@pytest.mark.skipif(
+    not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
+)
+async def test_embed_async():
+    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+
+    response = await client.aembed(
+        ["Hello world", "Hello world 2"],
+        model="my_model",
+        batch_size=1,
+        max_concurrent_requests=2,
+    )
+    assert response is not None
+    assert isinstance(response, OpenAIEmbeddingsResponse)
+    data = response.data
+    assert len(data) == 2
+    assert len(data[0].embedding) > 10
+    assert isinstance(data[0].embedding[0], float)
+    print("async test passed", data[0].embedding[0])
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(test_embed_async())

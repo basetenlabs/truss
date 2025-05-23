@@ -7,6 +7,7 @@ use once_cell::sync::Lazy; // Import Lazy
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
+use pyo3_async_runtimes;
 use pythonize::{depythonize, pythonize};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -15,8 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering}; // Add this
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore}; // Add OwnedSemaphorePermit
-use tokio::task::JoinError; // Add JoinError
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::task::JoinError;
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
@@ -349,7 +350,7 @@ impl PerformanceClient {
         &self,
         py: Python,
         input: Vec<String>,
-        model: String,
+        model: String, // model is already String
         encoding_format: Option<String>,
         dimensions: Option<u32>,
         user: Option<String>,
@@ -362,11 +363,14 @@ impl PerformanceClient {
         }
         PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
-        let model_string: String = model.to_string();
-        let client = self.client.clone();
-        let api_key = self.api_key.clone();
-        let api_base = self.api_base.clone();
+
+        let client_clone = self.client.clone();
+        let api_key_clone = self.api_key.clone();
+        let api_base_clone = self.api_base.clone();
         let rt = Arc::clone(&self.runtime);
+
+        // input, model, encoding_format, dimensions, user will be moved into the closures
+        // by the `move` keywords.
 
         let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> =
             py.allow_threads(move || {
@@ -375,20 +379,20 @@ impl PerformanceClient {
 
                 rt.spawn(async move {
                     let res = process_embeddings_requests(
-                        client,
-                        input,
-                        model_string,
-                        api_key,
-                        api_base,
-                        encoding_format,
-                        dimensions,
-                        user,
+                        client_clone,
+                        input, // Use directly
+                        model, // Use directly
+                        api_key_clone,
+                        api_base_clone,
+                        encoding_format, // Use directly
+                        dimensions,      // Use directly
+                        user,            // Use directly
                         max_concurrent_requests,
                         batch_size,
                         timeout_duration,
                     )
                     .await;
-                    let _ = tx.send(res); // Errors on send typically mean receiver dropped.
+                    let _ = tx.send(res);
                 });
 
                 match rx.recv() {
@@ -401,7 +405,51 @@ impl PerformanceClient {
             });
 
         let successful_response = result_from_async_task?;
-        Python::with_gil(|py| Ok(successful_response.into_py(py)))
+        Python::with_gil(|py_gil| Ok(successful_response.into_py(py_gil)))
+    }
+
+    #[pyo3(name = "aembed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn aembed<'py>(
+        &self,
+        py: Python<'py>,
+        input: Vec<String>,
+        model: String,
+        encoding_format: Option<String>,
+        dimensions: Option<u32>,
+        user: Option<String>,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if input.is_empty() {
+            return Err(PyValueError::new_err("Input list cannot be empty"));
+        }
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
+
+        let client_clone = self.client.clone();
+        let api_key_clone = self.api_key.clone();
+        let api_base_clone = self.api_base.clone();
+        // input, model, encoding_format, dimensions, user will be moved into the async block.
+
+        let future = async move {
+            process_embeddings_requests(
+                client_clone,
+                input,
+                model,
+                api_key_clone,
+                api_base_clone,
+                encoding_format,
+                dimensions,
+                user,
+                max_concurrent_requests,
+                batch_size,
+                timeout_duration,
+            )
+            .await
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
     #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
