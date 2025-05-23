@@ -1,0 +1,29 @@
+name: Build and Release bei-client
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "bei-client/**"
+    tags:
+      - "*"
+  pull_request:
+    paths:
+      - "bei-client/**"
+  workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: "Publish to PyPI? (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  build-package:
+    uses: ./.github/workflows/build-maturin.yml
+    with:
+      folder: bei-client
+      publish_pypi: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true' || startsWith(github.ref, 'refs/tags/') }}
+    secrets:
+      PYPI_TOKEN: ${{ secrets.TRUSS_TRANSFER_PYPI_API_TOKEN }}
