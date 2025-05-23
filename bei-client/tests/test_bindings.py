@@ -1,6 +1,6 @@
 def test_bei_client_bindings_basic_test():
-    from bei_client import SyncClient
+    from bei_client import PerformanceClient
 
-    SyncClient.embed
-    SyncClient.rerank
-    SyncClient.classify
+    PerformanceClient.embed
+    PerformanceClient.rerank
+    PerformanceClient.classify

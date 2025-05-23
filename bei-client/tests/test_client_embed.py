@@ -6,8 +6,8 @@ import requests
 from bei_client import (
     ClassificationResponse,
     OpenAIEmbeddingsResponse,
+    PerformanceClient,
     RerankResponse,
-    SyncClient,
 )
 
 api_key = os.environ.get("BASETEN_API_KEY")
@@ -54,7 +54,7 @@ CLASSIFY_REACHABLE = RERANK_REACHABLE
     "batch_size,max_concurrent_requests", [(1, 1000), (1000, 1), (1000, 1000), (0, 0)]
 )
 def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
-    client = SyncClient(api_base=api_base_fake, api_key=api_key)
+    client = PerformanceClient(api_base=api_base_fake, api_key=api_key)
     assert client.api_key == api_key
     with pytest.raises(ValueError) as excinfo:
         client.embed(
@@ -67,7 +67,7 @@ def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
 
 
 def test_not_nice_concurrency_settings():
-    client = SyncClient(api_base=api_base_fake, api_key=api_key)
+    client = PerformanceClient(api_base=api_base_fake, api_key=api_key)
     assert client.api_key == api_key
     with pytest.raises(ValueError) as excinfo:
         client.embed(
@@ -81,7 +81,7 @@ def test_not_nice_concurrency_settings():
 
 @pytest.mark.parametrize("method", ["embed", "rerank", "classify"])
 def test_wrong_api_key(method):
-    client = SyncClient(api_base=api_base_embed, api_key="wrong_api_key")
+    client = PerformanceClient(api_base=api_base_embed, api_key="wrong_api_key")
     assert client.api_key == "wrong_api_key"
     with pytest.raises(Exception) as excinfo:
         if method == "embed":
@@ -112,7 +112,7 @@ def test_wrong_api_key(method):
 )
 @pytest.mark.parametrize("try_numpy", [True, False])
 def test_bei_client_embeddings_test(try_numpy):
-    client = SyncClient(api_base=api_base_embed, api_key=api_key)
+    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
     response = client.embed(
@@ -139,7 +139,7 @@ def test_bei_client_embeddings_test(try_numpy):
     not RERANK_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_bei_client_rerank():
-    client = SyncClient(api_base=api_base_rerank, api_key=api_key)
+    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
     response = client.rerank(
@@ -157,7 +157,7 @@ def test_bei_client_rerank():
     not CLASSIFY_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_bei_client_predict():
-    client = SyncClient(api_base=api_base_rerank, api_key=api_key)
+    client = PerformanceClient(api_base=api_base_rerank, api_key=api_key)
 
     assert client.api_key == api_key
     response = client.classify(
@@ -173,7 +173,7 @@ def test_bei_client_predict():
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 def test_embedding_high_volume():
-    client = SyncClient(api_base=api_base_embed, api_key=api_key)
+    client = PerformanceClient(api_base=api_base_embed, api_key=api_key)
 
     assert client.api_key == api_key
     n_requests = 253
@@ -194,7 +194,7 @@ def test_embedding_high_volume():
 def test_embedding_high_volume_return_instant():
     api_key = "wrong"
     api_base_wrong = "https://bla.notexist"
-    client = SyncClient(api_base=api_base_wrong, api_key=api_key)
+    client = PerformanceClient(api_base=api_base_wrong, api_key=api_key)
 
     assert client.api_key == api_key
     t_0 = time.time()

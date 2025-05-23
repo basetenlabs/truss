@@ -259,16 +259,16 @@ impl ClassificationResponse {
     }
 }
 
-// --- SyncClient Definition ---
+// --- PerformanceClient Definition ---
 #[pyclass]
-struct SyncClient {
+struct PerformanceClient {
     api_key: String,
     api_base: String,
     client: Client,
     runtime: Arc<Runtime>,
 }
 
-impl SyncClient {
+impl PerformanceClient {
     fn get_api_key(api_key: Option<String>) -> Result<String, PyErr> {
         if let Some(key) = api_key {
             return Ok(key);
@@ -322,12 +322,12 @@ impl SyncClient {
 }
 
 #[pymethods]
-impl SyncClient {
+impl PerformanceClient {
     #[new]
     #[pyo3(signature = (api_base, api_key = None))]
     fn new(api_base: String, api_key: Option<String>) -> PyResult<Self> {
-        let api_key = SyncClient::get_api_key(api_key)?;
-        Ok(SyncClient {
+        let api_key = PerformanceClient::get_api_key(api_key)?;
+        Ok(PerformanceClient {
             api_key,
             api_base,
             client: Client::new(),
@@ -356,8 +356,8 @@ impl SyncClient {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
-        SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
         let model_string: String = model.to_string();
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -417,8 +417,8 @@ impl SyncClient {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
-        SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
@@ -473,8 +473,8 @@ impl SyncClient {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
-        SyncClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = SyncClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
@@ -1033,7 +1033,7 @@ async fn acquire_permit_or_cancel(
 // --- PyO3 Module Definition ---
 #[pymodule]
 fn bei_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<SyncClient>()?;
+    m.add_class::<PerformanceClient>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;
