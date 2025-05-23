@@ -528,4 +528,4 @@ class InferenceClient:
         ...
 
 __version__: builtins.str
-"""The version of the bei_client library."""
+"""The version of the  bei_client library."""
