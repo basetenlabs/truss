@@ -301,9 +301,7 @@ async def test_classify_async():
     assert isinstance(response, ClassificationResponse)
     data = response.data
     assert len(data) == 2
-    assert len(data[0].embedding) > 10
-    assert isinstance(data[0].embedding[0], float)
-    print("async test passed", data[0].embedding[0])
+    print("async test passed", data[0])
 
 
 @pytest.mark.skipif(
@@ -322,10 +320,12 @@ async def test_rerank_async():
     assert isinstance(response, RerankResponse)
     data = response.data
     assert len(data) == 2
-    print("async test passed", data[0].embedding[0])
+    print("async test passed", data[0])
 
 
 if __name__ == "__main__":
     import asyncio
 
     asyncio.run(test_embed_async())
+    asyncio.run(test_classify_async())
+    asyncio.run(test_rerank_async())
