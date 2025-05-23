@@ -1421,7 +1421,7 @@ async fn ensure_successful_response(
 
 // --- PyO3 Module Definition ---
 #[pymodule]
-fn bei_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn baseten_inference_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<InferenceClient>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
