@@ -179,7 +179,7 @@ class ClassificationResponse:
         """
         ...
 
-class PerformanceClient:
+class InferenceClient:
     """
     Baseten.co API client for embedding, reranking, and classification.
 
@@ -191,7 +191,7 @@ class PerformanceClient:
         api_key: The API key for authentication.
 
     Example:
-        >>> client = PerformanceClient(api_base="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
+        >>> client = InferenceClient(api_base="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
         >>> embeddings = client.embed(["Hello world"], model="BAAI/bge-large-en")
         >>> array = embeddings.numpy()
     """
@@ -206,7 +206,7 @@ class PerformanceClient:
             api_key: The API key. If not provided, environment variables will be checked.
 
         Example:
-            >>> client = PerformanceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = InferenceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
         """
         ...
 
@@ -373,7 +373,7 @@ class PerformanceClient:
             # Note: Other PyO3/Rust errors might be raised for serialization/deserialization issues.
 
         Example:
-            >>> client = PerformanceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = InferenceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
             >>> custom_payloads = [
             ...     {"data": "request1_data", "id": 1},
             ...     {"data": "request2_data", "id": 2}
