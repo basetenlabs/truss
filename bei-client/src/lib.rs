@@ -546,19 +546,9 @@ async fn send_single_embedding_request(
         .await
         .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(PyErr::new::<HTTPError, _>((
-            status.as_u16(),
-            format!("API request failed with status {}: {}", status, error_text),
-        )));
-    }
+    let successful_response = ensure_successful_response(response).await?;
 
-    response
+    successful_response
         .json::<OpenAIEmbeddingsResponse>()
         .await
         .map_err(|e| PyValueError::new_err(format!("Failed to parse response JSON: {}", e)))
@@ -698,19 +688,9 @@ async fn send_single_rerank_request(
         .await
         .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(PyErr::new::<HTTPError, _>((
-            status.as_u16(),
-            format!("API request failed with status {}: {}", status, error_text),
-        )));
-    }
+    let successful_response = ensure_successful_response(response).await?;
 
-    response
+    successful_response
         .json::<Vec<RerankResult>>()
         .await
         .map_err(|e| PyValueError::new_err(format!("Failed to parse rerank response JSON: {}", e)))
@@ -809,7 +789,6 @@ async fn send_single_classify_request(
     api_base: String,
     request_timeout: Duration,
 ) -> Result<Vec<Vec<ClassificationResult>>, PyErr> {
-    // Changed return type
     let request_payload = ClassifyRequest {
         inputs,
         raw_scores,
@@ -828,20 +807,10 @@ async fn send_single_classify_request(
         .await
         .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(PyErr::new::<HTTPError, _>((
-            status.as_u16(),
-            format!("API request failed with status {}: {}", status, error_text),
-        )));
-    }
+    let successful_response = ensure_successful_response(response).await?;
 
-    response
-        .json::<Vec<Vec<ClassificationResult>>>() // Changed to deserialize Vec<Vec<ClassificationResult>>
+    successful_response
+        .json::<Vec<Vec<ClassificationResult>>>()
         .await
         .map_err(|e| {
             PyValueError::new_err(format!("Failed to parse classify response JSON: {}", e))
@@ -1028,6 +997,25 @@ async fn acquire_permit_or_cancel(
             }
             Ok(permit)
         }
+    }
+}
+
+// Helper function to check for a successful response.
+async fn ensure_successful_response(
+    response: reqwest::Response,
+) -> Result<reqwest::Response, PyErr> {
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(PyErr::new::<HTTPError, _>((
+            status.as_u16(),
+            format!("API request failed with status {}: {}", status, error_text),
+        )))
+    } else {
+        Ok(response)
     }
 }
 
