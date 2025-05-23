@@ -240,4 +240,6 @@ def test_embed_gil_release():
         parallel_times = [f.result() for f in futures]
 
     # the sequential times should sum to a much greater > 4x than the parallel times sum
+    # as we implment server side batching.
+    # unless the gil is not released and no-thread-concurrency == sequential
     assert seq_times[-1] > 4 * max(parallel_times)
