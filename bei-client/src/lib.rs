@@ -519,7 +519,7 @@ impl PerformanceClient {
         raw_scores: bool,
         return_text: bool,
         truncate: bool,
-        truncation_direction: String, // Changed to String to match process_rerank_requests
+        truncation_direction: &str,
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
@@ -533,6 +533,7 @@ impl PerformanceClient {
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
         let api_base_clone = self.api_base.clone();
+        let truncation_direction = truncation_direction.to_string(); // Convert to String
 
         let future = async move {
             process_rerank_requests(
@@ -617,7 +618,7 @@ impl PerformanceClient {
         inputs: Vec<String>,
         raw_scores: bool,
         truncate: bool,
-        truncation_direction: String, // Changed to String to match process_classify_requests
+        truncation_direction: &str,
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
@@ -631,6 +632,7 @@ impl PerformanceClient {
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
         let api_base_clone = self.api_base.clone();
+        let truncation_direction = truncation_direction.to_string(); // Convert to String
 
         let future = async move {
             process_classify_requests(
