@@ -1,5 +1,6 @@
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import requests
@@ -209,3 +210,34 @@ def test_embedding_high_volume_return_instant():
     assert time.time() - t_0 < 5, (
         "Request took too long to fail seems like you didn't implement drop on first error"
     )
+
+
+@pytest.mark.skipif(
+    not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
+)
+def test_embed_gil_release():
+    client_embed = PerformanceClient(api_base=api_base_embed, api_key=api_key)
+
+    def embed_job(start_time):
+        time.sleep(0.01)
+        client_embed.embed(
+            ["Hello world"] * 16,
+            model="my_model",
+            batch_size=1,
+            max_concurrent_requests=1,
+        )
+        return time.time() - start_time - 0.01
+
+    embed_job(0)  # warmup
+    # Measure sequential execution times (average over a few runs)
+    start_t = time.time()
+    seq_times = [embed_job(start_t) for _ in range(16)]
+
+    # Run 64 embed jobs concurrently
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        start_t = time.time()
+        futures = [executor.submit(embed_job, start_t) for _ in range(16)]
+        parallel_times = [f.result() for f in futures]
+
+    # the sequential times should sum to a much greater > 4x than the parallel times sum
+    assert seq_times[-1] > 4 * max(parallel_times)
