@@ -142,8 +142,8 @@ class GCSCache(RemoteCache):
         else:
             storage_client = storage.Client.create_anonymous_client()
 
-        bucket_name, prefix = split_path(self.repo_name, prefix="gs://")
-        blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
+        bucket_name, path = split_path(self.repo_name, prefix="gs://")
+        blobs = storage_client.list_blobs(bucket_name, prefix=path)
 
         all_objects = []
         for blob in blobs:
@@ -259,6 +259,10 @@ def get_credentials_to_cache(data_dir: Path) -> List[str]:
 
 
 def split_path(path, prefix="gs://"):
+    # Ensure path ends in slash so exact directory is retrieved when downloading model cache
+    if path and not path.endswith("/"):
+        path += "/"
+
     # Remove the 'gs://' prefix
     path = path.replace(prefix, "")
 
