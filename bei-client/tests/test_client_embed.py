@@ -10,6 +10,7 @@ from bei_client import (
     PerformanceClient,
     RerankResponse,
 )
+from requests.exceptions import HTTPError
 
 api_key = os.environ.get("BASETEN_API_KEY")
 api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
@@ -84,7 +85,7 @@ def test_not_nice_concurrency_settings():
 def test_wrong_api_key(method):
     client = PerformanceClient(api_base=api_base_embed, api_key="wrong_api_key")
     assert client.api_key == "wrong_api_key"
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(HTTPError) as excinfo:
         if method == "embed":
             client.embed(
                 ["Hello world", "Hello world 2"] * 32,
@@ -106,6 +107,7 @@ def test_wrong_api_key(method):
                 max_concurrent_requests=32,
             )
     assert "403 Forbidden" in str(excinfo.value)
+    assert excinfo.value.args[0] == 403
 
 
 @pytest.mark.skipif(

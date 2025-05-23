@@ -249,10 +249,17 @@ class PerformanceClient:
 
         Raises:
             ValueError: If the input list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
 
         Example:
             >>> response = client.embed(["hello", "world"], model="model-id")
-            >>> print(response.model)
+            >>> print(response.data[0].embedding)
+
+        Example with error handling:
+            >>> try:
+            ...     response = client.embed(["hello", "world"], model="invalid-model")
+            ... except requests.exceptions.HTTPError as e:
+            ...     print(f"Request failed: {e} with status code {e.response.args[0]}")
         """
         ...
 
@@ -287,6 +294,7 @@ class PerformanceClient:
 
         Raises:
             ValueError: If the texts list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
 
         Example:
             >>> response = client.rerank("find", ["doc1", "doc2"])
@@ -322,6 +330,7 @@ class PerformanceClient:
 
         Raises:
             ValueError: If the inputs list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
 
         Example:
             >>> response = client.classify(["text1", "text2"])
