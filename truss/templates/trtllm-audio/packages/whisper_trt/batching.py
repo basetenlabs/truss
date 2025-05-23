@@ -32,7 +32,7 @@ class WhisperBatchProcessor(AsyncBatcher[List[BatchWhisperItem], List[str]]):
         return Tensor(prompts)
 
     def process_batch(self, batch: List[BatchWhisperItem]) -> List[float]:
-        logging.warn(f"Processing batch of size {len(batch)}")
+        logging.warning(f"Processing batch of size {len(batch)}")
 
         # Need to pad the batch up to the maximum batch size
         decoder_input_ids = self.concat_and_pad_prompts(
