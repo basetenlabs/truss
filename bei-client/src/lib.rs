@@ -517,24 +517,24 @@ impl PerformanceClient {
         Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
     }
 
-    #[pyo3(signature = (url_path, payloads_py, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
     fn batch_post(
         &self,
         py: Python,
         url_path: String,
-        payloads_py: Vec<PyObject>,
+        payloads: Vec<PyObject>,
         max_concurrent_requests: usize,
         timeout_s: f64,
     ) -> PyResult<PyObject> {
-        if payloads_py.is_empty() {
+        if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
         PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 1)?; // Batch size is effectively 1
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held)
-        let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads_py.len());
-        for (idx, py_obj) in payloads_py.into_iter().enumerate() {
+        let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
+        for (idx, py_obj) in payloads.into_iter().enumerate() {
             // Bind PyObject to current GIL lifetime to get a Bound object for depythonize
             let bound_obj = py_obj.bind(py);
             let json_val = depythonize(bound_obj).map_err(|e| {
@@ -983,7 +983,7 @@ async fn process_classify_requests(
 async fn send_single_batch_post_request(
     client: Client,
     full_url: String,
-    payload_json: JsonValue, // Takes JsonValue directly
+    payload_json: JsonValue,
     api_key: String,
     request_timeout: Duration,
 ) -> Result<JsonValue, PyErr> {
@@ -992,7 +992,7 @@ async fn send_single_batch_post_request(
     let response = client
         .post(&full_url)
         .bearer_auth(api_key)
-        .json(&payload_json) // Use the JsonValue directly
+        .json(&payload_json)
         .timeout(request_timeout)
         .send()
         .await
