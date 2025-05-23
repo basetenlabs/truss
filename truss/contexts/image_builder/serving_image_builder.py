@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -311,16 +312,22 @@ def get_files_to_model_cache_v1(config: TrussConfig, truss_dir: Path, build_dir:
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
     )
-    return remote_model_files, local_files_to_cache
+    hashed = hashlib.sha256(  # TODO: Does not detect changes when there are no updates to the filenames
+        str(remote_model_files).encode("utf-8")
+    ).hexdigest()
+    return remote_model_files, local_files_to_cache, hashed
 
 
-def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: Path):
+def build_model_cache_v2_and_copy_bptr_manifest(
+    config: TrussConfig, build_dir: Path
+) -> str:
     assert config.model_cache.is_v2
     # builds BasetenManifest for caching
     basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
     # write json of bastenpointers into build dir
-    with open(build_dir / "bptr-manifest", "w") as f:
-        f.write(basetenpointers.model_dump_json())
+    basetenpointers_json = basetenpointers.model_dump_json()
+    (build_dir / "bptr-manifest").write_text(basetenpointers_json)
+    return hashlib.sha256(basetenpointers_json.encode("utf-8")).hexdigest()
 
 
 def generate_docker_server_nginx_config(build_dir, config):
@@ -547,8 +554,9 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
         # No model cache provided, initialize empty
-        model_files = {}
-        cached_files = []
+        model_files: Dict[str, Any] = {}
+        cached_files: List[str] = []
+        model_cache_hash = ""
         if config.model_cache.is_v1:
             logging.warning(
                 "`model_cache` with `use_volume=False` (legacy) is deprecated. This will bake the model weights into the image."
@@ -557,9 +565,10 @@ class ServingImageBuilder(ImageBuilder):
                 f"Config: {config.model_cache}"
             )
             # bakes model weights into the image
-            model_files, cached_files = get_files_to_model_cache_v1(
+            model_files, cached_files, hash_v1 = get_files_to_model_cache_v1(
                 config, truss_dir, build_dir
             )
+            model_cache_hash += hash_v1
 
         if config.model_cache.is_v2:
             if config.trt_llm:
@@ -572,7 +581,7 @@ class ServingImageBuilder(ImageBuilder):
                 f"`model_cache` with `use_volume=True` is enabled. Creating {config.model_cache}"
             )
             # adds a lazy pointer, will be downloaded at runtimes
-            build_model_cache_v2_and_copy_bptr_manifest(
+            model_cache_hash += build_model_cache_v2_and_copy_bptr_manifest(
                 config=config, build_dir=build_dir
             )
 
@@ -660,6 +669,7 @@ class ServingImageBuilder(ImageBuilder):
             cached_files,
             external_data_files,
             self._spec.build_commands,
+            model_cache_hash=model_cache_hash,
         )
 
     def _render_dockerfile(
@@ -671,6 +681,7 @@ class ServingImageBuilder(ImageBuilder):
         cached_files: List[str],
         external_data_files: List[Tuple[str, str]],
         build_commands: List[str],
+        model_cache_hash: str = "",
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -730,6 +741,7 @@ class ServingImageBuilder(ImageBuilder):
             credentials_to_cache=get_credentials_to_cache(data_dir),
             model_cache_v1=config.model_cache.is_v1,
             model_cache_v2=config.model_cache.is_v2,
+            model_cache_hash=model_cache_hash,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
