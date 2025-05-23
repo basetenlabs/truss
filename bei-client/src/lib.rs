@@ -6,8 +6,11 @@ use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy; // Import Lazy
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyList;
+use pythonize::{depythonize, pythonize};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue; // For handling untyped JSON
 use std::sync::atomic::{AtomicBool, Ordering}; // Add this
 use std::sync::Arc;
 use std::time::Duration;
@@ -513,6 +516,87 @@ impl PerformanceClient {
 
         Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
     }
+
+    #[pyo3(signature = (url_path, payloads_py, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn batch_post(
+        &self,
+        py: Python,
+        url_path: String,
+        payloads_py: Vec<PyObject>,
+        max_concurrent_requests: usize,
+        timeout_s: f64,
+    ) -> PyResult<PyObject> {
+        if payloads_py.is_empty() {
+            return Err(PyValueError::new_err("Payloads list cannot be empty"));
+        }
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 1)?; // Batch size is effectively 1
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
+
+        // Depythonize all payloads in the current thread (GIL is held)
+        let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads_py.len());
+        for (idx, py_obj) in payloads_py.into_iter().enumerate() {
+            // Bind PyObject to current GIL lifetime to get a Bound object for depythonize
+            let bound_obj = py_obj.bind(py);
+            let json_val = depythonize(bound_obj).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to depythonize payload at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            payloads_json.push(json_val);
+        }
+
+        let client = self.client.clone();
+        let api_key = self.api_key.clone();
+        let api_base = self.api_base.clone();
+        let rt = Arc::clone(&self.runtime);
+
+        // The async task now receives Vec<JsonValue> and returns Result<Vec<JsonValue>, PyErr>
+        let result_from_async_task: Result<Vec<JsonValue>, PyErr> = py.allow_threads(move || {
+            let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<JsonValue>, PyErr>>();
+            rt.spawn(async move {
+                let res = process_batch_post_requests(
+                    client,
+                    url_path,
+                    payloads_json, // Pass depythonized JSON values
+                    api_key,
+                    api_base,
+                    max_concurrent_requests,
+                    timeout_duration,
+                )
+                .await;
+                let _ = tx.send(res);
+            });
+            rx.recv()
+                .map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to receive result from async task (channel error): {}",
+                        e
+                    ))
+                })
+                .and_then(|inner_result| inner_result)
+        });
+
+        let response_json_values = result_from_async_task?;
+
+        // Pythonize all results in the current thread (GIL is held)
+        let mut results_py: Vec<PyObject> = Vec::with_capacity(response_json_values.len());
+        for (idx, json_val) in response_json_values.into_iter().enumerate() {
+            let py_obj_bound = pythonize(py, &json_val).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to pythonize response at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            // Convert Bound<'_, PyAny> to PyObject
+            results_py.push(py_obj_bound.to_object(py));
+        }
+
+        // Use the updated PyList::new_bound or PyList::new as per PyO3 v0.21+
+        // PyList::new_bound is suitable here for an iterable of PyObjects.
+        let py_object_list = PyList::new_bound(py, &results_py);
+        Ok(py_object_list.into())
+    }
 }
 
 // --- Send Single Embedding Request ---
@@ -892,6 +976,121 @@ async fn process_classify_requests(
         object: "list".to_string(),
         data: all_results,
     })
+}
+
+// --- Send Single Batch Post Request ---
+// Now takes JsonValue and returns JsonValue
+async fn send_single_batch_post_request(
+    client: Client,
+    full_url: String,
+    payload_json: JsonValue, // Takes JsonValue directly
+    api_key: String,
+    request_timeout: Duration,
+) -> Result<JsonValue, PyErr> {
+    // No depythonize here
+
+    let response = client
+        .post(&full_url)
+        .bearer_auth(api_key)
+        .json(&payload_json) // Use the JsonValue directly
+        .timeout(request_timeout)
+        .send()
+        .await
+        .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+
+    let successful_response = ensure_successful_response(response).await?;
+
+    // Get response as serde_json::Value
+    let response_json_value: JsonValue = successful_response
+        .json::<JsonValue>()
+        .await
+        .map_err(|e| PyValueError::new_err(format!("Failed to parse response JSON: {}", e)))?;
+
+    // No pythonize here, return JsonValue
+    Ok(response_json_value)
+}
+
+// --- Process Batch Post Requests ---
+// Now takes Vec<JsonValue> and returns Result<Vec<JsonValue>, PyErr>
+async fn process_batch_post_requests(
+    client: Client,
+    url_path: String,
+    payloads_json: Vec<JsonValue>, // Takes Vec<JsonValue>
+    api_key: String,
+    api_base: String,
+    max_concurrent_requests: usize,
+    request_timeout_duration: Duration,
+) -> Result<Vec<JsonValue>, PyErr> {
+    // Returns Vec<JsonValue>
+    let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+    let mut tasks = Vec::new();
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    let total_payloads = payloads_json.len();
+
+    for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
+        // Iterate over JsonValue
+        let client_clone = client.clone();
+        let api_key_clone = api_key.clone();
+        let api_base_clone = api_base.clone();
+        let url_path_clone = url_path.clone();
+        let semaphore_clone = Arc::clone(&semaphore);
+        let cancel_token_clone = Arc::clone(&cancel_token);
+        let individual_request_timeout = request_timeout_duration;
+
+        // payload_item_json is moved into its own task
+        tasks.push(tokio::spawn(async move {
+            let permit_guard =
+                acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
+
+            let full_url = format!(
+                "{}/{}",
+                api_base_clone.trim_end_matches('/'),
+                url_path_clone.trim_start_matches('/')
+            );
+
+            let result = send_single_batch_post_request(
+                client_clone,
+                full_url,
+                payload_item_json, // Pass JsonValue
+                api_key_clone,
+                individual_request_timeout,
+            )
+            .await;
+
+            drop(permit_guard);
+
+            match result {
+                Ok(response_json_value) => Ok((index, response_json_value)), // Return with original index and JsonValue
+                Err(e) => {
+                    cancel_token_clone.store(true, Ordering::SeqCst);
+                    Err(e)
+                }
+            }
+        }));
+    }
+
+    let task_join_results = join_all(tasks).await;
+    let mut indexed_results: Vec<(usize, JsonValue)> = Vec::with_capacity(total_payloads); // Stores JsonValue
+    let mut first_error: Option<PyErr> = None;
+
+    for result in task_join_results {
+        // D is (usize, JsonValue)
+        if let Some(indexed_data_part) =
+            process_task_outcome(result, &mut first_error, &cancel_token)
+        {
+            indexed_results.push(indexed_data_part);
+        }
+    }
+
+    if let Some(err) = first_error {
+        return Err(err);
+    }
+
+    indexed_results.sort_by_key(|&(original_index, _)| original_index);
+
+    let final_results: Vec<JsonValue> = indexed_results.into_iter().map(|(_, val)| val).collect(); // Collect JsonValue
+
+    Ok(final_results)
 }
 
 // Helper function to process task results and manage errors
