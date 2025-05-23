@@ -107,6 +107,7 @@ def test_wrong_api_key(method):
                 max_concurrent_requests=32,
             )
     assert "403 Forbidden" in str(excinfo.value)
+    assert excinfo.value.args[0] == 403
 
 
 @pytest.mark.skipif(
