@@ -200,7 +200,7 @@ def test_embedding_high_volume_return_instant():
     t_0 = time.time()
     with pytest.raises(Exception) as excinfo:
         client.embed(
-            ["Hello world"] * 10,
+            ["Hello world"] * 1000,
             model="my_model",
             batch_size=1,
             max_concurrent_requests=1,
