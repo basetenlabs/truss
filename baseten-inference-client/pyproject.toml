@@ -3,7 +3,7 @@ requires = ["maturin>=1.4,<2"]
 build-backend = "maturin"
 
 [project]
-name = "baseten_inference_clientference_client"
+name = "baseten_inference_client"
 authors = [  {name = "Michael Feil", email = "no-reply@baseten.co"},]
 description = "A ultra-high performance package for sending requests to Baseten Embedding Inference'"
 readme = "README.md"

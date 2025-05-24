@@ -1,4 +1,7 @@
+import anyio
 import pytest
+
+anyio.Condition
 
 
 @pytest.fixture

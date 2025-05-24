@@ -270,6 +270,7 @@ def test_embed_gil_release():
 @pytest.mark.skipif(
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
+@pytest.mark.anyio
 async def test_embed_async():
     client = InferenceClient(api_base=api_base_embed, api_key=api_key)
 
@@ -291,6 +292,7 @@ async def test_embed_async():
 @pytest.mark.skipif(
     not CLASSIFY_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
+@pytest.mark.anyio
 async def test_classify_async():
     client = InferenceClient(api_base=api_base_rerank, api_key=api_key)
 
@@ -307,6 +309,7 @@ async def test_classify_async():
 @pytest.mark.skipif(
     not RERANK_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
+@pytest.mark.anyio
 async def test_rerank_async():
     client = InferenceClient(api_base=api_base_rerank, api_key=api_key)
 
