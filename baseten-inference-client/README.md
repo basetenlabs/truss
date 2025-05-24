@@ -34,7 +34,27 @@ response = client.embed(
     max_concurrent_requests=32,
     timeout_s=360
 )
-print("Embedding response:", response.data)
+
+# Accessing embedding data
+print(f"Model used: {response.model}")
+print(f"Total tokens used: {response.usage.total_tokens}")
+
+for i, embedding_data in enumerate(response.data):
+    print(f"Embedding for text {i} (original input index {embedding_data.index}):")
+    # embedding_data.embedding can be List[float] or str (base64)
+    if isinstance(embedding_data.embedding, list):
+        print(f"  First 3 dimensions: {embedding_data.embedding[:3]}")
+        print(f"  Length: {len(embedding_data.embedding)}")
+
+# Using the numpy() method (requires numpy to be installed)
+import numpy as np
+numpy_array = response.numpy()
+print("\nEmbeddings as NumPy array:")
+print(f"  Shape: {numpy_array.shape}")
+print(f"  Data type: {numpy_array.dtype}")
+if numpy_array.shape[0] > 0:
+    print(f"  First 3 dimensions of the first embedding: {numpy_array[0][:3]}")
+
 ```
 
 Note: The embed method is versatile and can be used with any embeddings service, e.g. OpenAI API embeddings, not just for Baseten deployments.
@@ -60,14 +80,15 @@ async def async_embed():
 ### Synchronous Batch POST
 
 ```python
-payload = {"model": "my_model", "input": ["Batch request sample"]}
-batch_response = client.batch_post(
+payload1 = {"model": "my_model", "input": ["Batch request sample 1"]}
+payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
+response1, response2 = client.batch_post(
     url_path="/v1/embeddings",
     payloads=[payload, payload],
-    max_concurrent_requests=4,
+    max_concurrent_requests=96,
     timeout_s=360
 )
-print("Batch POST responses:", batch_response)
+print("Batch POST responses:", response1, response2)
 ```
 
 Note: The batch_post method is generic. It can be used to send POST requests to any URL,
@@ -84,7 +105,7 @@ async def async_batch_post():
         max_concurrent_requests=4,
         timeout_s=360
     )
-    print("Async batch POST responses:", responses)
+    print("Async batch POST responses: list[Any]", responses)
 
 # To run:
 # asyncio.run(async_batch_post())
