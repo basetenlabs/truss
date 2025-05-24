@@ -1,6 +1,6 @@
 # High performance client for Baseten.co
 
-This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It supports both synchronous and asynchronous operations. It also supports parallel post requests to any URL, also outside of baseten.co. InferenceClient releases the GIL while performing requests in the Rust.
+This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. InferenceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps from a single-core machine on baseten.co. InferenceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
 
 ## Installation
 
@@ -10,8 +10,6 @@ pip install baseten_inference_client
 
 ## Usage
 
-Import the client and set your API key. Note that we now use the new endpoint URL with `/sync`.
-
 ```python
 import os
 import asyncio
@@ -19,7 +17,8 @@ from baseten_inference_client import InferenceClient, OpenAIEmbeddingsResponse, 
 
 api_key = os.environ.get("BASETEN_API_KEY")
 api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
-
+# Also works with 3rd party endpoints.
+# api_base_embed = "https://api.openai.com" or "https://api.mixedbread.com"
 client = InferenceClient(api_base=api_base_embed, api_key=api_key)
 ```
 
@@ -208,6 +207,43 @@ cargo fmt
 # Run tests
 pytest tests
 ```
+
+## Error Handling
+
+The client can raise several types of errors. Here's how to handle common ones:
+
+- **`requests.exceptions.HTTPError`**: This error is raised for HTTP issues, such as authentication failures (e.g., 403 Forbidden if the API key is wrong), server errors (e.g., 5xx), or if the endpoint is not found (404). You can inspect `e.response.status_code` and `e.response.text` (or `e.response.json()` if the body is JSON) for more details.
+- **`ValueError`**: This error can occur due to invalid input parameters (e.g., an empty `input` list for `embed`, invalid `batch_size` or `max_concurrent_requests` values). It can also be raised by `response.numpy()` if embeddings are not float vectors or have inconsistent dimensions.
+
+Here's an example demonstrating how to catch these errors for the `embed` method:
+
+```python
+import requests # Make sure to import requests to catch its specific exceptions
+
+# client = InferenceClient(api_base="your_api_base", api_key="your_api_key")
+
+texts_to_embed = ["Hello world", "Another text example"]
+try:
+    response = client.embed(
+        input=texts_to_embed,
+        model="your_embedding_model", # Replace with your actual model name
+        batch_size=2,
+        max_concurrent_requests=4,
+        timeout_s=60 # Timeout in seconds
+    )
+    # Process successful response
+    print(f"Model used: {response.model}")
+    print(f"Total tokens: {response.usage.total_tokens}")
+    for item in response.data:
+        embedding_preview = item.embedding[:3] if isinstance(item.embedding, list) else "Base64 Data"
+        print(f"Index {item.index}, Embedding (first 3 dims or type): {embedding_preview}")
+
+except requests.exceptions.HTTPError as e:
+    print(f"An HTTP error occurred: {e}, code {e.args[0]}")
+
+```
+
+For asynchronous methods (`aembed`, `arerank`, `aclassify`, `abatch_post`), the same exceptions will be raised by the `await` call and can be caught using a `try...except` block within an `async def` function.
 
 ## Contributions
 Feel free to contribute to this repo, tag @michaelfeil for review.
