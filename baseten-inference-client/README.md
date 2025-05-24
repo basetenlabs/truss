@@ -23,37 +23,6 @@ api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/
 client = InferenceClient(api_base=api_base_embed, api_key=api_key)
 ```
 
-
-### Synchronous Batch POST
-
-```python
-payload = {"model": "my_model", "input": ["Batch request sample"]}
-batch_response = client.batch_post(
-    url_path="/v1/embeddings",
-    payloads=[payload, payload],
-    max_concurrent_requests=4,
-    timeout_s=360
-)
-print("Batch POST responses:", batch_response)
-```
-
-### Asynchronous Batch POST
-
-```python
-async def async_batch_post():
-    payload = {"model": "my_model", "input": ["Async batch sample"]}
-    responses = await client.abatch_post(
-        url_path="/v1/embeddings",
-        payloads=[payload, payload],
-        max_concurrent_requests=4,
-        timeout_s=360
-    )
-    print("Async batch POST responses:", responses)
-
-# To run:
-# asyncio.run(async_batch_post())
-```
-
 ### Synchronous Embedding
 
 ```python
@@ -67,6 +36,8 @@ response = client.embed(
 )
 print("Embedding response:", response.data)
 ```
+
+Note: The embed method is versatile and can be used with any embeddings service, e.g. OpenAI API embeddings, not just for Baseten deployments.
 
 ### Asynchronous Embedding
 
@@ -84,6 +55,39 @@ async def async_embed():
 
 # To run:
 # asyncio.run(async_embed())
+```
+
+### Synchronous Batch POST
+
+```python
+payload = {"model": "my_model", "input": ["Batch request sample"]}
+batch_response = client.batch_post(
+    url_path="/v1/embeddings",
+    payloads=[payload, payload],
+    max_concurrent_requests=4,
+    timeout_s=360
+)
+print("Batch POST responses:", batch_response)
+```
+
+Note: The batch_post method is generic. It can be used to send POST requests to any URL,
+not limited to Baseten endpoints.
+
+### Asynchronous Batch POST
+
+```python
+async def async_batch_post():
+    payload = {"model": "my_model", "input": ["Async batch sample"]}
+    responses = await client.abatch_post(
+        url_path="/v1/embeddings",
+        payloads=[payload, payload],
+        max_concurrent_requests=4,
+        timeout_s=360
+    )
+    print("Async batch POST responses:", responses)
+
+# To run:
+# asyncio.run(async_batch_post())
 ```
 
 ### Synchronous Reranking
@@ -179,7 +183,13 @@ pip install maturin[patchelf] pytest requests numpy
 
 # Build and install the Rust extension in development mode
 maturin develop
-
+cargo fmt
 # Run tests
 pytest tests
 ```
+
+## Contributions
+Feel free to contribute to this repo, tag @michaelfeil for review.
+
+## License
+MIT License
