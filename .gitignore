@@ -79,5 +79,4 @@ yarn.lock
 .hypothesis
 
 truss-transfer/target/
-bei-client/target/
 baseten-inference-client/target/
