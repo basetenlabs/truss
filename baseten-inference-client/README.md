@@ -1,6 +1,6 @@
 # High performance client for Baseten.co
 
-This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It supports both synchronous and asynchronous operations. It also supports parallel post requests to any URL, also outside of baseten.co. InferenceClient releases the GIL while performing requests in the background.
+This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It supports both synchronous and asynchronous operations. It also supports parallel post requests to any URL, also outside of baseten.co. InferenceClient releases the GIL while performing requests in the Rust.
 
 ## Installation
 
