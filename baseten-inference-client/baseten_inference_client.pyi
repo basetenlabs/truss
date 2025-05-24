@@ -4,7 +4,6 @@
 import builtins
 import typing
 
-# For numpy array type hints
 try:
     import numpy
     import numpy.typing as npt
@@ -179,7 +178,7 @@ class ClassificationResponse:
         """
         ...
 
-class PerformanceClient:
+class InferenceClient:
     """
     Baseten.co API client for embedding, reranking, and classification.
 
@@ -191,7 +190,7 @@ class PerformanceClient:
         api_key: The API key for authentication.
 
     Example:
-        >>> client = PerformanceClient(api_base="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
+        >>> client = InferenceClient(api_base="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
         >>> embeddings = client.embed(["Hello world"], model="BAAI/bge-large-en")
         >>> array = embeddings.numpy()
     """
@@ -206,7 +205,7 @@ class PerformanceClient:
             api_key: The API key. If not provided, environment variables will be checked.
 
         Example:
-            >>> client = PerformanceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = InferenceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
         """
         ...
 
@@ -373,7 +372,7 @@ class PerformanceClient:
             # Note: Other PyO3/Rust errors might be raised for serialization/deserialization issues.
 
         Example:
-            >>> client = PerformanceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = InferenceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
             >>> custom_payloads = [
             ...     {"data": "request1_data", "id": 1},
             ...     {"data": "request2_data", "id": 2}
@@ -384,5 +383,149 @@ class PerformanceClient:
         """
         ...
 
+    async def aembed(
+        self,
+        input: builtins.list[builtins.str],
+        model: builtins.str,
+        encoding_format: typing.Optional[builtins.str] = None,
+        dimensions: typing.Optional[builtins.int] = None,
+        user: typing.Optional[builtins.str] = None,
+        max_concurrent_requests: builtins.int = 32,
+        batch_size: builtins.int = 16,
+        timeout_s: builtins.float = 3600.0,
+    ) -> OpenAIEmbeddingsResponse:
+        """
+        Asynchronously sends a list of texts to the embedding endpoint to generate embeddings.
+
+        Args:
+            input: A list of texts to embed.
+            model: The model identifier.
+            encoding_format: Optional encoding format.
+            dimensions: Optional dimension size of the embeddings.
+            user: Optional user identifier.
+            max_concurrent_requests: Maximum parallel requests.
+            batch_size: Number of texts per batch.
+            timeout_s: Total timeout in seconds.
+
+        Returns:
+            An awaitable OpenAIEmbeddingsResponse object.
+
+        Raises:
+            ValueError: If the input list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
+
+        Example:
+            >>> response = await client.aembed(["hello", "world"], model="model-id")
+            >>> print(response.data[0].embedding)
+        """
+        ...
+
+    async def arerank(
+        self,
+        query: builtins.str,
+        texts: builtins.list[builtins.str],
+        raw_scores: builtins.bool = False,
+        return_text: builtins.bool = False,
+        truncate: builtins.bool = False,
+        truncation_direction: builtins.str = "Right",
+        max_concurrent_requests: builtins.int = 32,
+        batch_size: builtins.int = 16,
+        timeout_s: builtins.float = 3600.0,
+    ) -> RerankResponse:
+        """
+        Asynchronously reranks a set of texts based on the provided query.
+
+        Args:
+            query: The query string.
+            texts: A list of texts to rerank.
+            raw_scores: Whether raw scores should be returned.
+            return_text: Whether to include the original text.
+            truncate: Whether to truncate texts.
+            truncation_direction: Direction for truncation ('Right' by default).
+            max_concurrent_requests: Maximum parallel requests.
+            batch_size: Batch size for each request.
+            timeout_s: Overall timeout in seconds.
+
+        Returns:
+            An awaitable RerankResponse object.
+
+        Raises:
+            ValueError: If the texts list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
+
+        Example:
+            >>> response = await client.arerank("find", ["doc1", "doc2"])
+            >>> for result in response.data:
+            ...     print(result.index, result.score)
+        """
+        ...
+
+    async def aclassify(
+        self,
+        inputs: builtins.list[builtins.str],
+        raw_scores: builtins.bool = False,
+        truncate: builtins.bool = False,
+        truncation_direction: builtins.str = "Right",
+        max_concurrent_requests: builtins.int = 32,
+        batch_size: builtins.int = 16,
+        timeout_s: builtins.float = 3600.0,
+    ) -> ClassificationResponse:
+        """
+        Asynchronously classifies each input text.
+
+        Args:
+            inputs: A list of texts to classify.
+            raw_scores: Whether raw scores should be returned.
+            truncate: Whether to truncate long texts.
+            truncation_direction: Truncation direction ('Right' by default).
+            max_concurrent_requests: Maximum parallel requests.
+            batch_size: Batch size for each request.
+            timeout_s: Overall timeout in seconds.
+
+        Returns:
+            An awaitable ClassificationResponse object.
+
+        Raises:
+            ValueError: If the inputs list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
+
+        Example:
+            >>> response = await client.aclassify(["text1", "text2"])
+            >>> for group in response.data:
+            ...     for result in group:
+            ...         print(result.label, result.score)
+        """
+        ...
+
+    async def abatch_post(
+        self,
+        url_path: builtins.str,
+        payloads: builtins.list[typing.Any],
+        max_concurrent_requests: builtins.int = 32,
+        timeout_s: builtins.float = 3600.0,
+    ) -> builtins.list[typing.Any]:
+        """
+        Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
+
+        Args:
+            url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
+            payloads: A list of Python objects that are JSON-serializable.
+            max_concurrent_requests: Maximum number of parallel requests.
+            timeout_s: Total timeout in seconds for the batch operation.
+
+        Returns:
+            An awaitable list of Python objects whose order matches the input payloads.
+
+        Raises:
+            ValueError: If the payloads list is empty or parameters are invalid.
+            requests.exceptions.HTTPError: If any underlying HTTP requests fail.
+
+        Example:
+            >>> responses = await client.abatch_post("/v1/process_item", [{"data": "r1"}, {"data": "r2"}])
+            >>> for resp in responses:
+            ...     print(resp)
+        """
+        ...
+
 __version__: builtins.str
-"""The version of the bei_client library."""
+"""The version of the  bei_client library."""

@@ -7,6 +7,7 @@ use once_cell::sync::Lazy; // Import Lazy
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
+use pyo3_async_runtimes;
 use pythonize::{depythonize, pythonize};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -15,8 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering}; // Add this
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore}; // Add OwnedSemaphorePermit
-use tokio::task::JoinError; // Add JoinError
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::task::JoinError;
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
@@ -263,16 +264,16 @@ impl ClassificationResponse {
     }
 }
 
-// --- PerformanceClient Definition ---
+// --- InferenceClient Definition ---
 #[pyclass]
-struct PerformanceClient {
+struct InferenceClient {
     api_key: String,
     api_base: String,
     client: Client,
     runtime: Arc<Runtime>,
 }
 
-impl PerformanceClient {
+impl InferenceClient {
     fn get_api_key(api_key: Option<String>) -> Result<String, PyErr> {
         if let Some(key) = api_key {
             return Ok(key);
@@ -326,12 +327,12 @@ impl PerformanceClient {
 }
 
 #[pymethods]
-impl PerformanceClient {
+impl InferenceClient {
     #[new]
     #[pyo3(signature = (api_base, api_key = None))]
     fn new(api_base: String, api_key: Option<String>) -> PyResult<Self> {
-        let api_key = PerformanceClient::get_api_key(api_key)?;
-        Ok(PerformanceClient {
+        let api_key = InferenceClient::get_api_key(api_key)?;
+        Ok(InferenceClient {
             api_key,
             api_base,
             client: Client::new(),
@@ -349,7 +350,7 @@ impl PerformanceClient {
         &self,
         py: Python,
         input: Vec<String>,
-        model: String,
+        model: String, // model is already String
         encoding_format: Option<String>,
         dimensions: Option<u32>,
         user: Option<String>,
@@ -360,13 +361,16 @@ impl PerformanceClient {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
-        let model_string: String = model.to_string();
-        let client = self.client.clone();
-        let api_key = self.api_key.clone();
-        let api_base = self.api_base.clone();
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+
+        let client_clone = self.client.clone();
+        let api_key_clone = self.api_key.clone();
+        let api_base_clone = self.api_base.clone();
         let rt = Arc::clone(&self.runtime);
+
+        // input, model, encoding_format, dimensions, user will be moved into the closures
+        // by the `move` keywords.
 
         let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> =
             py.allow_threads(move || {
@@ -375,20 +379,20 @@ impl PerformanceClient {
 
                 rt.spawn(async move {
                     let res = process_embeddings_requests(
-                        client,
-                        input,
-                        model_string,
-                        api_key,
-                        api_base,
-                        encoding_format,
-                        dimensions,
-                        user,
+                        client_clone,
+                        input, // Use directly
+                        model, // Use directly
+                        api_key_clone,
+                        api_base_clone,
+                        encoding_format, // Use directly
+                        dimensions,      // Use directly
+                        user,            // Use directly
                         max_concurrent_requests,
                         batch_size,
                         timeout_duration,
                     )
                     .await;
-                    let _ = tx.send(res); // Errors on send typically mean receiver dropped.
+                    let _ = tx.send(res);
                 });
 
                 match rx.recv() {
@@ -401,7 +405,51 @@ impl PerformanceClient {
             });
 
         let successful_response = result_from_async_task?;
-        Python::with_gil(|py| Ok(successful_response.into_py(py)))
+        Python::with_gil(|py_gil| Ok(successful_response.into_py(py_gil)))
+    }
+
+    #[pyo3(name = "aembed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn aembed<'py>(
+        &self,
+        py: Python<'py>,
+        input: Vec<String>,
+        model: String,
+        encoding_format: Option<String>,
+        dimensions: Option<u32>,
+        user: Option<String>,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if input.is_empty() {
+            return Err(PyValueError::new_err("Input list cannot be empty"));
+        }
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+
+        let client_clone = self.client.clone();
+        let api_key_clone = self.api_key.clone();
+        let api_base_clone = self.api_base.clone();
+        // input, model, encoding_format, dimensions, user will be moved into the async block.
+
+        let future = async move {
+            process_embeddings_requests(
+                client_clone,
+                input,
+                model,
+                api_key_clone,
+                api_base_clone,
+                encoding_format,
+                dimensions,
+                user,
+                max_concurrent_requests,
+                batch_size,
+                timeout_duration,
+            )
+            .await
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
     #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
@@ -421,8 +469,8 @@ impl PerformanceClient {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
@@ -462,6 +510,52 @@ impl PerformanceClient {
         Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 
+    #[pyo3(name = "arerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn arerank<'py>(
+        &self,
+        py: Python<'py>,
+        query: String,
+        texts: Vec<String>,
+        raw_scores: bool,
+        return_text: bool,
+        truncate: bool,
+        truncation_direction: &str,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if texts.is_empty() {
+            return Err(PyValueError::new_err("Texts list cannot be empty"));
+        }
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+
+        let client_clone = self.client.clone();
+        let api_key_clone = self.api_key.clone();
+        let api_base_clone = self.api_base.clone();
+        let truncation_direction = truncation_direction.to_string(); // Convert to String
+
+        let future = async move {
+            process_rerank_requests(
+                client_clone,
+                query,
+                texts,
+                raw_scores,
+                return_text,
+                truncate,
+                truncation_direction,
+                api_key_clone,
+                api_base_clone,
+                max_concurrent_requests,
+                batch_size,
+                timeout_duration,
+            )
+            .await
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
+
     #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
     fn classify(
         &self,
@@ -477,8 +571,8 @@ impl PerformanceClient {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let api_base = self.api_base.clone();
@@ -517,6 +611,48 @@ impl PerformanceClient {
         Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
     }
 
+    #[pyo3(name = "aclassify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn aclassify<'py>(
+        &self,
+        py: Python<'py>,
+        inputs: Vec<String>,
+        raw_scores: bool,
+        truncate: bool,
+        truncation_direction: &str,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if inputs.is_empty() {
+            return Err(PyValueError::new_err("Inputs list cannot be empty"));
+        }
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+
+        let client_clone = self.client.clone();
+        let api_key_clone = self.api_key.clone();
+        let api_base_clone = self.api_base.clone();
+        let truncation_direction = truncation_direction.to_string(); // Convert to String
+
+        let future = async move {
+            process_classify_requests(
+                client_clone,
+                inputs,
+                raw_scores,
+                truncate,
+                truncation_direction,
+                api_key_clone,
+                api_base_clone,
+                max_concurrent_requests,
+                batch_size,
+                timeout_duration,
+            )
+            .await
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
+
     #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
     fn batch_post(
         &self,
@@ -529,8 +665,8 @@ impl PerformanceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 1)?; // Batch size is effectively 1
-        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1)?; // Batch size is effectively 1
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held)
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
@@ -596,6 +732,71 @@ impl PerformanceClient {
         // PyList::new_bound is suitable here for an iterable of PyObjects.
         let py_object_list = PyList::new_bound(py, &results_py);
         Ok(py_object_list.into())
+    }
+
+    #[pyo3(name = "abatch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn abatch_post<'py>(
+        &self,
+        py: Python<'py>,
+        url_path: String,
+        payloads: Vec<PyObject>,
+        max_concurrent_requests: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if payloads.is_empty() {
+            return Err(PyValueError::new_err("Payloads list cannot be empty"));
+        }
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1)?; // Batch size is effectively 1
+        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+
+        // Depythonize all payloads in the current thread (GIL is held by `py` argument)
+        let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
+        for (idx, py_obj) in payloads.into_iter().enumerate() {
+            let bound_obj = py_obj.bind(py);
+            let json_val = depythonize(bound_obj).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to depythonize payload at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            payloads_json.push(json_val);
+        }
+
+        let client_clone = self.client.clone();
+        let api_key_clone = self.api_key.clone();
+        let api_base_clone = self.api_base.clone();
+
+        let future = async move {
+            let response_json_values = process_batch_post_requests(
+                client_clone,
+                url_path,
+                payloads_json,
+                api_key_clone,
+                api_base_clone,
+                max_concurrent_requests,
+                timeout_duration,
+            )
+            .await?; // Propagates PyErr from process_batch_post_requests
+
+            // Pythonize results - this part needs the GIL.
+            // The `future_into_py` function ensures the future is polled in a context
+            // where acquiring the GIL is possible if the future's output type requires it
+            // for conversion (like our PyResult<PyObject> here).
+            Python::with_gil(|py_gil| {
+                let mut results_py: Vec<PyObject> = Vec::with_capacity(response_json_values.len());
+                for (idx, json_val) in response_json_values.into_iter().enumerate() {
+                    let py_obj_bound = pythonize(py_gil, &json_val).map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to pythonize response at index {}: {}",
+                            idx, e
+                        ))
+                    })?;
+                    results_py.push(py_obj_bound.to_object(py_gil));
+                }
+                Ok(PyList::new_bound(py_gil, &results_py).to_object(py_gil))
+            })
+        };
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 }
 
@@ -1220,8 +1421,8 @@ async fn ensure_successful_response(
 
 // --- PyO3 Module Definition ---
 #[pymodule]
-fn bei_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PerformanceClient>()?;
+fn baseten_inference_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<InferenceClient>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;
