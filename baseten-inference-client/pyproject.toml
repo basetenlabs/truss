@@ -1,0 +1,21 @@
+[build-system]
+requires = ["maturin>=1.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "baseten_inference_client"
+authors = [  {name = "Michael Feil", email = "no-reply@baseten.co"},]
+description = "A ultra-high performance package for sending requests to Baseten Embedding Inference'"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+
+[project.urls]
+Issues = "https://github.com/basetenlabs/truss/issues"
+Repository = "https://github.com/basetenlabs/truss.git"
