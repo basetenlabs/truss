@@ -92,6 +92,13 @@ async def proxy_http(request: Request):
     return response
 
 
+def retry_error_callback(retry_state: RetryCallState):
+    if retry_state.outcome is not None and isinstance(
+        retry_state.outcome.exception(), ModelNotReady
+    ):
+        print("Inference attempted but model is not ready yet.")
+
+
 def inference_retries(
     retry_condition: Callable[[RetryCallState], bool] = BASE_RETRY_EXCEPTIONS,
 ):
@@ -99,7 +106,8 @@ def inference_retries(
         retry=retry_condition,
         stop=_custom_stop_strategy,
         wait=wait_fixed(1),
-        reraise=False,
+        reraise=True,
+        retry_error_callback=retry_error_callback,
     ):
         yield attempt
 
