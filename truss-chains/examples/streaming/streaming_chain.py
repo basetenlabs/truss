@@ -1,7 +1,9 @@
 import asyncio
+import logging
 import time
 from typing import AsyncIterator
 
+import fastapi
 import pydantic
 
 import truss_chains as chains
@@ -38,17 +40,30 @@ STREAM_TYPES = streaming.stream_types(
 class Generator(chains.ChainletBase):
     """Example that streams fully structured pydantic items with header and footer."""
 
-    async def run_remote(self, cause_error: bool) -> AsyncIterator[bytes]:
-        print("Entering Generator")
+    async def run_remote(
+        self, cause_pre_stream_error: bool, cause_mid_stream_error: bool
+    ) -> AsyncIterator[bytes]:
+        logging.info("Entering Generator")
+        if cause_pre_stream_error:
+            logging.info("Raise Pre Stream")
+            raise fastapi.HTTPException(
+                status_code=fastapi.status.HTTP_400_BAD_REQUEST,
+                detail="Error pre stream.",
+            )
+        logging.info("Starting streamer.")
+
         streamer = streaming.stream_writer(STREAM_TYPES)
         header = Header(time=time.time(), msg="Start.")
         yield streamer.yield_header(header)
         for i in range(1, 5):
             data = MyDataChunk(words=[chr(x + 70) * x for x in range(1, i + 1)])
-            print("Yield")
+            logging.info("Yield")
             yield streamer.yield_item(data)
-            if cause_error and i > 2:
-                raise RuntimeError("Test Error")
+            if cause_mid_stream_error and i > 2:
+                raise fastapi.HTTPException(
+                    status_code=fastapi.status.HTTP_501_NOT_IMPLEMENTED,
+                    detail="Error mid stream",
+                )
             await asyncio.sleep(0.05)
 
         end_time = time.time()
@@ -74,16 +89,20 @@ class Consumer(chains.ChainletBase):
 
     def __init__(
         self,
-        generator=chains.depends(Generator),
-        string_generator=chains.depends(StringGenerator),
+        # generator=chains.depends(Generator),
+        # string_generator=chains.depends(StringGenerator),
     ):
-        self._generator = generator
-        self._string_generator = string_generator
+        # self._generator = generator
+        # self._string_generator = string_generator
+        pass
 
-    async def run_remote(self, cause_error: bool) -> ConsumerOutput:
+    async def run_remote(
+        self, cause_pre_stream_error: bool, cause_mid_stream_error: bool
+    ) -> ConsumerOutput:
         print("Entering Consumer")
         reader = streaming.stream_reader(
-            STREAM_TYPES, self._generator.run_remote(cause_error)
+            STREAM_TYPES,
+            self._generator.run_remote(cause_pre_stream_error, cause_mid_stream_error),
         )
         print("Consuming...")
         header = await reader.read_header()
@@ -92,15 +111,15 @@ class Consumer(chains.ChainletBase):
             print(f"Read: {data}")
             chunks.append(data)
 
-        footer = await reader.read_footer()
-        strings = []
-        async for part in self._string_generator.run_remote():
-            strings.append(part)
-
-        print("Exiting Consumer")
-        return ConsumerOutput(
-            header=header, chunks=chunks, footer=footer, strings="".join(strings)
-        )
+        # footer = await reader.read_footer()
+        # strings = []
+        # async for part in self._string_generator.run_remote():
+        #     strings.append(part)
+        #
+        # print("Exiting Consumer")
+        # return ConsumerOutput(
+        #     header=header, chunks=chunks, footer=footer, strings="".join(strings)
+        # )
 
 
 if __name__ == "__main__":

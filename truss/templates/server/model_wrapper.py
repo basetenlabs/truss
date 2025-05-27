@@ -656,6 +656,7 @@ class ModelWrapper:
         )
         return await self._execute_user_model_fn(inputs, request, descriptor)
 
+    # TODO: can we eliminate this bloat layer?
     async def _predict(
         self, inputs: Any, request: starlette.requests.Request
     ) -> Union[OutputType, Any]:
@@ -696,6 +697,11 @@ class ModelWrapper:
                     f"Exception while generating streamed response: {str(e)}",
                     exc_info=errors.filter_traceback(self.model_file_name),
                 )
+                # Since this runs in a task, we *do not* raise the exception, just
+                # log the error, close the queue and finish the task.
+                # It's not possible to signal an error to the client (e.g. via HTTP
+                # status) after streaming has begun unless introducing a schema for
+                # error messages on the stream itself - but here we are unopinionated.
             finally:
                 await queue.put(SENTINEL)
 
@@ -711,7 +717,6 @@ class ModelWrapper:
         streaming_read_timeout = self._config.get("runtime", {}).get(
             "streaming_read_timeout", STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS
         )
-        async_generator = _force_async_generator(generator)
         # To ensure that a partial read from a client does not keep  the semaphore
         # claimed, we write all the data from the stream to the queue as it is produced,
         # irrespective of how fast it is consumed.
@@ -719,6 +724,20 @@ class ModelWrapper:
         # exits the semaphore block.
         response_queue: asyncio.Queue = asyncio.Queue()
 
+        # In order to catch errors before the first `yield` (e.g. user implemented
+        # input validation), we get the first chunk here and raise the error if needed.
+        with tracing.section_as_event(span, "await_first_element"):
+            try:
+                async_generator = _force_async_generator(generator)
+                first_chunk = await async_generator.__anext__()
+                await response_queue.put(first_chunk)
+            except StopAsyncIteration:
+                cleanup_fn()
+                return (chunk async for chunk in [])  # Empty dummy generator.
+            except Exception as e:
+                cleanup_fn()
+                # print("CALL STACK:\n" + "".join(traceback.format_stack()))
+                raise e
         # `write_response_to_queue` keeps running the background until completion.
         gen_task = asyncio.create_task(
             self._write_response_to_queue(response_queue, async_generator, span)
@@ -727,8 +746,6 @@ class ModelWrapper:
         gen_task.add_done_callback(lambda _: cleanup_fn())
 
         # The gap between responses in a stream must be < streaming_read_timeout
-        # TODO: this whole buffering might be superfluous and sufficiently done by
-        #   by the FastAPI server already. See `test_limit_concurrency_with_sse`.
         async def _buffered_response_generator() -> AsyncGenerator[bytes, None]:
             # `span` is tied to the "producer" `gen_task` which might complete before
             # "consume" part here finishes, therefore a dedicated span is required.
@@ -854,20 +871,23 @@ class ModelWrapper:
                 # exactly handle that case we would need to apply `detach_context`
                 # around each `next`-invocation that consumes the generator, which is
                 # prohibitive.
+                # TODO: predict has exception interception via `_execute_user_model_fn`,
+                #   but all the other parts of the flow don't have that...
+                #   why is the stack trace above here missing?
                 predict_result = await self._predict(preprocess_result, request)
 
             if inspect.isgenerator(predict_result) or inspect.isasyncgen(
                 predict_result
             ):
                 if self.model_descriptor.postprocess:
-                    with errors.intercept_exceptions(
-                        self._logger, self.model_file_name
-                    ):
-                        raise errors.ModelDefinitionError(
-                            "If the predict function returns a generator (streaming), "
-                            "you cannot use postprocessing. Include all processing in "
-                            "the predict method."
-                        )
+                    # with errors.intercept_exceptions(
+                    #     self._logger, self.model_file_name
+                    # ):
+                    raise errors.ModelDefinitionError(
+                        "If the predict function returns a generator (streaming), "
+                        "you cannot use postprocessing. Include all processing in "
+                        "the predict method."
+                    )
 
                 return await self._handle_generator_response(
                     request,
