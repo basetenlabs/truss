@@ -16,13 +16,13 @@ if not api_key:
 api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
 
 # Benchmark settings: list of lengths to test.
-benchmark_lengths = [128, 512, 2048, 8192, 32768, 131072, 524288]
+benchmark_lengths = [128, 512, 2048, 8192, 32768, 131072, 524288, 2097152]
 micro_batch_size = (
     128  # For AsyncOpenAI client; also used for the InferenceClient batch
 )
 
-client_b = InferenceClient(api_key=api_key, api_base=api_base_embed)
-client_oai = AsyncOpenAI(api_key=api_key, base_url=api_base_embed)
+client_b = InferenceClient(api_key=api_key, base_url=api_base_embed)
+client_oai = AsyncOpenAI(api_key=api_key, base_url=api_base_embed, timeout=1024)
 
 
 # --- CPU Monitor Function ---
@@ -110,16 +110,18 @@ async def run_asyncopenai_benchmark(length):
     # Prepare input data
     input_texts = ["Hello world"] * micro_batch_size
     num_tasks = length // micro_batch_size
+    # Limit concurrent requests,
+    # otherwise openai client falls appart, feel free to remove and see effects.
+    semaphore = asyncio.Semaphore(512)
 
-    # Warm-up
-    _ = await asyncio.gather(
-        *[
-            client_oai.embeddings.create(
+    async def create():
+        async with semaphore:
+            return await client_oai.embeddings.create(
                 input=input_texts, model="text-embedding-3-small"
             )
-            for _ in range(min(num_tasks, 32))
-        ]
-    )
+
+    # Warm-up
+    _ = await asyncio.gather(*[create() for _ in range(min(num_tasks, 16))])
 
     # Setup CPU monitor
     cpu_readings = []
@@ -131,14 +133,7 @@ async def run_asyncopenai_benchmark(length):
 
     # Timed run
     time_start = time.monotonic()
-    api_responses = await asyncio.gather(
-        *[
-            client_oai.embeddings.create(
-                input=input_texts, model="text-embedding-3-small"
-            )
-            for _ in range(num_tasks)
-        ]
-    )
+    api_responses = await asyncio.gather(*[create() for _ in range(num_tasks)])
     all_embeddings = []
     for res in api_responses:
         for emb in res.data:
