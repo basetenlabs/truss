@@ -6,18 +6,21 @@
 name: truss-transfer-build-maturin
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - "truss-transfer/**"
-    tags:
-      - "*" # Still runs on all tags regardless of directory changes
-  pull_request:
-    paths:
-      - "truss-transfer/**"
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      folder:
+        description: "The folder containing the package to build."
+        required: true
+        type: string
+      publish_pypi: # New input parameter
+        description: "Whether to publish the package to PyPI."
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      PYPI_TOKEN:
+        description: "The PyPI token for publishing."
+        required: true # Still required if publish_pypi is true
 
 permissions:
   contents: read
@@ -48,7 +51,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: "false"
@@ -66,7 +69,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         if: ${{ matrix.platform.target != 'aarch64' || matrix.platform.target != 'armv7' }}
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: "false"
@@ -86,7 +89,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
-          path: truss-transfer/dist
+          path: ${{ inputs.folder }}/dist
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
@@ -109,7 +112,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: "false"
@@ -117,7 +120,7 @@ jobs:
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: "false"
@@ -126,7 +129,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
-          path: truss-transfer/dist
+          path: ${{ inputs.folder }}/dist
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
@@ -146,7 +149,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: "false"
@@ -161,7 +164,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-${{ matrix.platform.target }}
-          path: truss-transfer/dist
+          path: ${{ inputs.folder }}/dist
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
@@ -180,14 +183,14 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: "false"
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13t
           sccache: "false"
@@ -195,7 +198,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.platform.target }}
-          path: truss-transfer/dist
+          path: ${{ inputs.folder }}/dist
 
   sdist:
     runs-on: ubuntu-latest
@@ -204,18 +207,20 @@ jobs:
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer
+          working-directory: ${{ inputs.folder }}
           command: sdist
           args: --out dist
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist
-          path: truss-transfer/dist
+          path: ${{ inputs.folder }}/dist
 
   release:
     name: Release
     runs-on: ubuntu-latest
+    # This job will run if triggered by a tag or manually.
+    # The decision to publish within this job is now controlled by inputs.publish_pypi
     if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     needs: [linux, musllinux, windows, macos, sdist]
     permissions:
@@ -232,10 +237,10 @@ jobs:
         with:
           subject-path: "wheels-*/*"
       - name: Publish to PyPI
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ inputs.publish_pypi }} # Use the input parameter here
         uses: PyO3/maturin-action@v1
         env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.TRUSS_TRANSFER_PYPI_API_TOKEN }}
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         with:
           command: upload
           args: --non-interactive --skip-existing wheels-*/*

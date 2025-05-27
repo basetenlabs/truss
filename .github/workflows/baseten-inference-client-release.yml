@@ -1,0 +1,29 @@
+name: Build and Release baseten-inference-client
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "baseten-inference-client/**"
+    tags:
+      - "*"
+  pull_request:
+    paths:
+      - "baseten-inference-client/**"
+  workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: "Publish to PyPI? (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  build-package:
+    uses: ./.github/workflows/build-maturin.yml
+    with:
+      folder: baseten-inference-client
+      publish_pypi: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true' || startsWith(github.ref, 'refs/tags/') }}
+    secrets:
+      PYPI_TOKEN: ${{ secrets.BASETEN_INFERENCE_CLIENT_PYPI_API_TOKEN }}
