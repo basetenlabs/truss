@@ -145,7 +145,7 @@ class BasetenEndpoints:
         if self.is_binary(request):
             with tracing.section_as_event(span, "binary-deserialize"):
                 inputs = serialization.truss_msgpack_deserialize(body_raw)
-            if truss_schema:
+            if truss_schema and truss_schema.input_type:
                 try:
                     with tracing.section_as_event(span, "parse-pydantic"):
                         inputs = truss_schema.input_type.parse_obj(inputs)
@@ -154,7 +154,7 @@ class BasetenEndpoints:
                         errors.format_pydantic_validation_error(e)
                     ) from e
         else:
-            if truss_schema:
+            if truss_schema and truss_schema.input_type:
                 try:
                     with tracing.section_as_event(span, "parse-pydantic"):
                         inputs = truss_schema.input_type.parse_raw(body_raw)

@@ -24,28 +24,33 @@ class OutputType(BaseModel):
 
 
 class TrussSchema(BaseModel):
-    input_type: Type[BaseModel]
+    input_type: Optional[Type[BaseModel]]
     output_type: Optional[Type[BaseModel]]
     supports_streaming: bool
 
     @classmethod
     def from_signature(
-        cls, input_parameters: MappingProxyType, output_annotation: Any
+        cls, input_parameters: Optional[MappingProxyType], output_annotation: Any
     ) -> Optional["TrussSchema"]:
         """
         Create a TrussSchema from a function signature if annotated, else returns None
         """
 
-        input_type = _parse_input_type(input_parameters)
-        output_type = _parse_output_type(output_annotation)
+        input_type = None
+        if input_parameters:
+            input_type = _parse_input_type(input_parameters)
 
-        if not input_type or not output_type:
+        output_type = None
+        if output_annotation:
+            output_type = _parse_output_type(output_annotation)
+
+        if not input_type and not output_type:
             return None
 
         return cls(
             input_type=input_type,
-            output_type=output_type.type,
-            supports_streaming=output_type.supports_streaming,
+            output_type=output_type.type if output_type else None,
+            supports_streaming=output_type.supports_streaming if output_type else False,
         )
 
     def serialize(self) -> dict:
@@ -54,7 +59,7 @@ class TrussSchema(BaseModel):
         generating an OpenAPI spec for this Truss.
         """
         return {
-            "input_schema": self.input_type.schema(),
+            "input_schema": self.input_type.schema() if self.input_type else None,
             "output_schema": self.output_type.schema()
             if self.output_type is not None
             else None,
