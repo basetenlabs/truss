@@ -2007,3 +2007,43 @@ async def test_nonexistent_websocket_endpoint():
             error=None,
             message="WebSocket is not implemented on this deployment.",
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_truss_server_passes_ping_options():
+    model = """
+    import fastapi
+
+    class Model:
+        async def websocket(self, websocket: fastapi.WebSocket):
+            try:
+                while True:
+                    text = await websocket.receive_text()
+                    if text == "done":
+                        return
+                    await websocket.send_text(text)
+            except fastapi.WebSocketDisconnect:
+                pass
+    """
+    config = """
+    runtime:
+      transport:
+        kind: websocket
+        ping_interval: 1
+        ping_timeout: 1
+    """
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        container, urls = tr.docker_run_for_test()
+        async with websockets.connect(urls.websockets_url) as websocket:
+            await websocket.send("hello")
+            assert await websocket.recv() == "hello"
+
+            await asyncio.sleep(2)
+
+            await websocket.send("world")
+            assert await websocket.recv() == "world"
+
+            await websocket.send("done")
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await websocket.recv()

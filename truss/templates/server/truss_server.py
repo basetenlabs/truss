@@ -474,6 +474,12 @@ class TrussServer:
             timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config=log_config.make_log_config(log_level),
             ws_max_size=WS_MAX_MSG_SZ_BYTES,
+            ws_ping_interval=self._config["runtime"]
+            .get("transport", {})
+            .get("ping_interval"),
+            ws_ping_timeout=self._config["runtime"]
+            .get("transport", {})
+            .get("ping_timeout"),
         )
         cfg.setup_event_loop()  # Call this so uvloop gets used
         server = uvicorn.Server(config=cfg)

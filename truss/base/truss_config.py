@@ -213,6 +213,8 @@ class HTTPOptions(pydantic.BaseModel):
 
 class WebsocketOptions(pydantic.BaseModel):
     kind: Literal["websocket"] = "websocket"
+    ping_interval: Optional[int] = None
+    ping_timeout: Optional[int] = None
 
 
 class GRPCOptions(pydantic.BaseModel):

@@ -1,8 +1,11 @@
 import asyncio
 import os
+from pathlib import Path
 
 import uvicorn
 from application import create_app
+
+from truss.base import truss_config
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
@@ -47,6 +50,17 @@ class ControlServer:
             f"Starting live reload server on port {self._control_server_port}"
         )
 
+        config_path = os.path.join(self._inf_serv_home, "config.yaml")
+        if os.path.exists(config_path):
+            websocket_options = truss_config.TrussConfig.from_yaml(
+                Path(config_path)
+            ).runtime.transport
+            ping_interval = getattr(websocket_options, "ping_interval", None)
+            ping_timeout = getattr(websocket_options, "ping_timeout", None)
+        else:
+            ping_interval = None
+            ping_timeout = None
+
         cfg = uvicorn.Config(
             application,
             host=application.state.control_server_host,
@@ -55,6 +69,8 @@ class ControlServer:
             # httptools installed, which does not work with our requests & version
             # of uvicorn.
             http="h11",
+            ws_ping_interval=ping_interval,
+            ws_ping_timeout=ping_timeout,
         )
         cfg.setup_event_loop()
 
