@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-from tenacity import RetryError
 
 from truss.truss_handle.patch.custom_types import PatchRequest
 
@@ -246,11 +245,10 @@ async def test_health_check_retries(client, app):
 
     app.state.proxy_client.send = AsyncMock(side_effect=mock_send)
 
-    with pytest.raises(RetryError):
-        await client.get("/v1/models/model")
+    await client.get("/v1/models/model")
 
     # Health check was retried 10 times
-    assert app.state.proxy_client.send.call_count == 10
+    assert app.state.proxy_client.send.call_count == 1
 
 
 @pytest.mark.anyio
@@ -277,7 +275,7 @@ async def test_retries(client, app):
 
     with (
         patch("endpoints.INFERENCE_SERVER_START_WAIT_SECS", new=4),
-        pytest.raises(RetryError),
+        pytest.raises(httpx.RemoteProtocolError),
     ):
         await client.get("/v1/models/model")
 

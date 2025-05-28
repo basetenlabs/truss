@@ -5,12 +5,16 @@ from typing import Any, Callable, Dict
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
-from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx_ws import aconnect_ws
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
 from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
 from wsproto.events import BytesMessage, TextMessage
+
+from truss.templates.control.control.helpers.errors import (
+    ModelLoadFailed,
+    ModelNotReady,
+)
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 BASE_RETRY_EXCEPTIONS = (
@@ -65,7 +69,9 @@ async def proxy_http(request: Request):
                 resp = await client.send(inf_serv_req, stream=True)
 
                 if await _is_model_not_ready(resp):
-                    raise ModelNotReady("Model has started running, but not ready yet.")
+                    return JSONResponse(
+                        "Model has started running, but not ready yet.", status_code=503
+                    )
             except (httpx.RemoteProtocolError, httpx.ConnectError) as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server
@@ -92,13 +98,6 @@ async def proxy_http(request: Request):
     return response
 
 
-def retry_error_callback(retry_state: RetryCallState):
-    if retry_state.outcome is not None and isinstance(
-        retry_state.outcome.exception(), ModelNotReady
-    ):
-        print("Inference attempted but model is not ready yet.")
-
-
 def inference_retries(
     retry_condition: Callable[[RetryCallState], bool] = BASE_RETRY_EXCEPTIONS,
 ):
@@ -107,7 +106,6 @@ def inference_retries(
         stop=_custom_stop_strategy,
         wait=wait_fixed(1),
         reraise=True,
-        retry_error_callback=retry_error_callback,
     ):
         yield attempt
 
