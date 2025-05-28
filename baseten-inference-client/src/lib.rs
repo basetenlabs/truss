@@ -29,6 +29,9 @@ const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 const DEFAULT_CONCURRENCY: usize = 32;
 const MAX_BATCH_SIZE: usize = 128;
 const DEFAULT_BATCH_SIZE: usize = 16;
+const MAX_HTTP_RETRIES: u32 = 3; // Max number of retries for HTTP 429 or network errors
+const INITIAL_BACKOFF_MS: u64 = 500; // Initial backoff in milliseconds
+const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
 
 // --- Global Tokio Runtime ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
@@ -268,7 +271,7 @@ impl ClassificationResponse {
 #[pyclass]
 struct InferenceClient {
     api_key: String,
-    api_base: String,
+    base_url: String,
     client: Client,
     runtime: Arc<Runtime>,
 }
@@ -329,12 +332,12 @@ impl InferenceClient {
 #[pymethods]
 impl InferenceClient {
     #[new]
-    #[pyo3(signature = (api_base, api_key = None))]
-    fn new(api_base: String, api_key: Option<String>) -> PyResult<Self> {
+    #[pyo3(signature = (base_url, api_key = None))]
+    fn new(base_url: String, api_key: Option<String>) -> PyResult<Self> {
         let api_key = InferenceClient::get_api_key(api_key)?;
         Ok(InferenceClient {
             api_key,
-            api_base,
+            base_url,
             client: Client::new(),
             runtime: Arc::clone(&GLOBAL_RUNTIME),
         })
@@ -366,7 +369,7 @@ impl InferenceClient {
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
-        let api_base_clone = self.api_base.clone();
+        let base_url_clone = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
 
         // input, model, encoding_format, dimensions, user will be moved into the closures
@@ -383,7 +386,7 @@ impl InferenceClient {
                         input, // Use directly
                         model, // Use directly
                         api_key_clone,
-                        api_base_clone,
+                        base_url_clone,
                         encoding_format, // Use directly
                         dimensions,      // Use directly
                         user,            // Use directly
@@ -429,7 +432,7 @@ impl InferenceClient {
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
-        let api_base_clone = self.api_base.clone();
+        let base_url_clone = self.base_url.clone();
         // input, model, encoding_format, dimensions, user will be moved into the async block.
 
         let future = async move {
@@ -438,7 +441,7 @@ impl InferenceClient {
                 input,
                 model,
                 api_key_clone,
-                api_base_clone,
+                base_url_clone,
                 encoding_format,
                 dimensions,
                 user,
@@ -473,7 +476,7 @@ impl InferenceClient {
         let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
-        let api_base = self.api_base.clone();
+        let base_url = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
         let truncation_direction = truncation_direction.to_string();
 
@@ -489,7 +492,7 @@ impl InferenceClient {
                     truncate,
                     truncation_direction,
                     api_key,
-                    api_base,
+                    base_url,
                     max_concurrent_requests,
                     batch_size,
                     timeout_duration,
@@ -532,7 +535,7 @@ impl InferenceClient {
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
-        let api_base_clone = self.api_base.clone();
+        let base_url_clone = self.base_url.clone();
         let truncation_direction = truncation_direction.to_string(); // Convert to String
 
         let future = async move {
@@ -545,7 +548,7 @@ impl InferenceClient {
                 truncate,
                 truncation_direction,
                 api_key_clone,
-                api_base_clone,
+                base_url_clone,
                 max_concurrent_requests,
                 batch_size,
                 timeout_duration,
@@ -575,7 +578,7 @@ impl InferenceClient {
         let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
-        let api_base = self.api_base.clone();
+        let base_url = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
         let truncation_direction = truncation_direction.to_string();
 
@@ -590,7 +593,7 @@ impl InferenceClient {
                         truncate,
                         truncation_direction,
                         api_key,
-                        api_base,
+                        base_url,
                         max_concurrent_requests,
                         batch_size,
                         timeout_duration,
@@ -631,7 +634,7 @@ impl InferenceClient {
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
-        let api_base_clone = self.api_base.clone();
+        let base_url_clone = self.base_url.clone();
         let truncation_direction = truncation_direction.to_string(); // Convert to String
 
         let future = async move {
@@ -642,7 +645,7 @@ impl InferenceClient {
                 truncate,
                 truncation_direction,
                 api_key_clone,
-                api_base_clone,
+                base_url_clone,
                 max_concurrent_requests,
                 batch_size,
                 timeout_duration,
@@ -684,7 +687,7 @@ impl InferenceClient {
 
         let client = self.client.clone();
         let api_key = self.api_key.clone();
-        let api_base = self.api_base.clone();
+        let base_url = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
 
         // The async task now receives Vec<JsonValue> and returns Result<Vec<JsonValue>, PyErr>
@@ -696,7 +699,7 @@ impl InferenceClient {
                     url_path,
                     payloads_json, // Pass depythonized JSON values
                     api_key,
-                    api_base,
+                    base_url,
                     max_concurrent_requests,
                     timeout_duration,
                 )
@@ -764,7 +767,7 @@ impl InferenceClient {
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
-        let api_base_clone = self.api_base.clone();
+        let base_url_clone = self.base_url.clone();
 
         let future = async move {
             let response_json_values = process_batch_post_requests(
@@ -772,7 +775,7 @@ impl InferenceClient {
                 url_path,
                 payloads_json,
                 api_key_clone,
-                api_base_clone,
+                base_url_clone,
                 max_concurrent_requests,
                 timeout_duration,
             )
@@ -806,11 +809,11 @@ async fn send_single_embedding_request(
     texts_batch: Vec<String>,
     model: String,
     api_key: String,
-    api_base: String,
+    base_url: String,
     encoding_format: Option<String>,
     dimensions: Option<u32>,
     user: Option<String>,
-    request_timeout: Duration, // New parameter for individual request timeout
+    request_timeout: Duration,
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let request_payload = OpenAIEmbeddingsRequest {
         input: texts_batch,
@@ -820,16 +823,20 @@ async fn send_single_embedding_request(
         user,
     };
 
-    let url = format!("{}/v1/embeddings", api_base.trim_end_matches('/'));
+    let url = format!("{}/v1/embeddings", base_url.trim_end_matches('/'));
 
-    let response = client
+    let request_builder = client
         .post(&url)
-        .bearer_auth(api_key)
+        .bearer_auth(api_key.clone()) // Clone api_key if it's used after this
         .json(&request_payload)
-        .timeout(request_timeout) // Apply the timeout here.
-        .send()
-        .await
-        .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+        .timeout(request_timeout);
+
+    let response = send_request_with_retry(
+        request_builder,
+        MAX_HTTP_RETRIES,
+        Duration::from_millis(INITIAL_BACKOFF_MS),
+    )
+    .await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
@@ -845,7 +852,7 @@ async fn process_embeddings_requests(
     texts: Vec<String>,
     model: String,
     api_key: String,
-    api_base: String,
+    base_url: String,
     encoding_format: Option<String>,
     dimensions: Option<u32>,
     user: Option<String>,
@@ -863,7 +870,7 @@ async fn process_embeddings_requests(
         let client_clone = client.clone();
         let model_for_task = model.clone();
         let api_key_clone = api_key.clone();
-        let api_base_clone = api_base.clone();
+        let base_url_clone = base_url.clone();
         let encoding_format_clone = encoding_format.clone();
         let dimensions_clone = dimensions;
         let user_clone = user.clone();
@@ -882,7 +889,7 @@ async fn process_embeddings_requests(
                 user_text_batch_owned,
                 model_for_task,
                 api_key_clone,
-                api_base_clone,
+                base_url_clone,
                 encoding_format_clone,
                 dimensions_clone,
                 user_clone,
@@ -950,7 +957,7 @@ async fn send_single_rerank_request(
     truncate: bool,
     truncation_direction: String,
     api_key: String,
-    api_base: String,
+    base_url: String,
     request_timeout: Duration,
 ) -> Result<Vec<RerankResult>, PyErr> {
     let request_payload = RerankRequest {
@@ -962,16 +969,20 @@ async fn send_single_rerank_request(
         truncation_direction,
     };
 
-    let url = format!("{}/rerank", api_base.trim_end_matches('/'));
+    let url = format!("{}/rerank", base_url.trim_end_matches('/'));
 
-    let response = client
+    let request_builder = client
         .post(&url)
-        .bearer_auth(api_key)
+        .bearer_auth(api_key.clone())
         .json(&request_payload)
-        .timeout(request_timeout)
-        .send()
-        .await
-        .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+        .timeout(request_timeout);
+
+    let response = send_request_with_retry(
+        request_builder,
+        MAX_HTTP_RETRIES,
+        Duration::from_millis(INITIAL_BACKOFF_MS),
+    )
+    .await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
@@ -991,7 +1002,7 @@ async fn process_rerank_requests(
     truncate: bool,
     truncation_direction: String,
     api_key: String,
-    api_base: String,
+    base_url: String,
     max_concurrent_requests: usize,
     batch_size: usize,
     request_timeout_duration: Duration,
@@ -1004,7 +1015,7 @@ async fn process_rerank_requests(
         let client_clone = client.clone();
         let query_clone = query.clone();
         let api_key_clone = api_key.clone();
-        let api_base_clone = api_base.clone();
+        let base_url_clone = base_url.clone();
         let truncation_direction_clone = truncation_direction.clone();
         let texts_batch_owned = texts_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
@@ -1024,7 +1035,7 @@ async fn process_rerank_requests(
                 truncate,
                 truncation_direction_clone,
                 api_key_clone,
-                api_base_clone,
+                base_url_clone,
                 individual_request_timeout,
             )
             .await;
@@ -1071,7 +1082,7 @@ async fn send_single_classify_request(
     truncate: bool,
     truncation_direction: String,
     api_key: String,
-    api_base: String,
+    base_url: String,
     request_timeout: Duration,
 ) -> Result<Vec<Vec<ClassificationResult>>, PyErr> {
     let request_payload = ClassifyRequest {
@@ -1081,16 +1092,20 @@ async fn send_single_classify_request(
         truncation_direction,
     };
 
-    let url = format!("{}/predict", api_base.trim_end_matches('/'));
+    let url = format!("{}/predict", base_url.trim_end_matches('/'));
 
-    let response = client
+    let request_builder = client
         .post(&url)
-        .bearer_auth(api_key)
+        .bearer_auth(api_key.clone())
         .json(&request_payload)
-        .timeout(request_timeout)
-        .send()
-        .await
-        .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+        .timeout(request_timeout);
+
+    let response = send_request_with_retry(
+        request_builder,
+        MAX_HTTP_RETRIES,
+        Duration::from_millis(INITIAL_BACKOFF_MS),
+    )
+    .await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
@@ -1110,7 +1125,7 @@ async fn process_classify_requests(
     truncate: bool,
     truncation_direction: String,
     api_key: String,
-    api_base: String,
+    base_url: String,
     max_concurrent_requests: usize,
     batch_size: usize,
     request_timeout_duration: Duration,
@@ -1122,7 +1137,7 @@ async fn process_classify_requests(
     for input_chunk_slice in inputs.chunks(batch_size) {
         let client_clone = client.clone();
         let api_key_clone = api_key.clone();
-        let api_base_clone = api_base.clone();
+        let base_url_clone = base_url.clone();
         let truncation_direction_clone = truncation_direction.clone();
         let inputs_for_api_owned: Vec<Vec<String>> =
             input_chunk_slice.iter().map(|s| vec![s.clone()]).collect();
@@ -1141,7 +1156,7 @@ async fn process_classify_requests(
                 truncate,
                 truncation_direction_clone,
                 api_key_clone,
-                api_base_clone,
+                base_url_clone,
                 individual_request_timeout,
             )
             .await;
@@ -1188,26 +1203,26 @@ async fn send_single_batch_post_request(
     api_key: String,
     request_timeout: Duration,
 ) -> Result<JsonValue, PyErr> {
-    // No depythonize here
-
-    let response = client
+    let request_builder = client
         .post(&full_url)
-        .bearer_auth(api_key)
+        .bearer_auth(api_key.clone())
         .json(&payload_json)
-        .timeout(request_timeout)
-        .send()
-        .await
-        .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+        .timeout(request_timeout);
+
+    let response = send_request_with_retry(
+        request_builder,
+        MAX_HTTP_RETRIES,
+        Duration::from_millis(INITIAL_BACKOFF_MS),
+    )
+    .await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
-    // Get response as serde_json::Value
     let response_json_value: JsonValue = successful_response
         .json::<JsonValue>()
         .await
         .map_err(|e| PyValueError::new_err(format!("Failed to parse response JSON: {}", e)))?;
 
-    // No pythonize here, return JsonValue
     Ok(response_json_value)
 }
 
@@ -1218,7 +1233,7 @@ async fn process_batch_post_requests(
     url_path: String,
     payloads_json: Vec<JsonValue>, // Takes Vec<JsonValue>
     api_key: String,
-    api_base: String,
+    base_url: String,
     max_concurrent_requests: usize,
     request_timeout_duration: Duration,
 ) -> Result<Vec<JsonValue>, PyErr> {
@@ -1232,7 +1247,7 @@ async fn process_batch_post_requests(
         // Iterate over JsonValue
         let client_clone = client.clone();
         let api_key_clone = api_key.clone();
-        let api_base_clone = api_base.clone();
+        let base_url_clone = base_url.clone();
         let url_path_clone = url_path.clone();
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
@@ -1245,7 +1260,7 @@ async fn process_batch_post_requests(
 
             let full_url = format!(
                 "{}/{}",
-                api_base_clone.trim_end_matches('/'),
+                base_url_clone.trim_end_matches('/'),
                 url_path_clone.trim_start_matches('/')
             );
 
@@ -1416,6 +1431,51 @@ async fn ensure_successful_response(
         )))
     } else {
         Ok(response)
+    }
+}
+
+async fn send_request_with_retry(
+    request_builder: reqwest::RequestBuilder,
+    max_retries: u32,
+    initial_backoff: Duration,
+) -> Result<reqwest::Response, PyErr> {
+    let mut retries = 0;
+    let mut current_backoff = initial_backoff;
+
+    loop {
+        // Clone the request builder for each attempt as `send()` consumes it.
+        // This is generally safe for requests with cloneable body
+        let request_builder_clone = request_builder
+            .try_clone()
+            .ok_or_else(|| PyValueError::new_err("Failed to clone request builder for retry"))?;
+
+        let response = request_builder_clone
+            .send()
+            .await
+            .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        // If we get here, the response was not successful.
+        // Check if it's a 429 Too Many Requests error or other server error
+        if response.status().as_u16() == 429 || response.status().is_server_error() {
+            // Retry on 429 or 5xx server errors
+            retries += 1;
+            if retries > max_retries {
+                // raise a HTTPError if max retries exceeded
+                return ensure_successful_response(response).await;
+            }
+
+            // Exponential backoff
+            let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION);
+            tokio::time::sleep(backoff_duration).await;
+            current_backoff *= 4;
+        } else {
+            // Some other error occurred, return the response for inspection
+            return Ok(response);
+        }
     }
 }
 
