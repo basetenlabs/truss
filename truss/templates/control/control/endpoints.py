@@ -69,6 +69,8 @@ async def proxy_http(request: Request):
                 resp = await client.send(inf_serv_req, stream=True)
 
                 if await _is_model_not_ready(resp):
+                    # If this is a health check request, don't raise an error so that a stack
+                    # trace isn't logged upon deploying a model with a long load time.
                     if path == "/v1/models/model/loaded":
                         return JSONResponse(
                             "Model has started running, but not ready yet.",
