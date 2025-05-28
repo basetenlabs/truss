@@ -69,9 +69,12 @@ async def proxy_http(request: Request):
                 resp = await client.send(inf_serv_req, stream=True)
 
                 if await _is_model_not_ready(resp):
-                    return JSONResponse(
-                        "Model has started running, but not ready yet.", status_code=503
-                    )
+                    if path == "/v1/models/model/loaded":
+                        return JSONResponse(
+                            "Model has started running, but not ready yet.",
+                            status_code=503,
+                        )
+                    raise ModelNotReady("Model has started running, but not ready yet.")
             except (httpx.RemoteProtocolError, httpx.ConnectError) as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server
