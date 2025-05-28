@@ -213,8 +213,8 @@ class HTTPOptions(pydantic.BaseModel):
 
 class WebsocketOptions(pydantic.BaseModel):
     kind: Literal["websocket"] = "websocket"
-    ping_interval: Optional[int] = None
-    ping_timeout: Optional[int] = None
+    ping_interval_seconds: Optional[float] = None
+    ping_timeout_seconds: Optional[float] = None
 
 
 class GRPCOptions(pydantic.BaseModel):
@@ -272,8 +272,12 @@ class Runtime(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def sync_is_websocket(self) -> "Runtime":
         transport = self.transport
-        if self.is_websocket_endpoint is True:
+        if (
+            self.is_websocket_endpoint is True
+            and transport.kind != TransportKind.WEBSOCKET
+        ):
             transport = WebsocketOptions()
+
         is_websocket_endpoint = transport.kind == TransportKind.WEBSOCKET
 
         # Only update if values actually change and bypass validation to avoid inifite
