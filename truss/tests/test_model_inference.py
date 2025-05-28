@@ -87,7 +87,7 @@ def test_predict_python_versions(config_python_version, inspected_python_version
 
 
 @pytest.mark.integration
-def test_model_load_logs(test_data_path):
+def test_model_load_logs():
     model = """
     from typing import Optional
     import logging

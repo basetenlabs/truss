@@ -1,12 +1,10 @@
-import tempfile
 import time
-from pathlib import Path
 
 import pytest
 import requests
 
 from truss.templates.shared import serialization
-from truss.tests.helpers import create_truss
+from truss.tests.helpers import temp_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.truss_handle import TrussHandle
 
@@ -15,12 +13,14 @@ DEFAULT_CONFIG = """model_name: test-truss"""
 
 @pytest.mark.integration
 def test_truss_with_no_annotations(test_data_path):
-    truss_dir = test_data_path / "test_basic_truss"
+    truss_no_schema = """
+    class Model:
+        def predict(self, request: str) -> list[str]:
+            return ["hello"]
+    """
 
-    tr = TrussHandle(truss_dir)
-
-    with ensure_kill_all():
-        container, urls = tr.docker_run_for_test()
+    with ensure_kill_all(), temp_truss(truss_no_schema, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"prompt": "value"})
         assert response.json() == {"prompt": "value"}
@@ -41,13 +41,10 @@ class Model:
         return ["hello"]
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, truss_non_pydantic_annotations)
-
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
+    with ensure_kill_all(), temp_truss(
+        truss_non_pydantic_annotations, DEFAULT_CONFIG
+    ) as th:
+        container, urls = th.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"prompt": "value"})
         assert response.json() == ["hello"]
@@ -70,13 +67,8 @@ class Model:
         return "hello"
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, truss_long_load)
-
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+    with ensure_kill_all(), temp_truss(truss_long_load, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
 
         # Wait a bit for the server to start
         time.sleep(2)
@@ -160,13 +152,8 @@ class Model:
         return ModelOutput(generated_text=request.prompt)
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
-
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
+    with ensure_kill_all(), temp_truss(streaming_truss, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
         response = requests.post(urls.predict_url, json={"prompt": "value"})
 
         assert response.json() == {"generated_text": "value"}
@@ -213,12 +200,8 @@ class Model:
         return inner()
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
+    with ensure_kill_all(), temp_truss(streaming_truss, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"prompt": "value"})
 
@@ -258,12 +241,8 @@ class Model:
         return ModelOutput(generated_text=request.prompt)
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, truss_contents)
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
+    with ensure_kill_all(), temp_truss(truss_contents, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"prompt": "value"})
 
@@ -309,12 +288,8 @@ class Model:
             yield str(i)
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
+    with ensure_kill_all(), temp_truss(streaming_truss, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"prompt": "value"})
 
@@ -359,14 +334,8 @@ class Model:
             return ModelOutput(generated_text=request.prompt)
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
-
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
-
+    with ensure_kill_all(), temp_truss(streaming_truss, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
         response = requests.post(
             urls.predict_url, json={"prompt": "value", "stream": False}
         )
@@ -428,13 +397,8 @@ class Model:
         return ModelOutput(generated_text=request)
 """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, DEFAULT_CONFIG, streaming_truss)
-
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
+    with ensure_kill_all(), temp_truss(streaming_truss, DEFAULT_CONFIG) as th:
+        container, urls = th.docker_run_for_test()
 
         response = requests.post(
             urls.predict_url, json={"prompt": "value", "stream": False}

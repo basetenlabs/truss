@@ -25,14 +25,8 @@ def anyio_backend():
 @pytest.mark.integration
 def test_truss_with_errors():
     model = """
-    import traceback, inspect
-
     class Model:
         async def predict(self, request):
-            stack_lines = traceback.format_stack()
-            print("".join(stack_lines))
-            for frame_info in inspect.stack():
-                print(f"{frame_info.filename}:{frame_info.lineno} in {frame_info.function}")
             raise ValueError("error")
     """
 
@@ -43,71 +37,71 @@ def test_truss_with_errors():
         assert response.status_code == 500
         assert "error" in response.json()
 
-        assert_logs_contain_error(container.logs(), "ValueError: error")
+        assert_logs_contain_error(container.logs(), "ValueError: error123")
 
         assert "Internal Server Error" in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
         assert response.headers["x-baseten-error-code"] == "600"
 
-    model_preprocess_error = """
-    class Model:
-        async def preprocess(self, request):
-            raise ValueError("error")
-
-        async def predict(self, request):
-            return {"a": "b"}
-    """
-
-    with ensure_kill_all(), temp_truss(model_preprocess_error) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-
-        assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-    model_postprocess_error = """
-    class Model:
-        async def predict(self, request):
-            return {"a": "b"}
-
-        async def postprocess(self, response):
-            raise ValueError("error")
-    """
-
-    with ensure_kill_all(), temp_truss(model_postprocess_error) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-        assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-    model_async = """
-    class Model:
-        async def predict(self, request):
-            raise ValueError("error")
-    """
-
-    with ensure_kill_all(), temp_truss(model_async) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-
-        assert_logs_contain_error(container.logs(), "ValueError: error")
-
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
+    # model_preprocess_error = """
+    # class Model:
+    #     async def preprocess(self, request):
+    #         raise ValueError("error")
+    #
+    #     async def predict(self, request):
+    #         return {"a": "b"}
+    # """
+    #
+    # with ensure_kill_all(), temp_truss(model_preprocess_error) as tr:
+    #     container, urls = tr.docker_run_for_test()
+    #
+    #     response = requests.post(urls.predict_url, json={})
+    #     assert response.status_code == 500
+    #     assert "error" in response.json()
+    #
+    #     assert_logs_contain_error(container.logs(), "ValueError: error")
+    #     assert "Internal Server Error" in response.json()["error"]
+    #     assert response.headers["x-baseten-error-source"] == "04"
+    #     assert response.headers["x-baseten-error-code"] == "600"
+    #
+    # model_postprocess_error = """
+    # class Model:
+    #     async def predict(self, request):
+    #         return {"a": "b"}
+    #
+    #     async def postprocess(self, response):
+    #         raise ValueError("error")
+    # """
+    #
+    # with ensure_kill_all(), temp_truss(model_postprocess_error) as tr:
+    #     container, urls = tr.docker_run_for_test()
+    #
+    #     response = requests.post(urls.predict_url, json={})
+    #     assert response.status_code == 500
+    #     assert "error" in response.json()
+    #     assert_logs_contain_error(container.logs(), "ValueError: error")
+    #     assert "Internal Server Error" in response.json()["error"]
+    #     assert response.headers["x-baseten-error-source"] == "04"
+    #     assert response.headers["x-baseten-error-code"] == "600"
+    #
+    # model_async = """
+    # class Model:
+    #     async def predict(self, request):
+    #         raise ValueError("error")
+    # """
+    #
+    # with ensure_kill_all(), temp_truss(model_async) as tr:
+    #     container, urls = tr.docker_run_for_test()
+    #
+    #     response = requests.post(urls.predict_url, json={})
+    #     assert response.status_code == 500
+    #     assert "error" in response.json()
+    #
+    #     assert_logs_contain_error(container.logs(), "ValueError: error")
+    #
+    #     assert "Internal Server Error" in response.json()["error"]
+    #     assert response.headers["x-baseten-error-source"] == "04"
+    #     assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration

@@ -190,7 +190,7 @@ def intercept_exceptions(
             except:  # If we cannot import chains or parse the error.
                 logger.error(
                     "Model raised HTTPException",
-                    exc_info=filter_traceback(model_file_name),
+                    exc_info=True,  # filter_traceback(model_file_name),
                 )
                 raise
             # If error was extracted successfully, the customized stack trace is
@@ -199,11 +199,14 @@ def intercept_exceptions(
             raise e from None
 
         logger.error(
-            "Model raised HTTPException", exc_info=filter_traceback(model_file_name)
+            "Model raised HTTPException",
+            exc_info=True,  # filter_traceback(model_file_name)
         )
         raise
     except Exception as exc:
-        logger.error(MODEL_ERROR_MESSAGE, exc_info=filter_traceback(model_file_name))
+        logger.error(
+            MODEL_ERROR_MESSAGE, exc_info=True
+        )  # filter_traceback(model_file_name))
         raise UserCodeError(str(exc))
 
 
