@@ -16,10 +16,10 @@ import asyncio
 from baseten_inference_client import InferenceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
 
 api_key = os.environ.get("BASETEN_API_KEY")
-api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
+base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
 # Also works with 3rd party endpoints.
-# api_base_embed = "https://api.openai.com" or "https://api.mixedbread.com"
-client = InferenceClient(api_base=api_base_embed, api_key=api_key)
+# base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
+client = InferenceClient(base_url=base_url_embed, api_key=api_key)
 ```
 
 ### Synchronous Embedding
@@ -218,9 +218,9 @@ The client can raise several types of errors. Here's how to handle common ones:
 Here's an example demonstrating how to catch these errors for the `embed` method:
 
 ```python
-import requests # Make sure to import requests to catch its specific exceptions
+import requests
 
-# client = InferenceClient(api_base="your_api_base", api_key="your_api_key")
+# client = InferenceClient(base_url="your_b10_url", api_key="your_b10_api_key")
 
 texts_to_embed = ["Hello world", "Another text example"]
 try:
