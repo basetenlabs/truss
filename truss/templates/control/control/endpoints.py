@@ -71,7 +71,7 @@ async def proxy_http(request: Request):
                 if await _is_model_not_ready(resp):
                     # If this is a health check request, don't raise an error so that a stack
                     # trace isn't logged upon deploying a model with a long load time.
-                    if path == "/v1/models/model/loaded":
+                    if _is_health_check(path):
                         return JSONResponse(
                             "Model has started running, but not ready yet.",
                             status_code=503,
@@ -225,6 +225,13 @@ def _reroute_if_health_check(path: str) -> str:
     if path == "/v1/models/model":
         path = "/v1/models/model/loaded"
     return path
+
+
+def _is_health_check(path: str) -> bool:
+    """
+    Checks if the request path is for the health check endpoint.
+    """
+    return path == "/v1/models/model/loaded"
 
 
 def _custom_stop_strategy(retry_state: RetryCallState) -> bool:
