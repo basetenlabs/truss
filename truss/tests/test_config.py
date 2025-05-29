@@ -760,23 +760,23 @@ def test_websocket_options_ping_values(tmp_path):
     runtime:
       transport:
         kind: websocket
-        ping_interval: 5
-        ping_timeout: 10
+        ping_interval_seconds: 5
+        ping_timeout_seconds: 10
     """
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml_content)
 
     config = TrussConfig.from_yaml(config_path)
     assert isinstance(config.runtime.transport, WebsocketOptions)
-    assert config.runtime.transport.ping_interval == 5
-    assert config.runtime.transport.ping_timeout == 10
+    assert config.runtime.transport.ping_interval_seconds == 5
+    assert config.runtime.transport.ping_timeout_seconds == 10
 
     out_path = tmp_path / "out.yaml"
     config.write_to_yaml_file(out_path, verbose=False)
 
     dumped = yaml.safe_load(out_path.read_text())
-    assert dumped["runtime"]["transport"]["ping_interval"] == 5
-    assert dumped["runtime"]["transport"]["ping_timeout"] == 10
+    assert dumped["runtime"]["transport"]["ping_interval_seconds"] == 5
+    assert dumped["runtime"]["transport"]["ping_timeout_seconds"] == 10
 
 
 def test_resources_transport_read_unspecified(tmp_path):

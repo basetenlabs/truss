@@ -58,7 +58,7 @@ class ControlServer:
         extra_kwargs = {}
         if self._config:
             transport = self._config.get("runtime", {}).get("transport", {})
-            if transport and transport["kind"] == "websocket":
+            if transport and transport.get("kind") == "websocket":
                 if ping_interval_seconds := transport.get("ping_interval_seconds"):
                     extra_kwargs["ws_ping_interval"] = ping_interval_seconds
                 if ping_timeout_seconds := transport.get("ping_timeout_seconds"):

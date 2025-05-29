@@ -176,9 +176,7 @@ class ModelCache(pydantic.RootModel[list[ModelRepo]]):
     @property
     def is_v2(self) -> bool:
         self._check_volume_consistent()
-        return len(self.models) >= 1 and any(
-            model.use_volume is True for model in self.models
-        )
+        return len(self.models) >= 1 and any(model.use_volume for model in self.models)
 
     def _check_volume_consistent(self):
         """Check if all models have the same volume folder."""
@@ -258,10 +256,7 @@ class Runtime(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="before")
     def _handle_legacy_input(cls, values: dict) -> dict:
-        if (
-            values.get("transport") is None
-            and values.get("is_websocket_endpoint") is True
-        ):
+        if values.get("transport") is None and values.get("is_websocket_endpoint"):
             warnings.warn(
                 "`is_websocket_endpoint` is deprecated, use `transport.kind == websocket`",
                 DeprecationWarning,
@@ -272,10 +267,7 @@ class Runtime(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def sync_is_websocket(self) -> "Runtime":
         transport = self.transport
-        if (
-            self.is_websocket_endpoint is True
-            and transport.kind != TransportKind.WEBSOCKET
-        ):
+        if self.is_websocket_endpoint and transport.kind != TransportKind.WEBSOCKET:
             transport = WebsocketOptions()
 
         is_websocket_endpoint = transport.kind == TransportKind.WEBSOCKET
@@ -302,7 +294,9 @@ class Runtime(custom_types.ConfigModel):
         try:
             packaging.version.Version(value)
         except packaging.version.InvalidVersion as e:
-            raise ValueError(f"Invalid version string: {value}") from e
+            raise ValueError(
+                f"Invalid version string: `{value}` - must be parsable as semver, e.g. '0.9.0'."
+            ) from e
         return value
 
     @pydantic.model_serializer(mode="wrap")
