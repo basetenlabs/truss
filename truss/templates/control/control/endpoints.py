@@ -73,10 +73,12 @@ async def proxy_http(request: Request):
                     # trace isn't logged upon deploying a model with a long load time.
                     if _is_health_check(path):
                         return JSONResponse(
-                            "Model has started running, but not ready yet.",
+                            "The server is live, but the model has not completed loading.",
                             status_code=503,
                         )
-                    raise ModelNotReady("Model has started running, but not ready yet.")
+                    raise ModelNotReady(
+                        "The server is live, but the model has not completed loading."
+                    )
             except (httpx.RemoteProtocolError, httpx.ConnectError) as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server

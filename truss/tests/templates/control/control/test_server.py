@@ -247,7 +247,7 @@ async def test_health_check_retries(client, app):
 
     await client.get("/v1/models/model")
 
-    # Health check was retried 10 times
+    # Health check did not retry
     assert app.state.proxy_client.send.call_count == 1
 
 

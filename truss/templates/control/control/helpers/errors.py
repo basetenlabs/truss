@@ -37,7 +37,7 @@ class InadmissiblePatch(PatchApplicatonError):
 
 
 class ModelNotReady(Error):
-    """Model has started running, but not ready yet."""
+    """The server is live, but the model has not completed loading."""
 
     pass
 
