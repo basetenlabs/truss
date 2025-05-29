@@ -21,7 +21,7 @@ base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
 client = InferenceClient(base_url=base_url_embed, api_key=api_key)
 ```
-### Embeddings 
+### Embeddings
 #### Synchronous Embedding
 
 ```python
@@ -87,11 +87,11 @@ Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `.
 | 131 072                        |           1 024 |                4.63 |           39.07 |    8.44× |
 | 2 097 152                      |          16 384 |               70.92 |          903.68 |   12.74× |
 
-### Gerneral Batch Post
+### Gerneral Batch POST
 
 The batch_post method is generic. It can be used to send POST requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON item.
 
-#### Synchronous Batch Post
+#### Synchronous Batch POST
 ```python
 payload1 = {"model": "my_model", "input": ["Batch request sample 1"]}
 payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
@@ -104,7 +104,7 @@ response1, response2 = client.batch_post(
 print("Batch POST responses:", response1, response2)
 ```
 
-#### Asynchronous Batch Post
+#### Asynchronous Batch POST
 
 ```python
 async def async_batch_post():
@@ -121,7 +121,7 @@ async def async_batch_post():
 # asyncio.run(async_batch_post())
 ```
 ### Reranking
-Reranking compatible with BEI or text-embeddings-inference. 
+Reranking compatible with BEI or text-embeddings-inference.
 
 #### Synchronous Reranking
 
@@ -162,7 +162,7 @@ async def async_rerank():
 ```
 
 ### Classification
-Predicy (classification endpoint) compatible with BEI or text-embeddings-inference. 
+Predicy (classification endpoint) compatible with BEI or text-embeddings-inference.
 #### Synchronous Classification
 
 ```python
