@@ -47,7 +47,7 @@ class TrussSchema(BaseModel):
         return cls(
             input_type=input_type,
             output_type=output_type.type if output_type else None,
-            supports_streaming=output_type.supports_streaming if output_type else False,
+            supports_streaming=output_type.supports_streaming if output_type else None,
         )
 
     def serialize(self) -> dict:
