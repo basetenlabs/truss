@@ -36,13 +36,10 @@ class TrussSchema(BaseModel):
         Create a TrussSchema from a function signature if annotated, else returns None
         """
 
-        input_type = None
-        if input_parameters:
-            input_type = _parse_input_type(input_parameters)
-
-        output_type = None
-        if output_annotation:
-            output_type = _parse_output_type(output_annotation)
+        input_type = _parse_input_type(input_parameters) if input_parameters else None
+        output_type = (
+            _parse_output_type(output_annotation) if output_annotation else None
+        )
 
         if not input_type and not output_type:
             return None
