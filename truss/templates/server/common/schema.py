@@ -26,7 +26,7 @@ class OutputType(BaseModel):
 class TrussSchema(BaseModel):
     input_type: Optional[Type[BaseModel]]
     output_type: Optional[Type[BaseModel]]
-    supports_streaming: bool
+    supports_streaming: Optional[bool]
 
     @classmethod
     def from_signature(
