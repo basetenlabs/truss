@@ -42,6 +42,12 @@ Then to run the entire test suite
 poetry run pytest truss/tests
 ```
 
+**NOTE:** When you are ready to commit changes, use poetry to run `git commit`, because the pre-commit hook is installed within the poetry environment:
+
+```bash
+poetry run git commit
+```
+
 ## Documentation
 
 To learn about Truss see the [official documentation](https://truss.baseten.co).
