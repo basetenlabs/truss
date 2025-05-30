@@ -951,6 +951,9 @@ def _validate_transport_options(
                 location,
             )
     else:
+        # TODO: non-websocket implies HTTP, it would be better to make the alternative
+        #  kind explicit with an enum instead of `is_websocket` and then assert that
+        #  which transport options can be used.
         if isinstance(transport, truss_config.WebsocketOptions):
             _collect_error(
                 f"{truss_config.WebsocketOptions.__name__} can only be used for websocket endpoints.",
