@@ -11,14 +11,14 @@ from InquirerPy import inquirer
 from truss.util import user_config
 
 
-def _run_upgrade(command: str, console: rich.console.Console) -> bool:
-    console.print(f"[bold]Running:[/bold] '{command}'")
+def _run_upgrade(command: str) -> bool:
+    rich.print(f"[bold]Running:[/bold] '{command}'")
     returncode = subprocess.run(command, shell=True).returncode
     if returncode == 0:
-        console.print("[green]✅ Upgrade complete. Please re-run your command.[/green]")
+        rich.print("[green]✅ Upgrade complete. Please re-run your command.[/green]")
         return True
     else:
-        console.print(
+        rich.print(
             f"[bold red]😤 Command failed with exit code {returncode}. "
             "Try upgrading manually.[/bold red]"
         )
@@ -60,7 +60,7 @@ def _make_upgrade_command_candidates(latest_version: str) -> list[tuple[str, str
     return candidates
 
 
-def upgrade_dialogue(current_version: str, console: rich.console.Console) -> None:
+def upgrade_dialogue(current_version: str) -> None:
     settings = user_config.settings
     update_info = user_config.state.should_upgrade(current_version)
     latest_version = str(update_info.latest_version)
@@ -69,21 +69,21 @@ def upgrade_dialogue(current_version: str, console: rich.console.Console) -> Non
         return
 
     if auto_upgrade_command_template := settings.auto_upgrade_command_template:
-        console.print(
+        rich.print(
             f"[bold yellow]🪄 Automatically upgrading truss to '{latest_version}'.[/bold yellow]"
         )
         command = auto_upgrade_command_template.format(
             version=update_info.latest_version
         )
-        if _run_upgrade(command, console):
+        if _run_upgrade(command):
             sys.exit(0)
         else:
-            console.print(
+            rich.print(
                 f"[bold]🖊️  You can edit or remove 'auto_upgrade_command_template' in '{settings.path()}'[/bold]"
             )
             sys.exit(1)
 
-    console.print(
+    rich.print(
         f"[bold yellow]⬆️  Please upgrade truss. {update_info.reason} → new version "
         f"✨'{latest_version}'✨.[/bold yellow]"
     )
@@ -110,7 +110,7 @@ def upgrade_dialogue(current_version: str, console: rich.console.Console) -> Non
     if inquirer.confirm(
         message="▶️  Run command in this shell?", default=True
     ).execute():
-        if _run_upgrade(edited_cmd, console):
+        if _run_upgrade(edited_cmd):
             template = edited_cmd.replace(f"{latest_version}", "{version}")
             if inquirer.confirm(
                 message="💾 We can remember your choice and automatically upgrade next "

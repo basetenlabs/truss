@@ -1,17 +1,9 @@
-import sys
-
 import rich
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
 
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
-
-
-def check_is_interactive() -> bool:
-    """Detects if CLI is operated interactively by human, so we can ask things,
-    that we would want to skip for automated subprocess/CI contexts."""
-    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 class NonEmptyValidator(Validator):
