@@ -186,26 +186,26 @@ class InferenceClient:
     or classify texts through the API.
 
     Attributes:
-        api_base: The base URL for the API.
+        base_url: The base URL for the API.
         api_key: The API key for authentication.
 
     Example:
-        >>> client = InferenceClient(api_base="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
+        >>> client = InferenceClient(base_url="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
         >>> embeddings = client.embed(["Hello world"], model="BAAI/bge-large-en")
         >>> array = embeddings.numpy()
     """
     def __init__(
-        self, api_base: builtins.str, api_key: typing.Optional[builtins.str] = None
+        self, base_url: builtins.str, api_key: typing.Optional[builtins.str] = None
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
 
         Args:
-            api_base: The base URL of the API.
+            base_url: The base URL of the API.
             api_key: The API key. If not provided, environment variables will be checked.
 
         Example:
-            >>> client = InferenceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = InferenceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
         """
         ...
 
@@ -372,7 +372,7 @@ class InferenceClient:
             # Note: Other PyO3/Rust errors might be raised for serialization/deserialization issues.
 
         Example:
-            >>> client = InferenceClient(api_base="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = InferenceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
             >>> custom_payloads = [
             ...     {"data": "request1_data", "id": 1},
             ...     {"data": "request2_data", "id": 2}

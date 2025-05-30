@@ -5,12 +5,16 @@ from typing import Any, Callable, Dict
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
-from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx_ws import aconnect_ws
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
 from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
 from wsproto.events import BytesMessage, TextMessage
+
+from truss.templates.control.control.helpers.errors import (
+    ModelLoadFailed,
+    ModelNotReady,
+)
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 BASE_RETRY_EXCEPTIONS = (
@@ -65,7 +69,16 @@ async def proxy_http(request: Request):
                 resp = await client.send(inf_serv_req, stream=True)
 
                 if await _is_model_not_ready(resp):
-                    raise ModelNotReady("Model has started running, but not ready yet.")
+                    # If this is a health check request, don't raise an error so that a stack
+                    # trace isn't logged upon deploying a model with a long load time.
+                    if _is_health_check(path):
+                        return JSONResponse(
+                            "The server is live, but the model has not completed loading.",
+                            status_code=503,
+                        )
+                    raise ModelNotReady(
+                        "The server is live, but the model has not completed loading."
+                    )
             except (httpx.RemoteProtocolError, httpx.ConnectError) as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server
@@ -99,7 +112,7 @@ def inference_retries(
         retry=retry_condition,
         stop=_custom_stop_strategy,
         wait=wait_fixed(1),
-        reraise=False,
+        reraise=True,
     ):
         yield attempt
 
@@ -214,6 +227,13 @@ def _reroute_if_health_check(path: str) -> str:
     if path == "/v1/models/model":
         path = "/v1/models/model/loaded"
     return path
+
+
+def _is_health_check(path: str) -> bool:
+    """
+    Checks if the request path is for the health check endpoint.
+    """
+    return path == "/v1/models/model/loaded"
 
 
 def _custom_stop_strategy(retry_state: RetryCallState) -> bool:
