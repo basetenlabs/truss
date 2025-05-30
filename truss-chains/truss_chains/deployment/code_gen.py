@@ -716,7 +716,11 @@ def _gen_truss_config(
     config.resources.accelerator = compute.accelerator
     config.runtime.predict_concurrency = compute.predict_concurrency
     if chainlet_descriptor.endpoint.is_websocket:
-        config.runtime.transport = truss_config.WebsocketOptions()
+        if transport := remote_config.options.transport:
+            assert isinstance(transport, truss_config.WebsocketOptions), transport
+            config.runtime.transport = transport
+        else:
+            config.runtime.transport = truss_config.WebsocketOptions()
 
     assets = remote_config.get_asset_spec()
     config.secrets = {k: v for k, v in assets.secrets.items()}

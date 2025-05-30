@@ -1324,7 +1324,10 @@ def push_chain(
         console.print(promote_warning, style="yellow")
 
     if not remote:
-        remote = remote_cli.inquire_remote_name()
+        if dryrun:
+            remote = ""
+        else:
+            remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
         include_git_info = user_config.settings.include_git_info

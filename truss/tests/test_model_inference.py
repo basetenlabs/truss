@@ -2007,3 +2007,60 @@ async def test_nonexistent_websocket_endpoint():
             error=None,
             message="WebSocket is not implemented on this deployment.",
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_websocket_ping_timeout_behavior(caplog):
+    # This test uses control server to assert end-to-end setup, because both servers
+    # need to be customized.
+    model = """
+    import fastapi
+
+    class Model:
+        async def websocket(self, websocket: fastapi.WebSocket):
+            try:
+                while True:
+                    text = await websocket.receive_text()
+                    await websocket.send_text(text)
+            except fastapi.WebSocketDisconnect:
+                pass
+    """
+
+    no_ping_config = """
+    runtime:
+      transport:
+        kind: websocket
+    """
+
+    with ensure_kill_all(), _temp_truss(model, no_ping_config) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        with caplog.at_level(logging.DEBUG, logger="websockets.client"):
+            async with websockets.connect(urls.websockets_url) as websocket:
+                await websocket.send("hello")
+                assert await websocket.recv() == "hello"
+                await asyncio.sleep(3)
+
+        # Default is 20 seconds, so we don't expect any PING/PONG in this case.
+        assert "PING" not in caplog.text
+
+    ping_config = """
+    runtime:
+      transport:
+        kind: websocket
+        ping_interval_seconds: 1
+        ping_timeout_seconds: 1
+    """
+
+    with ensure_kill_all(), _temp_truss(model, ping_config) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        with caplog.at_level(logging.DEBUG, logger="websockets.client"):
+            async with websockets.connect(urls.websockets_url) as websocket:
+                await websocket.send("hello")
+                assert await websocket.recv() == "hello"
+                await asyncio.sleep(3)
+
+        # We wait 3 seconds, so there should be ~3 PING/PONGS
+        assert 2 <= caplog.text.count("PING") <= 4

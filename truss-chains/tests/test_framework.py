@@ -749,6 +749,36 @@ def test_raises_websocket_with_return():
                 return 1
 
 
+def test_raises_websocket_with_wrong_transport():
+    match = (
+        rf"{TEST_FILE}:\d+ \(WebsocketWrongTransport\) \[kind: INVALID_CONFIG_ERROR\].*"
+        r"`options\.transport` must be `WebsocketOptions`, got `GRPCOptions`"
+    )
+    with pytest.raises(public_types.ChainsUsageError, match=match), _raise_errors():
+
+        class WebsocketWrongTransport(chains.ChainletBase):
+            remote_config = chains.RemoteConfig(
+                options=chains.ChainletOptions(transport={"kind": "grpc"})
+            )
+
+            async def run_remote(self, websocket: chains.WebSocketProtocol) -> None: ...
+
+
+def test_raises_http_with_websocket_transport():
+    match = (
+        rf"{TEST_FILE}:\d+ \(HttpWebsocketTransport\) \[kind: INVALID_CONFIG_ERROR\].*"
+        r"WebsocketOptions can only be used for websocket endpoints"
+    )
+    with pytest.raises(public_types.ChainsUsageError, match=match), _raise_errors():
+
+        class HttpWebsocketTransport(chains.ChainletBase):
+            remote_config = chains.RemoteConfig(
+                options=chains.ChainletOptions(transport={"kind": "websocket"})
+            )
+
+            async def run_remote(self) -> None: ...
+
+
 def test_raises_engine_builder_validation():
     match = (
         rf"{TEST_FILE}:\d+ \(Llama7BChainlet\) \[kind: TYPE_ERROR\].*"
