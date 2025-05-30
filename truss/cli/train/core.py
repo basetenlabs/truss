@@ -5,13 +5,12 @@ from typing import Callable, Optional, Tuple
 import rich
 import rich_click as click
 from InquirerPy import inquirer
-from rich.console import Console
 from rich.text import Text
 
-import truss.cli.train.deploy_checkpoints as deploy_checkpoints
-from truss.cli.common import get_most_recent_job
+from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
+from truss.cli.utils.common import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
@@ -24,14 +23,11 @@ ACTIVE_JOB_STATUSES = [
 
 
 def get_args_for_stop(
-    console: Console,
-    remote_provider: BasetenRemote,
-    project_id: Optional[str],
-    job_id: Optional[str],
+    remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ) -> Tuple[str, str]:
     if not project_id or not job_id:
         # get all running jobs
-        job = _get_active_job(console, remote_provider, project_id, job_id)
+        job = _get_active_job(remote_provider, project_id, job_id)
         project_id_for_job = job["training_project"]["id"]
         job_id_to_stop = job["id"]
         # check if the user wants to stop the inferred running job
@@ -48,10 +44,7 @@ def get_args_for_stop(
 
 
 def _get_active_job(
-    console: Console,
-    remote_provider: BasetenRemote,
-    project_id: Optional[str],
-    job_id: Optional[str],
+    remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ) -> dict:
     jobs = remote_provider.api.search_training_jobs(
         statuses=ACTIVE_JOB_STATUSES, project_id=project_id, job_id=job_id
@@ -59,7 +52,7 @@ def _get_active_job(
     if not jobs:
         raise click.UsageError("No running jobs found.")
     if len(jobs) > 1:
-        display_training_jobs(console, jobs, title="Active Training Jobs")
+        display_training_jobs(jobs, title="Active Training Jobs")
         raise click.UsageError("Multiple active jobs found. Please specify a job id.")
     return jobs[0]
 
@@ -71,15 +64,13 @@ class DisplayTableColumn:
     accessor: Callable[[dict], str]
 
 
-def display_training_jobs(
-    console: Console, jobs, checkpoints_by_job_id={}, title="Training Job Details"
-):
+def display_training_jobs(jobs, checkpoints_by_job_id={}, title="Training Job Details"):
     console.print(title, style="bold magenta")
     for job in jobs:
-        display_training_job(console, job, checkpoints_by_job_id.get(job["id"], []))
+        display_training_job(job, checkpoints_by_job_id.get(job["id"], []))
 
 
-def display_training_projects(console: Console, projects):
+def display_training_projects(projects):
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
@@ -110,10 +101,7 @@ def display_training_projects(console: Console, projects):
 
 
 def view_training_details(
-    console: Console,
-    remote_provider: BasetenRemote,
-    project_id: Optional[str],
-    job_id: Optional[str],
+    remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ):
     """
     view_training_details shows a list of jobs that meet the provided project_id and job_id filters.
@@ -133,24 +121,22 @@ def view_training_details(
             checkpoints = remote_provider.api.list_training_job_checkpoints(
                 training_job["training_project"]["id"], training_job["id"]
             )
-            display_training_job(console, training_job, checkpoints["checkpoints"])
+            display_training_job(training_job, checkpoints["checkpoints"])
         else:
-            display_training_jobs(console, jobs_response)
+            display_training_jobs(jobs_response)
     else:
         projects = remote_provider.api.list_training_projects()
-        display_training_projects(console, projects)
+        display_training_projects(projects)
         active_jobs = remote_provider.api.search_training_jobs(
             statuses=ACTIVE_JOB_STATUSES
         )
         if active_jobs:
-            display_training_jobs(console, active_jobs, title="Active Training Jobs")
+            display_training_jobs(active_jobs, title="Active Training Jobs")
         else:
             console.print("No active training jobs.", style="yellow")
 
 
-def stop_all_jobs(
-    console: Console, remote_provider: BasetenRemote, project_id: Optional[str]
-):
+def stop_all_jobs(remote_provider: BasetenRemote, project_id: Optional[str]):
     active_jobs = remote_provider.api.search_training_jobs(
         project_id=project_id, statuses=ACTIVE_JOB_STATUSES
     )
@@ -169,38 +155,29 @@ def stop_all_jobs(
 
 
 def view_training_job_metrics(
-    console: Console,
-    remote_provider: BasetenRemote,
-    project_id: Optional[str],
-    job_id: Optional[str],
+    remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ):
     """
     view_training_job_metrics shows a list of metrics for a training job.
     """
-    project_id, job_id = get_most_recent_job(
-        console, remote_provider, project_id, job_id
-    )
-    metrics_display = MetricsWatcher(remote_provider.api, project_id, job_id, console)
+    project_id, job_id = common.get_most_recent_job(remote_provider, project_id, job_id)
+    metrics_display = MetricsWatcher(remote_provider.api, project_id, job_id)
     metrics_display.watch()
 
 
 def prepare_checkpoint_deploy(
-    console: Console, remote_provider: BasetenRemote, args: PrepareCheckpointArgs
+    remote_provider: BasetenRemote, args: PrepareCheckpointArgs
 ) -> PrepareCheckpointResult:
     if not args.deploy_config_path:
         return deploy_checkpoints.prepare_checkpoint_deploy(
-            console,
-            remote_provider,
-            DeployCheckpointsConfig(),
-            args.project_id,
-            args.job_id,
+            remote_provider, DeployCheckpointsConfig(), args.project_id, args.job_id
         )
     #### User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:
         return deploy_checkpoints.prepare_checkpoint_deploy(
-            console, remote_provider, checkpoint_deploy, args.project_id, args.job_id
+            remote_provider, checkpoint_deploy, args.project_id, args.job_id
         )
 
 
@@ -224,7 +201,7 @@ def print_deploy_checkpoints_success_message(
     )
 
 
-def display_training_job(console: Console, job: dict, checkpoints: list[dict] = []):
+def display_training_job(job: dict, checkpoints: list[dict] = []):
     table = rich.table.Table(
         show_header=False,
         title=f"Training Job: {job['id']}",
