@@ -179,9 +179,6 @@ class BasetenEndpoints:
         request: Request,
         body_raw: bytes,
     ) -> Response:
-        """
-        Executes a predictive endpoint
-        """
         self.check_healthy()
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.

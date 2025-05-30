@@ -1,18 +1,15 @@
 import asyncio
 import concurrent
-import contextlib
 import inspect
 import json
 import logging
 import pathlib
 import sys
 import tempfile
-import textwrap
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from threading import Thread
-from typing import Iterator, Mapping, Optional
+from typing import Mapping
 
 import httpx
 import opentelemetry.trace.propagation.tracecontext as tracecontext
@@ -25,48 +22,16 @@ from python_on_whales import Container
 from requests.exceptions import RequestException
 
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.tests.helpers import create_truss
+from truss.tests.helpers import assert_logs_contain, temp_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.truss_handle import TrussHandle, get_docker_urls, wait_for_truss
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LOG_ERROR = "Internal Server Error"
-
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
-
-
-def _log_contains_line(
-    line: dict, message: str, level: str, error: Optional[str] = None
-):
-    return (
-        line["levelname"] == level
-        and message in line["message"]
-        and (error is None or error in line["exc_info"])
-    )
-
-
-def _assert_logs_contain_error(
-    logs: str, error: Optional[str], message=DEFAULT_LOG_ERROR
-):
-    loglines = [json.loads(line) for line in logs.splitlines()]
-    assert any(
-        _log_contains_line(line, message, "ERROR", error) for line in loglines
-    ), (
-        f"Did not find expected error in logs.\nExpected error: {error}\n"
-        f"Expected message: {message}\nActual logs:\n{loglines}"
-    )
-
-
-def _assert_logs_contain(logs: str, message: str, level: str = "INFO"):
-    loglines = [json.loads(line) for line in logs.splitlines()]
-    assert any(_log_contains_line(line, message, level) for line in loglines), (
-        f"Did not find expected  logs.\n"
-        f"Expected message: {message}\nActual logs:\n{loglines}"
-    )
 
 
 class _PropagatingThread(Thread):
@@ -87,14 +52,6 @@ class _PropagatingThread(Thread):
         if self.exc:
             raise self.exc
         return self.ret
-
-
-@contextlib.contextmanager
-def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-        create_truss(truss_dir, config_src, textwrap.dedent(model_src))
-        yield TrussHandle(truss_dir)
 
 
 # Test Cases ###########################################################################
@@ -123,7 +80,7 @@ def test_predict_python_versions(config_python_version, inspected_python_version
     # config = """base_image:
     #                   image: baseten/truss-server-base:3.13-marius"""
     config = f"python_version: {config_python_version}"
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
         response = requests.post(urls.predict_url, json={})
         assert inspected_python_version == response.json()
@@ -142,13 +99,13 @@ def test_model_load_logs(test_data_path):
             return self.environment_name
     """
     config = "model_name: init-environment-truss"
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
         logs = container.logs()
-        _assert_logs_contain(logs, message="Executing model.load()")
-        _assert_logs_contain(logs, message="Loading truss model from file")
-        _assert_logs_contain(logs, message="Completed model.load()")
-        _assert_logs_contain(logs, message="User Load Message")
+        assert_logs_contain(logs, message="Executing model.load()")
+        assert_logs_contain(logs, message="Loading truss model from file")
+        assert_logs_contain(logs, message="Completed model.load()")
+        assert_logs_contain(logs, message="User Load Message")
 
 
 @pytest.mark.integration
@@ -310,73 +267,6 @@ def test_async_streaming(test_data_path):
 
 
 @pytest.mark.integration
-def test_async_streaming_timeout(test_data_path):
-    with ensure_kill_all():
-        truss_dir = test_data_path / "test_streaming_read_timeout"
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
-        # ChunkedEncodingError is raised when the chunk does not get processed due to streaming read timeout
-        with pytest.raises(requests.exceptions.ChunkedEncodingError):
-            response = requests.post(urls.predict_url, json={}, stream=True)
-
-            for chunk in response.iter_content():
-                pass
-
-        # Check to ensure the Timeout error is in the container logs
-        # TODO: maybe intercept this error better?
-        _assert_logs_contain_error(
-            container.logs(),
-            error="raise exceptions.TimeoutError()",
-            message="Exception in ASGI application\n",
-        )
-
-
-@pytest.mark.integration
-def test_streaming_with_error_and_stacktrace(test_data_path):
-    with ensure_kill_all():
-        truss_dir = test_data_path / "test_streaming_truss_with_error"
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
-
-        predict_error_response = requests.post(
-            urls.predict_url, json={"throw_error": True}, stream=True, timeout=2
-        )
-
-        # In error cases, the response will return whatever the stream returned,
-        # in this case, the first 3 items. We timeout after 2 seconds to ensure that
-        # stream finishes reading and releases the predict semaphore.
-        assert [
-            byte_string.decode()
-            for byte_string in predict_error_response.iter_content()
-        ] == ["0", "1", "2"]
-
-        # Test that we are able to continue to make requests successfully
-        predict_non_error_response = requests.post(
-            urls.predict_url, json={"throw_error": False}, stream=True, timeout=2
-        )
-
-        assert [
-            byte_string.decode()
-            for byte_string in predict_non_error_response.iter_content()
-        ] == ["0", "1", "2", "3", "4"]
-        expected_stack_trace = (
-            "Traceback (most recent call last):\n"
-            '  File "/app/model/model.py", line 12, in inner\n'
-            "    helpers_1.foo(123)\n"
-            '  File "/packages/helpers_1.py", line 5, in foo\n'
-            "    return helpers_2.bar(x)\n"
-            '  File "/packages/helpers_2.py", line 2, in bar\n'
-            '    raise Exception("Crashed in `bar`.")\n'
-            "Exception: Crashed in `bar`."
-        )
-        _assert_logs_contain_error(
-            container.logs(),
-            error=expected_stack_trace,
-            message="Exception while generating streamed response: Crashed in `bar`.",
-        )
-
-
-@pytest.mark.integration
 def test_secrets_truss():
     class Model:
         def __init__(self, **kwargs):
@@ -390,81 +280,13 @@ secrets:
     secret: null
     """
 
-    config_with_no_secret = "model_name: secrets-truss"
-    missing_secret_error_message = """Secret 'secret' not found. Please ensure that:
-  * Secret 'secret' is defined in the 'secrets' section of the Truss config file"""
-
-    with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
+    with ensure_kill_all(), temp_truss(inspect.getsource(Model), config) as tr:
         LocalConfigHandler.set_secret("secret", "secret_value")
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={})
 
         assert response.json() == "secret_value"
-
-    # Case where the secret is not specified in the config
-    with (
-        ensure_kill_all(),
-        _temp_truss(inspect.getsource(Model), config_with_no_secret) as tr,
-    ):
-        LocalConfigHandler.set_secret("secret", "secret_value")
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert "error" in response.json()
-        _assert_logs_contain_error(container.logs(), missing_secret_error_message)
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-    # Case where the secret is not mounted
-    with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
-        LocalConfigHandler.remove_secret("secret")
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        _assert_logs_contain_error(container.logs(), missing_secret_error_message)
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-
-@pytest.mark.integration
-def test_postprocess_with_streaming_predict():
-    # TODO: revisit the decision to forbid this. If so remove below comment.
-    """
-    Test a Truss that has streaming response from both predict and postprocess.
-    In this case, the postprocess step continues to happen within the predict lock,
-    so we don't bother testing the lock scenario, just the behavior that the postprocess
-    function is applied.
-    """
-    model = """
-    import time
-
-    class Model:
-        def postprocess(self, response):
-            for item in response:
-                time.sleep(1)
-                yield item + " modified"
-
-        def predict(self, request):
-            for i in range(2):
-                yield str(i)
-    """
-
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={}, stream=True)
-        logging.info(response.content)
-        _assert_logs_contain_error(
-            container.logs(),
-            "ModelDefinitionError: If the predict function returns a generator (streaming), you cannot use postprocessing.",
-        )
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -489,7 +311,7 @@ def test_streaming_postprocess():
             return ["0", "1"]
     """
 
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         def make_request(delay: int):
@@ -544,7 +366,7 @@ def test_postprocess():
 
     """
 
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         def make_request(delay: int):
@@ -569,151 +391,6 @@ def test_postprocess():
             for future in done:
                 # Ensure that both futures completed without error
                 future.result()
-
-
-@pytest.mark.integration
-def test_truss_with_errors():
-    model = """
-    class Model:
-        def predict(self, request):
-            raise ValueError("error")
-    """
-
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-
-        _assert_logs_contain_error(container.logs(), "ValueError: error")
-
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-    model_preprocess_error = """
-    class Model:
-        def preprocess(self, request):
-            raise ValueError("error")
-
-        def predict(self, request):
-            return {"a": "b"}
-    """
-
-    with ensure_kill_all(), _temp_truss(model_preprocess_error) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-
-        _assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-    model_postprocess_error = """
-    class Model:
-        def predict(self, request):
-            return {"a": "b"}
-
-        def postprocess(self, response):
-            raise ValueError("error")
-    """
-
-    with ensure_kill_all(), _temp_truss(model_postprocess_error) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-        _assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-    model_async = """
-    class Model:
-        async def predict(self, request):
-            raise ValueError("error")
-    """
-
-    with ensure_kill_all(), _temp_truss(model_async) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-
-        _assert_logs_contain_error(container.logs(), "ValueError: error")
-
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-
-@pytest.mark.integration
-def test_truss_with_user_errors():
-    """Test that user-code raised `fastapi.HTTPExceptions` are passed through as is."""
-    model = """
-    import fastapi
-
-    class Model:
-        def predict(self, request):
-            raise fastapi.HTTPException(status_code=500, detail="My custom message.")
-    """
-
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-        _assert_logs_contain_error(
-            container.logs(),
-            "HTTPException: 500: My custom message.",
-            "Model raised HTTPException",
-        )
-
-        assert "My custom message." in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-
-@pytest.mark.integration
-def test_truss_with_error_stacktrace(test_data_path):
-    with ensure_kill_all():
-        truss_dir = test_data_path / "test_truss_with_error"
-        tr = TrussHandle(truss_dir)
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert "error" in response.json()
-
-        assert "Internal Server Error" in response.json()["error"]
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-
-        expected_stack_trace = (
-            "Traceback (most recent call last):\n"
-            '  File "/app/model/model.py", line 8, in predict\n'
-            "    return helpers_1.foo(123)\n"
-            '  File "/packages/helpers_1.py", line 5, in foo\n'
-            "    return helpers_2.bar(x)\n"
-            '  File "/packages/helpers_2.py", line 2, in bar\n'
-            '    raise Exception("Crashed in `bar`.")\n'
-            "Exception: Crashed in `bar`."
-        )
-        _assert_logs_contain_error(
-            container.logs(),
-            error=expected_stack_trace,
-            message="Internal Server Error",
-        )
 
 
 @pytest.mark.integration
@@ -806,7 +483,7 @@ def test_init_environment_parameter():
             return self.environment_name
     """
     config = "model_name: init-environment-truss"
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         # Mimic environment changing to staging
         staging_env = {"name": "staging"}
         staging_env_str = json.dumps(staging_env)
@@ -820,7 +497,7 @@ def test_init_environment_parameter():
 
     # Test a truss deployment with no associated environment
     config = "model_name: init-no-environment-truss"
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
         assert "Executing model.load with environment: None" in container.logs()
         response = requests.post(urls.predict_url, json={})
@@ -842,7 +519,7 @@ def test_setup_environment():
         def predict(self, model_input):
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test()
         # Mimic environment changing to beta
         beta_env = {"name": "beta"}
@@ -882,7 +559,7 @@ def test_setup_environment():
         def predict(self, model_input):
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         # Mimic environment changing to staging
         staging_env = {"name": "staging"}
         staging_env_str = json.dumps(staging_env)
@@ -929,7 +606,7 @@ def test_health_check_configuration():
         restart_threshold_seconds: 1700
     """
 
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
@@ -945,14 +622,14 @@ def test_health_check_configuration():
         stop_traffic_threshold_seconds: 50
     """
 
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 1200
         assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 90
         assert tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 50
 
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test()
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds is None
@@ -975,7 +652,7 @@ def test_is_healthy():
         def predict(self, model_input):
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         for _ in range(5):
             time.sleep(1)
@@ -990,30 +667,13 @@ def test_is_healthy():
 
     model = """
     class Model:
-        def is_healthy(self, argument) -> bool:
-            pass
-
-        def predict(self, model_input):
-            return model_input
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1)
-        _assert_logs_contain_error(
-            container.logs(),
-            message="Exception while loading model",
-            error="`is_healthy` must have only one argument: `self`",
-        )
-
-    model = """
-    class Model:
         def is_healthy(self) -> bool:
             raise Exception("not healthy")
 
         def predict(self, model_input):
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
 
         # Sleep a few seconds to get the server some time to wake up
@@ -1039,7 +699,7 @@ def test_is_healthy():
         def predict(self, model_input):
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(5)
         healthy = requests.get(f"{urls.base_url}/v1/models/model")
@@ -1075,7 +735,7 @@ def test_is_healthy():
             self._healthy = model_input["healthy"]
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
         time.sleep(5)
         healthy = requests.get(f"{urls.base_url}/v1/models/model")
@@ -1110,7 +770,7 @@ def test_is_healthy():
         def predict(self, model_input):
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test()
         healthy = requests.get(f"{urls.base_url}/v1/models/model")
         assert healthy.status_code == 200
@@ -1127,7 +787,7 @@ def test_instrument_metrics():
             self.counter.inc(10)
             return model_input
     """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
+    with ensure_kill_all(), temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test()
         requests.post(urls.predict_url, json={})
         resp = requests.get(urls.metrics_url)
@@ -1158,7 +818,7 @@ def test_instrument_metrics():
     requirements:
     - opentelemetry-exporter-prometheus>=0.52b0
     """
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         _, urls = tr.docker_run_for_test()
         requests.post(urls.predict_url, json={})
         resp = requests.get(urls.metrics_url)
@@ -1200,7 +860,7 @@ async def test_graceful_shutdown(truss_container_fs):
             print(f"Done {request}")
             return request
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         async def predict_request(data: dict):
@@ -1378,7 +1038,7 @@ def test_truss_with_response():
     """
     from fastapi import status
 
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(
@@ -1410,7 +1070,7 @@ class Model:
         return StreamingResponse(text_generator(), media_type="text/event-stream")
     """
 
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         # A request for which response is not completely read.
@@ -1442,7 +1102,7 @@ def test_truss_with_request():
         def postprocess(self, inputs):
              return {**inputs, "postprocess": "was here"}
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"test": 123})
@@ -1452,129 +1112,6 @@ def test_truss_with_request():
             "request_size": 13,
             "postprocess": "was here",
         }
-
-
-@pytest.mark.integration
-def test_truss_with_requests_and_invalid_signatures():
-    model = """
-    class Model:
-        def predict(self, inputs, invalid_arg): ...
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.5)  # Wait for logs.
-        _assert_logs_contain_error(
-            container.logs(),
-            "`predict` method with two arguments must have request as second argument",
-            "Exception while loading model",
-        )
-
-    model = """
-    import fastapi
-
-    class Model:
-        def predict(self, request: fastapi.Request, invalid_arg): ...
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.5)  # Wait for logs.
-        _assert_logs_contain_error(
-            container.logs(),
-            "`predict` method with two arguments is not allowed to have request as "
-            "first argument",
-            "Exception while loading model",
-        )
-
-    model = """
-    import fastapi
-
-    class Model:
-        def predict(self, inputs, request: fastapi.Request, something): ...
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.5)  # Wait for logs.
-        _assert_logs_contain_error(
-            container.logs(),
-            "`predict` method cannot have more than two arguments",
-            "Exception while loading model",
-        )
-
-
-@pytest.mark.integration
-def test_truss_with_requests_and_invalid_argument_combinations():
-    model = """
-    import fastapi
-    class Model:
-        async def preprocess(self, inputs): ...
-
-        def predict(self, request: fastapi.Request): ...
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.0)  # Wait for logs.
-        _assert_logs_contain_error(
-            container.logs(),
-            "When using `preprocess`, the predict method cannot only have the request argument",
-            "Exception while loading model",
-        )
-
-    model = """
-    import fastapi
-    class Model:
-        def preprocess(self, inputs): ...
-
-        async def predict(self, inputs, request: fastapi.Request): ...
-
-        def postprocess(self, request: fastapi.Request): ...
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.0)  # Wait for logs.
-        _assert_logs_contain_error(
-            container.logs(),
-            "The `postprocess` method cannot only have the request argument",
-            "Exception while loading model",
-        )
-
-    model = """
-    import fastapi
-    class Model:
-        def preprocess(self, inputs): ...
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1.0)  # Wait for logs.
-        _assert_logs_contain_error(
-            container.logs(),
-            "Truss model must have a `predict` or `websocket` method",
-            "Exception while loading model",
-        )
-
-
-@pytest.mark.integration
-def test_truss_forbid_postprocessing_with_response():
-    model = """
-    import fastapi, json
-    class Model:
-        def predict(self, inputs):
-            return fastapi.Response(content=json.dumps(inputs), status_code=200)
-
-        def postprocess(self, inputs):
-             return inputs
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test()
-
-        response = requests.post(urls.predict_url, json={})
-        assert response.status_code == 500
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "600"
-        _assert_logs_contain_error(
-            container.logs(),
-            "If the predict function returns a response object, you cannot "
-            "use postprocessing.",
-        )
 
 
 @pytest.mark.integration
@@ -1597,7 +1134,7 @@ def test_async_streaming_with_cancellation():
                     logging.warning("Cancelled (during gen).")
                     return
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
         # For hard cancellation we need to use httpx, requests' timeouts don't work.
         with pytest.raises(httpx.ReadTimeout):
@@ -1627,7 +1164,7 @@ def test_async_non_streaming_with_cancellation():
             logging.info("Not cancelled.")
             return "Done"
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
         # For hard cancellation we need to use httpx, requests' timeouts don't work.
         with pytest.raises(httpx.ReadTimeout):
@@ -1685,7 +1222,7 @@ def test_limit_concurrency_with_sse():
                     time.sleep(0.5)  # Hold the connection.
                     print(f"waiting done ({task_id})")
 
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
         # Processing full request takes 0.5s.
         print("Make warmup request")
@@ -1730,7 +1267,7 @@ def test_custom_openai_endpoints():
             self._completions_count += inputs["increment"]
             return self._completions_count
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"increment": 1})
@@ -1762,7 +1299,7 @@ def test_postprocess_async_generator_streaming():
             for num in nums:
                 yield num
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(
@@ -1790,7 +1327,7 @@ def test_preprocess_async_generator():
         async def predict(self, nums: AsyncGenerator[str, None]) -> List[str]:
             return [num async for num in nums]
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(urls.predict_url, json={"nums": ["1", "2"]})
@@ -1814,7 +1351,7 @@ def test_openai_client_streaming():
         async def predict(self, inputs):
             pass
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
 
         response = requests.post(
@@ -1831,65 +1368,6 @@ def test_openai_client_streaming():
         assert [
             byte_string.decode() for byte_string in list(response.iter_content())
         ] == ["1", "2"]
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_raise_predict_and_websocket_endpoint():
-    model = """
-    class Model:
-        async def websocket(self, websocket):
-            pass
-
-        async def predict(self, inputs):
-            pass
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(3)
-        _assert_logs_contain_error(
-            container.logs(),
-            message="Exception while loading model",
-            error="cannot have both",
-        )
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_raise_preprocess_and_websocket_endpoint():
-    model = """
-    class Model:
-        async def websocket(self, websocket):
-            pass
-
-        async def preprocess(self, inputs):
-            pass
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(3)
-        _assert_logs_contain_error(
-            container.logs(),
-            message="Exception while loading model",
-            error="cannot have both",
-        )
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_raise_no_endpoint():
-    model = """
-    class Model:
-       pass
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1)
-        _assert_logs_contain_error(
-            container.logs(),
-            message="Exception while loading model",
-            error="must have a `predict` or `websocket` method",
-        )
 
 
 @pytest.mark.asyncio
@@ -1911,7 +1389,7 @@ async def test_websocket_endpoint():
             except fastapi.WebSocketDisconnect:
                 pass
     """
-    with ensure_kill_all(), _temp_truss(model) as tr:
+    with ensure_kill_all(), temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
         async with websockets.connect(urls.websockets_url) as websocket:
             # Send "hello" and verify response
@@ -1931,79 +1409,3 @@ async def test_websocket_endpoint():
 
             assert exc_info.value.rcvd.code == 1000
             assert exc_info.value.rcvd.reason == ""
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_websocket_endpoint_error_logs():
-    model = """
-    import fastapi
-
-    class Model:
-        async def websocket(self, websocket: fastapi.WebSocket):
-            try:
-                while True:
-                    text = await websocket.receive_text()
-                    if text == "raise":
-                        raise ValueError("This is test error.")
-                    await websocket.send_text(text + " pong")
-            except fastapi.WebSocketDisconnect:
-                pass
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test()
-        async with websockets.connect(urls.websockets_url) as websocket:
-            # Send "hello" and verify response
-            await websocket.send("hello")
-            response = await websocket.recv()
-            assert response == "hello pong"
-
-            # Send "raise" to raise a test error.
-            await websocket.send("raise")
-            with pytest.raises(websockets.exceptions.ConnectionClosedError) as exc_info:
-                await websocket.recv()
-
-            assert exc_info.value.rcvd.code == 1011
-            assert (
-                exc_info.value.rcvd.reason
-                == "Internal Server Error (in model/chainlet)."
-            )
-
-            expected_stack_trace = (
-                "Traceback (most recent call last):\n"
-                '  File "/app/model/model.py", line 10, in websocket\n'
-                '    raise ValueError("This is test error.")\n'
-                "ValueError: This is test error."
-            )
-            _assert_logs_contain_error(
-                container.logs(),
-                error=expected_stack_trace,
-                message="Internal Server Error (in model/chainlet).",
-            )
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_nonexistent_websocket_endpoint():
-    model = """
-    class Model:
-
-        async def predict(self, inputs):
-            pass
-    """
-    with ensure_kill_all(), _temp_truss(model) as tr:
-        container, urls = tr.docker_run_for_test()
-        with pytest.raises(websockets.ConnectionClosedError) as exc_info:
-            async with websockets.connect(urls.websockets_url) as ws:
-                await ws.recv()
-
-        assert exc_info.value.rcvd.code == 1003
-        assert (
-            exc_info.value.rcvd.reason
-            == "WebSocket is not implemented on this deployment."
-        )
-        _assert_logs_contain_error(
-            container.logs(),
-            error=None,
-            message="WebSocket is not implemented on this deployment.",
-        )

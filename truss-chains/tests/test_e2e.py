@@ -163,18 +163,24 @@ def test_streaming_chain():
             assert service is not None
             time.sleep(1.0)  # Wait for models to be ready.
 
-            response = service.run_remote({"cause_error": False})
-            assert response.status_code == 200
-            print(response.json())
-            result = response.json()
-            print(result)
-            assert result["header"]["msg"] == "Start."
-            assert result["chunks"][0]["words"] == ["G"]
-            assert result["chunks"][1]["words"] == ["G", "HH"]
-            assert result["chunks"][2]["words"] == ["G", "HH", "III"]
-            assert result["chunks"][3]["words"] == ["G", "HH", "III", "JJJJ"]
-            assert result["footer"]["duration_sec"] > 0
-            assert result["strings"] == "First second last."
+            response = service.run_remote(
+                {"cause_pre_stream_error": "hell", "cause_mid_stream_error": False}
+            )
+            print(response.status_code)
+            print(response.content)
+            assert False
+
+            # assert response.status_code == 200
+            # print(response.json())
+            # result = response.json()
+            # print(result)
+            # assert result["header"]["msg"] == "Start."
+            # assert result["chunks"][0]["words"] == ["G"]
+            # assert result["chunks"][1]["words"] == ["G", "HH"]
+            # assert result["chunks"][2]["words"] == ["G", "HH", "III"]
+            # assert result["chunks"][3]["words"] == ["G", "HH", "III", "JJJJ"]
+            # assert result["footer"]["duration_sec"] > 0
+            # assert result["strings"] == "First second last."
 
             # TODO: build error handling for stream reader.
             # response = service.run_remote({"cause_error": True})
