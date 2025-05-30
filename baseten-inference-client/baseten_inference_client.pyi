@@ -383,7 +383,7 @@ class InferenceClient:
         """
         ...
 
-    async def aembed(
+    async def async_embed(
         self,
         input: builtins.list[builtins.str],
         model: builtins.str,
@@ -415,12 +415,12 @@ class InferenceClient:
             requests.exceptions.HTTPError: If the request fails.
 
         Example:
-            >>> response = await client.aembed(["hello", "world"], model="model-id")
+            >>> response = await client.async_embed(["hello", "world"], model="model-id")
             >>> print(response.data[0].embedding)
         """
         ...
 
-    async def arerank(
+    async def async_rerank(
         self,
         query: builtins.str,
         texts: builtins.list[builtins.str],
@@ -454,13 +454,13 @@ class InferenceClient:
             requests.exceptions.HTTPError: If the request fails.
 
         Example:
-            >>> response = await client.arerank("find", ["doc1", "doc2"])
+            >>> response = await client.async_rerank("find", ["doc1", "doc2"])
             >>> for result in response.data:
             ...     print(result.index, result.score)
         """
         ...
 
-    async def aclassify(
+    async def async_classify(
         self,
         inputs: builtins.list[builtins.str],
         raw_scores: builtins.bool = False,
@@ -490,14 +490,14 @@ class InferenceClient:
             requests.exceptions.HTTPError: If the request fails.
 
         Example:
-            >>> response = await client.aclassify(["text1", "text2"])
+            >>> response = await client.async_classify(["text1", "text2"])
             >>> for group in response.data:
             ...     for result in group:
             ...         print(result.label, result.score)
         """
         ...
 
-    async def abatch_post(
+    async def async_batch_post(
         self,
         url_path: builtins.str,
         payloads: builtins.list[typing.Any],
@@ -521,7 +521,7 @@ class InferenceClient:
             requests.exceptions.HTTPError: If any underlying HTTP requests fail.
 
         Example:
-            >>> responses = await client.abatch_post("/v1/process_item", [{"data": "r1"}, {"data": "r2"}])
+            >>> responses = await client.async_batch_post("/v1/process_item", [{"data": "r1"}, {"data": "r2"}])
             >>> for resp in responses:
             ...     print(resp)
         """
