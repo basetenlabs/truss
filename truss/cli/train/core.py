@@ -10,6 +10,7 @@ from rich.text import Text
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
+from truss.cli.utils import common as cli_common
 from truss.cli.utils.common import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
@@ -52,7 +53,9 @@ def _get_active_job(
     if not jobs:
         raise click.UsageError("No running jobs found.")
     if len(jobs) > 1:
-        display_training_jobs(jobs, title="Active Training Jobs")
+        display_training_jobs(
+            jobs, remote_provider.remote_url, title="Active Training Jobs"
+        )
         raise click.UsageError("Multiple active jobs found. Please specify a job id.")
     return jobs[0]
 
@@ -64,13 +67,16 @@ class DisplayTableColumn:
     accessor: Callable[[dict], str]
 
 
-def display_training_jobs(jobs, checkpoints_by_job_id={}, title="Training Job Details"):
+def display_training_jobs(
+    jobs, remote_url: str, checkpoints_by_job_id=None, title="Training Job Details"
+):
+    checkpoints_by_job_id = checkpoints_by_job_id or {}
     console.print(title, style="bold magenta")
     for job in jobs:
-        display_training_job(job, checkpoints_by_job_id.get(job["id"], []))
+        display_training_job(job, remote_url, checkpoints_by_job_id.get(job["id"], []))
 
 
-def display_training_projects(projects):
+def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table = rich.table.Table(
         show_header=True,
         header_style="bold magenta",
@@ -80,21 +86,29 @@ def display_training_projects(projects):
     )
     table.add_column("Project ID", style="cyan")
     table.add_column("Name")
-    table.add_column("Created At")
-    table.add_column("Updated At")
-    table.add_column("Latest Job ID")
-    table.add_column("Latest Job Status")
+    table.add_column("Created")
+    table.add_column("Last Modified")
+    table.add_column("Latest Job ID", style="bold yellow")
+    table.add_column("Latest Job Status", style="bold yellow")
+    table.add_column("Status Page", style="bold yellow")
 
     # most recent projects at bottom of terminal
     for project in projects[::-1]:
         latest_job = project.get("latest_job") or {}
+        if latest_job_id := latest_job.get("id", ""):
+            latest_job_link = cli_common.format_link(
+                status_page_url(remote_url, latest_job_id), "link"
+            )
+        else:
+            latest_job_link = ""
         table.add_row(
             project["id"],
             project["name"],
-            project["created_at"],
-            project["updated_at"],
-            latest_job.get("id", ""),
+            cli_common.format_localized_time(project["created_at"]),
+            cli_common.format_localized_time(project["updated_at"]),
+            latest_job_id,
             latest_job.get("current_status", ""),
+            latest_job_link,
         )
 
     console.print(table)
@@ -121,17 +135,21 @@ def view_training_details(
             checkpoints = remote_provider.api.list_training_job_checkpoints(
                 training_job["training_project"]["id"], training_job["id"]
             )
-            display_training_job(training_job, checkpoints["checkpoints"])
+            display_training_job(
+                training_job, remote_provider.remote_url, checkpoints["checkpoints"]
+            )
         else:
-            display_training_jobs(jobs_response)
+            display_training_jobs(jobs_response, remote_provider.remote_url)
     else:
         projects = remote_provider.api.list_training_projects()
-        display_training_projects(projects)
+        display_training_projects(projects, remote_provider.remote_url)
         active_jobs = remote_provider.api.search_training_jobs(
             statuses=ACTIVE_JOB_STATUSES
         )
         if active_jobs:
-            display_training_jobs(active_jobs, title="Active Training Jobs")
+            display_training_jobs(
+                active_jobs, remote_provider.remote_url, title="Active Training Jobs"
+            )
         else:
             console.print("No active training jobs.", style="yellow")
 
@@ -201,7 +219,9 @@ def print_deploy_checkpoints_success_message(
     )
 
 
-def display_training_job(job: dict, checkpoints: list[dict] = []):
+def display_training_job(
+    job: dict, remote_url: str, checkpoints: Optional[list[dict]] = None
+):
     table = rich.table.Table(
         show_header=False,
         title=f"Training Job: {job['id']}",
@@ -218,8 +238,12 @@ def display_training_job(job: dict, checkpoints: list[dict] = []):
     table.add_row("Job ID", job["id"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
-    table.add_row("Created At", job["created_at"])
-    table.add_row("Updated At", job["updated_at"])
+    table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
+    table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
+    table.add_row(
+        "Status Page",
+        cli_common.format_link(status_page_url(remote_url, job["id"]), "link"),
+    )
 
     # Add error message if present
     if job.get("error_message"):
@@ -233,3 +257,7 @@ def display_training_job(job: dict, checkpoints: list[dict] = []):
         table.add_row("Checkpoints", checkpoint_text)
 
     console.print(table)
+
+
+def status_page_url(remote_url: str, training_job_id: str) -> str:
+    return f"{remote_url}/training/jobs/{training_job_id}"

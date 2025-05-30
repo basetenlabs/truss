@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.text import Text
 
 from truss.cli.train.poller import TrainingPollerMixin
+from truss.cli.utils import common
 from truss.cli.utils.common import console
 from truss.remote.baseten.api import BasetenApi
 
@@ -113,8 +114,11 @@ class MetricsWatcher(TrainingPollerMixin):
         cpu_usage_data = metrics_data.get("cpu_usage", [])
         if cpu_usage_data and len(cpu_usage_data) > 0:
             latest_timestamp = cpu_usage_data[-1].get("timestamp")
+            # TODO: API result has missing timezone info.
             if latest_timestamp:
-                table.add_row("Timestamp", latest_timestamp)
+                table.add_row(
+                    "Timestamp", common.format_localized_time(latest_timestamp)
+                )
                 table.add_section()
 
         # CPU metrics

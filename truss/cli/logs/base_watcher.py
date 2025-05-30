@@ -47,7 +47,7 @@ class LogWatcher(ABC):
 
     def watch(self) -> Iterator[ParsedLog]:
         self.before_polling()
-        with console.status("Waiting for logs...", spinner="dots"):
+        with console.status("Polling logs", spinner="aesthetic"):
             while True:
                 for log in self._poll():
                     yield log
@@ -55,11 +55,11 @@ class LogWatcher(ABC):
                     break
                 time.sleep(POLL_INTERVAL_SEC)
 
-        while self.should_poll_again():
-            for log in self._poll():
-                yield log
-            time.sleep(POLL_INTERVAL_SEC)
-            self.post_poll()
+            while self.should_poll_again():
+                for log in self._poll():
+                    yield log
+                time.sleep(POLL_INTERVAL_SEC)
+                self.post_poll()
 
         self.after_polling()
 

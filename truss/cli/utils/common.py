@@ -1,8 +1,9 @@
+import datetime
 import logging
 import sys
 import warnings
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import pydantic
 import rich
@@ -180,9 +181,16 @@ def common_options(
     return decorator
 
 
-def format_link(text: str) -> str:
-    return f"[link={text}]{text}[/link]"
+def format_link(url: str, display_text: Optional[str] = None) -> str:
+    display_text = display_text or url
+    return f"[link={url}]{display_text}[/link]"
 
 
 def is_human_log_level(ctx: click.Context) -> bool:
     return get_required_option(ctx, "log") != _HUMANFRIENDLY_LOG_LEVEL
+
+
+def format_localized_time(iso_timestamp: str) -> str:
+    utc_time = datetime.datetime.fromisoformat(iso_timestamp)
+    local_time = utc_time.astimezone()
+    return local_time.strftime("%Y-%m-%d %H:%M")

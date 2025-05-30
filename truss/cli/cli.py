@@ -197,7 +197,7 @@ def init(target_directory, backend, name, python_config) -> None:
     """
     if os.path.isdir(target_directory):
         raise click.ClickException(
-            f"Error: Directory `{target_directory}` already exists "
+            f"Error: Directory '{target_directory}' already exists "
             "and cannot be overwritten."
         )
     tr_path = Path(target_directory)
@@ -463,7 +463,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with `--publish` or `--promote`."
+        "used in combination with '--publish' or '--promote'."
     ),
 )
 @click.option(
@@ -540,7 +540,7 @@ def push(
         model_name = remote_cli.inquire_model_name()
 
     if promote and environment:
-        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        promote_warning = "'promote' flag and 'environment' flag were both specified. Ignoring the value of 'promote'"
         console.print(promote_warning, style="yellow")
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
@@ -568,7 +568,7 @@ def push(
 
     # Log a warning if using --trusted.
     if trusted is not None:
-        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
+        trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
@@ -600,7 +600,7 @@ def push(
                 fp8_and_num_builder_gpus_text = (
                     "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
                     "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
-                    "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+                    "'num_builder_gpus' can be used to specify the number of GPUs to use at build time."
                 )
                 console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
@@ -626,12 +626,12 @@ def push(
     if service.is_draft:
         draft_model_text = """
 |---------------------------------------------------------------------------------------|
-| Your model is deploying as a development model. Development models allow you to  |
+| Your model is deploying as a development model. Development models allow you to       |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
 | When you are ready to publish your deployed model as a new deployment,                |
-| pass `--publish` to the `truss push` command. To monitor changes to your model and    |
-| rapidly iterate, run the `truss watch` command.                                       |
+| pass '--publish' to the 'truss push' command. To monitor changes to your model and    |
+| rapidly iterate, run the 'truss watch' command.                                       |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """

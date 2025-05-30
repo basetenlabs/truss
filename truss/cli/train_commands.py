@@ -9,6 +9,7 @@ from truss.cli.cli import push, truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
+from truss.cli.train import core
 from truss.cli.utils import common
 from truss.cli.utils.common import console
 from truss.remote.baseten.remote import BasetenRemote
@@ -61,12 +62,15 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
                 project_id=project_resp["id"], job=prepared_job
             )
 
+        job_id = job_resp["id"]
+
         console.print("✨ Training job successfully created!", style="green")
         console.print(
             f"🪵 View logs for your job via "
-            f"[cyan]`truss train logs --job-id {job_resp['id']} [--tail]`[/cyan]\n"
+            f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
             f"🔍 View metrics for your job via "
-            f"[cyan]`truss train metrics --job-id {job_resp['id']}`[/cyan]"
+            f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+            f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
         )
 
     if tail:
