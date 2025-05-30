@@ -88,7 +88,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     )
     table.add_column("Status", style="dim", min_width=20)
     table.add_column("Chainlet", min_width=20)
-    table.add_column("Logs URL")
+    table.add_column("Logs UI")
     statuses = []
     status_iterable = service.get_info()
     # Organize status_iterable s.t. entrypoint is first.
@@ -115,7 +115,9 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         else:
             display_name = f"{chainlet.name} (internal)"
 
-        table.add_row(spinner, display_name, common.format_link(chainlet.logs_url))
+        table.add_row(
+            spinner, display_name, common.format_link(chainlet.logs_url, "click here")
+        )
         # Add section divider after entrypoint, entrypoint must be first.
         if chainlet.is_entrypoint:
             table.add_section()
@@ -236,19 +238,22 @@ def push_chain(
             )
         if not wait:
             console.print(
-                "`--watch` is used. Will wait for deployment before watching files."
+                "'--watch' is used. Will wait for deployment before watching files."
             )
             wait = True
 
     if promote and environment:
         promote_warning = (
-            "`promote` flag and `environment` flag were both specified. "
-            "Ignoring the value of `promote`."
+            "'promote' flag and 'environment' flag were both specified. "
+            "Ignoring the value of 'promote'."
         )
         console.print(promote_warning, style="yellow")
 
     if not remote:
-        remote = remote_cli.inquire_remote_name()
+        if dryrun:
+            remote = ""
+        else:
+            remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
         include_git_info = user_config.settings.include_git_info
@@ -367,7 +372,7 @@ def push_chain(
     type=str,
     required=False,
     help=(
-        "Runs `watch`, but only applies patches to specified chainlets. The option is "
+        "Runs 'watch', but only applies patches to specified chainlets. The option is "
         "a comma-separated list of chainlet (display) names. This option can give "
         "faster dev loops, but also lead to inconsistent deployments. Use with caution "
         "and refer to docs."
@@ -448,8 +453,8 @@ def init_chain(directory: Optional[Path]) -> None:
     filepath.write_text(source_code)
     console.print(
         "Next steps:\n",
-        f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
+        f"💻 Run [bold green]'python {filepath}'[/bold green] for local debug "
         "execution.\n"
-        f"🚢 Run [bold green]`truss chains push {filepath}`[/bold green] "
+        f"🚢 Run [bold green]'truss chains push {filepath}'[/bold green] "
         "to deploy the chain to Baseten.\n",
     )
