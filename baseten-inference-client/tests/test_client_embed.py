@@ -274,7 +274,7 @@ def test_embed_gil_release():
 async def test_embed_async():
     client = InferenceClient(base_url=base_url_embed, api_key=api_key)
 
-    response = await client.aembed(
+    response = await client.async_embed(
         ["Hello world", "Hello world 2"],
         model="my_model",
         batch_size=1,
@@ -296,7 +296,7 @@ async def test_embed_async():
 async def test_classify_async():
     client = InferenceClient(base_url=base_url_rerank, api_key=api_key)
 
-    response = await client.aclassify(
+    response = await client.async_classify(
         inputs=["who, who?", "Paris france"], batch_size=2, max_concurrent_requests=2
     )
     assert response is not None
@@ -313,7 +313,7 @@ async def test_classify_async():
 async def test_rerank_async():
     client = InferenceClient(base_url=base_url_rerank, api_key=api_key)
 
-    response = await client.arerank(
+    response = await client.async_rerank(
         query="Who let the dogs out?",
         texts=["who, who?", "Paris france"],
         batch_size=2,

@@ -63,7 +63,7 @@ Note: The embed method is versatile and can be used with any embeddings service,
 ```python
 async def async_embed():
     texts = ["Async hello", "Async example"]
-    response = await client.aembed(
+    response = await client.async_embed(
         input=texts,
         model="my_model",
         batch_size=2,
@@ -109,7 +109,7 @@ print("Batch POST responses:", response1, response2)
 ```python
 async def async_batch_post():
     payload = {"model": "my_model", "input": ["Async batch sample"]}
-    responses = await client.abatch_post(
+    responses = await client.async_batch_post(
         url_path="/v1/embeddings",
         payloads=[payload, payload],
         max_concurrent_requests=4,
@@ -146,7 +146,7 @@ for res in rerank_response.data:
 async def async_rerank():
     query = "Async query sample"
     docs = ["Async doc1", "Async doc2"]
-    response = await client.arerank(
+    response = await client.async_rerank(
         query=query,
         texts=docs,
         return_text=True,
@@ -186,7 +186,7 @@ for group in classify_response.data:
 ```python
 async def async_classify():
     texts = ["Async positive", "Async negative"]
-    response = await client.aclassify(
+    response = await client.async_classify(
         inputs=texts,
         batch_size=1,
         max_concurrent_requests=8,
@@ -236,7 +236,7 @@ except requests.exceptions.HTTPError as e:
 
 ```
 
-For asynchronous methods (`aembed`, `arerank`, `aclassify`, `abatch_post`), the same exceptions will be raised by the `await` call and can be caught using a `try...except` block within an `async def` function.
+For asynchronous methods (`async_embed`, `async_rerank`, `async_classify`, `async_batch_post`), the same exceptions will be raised by the `await` call and can be caught using a `try...except` block within an `async def` function.
 
 ## Development
 
