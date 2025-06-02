@@ -30,6 +30,29 @@ jobs:
     with:
       run_only_integration: false
 
+  report_to_slack:
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+    needs:
+      - all-tests
+    steps:
+      - name: get-branch
+        run: echo ${{ github.ref }}
+      - name: show-slack-status
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          fields: author, job, commit, repo
+          custom_payload: |
+            {
+              attachments: [{
+                color: "${{ needs.all-tests.result == 'failure' && 'danger' || 'good' }}",
+                text: `Truss post-commit tests Result: ${{ needs.all-tests.result }}: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
   publish-rc-to-pypi:
     needs: [detect-version-changed]
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' && needs.detect-version-changed.outputs.is_prerelease_version == 'true' }}
