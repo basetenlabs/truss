@@ -46,6 +46,29 @@ jobs:
           commit: ${{ github.event.workflow_run.head_sha }}
           report_paths: "report.xml"
 
+  report_to_slack:
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+    needs:
+      - test
+    steps:
+      - name: get-branch
+        run: echo ${{ github.ref }}
+      - name: show-slack-status
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          fields: author, job, commit, repo
+          custom_payload: |
+            {
+              attachments: [{
+                color: "${{ needs.test.result == 'failure' && 'danger' || 'good' }}",
+                text: `Truss post-commit tests Result: ${{ needs.test.result }}: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
   markdown-link-check:
     runs-on: ubuntu-22.04
     steps:
