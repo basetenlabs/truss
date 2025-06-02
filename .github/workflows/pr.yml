@@ -48,7 +48,7 @@ jobs:
 
   report_to_slack:
     runs-on: ubuntu-latest
-    if: always() && github.ref == 'refs/heads/main'
+    if: always()
     needs:
       - test
     steps:
