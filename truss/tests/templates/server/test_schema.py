@@ -75,6 +75,8 @@ def test_truss_schema_pydantic_empty_output():
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
+    # deliberate test failure to trigger slack notification
+    assert False
     assert schema.input_type == ModelInput
     assert schema.output_type is None
 
