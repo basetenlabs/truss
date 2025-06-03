@@ -14,6 +14,9 @@ class S3Artifact(SafeModel):
     s3_key: str
 
 
+FILE_BUNDLE_SIZE_LIMIT_GB = 1
+
+
 # Performs validation/transformation of fields that we don't want to expose
 # to the end user via the TrainingJob SDK.
 class PreparedTrainingJob(TrainingJob):
@@ -29,7 +32,9 @@ class PreparedTrainingJob(TrainingJob):
 
 def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJob):
     # Assume config is at the root of the directory.
-    archive = archive_dir(config.absolute().parent)
+    archive = archive_dir(
+        config.absolute().parent, size_limit_mb=FILE_BUNDLE_SIZE_LIMIT_GB * 1024
+    )
     credentials = api.get_blob_credentials(b10_types.BlobType.TRAIN)
     transfer.multipart_upload_boto3(
         archive.name,

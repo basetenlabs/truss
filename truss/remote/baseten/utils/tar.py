@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 from truss.util.path import is_ignored
 
 
+class FileBundleSizeLimitExceededError(Exception):
+    pass
+
+
 class ReadProgressIndicatorFileHandle:
     def __init__(
         self, file: IO[bytes], progress_callback: Callable[[int], Any]
@@ -31,6 +35,7 @@ def create_tar_with_progress_bar(
     ignore_patterns: Optional[List[str]] = None,
     delete=True,
     progress_bar: Optional[Type["progress.Progress"]] = None,
+    size_limit_mb: Optional[int] = None,
 ):
     files_to_include = [
         f
@@ -38,15 +43,17 @@ def create_tar_with_progress_bar(
         if f.is_file() and not is_ignored(f, ignore_patterns or [], source_dir)
     ]
 
-    total_size = sum(f.stat().st_size for f in files_to_include)
+    total_size_bytes = sum(f.stat().st_size for f in files_to_include)
+    file_bundle_size = total_size_bytes
     temp_file = tempfile.NamedTemporaryFile(suffix=".tgz", delete=delete)
 
     progress_context = (
         progress_bar(transient=True) if progress_bar else contextlib.nullcontext()
     )
+
     # Trailing spaces are to align with `multipart_upload_boto3` message.
     task_id = (
-        progress_context.add_task("[cyan]Packing Truss  ", total=total_size)
+        progress_context.add_task("[cyan]Packing Truss  ", total=total_size_bytes)
         if not isinstance(progress_context, contextlib.nullcontext)
         else None
     )
@@ -69,4 +76,11 @@ def create_tar_with_progress_bar(
                 )
                 tarinfo = tar.gettarinfo(name=str(file_path), arcname=arcname)
                 tar.addfile(tarinfo=tarinfo, fileobj=file_obj_with_progress)  # type: ignore[arg-type]  # `ReadProgressIndicatorFileHandle` implements `IO[bytes]`.
+                total_size_bytes += tarinfo.size
+    if size_limit_mb and total_size_bytes > size_limit_mb * 1024 * 1024:
+        raise FileBundleSizeLimitExceededError(
+            f"Size limit exceeded: raw files ({file_bundle_size / 1024 / 1024:.2f} MB) + tar overhead "
+            f"= total size ({total_size_bytes / 1024 / 1024:.2f} MB), which exceeds the limit of {size_limit_mb} MB. "
+            f"Please reduce the size of your files or ignore large files with a .trussignore file."
+        )
     return temp_file

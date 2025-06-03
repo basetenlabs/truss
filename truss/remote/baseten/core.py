@@ -282,7 +282,9 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
 
 
 def archive_dir(
-    dir: pathlib.Path, progress_bar: Optional[Type["progress.Progress"]] = None
+    dir: pathlib.Path,
+    progress_bar: Optional[Type["progress.Progress"]] = None,
+    size_limit_mb: Optional[int] = None,
 ) -> IO:
     """Archive a TrussHandle into a tar file.
 
@@ -294,7 +296,7 @@ def archive_dir(
 
     try:
         temp_file = create_tar_with_progress_bar(
-            dir, ignore_patterns, progress_bar=progress_bar
+            dir, ignore_patterns, progress_bar=progress_bar, size_limit_mb=size_limit_mb
         )
     except PermissionError:
         # workaround for Windows bug with Tempfile that causes PermissionErrors
