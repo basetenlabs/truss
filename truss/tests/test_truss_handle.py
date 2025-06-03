@@ -370,12 +370,12 @@ def test_local_no_params_init_custom_model(no_params_init_custom_model):
 @pytest.mark.integration
 def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.add_python_requirement("theano")
+    th.add_python_requirement("pandas")
     th.add_python_requirement("scipy")
     tag = "test-custom-python-req-tag:0.0.1"
     container = th.docker_run(tag=tag, local_port=None)
     try:
-        verify_python_requirement_installed_on_container(container, "theano")
+        verify_python_requirement_installed_on_container(container, "pandas")
         verify_python_requirement_installed_on_container(container, "scipy")
     finally:
         Docker.client().kill(container)
