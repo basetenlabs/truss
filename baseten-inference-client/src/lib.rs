@@ -411,8 +411,8 @@ impl InferenceClient {
         Python::with_gil(|py_gil| Ok(successful_response.into_py(py_gil)))
     }
 
-    #[pyo3(name = "aembed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
-    fn aembed<'py>(
+    #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn async_embed<'py>(
         &self,
         py: Python<'py>,
         input: Vec<String>,
@@ -513,8 +513,8 @@ impl InferenceClient {
         Python::with_gil(|py| Ok(successful_response.into_py(py)))
     }
 
-    #[pyo3(name = "arerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
-    fn arerank<'py>(
+    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn async_rerank<'py>(
         &self,
         py: Python<'py>,
         query: String,
@@ -614,8 +614,8 @@ impl InferenceClient {
         Python::with_gil(|py| Ok(result_from_async_task?.into_py(py)))
     }
 
-    #[pyo3(name = "aclassify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
-    fn aclassify<'py>(
+    #[pyo3(name = "async_classify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn async_classify<'py>(
         &self,
         py: Python<'py>,
         inputs: Vec<String>,
@@ -668,7 +668,7 @@ impl InferenceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1)?; // Batch size is effectively 1
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1000)?; // sent batch size to 1000 to allow higher batch
         let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held)
@@ -737,8 +737,8 @@ impl InferenceClient {
         Ok(py_object_list.into())
     }
 
-    #[pyo3(name = "abatch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
-    fn abatch_post<'py>(
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
         url_path: String,
@@ -749,7 +749,7 @@ impl InferenceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1)?; // Batch size is effectively 1
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1000)?; // sent batch size to 1000 to allow higher batch
         let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held by `py` argument)

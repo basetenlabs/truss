@@ -39,7 +39,7 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss.base import custom_types, trt_llm_config
+from truss.base import custom_types, trt_llm_config, truss_config
 from truss_chains import private_types, public_types, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
@@ -933,6 +933,35 @@ def _validate_health_check(
     return private_types.HealthCheckAPIDescriptor(is_async=is_async)
 
 
+def _validate_transport_options(
+    remote_config: public_types.RemoteConfig,
+    descriptor: private_types.EndpointAPIDescriptor,
+    location: _ErrorLocation,
+) -> None:
+    if not (transport := remote_config.options.transport):
+        return
+
+    if descriptor.is_websocket:
+        if not isinstance(transport, truss_config.WebsocketOptions):
+            _collect_error(
+                f"For chainlet endpoints that serve websockets, `options.transport` "
+                f"must be `{truss_config.WebsocketOptions.__name__}`, got "
+                f"`{transport.__class__.__name__}`.",
+                _ErrorKind.INVALID_CONFIG_ERROR,
+                location,
+            )
+    else:
+        # TODO: non-websocket implies HTTP, it would be better to make the alternative
+        #  kind explicit with an enum instead of `is_websocket` and then assert that
+        #  which transport options can be used.
+        if isinstance(transport, truss_config.WebsocketOptions):
+            _collect_error(
+                f"{truss_config.WebsocketOptions.__name__} can only be used for websocket endpoints.",
+                _ErrorKind.INVALID_CONFIG_ERROR,
+                location,
+            )
+
+
 def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
     """Note that validation errors will only be collected, not raised, and Chainlets.
     with issues, are still added to the registry.  Use `raise_validation_errors` to
@@ -975,6 +1004,10 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         endpoint=_validate_and_describe_endpoint(cls, location),
         src_path=src_path,
         health_check=_validate_health_check(cls, location),
+    )
+
+    _validate_transport_options(
+        cls.remote_config, chainlet_descriptor.endpoint, location
     )
     logging.debug(
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"

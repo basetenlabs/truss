@@ -1,7 +1,9 @@
 import asyncio
 import os
+import pathlib
 
 import uvicorn
+import yaml
 from application import create_app
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
@@ -29,6 +31,12 @@ class ControlServer:
         self._control_server_port = control_server_port
         self._inference_server_port = inference_server_port
 
+        config_path = pathlib.Path(self._inf_serv_home) / "config.yaml"
+        if config_path.exists():
+            self._config = yaml.safe_load(config_path.read_text())
+        else:
+            self._config = {}
+
     def run(self):
         application = create_app(
             {
@@ -47,6 +55,15 @@ class ControlServer:
             f"Starting live reload server on port {self._control_server_port}"
         )
 
+        extra_kwargs = {}
+        if self._config:
+            transport = self._config.get("runtime", {}).get("transport", {})
+            if transport and transport.get("kind") == "websocket":
+                if ping_interval_seconds := transport.get("ping_interval_seconds"):
+                    extra_kwargs["ws_ping_interval"] = ping_interval_seconds
+                if ping_timeout_seconds := transport.get("ping_timeout_seconds"):
+                    extra_kwargs["ws_ping_timeout"] = ping_timeout_seconds
+
         cfg = uvicorn.Config(
             application,
             host=application.state.control_server_host,
@@ -55,6 +72,7 @@ class ControlServer:
             # httptools installed, which does not work with our requests & version
             # of uvicorn.
             http="h11",
+            **extra_kwargs,
         )
         cfg.setup_event_loop()
 

@@ -145,7 +145,7 @@ class BasetenEndpoints:
         if self.is_binary(request):
             with tracing.section_as_event(span, "binary-deserialize"):
                 inputs = serialization.truss_msgpack_deserialize(body_raw)
-            if truss_schema:
+            if truss_schema and truss_schema.input_type:
                 try:
                     with tracing.section_as_event(span, "parse-pydantic"):
                         inputs = truss_schema.input_type.parse_obj(inputs)
@@ -154,7 +154,7 @@ class BasetenEndpoints:
                         errors.format_pydantic_validation_error(e)
                     ) from e
         else:
-            if truss_schema:
+            if truss_schema and truss_schema.input_type:
                 try:
                     with tracing.section_as_event(span, "parse-pydantic"):
                         inputs = truss_schema.input_type.parse_raw(body_raw)
@@ -462,6 +462,21 @@ class TrussServer:
             if self._config["runtime"].get("enable_debug_logs", False)
             else "INFO"
         )
+        extra_kwargs = {}
+        # We don't pass these if not set, to not override the default.
+        if (
+            ws_ping_interval_seconds := self._config["runtime"]
+            .get("transport", {})
+            .get("ping_interval_seconds")
+        ):
+            extra_kwargs["ws_ping_interval"] = ws_ping_interval_seconds
+        if (
+            ws_ping_timeout_seconds := self._config["runtime"]
+            .get("transport", {})
+            .get("ping_timeout_seconds")
+        ):
+            extra_kwargs["ws_ping_timeout"] = ws_ping_timeout_seconds
+
         cfg = uvicorn.Config(
             self.create_application(),
             # We hard-code the http parser as h11 (the default) in case the user has
@@ -474,6 +489,7 @@ class TrussServer:
             timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config=log_config.make_log_config(log_level),
             ws_max_size=WS_MAX_MSG_SZ_BYTES,
+            **extra_kwargs,
         )
         cfg.setup_event_loop()  # Call this so uvloop gets used
         server = uvicorn.Server(config=cfg)

@@ -9,8 +9,9 @@ RUN $PYTHON_EXECUTABLE -c "import sys; \
     and sys.version_info.minor <= 13 \
     else sys.exit(1)" \
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.13"; exit 1; }
-RUN pip install --upgrade pip --no-cache-dir \
-    && rm -rf /root/.cache/pip
+RUN if command -v pip >/dev/null 2>&1; then \
+      pip install --upgrade pip --no-cache-dir && rm -rf /root/.cache/pip; \
+    fi
 ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
 RUN apt update && \

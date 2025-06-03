@@ -214,7 +214,12 @@ class DockerImage(custom_types.SafeModelNonSerializable):
     apt_requirements: list[str] = pydantic.Field(default_factory=list)
     data_dir: Optional[AbsPath] = None
     external_package_dirs: Optional[list[AbsPath]] = None
-    truss_server_version_override: Optional[str] = None
+    truss_server_version_override: Optional[str] = pydantic.Field(
+        None,
+        description=truss_config.Runtime.model_fields[
+            "truss_server_version_override"
+        ].description,
+    )
 
     @pydantic.model_validator(mode="before")
     @classmethod
@@ -389,6 +394,7 @@ class ChainletOptions(custom_types.SafeModelNonSerializable):
         health_checks: Configures health checks for the chainlet. See `guide <https://docs.baseten.co/truss/guides/custom-health-checks#chains>`_.
         metadata: Arbitrary JSON object to describe chainlet.
         streaming_read_timeout: Amount of time (in seconds) between each streamed chunk before a timeout is triggered.
+        transport: Allows to customize certain transport protocols, e.g. websocket pings.
     """
 
     enable_b10_tracing: bool = False
@@ -397,6 +403,7 @@ class ChainletOptions(custom_types.SafeModelNonSerializable):
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
     metadata: Optional[JsonType] = None
     streaming_read_timeout: int = 60
+    transport: Optional[truss_config.Transport] = None
 
 
 class RemoteConfig(custom_types.SafeModelNonSerializable):

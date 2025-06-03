@@ -21,8 +21,8 @@ base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
 client = InferenceClient(base_url=base_url_embed, api_key=api_key)
 ```
-
-### Synchronous Embedding
+### Embeddings
+#### Synchronous Embedding
 
 ```python
 texts = ["Hello world", "Example text", "Another sample"]
@@ -58,12 +58,12 @@ if numpy_array.shape[0] > 0:
 
 Note: The embed method is versatile and can be used with any embeddings service, e.g. OpenAI API embeddings, not just for Baseten deployments.
 
-### Asynchronous Embedding
+#### Asynchronous Embedding
 
 ```python
 async def async_embed():
     texts = ["Async hello", "Async example"]
-    response = await client.aembed(
+    response = await client.async_embed(
         input=texts,
         model="my_model",
         batch_size=2,
@@ -76,8 +76,22 @@ async def async_embed():
 # asyncio.run(async_embed())
 ```
 
-### Synchronous Batch POST
+#### Embedding Benchmarks
+Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `./scripts/compare_latency_openai.py` with mini_batch_size of 128, and 4 server-side replicas. Results with OpenAI similar, OpenAI allows a max mini_batch_size of 2048.
 
+| Number of inputs / embeddings | Number of Tasks | InferenceClient (s) | AsyncOpenAI (s) | Speedup |
+|-------------------------------:|---------------:|---------------------:|----------------:|--------:|
+| 128                            |              1 |                0.12 |            0.13 |    1.08× |
+| 512                            |              4 |                0.14 |            0.21 |    1.50× |
+| 8 192                          |             64 |                0.83 |            1.95 |    2.35× |
+| 131 072                        |           1 024 |                4.63 |           39.07 |    8.44× |
+| 2 097 152                      |          16 384 |               70.92 |          903.68 |   12.74× |
+
+### Gerneral Batch POST
+
+The batch_post method is generic. It can be used to send POST requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON item.
+
+#### Synchronous Batch POST
 ```python
 payload1 = {"model": "my_model", "input": ["Batch request sample 1"]}
 payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
@@ -90,15 +104,12 @@ response1, response2 = client.batch_post(
 print("Batch POST responses:", response1, response2)
 ```
 
-Note: The batch_post method is generic. It can be used to send POST requests to any URL,
-not limited to Baseten endpoints.
-
-### Asynchronous Batch POST
+#### Asynchronous Batch POST
 
 ```python
 async def async_batch_post():
     payload = {"model": "my_model", "input": ["Async batch sample"]}
-    responses = await client.abatch_post(
+    responses = await client.async_batch_post(
         url_path="/v1/embeddings",
         payloads=[payload, payload],
         max_concurrent_requests=4,
@@ -109,8 +120,10 @@ async def async_batch_post():
 # To run:
 # asyncio.run(async_batch_post())
 ```
+### Reranking
+Reranking compatible with BEI or text-embeddings-inference.
 
-### Synchronous Reranking
+#### Synchronous Reranking
 
 ```python
 query = "What is the best framework?"
@@ -127,13 +140,13 @@ for res in rerank_response.data:
     print(f"Index: {res.index} Score: {res.score}")
 ```
 
-### Asynchronous Reranking
+#### Asynchronous Reranking
 
 ```python
 async def async_rerank():
     query = "Async query sample"
     docs = ["Async doc1", "Async doc2"]
-    response = await client.arerank(
+    response = await client.async_rerank(
         query=query,
         texts=docs,
         return_text=True,
@@ -148,7 +161,9 @@ async def async_rerank():
 # asyncio.run(async_rerank())
 ```
 
-### Synchronous Classification
+### Classification
+Predicy (classification endpoint) compatible with BEI or text-embeddings-inference.
+#### Synchronous Classification
 
 ```python
 texts_to_classify = [
@@ -167,12 +182,11 @@ for group in classify_response.data:
         print(f"Label: {result.label}, Score: {result.score}")
 ```
 
-### Asynchronous Classification
-
+#### Asynchronous Classification
 ```python
 async def async_classify():
     texts = ["Async positive", "Async negative"]
-    response = await client.aclassify(
+    response = await client.async_classify(
         inputs=texts,
         batch_size=1,
         max_concurrent_requests=8,
@@ -187,28 +201,7 @@ async def async_classify():
 ```
 
 
-## Development
-
-```bash
-# Install prerequisites
-sudo apt-get install patchelf
-# Install cargo if not already installed.
-
-# Set up a Python virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install development dependencies
-pip install maturin[patchelf] pytest requests numpy
-
-# Build and install the Rust extension in development mode
-maturin develop
-cargo fmt
-# Run tests
-pytest tests
-```
-
-## Error Handling
+### Error Handling
 
 The client can raise several types of errors. Here's how to handle common ones:
 
@@ -243,7 +236,28 @@ except requests.exceptions.HTTPError as e:
 
 ```
 
-For asynchronous methods (`aembed`, `arerank`, `aclassify`, `abatch_post`), the same exceptions will be raised by the `await` call and can be caught using a `try...except` block within an `async def` function.
+For asynchronous methods (`async_embed`, `async_rerank`, `async_classify`, `async_batch_post`), the same exceptions will be raised by the `await` call and can be caught using a `try...except` block within an `async def` function.
+
+## Development
+
+```bash
+# Install prerequisites
+sudo apt-get install patchelf
+# Install cargo if not already installed.
+
+# Set up a Python virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install development dependencies
+pip install maturin[patchelf] pytest requests numpy
+
+# Build and install the Rust extension in development mode
+maturin develop
+cargo fmt
+# Run tests
+pytest tests
+```
 
 ## Contributions
 Feel free to contribute to this repo, tag @michaelfeil for review.
