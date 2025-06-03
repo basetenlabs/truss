@@ -31,7 +31,7 @@ jobs:
       run_only_integration: false
 
   report_to_slack:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: always() && github.ref == 'refs/heads/main'
     needs:
       - all-tests
@@ -47,7 +47,7 @@ jobs:
             {
               attachments: [{
                 color: "${{ needs.all-tests.result == 'failure' && 'danger' || 'good' }}",
-                text: `Truss post-commit tests Result: ${{ needs.all-tests.result }}: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+                text: `Truss post-commit tests ${{ needs.all-tests.result }}: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
               }]
             }
         env:
