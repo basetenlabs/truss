@@ -184,7 +184,7 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     speculator: Optional[TrussSpeculatorConfiguration] = None
     lora_adapters: Optional[
         Dict[
-            Annotated[str, StringConstraints(pattern=r"^[a-z0-9]+$")],
+            Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9_\-\.]+$")],
             CheckpointRepository,
         ]
     ] = None
