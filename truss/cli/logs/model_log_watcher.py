@@ -1,7 +1,5 @@
 from typing import Any, List, Optional
 
-from rich import console as rich_console
-
 from truss.cli.logs.base_watcher import LogWatcher
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.utils.status import MODEL_RUNNING_STATES
@@ -12,14 +10,8 @@ class ModelDeploymentLogWatcher(LogWatcher):
     _deployment_id: str
     _current_status: Optional[str] = None
 
-    def __init__(
-        self,
-        api: BasetenApi,
-        model_id: str,
-        deployment_id: str,
-        console: rich_console.Console,
-    ):
-        super().__init__(api, console)
+    def __init__(self, api: BasetenApi, model_id: str, deployment_id: str):
+        super().__init__(api)
         self._model_id = model_id
         self._deployment_id = deployment_id
 
