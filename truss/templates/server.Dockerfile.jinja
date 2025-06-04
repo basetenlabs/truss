@@ -2,7 +2,14 @@
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %} {#- endif model_cache_v1 #}
 
+{%- set requires_live_reload = config.live_reload and not config.docker_server %}
+
+{%- if requires_live_reload %}
+{% include "control_venv.Dockerfile.jinja" %}
+{%- endif %} {#- endif requires_live_reload #}
+
 {% extends "base.Dockerfile.jinja" %}
+
 
 {% block base_image_patch %}
 {# If user base image is supplied in config, apply build commands from truss base image #}
@@ -27,14 +34,14 @@ COPY ./{{ base_server_requirements_filename }} {{ base_server_requirements_filen
 RUN pip install -r {{ base_server_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %} {#- endif not config.docker_server #}
 
-    {%- if config.live_reload and not config.docker_server %}
+    {%- if requires_live_reload %}
     {# Create symlink for inference server IF a user base image is supplied and live_reload is enabled. #}
     {# This links the base images primary python executable path to /usr/local/bin/python. #}
     {# This is specific to the user-provided base image scenario. #}
 RUN readlink {{ config.base_image.python_executable_path }} &>/dev/null \
     && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
 RUN ln -sf {{ config.base_image.python_executable_path }} /usr/local/bin/python
-    {%- endif %} {#- endif config.live_reload and not config.docker_server (for symlink) #}
+    {%- endif %} {#- endif requires_live_reload #}
 {% endif %} {#- endif config.base_image #}
 
 {% endblock %} {#- endblock base_image_patch #}
@@ -91,33 +98,23 @@ COPY ./truss /app/truss
 {%- endif %} {#- endif use_local_src #}
 
 COPY ./config.yaml /app/config.yaml
-    {%- if config.live_reload and not config.docker_server %}
+{%- if config.live_reload and not config.docker_server %}
 COPY ./control /control
-# Step 1: Ensure a usable python{{ control_python_version }} is available
-RUN if python{{ control_python_version }} -c 'import venv; venv.EnvBuilder(with_pip=True).create("/tmp/__probe_env")' > /dev/null 2>&1; then \
-      echo "Using system python{{ control_python_version }}"; \
-      python{{ control_python_version }} -m pip install --upgrade pip virtualenv && \
-      python{{ control_python_version }} -m virtualenv /control/.env; \
-    else \
-      echo "Installing Miniforge-based python{{ control_python_version }}..."; \
-      curl -fsSL -o miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh && \
-      bash miniforge.sh -b -p /opt/conda-control && \
-      rm miniforge.sh && \
-      /opt/conda-control/bin/conda create -y -p /opt/conda-control/envs/py{{ control_python_version }} python={{ control_python_version }} && \
-      /opt/conda-control/envs/py{{ control_python_version }}/bin/pip install --upgrade pip virtualenv && \
-      /opt/conda-control/bin/conda clean -afy && \
-      rm -rf /opt/conda-control/pkgs && \
-      /opt/conda-control/envs/py{{ control_python_version }}/bin/python -m virtualenv /control/.env; \
-    fi
 
-# Step 2: Install requirements into the freshly created venv
+# NB(nikhil): Copy the virtual env, and system dependencies for the
+# python version specific to the control server. We need to run ldconfig
+# so dynamic linking works.
+COPY --from=control-server-venv /usr/local/lib/ /usr/local/lib/
+COPY --from=control-server-venv /control/.env /control/.env
+RUN ldconfig
+
 RUN /control/.env/bin/pip install -r /control/requirements.txt
-    {%- endif %} {#- endif config.live_reload and not config.docker_server (for control server setup) #}
+{%- endif %} {#- endif config.live_reload and not config.docker_server (for control server setup) #}
+
 {%- if model_dir_exists %}
 COPY ./{{ config.model_module_dir }} /app/model
 {%- endif %} {#- endif model_dir_exists #}
 {% endblock %} {#- endblock app_copy #}
-
 
 {% block run %}
     {%- if config.docker_server %}
@@ -136,7 +133,7 @@ COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="supervisord -c {{ supervisor_config_path }}"
 ENTRYPOINT ["supervisord", "-c", "{{ supervisor_config_path }}"]
-    {%- elif config.live_reload %} {#- elif config.live_reload #}
+    {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
 ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
