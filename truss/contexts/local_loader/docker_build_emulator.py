@@ -53,6 +53,10 @@ class DockerBuildEmulator:
             if cmd.instruction == DockerInstruction.ENTRYPOINT:
                 result.entrypoint = list(values)
             if cmd.instruction == DockerInstruction.COPY:
+                # NB(nikhil): Skip COPY commands with --from flag (multi-stage builds)
+                if len(values) != 2:
+                    continue
+
                 src, dst = values
                 src = src.replace("./", "", 1)
                 dst = dst.replace("/", "", 1)
