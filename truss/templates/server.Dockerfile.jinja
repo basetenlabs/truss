@@ -98,7 +98,7 @@ COPY ./truss /app/truss
 {%- endif %} {#- endif use_local_src #}
 
 COPY ./config.yaml /app/config.yaml
-{%- if config.live_reload and not config.docker_server %}
+{%- if requires_live_reload %}
 COPY ./control /control
 
 # NB(nikhil): Copy the virtual env, and system dependencies for the
@@ -109,7 +109,7 @@ COPY --from=control-server-venv /control/.env /control/.env
 RUN ldconfig
 
 RUN /control/.env/bin/pip install -r /control/requirements.txt
-{%- endif %} {#- endif config.live_reload and not config.docker_server (for control server setup) #}
+{%- endif %} {#- endif requires_live_reload #}
 
 {%- if model_dir_exists %}
 COPY ./{{ config.model_module_dir }} /app/model

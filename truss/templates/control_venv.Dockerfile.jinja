@@ -1,9 +1,5 @@
 {%- if requires_live_reload %}
-# This is hacky, but right now we pin the higher range of python version
-# for truss to 3.13.3, and the default 3.13-slim image has 3.13.4.
-{%- set python_image_version = "3.13.3" if control_python_version == "3.13" else control_python_version %}
-
-FROM python:{{ python_image_version }}-slim as control-server-venv
+FROM python:{{ control_python_version }}-slim as control-server-venv
 
 RUN echo "Creating venv for py{{ control_python_version }}";
 RUN python -m pip install --upgrade pip
