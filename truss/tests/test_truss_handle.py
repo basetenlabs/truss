@@ -111,8 +111,12 @@ def _generate_base_image_variations(
     variations = []
     for version in python_versions:
         variations.append((base_template.format(version, version_tag), py3_path, False))
+
+        # NB(nikhil): Python 3.8 base images currently don't have support for development models
+        # on GPUs.
+        gpu_failure = False if version != "3.8" else True
         variations.append(
-            (base_template.format(f"{version}-gpu", version_tag), py3_path, False)
+            (base_template.format(f"{version}-gpu", version_tag), py3_path, gpu_failure)
         )
     return variations
 
