@@ -92,46 +92,45 @@ def test_readme_generation_str_example(
     assert readme_contents == correct_readme_contents
 
 
-# @pytest.mark.integration
-# def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
-#     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-#     tag = "test-build-image-tag:0.0.1"
-#     image = th.build_serving_docker_image(tag=tag)
-#     assert image.repo_tags[0] == tag
+@pytest.mark.integration
+def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    tag = "test-build-image-tag:0.0.1"
+    image = th.build_serving_docker_image(tag=tag)
+    assert image.repo_tags[0] == tag
 
 
-# @pytest.mark.integration
-# @pytest.mark.parametrize(
-#     "base_image, path, expected_fail",
-#     [
-#         ("baseten/truss-server-base:3.9-v0.9.0", "/usr/local/bin/python3", False),
-#         ("baseten/truss-server-base:3.10-v0.9.0", "/usr/local/bin/python3", False),
-#         ("baseten/truss-server-base:3.11-v0.9.0", "/usr/local/bin/python3", False),
-#         ("baseten/truss-server-base:3.12-v0.9.0", "/usr/local/bin/python3", False),
-#         ("baseten/truss-server-base:3.13-v0.9.0", "/usr/local/bin/python3", False),
-#         ("python:3.8", "/usr/local/bin/python3", False),
-#         ("python:3.10", "/usr/local/bin/python3", False),
-#         ("python:3.11", "/usr/local/bin/python3", False),
-#         ("python:3.13", "/usr/local/bin/python3", False),
-#         ("python:alpine", "/usr/local/bin/python3", True),
-#         ("python:2.7-slim", "/usr/local/bin/python", True),
-#         ("python:3.7-slim", "/usr/local/bin/python3", True),
-#     ],
-# )
-# def test_build_serving_docker_image_from_user_base_image_live_reload(
-#     custom_model_truss_dir, base_image, path, expected_fail
-# ):
-#     th = TrussHandle(custom_model_truss_dir)
-#     th.set_base_image(base_image, path)
-#     th.live_reload()
-#     try:
-#         th.build_serving_docker_image(cache=False)
-#     except DockerException as exc:
-#         assert expected_fail is True
-#         assert "It returned with code 1" in str(exc)
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "base_image, path, expected_fail",
+    [
+        ("baseten/truss-server-base:3.9-v0.9.0", "/usr/local/bin/python3", False),
+        ("baseten/truss-server-base:3.10-v0.9.0", "/usr/local/bin/python3", False),
+        ("baseten/truss-server-base:3.11-v0.9.0", "/usr/local/bin/python3", False),
+        ("baseten/truss-server-base:3.12-v0.9.0", "/usr/local/bin/python3", False),
+        ("baseten/truss-server-base:3.13-v0.9.0", "/usr/local/bin/python3", False),
+        ("python:3.8", "/usr/local/bin/python3", False),
+        ("python:3.10", "/usr/local/bin/python3", False),
+        ("python:3.11", "/usr/local/bin/python3", False),
+        ("python:3.13", "/usr/local/bin/python3", False),
+        ("python:alpine", "/usr/local/bin/python3", True),
+        ("python:2.7-slim", "/usr/local/bin/python", True),
+        ("python:3.7-slim", "/usr/local/bin/python3", True),
+    ],
+)
+def test_build_serving_docker_image_from_user_base_image_live_reload(
+    custom_model_truss_dir, base_image, path, expected_fail
+):
+    th = TrussHandle(custom_model_truss_dir)
+    th.set_base_image(base_image, path)
+    th.live_reload()
+    try:
+        th.build_serving_docker_image(cache=False)
+    except DockerException as exc:
+        assert expected_fail is True
+        assert "It returned with code 1" in str(exc)
 
 
-# Only one smoke test instead of a parametrized test because the test is too slow.
 @pytest.mark.integration
 def test_smoke_build_gpu_image(custom_model_truss_dir_for_gpu):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
