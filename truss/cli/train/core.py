@@ -259,7 +259,7 @@ def display_training_job(console: Console, job: dict, checkpoints: list[dict] = 
 
 
 def download_training_job_data(
-    remote_provider: BasetenRemote, job_id: str, output_dir: Path = None
+    remote_provider: BasetenRemote, job_id: str, output_dir: Path
 ) -> Path:
     jobs = remote_provider.api.search_training_jobs(job_id=job_id)
 
