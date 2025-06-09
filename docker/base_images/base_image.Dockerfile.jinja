@@ -1,5 +1,5 @@
 {% if use_gpu %}
-FROM nvidia/cuda:12.2.2-base-ubuntu20.04
+FROM nvidia/cuda:12.2.2-base-ubuntu22.04
 ENV CUDNN_VERSION="8.9.5.29"
 ENV CUDA="12.2"
 ENV LD_LIBRARY_PATH="/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
