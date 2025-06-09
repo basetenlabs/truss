@@ -131,6 +131,16 @@ def test_build_serving_docker_image_from_user_base_image_live_reload(
         assert "It returned with code 1" in str(exc)
 
 
+def test_build_gpu_image(custom_model_truss_dir):
+    th = TrussHandle(custom_model_truss_dir)
+    th.set_base_image("nvidia/cuda:12.2.2-base-ubuntu22.04", "/usr/bin/python3")
+    th.live_reload()
+    try:
+        th.build_serving_docker_image(cache=False)
+    except DockerException as exc:
+        assert "It returned with code 1" in str(exc)
+
+
 @pytest.mark.integration
 def test_docker_predict_custom_base_image(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
