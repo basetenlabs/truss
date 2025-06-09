@@ -273,8 +273,6 @@ def download_training_job_data(
 
     target_path = output_dir / f"training_job_{job_id}.tgz"
 
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-
     content = remote_provider.api.get_from_presigned_url(presigned_url)
     target_path.write_bytes(content)
 
