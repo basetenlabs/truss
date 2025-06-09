@@ -1745,5 +1745,48 @@ def deploy_checkpoints(
     train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
 
 
+@train.command(name="download")
+@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--target-directory",
+    type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
+    required=False,
+    help="Directory where the file should be downloaded. Defaults to current directory.",
+)
+@common_options()
+def download_training_job(
+    job_id: str, remote: Optional[str], target_directory: Optional[str]
+) -> None:
+    if not job_id:
+        _error_console.print("Job ID is required")
+        sys.exit(1)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    try:
+        with console.status(
+            "[bold green]Downloading training job data...", spinner="dots"
+        ):
+            target_path = train_cli.download_training_job_data(
+                remote_provider=remote_provider, job_id=job_id, output_dir=output_dir
+            )
+
+        console.print(
+            f"✨ Training job data downloaded to {target_path}", style="bold green"
+        )
+    except Exception as e:
+        _error_console.print(f"Failed to download training job data: {str(e)}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     truss_cli()

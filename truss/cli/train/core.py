@@ -256,3 +256,26 @@ def display_training_job(console: Console, job: dict, checkpoints: list[dict] = 
         table.add_row("Checkpoints", checkpoint_text)
 
     console.print(table)
+
+
+def download_training_job_data(
+    remote_provider: BasetenRemote, job_id: str, output_dir: Optional[Path] = None
+) -> Path:
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+
+    if not jobs:
+        raise RuntimeError(f"No training job found with ID: {job_id}")
+    project_id = jobs[0]["training_project"]["id"]
+
+    presigned_url = remote_provider.api.get_training_job_presigned_url(
+        project_id=project_id, job_id=job_id
+    )
+
+    target_path = output_dir / f"training_job_{job_id}.tgz"
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    content = remote_provider.api.get_from_presigned_url(presigned_url)
+    target_path.write_bytes(content)
+
+    return target_path
