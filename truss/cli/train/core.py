@@ -259,19 +259,26 @@ def display_training_job(console: Console, job: dict, checkpoints: list[dict] = 
 
 
 def download_training_job_data(
-    remote_provider: BasetenRemote, job_id: str, output_dir: Path
+    remote_provider: BasetenRemote, job_id: str, target_directory: Optional[str]
 ) -> Path:
+    output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     jobs = remote_provider.api.search_training_jobs(job_id=job_id)
 
     if not jobs:
         raise RuntimeError(f"No training job found with ID: {job_id}")
-    project_id = jobs[0]["training_project"]["id"]
+
+    project = jobs[0]["training_project"]
+    project_id = project["id"]
+    project_name = project["name"]
+
+    file_name = f"{project_name}_{job_id}.tgz"
+    target_path = output_dir / file_name
 
     presigned_url = remote_provider.api.get_training_job_presigned_url(
         project_id=project_id, job_id=job_id
     )
-
-    target_path = output_dir / f"training_job_{job_id}.tgz"
 
     content = remote_provider.api.get_from_presigned_url(presigned_url)
     target_path.write_bytes(content)

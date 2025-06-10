@@ -1765,9 +1765,6 @@ def download_training_job(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
@@ -1777,7 +1774,9 @@ def download_training_job(
             "[bold green]Downloading training job data...", spinner="dots"
         ):
             target_path = train_cli.download_training_job_data(
-                remote_provider=remote_provider, job_id=job_id, output_dir=output_dir
+                remote_provider=remote_provider,
+                job_id=job_id,
+                target_directory=target_directory,
             )
 
         console.print(
