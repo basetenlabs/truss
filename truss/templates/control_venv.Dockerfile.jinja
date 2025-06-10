@@ -1,0 +1,8 @@
+{%- if requires_live_reload %}
+FROM python:{{ control_python_version }}-slim as control-server-venv
+
+RUN echo "Creating venv for py{{ control_python_version }}";
+RUN python -m pip install --upgrade pip
+RUN python -m venv --copies /control/.env
+RUN echo "Created venv for py{{ control_python_version }}";
+{%- endif %} {#- endif requires_live_reload #}
