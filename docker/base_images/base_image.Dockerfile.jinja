@@ -1,10 +1,10 @@
 {% if use_gpu %}
-FROM nvidia/cuda:12.2.2-base-ubuntu20.04
+FROM nvidia/cuda:12.2.2-base-ubuntu22.04
 ENV CUDNN_VERSION="8.9.5.29"
 ENV CUDA="12.2"
 ENV LD_LIBRARY_PATH="/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub && \
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub && \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         cuda-command-line-tools-12-2 \

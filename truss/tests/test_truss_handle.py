@@ -8,9 +8,11 @@ import requests
 from python_on_whales.exceptions import DockerException
 from tenacity import RetryError
 
+from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.base.truss_config import map_local_to_supported_python_version
+from truss.contexts.image_builder.util import TRUSS_BASE_IMAGE_VERSION_TAG
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.templates.control.control.helpers.custom_types import (
     Action,
@@ -100,15 +102,33 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
     assert image.repo_tags[0] == tag
 
 
+def _generate_base_image_variations(
+    base_template="baseten/truss-server-base:{}-{}",
+    base_py3_path="/usr/local/bin/python3",
+    gpu_py3_path="/usr/bin/python3",
+    python_versions=SUPPORTED_PYTHON_VERSIONS,
+    version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
+):
+    variations = []
+    for version in python_versions:
+        variations.append(
+            (base_template.format(version, version_tag), base_py3_path, False)
+        )
+
+        # NB(nikhil): Python 3.8 base images currently don't have support for development models
+        # on GPUs.
+        fail = False if version != "3.8" else True
+        variations.append(
+            (base_template.format(f"{version}-gpu", version_tag), gpu_py3_path, fail)
+        )
+    return variations
+
+
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "base_image, path, expected_fail",
-    [
-        ("baseten/truss-server-base:3.9-v0.9.0", "/usr/local/bin/python3", False),
-        ("baseten/truss-server-base:3.10-v0.9.0", "/usr/local/bin/python3", False),
-        ("baseten/truss-server-base:3.11-v0.9.0", "/usr/local/bin/python3", False),
-        ("baseten/truss-server-base:3.12-v0.9.0", "/usr/local/bin/python3", False),
-        ("baseten/truss-server-base:3.13-v0.9.0", "/usr/local/bin/python3", False),
+    _generate_base_image_variations()
+    + [
         ("python:3.8", "/usr/local/bin/python3", False),
         ("python:3.10", "/usr/local/bin/python3", False),
         ("python:3.11", "/usr/local/bin/python3", False),
