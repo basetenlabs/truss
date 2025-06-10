@@ -45,7 +45,7 @@ runs:
       id: cache
       with:
         path: .venv
-        key: venv-${{ runner.os }}-${{ env.version }}-${{ hashFiles('**/poetry.lock') }}
+        key: venv-${{ runner.os }}-${{ inputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
 
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'
