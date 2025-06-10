@@ -5,22 +5,21 @@ import shutil
 import subprocess
 import sys
 
-import rich.prompt
 from InquirerPy import inquirer
 
+from truss.cli.utils.output import console, error_console
 from truss.util import user_config
 
 
 def _run_upgrade(command: str) -> bool:
-    rich.print(f"[bold]Running:[/bold] '{command}'")
+    console.print(f"Running: '{command}'", style="bold")
     returncode = subprocess.run(command, shell=True).returncode
     if returncode == 0:
-        rich.print("[green]✅ Upgrade complete. Please re-run your command.[/green]")
+        console.print("✅ Upgrade complete. Please re-run your command.", style="green")
         return True
     else:
-        rich.print(
-            f"[bold red]😤 Command failed with exit code {returncode}. "
-            "Try upgrading manually.[/bold red]"
+        error_console.print(
+            f"😤 Command failed with exit code {returncode}. Try upgrading manually."
         )
         return False
 
@@ -69,8 +68,9 @@ def upgrade_dialogue(current_version: str) -> None:
         return
 
     if auto_upgrade_command_template := settings.auto_upgrade_command_template:
-        rich.print(
-            f"[bold yellow]🪄 Automatically upgrading truss to '{latest_version}'.[/bold yellow]"
+        console.print(
+            f"🪄 Automatically upgrading truss to '{latest_version}'.",
+            style="bold yellow",
         )
         command = auto_upgrade_command_template.format(
             version=update_info.latest_version
@@ -78,14 +78,16 @@ def upgrade_dialogue(current_version: str) -> None:
         if _run_upgrade(command):
             sys.exit(0)
         else:
-            rich.print(
-                f"[bold]🖊️  You can edit or remove 'auto_upgrade_command_template' in '{settings.path()}'[/bold]"
+            console.print(
+                f"🖊️  You can edit or remove 'auto_upgrade_command_template' in '{settings.path()}'",
+                style="bold",
             )
             sys.exit(1)
 
-    rich.print(
-        f"[bold yellow]⬆️  Please upgrade truss. {update_info.reason} → new version "
-        f"✨'{latest_version}'✨.[/bold yellow]"
+    console.print(
+        f"⬆️  Please upgrade truss. {update_info.reason} → new version "
+        f"✨'{latest_version}'✨.",
+        style="bold yellow",
     )
 
     candidates = _make_upgrade_command_candidates(latest_version)

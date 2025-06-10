@@ -14,7 +14,7 @@ from truss.cli.train.types import (
     DeployCheckpointsConfigComplete,
     PrepareCheckpointResult,
 )
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     DEFAULT_LORA_RANK,

@@ -11,7 +11,7 @@ from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
 from truss.cli.utils import common as cli_common
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
@@ -202,7 +202,7 @@ def prepare_checkpoint_deploy(
 def print_deploy_checkpoints_success_message(
     prepare_checkpoint_result: PrepareCheckpointResult,
 ):
-    rich.print(
+    console.print(
         Text("\nTo run the model with the LoRA adapter,"),
         Text("ensure your `model` parameter is set to one of"),
         Text(

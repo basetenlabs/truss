@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Iterator, List, Optional
 
 from truss.cli.logs.utils import ParsedLog, parse_logs
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten.api import BasetenApi
 
 POLL_INTERVAL_SEC = 2

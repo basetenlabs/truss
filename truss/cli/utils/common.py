@@ -13,27 +13,18 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
-from rich.console import Console
 from rich.markup import escape
 
 import truss
 from truss.cli.utils import self_upgrade
+from truss.cli.utils.output import console
 from truss.util import user_config
-
-rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
-rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
-rich.spinner.SPINNERS["loading"] = {"interval": 500, "frames": ["⏱️ ", " ⏱️"]}
-rich.spinner.SPINNERS["active"] = {"interval": 500, "frames": ["💚 ", " 💚"]}
-rich.spinner.SPINNERS["failed"] = {"interval": 500, "frames": ["😤 ", " 😤"]}
-
 
 INCLUDE_GIT_INFO_DOC = (
     "Whether to attach git versioning info (sha, branch, tag) to deployments made from "
     "within a git repo. If set to True in `.trussrc`, it will always be attached."
 )
 
-console = Console()
-error_console = Console(stderr=True, style="bold red")
 _HUMANFRIENDLY_LOG_LEVEL = "humanfriendly"
 _log_level_str_to_level = {
     _HUMANFRIENDLY_LOG_LEVEL: logging.INFO,

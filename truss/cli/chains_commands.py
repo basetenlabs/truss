@@ -14,8 +14,8 @@ from rich import progress
 
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
-from truss.cli.utils import common
-from truss.cli.utils.common import console
+from truss.cli.utils import common, output
+from truss.cli.utils.output import console
 from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.util import user_config
@@ -338,7 +338,7 @@ def push_chain(
                     name,
                     remote,
                     rich.Console(),
-                    common.error_console,
+                    output.error_console,
                     show_stack_trace=not common.is_human_log_level(ctx),
                     included_chainlets=included_chainlets,
                 )
@@ -415,7 +415,7 @@ def watch_chains(
         name,
         remote,
         rich.Console(),
-        common.error_console,
+        output.error_console,
         show_stack_trace=not common.is_human_log_level(ctx),
         included_chainlets=included_chainlets,
     )

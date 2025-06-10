@@ -2,7 +2,7 @@ from typing import Optional, cast
 
 import rich_click as click
 
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten import BasetenRemote
 
 

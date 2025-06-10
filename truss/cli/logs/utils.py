@@ -4,7 +4,7 @@ from typing import Any, List, Optional
 import pydantic
 from rich import text
 
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 
 
 class ParsedLog(pydantic.BaseModel):

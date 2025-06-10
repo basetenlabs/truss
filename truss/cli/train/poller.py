@@ -2,7 +2,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten.api import BasetenApi
 
 POLL_INTERVAL_SEC = 2

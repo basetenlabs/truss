@@ -3,7 +3,7 @@ from typing import Any, List, Optional
 
 from truss.cli.logs.base_watcher import LogWatcher
 from truss.cli.train.poller import TrainingPollerMixin
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten.api import BasetenApi
 
 

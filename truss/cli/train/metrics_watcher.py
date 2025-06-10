@@ -10,7 +10,7 @@ from rich.text import Text
 
 from truss.cli.train.poller import TrainingPollerMixin
 from truss.cli.utils import common
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten.api import BasetenApi
 
 METRICS_POLL_INTERVAL_SEC = 30

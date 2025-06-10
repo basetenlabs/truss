@@ -11,7 +11,7 @@ from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
 from truss.cli.train import core
 from truss.cli.utils import common
-from truss.cli.utils.common import console
+from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 
