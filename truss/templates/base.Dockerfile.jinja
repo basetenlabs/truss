@@ -15,7 +15,7 @@ RUN $PYTHON_EXECUTABLE -c "import sys; \
 
 # NB(nikhil): Only run `pip` if present in image, certain custom servers don't have it.
 RUN if command -v pip >/dev/null 2>&1; then \
-      $PYTHON_EXECUTABLE -m pip install --upgrade pip --no-cache-dir && rm -rf /root/.cache/pip; \
+      $PYTHON_EXECUTABLE -m pip install --ignore-installed --upgrade pip --no-cache-dir && rm -rf /root/.cache/pip; \
     fi
 
 {% block base_image_patch %}
