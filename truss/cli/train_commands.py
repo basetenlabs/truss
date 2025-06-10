@@ -248,7 +248,7 @@ def download_training_job(
     job_id: str, remote: Optional[str], target_directory: Optional[str]
 ) -> None:
     if not job_id:
-        error_console("Job ID is required")
+        error_console.print("Job ID is required")
         sys.exit(1)
 
     if not remote:
@@ -272,5 +272,5 @@ def download_training_job(
             f"✨ Training job data downloaded to {target_path}", style="bold green"
         )
     except Exception as e:
-        error_console(f"Failed to download training job data: {str(e)}")
+        error_console.print(f"Failed to download training job data: {str(e)}")
         sys.exit(1)
