@@ -104,19 +104,22 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
 
 def _generate_base_image_variations(
     base_template="baseten/truss-server-base:{}-{}",
-    py3_path="/usr/local/bin/python3",
+    base_py3_path="/usr/local/bin/python3",
+    gpu_py3_path="/usr/bin/python3",
     python_versions=SUPPORTED_PYTHON_VERSIONS,
     version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
 ):
     variations = []
     for version in python_versions:
-        variations.append((base_template.format(version, version_tag), py3_path, False))
+        variations.append(
+            (base_template.format(version, version_tag), base_py3_path, False)
+        )
 
         # NB(nikhil): Python 3.8 base images currently don't have support for development models
         # on GPUs.
-        gpu_failure = False if version != "3.8" else True
+        fail = False if version != "3.8" else True
         variations.append(
-            (base_template.format(f"{version}-gpu", version_tag), py3_path, gpu_failure)
+            (base_template.format(f"{version}-gpu", version_tag), gpu_py3_path, fail)
         )
     return variations
 
