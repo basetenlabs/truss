@@ -2,8 +2,9 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 import pydantic
-from rich import console as rich_console
 from rich import text
+
+from truss.cli.utils.output import console
 
 
 class ParsedLog(pydantic.BaseModel):
@@ -16,7 +17,7 @@ class ParsedLog(pydantic.BaseModel):
         return ParsedLog(**raw_log)
 
 
-def output_log(log: ParsedLog, console: rich_console.Console):
+def output_log(log: ParsedLog):
     epoch_nanos = int(log.timestamp)
     dt = datetime.fromtimestamp(epoch_nanos / 1e9)
     formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
