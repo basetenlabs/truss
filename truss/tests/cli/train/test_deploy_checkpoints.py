@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from rich.console import Console
 
 import truss_train.definitions as definitions
 from truss.base import truss_config
@@ -33,11 +32,6 @@ def mock_remote():
         ]
     }
     return mock
-
-
-@pytest.fixture
-def mock_console():
-    return Console()
 
 
 @pytest.fixture
@@ -131,7 +125,6 @@ def test_render_vllm_lora_truss_config():
 
 
 def test_prepare_checkpoint_deploy_empty_config(
-    mock_console,
     mock_remote,
     deploy_checkpoints_mock_select,
     deploy_checkpoints_mock_text,
@@ -142,7 +135,6 @@ def test_prepare_checkpoint_deploy_empty_config(
 
     # Call function under test
     result = prepare_checkpoint_deploy(
-        console=mock_console,
         remote_provider=mock_remote,
         checkpoint_deploy_config=empty_config,
         project_id="project123",
@@ -173,7 +165,6 @@ def test_prepare_checkpoint_deploy_empty_config(
 
 
 def test_prepare_checkpoint_deploy_complete_config(
-    mock_console,
     mock_remote,
     deploy_checkpoints_mock_select,
     deploy_checkpoints_mock_text,
@@ -207,7 +198,6 @@ def test_prepare_checkpoint_deploy_complete_config(
 
     # Call function under test
     result = prepare_checkpoint_deploy(
-        console=mock_console,
         remote_provider=mock_remote,
         checkpoint_deploy_config=complete_config,
         project_id="project123",

@@ -1,6 +1,16 @@
 name: Build and Push Truss Base Images (if needed)
 
 on:
+  workflow_dispatch:
+    inputs:
+      new_base_image_version:
+        required: true
+        type: string
+        description: "New base image version"
+      build_base_images:
+        required: true
+        type: string
+        description: "Build base images flag"
   workflow_call:
     inputs:
       new_base_image_version:

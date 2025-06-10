@@ -4,12 +4,13 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from rich.columns import Columns
-from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
 from truss.cli.train.poller import TrainingPollerMixin
+from truss.cli.utils import common
+from truss.cli.utils.output import console
 from truss.remote.baseten.api import BasetenApi
 
 METRICS_POLL_INTERVAL_SEC = 30
@@ -18,8 +19,8 @@ METRICS_POLL_INTERVAL_SEC = 30
 class MetricsWatcher(TrainingPollerMixin):
     live: Optional[Live]
 
-    def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
-        super().__init__(api, project_id, job_id, console)
+    def __init__(self, api: BasetenApi, project_id: str, job_id: str):
+        super().__init__(api, project_id, job_id)
 
         self.live = None
         signal.signal(signal.SIGINT, self._handle_sigint)
@@ -28,7 +29,7 @@ class MetricsWatcher(TrainingPollerMixin):
         if self.live:
             self.live.stop()
         msg = f"\n\nExiting training job metrics. To stop the job, run `truss train stop --job-id {self.job_id}`"
-        self.console.print(msg, style="yellow")
+        console.print(msg, style="yellow")
         raise KeyboardInterrupt()
 
     def _format_bytes(self, bytes_val: float) -> Tuple[str, str]:
@@ -113,8 +114,11 @@ class MetricsWatcher(TrainingPollerMixin):
         cpu_usage_data = metrics_data.get("cpu_usage", [])
         if cpu_usage_data and len(cpu_usage_data) > 0:
             latest_timestamp = cpu_usage_data[-1].get("timestamp")
+            # TODO: API result has missing timezone info.
             if latest_timestamp:
-                table.add_row("Timestamp", latest_timestamp)
+                table.add_row(
+                    "Timestamp", common.format_localized_time(latest_timestamp)
+                )
                 table.add_section()
 
         # CPU metrics
@@ -208,7 +212,7 @@ class MetricsWatcher(TrainingPollerMixin):
                     self.post_poll()
                 except Exception as e:
                     live.stop()
-                    self.console.print(
+                    console.print(
                         f"Error fetching metrics: {e}: {traceback.format_exc()}",
                         style="red",
                     )

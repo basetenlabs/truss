@@ -2,10 +2,10 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from rich.console import Console
-
-from truss.cli.common import POLL_INTERVAL_SEC
+from truss.cli.utils.output import console
 from truss.remote.baseten.api import BasetenApi
+
+POLL_INTERVAL_SEC = 2
 
 # NB(nikhil): When a job ends, we poll for this many seconds after to capture
 # any trailing logs that contain information about errors.
@@ -25,22 +25,20 @@ class TrainingPollerMixin:
     api: BasetenApi
     project_id: str
     job_id: str
-    console: Console
     _current_status: Status
     _poll_stop_time: Optional[int]
 
-    def __init__(self, api: BasetenApi, project_id: str, job_id: str, console: Console):
+    def __init__(self, api: BasetenApi, project_id: str, job_id: str):
         self.api = api
         self.project_id = project_id
         self.job_id = job_id
-        self.console = console
         self._current_status = Status(status="", error_message=None)
         self._poll_stop_time = None
 
     def before_polling(self) -> None:
         self._update_from_current_status()
         status_str = "Waiting for job to run, currently {current_status}..."
-        with self.console.status(
+        with console.status(
             status_str.format(current_status=self._current_status.status),
             spinner="dots",
         ) as status:
@@ -79,16 +77,16 @@ class TrainingPollerMixin:
             self._current_status.status in STATES_WITH_ERROR_MESSAGES
             and self._current_status.error_message
         ):
-            self.console.print(self._current_status.error_message, style="red")
+            console.print(self._current_status.error_message, style="red")
 
         if self._current_status.status == "TRAINING_JOB_COMPLETED":
-            self.console.print("Training job completed successfully.", style="green")
+            console.print("Training job completed successfully.", style="green")
         elif self._current_status.status == "TRAINING_JOB_FAILED":
-            self.console.print("Training job failed during execution.", style="red")
+            console.print("Training job failed during execution.", style="red")
         elif self._current_status.status == "TRAINING_JOB_STOPPED":
-            self.console.print("Training job stopped by user.", style="yellow")
+            console.print("Training job stopped by user.", style="yellow")
         elif self._current_status.status == "TRAINING_JOB_DEPLOY_FAILED":
-            self.console.print("Training job failed during deployment.", style="red")
+            console.print("Training job failed during deployment.", style="red")
 
     def _update_from_current_status(self) -> None:
         current_job = self.api.get_training_job(self.project_id, self.job_id)

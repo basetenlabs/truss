@@ -1,17 +1,9 @@
-import sys
-
-import rich
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
 
+from truss.cli.utils.output import console
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
-
-
-def check_is_interactive() -> bool:
-    """Detects if CLI is operated interactively by human, so we can ask things,
-    that we would want to skip for automated subprocess/CI contexts."""
-    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 class NonEmptyValidator(Validator):
@@ -25,7 +17,7 @@ class NonEmptyValidator(Validator):
 
 def inquire_remote_config() -> RemoteConfig:
     # TODO(bola): extract questions from remote
-    rich.print("💻 Let's add a Baseten remote!")
+    console.print("💻 Let's add a Baseten remote!")
     # If users need to adjust the remote url, they
     # can do so manually in the .trussrc file.
     remote_url = "https://app.baseten.co"
@@ -56,7 +48,7 @@ def inquire_remote_name() -> str:
     remote_config = inquire_remote_config()
     RemoteFactory.update_remote_config(remote_config)
 
-    rich.print(
+    console.print(
         f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
     )
     return remote_config.name

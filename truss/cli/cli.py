@@ -1,29 +1,15 @@
 import inspect
 import json
-import logging
 import os
 import sys
 import time
-import warnings
-from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, cast
+from typing import Optional, cast
 
-import pydantic
-import rich
-import rich.live
-import rich.logging
-import rich.spinner
-import rich.table
-import rich.traceback
 import rich_click as click
-from InquirerPy import inquirer
 from rich import progress
-from rich.console import Console
-from rich.markup import escape
 
 import truss
-import truss.cli.train.core as train_cli
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
@@ -31,11 +17,11 @@ from truss.base.constants import (
 from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
-from truss.cli import common, remote_cli
+from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
-from truss.cli.logs.training_log_watcher import TrainingLogWatcher
-from truss.cli.utils import self_upgrade
+from truss.cli.utils import common
+from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -46,7 +32,6 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
-from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
@@ -57,13 +42,6 @@ from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
 from truss.util import docker, user_config
-from truss.util.log_utils import LogInterceptor
-
-rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
-rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
-rich.spinner.SPINNERS["loading"] = {"interval": 500, "frames": ["⏱️ ", " ⏱️"]}
-rich.spinner.SPINNERS["active"] = {"interval": 500, "frames": ["💚 ", " 💚"]}
-rich.spinner.SPINNERS["failed"] = {"interval": 500, "frames": ["😤 ", " 😤"]}
 
 click.rich_click.COMMAND_GROUPS = {
     "truss": [
@@ -90,168 +68,6 @@ click.rich_click.COMMAND_GROUPS = {
     ]
 }
 
-_INCLUDE_GIT_INFO_DOC = (
-    "Whether to attach git versioning info (sha, branch, tag) to deployments made from "
-    "within a git repo. If set to True in `.trussrc`, it will always be attached."
-)
-
-
-console = Console()
-_error_console = Console(stderr=True, style="bold red")
-_HUMANFRIENDLY_LOG_LEVEL = "humanfriendly"
-_log_level_str_to_level = {
-    _HUMANFRIENDLY_LOG_LEVEL: logging.INFO,
-    "W": logging.WARNING,
-    "WARNING": logging.WARNING,
-    "I": logging.INFO,
-    "INFO": logging.INFO,
-    "D": logging.DEBUG,
-    "DEBUG": logging.DEBUG,
-}
-
-
-def _set_logging_level() -> None:
-    log_level = click.get_current_context().obj["log"]
-    if isinstance(log_level, str):
-        level = _log_level_str_to_level[log_level]
-    else:
-        level = log_level
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    root_logger.handlers.clear()
-
-    if log_level == _HUMANFRIENDLY_LOG_LEVEL:
-        rich_handler = rich.logging.RichHandler(
-            show_time=False, show_level=False, show_path=False
-        )
-    else:
-        # Rich handler adds time, levels, file location etc.
-        rich_handler = rich.logging.RichHandler()
-
-    root_logger.addHandler(rich_handler)
-    # Enable deprecation warnings raised in this module.
-    warnings.filterwarnings(
-        "default", category=DeprecationWarning, module=r"^truss\.cli\\b"
-    )
-
-
-def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str):
-    # We use this for params that are not "exposed" to the signature of the subcommands.
-    # therefore we store them directly on the context (not in contex.params).
-    ctx.ensure_object(dict)[param.name] = value
-
-
-def _get_required_option(ctx: click.Context, name: str) -> object:
-    value = ctx.find_root().obj.get(name)
-    if value is None:
-        raise RuntimeError(
-            f"Required option '{name}' was not set in click context. "
-            "This is a bug, all commands must use `common_options` decorator."
-        )
-    return value
-
-
-def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
-    """create new click context for invoking a command via f.invoke(ctx)"""
-    current_ctx = click.get_current_context()
-    current_obj = current_ctx.find_root().obj
-
-    ctx = click.Context(f, obj=current_obj)
-    ctx.params = params
-    return ctx
-
-
-def _log_level_option(f: Callable[..., object]) -> Callable[..., object]:
-    return click.option(
-        "--log",
-        default=_HUMANFRIENDLY_LOG_LEVEL,
-        help="Customizes logging.",
-        type=click.Choice(list(_log_level_str_to_level.keys()), case_sensitive=False),
-        callback=_store_param_callback,
-        expose_value=False,
-    )(f)
-
-
-def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
-    return click.option(
-        "--non-interactive",
-        is_flag=True,
-        default=False,
-        help="Disables interactive prompts, use in CI / automated execution contexts.",
-        expose_value=False,
-        callback=_store_param_callback,
-    )(f)
-
-
-def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
-    @wraps(f)
-    def wrapper(*args: object, **kwargs: object) -> None:
-        try:
-            f(*args, **kwargs)
-        except click.UsageError as e:
-            raise e
-        except Exception as e:
-            ctx = click.get_current_context()
-            log_level = _get_required_option(ctx, "log")
-            escaped_e = escape(str(e))
-            if log_level == _HUMANFRIENDLY_LOG_LEVEL:
-                console.print(
-                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {escaped_e}",
-                    highlight=True,
-                )
-            else:
-                console.print_exception(show_locals=True)
-
-            if isinstance(e, pydantic.ValidationError):
-                console.print(
-                    "[bold yellow]In case of 'ValidationErrors' there are two common issues:[/bold yellow]\n"
-                    "[yellow]"
-                    " * 'Extra inputs are not permitted...': using a new 'TrussConfig' "
-                    "field that is not yet in your local truss CLI version -> upgrade truss version.\n"
-                    " * 'Input should be ...': using muddy types, e.g. a float where a string "
-                    "is expected -> check the exact message above and fix.[/yellow]",
-                    highlight=True,
-                )
-
-            ctx.exit(1)
-
-    return wrapper
-
-
-def _upgrade_dialogue():
-    ctx = click.get_current_context()
-    if (
-        not _get_required_option(ctx, "non_interactive")
-        and common.check_is_interactive()
-        and user_config.settings.enable_auto_upgrade
-    ):
-        self_upgrade.upgrade_dialogue(truss.__version__, console)
-
-
-def common_options(
-    add_middleware: bool = True,
-) -> Callable[[Callable[..., object]], Callable[..., object]]:
-    def decorator(f: Callable[..., object]) -> Callable[..., object]:
-        @wraps(f)
-        @_log_level_option
-        @_non_interactive_option
-        @_error_handling
-        def wrapper(*args: object, **kwargs: object) -> Any:
-            if add_middleware:
-                _set_logging_level()
-                _upgrade_dialogue()
-
-            return f(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def _format_link(text: str) -> str:
-    return f"[link={text}]{text}[/link]"
-
 
 def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
@@ -272,15 +88,15 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
 @click.version_option(truss.__version__)
-@common_options(add_middleware=False)
+@common.common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
     # Click "stacks" the root command and group/subcommands, to avoid running the
     # middleware twice, we don't add it via decorator to the root command, but instead
     # selective run it here inline.
     if not ctx.invoked_subcommand:
-        _set_logging_level()
-        _upgrade_dialogue()
+        common.set_logging_level()
+        common.upgrade_dialogue()
         click.echo(ctx.get_help())
 
 
@@ -291,7 +107,7 @@ def truss_cli(ctx) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
-@common_options()
+@common.common_options()
 def login(api_key: Optional[str]):
     from truss.api import login
 
@@ -309,7 +125,7 @@ def login(api_key: Optional[str]):
     required=False,
     help="Name of the remote in .trussrc to check whoami.",
 )
-@common_options()
+@common.common_options()
 def whoami(remote: Optional[str]):
     """
     Shows user information and exit.
@@ -343,7 +159,7 @@ def configure():
 
 
 @truss_cli.command()
-@common_options()
+@common.common_options()
 def cleanup() -> None:
     """
     Clean up truss data.
@@ -373,7 +189,7 @@ def cleanup() -> None:
     default=False,
     help="Uses the code first tooling to build models.",
 )
-@common_options()
+@common.common_options()
 def init(target_directory, backend, name, python_config) -> None:
     """Create a new truss.
 
@@ -381,7 +197,7 @@ def init(target_directory, backend, name, python_config) -> None:
     """
     if os.path.isdir(target_directory):
         raise click.ClickException(
-            f"Error: Directory `{target_directory}` already exists "
+            f"Error: Directory '{target_directory}' already exists "
             "and cannot be overwritten."
         )
     tr_path = Path(target_directory)
@@ -482,7 +298,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     help="ID of model deployment to call",
 )
 @click.option("--model", type=str, required=False, help="ID of model to call")
-@_log_level_option
+@common.log_level_option
 def predict(
     target_directory: str,
     remote: str,
@@ -647,7 +463,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with `--publish` or `--promote`."
+        "used in combination with '--publish' or '--promote'."
     ),
 )
 @click.option(
@@ -671,7 +487,7 @@ def run_python(script, target_directory):
     is_flag=True,
     required=False,
     default=False,
-    help=_INCLUDE_GIT_INFO_DOC,
+    help=common.INCLUDE_GIT_INFO_DOC,
 )
 @click.option("--tail", is_flag=True)
 @click.option(
@@ -686,7 +502,7 @@ def run_python(script, target_directory):
         "Default is --preserve-env-instance-type."
     ),
 )
-@common_options()
+@common.common_options()
 def push(
     target_directory: str,
     remote: str,
@@ -724,7 +540,7 @@ def push(
         model_name = remote_cli.inquire_model_name()
 
     if promote and environment:
-        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        promote_warning = "'promote' flag and 'environment' flag were both specified. Ignoring the value of 'promote'"
         console.print(promote_warning, style="yellow")
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
@@ -752,7 +568,7 @@ def push(
 
     # Log a warning if using --trusted.
     if trusted is not None:
-        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
+        trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
@@ -784,7 +600,7 @@ def push(
                 fp8_and_num_builder_gpus_text = (
                     "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
                     "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
-                    "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+                    "'num_builder_gpus' can be used to specify the number of GPUs to use at build time."
                 )
                 console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
@@ -810,12 +626,12 @@ def push(
     if service.is_draft:
         draft_model_text = """
 |---------------------------------------------------------------------------------------|
-| Your model is deploying as a development model. Development models allow you to  |
+| Your model is deploying as a development model. Development models allow you to       |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
 | When you are ready to publish your deployed model as a new deployment,                |
-| pass `--publish` to the `truss push` command. To monitor changes to your model and    |
-| rapidly iterate, run the `truss watch` command.                                       |
+| pass '--publish' to the 'truss push' command. To monitor changes to your model and    |
+| rapidly iterate, run the 'truss watch' command.                                       |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """
@@ -830,7 +646,7 @@ def push(
         console.print(promotion_text, style="green")
 
     console.print(
-        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+        f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
     if wait:
         start_time = time.time()
@@ -867,10 +683,10 @@ def push(
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
         log_watcher = ModelDeploymentLogWatcher(
-            bt_remote.api, service.model_id, service.model_version_id, console
+            bt_remote.api, service.model_id, service.model_version_id
         )
         for log in log_watcher.watch():
-            cli_log_utils.output_log(log, console)
+            cli_log_utils.output_log(log)
 
 
 @truss_cli.command()
@@ -878,7 +694,7 @@ def push(
 @click.option("--model-id", type=str, required=True)
 @click.option("--deployment-id", type=str, required=True)
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
-@common_options()
+@common.common_options()
 def model_logs(
     remote: Optional[str], model_id: str, deployment_id: str, tail: bool = False
 ) -> None:
@@ -892,13 +708,13 @@ def model_logs(
     if not tail:
         logs = remote_provider.api.get_model_deployment_logs(model_id, deployment_id)
         for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log, console)
+            cli_log_utils.output_log(log)
     else:
         log_watcher = ModelDeploymentLogWatcher(
-            remote_provider.api, model_id, deployment_id, console
+            remote_provider.api, model_id, deployment_id
         )
         for log in log_watcher.watch():
-            cli_log_utils.output_log(log, console)
+            cli_log_utils.output_log(log)
 
 
 @truss_cli.command()
@@ -909,7 +725,7 @@ def model_logs(
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
-@common_options()
+@common.common_options()
 def watch(target_directory: str, remote: str) -> None:
     """
     Seamless remote development with truss
@@ -933,12 +749,12 @@ def watch(target_directory: str, remote: str) -> None:
 
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
     console.print(
-        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+        f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
 
     if not os.path.isfile(target_directory):
         remote_provider.sync_truss_to_dev_version_by_name(
-            model_name, target_directory, console, _error_console
+            model_name, target_directory, console, error_console
         )
     else:
         # These imports are delayed, to handle pydantic v1 envs gracefully.
@@ -949,7 +765,7 @@ def watch(target_directory: str, remote: str) -> None:
             model_name=model_name,
             remote_provider=remote_provider,
             console=console,
-            error_console=_error_console,
+            error_console=error_console,
         )
 
 
@@ -967,7 +783,7 @@ truss_cli.add_command(image)
 @image.command()  # type: ignore
 @click.argument("build_dir")
 @click.argument("target_directory", required=False)
-@common_options()
+@common.common_options()
 def build_context(build_dir, target_directory: str) -> None:
     """
     Create a docker build context for a Truss.
@@ -990,7 +806,7 @@ def build_context(build_dir, target_directory: str) -> None:
     default=False,
     help="Use host network for docker build",
 )
-@common_options()
+@common.common_options()
 def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None:
     """
     Builds the docker image for a Truss.
@@ -1022,7 +838,7 @@ def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None
     default=False,
     help="Use host network for docker build",
 )
-@common_options()
+@common.common_options()
 def run(
     target_directory: str, build_dir: Path, tag, port, attach, use_host_network
 ) -> None:
@@ -1066,7 +882,7 @@ truss_cli.add_command(container)
 
 @container.command()  # type: ignore
 @click.argument("target_directory", required=False)
-@common_options()
+@common.common_options()
 def logs(target_directory) -> None:
     """
     Get logs in a container is running for a truss
@@ -1097,695 +913,5 @@ def kill_all() -> None:
     docker.kill_all()
 
 
-# Chains Stuff #########################################################################
-
-
-@click.group()
-def chains():
-    """Subcommands for truss chains"""
-
-
-truss_cli.add_command(chains)
-
-
-def _load_example_chainlet_code() -> str:
-    try:
-        from truss_chains.reference_code import reference_chainlet
-    # if the example is faulty, a validation error would be raised
-    except Exception as e:
-        raise Exception("Failed to load starter code. Please notify support.") from e
-
-    source = Path(reference_chainlet.__file__).read_text()
-    return source
-
-
-def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
-    if environment:
-        idx = run_remote_url.find("deployment")
-        if idx != -1:
-            run_remote_url = (
-                run_remote_url[:idx] + f"environments/{environment}/run_remote"
-            )
-    return (
-        f"curl -X POST '{run_remote_url}' \\\n"
-        '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
-        "    -d '<JSON_INPUT>'"
-    )
-
-
-def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
-    """Creates a status table similar to:
-
-                                          ⛓️   ItestChain - Chain  ⛓️
-
-                         🌐 Status page: https://app.baseten.co/chains/p7qrm93v/overview
-    ╭──────────────────────┬──────────────────────────────┬─────────────────────────────────────────────╮
-    │ Status               │ Chainlet                     │ Logs URL                                   │
-    ├──────────────────────┼──────────────────────────────┼────────────────────────────────────────────┤
-    │ 🛠️  BUILDING         │ ItestChain (entrypoint)      │ https://app.baseten.co/chains/.../logs/... │
-    ├──────────────────────┼──────────────────────────────┼────────────────────────────────────────────┤
-    │ 👾  DEPLOYING        │ GENERATE_DATA (internal)     │ https://app.baseten.co/chains/.../logs/... │
-    │ 👾  DEPLOYING        │ SplitTextFailOnce (internal) │ https://app.baseten.co/chains/.../logs/... │
-    │ 👾  DEPLOYING        │ TextReplicator (internal)    │ https://app.baseten.co/chains/.../logs/... │
-    │ 🛠️  BUILDING         │ TextToNum (internal)         │ https://app.baseten.co/chains/.../logs/... │
-    ╰──────────────────────┴──────────────────────────────┴────────────────────────────────────────────╯
-
-    """
-    title = (
-        f"⛓️   {service.name} - Chain  ⛓️\n\n "
-        f"🌐 Status page: {_format_link(service.status_page_url)}"
-    )
-    table = rich.table.Table(
-        show_header=True,
-        header_style="bold yellow",
-        title=title,
-        box=rich.table.box.ROUNDED,
-        border_style="blue",
-    )
-    table.add_column("Status", style="dim", min_width=20)
-    table.add_column("Chainlet", min_width=20)
-    table.add_column("Logs URL")
-    statuses = []
-    status_iterable = service.get_info()
-    # Organize status_iterable s.t. entrypoint is first.
-    entrypoint = next(x for x in status_iterable if x.is_entrypoint)
-    sorted_chainlets = sorted(
-        (x for x in status_iterable if not x.is_entrypoint), key=lambda x: x.name
-    )
-    for i, chainlet in enumerate([entrypoint] + sorted_chainlets):
-        displayable_status = get_displayable_status(chainlet.status)
-        if displayable_status == ACTIVE_STATUS:
-            spinner_name = "active"
-        elif displayable_status in DEPLOYING_STATUSES:
-            if displayable_status == "BUILDING":
-                spinner_name = "building"
-            elif displayable_status == "LOADING":
-                spinner_name = "loading"
-            else:
-                spinner_name = "deploying"
-        else:
-            spinner_name = "failed"
-        spinner = rich.spinner.Spinner(spinner_name, text=displayable_status)
-        if chainlet.is_entrypoint:
-            display_name = f"{chainlet.name} (entrypoint)"
-        else:
-            display_name = f"{chainlet.name} (internal)"
-
-        table.add_row(spinner, display_name, _format_link(chainlet.logs_url))
-        # Add section divider after entrypoint, entrypoint must be first.
-        if chainlet.is_entrypoint:
-            table.add_section()
-        statuses.append(displayable_status)
-    return table, statuses
-
-
-@chains.command(name="push")  # type: ignore
-@click.argument("source", type=Path, required=True)
-@click.argument("entrypoint", type=str, required=False)
-@click.option(
-    "--name",
-    type=str,
-    required=False,
-    help="Name of the chain to be deployed, if not given, the entrypoint name is used.",
-)
-@click.option(
-    "--publish/--no-publish",
-    default=False,
-    help="Create chainlets as published deployments.",
-)
-@click.option(
-    "--promote/--no-promote",
-    default=False,
-    help="Replace production chainlets with newly deployed chainlets.",
-)
-@click.option(
-    "--environment",
-    type=str,
-    required=False,
-    help=(
-        "Deploy the chain as a published deployment to the specified environment."
-        "If specified, --publish is implied and the supplied value of --promote will be ignored."
-    ),
-)
-@click.option(
-    "--wait/--no-wait",
-    default=True,
-    help="Wait until all chainlets are ready (or deployment failed).",
-)
-@click.option(
-    "--watch/--no-watch",
-    default=False,
-    help=(
-        "Watches the chains source code and applies live patches. Using this option "
-        "will wait for the chain to be deployed (i.e. `--wait` flag is applied), "
-        "before starting to watch for changes. This option required the deployment "
-        "to be a development deployment (i.e. `--no-promote` and `--no-publish`."
-    ),
-)
-@click.option(
-    "--dryrun",
-    default=False,
-    is_flag=True,
-    help="Produces only generated files, but doesn't deploy anything.",
-)
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to push to.",
-)
-@click.option(
-    "--experimental-watch-chainlet-names",
-    type=str,
-    required=False,
-    help=(
-        "Runs `watch`, but only applies patches to specified chainlets. The option is "
-        "a comma-separated list of chainlet (display) names. This option can give "
-        "faster dev loops, but also lead to inconsistent deployments. Use with caution "
-        "and refer to docs."
-    ),
-)
-@click.option(
-    "--include-git-info",
-    is_flag=True,
-    required=False,
-    default=False,
-    help=_INCLUDE_GIT_INFO_DOC,
-)
-@click.pass_context
-@common_options()
-def push_chain(
-    ctx: click.Context,
-    source: Path,
-    entrypoint: Optional[str],
-    name: Optional[str],
-    publish: bool,
-    promote: bool,
-    wait: bool,
-    watch: bool,
-    dryrun: bool,
-    remote: Optional[str],
-    environment: Optional[str],
-    experimental_watch_chainlet_names: Optional[str],
-    include_git_info: bool = False,
-) -> None:
-    """
-    Deploys a chain remotely.
-
-    SOURCE: Path to a python file that contains the entrypoint chainlet.
-
-    ENTRYPOINT: Class name of the entrypoint chainlet in source file. May be omitted
-    if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
-    """
-    # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains import framework
-    from truss_chains import private_types as chains_def
-    from truss_chains.deployment import deployment_client
-
-    if experimental_watch_chainlet_names:
-        watch = True
-
-    if watch:
-        if publish or promote:
-            raise ValueError(
-                "When using `--watch`, the deployment cannot be published or promoted."
-            )
-        if not wait:
-            console.print(
-                "`--watch` is used. Will wait for deployment before watching files."
-            )
-            wait = True
-
-    if promote and environment:
-        promote_warning = (
-            "`promote` flag and `environment` flag were both specified. "
-            "Ignoring the value of `promote`."
-        )
-        console.print(promote_warning, style="yellow")
-
-    if not remote:
-        if dryrun:
-            remote = ""
-        else:
-            remote = remote_cli.inquire_remote_name()
-
-    if not include_git_info:
-        include_git_info = user_config.settings.include_git_info
-
-    with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
-        chain_name = (
-            name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
-        )
-        options = chains_def.PushOptionsBaseten.create(
-            chain_name=chain_name,
-            promote=promote,
-            publish=publish,
-            only_generate_trusses=dryrun,
-            remote=remote,
-            environment=environment,
-            include_git_info=include_git_info,
-            working_dir=source.parent if source.is_file() else source.resolve(),
-        )
-        service = deployment_client.push(
-            entrypoint_cls, options, progress_bar=progress.Progress
-        )
-
-    if dryrun:
-        return
-
-    assert isinstance(service, deployment_client.BasetenChainService)
-    curl_snippet = _make_chains_curl_snippet(
-        service.run_remote_url, options.environment
-    )
-
-    table, statuses = _create_chains_table(service)
-    status_check_wait_sec = 2
-    if wait:
-        num_services = len(statuses)
-        success = False
-        num_failed = 0
-        # Logging inferences with live display (even when using richHandler)
-        # -> capture logs and print later.
-        with (
-            LogInterceptor() as log_interceptor,
-            rich.live.Live(table, console=console, refresh_per_second=4) as live,
-        ):
-            while True:
-                table, statuses = _create_chains_table(service)
-                live.update(table)
-                num_active = sum(s == ACTIVE_STATUS for s in statuses)
-                num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
-                if num_active == num_services:
-                    success = True
-                    break
-                elif num_failed := num_services - num_active - num_deploying:
-                    break
-                time.sleep(status_check_wait_sec)
-
-            intercepted_logs = log_interceptor.get_logs()
-
-        # Prints must be outside `Live` context.
-        if intercepted_logs:
-            console.print("Logs intercepted during waiting:", style="blue")
-            for log in intercepted_logs:
-                console.print(f"\t{log}")
-        if success:
-            deploy_success_text = "Deployment succeeded."
-            if environment:
-                deploy_success_text = (
-                    "Your chain has been deployed into "
-                    f"the {options.environment} environment."
-                )
-            console.print(deploy_success_text, style="bold green")
-            console.print(f"You can run the chain with:\n{curl_snippet}")
-
-            if watch:  # Note that this command will print a startup message.
-                if experimental_watch_chainlet_names:
-                    included_chainlets = [
-                        x.strip() for x in experimental_watch_chainlet_names.split(",")
-                    ]
-                else:
-                    included_chainlets = None
-                deployment_client.watch(
-                    source,
-                    entrypoint,
-                    name,
-                    remote,
-                    console,
-                    _error_console,
-                    show_stack_trace=_get_required_option(ctx, "log")
-                    != _HUMANFRIENDLY_LOG_LEVEL,
-                    included_chainlets=included_chainlets,
-                )
-        else:
-            console.print(f"Deployment failed ({num_failed} failures).", style="red")
-    else:
-        console.print(table)
-        console.print(
-            "Once all chainlets are deployed, "
-            f"you can run the chain with:\n\n{curl_snippet}"
-        )
-
-
-@chains.command(name="watch")  # type: ignore
-@click.argument("source", type=Path, required=True)
-@click.argument("entrypoint", type=str, required=False)
-@click.option(
-    "--name",
-    type=str,
-    required=False,
-    help="Name of the chain to be deployed, if not given, the entrypoint name is used.",
-)
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to push to.",
-)
-@click.option(
-    "--experimental-chainlet-names",
-    type=str,
-    required=False,
-    help=(
-        "Runs `watch`, but only applies patches to specified chainlets. The option is "
-        "a comma-separated list of chainlet (display) names. This option can give "
-        "faster dev loops, but also lead to inconsistent deployments. Use with caution "
-        "and refer to docs."
-    ),
-)
-@click.pass_context
-@common_options()
-def watch_chains(
-    ctx: click.Context,
-    source: Path,
-    entrypoint: Optional[str],
-    name: Optional[str],
-    remote: Optional[str],
-    experimental_chainlet_names: Optional[str],
-) -> None:
-    """
-    Watches the chains source code and applies live patches to a development deployment.
-
-    The development deployment must have been deployed before running this command.
-
-    SOURCE: Path to a python file that contains the entrypoint chainlet.
-
-    ENTRYPOINT: Class name of the entrypoint chainlet in source file. May be omitted
-    if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
-    """
-    # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains.deployment import deployment_client
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    if experimental_chainlet_names:
-        included_chainlets = [x.strip() for x in experimental_chainlet_names.split(",")]
-    else:
-        included_chainlets = None
-
-    deployment_client.watch(
-        source,
-        entrypoint,
-        name,
-        remote,
-        console,
-        _error_console,
-        show_stack_trace=_get_required_option(ctx, "log") != _HUMANFRIENDLY_LOG_LEVEL,
-        included_chainlets=included_chainlets,
-    )
-
-
-@chains.command(name="init")  # type: ignore
-@click.argument("directory", type=Path, required=False)
-@common_options()
-def init_chain(directory: Optional[Path]) -> None:
-    """
-    Initializes a chains project directory.
-
-    DIRECTORY: A name of new or existing directory to create the chain in,
-      it must be empty. If not specified, the current directory is used.
-
-    """
-    if not directory:
-        directory = Path.cwd()
-    if directory.exists():
-        if not directory.is_dir():
-            raise ValueError(f"The path {directory} must be a directory.")
-        if any(directory.iterdir()):
-            raise ValueError(f"Directory {directory} must be empty.")
-    else:
-        directory.mkdir()
-
-    filename = inquirer.text(
-        qmark="",
-        message="Enter the python file name for the chain.",
-        default="my_chain.py",
-    ).execute()
-    filepath = directory / str(filename).strip()
-    console.print(f"Creating and populating {filepath}...\n")
-    source_code = _load_example_chainlet_code()
-    filepath.write_text(source_code)
-    console.print(
-        "Next steps:\n",
-        f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
-        "execution.\n"
-        f"🚢 Run [bold green]`truss chains push {filepath}`[/bold green] "
-        "to deploy the chain to Baseten.\n",
-    )
-
-
-### Training Commands. #################################################################
-
-
-@click.group()
-def train():
-    """Subcommands for truss train"""
-
-
-truss_cli.add_command(train)
-
-
-@train.command(name="push")
-@click.argument("config", type=Path, required=True)
-@click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
-@common_options()
-def push_training_job(config: Path, remote: Optional[str], tail: bool):
-    """Run a training job"""
-    from truss_train import deployment, loader
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-    with loader.import_training_project(config) as training_project:
-        with console.status("Creating training job...", spinner="dots"):
-            project_resp = remote_provider.api.upsert_training_project(
-                training_project=training_project
-            )
-
-            prepared_job = deployment.prepare_push(
-                remote_provider.api, config, training_project.job
-            )
-            job_resp = remote_provider.api.create_training_job(
-                project_id=project_resp["id"], job=prepared_job
-            )
-
-        console.print("✨ Training job successfully created!", style="green")
-        console.print(
-            f"🪵 View logs for your job via "
-            f"[cyan]`truss train logs --job-id {job_resp['id']} [--tail]`[/cyan]\n"
-            f"🔍 View metrics for your job via "
-            f"[cyan]`truss train metrics --job-id {job_resp['id']}`[/cyan]"
-        )
-
-    if tail:
-        project_id, job_id = project_resp["id"], job_resp["id"]
-        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id, console)
-        for log in watcher.watch():
-            cli_log_utils.output_log(log, console)
-
-
-@train.command(name="logs")
-@click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
-@common_options()
-def get_job_logs(
-    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
-):
-    """Fetch logs for a training job"""
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-    project_id, job_id = train_cli.get_most_recent_job(
-        console, remote_provider, project_id, job_id
-    )
-
-    if not tail:
-        logs = remote_provider.api.get_training_job_logs(project_id, job_id)
-        for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log, console)
-    else:
-        log_watcher = TrainingLogWatcher(
-            remote_provider.api, project_id, job_id, console
-        )
-        for log in log_watcher.watch():
-            cli_log_utils.output_log(log, console)
-
-
-@train.command(name="stop")
-@click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--all", is_flag=True, help="Stop all running jobs.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
-@common_options()
-def stop_job(
-    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
-):
-    """Stop a training job"""
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-    if all:
-        train_cli.stop_all_jobs(console, remote_provider, project_id)
-    else:
-        project_id, job_id = train_cli.get_args_for_stop(
-            console, remote_provider, project_id, job_id
-        )
-        remote_provider.api.stop_training_job(project_id, job_id)
-        console.print("Training job stopped successfully.", style="green")
-
-
-@train.command(name="view")
-@click.option(
-    "--project-id", type=str, required=False, help="View training jobs for a project."
-)
-@click.option(
-    "--job-id", type=str, required=False, help="View a specific training job."
-)
-@click.option("--remote", type=str, required=False, help="Remote to use")
-@common_options()
-def view_training(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
-):
-    """List all training jobs for a project"""
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-    train_cli.view_training_details(console, remote_provider, project_id, job_id)
-
-
-@train.command(name="metrics")
-@click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
-@common_options()
-def get_job_metrics(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
-):
-    """Get metrics for a training job"""
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-    train_cli.view_training_job_metrics(console, remote_provider, project_id, job_id)
-
-
-@train.command(name="deploy_checkpoints")
-@click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option(
-    "--config",
-    type=str,
-    required=False,
-    help="path to a python file that defines a DeployCheckpointsConfig",
-)
-@click.option(
-    "--dry-run", is_flag=True, help="Generate a truss config without deploying"
-)
-@click.option("--remote", type=str, required=False, help="Remote to use")
-@common_options()
-def deploy_checkpoints(
-    project_id: Optional[str],
-    job_id: Optional[str],
-    config: Optional[str],
-    remote: Optional[str],
-    dry_run: bool,
-):
-    """
-    Deploy a LoRA checkpoint via vLLM.
-    """
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
-        console,
-        remote_provider,
-        train_cli.PrepareCheckpointArgs(
-            project_id=project_id, job_id=job_id, deploy_config_path=config
-        ),
-    )
-
-    params = {
-        "target_directory": prepare_checkpoint_result.truss_directory,
-        "remote": remote,
-        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
-        "publish": True,
-        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
-    }
-    ctx = _prepare_click_context(push, params)
-    if dry_run:
-        console.print("--dry-run flag provided, not deploying", style="yellow")
-    else:
-        push.invoke(ctx)
-    train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
-
-
-@train.command(name="download")
-@click.option("--job-id", type=str, required=True, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option(
-    "--target-directory",
-    type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
-    required=False,
-    help="Directory where the file should be downloaded. Defaults to current directory.",
-)
-@common_options()
-def download_training_job(
-    job_id: str, remote: Optional[str], target_directory: Optional[str]
-) -> None:
-    if not job_id:
-        _error_console.print("Job ID is required")
-        sys.exit(1)
-
-    if not remote:
-        remote = remote_cli.inquire_remote_name()
-
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-
-    try:
-        with console.status(
-            "[bold green]Downloading training job data...", spinner="dots"
-        ):
-            target_path = train_cli.download_training_job_data(
-                remote_provider=remote_provider,
-                job_id=job_id,
-                target_directory=target_directory,
-            )
-
-        console.print(
-            f"✨ Training job data downloaded to {target_path}", style="bold green"
-        )
-    except Exception as e:
-        _error_console.print(f"Failed to download training job data: {str(e)}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    truss_cli()
+# These imports are needed to register the subcommands
+from truss.cli import chains_commands, train_commands  # noqa: F401

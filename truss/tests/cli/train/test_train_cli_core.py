@@ -1,7 +1,4 @@
-from io import StringIO
 from unittest.mock import Mock, patch
-
-from rich.console import Console
 
 from truss.cli.train.core import view_training_job_metrics
 
@@ -10,11 +7,7 @@ from truss.cli.train.core import view_training_job_metrics
 @patch(
     "truss.cli.train.poller.JOB_TERMINATION_GRACE_PERIOD_SEC", -1
 )  # don't perform cleanup
-def test_view_training_job_metrics(time_sleep):
-    # Create a console that writes to StringIO for capture
-    string_io = StringIO()
-    console = Console(file=string_io)
-
+def test_view_training_job_metrics(time_sleep, capfd):
     # Mock the remote provider and its API
     mock_api = Mock()
     mock_remote = Mock()
@@ -96,8 +89,7 @@ def test_view_training_job_metrics(time_sleep):
     ]
 
     # Call the function
-    view_training_job_metrics(
-        console=console, remote_provider=mock_remote, project_id=None, job_id=None
-    )
-    assert "Training job completed successfully" in string_io.getvalue()
-    assert "Error fetching metrics" not in string_io.getvalue()
+    view_training_job_metrics(remote_provider=mock_remote, project_id=None, job_id=None)
+    out, err = capfd.readouterr()
+    assert "Training job completed successfully" in out
+    assert "Error fetching metrics" not in out
