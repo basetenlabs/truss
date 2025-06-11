@@ -1,11 +1,11 @@
 def test_baseten_performance_client_bindings_basic_test():
-    from baseten_performance_client import InferenceClient
+    from baseten_performance_client import PerformanceClient
 
-    InferenceClient.embed
-    InferenceClient.async_embed
-    InferenceClient.rerank
-    InferenceClient.async_rerank
-    InferenceClient.classify
-    InferenceClient.async_classify
-    InferenceClient.batch_post
-    InferenceClient.async_batch_post
+    PerformanceClient.embed
+    PerformanceClient.async_embed
+    PerformanceClient.rerank
+    PerformanceClient.async_rerank
+    PerformanceClient.classify
+    PerformanceClient.async_classify
+    PerformanceClient.batch_post
+    PerformanceClient.async_batch_post

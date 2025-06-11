@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 import psutil
-from baseten_performance_client import InferenceClient, OpenAIEmbeddingsResponse
+from baseten_performance_client import PerformanceClient, OpenAIEmbeddingsResponse
 from openai import AsyncOpenAI
 
 # Configuration
@@ -18,10 +18,10 @@ api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/
 # Benchmark settings: list of lengths to test.
 benchmark_lengths = [128, 512, 2048, 8192, 32768, 131072, 524288, 2097152]
 micro_batch_size = (
-    128  # For AsyncOpenAI client; also used for the InferenceClient batch
+    128  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
 
-client_b = InferenceClient(api_key=api_key, base_url=api_base_embed)
+client_b = PerformanceClient(api_key=api_key, base_url=api_base_embed)
 client_oai = AsyncOpenAI(api_key=api_key, base_url=api_base_embed, timeout=1024)
 
 
@@ -52,7 +52,7 @@ def cpu_monitor(cpu_usage_list, stop_event, interval=0.1):
 
 
 async def run_baseten_benchmark(length):
-    """Run a single InferenceClient benchmark with CPU monitoring."""
+    """Run a single PerformanceClient benchmark with CPU monitoring."""
     # Prepare input data
     full_input_texts = ["Hello world"] * length
 
@@ -96,7 +96,7 @@ async def run_baseten_benchmark(length):
     assert embeddings_array.shape[0] == length
 
     return {
-        "client": "InferenceClient",
+        "client": "PerformanceClient",
         "length": length,
         "duration": duration,
         "max_cpu": max_cpu,
@@ -170,7 +170,7 @@ async def run_all_benchmarks():
         )
         res_baseten = await run_baseten_benchmark(length)
         print(
-            f"InferenceClient: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%"
+            f"PerformanceClient: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%"
         )
         res_async = await run_asyncopenai_benchmark(length)
         print(
@@ -198,5 +198,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    print("Starting benchmark comparison for InferenceClient and AsyncOpenAI")
+    print("Starting benchmark comparison for PerformanceClient and AsyncOpenAI")
     asyncio.run(main())

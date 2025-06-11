@@ -1,6 +1,6 @@
 # High performance client for Baseten.co
 
-This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. InferenceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps from a single-core machine on baseten.co. InferenceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
+This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. PerformanceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps from a single-core machine on baseten.co. PerformanceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
 
 ## Installation
 
@@ -13,13 +13,13 @@ pip install baseten_performance_client
 ```python
 import os
 import asyncio
-from baseten_performance_client import InferenceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
+from baseten_performance_client import PerformanceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
 
 api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
 # Also works with 3rd party endpoints.
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
-client = InferenceClient(base_url=base_url_embed, api_key=api_key)
+client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 ```
 ### Embeddings
 #### Synchronous Embedding
@@ -79,7 +79,7 @@ async def async_embed():
 #### Embedding Benchmarks
 Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `./scripts/compare_latency_openai.py` with mini_batch_size of 128, and 4 server-side replicas. Results with OpenAI similar, OpenAI allows a max mini_batch_size of 2048.
 
-| Number of inputs / embeddings | Number of Tasks | InferenceClient (s) | AsyncOpenAI (s) | Speedup |
+| Number of inputs / embeddings | Number of Tasks | PerformanceClient (s) | AsyncOpenAI (s) | Speedup |
 |-------------------------------:|---------------:|---------------------:|----------------:|--------:|
 | 128                            |              1 |                0.12 |            0.13 |    1.08× |
 | 512                            |              4 |                0.14 |            0.21 |    1.50× |
@@ -213,7 +213,7 @@ Here's an example demonstrating how to catch these errors for the `embed` method
 ```python
 import requests
 
-# client = InferenceClient(base_url="your_b10_url", api_key="your_b10_api_key")
+# client = PerformanceClient(base_url="your_b10_url", api_key="your_b10_api_key")
 
 texts_to_embed = ["Hello world", "Another text example"]
 try:
