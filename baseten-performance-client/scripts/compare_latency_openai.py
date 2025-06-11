@@ -18,7 +18,7 @@ api_base_embed = "https://model-e3m0299q.api.baseten.co/environments/production/
 # Benchmark settings: list of lengths to test.
 benchmark_lengths = [128, 512, 2048, 8192, 32768, 131072, 524288, 2097152, 8388608]
 micro_batch_size = (
-    16  # For AsyncOpenAI client; also used for the PerformanceClient batch
+    128  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
 
 client_b = PerformanceClient(api_key=api_key, base_url=api_base_embed)
