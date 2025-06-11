@@ -178,9 +178,9 @@ class ClassificationResponse:
         """
         ...
 
-class InferenceClient:
+class PerformanceClient:
     """
-    Baseten.co API client for embedding, reranking, and classification.
+    Baseten.co API client for embedding, reranking, and classification, and custom workloads.
 
     This client allows you to send text to an embedding model, rerank documents,
     or classify texts through the API.
@@ -190,7 +190,7 @@ class InferenceClient:
         api_key: The API key for authentication.
 
     Example:
-        >>> client = InferenceClient(base_url="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
+        >>> client = PerformanceClient(base_url="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
         >>> embeddings = client.embed(["Hello world"], model="BAAI/bge-large-en")
         >>> array = embeddings.numpy()
     """
@@ -205,7 +205,7 @@ class InferenceClient:
             api_key: The API key. If not provided, environment variables will be checked.
 
         Example:
-            >>> client = InferenceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
         """
         ...
 
@@ -372,7 +372,7 @@ class InferenceClient:
             # Note: Other PyO3/Rust errors might be raised for serialization/deserialization issues.
 
         Example:
-            >>> client = InferenceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
             >>> custom_payloads = [
             ...     {"data": "request1_data", "id": 1},
             ...     {"data": "request2_data", "id": 2}

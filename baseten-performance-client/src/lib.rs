@@ -267,16 +267,16 @@ impl ClassificationResponse {
     }
 }
 
-// --- InferenceClient Definition ---
+// --- PerformanceClient Definition ---
 #[pyclass]
-struct InferenceClient {
+struct PerformanceClient {
     api_key: String,
     base_url: String,
     client: Client,
     runtime: Arc<Runtime>,
 }
 
-impl InferenceClient {
+impl PerformanceClient {
     fn get_api_key(api_key: Option<String>) -> Result<String, PyErr> {
         if let Some(key) = api_key {
             return Ok(key);
@@ -330,12 +330,12 @@ impl InferenceClient {
 }
 
 #[pymethods]
-impl InferenceClient {
+impl PerformanceClient {
     #[new]
     #[pyo3(signature = (base_url, api_key = None))]
     fn new(base_url: String, api_key: Option<String>) -> PyResult<Self> {
-        let api_key = InferenceClient::get_api_key(api_key)?;
-        Ok(InferenceClient {
+        let api_key = PerformanceClient::get_api_key(api_key)?;
+        Ok(PerformanceClient {
             api_key,
             base_url,
             client: Client::new(),
@@ -364,8 +364,8 @@ impl InferenceClient {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
@@ -427,8 +427,8 @@ impl InferenceClient {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
@@ -472,8 +472,8 @@ impl InferenceClient {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
@@ -530,8 +530,8 @@ impl InferenceClient {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
@@ -574,8 +574,8 @@ impl InferenceClient {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
@@ -629,8 +629,8 @@ impl InferenceClient {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
@@ -668,8 +668,8 @@ impl InferenceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1000)?; // sent batch size to 1000 to allow higher batch
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?; // sent batch size to 128 to allow higher batch
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held)
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
@@ -749,8 +749,8 @@ impl InferenceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1000)?; // sent batch size to 1000 to allow higher batch
-        let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?; // sent batch size to 1000 to allow higher batch
+        let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held by `py` argument)
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
@@ -1481,8 +1481,8 @@ async fn send_request_with_retry(
 
 // --- PyO3 Module Definition ---
 #[pymodule]
-fn baseten_inference_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<InferenceClient>()?;
+fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PerformanceClient>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;
