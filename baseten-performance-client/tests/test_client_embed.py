@@ -13,8 +13,8 @@ from baseten_performance_client import (
 from requests.exceptions import HTTPError
 
 api_key = os.environ.get("BASETEN_API_KEY")
-base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
-base_url_rerank = "https://model-4q9d4yx3.api.baseten.co/environments/production/sync"
+base_url_embed = "https://model-e3m0299q.api.baseten.co/environments/production/sync"
+base_url_rerank = "https://model-2329n8vw.api.baseten.co/environments/production/sync"
 base_url_fake = "fake_url"
 
 IS_NUMPY_AVAILABLE = False
