@@ -668,7 +668,7 @@ impl InferenceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1000)?; // sent batch size to 1000 to allow higher batch
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?; // sent batch size to 128 to allow higher batch
         let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held)
@@ -749,7 +749,7 @@ impl InferenceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 1000)?; // sent batch size to 1000 to allow higher batch
+        InferenceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?; // sent batch size to 1000 to allow higher batch
         let timeout_duration = InferenceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         // Depythonize all payloads in the current thread (GIL is held by `py` argument)
