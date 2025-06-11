@@ -6,8 +6,8 @@ import pytest
 import requests
 from baseten_performance_client import (
     ClassificationResponse,
-    PerformanceClient,
     OpenAIEmbeddingsResponse,
+    PerformanceClient,
     RerankResponse,
 )
 from requests.exceptions import HTTPError
