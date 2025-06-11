@@ -13,12 +13,12 @@ from openai import AsyncOpenAI
 api_key = os.environ.get("BASETEN_API_KEY")
 if not api_key:
     raise ValueError("BASETEN_API_KEY environment variable not set.")
-api_base_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
+api_base_embed = "https://model-e3m0299q.api.baseten.co/environments/production/sync"
 
 # Benchmark settings: list of lengths to test.
 benchmark_lengths = [128, 512, 2048, 8192, 32768, 131072, 524288, 2097152]
 micro_batch_size = (
-    128  # For AsyncOpenAI client; also used for the PerformanceClient batch
+    16  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
 
 client_b = PerformanceClient(api_key=api_key, base_url=api_base_embed)
@@ -57,7 +57,7 @@ async def run_baseten_benchmark(length):
     full_input_texts = ["Hello world"] * length
 
     # Warm-up run
-    _ = await client_b.aembed(
+    _ = await client_b.async_embed(
         input=full_input_texts[:2048],
         model="text-embedding-3-small",
         max_concurrent_requests=512,
@@ -74,7 +74,7 @@ async def run_baseten_benchmark(length):
 
     # Timed run
     time_start = time.monotonic()
-    response = await client_b.aembed(
+    response = await client_b.async_embed(
         input=full_input_texts,
         model="text-embedding-3-small",
         max_concurrent_requests=512,
