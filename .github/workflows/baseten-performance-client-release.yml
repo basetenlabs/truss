@@ -1,4 +1,4 @@
-name: Build and Release baseten-inference-client
+name: Build and Release baseten-performance-client
 
 on:
   push:
@@ -6,12 +6,12 @@ on:
       - main
       - master
     paths:
-      - "baseten-inference-client/**"
+      - "baseten-performance-client/**"
     tags:
       - "*"
   pull_request:
     paths:
-      - "baseten-inference-client/**"
+      - "baseten-performance-client/**"
   workflow_dispatch:
     inputs:
       publish_pypi:
@@ -23,7 +23,7 @@ jobs:
   build-package:
     uses: ./.github/workflows/build-maturin.yml
     with:
-      folder: baseten-inference-client
+      folder: baseten-performance-client
       publish_pypi: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true' || startsWith(github.ref, 'refs/tags/') }}
     secrets:
-      PYPI_TOKEN: ${{ secrets.baseten_performance_client_PYPI_API_TOKEN }}
+      PYPI_TOKEN: ${{ secrets.BASETEN_PERFORMANCE_CLIENT_PYPI_API_TOKEN }}
