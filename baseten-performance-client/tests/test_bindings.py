@@ -1,5 +1,5 @@
-def test_baseten_inference_client_bindings_basic_test():
-    from baseten_inference_client import InferenceClient
+def test_baseten_performance_client_bindings_basic_test():
+    from baseten_performance_client import InferenceClient
 
     InferenceClient.embed
     InferenceClient.async_embed

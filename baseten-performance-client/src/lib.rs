@@ -1481,7 +1481,7 @@ async fn send_request_with_retry(
 
 // --- PyO3 Module Definition ---
 #[pymodule]
-fn baseten_inference_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<InferenceClient>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;

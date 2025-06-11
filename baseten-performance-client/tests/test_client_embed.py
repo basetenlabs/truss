@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import requests
-from baseten_inference_client import (
+from baseten_performance_client import (
     ClassificationResponse,
     InferenceClient,
     OpenAIEmbeddingsResponse,
@@ -114,7 +114,7 @@ def test_wrong_api_key(method):
     not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
 @pytest.mark.parametrize("try_numpy", [True, False])
-def test_baseten_inference_client_embeddings_test(try_numpy):
+def test_baseten_performance_client_embeddings_test(try_numpy):
     client = InferenceClient(base_url=base_url_embed, api_key=api_key)
 
     assert client.api_key == api_key
@@ -141,7 +141,7 @@ def test_baseten_inference_client_embeddings_test(try_numpy):
 @pytest.mark.skipif(
     not RERANK_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
-def test_baseten_inference_client_rerank():
+def test_baseten_performance_client_rerank():
     client = InferenceClient(base_url=base_url_rerank, api_key=api_key)
 
     assert client.api_key == api_key
@@ -159,7 +159,7 @@ def test_baseten_inference_client_rerank():
 @pytest.mark.skipif(
     not CLASSIFY_REACHABLE, reason="Deployment is not reachable. Skipping test."
 )
-def test_baseten_inference_client_predict():
+def test_baseten_performance_client_predict():
     client = InferenceClient(base_url=base_url_rerank, api_key=api_key)
 
     assert client.api_key == api_key

@@ -26,4 +26,4 @@ jobs:
       folder: baseten-inference-client
       publish_pypi: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true' || startsWith(github.ref, 'refs/tags/') }}
     secrets:
-      PYPI_TOKEN: ${{ secrets.BASETEN_INFERENCE_CLIENT_PYPI_API_TOKEN }}
+      PYPI_TOKEN: ${{ secrets.baseten_performance_client_PYPI_API_TOKEN }}

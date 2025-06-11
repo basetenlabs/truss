@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 import psutil
-from baseten_inference_client import InferenceClient, OpenAIEmbeddingsResponse
+from baseten_performance_client import InferenceClient, OpenAIEmbeddingsResponse
 from openai import AsyncOpenAI
 
 # Configuration

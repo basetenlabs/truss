@@ -5,7 +5,7 @@ This library provides a high-performance Python client for Baseten.co endpoints 
 ## Installation
 
 ```
-pip install baseten_inference_client
+pip install baseten_performance_client
 ```
 
 ## Usage
@@ -13,7 +13,7 @@ pip install baseten_inference_client
 ```python
 import os
 import asyncio
-from baseten_inference_client import InferenceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
+from baseten_performance_client import InferenceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
 
 api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
