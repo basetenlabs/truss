@@ -15,7 +15,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
-
+dependencies = [
+  "requests"
+]
 [project.urls]
 Issues = "https://github.com/basetenlabs/truss/issues"
 Repository = "https://github.com/basetenlabs/truss.git"
