@@ -259,6 +259,10 @@ def display_training_job(
     console.print(table)
 
 
+def _generate_job_artifact_name(project_name: str, job_id: str) -> str:
+    return f"{project_name}_{job_id}"
+
+
 def download_training_job_data(
     remote_provider: BasetenRemote,
     job_id: str,
@@ -269,7 +273,6 @@ def download_training_job_data(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     jobs = remote_provider.api.search_training_jobs(job_id=job_id)
-
     if not jobs:
         raise RuntimeError(f"No training job found with ID: {job_id}")
 
@@ -277,13 +280,13 @@ def download_training_job_data(
     project_id = project["id"]
     project_name = project["name"]
 
-    file_name = f"{project_name}_{job_id}.tgz"
+    artifact_base_name = _generate_job_artifact_name(project_name, job_id)
+    file_name = f"{artifact_base_name}.tgz"
     target_path = output_dir / file_name
 
     presigned_url = remote_provider.api.get_training_job_presigned_url(
         project_id=project_id, job_id=job_id
     )
-
     content = remote_provider.api.get_from_presigned_url(presigned_url)
 
     if unzip:
@@ -294,10 +297,11 @@ def download_training_job_data(
             temp_path = Path(temp_file.name)
             temp_path.write_bytes(content)
 
-            unzip_dir = output_dir / f"{project_name}_{job_id}"
+            unzip_dir = output_dir / artifact_base_name
             if unzip_dir.exists():
                 raise click.ClickException(
-                    f"Error: Directory '{unzip_dir}' already exists. Please remove it or specify a different target directory."
+                    f"Directory '{unzip_dir}' already exists. "
+                    "Please remove it or specify a different target directory."
                 )
 
             unzip_dir.mkdir(parents=True, exist_ok=True)
