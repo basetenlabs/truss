@@ -33,6 +33,7 @@ def test_download_training_job_success(tmp_path, mock_remote, mock_job_response)
         remote_provider=mock_remote,
         job_id="test_job_123",
         target_directory=str(tmp_path),
+        unzip=False,
     )
 
     # Assert
@@ -59,7 +60,10 @@ def test_download_training_job_no_job_found(mock_remote):
         RuntimeError, match="No training job found with ID: nonexistent_job"
     ):
         train_cli.download_training_job_data(
-            remote_provider=mock_remote, job_id="nonexistent_job", target_directory=None
+            remote_provider=mock_remote,
+            job_id="nonexistent_job",
+            target_directory=None,
+            unzip=False,
         )
 
 
@@ -78,7 +82,10 @@ def test_download_training_job_default_directory(
     with patch("pathlib.Path.cwd") as mock_cwd:
         mock_cwd.return_value = test_dir
         result = train_cli.download_training_job_data(
-            remote_provider=mock_remote, job_id="test_job_123", target_directory=None
+            remote_provider=mock_remote,
+            job_id="test_job_123",
+            target_directory=None,
+            unzip=False,
         )
 
     # Assert
@@ -110,6 +117,7 @@ def test_download_training_job_different_directories(
             remote_provider=mock_remote,
             job_id="test_job_123",
             target_directory=str(full_path) if target_dir else None,
+            unzip=False,
         )
 
     # Assert

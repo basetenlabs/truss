@@ -260,7 +260,10 @@ def display_training_job(
 
 
 def download_training_job_data(
-    remote_provider: BasetenRemote, job_id: str, target_directory: Optional[str]
+    remote_provider: BasetenRemote,
+    job_id: str,
+    target_directory: Optional[str],
+    unzip: bool,
 ) -> Path:
     output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -282,9 +285,24 @@ def download_training_job_data(
     )
 
     content = remote_provider.api.get_from_presigned_url(presigned_url)
-    target_path.write_bytes(content)
 
-    return target_path
+    if unzip:
+        import tarfile
+        import tempfile
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_path.write_bytes(content)
+
+            unzip_dir = output_dir / f"{project_name}_{job_id}"
+            unzip_dir.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(temp_path, "r:*") as tar:
+                tar.extractall(path=unzip_dir)
+
+            return unzip_dir
+    else:
+        target_path.write_bytes(content)
+        return target_path
 
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:
