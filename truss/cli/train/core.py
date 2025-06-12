@@ -295,6 +295,11 @@ def download_training_job_data(
             temp_path.write_bytes(content)
 
             unzip_dir = output_dir / f"{project_name}_{job_id}"
+            if unzip_dir.exists():
+                raise click.ClickException(
+                    f"Error: Directory '{unzip_dir}' already exists. Please remove it or specify a different target directory."
+                )
+
             unzip_dir.mkdir(parents=True, exist_ok=True)
             with tarfile.open(temp_path, "r:*") as tar:
                 tar.extractall(path=unzip_dir)
