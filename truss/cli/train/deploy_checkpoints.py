@@ -4,19 +4,17 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import List, Optional, Union
 
-import rich
 import rich_click as click
 from InquirerPy import inquirer
 from jinja2 import Template
-from rich.console import Console
-from rich.text import Text
 
 from truss.base import truss_config
-from truss.cli.common import get_most_recent_job
+from truss.cli.train import common
 from truss.cli.train.types import (
     DeployCheckpointsConfigComplete,
     PrepareCheckpointResult,
 )
+from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
     DEFAULT_LORA_RANK,
@@ -42,14 +40,13 @@ HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 
 
 def prepare_checkpoint_deploy(
-    console: Console,
     remote_provider: BasetenRemote,
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
 ) -> PrepareCheckpointResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
-        console, checkpoint_deploy_config, remote_provider, project_id, job_id
+        checkpoint_deploy_config, remote_provider, project_id, job_id
     )
     rendered_truss = _render_vllm_lora_truss_config(checkpoint_deploy_config)
     truss_directory = Path(
@@ -66,14 +63,13 @@ def prepare_checkpoint_deploy(
 
 
 def _hydrate_deploy_config(
-    console: Console,
     deploy_config: DeployCheckpointsConfig,
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
 ) -> DeployCheckpointsConfigComplete:
     checkpoint_details = _get_checkpoint_details(
-        console, remote_provider, deploy_config.checkpoint_details, project_id, job_id
+        remote_provider, deploy_config.checkpoint_details, project_id, job_id
     )
     base_model_id = checkpoint_details.base_model_id
     if not base_model_id:
@@ -84,7 +80,7 @@ def _hydrate_deploy_config(
     model_name = (
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
     )
-    runtime = _get_runtime(console, deploy_config.runtime)
+    runtime = _get_runtime(deploy_config.runtime)
     deployment_name = (
         deploy_config.deployment_name or checkpoint_details.checkpoints[0].id
     )
@@ -154,7 +150,6 @@ def _render_vllm_lora_truss_config(
 
 
 def _get_checkpoint_details(
-    console: Console,
     remote_provider: BasetenRemote,
     checkpoint_details: Optional[CheckpointList],
     project_id: Optional[str],
@@ -164,20 +159,17 @@ def _get_checkpoint_details(
         return _process_user_provided_checkpoints(checkpoint_details, remote_provider)
     else:
         return _prompt_user_for_checkpoint_details(
-            console, remote_provider, checkpoint_details, project_id, job_id
+            remote_provider, checkpoint_details, project_id, job_id
         )
 
 
 def _prompt_user_for_checkpoint_details(
-    console: Console,
     remote_provider: BasetenRemote,
     checkpoint_details: Optional[CheckpointList],
     project_id: Optional[str],
     job_id: Optional[str],
 ) -> CheckpointList:
-    project_id, job_id = get_most_recent_job(
-        console, remote_provider, project_id, job_id
-    )
+    project_id, job_id = common.get_most_recent_job(remote_provider, project_id, job_id)
     response_checkpoints = _fetch_checkpoints(remote_provider, project_id, job_id)
     if not checkpoint_details:
         checkpoint_details = CheckpointList()
@@ -262,9 +254,7 @@ def _get_lora_rank(checkpoint_resp: dict) -> int:
     return lora_adapter_config.get("r") or DEFAULT_LORA_RANK
 
 
-def _get_hf_secret_name(
-    console: Console, user_input: Union[str, SecretReference, None]
-) -> str:
+def _get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
     if not user_input:
         # prompt user for hf secret name
         hf_secret_name = inquirer.select(
@@ -317,10 +307,8 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
         # prompt user for base model id
     base_model_id = None
     if base_model_id := checkpoint.get("base_model"):
-        rich.print(
-            Text(
-                f"Inferring base model from checkpoint: {base_model_id}", style="yellow"
-            )
+        console.print(
+            f"Inferring base model from checkpoint: {base_model_id}", style="yellow"
         )
     else:
         base_model_id = inquirer.text(message="Enter the base model id.").execute()
@@ -332,7 +320,7 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
 
 
 def _get_runtime(
-    console: Console, runtime: Optional[DeployCheckpointsRuntime]
+    runtime: Optional[DeployCheckpointsRuntime],
 ) -> DeployCheckpointsRuntime:
     if not runtime:
         runtime = DeployCheckpointsRuntime()
@@ -340,7 +328,7 @@ def _get_runtime(
         # Prompt the user for the huggingface secret name as a default. There's much more we could
         # do here, but we're keeping it simple for now.
         hf_secret_name = _get_hf_secret_name(
-            console, runtime.environment_variables.get(HF_TOKEN_ENVVAR_NAME)
+            runtime.environment_variables.get(HF_TOKEN_ENVVAR_NAME)
         )
         if hf_secret_name:
             runtime.environment_variables[HF_TOKEN_ENVVAR_NAME] = SecretReference(
@@ -352,7 +340,7 @@ def _get_runtime(
 def _fetch_checkpoints(
     remote_provider: BasetenRemote, project_id: str, job_id: str
 ) -> OrderedDict[str, dict]:
-    rich.print(f"Fetching checkpoints for training job {job_id}...")
+    console.print(f"Fetching checkpoints for training job {job_id}...")
     response = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
     response_checkpoints = OrderedDict(
         (checkpoint["checkpoint_id"], checkpoint)

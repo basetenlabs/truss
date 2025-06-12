@@ -663,6 +663,19 @@ class BasetenApi:
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
 
+    def get_training_job_presigned_url(self, project_id: str, job_id: str) -> str:
+        response = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/download"
+        )
+
+        presigned_url = response["artifact_presigned_urls"][0]
+
+        return presigned_url
+
+    def get_from_presigned_url(self, presigned_url: str) -> bytes:
+        response = requests.get(presigned_url)
+        return response.content
+
     def get_model_deployment_logs(
         self,
         model_id: str,

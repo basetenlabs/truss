@@ -3,27 +3,24 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Iterator, List, Optional
 
-from rich import console as rich_console
-
-from truss.cli.common import POLL_INTERVAL_SEC
 from truss.cli.logs.utils import ParsedLog, parse_logs
+from truss.cli.utils.output import console
 from truss.remote.baseten.api import BasetenApi
 
+POLL_INTERVAL_SEC = 2
 # NB(nikhil): This helps account for (1) log processing delays (2) clock skews
 CLOCK_SKEW_BUFFER_MS = 10000
 
 
 class LogWatcher(ABC):
     api: BasetenApi
-    console: rich_console.Console
     # NB(nikhil): we add buffer for clock skew, so this helps us detect duplicates.
     # TODO(nikhil): clean up hashes so this doesn't grow indefinitely.
     _log_hashes: set[str] = set()
     _last_poll_time: Optional[int] = None
 
-    def __init__(self, api: BasetenApi, console: rich_console.Console):
+    def __init__(self, api: BasetenApi):
         self.api = api
-        self.console = console
 
     def _hash_log(self, log: ParsedLog) -> str:
         log_str = f"{log.timestamp}-{log.message}-{log.replica}"
@@ -50,7 +47,7 @@ class LogWatcher(ABC):
 
     def watch(self) -> Iterator[ParsedLog]:
         self.before_polling()
-        with self.console.status("Waiting for logs...", spinner="dots"):
+        with console.status("Polling logs", spinner="aesthetic"):
             while True:
                 for log in self._poll():
                     yield log
@@ -58,11 +55,11 @@ class LogWatcher(ABC):
                     break
                 time.sleep(POLL_INTERVAL_SEC)
 
-        while self.should_poll_again():
-            for log in self._poll():
-                yield log
-            time.sleep(POLL_INTERVAL_SEC)
-            self.post_poll()
+            while self.should_poll_again():
+                for log in self._poll():
+                    yield log
+                time.sleep(POLL_INTERVAL_SEC)
+                self.post_poll()
 
         self.after_polling()
 
