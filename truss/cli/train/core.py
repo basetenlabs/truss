@@ -1,3 +1,5 @@
+import tarfile
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Tuple
@@ -290,9 +292,6 @@ def download_training_job_data(
     content = remote_provider.api.get_from_presigned_url(presigned_url)
 
     if unzip:
-        import tarfile
-        import tempfile
-
         with tempfile.NamedTemporaryFile() as temp_file:
             temp_path = Path(temp_file.name)
             temp_path.write_bytes(content)
