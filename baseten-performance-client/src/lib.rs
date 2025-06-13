@@ -11,10 +11,12 @@ use pyo3_async_runtimes;
 use pythonize::{depythonize, pythonize};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue; // For handling untyped JSON
+use serde_json::Value as JsonValue; 
+// For handling untyped JSON
 use std::sync::atomic::{AtomicBool, Ordering}; // Add this
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 use tokio::runtime::Runtime;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinError;
@@ -265,6 +267,13 @@ impl ClassificationResponse {
             data,
         }
     }
+}
+
+#[pyclass(get_all)]
+struct BatchPostResponse {
+    data: Vec<PyObject>,
+    total_time: f64,
+    individual_request_times: Vec<f64>,
 }
 
 // --- PerformanceClient Definition ---
@@ -664,7 +673,7 @@ impl PerformanceClient {
         payloads: Vec<PyObject>,
         max_concurrent_requests: usize,
         timeout_s: f64,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
@@ -689,10 +698,11 @@ impl PerformanceClient {
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
+        let time_start = std::time::Instant::now();
 
-        // The async task now receives Vec<JsonValue> and returns Result<Vec<JsonValue>, PyErr>
-        let result_from_async_task: Result<Vec<JsonValue>, PyErr> = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<JsonValue>, PyErr>>();
+        // The async task now returns Result<Vec<(JsonValue, Duration)>, PyErr>
+        let result_from_async_task: Result<Vec<(JsonValue, Duration)>, PyErr> = py.allow_threads(move || {
+            let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<(JsonValue, Duration)>, PyErr>>(); // Updated channel type
             rt.spawn(async move {
                 let res = process_batch_post_requests(
                     client,
@@ -716,25 +726,30 @@ impl PerformanceClient {
                 .and_then(|inner_result| inner_result)
         });
 
-        let response_json_values = result_from_async_task?;
+        let response_data_with_times = result_from_async_task?; // This is Vec<(JsonValue, Duration)>
 
-        // Pythonize all results in the current thread (GIL is held)
-        let mut results_py: Vec<PyObject> = Vec::with_capacity(response_json_values.len());
-        for (idx, json_val) in response_json_values.into_iter().enumerate() {
+        // Pythonize all results and collect individual request times
+        let mut results_py: Vec<PyObject> = Vec::with_capacity(response_data_with_times.len());
+        let mut individual_request_times_collected: Vec<f64> = Vec::with_capacity(response_data_with_times.len());
+
+        for (idx, (json_val, duration)) in response_data_with_times.into_iter().enumerate() {
             let py_obj_bound = pythonize(py, &json_val).map_err(|e| {
                 PyValueError::new_err(format!(
                     "Failed to pythonize response at index {}: {}",
                     idx, e
                 ))
             })?;
-            // Convert Bound<'_, PyAny> to PyObject
             results_py.push(py_obj_bound.to_object(py));
+            individual_request_times_collected.push(duration.as_secs_f64());
         }
-
-        // Use the updated PyList::new_bound or PyList::new as per PyO3 v0.21+
-        // PyList::new_bound is suitable here for an iterable of PyObjects.
-        let py_object_list = PyList::new_bound(py, &results_py);
-        Ok(py_object_list.into())
+        
+        let total_time = time_start.elapsed().as_secs_f64();
+        
+        Ok(BatchPostResponse {
+            data: results_py,
+            total_time,
+            individual_request_times: individual_request_times_collected,
+        })
     }
 
     #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
@@ -770,7 +785,9 @@ impl PerformanceClient {
         let base_url_clone = self.base_url.clone();
 
         let future = async move {
-            let response_json_values = process_batch_post_requests(
+            let time_start_async_op = std::time::Instant::now();
+
+            let response_data_with_times = process_batch_post_requests(
                 client_clone,
                 url_path,
                 payloads_json,
@@ -781,13 +798,14 @@ impl PerformanceClient {
             )
             .await?; // Propagates PyErr from process_batch_post_requests
 
-            // Pythonize results - this part needs the GIL.
-            // The `future_into_py` function ensures the future is polled in a context
-            // where acquiring the GIL is possible if the future's output type requires it
-            // for conversion (like our PyResult<PyObject> here).
+            // total_time measures the duration of the async processing and pythonization
+            let total_time_async_op = time_start_async_op.elapsed().as_secs_f64();
+
             Python::with_gil(|py_gil| {
-                let mut results_py: Vec<PyObject> = Vec::with_capacity(response_json_values.len());
-                for (idx, json_val) in response_json_values.into_iter().enumerate() {
+                let mut results_py: Vec<PyObject> = Vec::with_capacity(response_data_with_times.len());
+                let mut individual_request_times_collected: Vec<f64> = Vec::with_capacity(response_data_with_times.len());
+
+                for (idx, (json_val, duration)) in response_data_with_times.into_iter().enumerate() {
                     let py_obj_bound = pythonize(py_gil, &json_val).map_err(|e| {
                         PyValueError::new_err(format!(
                             "Failed to pythonize response at index {}: {}",
@@ -795,8 +813,14 @@ impl PerformanceClient {
                         ))
                     })?;
                     results_py.push(py_obj_bound.to_object(py_gil));
+                    individual_request_times_collected.push(duration.as_secs_f64());
                 }
-                Ok(PyList::new_bound(py_gil, &results_py).to_object(py_gil))
+                
+                Ok(BatchPostResponse {
+                    data: results_py,
+                    total_time: total_time_async_op,
+                    individual_request_times: individual_request_times_collected,
+                })
             })
         };
         pyo3_async_runtimes::tokio::future_into_py(py, future)
@@ -1227,7 +1251,7 @@ async fn send_single_batch_post_request(
 }
 
 // --- Process Batch Post Requests ---
-// Now takes Vec<JsonValue> and returns Result<Vec<JsonValue>, PyErr>
+// Now takes Vec<JsonValue> and returns Result<Vec<(JsonValue, Duration)>, PyErr>
 async fn process_batch_post_requests(
     client: Client,
     url_path: String,
@@ -1236,8 +1260,7 @@ async fn process_batch_post_requests(
     base_url: String,
     max_concurrent_requests: usize,
     request_timeout_duration: Duration,
-) -> Result<Vec<JsonValue>, PyErr> {
-    // Returns Vec<JsonValue>
+) -> Result<Vec<(JsonValue, Duration)>, PyErr> { // Returns Vec<(JsonValue, Duration)>
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
@@ -1257,13 +1280,13 @@ async fn process_batch_post_requests(
         tasks.push(tokio::spawn(async move {
             let permit_guard =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-
+            
             let full_url = format!(
                 "{}/{}",
                 base_url_clone.trim_end_matches('/'),
                 url_path_clone.trim_start_matches('/')
             );
-
+            let request_time_start = std::time::Instant::now();
             let result = send_single_batch_post_request(
                 client_clone,
                 full_url,
@@ -1273,10 +1296,11 @@ async fn process_batch_post_requests(
             )
             .await;
 
-            drop(permit_guard);
+            drop(permit_guard); // Release permit as soon as HTTP call is done
+            let request_time_elapsed = request_time_start.elapsed();
 
             match result {
-                Ok(response_json_value) => Ok((index, response_json_value)), // Return with original index and JsonValue
+                Ok(response_json_value) => Ok((index, response_json_value, request_time_elapsed)), // Return with original index, JsonValue, and Duration
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
                     Err(e)
@@ -1286,12 +1310,12 @@ async fn process_batch_post_requests(
     }
 
     let task_join_results = join_all(tasks).await;
-    let mut indexed_results: Vec<(usize, JsonValue)> = Vec::with_capacity(total_payloads); // Stores JsonValue
+    // D for process_task_outcome will be (usize, JsonValue, Duration)
+    let mut indexed_results: Vec<(usize, JsonValue, Duration)> = Vec::with_capacity(total_payloads); 
     let mut first_error: Option<PyErr> = None;
 
     for result in task_join_results {
-        // D is (usize, JsonValue)
-        if let Some(indexed_data_part) =
+        if let Some(indexed_data_part) = // indexed_data_part is (usize, JsonValue, Duration)
             process_task_outcome(result, &mut first_error, &cancel_token)
         {
             indexed_results.push(indexed_data_part);
@@ -1302,9 +1326,14 @@ async fn process_batch_post_requests(
         return Err(err);
     }
 
-    indexed_results.sort_by_key(|&(original_index, _)| original_index);
+    // Sort by original index to maintain order
+    indexed_results.sort_by_key(|&(original_index, _, _)| original_index);
 
-    let final_results: Vec<JsonValue> = indexed_results.into_iter().map(|(_, val)| val).collect(); // Collect JsonValue
+    // Map to the final Vec<(JsonValue, Duration)>
+    let final_results: Vec<(JsonValue, Duration)> = indexed_results
+        .into_iter()
+        .map(|(_, val, dur)| (val, dur))
+        .collect();
 
     Ok(final_results)
 }

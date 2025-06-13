@@ -229,9 +229,10 @@ def test_batch_post():
         payloads=[openai_request_embed, openai_request_embed],
         max_concurrent_requests=1,
     )
-    assert response is not None
-    assert len(response) == 2
-    assert response[0]
+    data = response.data
+    assert data is not None
+    assert len(data) == 2
+    assert data[0]
 
 
 @pytest.mark.skipif(
