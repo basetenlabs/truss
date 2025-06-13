@@ -248,7 +248,7 @@ try:
         embedding_preview = item.embedding[:3] if isinstance(item.embedding, list) else "Base64 Data"
         print(f"Index {item.index}, Embedding (first 3 dims or type): {embedding_preview}")
 
-except requests.exceptions.HTTPError as e: 
+except requests.exceptions.HTTPError as e:
     print(f"An HTTP error occurred: {e}, code {e.args[0]}")
 
 ```
