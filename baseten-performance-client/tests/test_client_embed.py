@@ -223,15 +223,17 @@ def test_batch_post():
     assert client.api_key == api_key
 
     openai_request_embed = {"model": "my_model", "input": ["Hello world"]}
-
+    length = 4
     response = client.batch_post(
         url_path="/v1/embeddings",
-        payloads=[openai_request_embed, openai_request_embed],
+        payloads=[openai_request_embed] * length,
         max_concurrent_requests=1,
     )
     data = response.data
     assert data is not None
-    assert len(data) == 2
+    assert len(data) == length
+    assert response.total_time >= 0
+    assert len(response.individual_request_times) == length
     assert data[0]
 
 

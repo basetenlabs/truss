@@ -34,6 +34,7 @@ const DEFAULT_BATCH_SIZE: usize = 16;
 const MAX_HTTP_RETRIES: u32 = 3; // Max number of retries for HTTP 429 or network errors
 const INITIAL_BACKOFF_MS: u64 = 500; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
+const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"]; // Providers that are known to be slow
 
 // --- Global Tokio Runtime ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
@@ -344,6 +345,12 @@ impl PerformanceClient {
     #[pyo3(signature = (base_url, api_key = None))]
     fn new(base_url: String, api_key: Option<String>) -> PyResult<Self> {
         let api_key = PerformanceClient::get_api_key(api_key)?;
+        if WARNING_SLOW_PROVIDERS.iter().any(|&provider| base_url.contains(provider)) {
+            eprintln!(
+                "Warning: Using {} as the base URL might be slow. You should consider using baseten.com instead.",
+                base_url.clone()
+            );
+        }
         Ok(PerformanceClient {
             api_key,
             base_url,
