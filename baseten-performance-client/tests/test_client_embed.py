@@ -13,7 +13,7 @@ from baseten_performance_client import (
 from requests.exceptions import HTTPError
 
 api_key = os.environ.get("BASETEN_API_KEY")
-base_url_embed = "https://model-e3m0299q.api.baseten.co/environments/production/sync"
+base_url_embed = "https://model-lqzx40k3.api.baseten.co/environments/production/sync"
 base_url_rerank = "https://model-e3mx5vzq.api.baseten.co/environments/production/sync"
 base_url_fake = "fake_url"
 
@@ -152,6 +152,7 @@ def test_baseten_performance_client_rerank():
         max_concurrent_requests=2,
     )
     assert response is not None
+    assert response.total_time >= 0
     assert isinstance(response, RerankResponse)
     assert len(response.data) == 2
 
@@ -189,6 +190,8 @@ def test_embedding_high_volume():
     assert response is not None
     assert isinstance(response, OpenAIEmbeddingsResponse)
     data = response.data
+    assert response.total_time >= 0
+    assert len(response.individual_request_times) >= n_requests / 3
     assert len(data) == n_requests
     assert len(data[0].embedding) > 10
     assert isinstance(data[0].embedding[0], float)
@@ -223,15 +226,21 @@ def test_batch_post():
     assert client.api_key == api_key
 
     openai_request_embed = {"model": "my_model", "input": ["Hello world"]}
-
+    length = 4
     response = client.batch_post(
         url_path="/v1/embeddings",
-        payloads=[openai_request_embed, openai_request_embed],
+        payloads=[openai_request_embed] * length,
         max_concurrent_requests=1,
     )
-    assert response is not None
-    assert len(response) == 2
-    assert response[0]
+    data = response.data
+    assert data is not None
+    assert len(data) == length
+    assert response.total_time >= 0
+    assert len(response.response_headers) == length
+    assert isinstance(response.response_headers[0].get("x-baseten-request-id"), str)
+    assert len(response.individual_request_times) == length
+    assert sum(response.individual_request_times) < response.total_time
+    assert data[0]
 
 
 @pytest.mark.skipif(
@@ -303,6 +312,7 @@ async def test_classify_async():
     assert isinstance(response, ClassificationResponse)
     data = response.data
     assert len(data) == 2
+    assert response.total_time >= 0
     print("async test passed", data[0])
 
 
