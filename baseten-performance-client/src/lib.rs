@@ -10,7 +10,7 @@ use pyo3_async_runtimes;
 use pythonize::{depythonize, pythonize};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue; 
+use serde_json::Value as JsonValue;
 // For handling untyped JSON
 use std::sync::atomic::{AtomicBool, Ordering}; // Add this
 use std::sync::Arc;
@@ -107,8 +107,9 @@ struct OpenAIUsage {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[pyclass(get_all)] 
-struct OpenAIEmbeddingsResponse { // Ensure struct is public for field access
+#[pyclass(get_all)]
+struct OpenAIEmbeddingsResponse {
+    // Ensure struct is public for field access
     object: String,
     data: Vec<OpenAIEmbeddingData>,
     model: String,
@@ -215,7 +216,8 @@ struct RerankResult {
 
 #[pyclass(get_all, frozen)]
 #[derive(Debug, Clone)]
-struct RerankResponse { // Made struct public for field visibility
+struct RerankResponse {
+    // Made struct public for field visibility
     object: String,
     data: Vec<RerankResult>,
     total_time: Option<f64>,
@@ -259,7 +261,8 @@ struct ClassificationResult {
 
 #[pyclass(get_all, frozen)]
 #[derive(Debug, Clone)]
-struct ClassificationResponse { // Made struct public
+struct ClassificationResponse {
+    // Made struct public
     object: String,
     data: Vec<Vec<ClassificationResult>>,
     total_time: Option<f64>,
@@ -359,7 +362,10 @@ impl PerformanceClient {
     #[pyo3(signature = (base_url, api_key = None))]
     fn new(base_url: String, api_key: Option<String>) -> PyResult<Self> {
         let api_key = PerformanceClient::get_api_key(api_key)?;
-        if WARNING_SLOW_PROVIDERS.iter().any(|&provider| base_url.contains(provider)) {
+        if WARNING_SLOW_PROVIDERS
+            .iter()
+            .any(|&provider| base_url.contains(provider))
+        {
             eprintln!(
                 "Warning: Using {} as the base URL might be slow. You should consider using baseten.com instead.",
                 base_url.clone()
@@ -383,14 +389,15 @@ impl PerformanceClient {
         &self,
         py: Python,
         input: Vec<String>,
-        model: String, 
+        model: String,
         encoding_format: Option<String>,
         dimensions: Option<u32>,
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<OpenAIEmbeddingsResponse> { // Return OpenAIEmbeddingsResponse directly
+    ) -> PyResult<OpenAIEmbeddingsResponse> {
+        // Return OpenAIEmbeddingsResponse directly
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
@@ -403,22 +410,22 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
         let time_start_sync_op = Instant::now();
 
-
-        let result_from_async_task: Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr> =
-            py.allow_threads(move || {
-                let (tx, rx) =
-                    std::sync::mpsc::channel::<Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr>>();
+        let result_from_async_task: Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr> = py
+            .allow_threads(move || {
+                let (tx, rx) = std::sync::mpsc::channel::<
+                    Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr>,
+                >();
 
                 rt.spawn(async move {
                     let res = process_embeddings_requests(
                         client_clone,
-                        input, 
-                        model, 
+                        input,
+                        model,
                         api_key_clone,
                         base_url_clone,
-                        encoding_format, 
-                        dimensions,      
-                        user,            
+                        encoding_format,
+                        dimensions,
+                        user,
                         max_concurrent_requests,
                         batch_size,
                         timeout_duration,
@@ -442,10 +449,10 @@ impl PerformanceClient {
             .into_iter()
             .map(|d| d.as_secs_f64())
             .collect();
-        
+
         api_response.total_time = Some(total_time_val);
         api_response.individual_request_times = Some(individual_times_val);
-        
+
         Ok(api_response)
     }
 
@@ -461,7 +468,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<Bound<'py, PyAny>> { 
+    ) -> PyResult<Bound<'py, PyAny>> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
@@ -487,7 +494,7 @@ impl PerformanceClient {
                 batch_size,
                 timeout_duration,
             )
-            .await?; 
+            .await?;
 
             let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
@@ -497,8 +504,8 @@ impl PerformanceClient {
 
             api_response.total_time = Some(total_time_val);
             api_response.individual_request_times = Some(individual_times_val);
-            
-            Ok(api_response) 
+
+            Ok(api_response)
         };
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
@@ -517,7 +524,8 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<RerankResponse> { // Return RerankResponse directly
+    ) -> PyResult<RerankResponse> {
+        // Return RerankResponse directly
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
@@ -531,35 +539,37 @@ impl PerformanceClient {
         let time_start = Instant::now();
 
         // process_rerank_requests now returns Result<(Vec<RerankResult>, Vec<Duration>), PyErr>
-        let result_from_async_task: Result<(Vec<RerankResult>, Vec<Duration>), PyErr> = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel::<Result<(Vec<RerankResult>, Vec<Duration>), PyErr>>();
-            rt.spawn(async move {
-                let res = process_rerank_requests(
-                    client,
-                    query,
-                    texts,
-                    raw_scores,
-                    return_text,
-                    truncate,
-                    truncation_direction_owned,
-                    api_key,
-                    base_url,
-                    max_concurrent_requests,
-                    batch_size,
-                    timeout_duration,
-                )
-                .await;
-                let _ = tx.send(res);
+        let result_from_async_task: Result<(Vec<RerankResult>, Vec<Duration>), PyErr> = py
+            .allow_threads(move || {
+                let (tx, rx) =
+                    std::sync::mpsc::channel::<Result<(Vec<RerankResult>, Vec<Duration>), PyErr>>();
+                rt.spawn(async move {
+                    let res = process_rerank_requests(
+                        client,
+                        query,
+                        texts,
+                        raw_scores,
+                        return_text,
+                        truncate,
+                        truncation_direction_owned,
+                        api_key,
+                        base_url,
+                        max_concurrent_requests,
+                        batch_size,
+                        timeout_duration,
+                    )
+                    .await;
+                    let _ = tx.send(res);
+                });
+                rx.recv()
+                    .map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to receive rerank result (channel error): {}",
+                            e
+                        ))
+                    })
+                    .and_then(|inner_result| inner_result)
             });
-            rx.recv() 
-                .map_err(|e| {
-                    PyValueError::new_err(format!(
-                        "Failed to receive rerank result (channel error): {}",
-                        e
-                    ))
-                })
-                .and_then(|inner_result| inner_result) 
-        });
         let (core_data, batch_durations) = result_from_async_task?;
         let total_time_val = time_start.elapsed().as_secs_f64();
         let individual_times_val: Vec<f64> = batch_durations
@@ -567,7 +577,11 @@ impl PerformanceClient {
             .map(|d| d.as_secs_f64())
             .collect();
 
-        Ok(RerankResponse::new(core_data, Some(total_time_val), Some(individual_times_val)))
+        Ok(RerankResponse::new(
+            core_data,
+            Some(total_time_val),
+            Some(individual_times_val),
+        ))
     }
 
     #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
@@ -583,7 +597,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<Bound<'py, PyAny>> { 
+    ) -> PyResult<Bound<'py, PyAny>> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
@@ -593,7 +607,7 @@ impl PerformanceClient {
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
-        let truncation_direction_owned = truncation_direction.to_string(); 
+        let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
             let time_start_async_op = Instant::now();
@@ -612,15 +626,19 @@ impl PerformanceClient {
                 batch_size,
                 timeout_duration,
             )
-            .await?; 
+            .await?;
 
             let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
                 .into_iter()
                 .map(|d| d.as_secs_f64())
                 .collect();
-            
-            Ok(RerankResponse::new(core_data, Some(total_time_val), Some(individual_times_val)))
+
+            Ok(RerankResponse::new(
+                core_data,
+                Some(total_time_val),
+                Some(individual_times_val),
+            ))
         };
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
@@ -637,7 +655,8 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<ClassificationResponse> { // Return ClassificationResponse directly
+    ) -> PyResult<ClassificationResponse> {
+        // Return ClassificationResponse directly
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
@@ -651,9 +670,11 @@ impl PerformanceClient {
         let time_start = Instant::now();
 
         // process_classify_requests returns Result<(Vec<Vec<ClassificationResult>>, Vec<Duration>), PyErr>
-        let result_from_async_task: Result<(Vec<Vec<ClassificationResult>>, Vec<Duration>), PyErr> = 
+        let result_from_async_task: Result<(Vec<Vec<ClassificationResult>>, Vec<Duration>), PyErr> =
             py.allow_threads(move || {
-                let (tx, rx) = std::sync::mpsc::channel::<Result<(Vec<Vec<ClassificationResult>>, Vec<Duration>), PyErr>>();
+                let (tx, rx) = std::sync::mpsc::channel::<
+                    Result<(Vec<Vec<ClassificationResult>>, Vec<Duration>), PyErr>,
+                >();
                 rt.spawn(async move {
                     let res = process_classify_requests(
                         client,
@@ -670,16 +691,16 @@ impl PerformanceClient {
                     .await;
                     let _ = tx.send(res);
                 });
-                rx.recv() 
+                rx.recv()
                     .map_err(|e| {
                         PyValueError::new_err(format!(
                             "Failed to receive classify result (channel error): {}",
                             e
                         ))
                     })
-                    .and_then(|inner_result| inner_result) 
+                    .and_then(|inner_result| inner_result)
             });
-        
+
         let (core_data, batch_durations) = result_from_async_task?;
         let total_time_val = time_start.elapsed().as_secs_f64();
         let individual_times_val: Vec<f64> = batch_durations
@@ -687,7 +708,11 @@ impl PerformanceClient {
             .map(|d| d.as_secs_f64())
             .collect();
 
-        Ok(ClassificationResponse::new(core_data, Some(total_time_val), Some(individual_times_val)))
+        Ok(ClassificationResponse::new(
+            core_data,
+            Some(total_time_val),
+            Some(individual_times_val),
+        ))
     }
 
     #[pyo3(name = "async_classify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
@@ -701,7 +726,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<Bound<'py, PyAny>> { 
+    ) -> PyResult<Bound<'py, PyAny>> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
@@ -711,7 +736,7 @@ impl PerformanceClient {
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
-        let truncation_direction_owned = truncation_direction.to_string(); 
+        let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
             let time_start_async_op = Instant::now();
@@ -728,7 +753,7 @@ impl PerformanceClient {
                 batch_size,
                 timeout_duration,
             )
-            .await?; 
+            .await?;
 
             let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
@@ -736,7 +761,11 @@ impl PerformanceClient {
                 .map(|d| d.as_secs_f64())
                 .collect();
 
-            Ok(ClassificationResponse::new(core_data, Some(total_time_val), Some(individual_times_val)))
+            Ok(ClassificationResponse::new(
+                core_data,
+                Some(total_time_val),
+                Some(individual_times_val),
+            ))
         };
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
@@ -778,36 +807,39 @@ impl PerformanceClient {
         let time_start = std::time::Instant::now();
 
         // The async task now returns Result<Vec<(JsonValue, Duration)>, PyErr>
-        let result_from_async_task: Result<Vec<(JsonValue, Duration)>, PyErr> = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<(JsonValue, Duration)>, PyErr>>(); // Updated channel type
-            rt.spawn(async move {
-                let res = process_batch_post_requests(
-                    client,
-                    url_path,
-                    payloads_json, // Pass depythonized JSON values
-                    api_key,
-                    base_url,
-                    max_concurrent_requests,
-                    timeout_duration,
-                )
-                .await;
-                let _ = tx.send(res);
+        let result_from_async_task: Result<Vec<(JsonValue, Duration)>, PyErr> =
+            py.allow_threads(move || {
+                let (tx, rx) =
+                    std::sync::mpsc::channel::<Result<Vec<(JsonValue, Duration)>, PyErr>>(); // Updated channel type
+                rt.spawn(async move {
+                    let res = process_batch_post_requests(
+                        client,
+                        url_path,
+                        payloads_json, // Pass depythonized JSON values
+                        api_key,
+                        base_url,
+                        max_concurrent_requests,
+                        timeout_duration,
+                    )
+                    .await;
+                    let _ = tx.send(res);
+                });
+                rx.recv()
+                    .map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to receive result from async task (channel error): {}",
+                            e
+                        ))
+                    })
+                    .and_then(|inner_result| inner_result)
             });
-            rx.recv()
-                .map_err(|e| {
-                    PyValueError::new_err(format!(
-                        "Failed to receive result from async task (channel error): {}",
-                        e
-                    ))
-                })
-                .and_then(|inner_result| inner_result)
-        });
 
         let response_data_with_times = result_from_async_task?; // This is Vec<(JsonValue, Duration)>
 
         // Pythonize all results and collect individual request times
         let mut results_py: Vec<PyObject> = Vec::with_capacity(response_data_with_times.len());
-        let mut individual_request_times_collected: Vec<f64> = Vec::with_capacity(response_data_with_times.len());
+        let mut individual_request_times_collected: Vec<f64> =
+            Vec::with_capacity(response_data_with_times.len());
 
         for (idx, (json_val, duration)) in response_data_with_times.into_iter().enumerate() {
             let py_obj_bound = pythonize(py, &json_val).map_err(|e| {
@@ -819,9 +851,9 @@ impl PerformanceClient {
             results_py.push(py_obj_bound.to_object(py));
             individual_request_times_collected.push(duration.as_secs_f64());
         }
-        
+
         let total_time = time_start.elapsed().as_secs_f64();
-        
+
         Ok(BatchPostResponse {
             data: results_py,
             total_time,
@@ -879,10 +911,13 @@ impl PerformanceClient {
             let total_time_async_op = time_start_async_op.elapsed().as_secs_f64();
 
             Python::with_gil(|py_gil| {
-                let mut results_py: Vec<PyObject> = Vec::with_capacity(response_data_with_times.len());
-                let mut individual_request_times_collected: Vec<f64> = Vec::with_capacity(response_data_with_times.len());
+                let mut results_py: Vec<PyObject> =
+                    Vec::with_capacity(response_data_with_times.len());
+                let mut individual_request_times_collected: Vec<f64> =
+                    Vec::with_capacity(response_data_with_times.len());
 
-                for (idx, (json_val, duration)) in response_data_with_times.into_iter().enumerate() {
+                for (idx, (json_val, duration)) in response_data_with_times.into_iter().enumerate()
+                {
                     let py_obj_bound = pythonize(py_gil, &json_val).map_err(|e| {
                         PyValueError::new_err(format!(
                             "Failed to pythonize response at index {}: {}",
@@ -892,7 +927,7 @@ impl PerformanceClient {
                     results_py.push(py_obj_bound.to_object(py_gil));
                     individual_request_times_collected.push(duration.as_secs_f64());
                 }
-                
+
                 Ok(BatchPostResponse {
                     data: results_py,
                     total_time: total_time_async_op,
@@ -960,11 +995,12 @@ async fn process_embeddings_requests(
     max_concurrent_requests: usize,
     batch_size: usize,
     request_timeout_duration: Duration,
-) -> Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr> { // Updated return type
+) -> Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr> {
+    // Updated return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
-    let cancel_token = Arc::new(AtomicBool::new(false)); 
+    let cancel_token = Arc::new(AtomicBool::new(false));
     let model_for_response = model.clone();
 
     for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
@@ -977,14 +1013,14 @@ async fn process_embeddings_requests(
         let user_clone = user.clone();
         let user_text_batch_owned = user_text_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
-        let cancel_token_clone = Arc::clone(&cancel_token); 
+        let cancel_token_clone = Arc::clone(&cancel_token);
         let individual_request_timeout = request_timeout_duration;
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-            
+
             let request_time_start = Instant::now(); // Measure time for single request
             let result = send_single_embedding_request(
                 client_clone,
@@ -1006,7 +1042,7 @@ async fn process_embeddings_requests(
                         item.index += current_batch_absolute_start_index;
                     }
                     // Return the full response from send_single_embedding_request and its duration
-                    Ok((response, request_time_elapsed)) 
+                    Ok((response, request_time_elapsed))
                 }
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
@@ -1051,7 +1087,7 @@ async fn process_embeddings_requests(
             prompt_tokens: aggregated_prompt_tokens,
             total_tokens: aggregated_total_tokens,
         },
-        total_time: None, // These will be set by the client method
+        total_time: None,               // These will be set by the client method
         individual_request_times: None, // These will be set by the client method
     };
     Ok((final_response, individual_batch_durations)) // Return response and durations
@@ -1116,7 +1152,8 @@ async fn process_rerank_requests(
     max_concurrent_requests: usize,
     batch_size: usize,
     request_timeout_duration: Duration,
-) -> Result<(Vec<RerankResult>, Vec<Duration>), PyErr> { // Updated return type
+) -> Result<(Vec<RerankResult>, Vec<Duration>), PyErr> {
+    // Updated return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
@@ -1133,7 +1170,6 @@ async fn process_rerank_requests(
         let individual_request_timeout = request_timeout_duration;
         // Calculate the starting index for this batch relative to the original `texts` Vec
         let current_batch_absolute_start_index = batch_idx * batch_size;
-
 
         tasks.push(tokio::spawn(async move {
             let _permit =
@@ -1241,7 +1277,7 @@ async fn send_single_classify_request(
 // --- Process Classify Requests ---
 async fn process_classify_requests(
     client: Client,
-    inputs: Vec<String>, 
+    inputs: Vec<String>,
     raw_scores: bool,
     truncate: bool,
     truncation_direction: String,
@@ -1250,7 +1286,8 @@ async fn process_classify_requests(
     max_concurrent_requests: usize,
     batch_size: usize,
     request_timeout_duration: Duration,
-) -> Result<(Vec<Vec<ClassificationResult>>, Vec<Duration>), PyErr> { // Updated return type
+) -> Result<(Vec<Vec<ClassificationResult>>, Vec<Duration>), PyErr> {
+    // Updated return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
@@ -1362,7 +1399,8 @@ async fn process_batch_post_requests(
     base_url: String,
     max_concurrent_requests: usize,
     request_timeout_duration: Duration,
-) -> Result<Vec<(JsonValue, Duration)>, PyErr> { // Returns Vec<(JsonValue, Duration)>
+) -> Result<Vec<(JsonValue, Duration)>, PyErr> {
+    // Returns Vec<(JsonValue, Duration)>
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
@@ -1382,7 +1420,7 @@ async fn process_batch_post_requests(
         tasks.push(tokio::spawn(async move {
             let permit_guard =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-            
+
             let full_url = format!(
                 "{}/{}",
                 base_url_clone.trim_end_matches('/'),
@@ -1413,7 +1451,7 @@ async fn process_batch_post_requests(
 
     let task_join_results = join_all(tasks).await;
     // D for process_task_outcome will be (usize, JsonValue, Duration)
-    let mut indexed_results: Vec<(usize, JsonValue, Duration)> = Vec::with_capacity(total_payloads); 
+    let mut indexed_results: Vec<(usize, JsonValue, Duration)> = Vec::with_capacity(total_payloads);
     let mut first_error: Option<PyErr> = None;
 
     for result in task_join_results {
