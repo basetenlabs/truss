@@ -30,7 +30,7 @@ client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 texts = ["Hello world", "Example text", "Another sample"]
 response = client.embed(
     input=texts,
-    model="my_model",
+    model="my_model", 
     batch_size=4,
     max_concurrent_requests=32,
     timeout_s=360
@@ -39,6 +39,10 @@ response = client.embed(
 # Accessing embedding data
 print(f"Model used: {response.model}")
 print(f"Total tokens used: {response.usage.total_tokens}")
+print(f"Total time: {response.total_time:.4f}s")
+if response.individual_batch_request_times:
+    for i, batch_time in enumerate(response.individual_batch_request_times):
+        print(f"  Time for batch {i}: {batch_time:.4f}s")
 
 for i, embedding_data in enumerate(response.data):
     print(f"Embedding for text {i} (original input index {embedding_data.index}):")
@@ -97,30 +101,41 @@ The batch_post method is generic. It can be used to send POST requests to any UR
 ```python
 payload1 = {"model": "my_model", "input": ["Batch request sample 1"]}
 payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
-response1, response2 = client.batch_post(
-    url_path="/v1/embeddings",
-    payloads=[payload, payload],
+response_obj = client.batch_post(
+    url_path="/v1/embeddings", # Example path, adjust to your needs
+    payloads=[payload1, payload2],
     max_concurrent_requests=96,
     timeout_s=360
 )
-print("Batch POST responses:", response1, response2)
+print(f"Total time for batch POST: {response_obj.total_time:.4f}s")
+for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
+    print(f"Response {i+1}:")
+    print(f"  Data: {resp_data}")
+    print(f"  Headers: {headers}")
+    print(f"  Time taken: {time_taken:.4f}s")
 ```
 
 #### Asynchronous Batch POST
 
 ```python
-async def async_batch_post():
-    payload = {"model": "my_model", "input": ["Async batch sample"]}
-    responses = await client.async_batch_post(
+async def async_batch_post_example(): 
+    payload1 = {"model": "my_model", "input": ["Async batch sample 1"]}
+    payload2 = {"model": "my_model", "input": ["Async batch sample 2"]}
+    response_obj = await client.async_batch_post(
         url_path="/v1/embeddings",
-        payloads=[payload, payload],
+        payloads=[payload1, payload2],
         max_concurrent_requests=4,
         timeout_s=360
     )
-    print("Async batch POST responses: list[Any]", responses)
+    print(f"Async total time for batch POST: {response_obj.total_time:.4f}s")
+    for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
+        print(f"Async Response {i+1}:")
+        print(f"  Data: {resp_data}")
+        print(f"  Headers: {headers}")
+        print(f"  Time taken: {time_taken:.4f}s")
 
 # To run:
-# asyncio.run(async_batch_post())
+# asyncio.run(async_batch_post_example())
 ```
 ### Reranking
 Reranking compatible with BEI or text-embeddings-inference.
