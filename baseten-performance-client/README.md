@@ -30,7 +30,7 @@ client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 texts = ["Hello world", "Example text", "Another sample"]
 response = client.embed(
     input=texts,
-    model="my_model", 
+    model="my_model",
     batch_size=4,
     max_concurrent_requests=32,
     timeout_s=360
@@ -118,7 +118,7 @@ for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, resp
 #### Asynchronous Batch POST
 
 ```python
-async def async_batch_post_example(): 
+async def async_batch_post_example():
     payload1 = {"model": "my_model", "input": ["Async batch sample 1"]}
     payload2 = {"model": "my_model", "input": ["Async batch sample 2"]}
     response_obj = await client.async_batch_post(
@@ -248,7 +248,7 @@ try:
         embedding_preview = item.embedding[:3] if isinstance(item.embedding, list) else "Base64 Data"
         print(f"Index {item.index}, Embedding (first 3 dims or type): {embedding_preview}")
 
-except requests.exceptions.HTTPError as e:
+except requests.exceptions.HTTPError as e: 
     print(f"An HTTP error occurred: {e}, code {e.args[0]}")
 
 ```
