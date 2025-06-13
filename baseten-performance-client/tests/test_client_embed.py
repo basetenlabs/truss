@@ -234,6 +234,7 @@ def test_batch_post():
     assert len(data) == length
     assert response.total_time >= 0
     assert len(response.individual_request_times) == length
+    assert sum(response.individual_request_times) >= response.total_time
     assert data[0]
 
 
