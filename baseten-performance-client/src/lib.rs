@@ -12,6 +12,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 // For handling untyped JSON
+use std::collections::HashMap; // Add this
 use std::sync::atomic::{AtomicBool, Ordering}; // Add this
 use std::sync::Arc;
 use std::time::{Duration, Instant}; // Ensure Instant is imported
@@ -292,6 +293,7 @@ struct BatchPostResponse {
     data: Vec<PyObject>,
     total_time: f64,
     individual_request_times: Vec<f64>,
+    response_headers: Vec<PyObject>, // New field for headers
 }
 
 // --- PerformanceClient Definition ---
@@ -783,13 +785,11 @@ impl PerformanceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?; // sent batch size to 128 to allow higher batch
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
-        // Depythonize all payloads in the current thread (GIL is held)
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
         for (idx, py_obj) in payloads.into_iter().enumerate() {
-            // Bind PyObject to current GIL lifetime to get a Bound object for depythonize
             let bound_obj = py_obj.bind(py);
             let json_val = depythonize(bound_obj).map_err(|e| {
                 PyValueError::new_err(format!(
@@ -806,49 +806,65 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
         let time_start = std::time::Instant::now();
 
-        // The async task now returns Result<Vec<(JsonValue, Duration)>, PyErr>
-        let result_from_async_task: Result<Vec<(JsonValue, Duration)>, PyErr> =
-            py.allow_threads(move || {
-                let (tx, rx) =
-                    std::sync::mpsc::channel::<Result<Vec<(JsonValue, Duration)>, PyErr>>(); // Updated channel type
-                rt.spawn(async move {
-                    let res = process_batch_post_requests(
-                        client,
-                        url_path,
-                        payloads_json, // Pass depythonized JSON values
-                        api_key,
-                        base_url,
-                        max_concurrent_requests,
-                        timeout_duration,
-                    )
-                    .await;
-                    let _ = tx.send(res);
-                });
-                rx.recv()
-                    .map_err(|e| {
-                        PyValueError::new_err(format!(
-                            "Failed to receive result from async task (channel error): {}",
-                            e
-                        ))
-                    })
-                    .and_then(|inner_result| inner_result)
+        // The async task now returns Result<Vec<(JsonValue, HashMap<String, String>, Duration)>, PyErr>
+        let result_from_async_task: Result<
+            Vec<(JsonValue, HashMap<String, String>, Duration)>,
+            PyErr,
+        > = py.allow_threads(move || {
+            let (tx, rx) = std::sync::mpsc::channel::<
+                Result<Vec<(JsonValue, HashMap<String, String>, Duration)>, PyErr>,
+            >();
+            rt.spawn(async move {
+                let res = process_batch_post_requests(
+                    client,
+                    url_path,
+                    payloads_json,
+                    api_key,
+                    base_url,
+                    max_concurrent_requests,
+                    timeout_duration,
+                )
+                .await;
+                let _ = tx.send(res);
             });
+            rx.recv()
+                .map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to receive result from async task (channel error): {}",
+                        e
+                    ))
+                })
+                .and_then(|inner_result| inner_result)
+        });
 
-        let response_data_with_times = result_from_async_task?; // This is Vec<(JsonValue, Duration)>
+        let response_data_with_times_and_headers = result_from_async_task?;
 
-        // Pythonize all results and collect individual request times
-        let mut results_py: Vec<PyObject> = Vec::with_capacity(response_data_with_times.len());
+        let mut results_py: Vec<PyObject> =
+            Vec::with_capacity(response_data_with_times_and_headers.len());
         let mut individual_request_times_collected: Vec<f64> =
-            Vec::with_capacity(response_data_with_times.len());
+            Vec::with_capacity(response_data_with_times_and_headers.len());
+        let mut collected_headers_py: Vec<PyObject> =
+            Vec::with_capacity(response_data_with_times_and_headers.len());
 
-        for (idx, (json_val, duration)) in response_data_with_times.into_iter().enumerate() {
+        for (idx, (json_val, headers_map, duration)) in
+            response_data_with_times_and_headers.into_iter().enumerate()
+        {
             let py_obj_bound = pythonize(py, &json_val).map_err(|e| {
                 PyValueError::new_err(format!(
-                    "Failed to pythonize response at index {}: {}",
+                    "Failed to pythonize response data at index {}: {}",
                     idx, e
                 ))
             })?;
             results_py.push(py_obj_bound.to_object(py));
+
+            let headers_py_obj = pythonize(py, &headers_map).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to pythonize headers at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            collected_headers_py.push(headers_py_obj.to_object(py));
+
             individual_request_times_collected.push(duration.as_secs_f64());
         }
 
@@ -858,6 +874,7 @@ impl PerformanceClient {
             data: results_py,
             total_time,
             individual_request_times: individual_request_times_collected,
+            response_headers: collected_headers_py,
         })
     }
 
@@ -873,10 +890,9 @@ impl PerformanceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?; // sent batch size to 1000 to allow higher batch
+        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
-        // Depythonize all payloads in the current thread (GIL is held by `py` argument)
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
         for (idx, py_obj) in payloads.into_iter().enumerate() {
             let bound_obj = py_obj.bind(py);
@@ -896,7 +912,7 @@ impl PerformanceClient {
         let future = async move {
             let time_start_async_op = std::time::Instant::now();
 
-            let response_data_with_times = process_batch_post_requests(
+            let response_data_with_times_and_headers = process_batch_post_requests(
                 client_clone,
                 url_path,
                 payloads_json,
@@ -905,26 +921,37 @@ impl PerformanceClient {
                 max_concurrent_requests,
                 timeout_duration,
             )
-            .await?; // Propagates PyErr from process_batch_post_requests
+            .await?;
 
-            // total_time measures the duration of the async processing and pythonization
             let total_time_async_op = time_start_async_op.elapsed().as_secs_f64();
 
             Python::with_gil(|py_gil| {
                 let mut results_py: Vec<PyObject> =
-                    Vec::with_capacity(response_data_with_times.len());
+                    Vec::with_capacity(response_data_with_times_and_headers.len());
                 let mut individual_request_times_collected: Vec<f64> =
-                    Vec::with_capacity(response_data_with_times.len());
+                    Vec::with_capacity(response_data_with_times_and_headers.len());
+                let mut collected_headers_py: Vec<PyObject> =
+                    Vec::with_capacity(response_data_with_times_and_headers.len());
 
-                for (idx, (json_val, duration)) in response_data_with_times.into_iter().enumerate()
+                for (idx, (json_val, headers_map, duration)) in
+                    response_data_with_times_and_headers.into_iter().enumerate()
                 {
                     let py_obj_bound = pythonize(py_gil, &json_val).map_err(|e| {
                         PyValueError::new_err(format!(
-                            "Failed to pythonize response at index {}: {}",
+                            "Failed to pythonize response data at index {}: {}",
                             idx, e
                         ))
                     })?;
                     results_py.push(py_obj_bound.to_object(py_gil));
+
+                    let headers_py_obj = pythonize(py_gil, &headers_map).map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to pythonize headers at index {}: {}",
+                            idx, e
+                        ))
+                    })?;
+                    collected_headers_py.push(headers_py_obj.to_object(py_gil));
+
                     individual_request_times_collected.push(duration.as_secs_f64());
                 }
 
@@ -932,6 +959,7 @@ impl PerformanceClient {
                     data: results_py,
                     total_time: total_time_async_op,
                     individual_request_times: individual_request_times_collected,
+                    response_headers: collected_headers_py,
                 })
             })
         };
@@ -1358,14 +1386,15 @@ async fn process_classify_requests(
 }
 
 // --- Send Single Batch Post Request ---
-// Now takes JsonValue and returns JsonValue
+// Now returns (JsonValue, HashMap<String, String>)
 async fn send_single_batch_post_request(
     client: Client,
     full_url: String,
     payload_json: JsonValue,
     api_key: String,
     request_timeout: Duration,
-) -> Result<JsonValue, PyErr> {
+) -> Result<(JsonValue, HashMap<String, String>), PyErr> {
+    // Updated return type
     let request_builder = client
         .post(&full_url)
         .bearer_auth(api_key.clone())
@@ -1381,33 +1410,41 @@ async fn send_single_batch_post_request(
 
     let successful_response = ensure_successful_response(response).await?;
 
+    // Extract headers
+    let mut headers_map = HashMap::new();
+    for (name, value) in successful_response.headers().iter() {
+        headers_map.insert(
+            name.as_str().to_string(),
+            String::from_utf8_lossy(value.as_bytes()).into_owned(),
+        );
+    }
+
     let response_json_value: JsonValue = successful_response
         .json::<JsonValue>()
         .await
         .map_err(|e| PyValueError::new_err(format!("Failed to parse response JSON: {}", e)))?;
 
-    Ok(response_json_value)
+    Ok((response_json_value, headers_map)) // Return JSON and headers
 }
 
 // --- Process Batch Post Requests ---
-// Now takes Vec<JsonValue> and returns Result<Vec<(JsonValue, Duration)>, PyErr>
+// Now returns Result<Vec<(JsonValue, HashMap<String, String>, Duration)>, PyErr>
 async fn process_batch_post_requests(
     client: Client,
     url_path: String,
-    payloads_json: Vec<JsonValue>, // Takes Vec<JsonValue>
+    payloads_json: Vec<JsonValue>,
     api_key: String,
     base_url: String,
     max_concurrent_requests: usize,
     request_timeout_duration: Duration,
-) -> Result<Vec<(JsonValue, Duration)>, PyErr> {
-    // Returns Vec<(JsonValue, Duration)>
+) -> Result<Vec<(JsonValue, HashMap<String, String>, Duration)>, PyErr> {
+    // Updated return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
     let total_payloads = payloads_json.len();
 
     for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
-        // Iterate over JsonValue
         let client_clone = client.clone();
         let api_key_clone = api_key.clone();
         let base_url_clone = base_url.clone();
@@ -1416,7 +1453,6 @@ async fn process_batch_post_requests(
         let cancel_token_clone = Arc::clone(&cancel_token);
         let individual_request_timeout = request_timeout_duration;
 
-        // payload_item_json is moved into its own task
         tasks.push(tokio::spawn(async move {
             let permit_guard =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
@@ -1427,20 +1463,29 @@ async fn process_batch_post_requests(
                 url_path_clone.trim_start_matches('/')
             );
             let request_time_start = std::time::Instant::now();
-            let result = send_single_batch_post_request(
+            // send_single_batch_post_request now returns (JsonValue, HashMap<String, String>)
+            let result_tuple = send_single_batch_post_request(
                 client_clone,
                 full_url,
-                payload_item_json, // Pass JsonValue
+                payload_item_json,
                 api_key_clone,
                 individual_request_timeout,
             )
             .await;
 
-            drop(permit_guard); // Release permit as soon as HTTP call is done
+            drop(permit_guard);
             let request_time_elapsed = request_time_start.elapsed();
 
-            match result {
-                Ok(response_json_value) => Ok((index, response_json_value, request_time_elapsed)), // Return with original index, JsonValue, and Duration
+            match result_tuple {
+                Ok((response_json_value, headers_map)) => {
+                    // Return with original index, JsonValue, Headers, and Duration
+                    Ok((
+                        index,
+                        response_json_value,
+                        headers_map,
+                        request_time_elapsed,
+                    ))
+                }
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
                     Err(e)
@@ -1450,12 +1495,13 @@ async fn process_batch_post_requests(
     }
 
     let task_join_results = join_all(tasks).await;
-    // D for process_task_outcome will be (usize, JsonValue, Duration)
-    let mut indexed_results: Vec<(usize, JsonValue, Duration)> = Vec::with_capacity(total_payloads);
+    // D for process_task_outcome will be (usize, JsonValue, HashMap<String, String>, Duration)
+    let mut indexed_results: Vec<(usize, JsonValue, HashMap<String, String>, Duration)> =
+        Vec::with_capacity(total_payloads);
     let mut first_error: Option<PyErr> = None;
 
     for result in task_join_results {
-        if let Some(indexed_data_part) = // indexed_data_part is (usize, JsonValue, Duration)
+        if let Some(indexed_data_part) =
             process_task_outcome(result, &mut first_error, &cancel_token)
         {
             indexed_results.push(indexed_data_part);
@@ -1466,13 +1512,12 @@ async fn process_batch_post_requests(
         return Err(err);
     }
 
-    // Sort by original index to maintain order
-    indexed_results.sort_by_key(|&(original_index, _, _)| original_index);
+    indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
 
-    // Map to the final Vec<(JsonValue, Duration)>
-    let final_results: Vec<(JsonValue, Duration)> = indexed_results
+    // Map to the final Vec<(JsonValue, HashMap<String, String>, Duration)>
+    let final_results: Vec<(JsonValue, HashMap<String, String>, Duration)> = indexed_results
         .into_iter()
-        .map(|(_, val, dur)| (val, dur))
+        .map(|(_, val, headers, dur)| (val, headers, dur))
         .collect();
 
     Ok(final_results)

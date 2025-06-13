@@ -214,11 +214,14 @@ class BatchPostResponse:
               JSON response from the server for the corresponding request payload.
         total_time: Total time taken for the entire batch operation in seconds.
         individual_request_times: List of individual request times in seconds for each payload.
+        response_headers: A list of dictionaries, where each dictionary contains
+                          the response headers for the corresponding request.
     """
 
     data: builtins.list[typing.Any]
     total_time: builtins.float
     individual_request_times: builtins.list[builtins.float]
+    response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
 class PerformanceClient:
     """
