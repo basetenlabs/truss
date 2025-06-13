@@ -243,7 +243,7 @@ def deploy_checkpoints(
     required=False,
     help="Directory where the file should be downloaded. Defaults to current directory.",
 )
-@click.option("--no-unzip", is_flag=True, help="Whether to not unzip the file")
+@click.option("--no-unzip", is_flag=True, help="Instructs truss to not unzip the folder upon download.")
 @common.common_options()
 def download_training_job(
     job_id: str, remote: Optional[str], target_directory: Optional[str], no_unzip: bool
