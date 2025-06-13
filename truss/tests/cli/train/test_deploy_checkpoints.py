@@ -234,3 +234,10 @@ def test_prepare_checkpoint_deploy_complete_config(
     env_vars = config.runtime.environment_variables
     assert env_vars["HF_TOKEN"].name == "my_custom_secret"
     assert env_vars["CUSTOM_VAR"] == "custom_value"
+
+    # open the config.yaml file and verify the tensor parallel size is 2
+    # additional tests can be added to verify the config.yaml file is correct
+    truss_cfg = truss_config.TrussConfig.from_yaml(
+        Path(result.truss_directory, "config.yaml")
+    )
+    assert "--tensor-parallel-size 2" in truss_cfg.docker_server.start_command

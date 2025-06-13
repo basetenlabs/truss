@@ -29,7 +29,7 @@ from truss_train.definitions import (
 VLLM_LORA_START_COMMAND = Template(
     'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'
     + " --port 8000"
-    + " --tensor-parallel-size 4"
+    + "{{ specify_tensor_parallelism }}"
     + " --enable-lora"
     + " --max-lora-rank {{ max_lora_rank }}"
     + " --dtype bfloat16"
@@ -136,12 +136,18 @@ def _render_vllm_lora_truss_config(
             for checkpoint in checkpoint_deploy.checkpoint_details.checkpoints
         ]
     )
+    accelerator = checkpoint_deploy.compute.accelerator
+    if accelerator:
+        specify_tensor_parallelism = f" --tensor-parallel-size {accelerator.count}"
+    else:
+        specify_tensor_parallelism = ""
 
     start_command_args = {
         "base_model_id": checkpoint_deploy.checkpoint_details.base_model_id,
         "lora_modules": checkpoint_str,
         "envvars": start_command_envvars,
         "max_lora_rank": max_lora_rank,
+        "specify_tensor_parallelism": specify_tensor_parallelism,
     }
     truss_deploy_config.docker_server.start_command = VLLM_LORA_START_COMMAND.render(
         **start_command_args
