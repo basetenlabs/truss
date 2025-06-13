@@ -31,8 +31,8 @@ const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 const DEFAULT_CONCURRENCY: usize = 32;
 const MAX_BATCH_SIZE: usize = 128;
 const DEFAULT_BATCH_SIZE: usize = 16;
-const MAX_HTTP_RETRIES: u32 = 3; // Max number of retries for HTTP 429 or network errors
-const INITIAL_BACKOFF_MS: u64 = 500; // Initial backoff in milliseconds
+const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or network errors
+const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
 const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"]; // Providers that are known to be slow with this client
 
