@@ -107,16 +107,14 @@ struct OpenAIUsage {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[pyclass]
-struct OpenAIEmbeddingsResponse {
-    #[pyo3(get)]
+#[pyclass(get_all)] 
+struct OpenAIEmbeddingsResponse { // Ensure struct is public for field access
     object: String,
-    #[pyo3(get)]
     data: Vec<OpenAIEmbeddingData>,
-    #[pyo3(get)]
     model: String,
-    #[pyo3(get)]
     usage: OpenAIUsage,
+    total_time: Option<f64>,
+    individual_request_times: Option<Vec<f64>>, // Renamed from individual_request_times
 }
 
 #[pymethods]
@@ -221,23 +219,23 @@ struct RerankResponse { // Made struct public for field visibility
     object: String,
     data: Vec<RerankResult>,
     total_time: Option<f64>,
-    individual_batch_request_times: Option<Vec<f64>>,
+    individual_request_times: Option<Vec<f64>>,
 }
 
 #[pymethods]
 impl RerankResponse {
     #[new]
-    #[pyo3(signature = (data, total_time = None, individual_batch_request_times = None))]
+    #[pyo3(signature = (data, total_time = None, individual_request_times = None))]
     fn new(
         data: Vec<RerankResult>,
         total_time: Option<f64>,
-        individual_batch_request_times: Option<Vec<f64>>,
+        individual_request_times: Option<Vec<f64>>,
     ) -> Self {
         RerankResponse {
             object: "list".to_string(),
             data,
             total_time,
-            individual_batch_request_times,
+            individual_request_times,
         }
     }
 }
@@ -265,23 +263,23 @@ struct ClassificationResponse { // Made struct public
     object: String,
     data: Vec<Vec<ClassificationResult>>,
     total_time: Option<f64>,
-    individual_batch_request_times: Option<Vec<f64>>,
+    individual_request_times: Option<Vec<f64>>,
 }
 
 #[pymethods]
 impl ClassificationResponse {
     #[new]
-    #[pyo3(signature = (data, total_time = None, individual_batch_request_times = None))]
+    #[pyo3(signature = (data, total_time = None, individual_request_times = None))]
     fn new(
         data: Vec<Vec<ClassificationResult>>,
         total_time: Option<f64>,
-        individual_batch_request_times: Option<Vec<f64>>,
+        individual_request_times: Option<Vec<f64>>,
     ) -> Self {
         ClassificationResponse {
             object: "list".to_string(),
             data,
             total_time,
-            individual_batch_request_times,
+            individual_request_times,
         }
     }
 }
@@ -385,14 +383,14 @@ impl PerformanceClient {
         &self,
         py: Python,
         input: Vec<String>,
-        model: String, // model is already String
+        model: String, 
         encoding_format: Option<String>,
         dimensions: Option<u32>,
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<OpenAIEmbeddingsResponse> { // Return OpenAIEmbeddingsResponse directly
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
@@ -403,25 +401,24 @@ impl PerformanceClient {
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
+        let time_start_sync_op = Instant::now();
 
-        // input, model, encoding_format, dimensions, user will be moved into the closures
-        // by the `move` keywords.
 
-        let result_from_async_task: Result<OpenAIEmbeddingsResponse, PyErr> =
+        let result_from_async_task: Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr> =
             py.allow_threads(move || {
                 let (tx, rx) =
-                    std::sync::mpsc::channel::<Result<OpenAIEmbeddingsResponse, PyErr>>();
+                    std::sync::mpsc::channel::<Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr>>();
 
                 rt.spawn(async move {
                     let res = process_embeddings_requests(
                         client_clone,
-                        input, // Use directly
-                        model, // Use directly
+                        input, 
+                        model, 
                         api_key_clone,
                         base_url_clone,
-                        encoding_format, // Use directly
-                        dimensions,      // Use directly
-                        user,            // Use directly
+                        encoding_format, 
+                        dimensions,      
+                        user,            
                         max_concurrent_requests,
                         batch_size,
                         timeout_duration,
@@ -439,8 +436,17 @@ impl PerformanceClient {
                 }
             });
 
-        let successful_response = result_from_async_task?;
-        Python::with_gil(|py_gil| Ok(successful_response.into_py(py_gil)))
+        let (mut api_response, batch_durations) = result_from_async_task?;
+        let total_time_val = time_start_sync_op.elapsed().as_secs_f64();
+        let individual_times_val: Vec<f64> = batch_durations
+            .into_iter()
+            .map(|d| d.as_secs_f64())
+            .collect();
+        
+        api_response.total_time = Some(total_time_val);
+        api_response.individual_request_times = Some(individual_times_val);
+        
+        Ok(api_response)
     }
 
     #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
@@ -455,7 +461,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    ) -> PyResult<Bound<'py, PyAny>> { 
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
@@ -465,10 +471,10 @@ impl PerformanceClient {
         let client_clone = self.client.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
-        // input, model, encoding_format, dimensions, user will be moved into the async block.
 
         let future = async move {
-            process_embeddings_requests(
+            let time_start_async_op = Instant::now();
+            let (mut api_response, batch_durations) = process_embeddings_requests(
                 client_clone,
                 input,
                 model,
@@ -481,7 +487,18 @@ impl PerformanceClient {
                 batch_size,
                 timeout_duration,
             )
-            .await
+            .await?; 
+
+            let total_time_val = time_start_async_op.elapsed().as_secs_f64();
+            let individual_times_val: Vec<f64> = batch_durations
+                .into_iter()
+                .map(|d| d.as_secs_f64())
+                .collect();
+
+            api_response.total_time = Some(total_time_val);
+            api_response.individual_request_times = Some(individual_times_val);
+            
+            Ok(api_response) 
         };
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
@@ -943,11 +960,11 @@ async fn process_embeddings_requests(
     max_concurrent_requests: usize,
     batch_size: usize,
     request_timeout_duration: Duration,
-) -> Result<OpenAIEmbeddingsResponse, PyErr> {
+) -> Result<(OpenAIEmbeddingsResponse, Vec<Duration>), PyErr> { // Updated return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
-    let cancel_token = Arc::new(AtomicBool::new(false)); // This is the per-operation token
+    let cancel_token = Arc::new(AtomicBool::new(false)); 
     let model_for_response = model.clone();
 
     for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
@@ -960,14 +977,15 @@ async fn process_embeddings_requests(
         let user_clone = user.clone();
         let user_text_batch_owned = user_text_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
-        let cancel_token_clone = Arc::clone(&cancel_token); // Local cancel token
+        let cancel_token_clone = Arc::clone(&cancel_token); 
         let individual_request_timeout = request_timeout_duration;
         let current_batch_absolute_start_index = batch_index * batch_size;
 
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-
+            
+            let request_time_start = Instant::now(); // Measure time for single request
             let result = send_single_embedding_request(
                 client_clone,
                 user_text_batch_owned,
@@ -980,13 +998,15 @@ async fn process_embeddings_requests(
                 individual_request_timeout,
             )
             .await;
+            let request_time_elapsed = request_time_start.elapsed(); // Get duration
 
             match result {
                 Ok(mut response) => {
                     for item in &mut response.data {
                         item.index += current_batch_absolute_start_index;
                     }
-                    Ok((response.data, response.usage))
+                    // Return the full response from send_single_embedding_request and its duration
+                    Ok((response, request_time_elapsed)) 
                 }
                 Err(e) => {
                     cancel_token_clone.store(true, Ordering::SeqCst);
@@ -1001,17 +1021,20 @@ async fn process_embeddings_requests(
     let mut all_embedding_data: Vec<OpenAIEmbeddingData> = Vec::with_capacity(total_texts);
     let mut aggregated_prompt_tokens: u32 = 0;
     let mut aggregated_total_tokens: u32 = 0;
+    let mut individual_batch_durations: Vec<Duration> = Vec::new(); // To store durations
     let mut first_error: Option<PyErr> = None;
 
     for result in task_join_results {
-        if let Some((data_part, usage_part)) =
+        // D for process_task_outcome is now (OpenAIEmbeddingsResponse, Duration)
+        if let Some((response_part, duration_part)) =
             process_task_outcome(result, &mut first_error, &cancel_token)
         {
-            all_embedding_data.extend(data_part);
+            all_embedding_data.extend(response_part.data);
             aggregated_prompt_tokens =
-                aggregated_prompt_tokens.saturating_add(usage_part.prompt_tokens);
+                aggregated_prompt_tokens.saturating_add(response_part.usage.prompt_tokens);
             aggregated_total_tokens =
-                aggregated_total_tokens.saturating_add(usage_part.total_tokens);
+                aggregated_total_tokens.saturating_add(response_part.usage.total_tokens);
+            individual_batch_durations.push(duration_part); // Collect duration
         }
     }
 
@@ -1020,7 +1043,7 @@ async fn process_embeddings_requests(
     }
 
     all_embedding_data.sort_by_key(|d| d.index);
-    Ok(OpenAIEmbeddingsResponse {
+    let final_response = OpenAIEmbeddingsResponse {
         object: "list".to_string(),
         data: all_embedding_data,
         model: model_for_response,
@@ -1028,7 +1051,10 @@ async fn process_embeddings_requests(
             prompt_tokens: aggregated_prompt_tokens,
             total_tokens: aggregated_total_tokens,
         },
-    })
+        total_time: None, // These will be set by the client method
+        individual_request_times: None, // These will be set by the client method
+    };
+    Ok((final_response, individual_batch_durations)) // Return response and durations
 }
 
 // --- Send Single Rerank Request ---

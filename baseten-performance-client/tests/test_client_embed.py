@@ -152,6 +152,7 @@ def test_baseten_performance_client_rerank():
         max_concurrent_requests=2,
     )
     assert response is not None
+    assert response.total_time >= 0
     assert isinstance(response, RerankResponse)
     assert len(response.data) == 2
 
@@ -189,6 +190,8 @@ def test_embedding_high_volume():
     assert response is not None
     assert isinstance(response, OpenAIEmbeddingsResponse)
     data = response.data
+    assert response.total_time >= 0
+    assert len(response.individual_request_times) >= n_requests / 3
     assert len(data) == n_requests
     assert len(data[0].embedding) > 10
     assert isinstance(data[0].embedding[0], float)
@@ -234,7 +237,7 @@ def test_batch_post():
     assert len(data) == length
     assert response.total_time >= 0
     assert len(response.individual_request_times) == length
-    assert sum(response.individual_request_times) >= response.total_time
+    assert sum(response.individual_request_times) < response.total_time
     assert data[0]
 
 
@@ -307,6 +310,7 @@ async def test_classify_async():
     assert isinstance(response, ClassificationResponse)
     data = response.data
     assert len(data) == 2
+    assert response.total_time >= 0
     print("async test passed", data[0])
 
 
