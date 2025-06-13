@@ -230,6 +230,12 @@ def test_prepare_checkpoint_deploy_complete_config(
     assert config.compute.accelerator.accelerator == "A100"
     assert config.compute.accelerator.count == 2
 
+    # open the config.yaml file and verify the tensor parallel size is 2
+    # additional tests can be added to verify the config.yaml file is correct
+    with open(result.truss_directory / "config.yaml", "r") as f:
+        config_yaml = f.read()
+    assert "--tensor-parallel-size 2" in config_yaml
+
     # Verify runtime config
     env_vars = config.runtime.environment_variables
     assert env_vars["HF_TOKEN"].name == "my_custom_secret"

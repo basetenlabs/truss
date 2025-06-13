@@ -29,7 +29,7 @@ from truss_train.definitions import (
 VLLM_LORA_START_COMMAND = Template(
     'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'
     + " --port 8000"
-    + " --tensor-parallel-size 4"
+    + " --tensor-parallel-size {{ gpu_count }}"
     + " --enable-lora"
     + " --max-lora-rank {{ max_lora_rank }}"
     + " --dtype bfloat16"
@@ -142,6 +142,7 @@ def _render_vllm_lora_truss_config(
         "lora_modules": checkpoint_str,
         "envvars": start_command_envvars,
         "max_lora_rank": max_lora_rank,
+        "gpu_count": checkpoint_deploy.compute.accelerator.count,
     }
     truss_deploy_config.docker_server.start_command = VLLM_LORA_START_COMMAND.render(
         **start_command_args
