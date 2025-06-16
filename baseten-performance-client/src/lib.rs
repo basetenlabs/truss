@@ -1683,7 +1683,7 @@ async fn send_request_with_retry(
             }
             Err(network_err) => { // This handles "error sending request" (reqwest::Error)
                 println!("Network/send error: {}", network_err);
-                if retries_done >= 1 {
+                if retries_done >= 2 {
                     // Max retries performed for network/send errors
                     return Err(PyValueError::new_err(format!(
                         "Request failed after {} retries with network/send error: {}",
