@@ -1653,43 +1653,59 @@ async fn send_request_with_retry(
     max_retries: u32,
     initial_backoff: Duration,
 ) -> Result<reqwest::Response, PyErr> {
-    let mut retries = 0;
+    let mut retries_done = 0;
     let mut current_backoff = initial_backoff;
 
     loop {
-        // Clone the request builder for each attempt as `send()` consumes it.
-        // This is generally safe for requests with cloneable body
         let request_builder_clone = request_builder
             .try_clone()
             .ok_or_else(|| PyValueError::new_err("Failed to clone request builder for retry"))?;
 
-        let response = request_builder_clone
-            .send()
-            .await
-            .map_err(|e| PyValueError::new_err(format!("Request failed: {}", e)))?;
+        match request_builder_clone.send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    return Ok(response);
+                }
 
-        if response.status().is_success() {
-            return Ok(response);
-        }
-
-        // If we get here, the response was not successful.
-        // Check if it's a 429 Too Many Requests error or other server error
-        if response.status().as_u16() == 429 || response.status().is_server_error() {
-            // Retry on 429 or 5xx server errors
-            retries += 1;
-            if retries > max_retries {
-                // raise a HTTPError if max retries exceeded
-                return ensure_successful_response(response).await;
+                // Not a success, check if it's a retryable HTTP error (429 or 5xx)
+                if response.status().as_u16() == 429 || response.status().is_server_error() {
+                    if retries_done >= max_retries {
+                        // Max retries performed for these HTTP errors
+                        // Ensure this goes through your HTTPError mapping
+                        return ensure_successful_response(response).await;
+                    }
+                    // If not max retries, fall through to common retry logic below
+                } else {
+                    // Non-retryable HTTP error (e.g., 400, 401, 403, 404)
+                    // Ensure this goes through your HTTPError mapping and then return
+                    return ensure_successful_response(response).await;
+                }
             }
-
-            // Exponential backoff
-            let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION);
-            tokio::time::sleep(backoff_duration).await;
-            current_backoff *= 4;
-        } else {
-            // Some other error occurred, return the response for inspection
-            return Ok(response);
+            Err(network_err) => { // This handles "error sending request" (reqwest::Error)
+                println!("Network/send error: {}", network_err);
+                if retries_done >= 1 {
+                    // Max retries performed for network/send errors
+                    return Err(PyValueError::new_err(format!(
+                        "Request failed after {} retries with network/send error: {}",
+                        retries_done, network_err
+                    )));
+                }
+                // If not max retries, fall through to common retry logic below
+                // Optionally, log the intermediate network_err here for debugging:
+                // eprintln!("Network/send error (retry {} of {}): {}. Retrying...", retries_done + 1, max_retries, network_err);
+            }
         }
+
+        // If we reach here, it means a retry is needed (either for a retryable HTTP error
+        // or a network/send error) and we haven't exhausted retries.
+        retries_done += 1;
+
+        // Exponential backoff
+        // Using MAX_BACKOFF_DURATION as a const Duration as per the function's context in your file.
+        // If MAX_BACKOFF_DURATION was changed to a Lazy<Duration> elsewhere, it would need dereferencing: *MAX_BACKOFF_DURATION
+        let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION);
+        tokio::time::sleep(backoff_duration).await;
+        current_backoff = current_backoff.saturating_mul(4); // Using saturating_mul and original factor
     }
 }
 
