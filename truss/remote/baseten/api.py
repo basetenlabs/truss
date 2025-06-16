@@ -574,6 +574,12 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def retry_training_job(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/retry", body={}
+        )
+        return resp_json["training_job"]
+
     def stop_training_job(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/stop", body={}

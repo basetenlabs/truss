@@ -80,6 +80,45 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
         for log in watcher.watch():
             cli_log_utils.output_log(log)
 
+@train.command(name="retry")
+@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after retry.")
+@common.common_options()
+def retry_training_job(job_id: str, remote: Optional[str], tail: bool):
+    """Retry a training job"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    try:
+        with console.status("Retrying training job...", spinner="dots"):
+            job_resp = train_cli.retry_training_job(
+                remote_provider=remote_provider,
+                job_id=job_id,
+            )
+
+        job_id = job_resp["id"]
+
+        console.print("✨ Training job successfully created!", style="green")
+        console.print(
+            f"🪵 View logs for your job via "
+            f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
+            f"🔍 View metrics for your job via "
+            f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+            f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
+        )
+    except Exception as e:
+        error_console.print(f"Failed to retry job: {str(e)}")
+        sys.exit(1)
+
+    if tail:
+        project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
 
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")

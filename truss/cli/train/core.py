@@ -264,6 +264,19 @@ def display_training_job(
 def _generate_job_artifact_name(project_name: str, job_id: str) -> str:
     return f"{project_name}_{job_id}"
 
+def retry_training_job(remote_provider: BasetenRemote, job_id: str):
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        raise RuntimeError(f"No training job found with ID: {job_id}")
+    
+    project = jobs[0]["training_project"]
+    project_id = project["id"]
+
+    training_job = remote_provider.api.retry_training_job(
+        project_id=project_id, job_id=job_id
+    )
+
+    return training_job
 
 def download_training_job_data(
     remote_provider: BasetenRemote,
