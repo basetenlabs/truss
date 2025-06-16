@@ -80,6 +80,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
         for log in watcher.watch():
             cli_log_utils.output_log(log)
 
+
 @train.command(name="retry")
 @click.option("--job-id", type=str, required=True, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
@@ -96,8 +97,7 @@ def retry_training_job(job_id: str, remote: Optional[str], tail: bool):
     try:
         with console.status("Retrying training job...", spinner="dots"):
             job_resp = train_cli.retry_training_job(
-                remote_provider=remote_provider,
-                job_id=job_id,
+                remote_provider=remote_provider, job_id=job_id
             )
 
         job_id = job_resp["id"]
@@ -119,6 +119,7 @@ def retry_training_job(job_id: str, remote: Optional[str], tail: bool):
         watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
         for log in watcher.watch():
             cli_log_utils.output_log(log)
+
 
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
