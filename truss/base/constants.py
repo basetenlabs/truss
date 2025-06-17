@@ -72,10 +72,10 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-6887471"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-cefe1b1"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
-BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.23"
+BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.24"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 
