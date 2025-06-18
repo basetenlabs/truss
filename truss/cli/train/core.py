@@ -335,8 +335,10 @@ def download_checkpoint_artifacts(
                 "No active training jobs found. Please start a job first or specify a job ID."
             )
 
+        latest_job_id: str = jobs[0]["id"]
+        job_id = latest_job_id
+
     job = jobs[0]
-    job_id: str = job["id"] 
     project = job["training_project"]
     project_id = project["id"]
     project_name = project["name"]
