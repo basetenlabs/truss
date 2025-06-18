@@ -329,9 +329,7 @@ def download_checkpoint_artifacts(
     project_name = project["name"]
 
     presigned_urls = remote_provider.api.get_training_job_checkpoint_presigned_url(
-        project_id=project_id,
-        job_id=job_id,
-        page_size=1000,  # Adjust page size as needed
+        project_id=project_id, job_id=job_id, page_size=1000
     )
 
     if not presigned_urls:

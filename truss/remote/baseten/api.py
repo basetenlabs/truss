@@ -676,13 +676,9 @@ class BasetenApi:
             if page_token:
                 params["page_token"] = page_token
 
-            # Make the paginated API call
             response = self._rest_api_client.get(url, url_params=params)
-
-            # Append current page of URLs
             all_presigned_urls.extend(response.get("presigned_urls", []))
 
-            # Check if there's a next page
             page_token = response.get("next_page_token")
             if not page_token:
                 break
