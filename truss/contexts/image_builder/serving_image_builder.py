@@ -394,7 +394,7 @@ class ServingImageBuilder(ImageBuilder):
             "prepare_trtllm_torchflow_build_dir should only be called for torchflow tensorrt-llm model"
         )
         self._spec.config.docker_server = DockerServer(
-            start_command="./standalone/launch.sh",
+            start_command="/workspace/trtllm/standalone/launch.sh",
             server_port=8000,
             # mount the following predict endpoint location
             predict_endpoint="/v1/chat/completions",
