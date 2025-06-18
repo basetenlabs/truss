@@ -1,11 +1,13 @@
+import json
 import tarfile
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+import click
 import rich
-import rich_click as click
 from InquirerPy import inquirer
 from rich.text import Text
 
@@ -311,6 +313,56 @@ def download_training_job_data(
     else:
         target_path.write_bytes(content)
         return target_path
+
+
+def download_checkpoint_artifacts(
+    remote_provider: BasetenRemote, job_id: Optional[str]
+) -> Path:
+    output_dir = Path.cwd()
+
+    jobs = []
+    if job_id:
+        jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+        if not jobs:
+            raise RuntimeError(f"No training job found with ID: {job_id}")
+    else:
+        jobs = remote_provider.api.search_training_jobs(
+            statuses=ACTIVE_JOB_STATUSES,
+            order_by=[{"field": "created_at", "order": "desc"}],
+        )
+        if not jobs:
+            raise click.ClickException(
+                "No active training jobs found. Please start a job first or specify a job ID."
+            )
+
+        latest_job_id: str = jobs[0]["id"]
+        job_id = latest_job_id
+
+    job = jobs[0]
+    project = job["training_project"]
+    project_id = project["id"]
+    project_name = project["name"]
+
+    checkpoint_artifacts = (
+        remote_provider.api.get_training_job_checkpoint_presigned_url(
+            project_id=project_id, job_id=job_id, page_size=1000
+        )
+    )
+
+    if not checkpoint_artifacts:
+        raise click.ClickException("No checkpoints found for this training job.")
+
+    output = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "job": job,
+        "checkpoint_artifacts": checkpoint_artifacts,
+    }
+
+    urls_file = output_dir / f"{project_name}_{job_id}_checkpoints.json"
+    with open(urls_file, "w") as f:
+        json.dump(output, f, indent=2)
+
+    return urls_file
 
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:
