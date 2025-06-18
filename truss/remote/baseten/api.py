@@ -663,6 +663,32 @@ class BasetenApi:
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
 
+    def get_training_job_checkpoint_presigned_url(
+        self, project_id: str, job_id: str, page_size: int = 100
+    ) -> List[Dict[str, str]]:
+        all_presigned_urls = []
+        page_token: Optional[str] = None
+
+        while True:
+            # Construct query parameters
+            url = f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoint_files"
+            params = {"page_size": page_size}
+            if page_token:
+                params["page_token"] = page_token
+
+            # Make the paginated API call
+            response = self._rest_api_client.get(url, url_params=params)
+
+            # Append current page of URLs
+            all_presigned_urls.extend(response.get("presigned_urls", []))
+
+            # Check if there's a next page
+            page_token = response.get("next_page_token")
+            if not page_token:
+                break
+
+        return all_presigned_urls
+
     def get_training_job_presigned_url(self, project_id: str, job_id: str) -> str:
         response = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/download"

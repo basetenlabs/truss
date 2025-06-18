@@ -280,3 +280,45 @@ def download_training_job(
     except Exception as e:
         error_console.print(f"Failed to download training job data: {str(e)}")
         sys.exit(1)
+
+
+@train.command(name="get-checkpoints")
+@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--target-directory",
+    type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
+    required=False,
+    help="Directory where the file should be downloaded. Defaults to current directory.",
+)
+@common.common_options()
+def download_checkpoint_artifacts(
+    job_id: str, remote: Optional[str], target_directory: Optional[str]
+) -> None:
+    if not job_id:
+        error_console.print("Job ID is required")
+        sys.exit(1)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    try:
+        with console.status(
+            "[bold green]Retrieving checkpoint artifacts...", spinner="dots"
+        ):
+            target_path = train_cli.download_checkpoint_artifacts(
+                remote_provider=remote_provider,
+                job_id=job_id,
+                target_directory=target_directory,
+            )
+        console.print(
+            f"✨ Training job checkpoint artifacts downloaded to {target_path}",
+            style="bold green",
+        )
+    except Exception as e:
+        error_console.print(f"Failed to download checkpoint artifacts data: {str(e)}")
+        sys.exit(1)

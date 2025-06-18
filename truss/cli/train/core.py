@@ -1,3 +1,4 @@
+import json
 import tarfile
 import tempfile
 from dataclasses import dataclass
@@ -311,6 +312,39 @@ def download_training_job_data(
     else:
         target_path.write_bytes(content)
         return target_path
+
+
+def download_checkpoint_artifacts(
+    remote_provider: BasetenRemote, job_id: str, target_directory: Optional[str]
+) -> Path:
+    output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        raise RuntimeError(f"No training job found with ID: {job_id}")
+
+    project = jobs[0]["training_project"]
+    project_id = project["id"]
+    project_name = project["name"]
+
+    presigned_urls = remote_provider.api.get_training_job_checkpoint_presigned_url(
+        project_id=project_id,
+        job_id=job_id,
+        page_size=1000,  # Adjust page size as needed
+    )
+
+    if not presigned_urls:
+        raise click.ClickException("No checkpoints found for this training job.")
+
+    checkpoints_dir = output_dir / f"{project_name}_{job_id}_checkpoints"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+
+    urls_file = checkpoints_dir / "checkpoint_artifacts.json"
+    with open(urls_file, "w") as f:
+        json.dump(presigned_urls, f, indent=2)
+
+    return checkpoints_dir
 
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:
