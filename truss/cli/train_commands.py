@@ -283,14 +283,10 @@ def download_training_job(
 
 
 @train.command(name="get_checkpoint_urls")
-@click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
-def download_checkpoint_artifacts(job_id: str, remote: Optional[str]) -> None:
-    if not job_id:
-        error_console.print("Job ID is required")
-        sys.exit(1)
-
+def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) -> None:
     if not remote:
         remote = remote_cli.inquire_remote_name()
 

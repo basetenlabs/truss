@@ -315,14 +315,28 @@ def download_training_job_data(
         return target_path
 
 
-def download_checkpoint_artifacts(remote_provider: BasetenRemote, job_id: str) -> Path:
+def download_checkpoint_artifacts(
+    remote_provider: BasetenRemote, job_id: Optional[str]
+) -> Path:
     output_dir = Path.cwd()
 
-    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
-    if not jobs:
-        raise RuntimeError(f"No training job found with ID: {job_id}")
+    jobs = []
+    if job_id:
+        jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+        if not jobs:
+            raise RuntimeError(f"No training job found with ID: {job_id}")
+    else:
+        jobs = remote_provider.api.search_training_jobs(
+            statuses=ACTIVE_JOB_STATUSES,
+            order_by=[{"field": "created_at", "order": "desc"}],
+        )
+        if not jobs:
+            raise click.ClickException(
+                "No active training jobs found. Please start a job first or specify a job ID."
+            )
 
     job = jobs[0]
+    job_id = job["id"]
     project = job["training_project"]
     project_id = project["id"]
     project_name = project["name"]
