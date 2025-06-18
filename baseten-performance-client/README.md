@@ -1,11 +1,13 @@
 # High performance client for Baseten.co
 
-This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. InferenceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps from a single-core machine on baseten.co. InferenceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
+This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. PerformanceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps per client in [our blog](https://www.baseten.co/blog/your-client-code-matters-10x-higher-embedding-throughput-with-python-and-rust/). PerformanceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
+
+![benchmarks](https://www.baseten.co/_next/image/?url=https%3A%2F%2Fwww.datocms-assets.com%2F104802%2F1749832130-diagram-9.png%3Fauto%3Dformat%26fit%3Dmax%26w%3D1200&w=3840&q=75)
 
 ## Installation
 
 ```
-pip install baseten_inference_client
+pip install baseten_performance_client
 ```
 
 ## Usage
@@ -13,13 +15,13 @@ pip install baseten_inference_client
 ```python
 import os
 import asyncio
-from baseten_inference_client import InferenceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
+from baseten_performance_client import PerformanceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
 
 api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
 # Also works with 3rd party endpoints.
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
-client = InferenceClient(base_url=base_url_embed, api_key=api_key)
+client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 ```
 ### Embeddings
 #### Synchronous Embedding
@@ -37,6 +39,10 @@ response = client.embed(
 # Accessing embedding data
 print(f"Model used: {response.model}")
 print(f"Total tokens used: {response.usage.total_tokens}")
+print(f"Total time: {response.total_time:.4f}s")
+if response.individual_batch_request_times:
+    for i, batch_time in enumerate(response.individual_batch_request_times):
+        print(f"  Time for batch {i}: {batch_time:.4f}s")
 
 for i, embedding_data in enumerate(response.data):
     print(f"Embedding for text {i} (original input index {embedding_data.index}):")
@@ -79,7 +85,7 @@ async def async_embed():
 #### Embedding Benchmarks
 Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `./scripts/compare_latency_openai.py` with mini_batch_size of 128, and 4 server-side replicas. Results with OpenAI similar, OpenAI allows a max mini_batch_size of 2048.
 
-| Number of inputs / embeddings | Number of Tasks | InferenceClient (s) | AsyncOpenAI (s) | Speedup |
+| Number of inputs / embeddings | Number of Tasks | PerformanceClient (s) | AsyncOpenAI (s) | Speedup |
 |-------------------------------:|---------------:|---------------------:|----------------:|--------:|
 | 128                            |              1 |                0.12 |            0.13 |    1.08× |
 | 512                            |              4 |                0.14 |            0.21 |    1.50× |
@@ -95,30 +101,41 @@ The batch_post method is generic. It can be used to send POST requests to any UR
 ```python
 payload1 = {"model": "my_model", "input": ["Batch request sample 1"]}
 payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
-response1, response2 = client.batch_post(
-    url_path="/v1/embeddings",
-    payloads=[payload, payload],
+response_obj = client.batch_post(
+    url_path="/v1/embeddings", # Example path, adjust to your needs
+    payloads=[payload1, payload2],
     max_concurrent_requests=96,
     timeout_s=360
 )
-print("Batch POST responses:", response1, response2)
+print(f"Total time for batch POST: {response_obj.total_time:.4f}s")
+for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
+    print(f"Response {i+1}:")
+    print(f"  Data: {resp_data}")
+    print(f"  Headers: {headers}")
+    print(f"  Time taken: {time_taken:.4f}s")
 ```
 
 #### Asynchronous Batch POST
 
 ```python
-async def async_batch_post():
-    payload = {"model": "my_model", "input": ["Async batch sample"]}
-    responses = await client.async_batch_post(
+async def async_batch_post_example():
+    payload1 = {"model": "my_model", "input": ["Async batch sample 1"]}
+    payload2 = {"model": "my_model", "input": ["Async batch sample 2"]}
+    response_obj = await client.async_batch_post(
         url_path="/v1/embeddings",
-        payloads=[payload, payload],
+        payloads=[payload1, payload2],
         max_concurrent_requests=4,
         timeout_s=360
     )
-    print("Async batch POST responses: list[Any]", responses)
+    print(f"Async total time for batch POST: {response_obj.total_time:.4f}s")
+    for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
+        print(f"Async Response {i+1}:")
+        print(f"  Data: {resp_data}")
+        print(f"  Headers: {headers}")
+        print(f"  Time taken: {time_taken:.4f}s")
 
 # To run:
-# asyncio.run(async_batch_post())
+# asyncio.run(async_batch_post_example())
 ```
 ### Reranking
 Reranking compatible with BEI or text-embeddings-inference.
@@ -213,7 +230,7 @@ Here's an example demonstrating how to catch these errors for the `embed` method
 ```python
 import requests
 
-# client = InferenceClient(base_url="your_b10_url", api_key="your_b10_api_key")
+# client = PerformanceClient(base_url="your_b10_url", api_key="your_b10_api_key")
 
 texts_to_embed = ["Hello world", "Another text example"]
 try:

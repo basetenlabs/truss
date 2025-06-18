@@ -1,9 +1,13 @@
+import json
+import tarfile
+import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+import click
 import rich
-import rich_click as click
 from InquirerPy import inquirer
 from rich.text import Text
 
@@ -259,14 +263,20 @@ def display_training_job(
     console.print(table)
 
 
+def _generate_job_artifact_name(project_name: str, job_id: str) -> str:
+    return f"{project_name}_{job_id}"
+
+
 def download_training_job_data(
-    remote_provider: BasetenRemote, job_id: str, target_directory: Optional[str]
+    remote_provider: BasetenRemote,
+    job_id: str,
+    target_directory: Optional[str],
+    unzip: bool,
 ) -> Path:
     output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     jobs = remote_provider.api.search_training_jobs(job_id=job_id)
-
     if not jobs:
         raise RuntimeError(f"No training job found with ID: {job_id}")
 
@@ -274,17 +284,85 @@ def download_training_job_data(
     project_id = project["id"]
     project_name = project["name"]
 
-    file_name = f"{project_name}_{job_id}.tgz"
+    artifact_base_name = _generate_job_artifact_name(project_name, job_id)
+    file_name = f"{artifact_base_name}.tgz"
     target_path = output_dir / file_name
 
     presigned_url = remote_provider.api.get_training_job_presigned_url(
         project_id=project_id, job_id=job_id
     )
-
     content = remote_provider.api.get_from_presigned_url(presigned_url)
-    target_path.write_bytes(content)
 
-    return target_path
+    if unzip:
+        with tempfile.NamedTemporaryFile() as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_path.write_bytes(content)
+
+            unzip_dir = output_dir / artifact_base_name
+            if unzip_dir.exists():
+                raise click.ClickException(
+                    f"Directory '{unzip_dir}' already exists. "
+                    "Please remove it or specify a different target directory."
+                )
+
+            unzip_dir.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(temp_path, "r:*") as tar:
+                tar.extractall(path=unzip_dir)
+
+            return unzip_dir
+    else:
+        target_path.write_bytes(content)
+        return target_path
+
+
+def download_checkpoint_artifacts(
+    remote_provider: BasetenRemote, job_id: Optional[str]
+) -> Path:
+    output_dir = Path.cwd()
+
+    jobs = []
+    if job_id:
+        jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+        if not jobs:
+            raise RuntimeError(f"No training job found with ID: {job_id}")
+    else:
+        jobs = remote_provider.api.search_training_jobs(
+            statuses=ACTIVE_JOB_STATUSES,
+            order_by=[{"field": "created_at", "order": "desc"}],
+        )
+        if not jobs:
+            raise click.ClickException(
+                "No active training jobs found. Please start a job first or specify a job ID."
+            )
+
+        latest_job_id: str = jobs[0]["id"]
+        job_id = latest_job_id
+
+    job = jobs[0]
+    project = job["training_project"]
+    project_id = project["id"]
+    project_name = project["name"]
+
+    checkpoint_artifacts = (
+        remote_provider.api.get_training_job_checkpoint_presigned_url(
+            project_id=project_id, job_id=job_id, page_size=1000
+        )
+    )
+
+    if not checkpoint_artifacts:
+        raise click.ClickException("No checkpoints found for this training job.")
+
+    output = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "job": job,
+        "checkpoint_artifacts": checkpoint_artifacts,
+    }
+
+    urls_file = output_dir / f"{project_name}_{job_id}_checkpoints.json"
+    with open(urls_file, "w") as f:
+        json.dump(output, f, indent=2)
+
+    return urls_file
 
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:

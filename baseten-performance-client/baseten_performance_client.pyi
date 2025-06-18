@@ -61,6 +61,8 @@ class OpenAIEmbeddingsResponse:
         data: A list of OpenAIEmbeddingData objects.
         model: The model identifier used for the embedding.
         usage: Usage details such as token counts.
+        total_time: Optional total time taken for the operation in seconds.
+        individual_request_times: Optional list of individual batch request times in seconds.
 
     Methods:
         numpy() -> _NDArrayF32:
@@ -69,12 +71,15 @@ class OpenAIEmbeddingsResponse:
     Example:
         >>> response = client.embed(["Hello"], model="model-id")
         >>> array = response.numpy()
+        >>> print(f"Total time: {response.total_time}")
     """
 
     object: builtins.str
     data: builtins.list[OpenAIEmbeddingData]
     model: builtins.str
     usage: OpenAIUsage
+    total_time: typing.Optional[builtins.float]
+    individual_request_times: typing.Optional[builtins.list[builtins.float]]
 
     def numpy(self) -> _NDArrayF32:
         """
@@ -118,22 +123,34 @@ class RerankResponse:
     Attributes:
         object: The object type (usually "list").
         data: A list of RerankResult objects.
+        total_time: Optional total time taken for the operation in seconds.
+        individual_request_times: Optional list of individual batch request times in seconds.
 
     Example:
         >>> response = client.rerank("query", ["doc1", "doc2"])
         >>> for result in response.data:
         ...     print(result.index, result.score)
+        >>> print(f"Total time: {response.total_time}")
     """
 
     object: builtins.str
     data: builtins.list[RerankResult]
+    total_time: typing.Optional[builtins.float]
+    individual_request_times: typing.Optional[builtins.list[builtins.float]]
 
-    def __init__(self, data: builtins.list[RerankResult]) -> None:
+    def __init__(
+        self,
+        data: builtins.list[RerankResult],
+        total_time: typing.Optional[builtins.float] = None,
+        individual_request_times: typing.Optional[builtins.list[builtins.float]] = None,
+    ) -> None:
         """
         Initializes a RerankResponse.
 
         Args:
             data: A list of RerankResult objects.
+            total_time: Optional total time for the operation.
+            individual_request_times: Optional list of individual batch request times.
         """
         ...
 
@@ -156,31 +173,59 @@ class ClassificationResponse:
     Attributes:
         object: The object type (usually "list").
         data: A nested list of ClassificationResult objects.
+        total_time: Optional total time taken for the operation in seconds.
+        individual_request_times: Optional list of individual batch request times in seconds.
 
     Example:
         >>> response = client.classify(["text1", "text2"])
         >>> for result_group in response.data:
         ...     for result in result_group:
         ...         print(result.label, result.score)
+        >>> print(f"Total time: {response.total_time}")
     """
 
     object: builtins.str
     data: builtins.list[builtins.list[ClassificationResult]]
+    total_time: typing.Optional[builtins.float]
+    individual_request_times: typing.Optional[builtins.list[builtins.float]]
 
     def __init__(
-        self, data: builtins.list[builtins.list[ClassificationResult]]
+        self,
+        data: builtins.list[builtins.list[ClassificationResult]],
+        total_time: typing.Optional[builtins.float] = None,
+        individual_request_times: typing.Optional[builtins.list[builtins.float]] = None,
     ) -> None:
         """
         Initializes a ClassificationResponse.
 
         Args:
             data: A list where each element is a list of ClassificationResult objects.
+            total_time: Optional total time for the operation.
+            individual_request_times: Optional list of individual batch request times.
         """
         ...
 
-class InferenceClient:
+class BatchPostResponse:
     """
-    Baseten.co API client for embedding, reranking, and classification.
+    Represents the response from a batch_post or async_batch_post operation.
+
+    Attributes:
+        data: A list of Python objects, where each object is the deserialized
+              JSON response from the server for the corresponding request payload.
+        total_time: Total time taken for the entire batch operation in seconds.
+        individual_request_times: List of individual request times in seconds for each payload.
+        response_headers: A list of dictionaries, where each dictionary contains
+                          the response headers for the corresponding request.
+    """
+
+    data: builtins.list[typing.Any]
+    total_time: builtins.float
+    individual_request_times: builtins.list[builtins.float]
+    response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
+
+class PerformanceClient:
+    """
+    Baseten.co API client for embedding, reranking, and classification, and custom workloads.
 
     This client allows you to send text to an embedding model, rerank documents,
     or classify texts through the API.
@@ -190,7 +235,7 @@ class InferenceClient:
         api_key: The API key for authentication.
 
     Example:
-        >>> client = InferenceClient(base_url="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
+        >>> client = PerformanceClient(base_url="https://example.api.baseten.co/environments/production/sync", api_key="your_api_key")
         >>> embeddings = client.embed(["Hello world"], model="BAAI/bge-large-en")
         >>> array = embeddings.numpy()
     """
@@ -205,7 +250,7 @@ class InferenceClient:
             api_key: The API key. If not provided, environment variables will be checked.
 
         Example:
-            >>> client = InferenceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
         """
         ...
 
@@ -345,13 +390,12 @@ class InferenceClient:
         payloads: builtins.list[typing.Any],
         max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
-    ) -> builtins.list[typing.Any]:
+    ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
 
         Each payload is sent as an individual POST request. The responses are
-        returned as a list of Python objects, corresponding to the JSON responses
-        from the server.
+        returned as a BatchPostResponse object.
 
         Args:
             url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
@@ -362,24 +406,23 @@ class InferenceClient:
                        also used as the timeout for each individual request.
 
         Returns:
-            A list of Python objects, where each object is the deserialized
-            JSON response from the server for the corresponding request payload.
-            The order of responses matches the order of input payloads.
+            A BatchPostResponse object containing the list of responses,
+            total time, and individual request times.
 
         Raises:
             ValueError: If the payloads list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If any of the underlying HTTP requests fail.
-            # Note: Other PyO3/Rust errors might be raised for serialization/deserialization issues.
 
         Example:
-            >>> client = InferenceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
             >>> custom_payloads = [
             ...     {"data": "request1_data", "id": 1},
             ...     {"data": "request2_data", "id": 2}
             ... ]
-            >>> responses = client.batch_post("/v1/process_item", custom_payloads)
-            >>> for resp in responses:
-            ...     print(resp)
+            >>> response_obj = client.batch_post("/v1/process_item", custom_payloads)
+            >>> for resp_data in response_obj.data:
+            ...     print(resp_data)
+            >>> print(f"Total time: {response_obj.total_time}")
         """
         ...
 
@@ -503,7 +546,7 @@ class InferenceClient:
         payloads: builtins.list[typing.Any],
         max_concurrent_requests: builtins.int = 32,
         timeout_s: builtins.float = 3600.0,
-    ) -> builtins.list[typing.Any]:
+    ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
 
@@ -514,16 +557,17 @@ class InferenceClient:
             timeout_s: Total timeout in seconds for the batch operation.
 
         Returns:
-            An awaitable list of Python objects whose order matches the input payloads.
+            An awaitable BatchPostResponse object.
 
         Raises:
             ValueError: If the payloads list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If any underlying HTTP requests fail.
 
         Example:
-            >>> responses = await client.async_batch_post("/v1/process_item", [{"data": "r1"}, {"data": "r2"}])
-            >>> for resp in responses:
-            ...     print(resp)
+            >>> response_obj = await client.async_batch_post("/v1/process_item", [{"data": "r1"}, {"data": "r2"}])
+            >>> for resp_data in response_obj.data:
+            ...     print(resp_data)
+            >>> print(f"Total time: {response_obj.total_time}")
         """
         ...
 

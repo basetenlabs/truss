@@ -1,6 +1,6 @@
 [package]
-name = "baseten_inference_client"
-version = "0.0.1"
+name = "baseten_performance_client"
+version = "0.0.2"
 edition = "2021"
 
 [dependencies]
@@ -18,5 +18,5 @@ pythonize = "*"
 pyo3-async-runtimes = { version = "0.24", features = ["tokio-runtime"] } # Or a version compatible with your pyo3
 
 [lib]
-name = "baseten_inference_client"
+name = "baseten_performance_client"
 crate-type = ["cdylib", "rlib"]
