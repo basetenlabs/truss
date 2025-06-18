@@ -336,7 +336,7 @@ def download_checkpoint_artifacts(
             )
 
     job = jobs[0]
-    job_id = job["id"]
+    job_id: str = job["id"] 
     project = job["training_project"]
     project_id = project["id"]
     project_name = project["name"]
