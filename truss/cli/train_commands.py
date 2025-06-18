@@ -282,7 +282,7 @@ def download_training_job(
         sys.exit(1)
 
 
-@train.command(name="get-checkpoints")
+@train.command(name="get_checkpoint_urls")
 @click.option("--job-id", type=str, required=True, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()

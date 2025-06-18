@@ -2,7 +2,7 @@ import json
 import tarfile
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
@@ -327,17 +327,19 @@ def download_checkpoint_artifacts(remote_provider: BasetenRemote, job_id: str) -
     project_id = project["id"]
     project_name = project["name"]
 
-    presigned_urls = remote_provider.api.get_training_job_checkpoint_presigned_url(
-        project_id=project_id, job_id=job_id, page_size=1000
+    checkpoint_artifacts = (
+        remote_provider.api.get_training_job_checkpoint_presigned_url(
+            project_id=project_id, job_id=job_id, page_size=1000
+        )
     )
 
-    if not presigned_urls:
+    if not checkpoint_artifacts:
         raise click.ClickException("No checkpoints found for this training job.")
 
     output = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "job": job,
-        "checkpoints": presigned_urls,
+        "checkpoint_artifacts": checkpoint_artifacts,
     }
 
     urls_file = output_dir / f"{project_name}_{job_id}_checkpoints.json"
