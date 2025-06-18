@@ -672,9 +672,9 @@ class BasetenApi:
         while True:
             # Construct query parameters
             url = f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoint_files"
-            params = {"page_size": page_size}
+            params = {"page_size": str(page_size)}
             if page_token:
-                params["page_token"] = page_token
+                params["page_token"] = str(page_token)
 
             response = self._rest_api_client.get(url, url_params=params)
             all_presigned_urls.extend(response.get("presigned_urls", []))
