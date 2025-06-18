@@ -413,11 +413,10 @@ class ServingImageBuilder(ImageBuilder):
         # baseten backend. So only the image is not set, we use the constant
         # `TORCHFLOW_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
         # builds, we can remove the constant and setting the image here.
-        if not (config.base_image and config.base_image.image.startswith("baseten/")):
-            config.base_image = BaseImage(
-                image=TORCHFLOW_TRTLLM_BASE_IMAGE,
-                python_executable_path="/usr/bin/python3",
-            )
+        # if not (config.base_image and config.base_image.image.startswith("baseten/")):
+        config.base_image = BaseImage(
+            image=TORCHFLOW_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
+        )
 
     def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
