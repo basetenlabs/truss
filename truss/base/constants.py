@@ -76,6 +76,7 @@ TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-cefe1b1"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
 BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.24"
+TORCHFLOW_TRTLLM_BASE_IMAGE = "baseten/dynamo:master-91b95bc6--trtllm-gpu"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 

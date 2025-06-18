@@ -48,6 +48,11 @@ class TrussTRTLLMModel(str, Enum):
     WHISPER = "whisper"
 
 
+class ExecutionRuntime(str, Enum):
+    torchflow = "torchflow"
+    briton = "briton"
+
+
 class TrussTRTLLMQuantizationType(str, Enum):
     NO_QUANT = "no_quant"
     WEIGHTS_ONLY_INT8 = "weights_int8"
@@ -149,6 +154,7 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     webserver_default_route: Optional[
         Literal["/v1/embeddings", "/rerank", "/predict"]
     ] = None
+    torchflow_config: str = ""
 
 
 class TrussTRTLLMLoraConfiguration(PydanticTrTBaseModel):
@@ -451,6 +457,7 @@ class ImageVersions(PydanticTrTBaseModel):
 
 class TRTLLMConfiguration(PydanticTrTBaseModel):
     build: TrussTRTLLMBuildConfiguration
+    execution_runtime: ExecutionRuntime = ExecutionRuntime.briton
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     # If versions are not set, the baseten backend will insert current defaults.
     version_overrides: VersionsOverrides = VersionsOverrides()

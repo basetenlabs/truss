@@ -39,6 +39,7 @@ from truss.base.constants import (
     SUPPORTED_PYTHON_VERSIONS,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
+    TORCHFLOW_TRTLLM_BASE_IMAGE,
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
@@ -386,6 +387,38 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
+    def prepare_trtllm_torchflow_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
+        config = self._spec.config
+        assert config.trt_llm and config.trt_llm.execution_runtime == "torchflow", (
+            "prepare_trtllm_torchflow_build_dir should only be called for torchflow tensorrt-llm model"
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command="./standalone/launch.sh",
+            server_port=8000,
+            # mount the following predict endpoint location
+            predict_endpoint="/v1/chat/completions",
+            readiness_endpoint="/v1/models",
+            liveness_endpoint="/v1/models",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+        # TODO: copy truss config into build dir, by dumping truss config
+        # to config.yaml file in build dir.
+
+        copy_tree_path(
+            build_dir / CONFIG_FILE, build_dir / "standalone/truss_config.yaml"
+        )
+
+        # Flex builds fill in the latest image during `docker_build_setup` on the
+        # baseten backend. So only the image is not set, we use the constant
+        # `TORCHFLOW_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
+        # builds, we can remove the constant and setting the image here.
+        if not (config.base_image and config.base_image.image.startswith("baseten/")):
+            config.base_image = BaseImage(
+                image=TORCHFLOW_TRTLLM_BASE_IMAGE,
+                python_executable_path="/usr/bin/python3",
+            )
+
     def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
         config = self._spec.config
@@ -517,7 +550,10 @@ class ServingImageBuilder(ImageBuilder):
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None
         ):
-            if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
+            if config.trt_llm.execution_runtime == "torchflow":
+                # Run the specific torchflow build
+                self.prepare_trtllm_torchflow_build_dir(build_dir=build_dir)
+            elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
                 # Run the specific encoder build
                 self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
             else:
