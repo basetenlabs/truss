@@ -668,9 +668,9 @@ class BasetenApi:
     ) -> List[Dict[str, str]]:
         all_presigned_urls = []
         page_token: Optional[str] = None
+        max_iterations = 1000
 
-        while True:
-            # Construct query parameters
+        for iteration in range(max_iterations):
             url = f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoint_files"
             params = {"page_size": str(page_size)}
             if page_token:
@@ -682,6 +682,12 @@ class BasetenApi:
             page_token = response.get("next_page_token")
             if not page_token:
                 break
+        else:
+            # If we reach here, it means we hit the max iterations without finding a next page token
+            logging.error(
+                f"Reached maximum iteration limit ({max_iterations}) while paginating "
+                f"checkpoint files for project_id={project_id}, job_id={job_id}"
+            )
 
         return all_presigned_urls
 

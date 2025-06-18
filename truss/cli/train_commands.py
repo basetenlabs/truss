@@ -285,16 +285,8 @@ def download_training_job(
 @train.command(name="get-checkpoints")
 @click.option("--job-id", type=str, required=True, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option(
-    "--target-directory",
-    type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
-    required=False,
-    help="Directory where the file should be downloaded. Defaults to current directory.",
-)
 @common.common_options()
-def download_checkpoint_artifacts(
-    job_id: str, remote: Optional[str], target_directory: Optional[str]
-) -> None:
+def download_checkpoint_artifacts(job_id: str, remote: Optional[str]) -> None:
     if not job_id:
         error_console.print("Job ID is required")
         sys.exit(1)
@@ -311,9 +303,7 @@ def download_checkpoint_artifacts(
             "[bold green]Retrieving checkpoint artifacts...", spinner="dots"
         ):
             target_path = train_cli.download_checkpoint_artifacts(
-                remote_provider=remote_provider,
-                job_id=job_id,
-                target_directory=target_directory,
+                remote_provider=remote_provider, job_id=job_id
             )
         console.print(
             f"✨ Training job checkpoint artifacts downloaded to {target_path}",

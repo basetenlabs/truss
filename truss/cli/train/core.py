@@ -2,11 +2,12 @@ import json
 import tarfile
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+import click
 import rich
-import rich_click as click
 from InquirerPy import inquirer
 from rich.text import Text
 
@@ -314,17 +315,15 @@ def download_training_job_data(
         return target_path
 
 
-def download_checkpoint_artifacts(
-    remote_provider: BasetenRemote, job_id: str, target_directory: Optional[str]
-) -> Path:
-    output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
-    output_dir.mkdir(parents=True, exist_ok=True)
+def download_checkpoint_artifacts(remote_provider: BasetenRemote, job_id: str) -> Path:
+    output_dir = Path.cwd()
 
     jobs = remote_provider.api.search_training_jobs(job_id=job_id)
     if not jobs:
         raise RuntimeError(f"No training job found with ID: {job_id}")
 
-    project = jobs[0]["training_project"]
+    job = jobs[0]
+    project = job["training_project"]
     project_id = project["id"]
     project_name = project["name"]
 
@@ -335,14 +334,17 @@ def download_checkpoint_artifacts(
     if not presigned_urls:
         raise click.ClickException("No checkpoints found for this training job.")
 
-    checkpoints_dir = output_dir / f"{project_name}_{job_id}_checkpoints"
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    output = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "job": job,
+        "checkpoints": presigned_urls,
+    }
 
-    urls_file = checkpoints_dir / "checkpoint_artifacts.json"
+    urls_file = output_dir / f"{project_name}_{job_id}_checkpoints.json"
     with open(urls_file, "w") as f:
-        json.dump(presigned_urls, f, indent=2)
+        json.dump(output, f, indent=2)
 
-    return checkpoints_dir
+    return urls_file
 
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:
