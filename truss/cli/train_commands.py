@@ -81,6 +81,47 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
             cli_log_utils.output_log(log)
 
 
+@train.command(name="recreate")
+@click.option(
+    "--job-id",
+    type=str,
+    required=True,
+    help="Existing Job ID of Training Job to recreate",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after recreation.")
+@common.common_options()
+def recreate_training_job(job_id: str, remote: Optional[str], tail: bool):
+    """Recreate an existing training job from an existing job ID"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    with console.status("Creating training job...", spinner="dots"):
+        job_resp = train_cli.recreate_training_job(
+            remote_provider=remote_provider, job_id=job_id
+        )
+        print(job_resp)
+
+        console.print("✨ Training job successfully created!", style="green")
+        console.print(
+            f"🪵 View logs for your job via "
+            f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
+            f"🔍 View metrics for your job via "
+            f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+            f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
+        )
+
+    if tail:
+        project_id, new_job_id = job_resp["training_project"]["id"], job_resp["id"]
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, new_job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
+
+
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")

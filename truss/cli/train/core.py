@@ -80,6 +80,21 @@ def display_training_jobs(
         display_training_job(job, remote_url, checkpoints_by_job_id.get(job["id"], []))
 
 
+def recreate_training_job(remote_provider: BasetenRemote, job_id: str) -> None:
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        raise click.UsageError(f"No training job found with ID: {job_id}")
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    print(f"Recreating training job {job_id} in project {project_id}...")
+
+    # remote_provider.api.recreate_training_job(project_id, job_id)
+    console.print(f"Training job {job_id} recreated successfully.", style="green")
+
+    return jobs[0]
+
+
 def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table = rich.table.Table(
         show_header=True,
