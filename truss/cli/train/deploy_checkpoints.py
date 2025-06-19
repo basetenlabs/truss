@@ -284,6 +284,10 @@ def _get_compute(compute: Optional[Compute]) -> Compute:
     if not compute:
         compute = Compute(cpu_count=0, memory="0Mi")
     compute.accelerator = _get_accelerator_if_specified(compute.accelerator)
+    # User did not specify an accelerator, so we default to CPU.
+    if not compute.accelerator:
+        compute.cpu_count = int(truss_config.DEFAULT_CPU)
+        compute.memory = truss_config.DEFAULT_MEMORY
     return compute
 
 

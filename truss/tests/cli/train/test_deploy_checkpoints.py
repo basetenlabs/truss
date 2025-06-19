@@ -58,6 +58,13 @@ def deploy_checkpoints_mock_select(create_mock_prompt):
 
 
 @pytest.fixture
+def deploy_checkpoints_mock_select_cpu(create_mock_prompt):
+    with patch("truss.cli.train.deploy_checkpoints.inquirer.select") as mock:
+        mock.side_effect = lambda message, **kwargs: create_mock_prompt(None)
+        yield mock
+
+
+@pytest.fixture
 def deploy_checkpoints_mock_text(create_mock_prompt):
     with patch("truss.cli.train.deploy_checkpoints.inquirer.text") as mock:
         mock.side_effect = lambda message, **kwargs: create_mock_prompt(
@@ -162,6 +169,28 @@ def test_prepare_checkpoint_deploy_empty_config(
         result.checkpoint_deploy_config.runtime.environment_variables["HF_TOKEN"].name
         == "hf_access_token"
     )
+
+
+def test_prepare_checkpoint_deploy_empty_config_cpu(
+    mock_remote,
+    deploy_checkpoints_mock_select_cpu,
+    deploy_checkpoints_mock_text,
+    deploy_checkpoints_mock_checkbox,
+):
+    # Create empty config
+    empty_config = definitions.DeployCheckpointsConfig()
+    result = prepare_checkpoint_deploy(
+        remote_provider=mock_remote,
+        checkpoint_deploy_config=empty_config,
+        project_id="project123",
+        job_id="job123",
+    )
+    assert isinstance(result, PrepareCheckpointResult)
+    assert result.checkpoint_deploy_config.compute.cpu_count == int(
+        truss_config.DEFAULT_CPU
+    )
+    assert result.checkpoint_deploy_config.compute.memory == truss_config.DEFAULT_MEMORY
+    assert result.checkpoint_deploy_config.compute.accelerator is None
 
 
 def test_prepare_checkpoint_deploy_complete_config(
