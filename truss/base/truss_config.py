@@ -50,6 +50,7 @@ def _is_numeric(number_like: str) -> bool:
 
 
 class Accelerator(str, enum.Enum):
+    B10 = "B10"
     T4 = "T4"
     L4 = "L4"
     A10G = "A10G"
