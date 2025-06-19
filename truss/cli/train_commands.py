@@ -65,7 +65,12 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
         job_id = job_resp["id"]
 
-        console.print("✨ Training job successfully created!", style="green")
+        if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
+            console.print(
+                "🟢 Training job is queued. Please wait for it to start.", style="green"
+            )
+        else:
+            console.print("✨ Training job successfully created!", style="green")
         console.print(
             f"🪵 View logs for your job via "
             f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
