@@ -630,6 +630,12 @@ class BasetenApi:
         )
         return resp_json
 
+    def recreate_training_job(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/recreate", body={}
+        )
+        return resp_json["training_job"]
+
     def list_training_job_checkpoints(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoints"

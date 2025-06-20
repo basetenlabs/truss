@@ -4,7 +4,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import click
 import rich
@@ -80,19 +80,37 @@ def display_training_jobs(
         display_training_job(job, remote_url, checkpoints_by_job_id.get(job["id"], []))
 
 
-def recreate_training_job(remote_provider: BasetenRemote, job_id: str) -> None:
-    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
-    if not jobs:
-        raise click.UsageError(f"No training job found with ID: {job_id}")
+def recreate_training_job(
+    remote_provider: BasetenRemote, job_id: Optional[str] = None
+) -> Dict[str, Any]:
+    jobs = []
+    if job_id:
+        jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+        if not jobs:
+            raise RuntimeError(f"No training job found with ID: {job_id}")
+    else:
+        # Find the latest active job if no job_id is provided
+        jobs = remote_provider.api.search_training_jobs(
+            statuses=ACTIVE_JOB_STATUSES,
+            order_by=[{"field": "created_at", "order": "desc"}],
+        )
+        if not jobs:
+            raise click.ClickException(
+                "No active training jobs found. Please start a job first or specify a job ID."
+            )
+
+        job_id = jobs[0]["id"]
+        confirm = inquirer.confirm(
+            message=f"Recreate training job from most recent active job {job_id}?",
+            default=False,
+        ).execute()
+
+        if not confirm:
+            raise click.UsageError("Training job not recreated.")
 
     project_id = jobs[0]["training_project"]["id"]
-
-    print(f"Recreating training job {job_id} in project {project_id}...")
-
-    # remote_provider.api.recreate_training_job(project_id, job_id)
-    console.print(f"Training job {job_id} recreated successfully.", style="green")
-
-    return jobs[0]
+    job_resp = remote_provider.api.recreate_training_job(project_id, job_id)
+    return job_resp
 
 
 def display_training_projects(projects: list[dict], remote_url: str) -> None:
