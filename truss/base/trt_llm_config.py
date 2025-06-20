@@ -476,29 +476,36 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
         """Validate that the build configuration is compatible with the v2 inference stack."""
         if self.inference_stack != InferenceStack.v2:
             return self
-        if not (
-            hasattr(context, "context")
-            and isinstance(context.context, dict)
-            and context.context.get("forbid_extra", "") != "forbid"
-        ):
-            allowed_modify_fields = [
-                "checkpoint_repository",
-                "quantization_type",
-                "quantization_config",
-            ]
 
-            build_settings = self.build.model_dump(exclude_unset=True)
+        allowed_modify_fields = [
+            "checkpoint_repository",
+            "quantization_type",
+            "quantization_config",
+        ]
 
-            for field in build_settings:
-                if field not in allowed_modify_fields:
-                    raise ValueError(
-                        f"Field trt_llm.build.{field} is not allowed to be set when using torchflow execution provider. "
-                        f"Allowed fields are: {', '.join(allowed_modify_fields)}."
-                        f"You did set: {build_settings}"
-                    )
+        build_settings = self.build.model_dump(exclude_unset=True)
+        build_settings_reference = TrussTRTLLMBuildConfiguration(
+            checkpoint_repository=CheckpointRepository(
+                source=CheckpointSource.HF, repo="", revision=None
+            ),
+            quantization_type=TrussTRTLLMQuantizationType.NO_QUANT,
+            quantization_config=TrussTRTQuantizationConfiguration(),
+        ).model_dump(exclude_unset=False)
+        for field in build_settings:
+            if (
+                field not in allowed_modify_fields
+                and build_settings[field] != build_settings_reference[field]
+            ):
+                raise ValueError(
+                    f"Field trt_llm.build.{field} is not allowed to be set when using v2 inference stack. "
+                )
 
-            runtime_v1_settings = self.runtime.model_dump(exclude_unset=True)
-            for field in runtime_v1_settings:
+        runtime_v1_settings = self.runtime.model_dump(exclude_unset=True)
+        runtime_reference = TrussTRTLLMRuntimeConfiguration().model_dump(
+            exclude_unset=False
+        )
+        for field in runtime_v1_settings:
+            if runtime_v1_settings[field] != runtime_reference[field]:
                 raise ValueError(
                     "Field trt_llm.runtime is not allowed to be set when using v2 inference stack. "
                     "Please use runtime_v2 instead."
