@@ -107,6 +107,7 @@ def recreate_training_job(
         job = _get_latest_job_by_job_id(remote_provider, job_id)
     else:
         job = _get_latest_active_job(remote_provider)
+        job_id = job["id"]
         confirm = inquirer.confirm(
             message=f"Recreate training job from most recent active job {job_id}?",
             default=False,
