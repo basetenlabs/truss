@@ -28,6 +28,7 @@ from truss.base.constants import (
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
+    INFERENCE_STACK_V2_LLM_BASE_IMAGE,
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -39,7 +40,6 @@ from truss.base.constants import (
     SUPPORTED_PYTHON_VERSIONS,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TORCHFLOW_TRTLLM_BASE_IMAGE,
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
@@ -387,11 +387,11 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
-    def prepare_trtllm_torchflow_build_dir(self, build_dir: Path):
-        """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
+    def prepare_trtllm_inference_stack_v2_build_dir(self, build_dir: Path):
+        """prepares the build directory inference_stack v2 tensorrt-llm model"""
         config = self._spec.config
-        assert config.trt_llm and config.trt_llm.execution_runtime == "torchflow", (
-            "prepare_trtllm_torchflow_build_dir should only be called for torchflow tensorrt-llm model"
+        assert config.trt_llm and config.trt_llm.inference_stack == "v2", (
+            "prepare_trtllm_inference_stack_v2_build_dir should only be called for inference_stack v2 tensorrt-llm model"
         )
         self._spec.config.docker_server = DockerServer(
             start_command="/workspace/trtllm/standalone/launch.sh",
@@ -409,13 +409,9 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / CONFIG_FILE, build_dir / "standalone/truss_config.yaml"
         )
 
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `TORCHFLOW_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        # if not (config.base_image and config.base_image.image.startswith("baseten/")):
         config.base_image = BaseImage(
-            image=TORCHFLOW_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
+            image=INFERENCE_STACK_V2_LLM_BASE_IMAGE,
+            python_executable_path="/usr/bin/python3",
         )
 
     def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
@@ -427,6 +423,9 @@ class ServingImageBuilder(ImageBuilder):
             and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
         ), (
             "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER tensorrt-llm model"
+        )
+        assert config.trt_llm.inference_stack == "v1", (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for inference_stack v1 tensorrt-llm model"
         )
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # runtime batch size may not be higher than what the build settings of the model allow
@@ -549,14 +548,15 @@ class ServingImageBuilder(ImageBuilder):
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None
         ):
-            if config.trt_llm.execution_runtime == "torchflow":
-                # Run the specific torchflow build
-                self.prepare_trtllm_torchflow_build_dir(build_dir=build_dir)
-            elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
-                # Run the specific encoder build
-                self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
-            else:
-                self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
+            if config.trt_llm.inference_stack == "v2":
+                # Run the specific inference_stack v2 build
+                self.prepare_trtllm_inference_stack_v2_build_dir(build_dir=build_dir)
+            elif config.trt_llm.inference_stack == "v1":
+                if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
+                    # Run the specific encoder build
+                    self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
+                else:
+                    self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
         if config.docker_server is not None:
             self._copy_into_build_dir(
