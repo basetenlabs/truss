@@ -786,7 +786,7 @@ def trtllm_config_v2(default_config) -> Dict[str, Any]:
             "quantization_type": "fp8",
             "quantization_config": {"calib_size": 1024},
         },
-        "runtime_v2": {"max_seq_len": 2048, "max_batch_size": 512},
+        "runtime": {"max_seq_len": 2048, "max_batch_size": 512},
         "inference_stack": "v2",
     }
     return trtllm_config
