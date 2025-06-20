@@ -109,7 +109,7 @@ def recreate_training_job(
             raise click.UsageError("Training job not recreated.")
 
     project_id = jobs[0]["training_project"]["id"]
-    job_resp = remote_provider.api.recreate_training_job(project_id, job_id)
+    job_resp = remote_provider.api.recreate_training_job(project_id, job_id) # type: ignore[arg-type]
     return job_resp
 
 
