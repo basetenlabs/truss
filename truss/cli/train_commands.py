@@ -25,6 +25,20 @@ def train():
 truss_cli.add_command(train)
 
 
+def _print_training_job_success_message(
+    job_id: str, remote_provider: BasetenRemote
+) -> None:
+    """Print success message and helpful commands for a training job."""
+    console.print("✨ Training job successfully created!", style="green")
+    console.print(
+        f"🪵 View logs for your job via "
+        f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
+        f"🔍 View metrics for your job via "
+        f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+        f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
+    )
+
+
 def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     """create new click context for invoking a command via f.invoke(ctx)"""
     current_ctx = click.get_current_context()
@@ -65,14 +79,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
         job_id = job_resp["id"]
 
-        console.print("✨ Training job successfully created!", style="green")
-        console.print(
-            f"🪵 View logs for your job via "
-            f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
-            f"🔍 View metrics for your job via "
-            f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
-            f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
-        )
+        _print_training_job_success_message(job_id, remote_provider)
 
     if tail:
         project_id, job_id = project_resp["id"], job_resp["id"]
@@ -83,10 +90,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
 @train.command(name="recreate")
 @click.option(
-    "--job-id",
-    type=str,
-    required=False,
-    help="Existing Job ID of Training Job to recreate",
+    "--job-id", type=str, required=False, help="Job ID of Training Job to recreate"
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after recreation.")
@@ -100,21 +104,14 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    console.print("Creating training job...", style="bold")
+    console.print("Recreating training job...", style="bold")
     job_resp = train_cli.recreate_training_job(
         remote_provider=remote_provider, job_id=job_id
     )
 
     project_id, recreated_job_id = job_resp["training_project"]["id"], job_resp["id"]
 
-    console.print("✨ Training job successfully created!", style="green")
-    console.print(
-        f"🪵 View logs for your job via "
-        f"[cyan]'truss train logs --job-id {recreated_job_id} [--tail]'[/cyan]\n"
-        f"🔍 View metrics for your job via "
-        f"[cyan]'truss train metrics --job-id {recreated_job_id}'[/cyan]\n"
-        f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, recreated_job_id))}"
-    )
+    _print_training_job_success_message(recreated_job_id, remote_provider)
 
     if tail:
         watcher = TrainingLogWatcher(remote_provider.api, project_id, recreated_job_id)

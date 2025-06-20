@@ -27,6 +27,25 @@ ACTIVE_JOB_STATUSES = [
 ]
 
 
+def _get_latest_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        raise RuntimeError(f"No training job found with ID: {job_id}")
+    return jobs[0]
+
+
+def _get_latest_active_job(remote_provider: BasetenRemote) -> dict:
+    jobs = remote_provider.api.search_training_jobs(
+        statuses=ACTIVE_JOB_STATUSES,
+        order_by=[{"field": "created_at", "order": "desc"}],
+    )
+    if not jobs:
+        raise click.ClickException(
+            "No active training jobs found. Please start a job first or specify a job ID."
+        )
+    return jobs[0]
+
+
 def get_args_for_stop(
     remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ) -> Tuple[str, str]:
@@ -83,23 +102,11 @@ def display_training_jobs(
 def recreate_training_job(
     remote_provider: BasetenRemote, job_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    jobs = []
+    job: dict
     if job_id:
-        jobs = remote_provider.api.search_training_jobs(job_id=job_id)
-        if not jobs:
-            raise RuntimeError(f"No training job found with ID: {job_id}")
+        job = _get_latest_job_by_job_id(remote_provider, job_id)
     else:
-        # Find the latest active job if no job_id is provided
-        jobs = remote_provider.api.search_training_jobs(
-            statuses=ACTIVE_JOB_STATUSES,
-            order_by=[{"field": "created_at", "order": "desc"}],
-        )
-        if not jobs:
-            raise click.ClickException(
-                "No active training jobs found. Please start a job first or specify a job ID."
-            )
-
-        job_id = jobs[0]["id"]
+        job = _get_latest_active_job(remote_provider)
         confirm = inquirer.confirm(
             message=f"Recreate training job from most recent active job {job_id}?",
             default=False,
@@ -108,8 +115,9 @@ def recreate_training_job(
         if not confirm:
             raise click.UsageError("Training job not recreated.")
 
-    project_id = jobs[0]["training_project"]["id"]
-    job_resp = remote_provider.api.recreate_training_job(project_id, job_id)  # type: ignore[arg-type]
+    project_id = job["training_project"]["id"]
+    job_id = job["id"]
+    job_resp = remote_provider.api.recreate_training_job(project_id, job_id)  # type: ignore
     return job_resp
 
 
@@ -309,11 +317,9 @@ def download_training_job_data(
     output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
-    if not jobs:
-        raise RuntimeError(f"No training job found with ID: {job_id}")
+    job = _get_latest_job_by_job_id(remote_provider, job_id)
 
-    project = jobs[0]["training_project"]
+    project = job["training_project"]
     project_id = project["id"]
     project_name = project["name"]
 
@@ -352,33 +358,23 @@ def download_checkpoint_artifacts(
     remote_provider: BasetenRemote, job_id: Optional[str]
 ) -> Path:
     output_dir = Path.cwd()
+    job: dict
 
-    jobs = []
     if job_id:
-        jobs = remote_provider.api.search_training_jobs(job_id=job_id)
-        if not jobs:
-            raise RuntimeError(f"No training job found with ID: {job_id}")
+        job = _get_latest_job_by_job_id(remote_provider, job_id)
     else:
-        jobs = remote_provider.api.search_training_jobs(
-            statuses=ACTIVE_JOB_STATUSES,
-            order_by=[{"field": "created_at", "order": "desc"}],
-        )
-        if not jobs:
-            raise click.ClickException(
-                "No active training jobs found. Please start a job first or specify a job ID."
-            )
+        job = _get_latest_active_job(remote_provider)
 
-        latest_job_id: str = jobs[0]["id"]
-        job_id = latest_job_id
-
-    job = jobs[0]
+    job_id = job["id"]
     project = job["training_project"]
     project_id = project["id"]
     project_name = project["name"]
 
     checkpoint_artifacts = (
         remote_provider.api.get_training_job_checkpoint_presigned_url(
-            project_id=project_id, job_id=job_id, page_size=1000
+            project_id=project_id,
+            job_id=job_id,
+            page_size=1000,  # type: ignore
         )
     )
 
