@@ -374,8 +374,8 @@ def download_checkpoint_artifacts(
     checkpoint_artifacts = (
         remote_provider.api.get_training_job_checkpoint_presigned_url(
             project_id=project_id,
-            job_id=job_id, # type: ignore
-            page_size=1000,  
+            job_id=job_id,  # type: ignore
+            page_size=1000,
         )
     )
 
