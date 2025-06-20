@@ -20,6 +20,29 @@ def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
     assert config.inference_stack == "v1"
 
 
+def test_trt_llm_config_init_from_pydantic_models_v1(trtllm_config):
+    build_config = TrussTRTLLMBuildConfiguration(**trtllm_config["trt_llm"]["build"])
+    config = TRTLLMConfiguration(
+        build=build_config, runtime=TrussTRTLLMRuntimeConfiguration()
+    )
+    config_py = config.model_dump(exclude_unset=True)
+    assert config_py["inference_stack"] == "v1"
+    assert config.inference_stack == "v1"
+
+    config_roundtrip = TRTLLMConfiguration(**config_py)
+    assert config_roundtrip.inference_stack == "v1"
+
+
+def test_trt_llm_config_init_from_pydantic_models_v2(trtllm_config_v2):
+    config = TRTLLMConfiguration(**trtllm_config_v2["trt_llm"])
+    config_py = config.model_dump(exclude_unset=True)
+    assert config_py["inference_stack"] == "v2"
+    assert config.inference_stack == "v2"
+
+    config_roundtrip = TRTLLMConfiguration(**config_py)
+    assert config_roundtrip.inference_stack == "v2"
+
+
 def test_trt_llm_config_v2(trtllm_config_v2):
     config = TRTLLMConfiguration(**trtllm_config_v2["trt_llm"])
     assert config.build.checkpoint_repository.repo == "meta/llama4-500B"
