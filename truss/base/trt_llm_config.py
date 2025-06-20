@@ -459,6 +459,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
     bei_image: str
     briton_image: str
+    v2_llm_image: str = "no-set-image"  # TODO: remove default once billip is up.
 
 
 class TRTLLMConfiguration(PydanticTrTBaseModel):
@@ -489,6 +490,7 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
                 raise ValueError(
                     f"Field trt_llm.build.{field} is not allowed to be set when using torchflow execution provider. "
                     f"Allowed fields are: {', '.join(allowed_modify_fields)}."
+                    f"You did set: {build_settings}"
                 )
 
         runtime_v1_settings = self.runtime.model_dump(exclude_unset=True)
@@ -507,7 +509,6 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
             raise ValueError(
                 "Runtime v2 is not supported with v1 inference stack. Please use v2."
             )
-
         return self
 
     def model_post_init(self, __context):
@@ -572,7 +573,10 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
     from truss.base import constants, truss_config
 
     if config.trt_llm:
-        if config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER:
+        if (
+            config.trt_llm.inference_stack == InferenceStack.v1
+            and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+        ):
             current_tags = config.model_metadata.get("tags", [])
             if (
                 constants.OPENAI_COMPATIBLE_TAG in current_tags
@@ -650,20 +654,21 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
                 "FP4 quantization is only supported on B200 / Blackwell "
                 "accelerators or newer (CUDA_COMPUTE>=100)"
             )
-        world_size = (
-            config.trt_llm.build.tensor_parallel_count
-            * config.trt_llm.build.pipeline_parallel_count
-            * config.trt_llm.build.sequence_parallel_count
-        )
-
-        if world_size != config.resources.accelerator.count:
-            raise ValueError(
-                "Tensor parallelism and GPU count must be the same for TRT-LLM"
-                f"You have set tensor_parallel_count={config.trt_llm.build.tensor_parallel_count}, "
-                f"pipeline_parallel_count={config.trt_llm.build.pipeline_parallel_count}, "
-                f"sequence_parallel_count={config.trt_llm.build.sequence_parallel_count} "
-                f"== world_size->{world_size} "
-                f"and accelerator.count={config.resources.accelerator.count}. "
+        if config.trt_llm.inference_stack == InferenceStack.v1:
+            world_size = (
+                config.trt_llm.build.tensor_parallel_count
+                * config.trt_llm.build.pipeline_parallel_count
+                * config.trt_llm.build.sequence_parallel_count
             )
+
+            if world_size != config.resources.accelerator.count:
+                raise ValueError(
+                    "Tensor parallelism and GPU count must be the same for TRT-LLM"
+                    f"You have set tensor_parallel_count={config.trt_llm.build.tensor_parallel_count}, "
+                    f"pipeline_parallel_count={config.trt_llm.build.pipeline_parallel_count}, "
+                    f"sequence_parallel_count={config.trt_llm.build.sequence_parallel_count} "
+                    f"== world_size->{world_size} "
+                    f"and accelerator.count={config.resources.accelerator.count}. "
+                )
 
     return config

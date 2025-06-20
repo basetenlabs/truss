@@ -29,14 +29,16 @@ def _fill_trt_llm_versions(
     tr: truss_handle.TrussHandle, image_versions: trt_llm_config.ImageVersions
 ):
     assert tr.spec.config.trt_llm is not None
-    if (
+
+    if tr.spec.config.trt_llm.inference_stack == "v2":
+        print(f"Using Inference Stack v2 image: {image_versions.v2_llm_image}")
+        tr.set_base_image(image_versions.v2_llm_image, "/usr/bin/python3")
+    elif (
         tr.spec.config.trt_llm.build.base_model
         == trt_llm_config.TrussTRTLLMModel.ENCODER
     ):
         print(f"Using BEI image: {image_versions.bei_image}")
-        tr.set_base_image(
-            image_versions.bei_image, constants.BEI_TRTLLM_PYTHON_EXECUTABLE
-        )
+        tr.set_base_image(image_versions.bei_image, "/usr/bin/python3")
     else:
         print(f"Using Briton image: {image_versions.briton_image}")
         tr.set_base_image(

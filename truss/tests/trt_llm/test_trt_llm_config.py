@@ -38,12 +38,6 @@ def validate_incorrect_trt_llm_config_v2_runtime(trtllm_config, trtllm_config_v2
         TRTLLMConfiguration(**trtllm_config["trt_llm"])
 
 
-def validate_incorrect_trt_llm_config_build_v2(trtllm_config, trtllm_config_v2):
-    trtllm_config_v2["trt_llm"]["build"] = trtllm_config["trt_llm"]["build"]
-    with pytest.raises(Exception):
-        TRTLLMConfiguration(**trtllm_config_v2["trt_llm"])
-
-
 def raise_v2_v1(trtllm_config, trtllm_config_v2):
     with pytest.raises(Exception):
         trtllm_config["trt_llm"]["inference_stack"] = "v2"

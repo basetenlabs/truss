@@ -39,6 +39,8 @@ model_metadata:
 
     if uses_trt_llm_builder(tr):
         assert tr.spec.config.trt_llm is not None
+        if tr.spec.config.trt_llm.inference_stack == "v2":
+            return ("", False)
         if tr.spec.config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
             return ("", False)
         # only briton requires openai-compatible tag, all others don't care about the openai tag
