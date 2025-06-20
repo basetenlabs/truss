@@ -48,7 +48,11 @@ from truss.base.constants import (
     TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
-from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
+from truss.base.trt_llm_config import (
+    TRTLLMConfiguration,
+    TRTLLMConfigurationV1,
+    TrussTRTLLMModel,
+)
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     BaseImage,
@@ -425,16 +429,17 @@ class ServingImageBuilder(ImageBuilder):
         ), (
             "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER tensorrt-llm model"
         )
-        assert config.trt_llm.inference_stack == "v1", (
+        assert isinstance(config.trt_llm.root, TRTLLMConfigurationV1), (
             "prepare_trtllm_bei_encoder_build_dir should only be called for inference_stack v1 tensorrt-llm model"
         )
+        trt_llm_config: TRTLLMConfigurationV1 = config.trt_llm.root
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
-        runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
+        runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 32)
         # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
         runtime_max_batch_tokens = max(
-            config.trt_llm.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
+            trt_llm_config.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
         )
         port = 7997
         start_command = " ".join(
@@ -458,7 +463,7 @@ class ServingImageBuilder(ImageBuilder):
             start_command=f"/bin/sh -c '{start_command}'",
             server_port=port,
             # mount the following predict endpoint location
-            predict_endpoint=config.trt_llm.runtime.webserver_default_route
+            predict_endpoint=trt_llm_config.runtime.webserver_default_route
             or "/v1/embeddings",
             readiness_endpoint="/health",
             liveness_endpoint="/health",

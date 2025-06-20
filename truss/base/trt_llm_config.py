@@ -4,15 +4,18 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Dict, Literal, Optional, Union
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import (
     BaseModel,
+    Discriminator,
     Field,
     PydanticDeprecatedSince20,
+    RootModel,
     StringConstraints,
+    Tag,
     model_validator,
 )
 
@@ -157,7 +160,7 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     torchflow_config: str = ""
 
 
-class V2TRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
+class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=1048576)] = 8192
@@ -321,12 +324,6 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
             return self.speculator.num_draft_tokens
         return None
 
-    @property
-    def parsed_trt_llm_build_configs(self) -> list["TrussTRTLLMBuildConfiguration"]:
-        if self.speculator and self.speculator.build:
-            return [self, self.speculator.build]
-        return [self]
-
 
 class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
     speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
@@ -462,21 +459,71 @@ class ImageVersions(PydanticTrTBaseModel):
     v2_llm_image: str = "no-set-image"  # TODO: remove default once billip is up.
 
 
-class TRTLLMConfiguration(PydanticTrTBaseModel):
+class TRTLLMConfigurationV1(PydanticTrTBaseModel):
     build: TrussTRTLLMBuildConfiguration
-    inference_stack: InferenceStack = InferenceStack.v1
+    inference_stack: Literal[InferenceStack.v1] = InferenceStack.v1
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
-    runtime_v2: Optional[V2TRTLLMRuntimeConfiguration] = None
 
     # If versions are not set, the baseten backend will insert current defaults.
     version_overrides: VersionsOverrides = VersionsOverrides()
 
-    @model_validator(mode="after")
-    def validate_inference_stack_v2(self: "TRTLLMConfiguration", context):
-        """Validate that the build configuration is compatible with the v2 inference stack."""
-        if self.inference_stack != InferenceStack.v2:
-            return self
+    def model_post_init(self, __context):
+        """Post-initialization validation and adjustments."""
+        if (
+            self.runtime.enable_chunked_context
+            and (self.build.base_model != TrussTRTLLMModel.ENCODER)
+            and not (
+                self.build.plugin_configuration.use_paged_context_fmha
+                and self.build.plugin_configuration.paged_kv_cache
+            )
+        ):
+            raise ValueError(
+                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
+            )
 
+        if (
+            self.runtime.webserver_default_route is None
+            and self.build.base_model == TrussTRTLLMModel.ENCODER
+            and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
+        ):
+            # attemp to set the best possible default route client side.
+            try:
+                from transformers import AutoConfig
+
+                hf_cfg = AutoConfig.from_pretrained(
+                    self.build.checkpoint_repository.repo,
+                    revision=self.build.checkpoint_repository.revision,
+                )
+                # simple heuristic to set the default route
+                is_sequence_classification = (
+                    "ForSequenceClassification" in hf_cfg.architectures[0]
+                )
+                route = "/predict" if is_sequence_classification else "/v1/embeddings"
+                self.runtime = self.runtime.model_copy(
+                    update={"webserver_default_route": route}
+                )
+                logger.info(
+                    f"Setting default route to {route} for your encoder, as the model is a "
+                    + (
+                        "SequenceClassification Model."
+                        if is_sequence_classification
+                        else "Embeddings model."
+                    )
+                )
+            except Exception:
+                # access error, or any other issue
+                pass
+
+
+class TRTLLMConfigurationV2(PydanticTrTBaseModel):
+    inference_stack: Literal[InferenceStack.v2] = InferenceStack.v2
+    build: TrussTRTLLMBuildConfiguration
+    runtime: TRTLLMRuntimeConfigurationV2
+    version_overrides: VersionsOverrides = VersionsOverrides()
+
+    @model_validator(mode="after")
+    def validate_inference_stack_v2(self: "TRTLLMConfigurationV2", context):
+        """Validate that the build configuration is compatible with the v2 inference stack."""
         allowed_modify_fields = [
             "checkpoint_repository",
             "quantization_type",
@@ -500,186 +547,202 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
                     f"Field trt_llm.build.{field} is not allowed to be set when using v2 inference stack. "
                 )
 
-        runtime_v1_settings = self.runtime.model_dump(exclude_unset=True)
-        runtime_reference = TrussTRTLLMRuntimeConfiguration().model_dump(
-            exclude_unset=False
-        )
-        for field in runtime_v1_settings:
-            if runtime_v1_settings[field] != runtime_reference[field]:
-                raise ValueError(
-                    "Field trt_llm.runtime is not allowed to be set when using v2 inference stack. "
-                    "Please use runtime_v2 instead."
-                )
         return self
 
-    @model_validator(mode="after")
-    def validate_inference_stack_v1(self: "TRTLLMConfiguration", __context):
-        if self.inference_stack != InferenceStack.v1:
-            return self
-        if self.runtime_v2 is not None:
-            raise ValueError(
-                "Runtime v2 is not supported with v1 inference stack. Please use v2."
-            )
-        return self
 
-    def model_post_init(self, __context):
-        """Post-initialization validation and adjustments."""
-        if self.inference_stack == InferenceStack.v1:
-            if (
-                self.runtime.enable_chunked_context
-                and (self.build.base_model != TrussTRTLLMModel.ENCODER)
-                and not (
-                    self.build.plugin_configuration.use_paged_context_fmha
-                    and self.build.plugin_configuration.paged_kv_cache
-                )
-            ):
-                raise ValueError(
-                    "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
-                )
+def get_discriminator_value(v) -> str:
+    if isinstance(v, dict) and v.get("inference_stack"):
+        inference_stack = v["inference_stack"]
+        if isinstance(inference_stack, InferenceStack):
+            return inference_stack.value
+        elif isinstance(inference_stack, str):
+            return InferenceStack(inference_stack).value
+    elif hasattr(v, "inference_stack"):
+        inference_stack = v.inference_stack
+        if isinstance(inference_stack, InferenceStack):
+            return inference_stack.value
+        elif isinstance(inference_stack, str):
+            return InferenceStack(inference_stack).value
+    elif isinstance(v, dict):
+        return InferenceStack.v1.value
+    raise ValueError(
+        f"Invalid value for discriminator: {v}. Expected a dict with 'inference_stack' key."
+    )
 
-            if (
-                self.runtime.webserver_default_route is None
-                and self.build.base_model == TrussTRTLLMModel.ENCODER
-                and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
-            ):
-                # attemp to set the best possible default route client side.
-                try:
-                    from transformers import AutoConfig
 
-                    hf_cfg = AutoConfig.from_pretrained(
-                        self.build.checkpoint_repository.repo,
-                        revision=self.build.checkpoint_repository.revision,
-                    )
-                    # simple heuristic to set the default route
-                    is_sequence_classification = (
-                        "ForSequenceClassification" in hf_cfg.architectures[0]
-                    )
-                    route = (
-                        "/predict" if is_sequence_classification else "/v1/embeddings"
-                    )
-                    self.runtime = self.runtime.model_copy(
-                        update={"webserver_default_route": route}
-                    )
-                    logger.info(
-                        f"Setting default route to {route} for your encoder, as the model is a "
-                        + (
-                            "SequenceClassification Model."
-                            if is_sequence_classification
-                            else "Embeddings model."
-                        )
-                    )
-                except Exception:
-                    # access error, or any other issue
-                    pass
+class TRTLLMConfiguration(RootModel):
+    root: Annotated[
+        Union[
+            Annotated[TRTLLMConfigurationV1, Tag("v1")],
+            Annotated[TRTLLMConfigurationV2, Tag("v2")],
+        ],
+        Discriminator(get_discriminator_value),
+    ]
+
+    @property
+    def inference_stack(self) -> InferenceStack:
+        """Returns the inference stack of the configuration."""
+        return self.root.inference_stack
+
+    @property
+    def build(self) -> TrussTRTLLMBuildConfiguration:
+        """Returns the build configuration of the TRT-LLM."""
+        return self.root.build
+
+    @property
+    def runtime(
+        self,
+    ) -> Union[TrussTRTLLMRuntimeConfiguration, TRTLLMRuntimeConfigurationV2]:
+        """Returns the runtime configuration of the TRT-LLM."""
+        return self.root.runtime
+
+    @property
+    def version_overrides(self) -> VersionsOverrides:
+        """Returns the version overrides for the TRT-LLM configuration."""
+        return self.root.version_overrides
 
     @property
     def requires_build(self):
-        return self.build is not None
+        """depreacted, always true."""
+        return True
 
 
 def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
     # Inline importing truss_config, to avoid cycle. This dependency is a bit sketchy,
     # but we don't want this trt specific code to live in `truss.base` and we also don't
     # want to move `Accelerator` out of the truss config module.
-    from truss.base import constants, truss_config
+    if not config.trt_llm:
+        return config
+    elif isinstance(config.trt_llm.root, TRTLLMConfigurationV1):
+        trt_llm_common_validation(config)
+        return trt_llm_validation_v1(config)
+    elif isinstance(config.trt_llm.root, TRTLLMConfigurationV2):
+        # v2 inference stack does not require any validation, as it is fully compatible with the truss config.
+        # It is only used for the new inference stack, which is fully compatible with the old one.
+        trt_llm_common_validation(config)
+        return trt_llm_validation_v2(config)
+    else:
+        raise ValueError(
+            f"Unknown inference stack {config.trt_llm.inference_stack}. "
+            "Please use either InferenceStack.v1 or InferenceStack.v2."
+        )
 
-    if config.trt_llm:
-        if (
-            config.trt_llm.inference_stack == InferenceStack.v1
-            and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
-        ):
-            current_tags = config.model_metadata.get("tags", [])
-            if (
-                constants.OPENAI_COMPATIBLE_TAG in current_tags
-                and constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
-            ):
-                raise ValueError(
-                    f"TRT-LLM models should have either model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']. "
-                    f"Your current tags are both {current_tags}, which is invalid. Please remove one of the tags."
-                )
-            elif not (
-                constants.OPENAI_COMPATIBLE_TAG in current_tags
-                or constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
-            ):
-                # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
-                message = f"""TRT-LLM models should have model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] (or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']).
-                     Your current tags are {current_tags}, which is has neither option. We require a active choice to be made.
-                     For making the model compatible with OpenAI clients, we require to add the following to your config.
-                     ```yaml
-                     model_metadata:
-                     tags:
-                     - {constants.OPENAI_COMPATIBLE_TAG}
-                     # for legacy behavior set above line to the following, which will break OpenAI compatibility explicitly.
-                     # This was the old default behaviour if you used Baseten before March 19th 2025 or truss<=0.9.68
-                     # `- {constants.OPENAI_NON_COMPATIBLE_TAG}`
-                     ```
-                     """
-                if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
-                    raise ValueError(message)
-                else:
-                    logger.warning(message)
-            elif constants.OPENAI_NON_COMPATIBLE_TAG in current_tags:
-                logger.warning(
-                    f"Model is marked as {constants.OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI clients directly. "
-                    f"This is the deprecated legacy behavior, please update the tag to {constants.OPENAI_COMPATIBLE_TAG}."
-                )
 
+def trt_llm_common_validation(config: "TrussConfig"):
+    from truss.base import truss_config
+
+    assert config.trt_llm, "TRT-LLM configuration is required for TRT-LLM models"
+    trt_llm_config: TRTLLMConfigurationV1 | TRTLLMConfigurationV2 = config.trt_llm.root
+    if (
+        trt_llm_config.build.quantization_type
+        is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
+        and config.resources.accelerator.accelerator is truss_config.Accelerator.A100
+    ):
+        logger.warning(
+            "Weight only int8 quantization on A100 accelerators is not recommended."
+        )
+    if config.resources.accelerator.accelerator in [
+        truss_config.Accelerator.T4,
+        truss_config.Accelerator.V100,
+    ]:
+        raise ValueError(
+            "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs"
+            "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
+        )
+    elif trt_llm_config.build.quantization_type in [
+        TrussTRTLLMQuantizationType.FP8,
+        TrussTRTLLMQuantizationType.FP8_KV,
+        TrussTRTLLMQuantizationType.FP4,
+    ] and config.resources.accelerator.accelerator in [
+        truss_config.Accelerator.A10G,
+        truss_config.Accelerator.A100,
+        truss_config.Accelerator.A100_40GB,
+    ]:
+        raise ValueError(
+            "FP8 quantization is only supported on L4, H100, H200 "
+            "accelerators or newer (CUDA_COMPUTE>=89)"
+        )
+    elif trt_llm_config.build.quantization_type in [
+        TrussTRTLLMQuantizationType.FP4
+    ] and config.resources.accelerator.accelerator in [
+        truss_config.Accelerator.H100,
+        truss_config.Accelerator.L4,
+        truss_config.Accelerator.A100_40GB,
+    ]:
+        raise ValueError(
+            "FP4 quantization is only supported on B200 / Blackwell "
+            "accelerators or newer (CUDA_COMPUTE>=100)"
+        )
+
+
+def trt_llm_validation_v2(config: "TrussConfig") -> "TrussConfig":
+    assert config.trt_llm, "TRT-LLM configuration is required for TRT-LLM models"
+    assert isinstance(config.trt_llm.root, TRTLLMConfigurationV2), (
+        "TRT-LLM configuration must be of type TRTLLMConfigurationV2 for v2 inference stack"
+    )
+    return config
+
+
+def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
+    from truss.base import constants
+
+    assert config.trt_llm, "TRT-LLM configuration is required for TRT-LLM models"
+    assert isinstance(config.trt_llm.root, TRTLLMConfigurationV1), (
+        "TRT-LLM configuration must be of type TRTLLMConfigurationV1 for v1 inference stack"
+    )
+
+    trt_llm_config_v1: "TRTLLMConfigurationV1" = config.trt_llm.root
+    if trt_llm_config_v1.build.base_model != TrussTRTLLMModel.ENCODER:
+        current_tags = config.model_metadata.get("tags", [])
         if (
-            config.trt_llm.build.quantization_type
-            is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
-            and config.resources.accelerator.accelerator
-            is truss_config.Accelerator.A100
+            constants.OPENAI_COMPATIBLE_TAG in current_tags
+            and constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
         ):
+            raise ValueError(
+                f"TRT-LLM models should have either model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']. "
+                f"Your current tags are both {current_tags}, which is invalid. Please remove one of the tags."
+            )
+        elif not (
+            constants.OPENAI_COMPATIBLE_TAG in current_tags
+            or constants.OPENAI_NON_COMPATIBLE_TAG in current_tags
+        ):
+            # only check this in engine-builder for catching old truss pushes and force them adopt the new tag.
+            message = f"""TRT-LLM models should have model_metadata['tags'] = ['{constants.OPENAI_COMPATIBLE_TAG}'] (or ['{constants.OPENAI_NON_COMPATIBLE_TAG}']).
+                    Your current tags are {current_tags}, which is has neither option. We require a active choice to be made.
+                    For making the model compatible with OpenAI clients, we require to add the following to your config.
+                    ```yaml
+                    model_metadata:
+                    tags:
+                    - {constants.OPENAI_COMPATIBLE_TAG}
+                    # for legacy behavior set above line to the following, which will break OpenAI compatibility explicitly.
+                    # This was the old default behaviour if you used Baseten before March 19th 2025 or truss<=0.9.68
+                    # `- {constants.OPENAI_NON_COMPATIBLE_TAG}`
+                    ```
+                    """
+            if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
+                raise ValueError(message)
+            else:
+                logger.warning(message)
+        elif constants.OPENAI_NON_COMPATIBLE_TAG in current_tags:
             logger.warning(
-                "Weight only int8 quantization on A100 accelerators is not recommended."
-            )
-        if config.resources.accelerator.accelerator in [
-            truss_config.Accelerator.T4,
-            truss_config.Accelerator.V100,
-        ]:
-            raise ValueError(
-                "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs"
-                "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
-            )
-        elif config.trt_llm.build.quantization_type in [
-            TrussTRTLLMQuantizationType.FP8,
-            TrussTRTLLMQuantizationType.FP8_KV,
-            TrussTRTLLMQuantizationType.FP4,
-        ] and config.resources.accelerator.accelerator in [
-            truss_config.Accelerator.A10G,
-            truss_config.Accelerator.A100,
-            truss_config.Accelerator.A100_40GB,
-        ]:
-            raise ValueError(
-                "FP8 quantization is only supported on L4, H100, H200 "
-                "accelerators or newer (CUDA_COMPUTE>=89)"
-            )
-        elif config.trt_llm.build.quantization_type in [
-            TrussTRTLLMQuantizationType.FP4
-        ] and config.resources.accelerator.accelerator in [
-            truss_config.Accelerator.H100,
-            truss_config.Accelerator.L4,
-            truss_config.Accelerator.A100_40GB,
-        ]:
-            raise ValueError(
-                "FP4 quantization is only supported on B200 / Blackwell "
-                "accelerators or newer (CUDA_COMPUTE>=100)"
-            )
-        if config.trt_llm.inference_stack == InferenceStack.v1:
-            world_size = (
-                config.trt_llm.build.tensor_parallel_count
-                * config.trt_llm.build.pipeline_parallel_count
-                * config.trt_llm.build.sequence_parallel_count
+                f"Model is marked as {constants.OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI clients directly. "
+                f"This is the deprecated legacy behavior, please update the tag to {constants.OPENAI_COMPATIBLE_TAG}."
             )
 
-            if world_size != config.resources.accelerator.count:
-                raise ValueError(
-                    "Tensor parallelism and GPU count must be the same for TRT-LLM"
-                    f"You have set tensor_parallel_count={config.trt_llm.build.tensor_parallel_count}, "
-                    f"pipeline_parallel_count={config.trt_llm.build.pipeline_parallel_count}, "
-                    f"sequence_parallel_count={config.trt_llm.build.sequence_parallel_count} "
-                    f"== world_size->{world_size} "
-                    f"and accelerator.count={config.resources.accelerator.count}. "
-                )
+    world_size = (
+        trt_llm_config_v1.build.tensor_parallel_count
+        * trt_llm_config_v1.build.pipeline_parallel_count
+        * trt_llm_config_v1.build.sequence_parallel_count
+    )
+
+    if world_size != config.resources.accelerator.count:
+        raise ValueError(
+            "Tensor parallelism and GPU count must be the same for TRT-LLM"
+            f"You have set tensor_parallel_count={trt_llm_config_v1.build.tensor_parallel_count}, "
+            f"pipeline_parallel_count={trt_llm_config_v1.build.pipeline_parallel_count}, "
+            f"sequence_parallel_count={trt_llm_config_v1.build.sequence_parallel_count} "
+            f"== world_size->{world_size} "
+            f"and accelerator.count={config.resources.accelerator.count}. "
+        )
 
     return config
