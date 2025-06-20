@@ -42,10 +42,7 @@ def _print_training_job_success_message(
 def _handle_post_create_logic(
     job_resp: dict, remote_provider: BasetenRemote, tail: bool
 ) -> None:
-    job_id = job_resp["id"]
-    project_id = job_resp.get("training_project", {}).get("id") or job_resp.get(
-        "project_id"
-    )
+    project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
 
     if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
         console.print(
