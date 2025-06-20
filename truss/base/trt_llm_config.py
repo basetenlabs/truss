@@ -48,9 +48,9 @@ class TrussTRTLLMModel(str, Enum):
     WHISPER = "whisper"
 
 
-class ExecutionRuntime(str, Enum):
-    torchflow = "torchflow"
-    briton = "briton"
+class InferenceStack(str, Enum):
+    v1 = "v1"
+    v2 = "v2"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
@@ -155,6 +155,12 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
         Literal["/v1/embeddings", "/rerank", "/predict"]
     ] = None
     torchflow_config: str = ""
+
+
+class V2TRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
+    max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
+    max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
+    max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=1048576)] = 8192
 
 
 class TrussTRTLLMLoraConfiguration(PydanticTrTBaseModel):
@@ -457,64 +463,102 @@ class ImageVersions(PydanticTrTBaseModel):
 
 class TRTLLMConfiguration(PydanticTrTBaseModel):
     build: TrussTRTLLMBuildConfiguration
-    execution_runtime: ExecutionRuntime = ExecutionRuntime.briton
+    inference_stack: InferenceStack = InferenceStack.v1
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
+    runtime_v2: Optional[V2TRTLLMRuntimeConfiguration] = None
+
     # If versions are not set, the baseten backend will insert current defaults.
     version_overrides: VersionsOverrides = VersionsOverrides()
 
-    def model_post_init(self, __context):
-        self.add_bei_default_route()
-        self.chunked_context_fix()
+    @model_validator(mode="after")
+    def validate_inference_stack_v2(self: "TRTLLMConfiguration", __context):
+        """Validate that the build configuration is compatible with the v2 inference stack."""
+        if self.inference_stack != InferenceStack.v2:
+            return self
 
-    def chunked_context_fix(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
-        """check if there is an error wrt. runtime.enable_chunked_context"""
-        if (
-            self.runtime.enable_chunked_context
-            and (self.build.base_model != TrussTRTLLMModel.ENCODER)
-            and not (
-                self.build.plugin_configuration.use_paged_context_fmha
-                and self.build.plugin_configuration.paged_kv_cache
-            )
-        ):
+        allowed_modify_fields = [
+            "checkpoint_repository",
+            "quantization_type",
+            "quantization_config",
+        ]
+
+        build_settings = self.build.model_dump(exclude_unset=True)
+
+        for field in build_settings:
+            if field not in allowed_modify_fields:
+                raise ValueError(
+                    f"Field trt_llm.build.{field} is not allowed to be set when using torchflow execution provider. "
+                    f"Allowed fields are: {', '.join(allowed_modify_fields)}."
+                )
+
+        runtime_v1_settings = self.runtime.model_dump(exclude_unset=True)
+        for field in runtime_v1_settings:
             raise ValueError(
-                "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
+                "Field trt_llm.runtime is not allowed to be set when using torchflow execution provider. "
+                "Please use runtime_v2 instead."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_inference_stack_v1(self: "TRTLLMConfiguration", __context):
+        if self.inference_stack != InferenceStack.v1:
+            return self
+        if self.runtime_v2 is not None:
+            raise ValueError(
+                "Runtime v2 is not supported with v1 inference stack. Please use v2."
             )
 
         return self
 
-    def add_bei_default_route(self):
-        if (
-            self.runtime.webserver_default_route is None
-            and self.build.base_model == TrussTRTLLMModel.ENCODER
-            and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
-        ):
-            # attemp to set the best possible default route client side.
-            try:
-                from transformers import AutoConfig
+    def model_post_init(self, __context):
+        """Post-initialization validation and adjustments."""
+        if self.inference_stack == InferenceStack.v1:
+            if (
+                self.runtime.enable_chunked_context
+                and (self.build.base_model != TrussTRTLLMModel.ENCODER)
+                and not (
+                    self.build.plugin_configuration.use_paged_context_fmha
+                    and self.build.plugin_configuration.paged_kv_cache
+                )
+            ):
+                raise ValueError(
+                    "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
+                )
 
-                hf_cfg = AutoConfig.from_pretrained(
-                    self.build.checkpoint_repository.repo,
-                    revision=self.build.checkpoint_repository.revision,
-                )
-                # simple heuristic to set the default route
-                is_sequence_classification = (
-                    "ForSequenceClassification" in hf_cfg.architectures[0]
-                )
-                route = "/predict" if is_sequence_classification else "/v1/embeddings"
-                self.runtime = self.runtime.model_copy(
-                    update={"webserver_default_route": route}
-                )
-                logger.info(
-                    f"Setting default route to {route} for your encoder, as the model is a "
-                    + (
-                        "SequenceClassification Model."
-                        if is_sequence_classification
-                        else "Embeddings model."
+            if (
+                self.runtime.webserver_default_route is None
+                and self.build.base_model == TrussTRTLLMModel.ENCODER
+                and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
+            ):
+                # attemp to set the best possible default route client side.
+                try:
+                    from transformers import AutoConfig
+
+                    hf_cfg = AutoConfig.from_pretrained(
+                        self.build.checkpoint_repository.repo,
+                        revision=self.build.checkpoint_repository.revision,
                     )
-                )
-            except Exception:
-                # access error, or any other issue
-                pass
+                    # simple heuristic to set the default route
+                    is_sequence_classification = (
+                        "ForSequenceClassification" in hf_cfg.architectures[0]
+                    )
+                    route = (
+                        "/predict" if is_sequence_classification else "/v1/embeddings"
+                    )
+                    self.runtime = self.runtime.model_copy(
+                        update={"webserver_default_route": route}
+                    )
+                    logger.info(
+                        f"Setting default route to {route} for your encoder, as the model is a "
+                        + (
+                            "SequenceClassification Model."
+                            if is_sequence_classification
+                            else "Embeddings model."
+                        )
+                    )
+                except Exception:
+                    # access error, or any other issue
+                    pass
 
     @property
     def requires_build(self):

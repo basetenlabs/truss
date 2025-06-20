@@ -14,7 +14,43 @@ from truss.base.trt_llm_config import (
 
 def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
     build_config = TrussTRTLLMBuildConfiguration(**trtllm_config["trt_llm"]["build"])
-    TRTLLMConfiguration(build=build_config, runtime=TrussTRTLLMRuntimeConfiguration())
+    config = TRTLLMConfiguration(
+        build=build_config, runtime=TrussTRTLLMRuntimeConfiguration()
+    )
+    assert config.inference_stack == "v1"
+
+
+def test_trt_llm_config_v2(trtllm_config_v2):
+    config = TRTLLMConfiguration(**trtllm_config_v2["trt_llm"])
+    assert config.build.checkpoint_repository.repo == "meta/llama4-500B"
+    assert config.inference_stack == "v2"
+
+
+def validate_incorrect_trt_llm_config_runtime(trtllm_config, trtllm_config_v2):
+    trtllm_config["trt_llm"]["runtime_v2"] = trtllm_config_v2["trt_llm"]["runtime_v2"]
+    with pytest.raises(Exception):
+        TRTLLMConfiguration(**trtllm_config["trt_llm"])
+
+
+def validate_incorrect_trt_llm_config_v2_runtime(trtllm_config, trtllm_config_v2):
+    trtllm_config_v2["trt_llm"]["runtime"] = trtllm_config["trt_llm"]["runtime"]
+    with pytest.raises(Exception):
+        TRTLLMConfiguration(**trtllm_config["trt_llm"])
+
+
+def validate_incorrect_trt_llm_config_build_v2(trtllm_config, trtllm_config_v2):
+    trtllm_config_v2["trt_llm"]["build"] = trtllm_config["trt_llm"]["build"]
+    with pytest.raises(Exception):
+        TRTLLMConfiguration(**trtllm_config_v2["trt_llm"])
+
+
+def raise_v2_v1(trtllm_config, trtllm_config_v2):
+    with pytest.raises(Exception):
+        trtllm_config["trt_llm"]["inference_stack"] = "v2"
+        TRTLLMConfiguration(**trtllm_config["trt_llm"])
+    with pytest.raises(Exception):
+        trtllm_config_v2["trt_llm"]["inference_stack"] = "v1"
+        TRTLLMConfiguration(**trtllm_config_v2["trt_llm"])
 
 
 def test_trt_llm_config_init_with_lora(trtllm_config):
@@ -42,14 +78,11 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
     deprecated_trtllm_config,
 ):
     trt_llm_config = TRTLLMConfiguration(**deprecated_trtllm_config["trt_llm"])
-    assert trt_llm_config.runtime.model_dump() == {
+    assert trt_llm_config.runtime.model_dump(exclude_unset=True) == {
         "kv_cache_free_gpu_mem_fraction": 0.1,
-        "kv_cache_host_memory_bytes": None,
         "enable_chunked_context": True,
         "batch_scheduler_policy": "max_utilization",
         "request_default_max_tokens": 10,
-        "served_model_name": None,
-        "webserver_default_route": None,
         "total_token_limit": 100,
     }
 
