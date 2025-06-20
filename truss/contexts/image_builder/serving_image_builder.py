@@ -23,7 +23,6 @@ from truss.base.constants import (
     BEI_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_BASE_IMAGE,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
-    BEI_TRTLLM_PYTHON_EXECUTABLE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
@@ -409,10 +408,12 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / CONFIG_FILE, build_dir / "standalone/truss_config.yaml"
         )
 
-        config.base_image = BaseImage(
-            image=INFERENCE_STACK_V2_LLM_BASE_IMAGE,
-            python_executable_path="/usr/bin/python3",
-        )
+        # move off once flex-builds are enabled for inference_stack v2
+        if not (config.base_image and config.base_image.image.startswith("baseten/")):
+            config.base_image = BaseImage(
+                image=INFERENCE_STACK_V2_LLM_BASE_IMAGE,
+                python_executable_path="/usr/bin/python3",
+            )
 
     def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
@@ -472,8 +473,7 @@ class ServingImageBuilder(ImageBuilder):
             config.base_image and config.base_image.image.startswith("baseten/bei")
         ):
             config.base_image = BaseImage(
-                image=BEI_TRTLLM_BASE_IMAGE,
-                python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
+                image=BEI_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
             )
 
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):

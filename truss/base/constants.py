@@ -80,8 +80,6 @@ INFERENCE_STACK_V2_LLM_BASE_IMAGE = (
     "baseten/dynamo-cache-aware-routing:trtllm-gpu-ea9f7cb-725b8f2-eff071c4a5"
 )
 # TODO: build the image so that the default path `python3` can be used - then remove here.
-BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
-
 OPENAI_COMPATIBLE_TAG = "openai-compatible"
 OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecated - openai-compatible is now the default
 
