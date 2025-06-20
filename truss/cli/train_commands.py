@@ -79,7 +79,13 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
 
         job_id = job_resp["id"]
 
-        _print_training_job_success_message(job_id, remote_provider)
+        if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
+            console.print(
+                f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
+                style="green",
+            )
+        else:
+            _print_training_job_success_message(job_id, remote_provider)
 
     if tail:
         project_id, job_id = project_resp["id"], job_resp["id"]
