@@ -472,33 +472,37 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
     version_overrides: VersionsOverrides = VersionsOverrides()
 
     @model_validator(mode="after")
-    def validate_inference_stack_v2(self: "TRTLLMConfiguration", __context):
+    def validate_inference_stack_v2(self: "TRTLLMConfiguration", context):
         """Validate that the build configuration is compatible with the v2 inference stack."""
         if self.inference_stack != InferenceStack.v2:
             return self
+        if not (
+            hasattr(context, "context")
+            and isinstance(context.context, dict)
+            and context.context.get("forbid_extra", "") != "forbid"
+        ):
+            allowed_modify_fields = [
+                "checkpoint_repository",
+                "quantization_type",
+                "quantization_config",
+            ]
 
-        allowed_modify_fields = [
-            "checkpoint_repository",
-            "quantization_type",
-            "quantization_config",
-        ]
+            build_settings = self.build.model_dump(exclude_unset=True)
 
-        build_settings = self.build.model_dump(exclude_unset=True)
+            for field in build_settings:
+                if field not in allowed_modify_fields:
+                    raise ValueError(
+                        f"Field trt_llm.build.{field} is not allowed to be set when using torchflow execution provider. "
+                        f"Allowed fields are: {', '.join(allowed_modify_fields)}."
+                        f"You did set: {build_settings}"
+                    )
 
-        for field in build_settings:
-            if field not in allowed_modify_fields:
+            runtime_v1_settings = self.runtime.model_dump(exclude_unset=True)
+            for field in runtime_v1_settings:
                 raise ValueError(
-                    f"Field trt_llm.build.{field} is not allowed to be set when using torchflow execution provider. "
-                    f"Allowed fields are: {', '.join(allowed_modify_fields)}."
-                    f"You did set: {build_settings}"
+                    "Field trt_llm.runtime is not allowed to be set when using v2 inference stack. "
+                    "Please use runtime_v2 instead."
                 )
-
-        runtime_v1_settings = self.runtime.model_dump(exclude_unset=True)
-        for field in runtime_v1_settings:
-            raise ValueError(
-                "Field trt_llm.runtime is not allowed to be set when using torchflow execution provider. "
-                "Please use runtime_v2 instead."
-            )
         return self
 
     @model_validator(mode="after")
