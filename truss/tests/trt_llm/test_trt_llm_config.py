@@ -25,7 +25,7 @@ def test_trt_llm_config_init_from_pydantic_models_v1(trtllm_config):
     config = TRTLLMConfiguration(
         build=build_config, runtime=TrussTRTLLMRuntimeConfiguration()
     )
-    config_py = config.model_dump(exclude_unset=True)
+    config_py = config.model_dump(exclude_unset=False)
     assert config_py["inference_stack"] == "v1"
     assert config.inference_stack == "v1"
 
@@ -35,7 +35,7 @@ def test_trt_llm_config_init_from_pydantic_models_v1(trtllm_config):
 
 def test_trt_llm_config_init_from_pydantic_models_v2(trtllm_config_v2):
     config = TRTLLMConfiguration(**trtllm_config_v2["trt_llm"])
-    config_py = config.model_dump(exclude_unset=True)
+    config_py = config.model_dump(exclude_unset=False)
     assert config_py["inference_stack"] == "v2"
     assert config.inference_stack == "v2"
 
