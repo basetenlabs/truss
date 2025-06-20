@@ -486,7 +486,7 @@ class TRTLLMConfiguration(PydanticTrTBaseModel):
         build_settings = self.build.model_dump(exclude_unset=True)
         build_settings_reference = TrussTRTLLMBuildConfiguration(
             checkpoint_repository=CheckpointRepository(
-                source=CheckpointSource.HF, repo="", revision=None
+                source=CheckpointSource.HF, repo="michael/any", revision=None
             ),
             quantization_type=TrussTRTLLMQuantizationType.NO_QUANT,
             quantization_config=TrussTRTQuantizationConfiguration(),
