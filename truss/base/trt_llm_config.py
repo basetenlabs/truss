@@ -563,6 +563,8 @@ def get_discriminator_value(v) -> str:
             return inference_stack.value
         elif isinstance(inference_stack, str):
             return InferenceStack(inference_stack).value
+    elif isinstance(v, dict):
+        return InferenceStack.v1.value
     raise ValueError(
         f"Invalid value for discriminator: {v}. Expected a dict with 'inference_stack' key."
     )
