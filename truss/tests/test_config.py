@@ -729,7 +729,7 @@ def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
     quant_format, accelerator, expectation, custom_model_trt_llm
 ):
     config = TrussHandle(custom_model_trt_llm).spec.config
-    config.trt_llm.root.build.quantization_type = quant_format
+    config.trt_llm.build.quantization_type = quant_format
     config.resources.accelerator.accelerator = accelerator
     with expectation:
         TrussConfig.model_validate(config.to_dict())

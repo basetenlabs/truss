@@ -412,7 +412,7 @@ def custom_model_trt_llm_stack_v2(tmp_path):
                         "repo": "meta/llama4-500B",
                     }
                 },
-                "runtime_v2": {"max_seq_len": 2048},
+                "runtime": {"max_seq_len": 2048},
                 "inference_stack": "v2",
             }
             content["resources"] = {"accelerator": "H100:1"}

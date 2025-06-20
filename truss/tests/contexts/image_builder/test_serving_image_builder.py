@@ -408,7 +408,7 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         )
 
 
-def test_trt_llm_torchflow_build_dir(custom_model_trt_llm_stack_v2):
+def test_trt_llm_stackv2_build_dir(custom_model_trt_llm_stack_v2):
     th = TrussHandle(custom_model_trt_llm_stack_v2)
     builder_context = ServingImageBuilderContext
     image_builder = builder_context.run(th.spec.truss_dir)
