@@ -90,8 +90,7 @@ class TestRecreateTrainingJob:
 
             # Verify the API calls
             mock_remote.api.search_training_jobs.assert_called_once_with(
-                statuses=train_cli.ACTIVE_JOB_STATUSES,
-                order_by=[{"field": "created_at", "order": "desc"}],
+                order_by=[{"field": "created_at", "order": "desc"}]
             )
             mock_remote.api.recreate_training_job.assert_called_once_with(
                 "project_456", "test_job_123"
@@ -102,7 +101,10 @@ class TestRecreateTrainingJob:
         mock_remote.api.search_training_jobs.return_value = []
 
         # Should raise ClickException when no active jobs found
-        with pytest.raises(click.ClickException, match="No active training jobs found"):
+        with pytest.raises(
+            click.ClickException,
+            match="No training jobs found. Please start a job first.",
+        ):
             train_cli.recreate_training_job(remote_provider=mock_remote)
 
     def test_recreate_training_job_without_job_id_user_cancels(self, mock_remote):
