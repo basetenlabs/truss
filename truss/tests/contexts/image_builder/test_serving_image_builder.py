@@ -408,8 +408,8 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         )
 
 
-def test_trt_llm_torchflow_build_dir(custom_model_trt_llm_torchflow):
-    th = TrussHandle(custom_model_trt_llm_torchflow)
+def test_trt_llm_torchflow_build_dir(custom_model_trt_llm_stack_v2):
+    th = TrussHandle(custom_model_trt_llm_stack_v2)
     builder_context = ServingImageBuilderContext
     image_builder = builder_context.run(th.spec.truss_dir)
     with TemporaryDirectory() as tmp_dir:
@@ -424,7 +424,9 @@ def test_trt_llm_torchflow_build_dir(custom_model_trt_llm_torchflow):
         yaml_config = tmp_path / "config.yaml"
         assert yaml_config.exists(), "config.yaml not found in build directory"
         config_yaml = yaml.safe_load(yaml_config.read_text())
-        assert config_yaml["trt_llm"]["execution_runtime"] == "torchflow"
+        assert config_yaml["trt_llm"]["inference_stack"] == "v2", (
+            "Inference stack v2 not set in config.yaml"
+        )
 
 
 def _assert_copied(src_path: str, dest_path: str):

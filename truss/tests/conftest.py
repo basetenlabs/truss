@@ -402,25 +402,18 @@ def custom_model_trt_llm(tmp_path):
 
 
 @pytest.fixture
-def custom_model_trt_llm_torchflow(tmp_path):
+def custom_model_trt_llm_stack_v2(tmp_path):
     def modify_handle(h: TrussHandle):
         with _modify_yaml(h.spec.config_path) as content:
             content["trt_llm"] = {
                 "build": {
-                    "max_seq_len": 2048,
-                    "max_batch_size": 512,
                     "checkpoint_repository": {
                         "source": "HF",
                         "repo": "meta/llama4-500B",
-                    },
+                    }
                 },
-                "runtime": {
-                    "kv_cache_free_gpu_mem_fraction": 0.9,
-                    "kv_cache_host_memory_bytes": 1000,
-                    "enabled_chunked_context": True,
-                    "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT.value,
-                },
-                "execution_runtime": "torchflow",
+                "runtime_v2": {"max_seq_len": 2048},
+                "inference_stack": "v2",
             }
             content["resources"] = {"accelerator": "H100:1"}
 
