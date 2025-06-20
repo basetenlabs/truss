@@ -27,22 +27,19 @@ ACTIVE_JOB_STATUSES = [
 ]
 
 
-def _get_latest_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
+def _get_job_by_job_id(remote_provider: BasetenRemote, job_id: str) -> dict:
     jobs = remote_provider.api.search_training_jobs(job_id=job_id)
     if not jobs:
         raise RuntimeError(f"No training job found with ID: {job_id}")
     return jobs[0]
 
 
-def _get_latest_active_job(remote_provider: BasetenRemote) -> dict:
+def _get_latest_job(remote_provider: BasetenRemote) -> dict:
     jobs = remote_provider.api.search_training_jobs(
-        statuses=ACTIVE_JOB_STATUSES,
-        order_by=[{"field": "created_at", "order": "desc"}],
+        order_by=[{"field": "created_at", "order": "desc"}]
     )
     if not jobs:
-        raise click.ClickException(
-            "No active training jobs found. Please start a job first or specify a job ID."
-        )
+        raise click.ClickException("No training jobs found. Please start a job first.")
     return jobs[0]
 
 
@@ -104,9 +101,9 @@ def recreate_training_job(
 ) -> Dict[str, Any]:
     job: dict
     if job_id:
-        job = _get_latest_job_by_job_id(remote_provider, job_id)
+        job = _get_job_by_job_id(remote_provider, job_id)
     else:
-        job = _get_latest_active_job(remote_provider)
+        job = _get_latest_job(remote_provider)
         job_id = job["id"]
         confirm = inquirer.confirm(
             message=f"Recreate training job from most recent active job {job_id}?",
@@ -318,7 +315,7 @@ def download_training_job_data(
     output_dir = Path(target_directory).resolve() if target_directory else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    job = _get_latest_job_by_job_id(remote_provider, job_id)
+    job = _get_job_by_job_id(remote_provider, job_id)
 
     project = job["training_project"]
     project_id = project["id"]
@@ -362,9 +359,9 @@ def download_checkpoint_artifacts(
     job: dict
 
     if job_id:
-        job = _get_latest_job_by_job_id(remote_provider, job_id)
+        job = _get_job_by_job_id(remote_provider, job_id)
     else:
-        job = _get_latest_active_job(remote_provider)
+        job = _get_latest_job(remote_provider)
 
     job_id = job["id"]
     project = job["training_project"]

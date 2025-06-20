@@ -39,6 +39,28 @@ def _print_training_job_success_message(
     )
 
 
+def _handle_post_create_logic(
+    job_resp: dict, remote_provider: BasetenRemote, tail: bool
+) -> None:
+    job_id = job_resp["id"]
+    project_id = job_resp.get("training_project", {}).get("id") or job_resp.get(
+        "project_id"
+    )
+
+    if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
+        console.print(
+            f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
+            style="green",
+        )
+    else:
+        _print_training_job_success_message(job_id, remote_provider)
+
+    if tail:
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
+
+
 def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     """create new click context for invoking a command via f.invoke(ctx)"""
     current_ctx = click.get_current_context()
@@ -77,21 +99,7 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
                 project_id=project_resp["id"], job=prepared_job
             )
 
-        job_id = job_resp["id"]
-
-        if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
-            console.print(
-                f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
-                style="green",
-            )
-        else:
-            _print_training_job_success_message(job_id, remote_provider)
-
-    if tail:
-        project_id, job_id = project_resp["id"], job_resp["id"]
-        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
-        for log in watcher.watch():
-            cli_log_utils.output_log(log)
+        _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
 @train.command(name="recreate")
@@ -115,14 +123,7 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
         remote_provider=remote_provider, job_id=job_id
     )
 
-    project_id, recreated_job_id = job_resp["training_project"]["id"], job_resp["id"]
-
-    _print_training_job_success_message(recreated_job_id, remote_provider)
-
-    if tail:
-        watcher = TrainingLogWatcher(remote_provider.api, project_id, recreated_job_id)
-        for log in watcher.watch():
-            cli_log_utils.output_log(log)
+    _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
 @train.command(name="logs")
