@@ -623,7 +623,7 @@ def trt_llm_validation(config: "TrussConfig") -> "TrussConfig":
         return trt_llm_validation_v2(config)
     else:
         raise ValueError(
-            f"Unknown inference stack {config.trt_llm.root.inference_stack}. "
+            f"Unknown inference stack {config.trt_llm.inference_stack}. "
             "Please use either InferenceStack.v1 or InferenceStack.v2."
         )
 
