@@ -39,6 +39,9 @@ class Extension:
         self._lazy_data_resolver = kwargs["lazy_data_resolver"]
         trt_llm_config = self._config.get("trt_llm")
         config = TRTLLMConfiguration(**trt_llm_config)
+        if hasattr(config, "root"):
+            # TODO: Remove after forward compatibility with old briton is met.
+            config = config.root
         self._lazy_data_resolver.block_until_download_complete()
         if (
             config.build.speculator is not None
