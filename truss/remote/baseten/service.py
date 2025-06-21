@@ -1,4 +1,5 @@
 import enum
+import logging
 import time
 import urllib.parse
 import warnings
@@ -15,6 +16,8 @@ from truss.truss_handle.truss_handle import TrussHandle
 
 # "classes created inside an enum will not become a member" -> intended here anyway.
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*enum.*")
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_STREAM_ENCODING = "utf-8"
 
@@ -177,4 +180,5 @@ class BasetenService(TrussService):
                 deployment = self._fetch_deployment()
                 yield deployment["status"]
             except requests.exceptions.RequestException:
+                logger.warning("Network error, unable to reach Baseten")
                 continue
