@@ -11,17 +11,19 @@ class Llama7BChainlet(chains.EngineBuilderLLMChainlet):
         options=chains.ChainletOptions(metadata={"tags": ["openai-compatible"]}),
     )
     engine_builder_config = trt_llm_config.TRTLLMConfiguration(
-        build=trt_llm_config.TrussTRTLLMBuildConfiguration(
-            base_model=trt_llm_config.TrussTRTLLMModel.LLAMA,
-            checkpoint_repository=trt_llm_config.CheckpointRepository(
-                source=trt_llm_config.CheckpointSource.HF,
-                repo="meta-llama/Llama-3.1-8B-Instruct",
+        root=trt_llm_config.TRTLLMConfigurationV1(
+            build=trt_llm_config.TrussTRTLLMBuildConfiguration(
+                base_model=trt_llm_config.TrussTRTLLMModel.DECODER,
+                checkpoint_repository=trt_llm_config.CheckpointRepository(
+                    source=trt_llm_config.CheckpointSource.HF,
+                    repo="meta-llama/Llama-3.1-8B-Instruct",
+                ),
+                max_batch_size=32,
+                max_seq_len=32678,
+                num_builder_gpus=1,
+                tensor_parallel_count=1,
             ),
-            max_batch_size=8,
-            max_beam_width=1,
-            max_seq_len=4096,
-            num_builder_gpus=1,
-            tensor_parallel_count=1,
+            inference_stack="v1",
         )
     )
 

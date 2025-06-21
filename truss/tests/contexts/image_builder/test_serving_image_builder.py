@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from truss.base.constants import (
     TRTLLM_BASE_IMAGE,
@@ -404,6 +405,27 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         assert (
             build_th.spec.config.base_image.python_executable_path
             == TRTLLM_PYTHON_EXECUTABLE
+        )
+
+
+def test_trt_llm_stackv2_build_dir(custom_model_trt_llm_stack_v2):
+    th = TrussHandle(custom_model_trt_llm_stack_v2)
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(th.spec.truss_dir)
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        # build_th = TrussHandle(tmp_path)
+
+        # # Check that all files were copied
+        # _assert_copied(
+        #     TRTLLM_TRUSS_DIR / "src", tmp_path / "server" / "extensions" / "trt_llm"
+        # )
+        yaml_config = tmp_path / "config.yaml"
+        assert yaml_config.exists(), "config.yaml not found in build directory"
+        config_yaml = yaml.safe_load(yaml_config.read_text())
+        assert config_yaml["trt_llm"]["inference_stack"] == "v2", (
+            "Inference stack v2 not set in config.yaml"
         )
 
 
