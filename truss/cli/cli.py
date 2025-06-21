@@ -676,7 +676,7 @@ def push(
                         sys.exit(1)
 
             except RemoteNetworkError:
-                console.print("Deployment failed: Could not reach remote.", style="red")
+                console.print("Could not reach remote.", style="red")
                 sys.exit(1)
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)

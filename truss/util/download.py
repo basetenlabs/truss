@@ -22,10 +22,6 @@ def download_external_data(external_data: Optional[ExternalData], data_dir: Path
     # ensure parent directories exist
     for item in external_data.items:
         path = data_dir / item.local_data_path
-        if data_dir not in path.parents:
-            raise ValueError(
-                "Local data path of external data cannot point to outside data directory"
-            )
         path.parent.mkdir(exist_ok=True, parents=True)
 
     if b10cp_path is not None:
