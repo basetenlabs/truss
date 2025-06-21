@@ -40,7 +40,7 @@ class ModelDeployment:
                 return True
 
             if deployment_status not in DEPLOYING_STATUSES:
-                raise Exception(f"Deployment failed with status: {deployment_status}")
+                raise ValueError(f"Deployment failed with status: {deployment_status}")
 
         raise RuntimeError("Error polling deployment status.")
 
