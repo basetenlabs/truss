@@ -40,7 +40,8 @@ class Extension:
         trt_llm_config = self._config.get("trt_llm")
         config = TRTLLMConfiguration(**trt_llm_config)
         if hasattr(config, "root"):
-            # TODO: Remove after forward compatibility with old briton is met.
+            # TODO(michael): Remove after forward compatibility with old briton is met.
+            # when truss >0.9.107 in briton is used.
             config = config.root
         self._lazy_data_resolver.block_until_download_complete()
         if (
