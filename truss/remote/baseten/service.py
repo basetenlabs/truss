@@ -180,5 +180,5 @@ class BasetenService(TrussService):
                 deployment = self._fetch_deployment()
                 yield deployment["status"]
             except requests.exceptions.RequestException:
-                logger.warning("Network error, unable to reach Baseten")
+                logger.warning("Network error, unable to reach Baseten. Retrying...")
                 continue
