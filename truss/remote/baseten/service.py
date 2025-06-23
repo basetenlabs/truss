@@ -1,4 +1,5 @@
 import enum
+import logging
 import time
 import urllib.parse
 import warnings
@@ -7,7 +8,6 @@ from typing import Any, Dict, Iterator, NamedTuple, Optional
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
 
-from truss.base.errors import RemoteNetworkError
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import ModelVersionHandle
@@ -16,6 +16,8 @@ from truss.truss_handle.truss_handle import TrussHandle
 
 # "classes created inside an enum will not become a member" -> intended here anyway.
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*enum.*")
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_STREAM_ENCODING = "utf-8"
 
@@ -178,4 +180,5 @@ class BasetenService(TrussService):
                 deployment = self._fetch_deployment()
                 yield deployment["status"]
             except requests.exceptions.RequestException:
-                raise RemoteNetworkError("Could not reach backend.")
+                logger.warning("Network error, unable to reach Baseten. Retrying...")
+                continue
