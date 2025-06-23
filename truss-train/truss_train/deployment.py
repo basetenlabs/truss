@@ -1,12 +1,14 @@
 import pathlib
+from pathlib import Path
 from typing import List
 
 from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import archive_dir
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils import transfer
-from truss_train.definitions import TrainingJob
+from truss_train.definitions import TrainingJob, TrainingProject
 
 
 class S3Artifact(SafeModel):
@@ -37,7 +39,6 @@ def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJo
         credentials["s3_key"],
         credentials["creds"],
     )
-
     return PreparedTrainingJob(
         image=training_job.image,
         runtime=training_job.runtime,
@@ -46,3 +47,16 @@ def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJo
             S3Artifact(s3_key=credentials["s3_key"], s3_bucket=credentials["s3_bucket"])
         ],
     )
+
+
+def create_training_job(
+    remote_provider: BasetenRemote, training_project: TrainingProject, config: Path
+) -> dict:
+    project_resp = remote_provider.api.upsert_training_project(
+        training_project=training_project
+    )
+    prepared_job = prepare_push(remote_provider.api, config, training_project.job)
+    job_resp = remote_provider.api.create_training_job(
+        project_id=project_resp["id"], job=prepared_job
+    )
+    return job_resp

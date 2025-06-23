@@ -85,15 +85,10 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
     )
     with loader.import_training_project(config) as training_project:
         with console.status("Creating training job...", spinner="dots"):
-            project_resp = remote_provider.api.upsert_training_project(
-                training_project=training_project
-            )
-
-            prepared_job = deployment.prepare_push(
-                remote_provider.api, config, training_project.job
-            )
-            job_resp = remote_provider.api.create_training_job(
-                project_id=project_resp["id"], job=prepared_job
+            job_resp = deployment.create_training_job(
+                remote_provider=remote_provider,
+                training_project=training_project,
+                config=config,
             )
 
         _handle_post_create_logic(job_resp, remote_provider, tail)
