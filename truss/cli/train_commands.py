@@ -25,6 +25,39 @@ def train():
 truss_cli.add_command(train)
 
 
+def _print_training_job_success_message(
+    job_id: str, remote_provider: BasetenRemote
+) -> None:
+    """Print success message and helpful commands for a training job."""
+    console.print("✨ Training job successfully created!", style="green")
+    console.print(
+        f"🪵 View logs for your job via "
+        f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
+        f"🔍 View metrics for your job via "
+        f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+        f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
+    )
+
+
+def _handle_post_create_logic(
+    job_resp: dict, remote_provider: BasetenRemote, tail: bool
+) -> None:
+    project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
+
+    if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
+        console.print(
+            f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
+            style="green",
+        )
+    else:
+        _print_training_job_success_message(job_id, remote_provider)
+
+    if tail:
+        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
+        for log in watcher.watch():
+            cli_log_utils.output_log(log)
+
+
 def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     """create new click context for invoking a command via f.invoke(ctx)"""
     current_ctx = click.get_current_context()
@@ -63,22 +96,31 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
                 project_id=project_resp["id"], job=prepared_job
             )
 
-        job_id = job_resp["id"]
+        _handle_post_create_logic(job_resp, remote_provider, tail)
 
-        console.print("✨ Training job successfully created!", style="green")
-        console.print(
-            f"🪵 View logs for your job via "
-            f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
-            f"🔍 View metrics for your job via "
-            f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
-            f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
-        )
 
-    if tail:
-        project_id, job_id = project_resp["id"], job_resp["id"]
-        watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
-        for log in watcher.watch():
-            cli_log_utils.output_log(log)
+@train.command(name="recreate")
+@click.option(
+    "--job-id", type=str, required=False, help="Job ID of Training Job to recreate"
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after recreation.")
+@common.common_options()
+def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bool):
+    """Recreate an existing training job from an existing job ID"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    console.print("Recreating training job...", style="bold")
+    job_resp = train_cli.recreate_training_job(
+        remote_provider=remote_provider, job_id=job_id
+    )
+
+    _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
 @train.command(name="logs")

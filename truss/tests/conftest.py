@@ -402,6 +402,30 @@ def custom_model_trt_llm(tmp_path):
 
 
 @pytest.fixture
+def custom_model_trt_llm_stack_v2(tmp_path):
+    def modify_handle(h: TrussHandle):
+        with _modify_yaml(h.spec.config_path) as content:
+            content["trt_llm"] = {
+                "build": {
+                    "checkpoint_repository": {
+                        "source": "HF",
+                        "repo": "meta/llama4-500B",
+                    }
+                },
+                "runtime": {"max_seq_len": 2048},
+                "inference_stack": "v2",
+            }
+            content["resources"] = {"accelerator": "H100:1"}
+
+    yield _custom_model_from_code(
+        tmp_path,
+        "my_trt_llm_model",
+        CUSTOM_MODEL_TRT_LLM_CODE,
+        handle_ops=modify_handle,
+    )
+
+
+@pytest.fixture
 def useless_file(tmp_path):
     f = tmp_path / "useless.py"
     f.write_text("")
@@ -742,6 +766,28 @@ def trtllm_config(default_config) -> Dict[str, Any]:
             "gather_all_token_logits": False,
         },
         "runtime": {},
+    }
+    return trtllm_config
+
+
+@pytest.fixture
+def trtllm_config_v2(default_config) -> Dict[str, Any]:
+    trtllm_config = default_config
+    trtllm_config["resources"] = {
+        "accelerator": Accelerator.L4.value,
+        "cpu": "1",
+        "memory": "24Gi",
+        "use_gpu": True,
+        "node_count": 1,
+    }
+    trtllm_config["trt_llm"] = {
+        "build": {
+            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
+            "quantization_type": "fp8",
+            "quantization_config": {"calib_size": 1024},
+        },
+        "runtime": {"max_seq_len": 2048, "max_batch_size": 512},
+        "inference_stack": "v2",
     }
     return trtllm_config
 

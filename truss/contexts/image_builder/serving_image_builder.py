@@ -23,11 +23,11 @@ from truss.base.constants import (
     BEI_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_BASE_IMAGE,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
-    BEI_TRTLLM_PYTHON_EXECUTABLE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
+    INFERENCE_STACK_V2_LLM_BASE_IMAGE,
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -48,7 +48,11 @@ from truss.base.constants import (
     TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
-from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
+from truss.base.trt_llm_config import (
+    TRTLLMConfiguration,
+    TRTLLMConfigurationV1,
+    TrussTRTLLMModel,
+)
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     BaseImage,
@@ -386,6 +390,35 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
+    def prepare_trtllm_inference_stack_v2_build_dir(self, build_dir: Path):
+        """prepares the build directory inference_stack v2 tensorrt-llm model"""
+        config = self._spec.config
+        assert config.trt_llm and config.trt_llm.inference_stack == "v2", (
+            "prepare_trtllm_inference_stack_v2_build_dir should only be called for inference_stack v2 tensorrt-llm model"
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command="/workspace/trtllm/standalone/launch.sh",
+            server_port=8000,
+            # mount the following predict endpoint location
+            predict_endpoint="/v1/chat/completions",
+            readiness_endpoint="/v1/models",
+            liveness_endpoint="/v1/models",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+        # TODO: copy truss config into build dir, by dumping truss config
+        # to config.yaml file in build dir.
+
+        copy_tree_path(
+            build_dir / CONFIG_FILE, build_dir / "standalone/truss_config.yaml"
+        )
+
+        # move off once flex-builds are enabled for inference_stack v2
+        if not (config.base_image and config.base_image.image.startswith("baseten/")):
+            config.base_image = BaseImage(
+                image=INFERENCE_STACK_V2_LLM_BASE_IMAGE,
+                python_executable_path="/usr/bin/python3",
+            )
+
     def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
         config = self._spec.config
@@ -396,13 +429,17 @@ class ServingImageBuilder(ImageBuilder):
         ), (
             "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER tensorrt-llm model"
         )
+        assert isinstance(config.trt_llm.root, TRTLLMConfigurationV1), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for inference_stack v1 tensorrt-llm model"
+        )
+        trt_llm_config: TRTLLMConfigurationV1 = config.trt_llm.root
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
-        runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
+        runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 32)
         # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
         runtime_max_batch_tokens = max(
-            config.trt_llm.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
+            trt_llm_config.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
         )
         port = 7997
         start_command = " ".join(
@@ -426,7 +463,7 @@ class ServingImageBuilder(ImageBuilder):
             start_command=f"/bin/sh -c '{start_command}'",
             server_port=port,
             # mount the following predict endpoint location
-            predict_endpoint=config.trt_llm.runtime.webserver_default_route
+            predict_endpoint=trt_llm_config.runtime.webserver_default_route
             or "/v1/embeddings",
             readiness_endpoint="/health",
             liveness_endpoint="/health",
@@ -441,8 +478,7 @@ class ServingImageBuilder(ImageBuilder):
             config.base_image and config.base_image.image.startswith("baseten/bei")
         ):
             config.base_image = BaseImage(
-                image=BEI_TRTLLM_BASE_IMAGE,
-                python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
+                image=BEI_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
             )
 
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
@@ -517,11 +553,15 @@ class ServingImageBuilder(ImageBuilder):
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None
         ):
-            if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
-                # Run the specific encoder build
-                self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
-            else:
-                self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
+            if config.trt_llm.inference_stack == "v2":
+                # Run the specific inference_stack v2 build
+                self.prepare_trtllm_inference_stack_v2_build_dir(build_dir=build_dir)
+            elif config.trt_llm.inference_stack == "v1":
+                if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
+                    # Run the specific encoder build
+                    self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
+                else:
+                    self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
         if config.docker_server is not None:
             self._copy_into_build_dir(

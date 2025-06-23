@@ -589,20 +589,18 @@ def push(
                 console.print(message_oai, style="red")
                 sys.exit(1)
 
-        for (
-            trt_llm_build_config
-        ) in tr.spec.config.trt_llm.build.parsed_trt_llm_build_configs:
-            if (
-                trt_llm_build_config.quantization_type
-                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-                and not trt_llm_build_config.num_builder_gpus
-            ):
-                fp8_and_num_builder_gpus_text = (
-                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
-                    "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
-                    "'num_builder_gpus' can be used to specify the number of GPUs to use at build time."
-                )
-                console.print(fp8_and_num_builder_gpus_text, style="yellow")
+        trt_llm_build_config = tr.spec.config.trt_llm.build
+        if (
+            trt_llm_build_config.quantization_type
+            in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+            and not trt_llm_build_config.num_builder_gpus
+        ):
+            fp8_and_num_builder_gpus_text = (
+                "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
+                "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
+                "'num_builder_gpus' can be used to specify the number of GPUs to use at build time."
+            )
+            console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
     source = Path(target_directory)
     # TODO(Abu): This needs to be refactored to be more generic
