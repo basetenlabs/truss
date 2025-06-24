@@ -439,6 +439,7 @@ class VersionsOverrides(PydanticTrTBaseModel):
     engine_builder_version: Optional[str] = None
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
+    v2_llm_version: Optional[str] = None
 
     @model_validator(mode="before")
     def version_must_start_with_number(cls, data):
@@ -456,7 +457,9 @@ class ImageVersions(PydanticTrTBaseModel):
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
     bei_image: str
     briton_image: str
-    v2_llm_image: str = "no-set-image"  # TODO: remove default once billip is up.
+    v2_llm_image: str = (
+        "baseten/dynamo-cache-aware-routing:trtllm-gpu-ea9f7cb-725b8f2-eff071c4a5"
+    )
 
 
 class TRTLLMConfigurationV1(PydanticTrTBaseModel):
