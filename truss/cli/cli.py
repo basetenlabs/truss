@@ -14,7 +14,6 @@ from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
-from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
 from truss.cli import remote_cli
@@ -649,35 +648,31 @@ def push(
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
-            try:
-                # Poll for the deployment status until we have reached. Either ACTIVE,
-                # or a non-deploying status (in which case the deployment has failed).
-                for deployment_status in service.poll_deployment_status():
-                    if (
-                        timeout_seconds is not None
-                        and time.time() - start_time > timeout_seconds
-                    ):
-                        console.print("Deployment timed out.", style="red")
-                        sys.exit(1)
+            # Poll for the deployment status until we have reached. Either ACTIVE,
+            # or a non-deploying status (in which case the deployment has failed).
+            for deployment_status in service.poll_deployment_status():
+                if (
+                    timeout_seconds is not None
+                    and time.time() - start_time > timeout_seconds
+                ):
+                    console.print("Deployment timed out.", style="red")
+                    sys.exit(1)
 
-                    status.update(
-                        f"[bold green]Deploying...Current Status: {deployment_status}"
+                status.update(
+                    f"[bold green]Deploying...Current Status: {deployment_status}"
+                )
+
+                if deployment_status == ACTIVE_STATUS:
+                    console.print("Deployment succeeded.", style="bold green")
+                    return
+
+                if deployment_status not in DEPLOYING_STATUSES:
+                    console.print(
+                        f"Deployment failed with status {deployment_status}.",
+                        style="red",
                     )
+                    sys.exit(1)
 
-                    if deployment_status == ACTIVE_STATUS:
-                        console.print("Deployment succeeded.", style="bold green")
-                        return
-
-                    if deployment_status not in DEPLOYING_STATUSES:
-                        console.print(
-                            f"Deployment failed with status {deployment_status}.",
-                            style="red",
-                        )
-                        sys.exit(1)
-
-            except RemoteNetworkError:
-                console.print("Deployment failed: Could not reach remote.", style="red")
-                sys.exit(1)
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
         log_watcher = ModelDeploymentLogWatcher(
