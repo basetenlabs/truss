@@ -63,7 +63,7 @@ def create_training_job(
     return job_resp
 
 
-def create_training_job_from_file(remote_provider: BasetenRemote, config: Path):
+def create_training_job_from_file(remote_provider: BasetenRemote, config: Path) -> dict:
     with loader.import_training_project(config) as training_project:
         job_resp = create_training_job(
             remote_provider=remote_provider,
