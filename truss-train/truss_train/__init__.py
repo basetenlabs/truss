@@ -5,7 +5,7 @@ from truss_train.definitions import (
     TrainingJob,
     TrainingProject,
 )
-from truss_train.public_api import push
+from truss_train.public_api import push, push_from_file
 
 __all__ = [
     "Compute",
@@ -14,4 +14,5 @@ __all__ = [
     "TrainingJob",
     "TrainingProject",
     "push",
+    "push_from_file",
 ]
