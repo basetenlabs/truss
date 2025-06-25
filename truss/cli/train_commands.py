@@ -75,21 +75,16 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
 @common.common_options()
 def push_training_job(config: Path, remote: Optional[str], tail: bool):
     """Run a training job"""
-    from truss_train import deployment, loader
+    from truss_train import deployment
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    remote_provider: BasetenRemote = cast(
-        BasetenRemote, RemoteFactory.create(remote=remote)
-    )
-    with loader.import_training_project(config) as training_project:
-        with console.status("Creating training job...", spinner="dots"):
-            job_resp = deployment.create_training_job(
-                remote_provider=remote_provider,
-                training_project=training_project,
-                config=config,
-            )
+    with console.status("Creating training job...", spinner="dots"):
+        remote_provider: BasetenRemote = cast(
+            BasetenRemote, RemoteFactory.create(remote=remote)
+        )
+        job_resp = deployment.create_training_job_from_file(remote_provider, config)
 
         _handle_post_create_logic(job_resp, remote_provider, tail)
 

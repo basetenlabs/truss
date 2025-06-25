@@ -43,7 +43,7 @@ class LazyDataResolverV2:
         self._lock = Lock()
         self._start_time = time.time()
         self.logger = logger or logging.getLogger(__name__)
-        self._is_collected_by_user = False
+        self._is_collected_by_user = not LAZY_DATA_RESOLVER_PATH.exists()
         thread = Thread(target=self._prefetch_in_thread, daemon=True)
         thread.start()
 
