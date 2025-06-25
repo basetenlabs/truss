@@ -5,5 +5,13 @@ from truss_train.definitions import (
     TrainingJob,
     TrainingProject,
 )
+from truss_train.public_api import push
 
-__all__ = ["Compute", "Runtime", "SecretReference", "TrainingJob", "TrainingProject"]
+__all__ = [
+    "Compute",
+    "Runtime",
+    "SecretReference",
+    "TrainingJob",
+    "TrainingProject",
+    "push",
+]

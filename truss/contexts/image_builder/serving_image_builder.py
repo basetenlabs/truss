@@ -27,7 +27,6 @@ from truss.base.constants import (
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
-    INFERENCE_STACK_V2_LLM_BASE_IMAGE,
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -411,13 +410,6 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(
             build_dir / CONFIG_FILE, build_dir / "standalone/truss_config.yaml"
         )
-
-        # move off once flex-builds are enabled for inference_stack v2
-        if not (config.base_image and config.base_image.image.startswith("baseten/")):
-            config.base_image = BaseImage(
-                image=INFERENCE_STACK_V2_LLM_BASE_IMAGE,
-                python_executable_path="/usr/bin/python3",
-            )
 
     def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
