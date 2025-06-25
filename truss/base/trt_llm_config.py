@@ -171,6 +171,11 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     @field_validator("config_kwargs", mode="after")
     @classmethod
     def validate_config_kwargs(cls, config):
+        if config:
+            logger.warning(
+                "trt_llm.runtime.config_kwargs is a preview feature. "
+                "Fields may change in the future."
+            )
         forbidden_keys = ["build_config"] + list(cls.__fields__)
         for key in forbidden_keys:
             if key in config:
