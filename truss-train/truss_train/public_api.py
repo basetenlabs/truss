@@ -4,7 +4,7 @@ from typing import cast
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss_train.definitions import TrainingProject
-from truss_train.deployment import create_training_job
+from truss_train.deployment import create_training_job, create_training_job_from_file
 
 
 def push(training_project: TrainingProject, config: Path, remote: str = "baseten"):
@@ -28,3 +28,14 @@ def push(training_project: TrainingProject, config: Path, remote: str = "baseten
         config=config,
     )
     return job_resp
+
+
+def push_from_file(config: Path, remote: str = "baseten"):
+    """
+    push_from_file does the same as push, but expects the passed in file
+    to be a python file that defines a TrainingProject and TrainingJob.
+    """
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    return create_training_job_from_file(remote_provider, config)

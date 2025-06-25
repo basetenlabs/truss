@@ -8,6 +8,7 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import archive_dir
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils import transfer
+from truss_train import loader
 from truss_train.definitions import TrainingJob, TrainingProject
 
 
@@ -59,4 +60,14 @@ def create_training_job(
     job_resp = remote_provider.api.create_training_job(
         project_id=project_resp["id"], job=prepared_job
     )
+    return job_resp
+
+
+def create_training_job_from_file(remote_provider: BasetenRemote, config: Path):
+    with loader.import_training_project(config) as training_project:
+        job_resp = create_training_job(
+            remote_provider=remote_provider,
+            training_project=training_project,
+            config=config,
+        )
     return job_resp
