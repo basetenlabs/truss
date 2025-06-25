@@ -16,6 +16,7 @@ from pydantic import (
     RootModel,
     StringConstraints,
     Tag,
+    field_validator,
     model_validator,
 )
 
@@ -157,13 +158,31 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     webserver_default_route: Optional[
         Literal["/v1/embeddings", "/rerank", "/predict"]
     ] = None
-    torchflow_config: str = ""
 
 
 class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
-    max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=1048576)] = 8192
+    max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=131072)] = 8192
+    tensor_parallel_size: Annotated[int, Field(strict=True, ge=1)] = 1
+    enable_chunked_prefill: bool = True
+    config_kwargs: Dict[str, Union[str, int, float, dict]] = {}
+
+    @field_validator("config_kwargs", mode="after")
+    @classmethod
+    def validate_config_kwargs(cls, config):
+        if config:
+            logger.warning(
+                "trt_llm.runtime.config_kwargs is a preview feature. "
+                "Fields may change in the future."
+            )
+        forbidden_keys = ["build_config"] + list(cls.__fields__)
+        for key in forbidden_keys:
+            if key in config:
+                raise ValueError(
+                    f"runtime.config_kwargs cannot contain the key '{key}'. "
+                    "Please use the appropriate field in the TRTLLMRuntimeConfigurationV2."
+                )
 
 
 class TrussTRTLLMLoraConfiguration(PydanticTrTBaseModel):
@@ -749,3 +768,21 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
         )
 
     return config
+
+
+TRTLLMConfigurationV2(
+    build=TrussTRTLLMBuildConfiguration(
+        checkpoint_repository=CheckpointRepository(
+            source=CheckpointSource.HF, repo="michael/any", revision=None
+        ),
+        quantization_type=TrussTRTLLMQuantizationType.NO_QUANT,
+    ),
+    runtime=TRTLLMRuntimeConfigurationV2(
+        max_seq_len=2048,
+        max_batch_size=256,
+        max_num_tokens=8192,
+        tensor_parallel_size=1,
+        enable_chunked_prefill=True,
+        config_kwargs={},
+    ),
+)
