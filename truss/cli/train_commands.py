@@ -86,7 +86,10 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
         )
         job_resp = deployment.create_training_job_from_file(remote_provider, config)
 
-        _handle_post_create_logic(job_resp, remote_provider, tail)
+    # Note: This post create logic needs to happen outside the context
+    # of the above context manager, as only one console session can be active
+    # at a time.
+    _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
 @train.command(name="recreate")
