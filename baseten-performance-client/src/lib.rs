@@ -37,7 +37,6 @@ const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
 
 static SLOW_STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
-    // This will be read at compile time and parsed once at runtime.
     option_env!("PERF_CLIENT_STAGING_ADDRESS")
         .unwrap_or("app.staging.baseten.co") 
         .split(',')
