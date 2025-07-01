@@ -8,15 +8,15 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3_async_runtimes;
 use pythonize::{depythonize, pythonize};
+use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use rand::Rng; 
 use std::cmp::min;
-use std::collections::HashMap; 
-use std::sync::atomic::{AtomicBool, Ordering}; 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant}; 
+use std::time::{Duration, Instant};
 use std::vec;
 use tokio::runtime::Runtime;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -38,7 +38,7 @@ const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff d
 
 static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     option_env!("PERF_CLIENT_STAGING_ADDRESS")
-        .unwrap_or("app.development.baseten.co") 
+        .unwrap_or("app.development.baseten.co")
         .split(',')
         .map(String::from)
         .collect()
@@ -362,7 +362,8 @@ impl PerformanceClient {
         batch_size: usize,
         base_url: &str,
     ) -> PyResult<usize> {
-        let actual_concurrency = Self::cap_concurrency_baseten_staging(base_url, max_concurrent_requests);
+        let actual_concurrency =
+            Self::cap_concurrency_baseten_staging(base_url, max_concurrent_requests);
         // validate based on requested concurrency
         if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
             return Err(PyValueError::new_err(format!(
@@ -828,8 +829,11 @@ impl PerformanceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        let max_concurrent_requests =
-            PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128, &self.base_url)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            128,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
@@ -927,8 +931,11 @@ impl PerformanceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        let max_concurrent_requests =
-            PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128, &self.base_url)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            128,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
