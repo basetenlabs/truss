@@ -16,6 +16,7 @@ numpy = "0.24.0"
 ndarray = "*"
 pythonize = "*"
 pyo3-async-runtimes = { version = "0.24", features = ["tokio-runtime"] } # Or a version compatible with your pyo3
+rand = "0.8"
 
 [lib]
 name = "baseten_performance_client"
