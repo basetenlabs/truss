@@ -19,7 +19,7 @@ from baseten_performance_client import PerformanceClient, OpenAIEmbeddingsRespon
 
 api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
-# Also works with 3rd party endpoints.
+# Also works with OpenAI or Mixedbread.
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
 client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 ```

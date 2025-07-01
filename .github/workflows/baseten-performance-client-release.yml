@@ -25,5 +25,6 @@ jobs:
     with:
       folder: baseten-performance-client
       publish_pypi: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true' || startsWith(github.ref, 'refs/tags/') }}
+      perf_client_staging_address: ${{ secrets.PERF_CLIENT_STAGING_ADDRESS || '' }}
     secrets:
       PYPI_TOKEN: ${{ secrets.BASETEN_PERFORMANCE_CLIENT_PYPI_API_TOKEN }}
