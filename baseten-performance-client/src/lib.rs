@@ -38,7 +38,7 @@ const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff d
 
 static SLOW_STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     // This will be read at compile time and parsed once at runtime.
-    option_env!("BASETEN_STAGING_ADDRESS")
+    option_env!("PERF_CLIENT_STAGING_ADDRESS")
         .unwrap_or("app.staging.baseten.co") 
         .split(',')
         .map(String::from)
@@ -337,7 +337,7 @@ impl PerformanceClient {
             .iter()
             .any(|provider| !provider.is_empty() && base_url.contains(provider))
         {
-            // allow higher concurrency for staging, set 8192 if not specified
+            // allow higher concurrency for staging, set 16384 if not specified
             let cap = rand::thread_rng().gen_range(16..=16384);
             // limit by concurrency_desired
             let cap = min(cap, concurrency_desired);
@@ -1720,7 +1720,16 @@ async fn send_request_with_retry(
                     return ensure_successful_response(response).await;
                 }
             }
-            Err(network_err) => { // This handles "error sending request" (reqwest::Error)
+            Err(network_err) => {
+                // This handles "error sending request" (reqwest::Error)
+                if network_err.is_timeout() {
+                    // Directly return a 408 Timeout error without retry
+                    return Err(PyErr::new::<HTTPError, _>((
+                        408,
+                        "A request timed out on client side.".to_string(),
+                    )));
+                }
+
                 println!("Network/send error: {}", network_err);
                 if retries_done >= 2 {
                     // Max retries performed for network/send errors
