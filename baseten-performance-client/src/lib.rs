@@ -36,9 +36,9 @@ const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or networ
 const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
 
-static SLOW_STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
+static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     option_env!("PERF_CLIENT_STAGING_ADDRESS")
-        .unwrap_or("app.staging.baseten.co") 
+        .unwrap_or("app.development.baseten.co") 
         .split(',')
         .map(String::from)
         .collect()
@@ -332,7 +332,7 @@ impl PerformanceClient {
     fn cap_concurrency_baseten_staging(base_url: &str, concurrency_desired: usize) -> usize {
         // integration currenty breaks staging, so limiting dev addresses
         // e.g. app.development1.baseten.co
-        if SLOW_STAGING_ADDRESS
+        if STAGING_ADDRESS
             .iter()
             .any(|provider| !provider.is_empty() && base_url.contains(provider))
         {
