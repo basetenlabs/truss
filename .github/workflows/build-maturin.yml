@@ -17,6 +17,11 @@ on:
         required: false
         type: boolean
         default: false
+      perf_client_staging_address:
+        description: "Staging address for the performance client."
+        required: false
+        type: string
+        default: ""
     secrets:
       PYPI_TOKEN:
         description: "The PyPI token for publishing."
@@ -28,6 +33,8 @@ permissions:
 jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
+    env:
+      PERF_CLIENT_STAGING_ADDRESS: ${{ inputs.perf_client_staging_address }}
     strategy:
       matrix:
         platform:
@@ -93,6 +100,8 @@ jobs:
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
+    env:
+      PERF_CLIENT_STAGING_ADDRESS: ${{ inputs.perf_client_staging_address }}
     strategy:
       matrix:
         platform:
@@ -133,6 +142,8 @@ jobs:
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
+    env:
+      PERF_CLIENT_STAGING_ADDRESS: ${{ inputs.perf_client_staging_address }}
     strategy:
       matrix:
         platform:
@@ -168,6 +179,8 @@ jobs:
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
+    env:
+      PERF_CLIENT_STAGING_ADDRESS: ${{ inputs.perf_client_staging_address }}
     strategy:
       matrix:
         platform:
