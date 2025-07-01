@@ -24,7 +24,6 @@ on:
       PERF_CLIENT_STAGING_ADDRESS:
         description: "Staging address for the performance client."
         required: false
-        default: ''
 
 permissions:
   contents: read
