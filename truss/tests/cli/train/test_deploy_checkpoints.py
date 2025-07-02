@@ -241,3 +241,77 @@ def test_prepare_checkpoint_deploy_complete_config(
         Path(result.truss_directory, "config.yaml")
     )
     assert "--tensor-parallel-size 2" in truss_cfg.docker_server.start_command
+
+
+def test_checkpoint_lora_rank_validation():
+    """Test that Checkpoint accepts valid LoRA rank values."""
+    valid_ranks = [8, 16, 32, 64, 128, 256, 320, 512]
+
+    for rank in valid_ranks:
+        checkpoint = definitions.Checkpoint(
+            training_job_id="job123",
+            id="checkpoint-1",
+            name="test-checkpoint",
+            lora_rank=rank,
+        )
+        assert checkpoint.lora_rank == rank
+
+    invalid_ranks = [
+        1,
+        2,
+        4,
+        7,
+        9,
+        15,
+        17,
+        31,
+        33,
+        63,
+        65,
+        127,
+        129,
+        255,
+        257,
+        319,
+        321,
+        511,
+        513,
+        1000,
+    ]
+    for rank in invalid_ranks:
+        with pytest.raises(ValueError, match=f"lora_rank \\({rank}\\) must be one of"):
+            definitions.Checkpoint(
+                training_job_id="job123",
+                id="checkpoint-1",
+                name="test-checkpoint",
+                lora_rank=rank,
+            )
+
+    checkpoint = definitions.Checkpoint(
+        training_job_id="job123",
+        id="checkpoint-1",
+        name="test-checkpoint",
+        lora_rank=None,
+    )
+    assert checkpoint.lora_rank is None
+
+
+def test_get_lora_rank():
+    """Test that _get_lora_rank returns valid values from checkpoint response."""
+    from truss.cli.train.deploy_checkpoints import _get_lora_rank
+
+    # Test with valid rank from API
+    checkpoint_resp = {"lora_adapter_config": {"r": 64}}
+    assert _get_lora_rank(checkpoint_resp) == 64
+    # Test with missing lora_adapter_config (should use DEFAULT_LORA_RANK)
+    checkpoint_resp = {}
+    assert _get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
+    # Test with missing 'r' field (should use DEFAULT_LORA_RANK)
+    checkpoint_resp = {"lora_adapter_config": {}}
+    assert _get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
+    # Test with invalid rank from API
+    checkpoint_resp = {"lora_adapter_config": {"r": 1}}
+    assert _get_lora_rank(checkpoint_resp) == 16
+    # Test with another invalid rank
+    checkpoint_resp = {"lora_adapter_config": {"r": 1000}}
+    assert _get_lora_rank(checkpoint_resp) == 16
