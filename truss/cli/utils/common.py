@@ -182,6 +182,8 @@ def is_human_log_level(ctx: click.Context) -> bool:
 
 
 def format_localized_time(iso_timestamp: str) -> str:
+    if iso_timestamp.endswith("Z"):
+        iso_timestamp = iso_timestamp.replace("Z", "+00:00")
     utc_time = datetime.datetime.fromisoformat(iso_timestamp)
     local_time = utc_time.astimezone()
     return local_time.strftime("%Y-%m-%d %H:%M")
