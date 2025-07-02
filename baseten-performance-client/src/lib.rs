@@ -35,7 +35,7 @@ const DEFAULT_BATCH_SIZE: usize = 128;
 const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or network errors
 const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
-const RETRY_BUDGET_PERCENTAGE: f64 = 0.02; // 2% of requests can be retried
+const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.02; // 2% of timeout requests can be retried
 
 static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     option_env!("PERF_CLIENT_STAGING_ADDRESS")
@@ -63,8 +63,10 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     runtime
 });
 
-fn calculate_retry_budget(total_requests: usize) -> usize {
-    (total_requests as f64 * RETRY_BUDGET_PERCENTAGE).ceil() as usize
+// in case of timeouts, we can retry a small percentage of requests
+// to not fail entire batch
+fn calculate_retry_timeout_budget(total_requests: usize) -> usize {
+    (total_requests as f64 * RETRY_TIMEOUT_BUDGET_PERCENTAGE).ceil() as usize
 }
 
 struct SendRequestConfig {
@@ -1081,7 +1083,7 @@ async fn process_embeddings_requests(
     let mut tasks = Vec::new();
     let total_texts = texts.len();
     let total_requests = (total_texts + batch_size - 1) / batch_size;
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_budget(total_requests)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
     let cancel_token = Arc::new(AtomicBool::new(false));
     let model_for_response = model.clone();
 
@@ -1242,7 +1244,7 @@ async fn process_rerank_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_requests = (texts.len() + batch_size - 1) / batch_size;
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_budget(total_requests)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for (batch_idx, texts_batch) in texts.chunks(batch_size).enumerate() {
@@ -1381,7 +1383,7 @@ async fn process_classify_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_requests = (inputs.len() + batch_size - 1) / batch_size;
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_budget(total_requests)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for input_chunk_slice in inputs.chunks(batch_size) {
@@ -1510,7 +1512,7 @@ async fn process_batch_post_requests(
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
     let total_payloads = payloads_json.len();
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_budget(total_payloads)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_payloads)));
 
     for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
         let client_clone = client.clone();
@@ -1743,7 +1745,11 @@ async fn send_request_with_retry(
                 }
 
                 // Not a success, check if it's a retryable HTTP error (429 or 5xx)
+
                 if response.status().as_u16() == 429 || response.status().is_server_error() {
+                    // 429 or 500 are not part of the retry budget,
+                    // so we can retry them without checking the budget.
+                    // This is a retryable HTTP error.
                     if retries_done >= max_retries {
                         // Max retries performed for these HTTP errors
                         // Ensure this goes through your HTTPError mapping
@@ -1753,6 +1759,7 @@ async fn send_request_with_retry(
                 } else {
                     // Non-retryable HTTP error (e.g., 400, 401, 403, 404)
                     // Ensure this goes through your HTTPError mapping and then return
+                    // This is not retryable, so we return the error directly.
                     return ensure_successful_response(response).await;
                 }
             }
