@@ -1,3 +1,4 @@
+import errno
 import logging
 import os
 from pathlib import Path
@@ -39,7 +40,9 @@ def apply_code_patch(relative_dir: Path, patch: Patch, logger: logging.Logger):
             try:
                 os.removedirs(filepath.parent)
             except OSError as e:
-                if e.errno == 39:  # Directory not empty
+                if (
+                    e.errno == errno.ENOTEMPTY
+                ):  # Directory not empty (actual number is different in Linux vs Mac)
                     pass
                 else:
                     raise

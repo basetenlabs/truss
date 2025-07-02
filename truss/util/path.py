@@ -137,14 +137,27 @@ def is_ignored(
         bool: True if the path matches any of the ignore patterns (i.e., should be ignored),
             and False otherwise.
     """
-    ignore_spec = pathspec.PathSpec.from_lines(
-        pathspec.patterns.GitWildMatchPattern, patterns
-    )
-
     if base_dir:
         path = path.relative_to(base_dir)
 
-    return ignore_spec.match_file(path)
+    path_str = str(path)
+
+    # Handle directory patterns separately to avoid false matches
+    for pattern in patterns:
+        if pattern.endswith("/"):
+            # For directories, check if the directory name matches the pattern
+            dir_name = pattern.rstrip("/")
+            if path.name == dir_name:
+                return True
+        else:
+            # For files, use pathspec for proper pattern matching
+            test_spec = pathspec.PathSpec.from_lines(
+                pathspec.patterns.GitWildMatchPattern, [pattern]
+            )
+            if test_spec.match_file(path_str):
+                return True
+
+    return False
 
 
 def get_ignored_relative_paths(
