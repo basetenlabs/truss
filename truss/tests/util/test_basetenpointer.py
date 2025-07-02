@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 import requests
+from huggingface_hub.errors import HfHubHTTPError
 
 from truss.base.truss_config import ModelCache, ModelRepo
 from truss.util.basetenpointer import model_cache_hf_to_b10ptr
@@ -33,6 +34,10 @@ def test_dolly_12b():
                 "Skipping test due to ReadTimeout error from Hugging Face API, "
                 "this can happen for large models like Dolly-12b"
             )
+        except HfHubHTTPError as e:
+            if e.response.status_code == 429:
+                pytest.skip("Hugging Face API rate limit exceeded")
+            raise
     bptr_list = bptr.pointers
     expected = [
         {
