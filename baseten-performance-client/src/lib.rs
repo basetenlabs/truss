@@ -37,9 +37,12 @@ const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
 const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.03; // 3% of timeout requests can be retried
 
+static DEFAULT_STAGING_ADDRESS: &[u8] = &[
+    0x61, 0x70, 0x70, 0x2e, 0x73, 0x74, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x62, 0x61, 0x73, 0x65, 0x74, 0x65, 0x6e, 0x2e, 0x63, 0x6f,
+];
 static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     option_env!("PERF_CLIENT_STAGING_ADDRESS")
-        .unwrap_or("app.development.baseten.co")
+        .unwrap_or(std::str::from_utf8(DEFAULT_STAGING_ADDRESS).unwrap())
         .split(',')
         .map(String::from)
         .collect()
