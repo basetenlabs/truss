@@ -80,3 +80,4 @@ yarn.lock
 
 truss-transfer/target/
 baseten-performance-client/target/
+.venv

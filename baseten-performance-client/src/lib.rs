@@ -3,19 +3,20 @@
 use futures::future::join_all;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
-use once_cell::sync::Lazy; // Import Lazy
+use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3_async_runtimes;
 use pythonize::{depythonize, pythonize};
+use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-// For handling untyped JSON
-use std::collections::HashMap; // Add this
-use std::sync::atomic::{AtomicBool, Ordering}; // Add this
+use std::cmp::min;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant}; // Ensure Instant is imported
+use std::time::{Duration, Instant};
 use std::vec;
 use tokio::runtime::Runtime;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -26,15 +27,22 @@ const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 const MAX_CONCURRENCY_HIGH_BATCH: usize = 512;
-const MAX_CONCURRENCY_LOW_BATCH: usize = 192;
+const MAX_CONCURRENCY_LOW_BATCH: usize = 264;
 const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 const DEFAULT_CONCURRENCY: usize = 32;
 const MAX_BATCH_SIZE: usize = 128;
-const DEFAULT_BATCH_SIZE: usize = 16;
+const DEFAULT_BATCH_SIZE: usize = 128;
 const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or network errors
 const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
-const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"]; // Providers that are known to be slow with this client
+
+static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
+    option_env!("PERF_CLIENT_STAGING_ADDRESS")
+        .unwrap_or("app.development.baseten.co")
+        .split(',')
+        .map(String::from)
+        .collect()
+});
 
 // --- Global Tokio Runtime ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
@@ -321,6 +329,23 @@ impl PerformanceClient {
         ))
     }
 
+    fn cap_concurrency_baseten_staging(base_url: &str, concurrency_desired: usize) -> usize {
+        // integration currenty breaks staging, so limiting dev addresses
+        // e.g. app.development1.baseten.co
+        if STAGING_ADDRESS
+            .iter()
+            .any(|provider| !provider.is_empty() && base_url.contains(provider))
+        {
+            // allow higher concurrency for staging, set 16384 if not specified
+            let cap = rand::thread_rng().gen_range(16..=16384);
+            // limit by concurrency_desired
+            let cap = min(cap, concurrency_desired);
+            cap
+        } else {
+            concurrency_desired
+        }
+    }
+
     fn validate_and_get_timeout_duration(timeout_s: f64) -> Result<Duration, PyErr> {
         let resolved_timeout_s = timeout_s;
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&resolved_timeout_s) {
@@ -335,7 +360,11 @@ impl PerformanceClient {
     fn validate_concurrency_parameters(
         max_concurrent_requests: usize,
         batch_size: usize,
-    ) -> PyResult<()> {
+        base_url: &str,
+    ) -> PyResult<usize> {
+        let actual_concurrency =
+            Self::cap_concurrency_baseten_staging(base_url, max_concurrent_requests);
+        // validate based on requested concurrency
         if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
             return Err(PyValueError::new_err(format!(
                 "max_concurrent_requests must be greater than 0 and less than or equal to {}",
@@ -354,7 +383,7 @@ impl PerformanceClient {
                 MAX_CONCURRENCY_LOW_BATCH, CONCURRENCY_HIGH_BATCH_SWITCH
             )));
         }
-        Ok(())
+        Ok(actual_concurrency)
     }
 }
 
@@ -364,15 +393,6 @@ impl PerformanceClient {
     #[pyo3(signature = (base_url, api_key = None))]
     fn new(base_url: String, api_key: Option<String>) -> PyResult<Self> {
         let api_key = PerformanceClient::get_api_key(api_key)?;
-        if WARNING_SLOW_PROVIDERS
-            .iter()
-            .any(|&provider| base_url.contains(provider))
-        {
-            eprintln!(
-                "Warning: Using {} as the base URL might be slow. You should consider using baseten.com instead.",
-                base_url.clone()
-            );
-        }
         Ok(PerformanceClient {
             api_key,
             base_url,
@@ -403,7 +423,11 @@ impl PerformanceClient {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
@@ -474,7 +498,11 @@ impl PerformanceClient {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
@@ -531,7 +559,11 @@ impl PerformanceClient {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -603,7 +635,11 @@ impl PerformanceClient {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
@@ -662,7 +698,11 @@ impl PerformanceClient {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -732,7 +772,11 @@ impl PerformanceClient {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let client_clone = self.client.clone();
@@ -785,7 +829,11 @@ impl PerformanceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            128,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
@@ -811,9 +859,7 @@ impl PerformanceClient {
             Vec<(JsonValue, HashMap<String, String>, Duration)>,
             PyErr,
         > = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel::<
-                Result<Vec<(JsonValue, HashMap<String, String>, Duration)>, PyErr>,
-            >();
+            let (tx, rx) = std::sync::mpsc::channel();
             rt.spawn(async move {
                 let res = process_batch_post_requests(
                     client,
@@ -828,13 +874,8 @@ impl PerformanceClient {
                 let _ = tx.send(res);
             });
             rx.recv()
-                .map_err(|e| {
-                    PyValueError::new_err(format!(
-                        "Failed to receive result from async task (channel error): {}",
-                        e
-                    ))
-                })
-                .and_then(|inner_result| inner_result)
+                .map_err(|e| PyValueError::new_err(format!("Channel receive error: {}", e)))
+                .and_then(|x| x)
         });
 
         let response_data_with_times_and_headers = result_from_async_task?;
@@ -890,7 +931,11 @@ impl PerformanceClient {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
-        PerformanceClient::validate_concurrency_parameters(max_concurrent_requests, 128)?;
+        let max_concurrent_requests = PerformanceClient::validate_concurrency_parameters(
+            max_concurrent_requests,
+            128,
+            &self.base_url,
+        )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
         let mut payloads_json: Vec<JsonValue> = Vec::with_capacity(payloads.len());
@@ -1681,7 +1726,16 @@ async fn send_request_with_retry(
                     return ensure_successful_response(response).await;
                 }
             }
-            Err(network_err) => { // This handles "error sending request" (reqwest::Error)
+            Err(network_err) => {
+                // This handles "error sending request" (reqwest::Error)
+                if network_err.is_timeout() {
+                    // Directly return a 408 Timeout error without retry
+                    return Err(PyErr::new::<HTTPError, _>((
+                        408,
+                        "A request timed out on client side.".to_string(),
+                    )));
+                }
+
                 println!("Network/send error: {}", network_err);
                 if retries_done >= 2 {
                     // Max retries performed for network/send errors
