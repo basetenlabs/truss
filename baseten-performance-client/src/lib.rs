@@ -24,7 +24,7 @@ use tokio::task::JoinError;
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
+const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 const MAX_CONCURRENCY_HIGH_BATCH: usize = 512;
 const MAX_CONCURRENCY_LOW_BATCH: usize = 264;
@@ -35,7 +35,7 @@ const DEFAULT_BATCH_SIZE: usize = 128;
 const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or network errors
 const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
-const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.02; // 2% of timeout requests can be retried
+const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.03; // 3% of timeout requests can be retried
 
 static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     option_env!("PERF_CLIENT_STAGING_ADDRESS")
@@ -73,9 +73,11 @@ struct SendRequestConfig {
     max_retries: u32,
     initial_backoff: Duration,
     retry_budget: Option<Arc<AtomicUsize>>,
+    cancel_token: Arc<AtomicBool>,
 }
 
 pyo3::import_exception!(requests, HTTPError);
+pyo3::import_exception!(requests, Timeout);
 
 // --- OpenAI Compatible Structures ---
 #[derive(Serialize, Debug, Clone)]
@@ -1083,7 +1085,9 @@ async fn process_embeddings_requests(
     let mut tasks = Vec::new();
     let total_texts = texts.len();
     let total_requests = (total_texts + batch_size - 1) / batch_size;
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_requests,
+    )));
     let cancel_token = Arc::new(AtomicBool::new(false));
     let model_for_response = model.clone();
 
@@ -1111,6 +1115,7 @@ async fn process_embeddings_requests(
                 max_retries: MAX_HTTP_RETRIES,
                 initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                 retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
             };
             let result = send_single_embedding_request(
                 client_clone,
@@ -1244,7 +1249,9 @@ async fn process_rerank_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_requests = (texts.len() + batch_size - 1) / batch_size;
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_requests,
+    )));
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for (batch_idx, texts_batch) in texts.chunks(batch_size).enumerate() {
@@ -1270,6 +1277,7 @@ async fn process_rerank_requests(
                 max_retries: MAX_HTTP_RETRIES,
                 initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                 retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
             };
             let result = send_single_rerank_request(
                 client_clone,
@@ -1383,7 +1391,9 @@ async fn process_classify_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_requests = (inputs.len() + batch_size - 1) / batch_size;
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_requests,
+    )));
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for input_chunk_slice in inputs.chunks(batch_size) {
@@ -1407,6 +1417,7 @@ async fn process_classify_requests(
                 max_retries: MAX_HTTP_RETRIES,
                 initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                 retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
             };
             let result = send_single_classify_request(
                 client_clone,
@@ -1512,7 +1523,9 @@ async fn process_batch_post_requests(
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
     let total_payloads = payloads_json.len();
-    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_payloads)));
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_payloads,
+    )));
 
     for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
         let client_clone = client.clone();
@@ -1538,6 +1551,7 @@ async fn process_batch_post_requests(
                 max_retries: MAX_HTTP_RETRIES,
                 initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                 retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
             };
             // send_single_batch_post_request now returns (JsonValue, HashMap<String, String>)
             let result_tuple = send_single_batch_post_request(
@@ -1745,21 +1759,21 @@ async fn send_request_with_retry(
                 }
 
                 // Not a success, check if it's a retryable HTTP error (429 or 5xx)
-
-                if response.status().as_u16() == 429 || response.status().is_server_error() {
-                    // 429 or 500 are not part of the retry budget,
-                    // so we can retry them without checking the budget.
-                    // This is a retryable HTTP error.
+                let status = response.status();
+                if status.as_u16() == 429 || status.is_server_error() {
+                    // 429 or 5xx are retryable up to max_retries.
                     if retries_done >= max_retries {
                         // Max retries performed for these HTTP errors
-                        // Ensure this goes through your HTTPError mapping
                         return ensure_successful_response(response).await;
                     }
-                    // If not max retries, fall through to common retry logic below
+                // If not max retries, fall through to common retry logic below
+                } else if status.is_client_error() {
+                    // Non-retryable client error (e.g., 400, 401, 403, 413).
+                    // Signal cancellation for other tasks and return the error.
+                    config.cancel_token.store(true, Ordering::SeqCst);
+                    return ensure_successful_response(response).await;
                 } else {
-                    // Non-retryable HTTP error (e.g., 400, 401, 403, 404)
-                    // Ensure this goes through your HTTPError mapping and then return
-                    // This is not retryable, so we return the error directly.
+                    // Other non-success, non-retryable status.
                     return ensure_successful_response(response).await;
                 }
             }
@@ -1771,10 +1785,14 @@ async fn send_request_with_retry(
                     if let Some(retry_budget) = config.retry_budget.as_ref() {
                         // Atomically decrement and check the retry budget.
                         // fetch_sub returns the previous value. If it was 1 or less, the budget is now exhausted.
-                        if retry_budget.fetch_sub(1, Ordering::SeqCst) <= 1 {
-                            return Err(PyValueError::new_err(format!(
-                                "Request failed due to timeout and retry budget is exhausted: {}",
-                                network_err
+                        if retry_budget.fetch_sub(1, Ordering::SeqCst) < 1 {
+                            config.cancel_token.store(true, Ordering::SeqCst);
+                            return Err(PyErr::new::<Timeout, _>((
+                                408,
+                                format!(
+                                    "Request timed out and retry budget is exhausted: {}",
+                                    network_err
+                                ),
                             )));
                         }
                     }
@@ -1784,6 +1802,7 @@ async fn send_request_with_retry(
                     // allow up to 2 retries for network/send errors
                     // such as dns resolution failures or
                     // Max retries performed for network/send errors
+                    config.cancel_token.store(true, Ordering::SeqCst);
                     return Err(PyValueError::new_err(format!(
                         "Request failed after {} retries with network/send error: {}",
                         retries_done, network_err
