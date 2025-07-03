@@ -24,7 +24,7 @@ use tokio::task::JoinError;
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MIN_REQUEST_TIMEOUT_S: f64 = 1.0; 
+const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
 const MAX_CONCURRENCY_LOW_BATCH: usize = 512;
@@ -42,6 +42,9 @@ static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
                                                              // Add this constant
 const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
 const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C"; // New constant for Ctrl+C
+
+// Providers that are known to be slow with this client
+const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
 
 static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     let runtime = Arc::new(Runtime::new().expect("Failed to create global Tokio runtime"));
@@ -411,6 +414,15 @@ impl PerformanceClient {
     #[pyo3(signature = (base_url, api_key = None))]
     fn new(base_url: String, api_key: Option<String>) -> PyResult<Self> {
         let api_key = PerformanceClient::get_api_key(api_key)?;
+        if WARNING_SLOW_PROVIDERS
+            .iter()
+            .any(|&provider| base_url.contains(provider))
+        {
+            eprintln!(
+                "Warning: Using {} as the base URL might be slow. Consider using baseten.com instead.",
+                base_url.clone()
+            );
+        }
         Ok(PerformanceClient {
             api_key,
             base_url,
