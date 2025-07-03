@@ -24,13 +24,13 @@ use tokio::task::JoinError;
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MIN_REQUEST_TIMEOUT_S: f64 = 0.5;
+const MIN_REQUEST_TIMEOUT_S: f64 = 1.0; 
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MAX_CONCURRENCY_HIGH_BATCH: usize = 512;
-const MAX_CONCURRENCY_LOW_BATCH: usize = 264;
+const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
+const MAX_CONCURRENCY_LOW_BATCH: usize = 512;
 const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 const DEFAULT_CONCURRENCY: usize = 32;
-const MAX_BATCH_SIZE: usize = 128;
+const MAX_BATCH_SIZE: usize = 1024;
 const DEFAULT_BATCH_SIZE: usize = 128;
 const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or network errors
 const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
