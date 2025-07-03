@@ -24,7 +24,7 @@ use tokio::task::JoinError;
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
+const MIN_REQUEST_TIMEOUT_S: f64 = 0.5;
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 const MAX_CONCURRENCY_HIGH_BATCH: usize = 512;
 const MAX_CONCURRENCY_LOW_BATCH: usize = 264;
