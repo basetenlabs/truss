@@ -85,20 +85,9 @@ def _hydrate_deploy_config(
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
     )
     runtime = _get_runtime(deploy_config.runtime)
-    deployment_name = None
-    first_checkpoint_name = checkpoint_details.checkpoints[0].name
-    # We allow for autoincrementing when the checkpoint matches the regex pattern.
-    # In cases where the autoincrementing deployment name is not supported,
-    # ask the user for a deployment name
-    if CHECKPOINT_PATTERN.match(first_checkpoint_name):
-        deployment_name = deploy_config.deployment_name or first_checkpoint_name
-    else:
-        # prompt the user for the deployment name
-        deployment_name = inquirer.text(
-            message="Enter the deployment name.", default=first_checkpoint_name
-        ).execute()
-        if not deployment_name:
-            raise click.UsageError("Deployment name is required.")
+    deployment_name = _get_deployment_name(
+        deploy_config.deployment_name, checkpoint_details.checkpoints
+    )
 
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
@@ -107,6 +96,27 @@ def _hydrate_deploy_config(
         runtime=runtime,
         compute=compute,
     )
+
+
+def _get_deployment_name(
+    deploy_config_deployment_name: Optional[str], checkpoints: List[Checkpoint]
+) -> str:
+    if deploy_config_deployment_name:
+        return deploy_config_deployment_name
+
+    first_checkpoint_name = checkpoints[0].name
+    # We allow for autoincrementing when the checkpoint matches the regex pattern.
+    # In cases where the autoincrementing deployment name is not supported,
+    # ask the user for a deployment name
+    if CHECKPOINT_PATTERN.match(first_checkpoint_name):
+        return first_checkpoint_name
+    # prompt the user for the deployment name
+    deployment_name = inquirer.text(
+        message="Enter the deployment name.", default=first_checkpoint_name
+    ).execute()
+    if not deployment_name:
+        raise click.UsageError("Deployment name is required.")
+    return deployment_name
 
 
 def _render_vllm_lora_truss_config(
