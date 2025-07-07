@@ -260,14 +260,12 @@ def _get_lora_rank(checkpoint_resp: dict) -> int:
     lora_adapter_config = checkpoint_resp.get("lora_adapter_config") or {}
     lora_rank = lora_adapter_config.get("r") or DEFAULT_LORA_RANK
 
-    # If the API returns an invalid value, use the default instead
+    # If the API returns an invalid value, raise an error
     if lora_rank not in ALLOWED_LORA_RANKS:
-        console.print(
+        raise ValueError(
             f"LoRA rank {lora_rank} from checkpoint is not in allowed values {sorted(ALLOWED_LORA_RANKS)}. "
-            f"Using default value: {DEFAULT_LORA_RANK}",
-            style="yellow",
+            f"Please use a valid LoRA rank."
         )
-        return DEFAULT_LORA_RANK
 
     return lora_rank
 

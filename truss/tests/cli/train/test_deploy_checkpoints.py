@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -311,7 +312,15 @@ def test_get_lora_rank():
     assert _get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
     # Test with invalid rank from API
     checkpoint_resp = {"lora_adapter_config": {"r": 1}}
-    assert _get_lora_rank(checkpoint_resp) == 16
+    with pytest.raises(
+        ValueError,
+        match=re.escape("LoRA rank 1 from checkpoint is not in allowed values"),
+    ):
+        _get_lora_rank(checkpoint_resp)
     # Test with another invalid rank
     checkpoint_resp = {"lora_adapter_config": {"r": 1000}}
-    assert _get_lora_rank(checkpoint_resp) == 16
+    with pytest.raises(
+        ValueError,
+        match=re.escape("LoRA rank 1000 from checkpoint is not in allowed values"),
+    ):
+        _get_lora_rank(checkpoint_resp)
