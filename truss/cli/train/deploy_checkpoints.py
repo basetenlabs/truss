@@ -276,6 +276,9 @@ def _hydrate_checkpoints(
     return Checkpoint(
         training_job_id=job_id,
         id=checkpoint_id,
+        # Because the checkpoint id is a relative path, we need to
+        # replace slashes with something we can persist to disk. This is important
+        # for persisting the truss to disk.
         name=checkpoint_id.replace("/", "--"),
         lora_rank=_get_lora_rank(checkpoint),
     )
