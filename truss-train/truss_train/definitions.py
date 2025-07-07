@@ -1,10 +1,14 @@
 from typing import Dict, List, Optional, Union
 
 import pydantic
+from pydantic import field_validator
 
 from truss.base import custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
+
+# Allowed LoRA rank values for vLLM
+ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
 
 
 class SecretReference(custom_types.SafeModel):
@@ -80,6 +84,15 @@ class Checkpoint(custom_types.SafeModel):
     lora_rank: Optional[int] = (
         None  # lora rank will be fetched through the API if available.
     )
+
+    @field_validator("lora_rank")
+    @classmethod
+    def validate_lora_rank(cls, v):
+        if v is not None and v not in ALLOWED_LORA_RANKS:
+            raise ValueError(
+                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}"
+            )
+        return v
 
     def to_truss_config(self) -> truss_config.Checkpoint:
         return truss_config.Checkpoint(
