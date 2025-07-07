@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -38,6 +39,8 @@ VLLM_LORA_START_COMMAND = Template(
 )
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
+
+CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
 
 
 def prepare_checkpoint_deploy(
@@ -82,9 +85,21 @@ def _hydrate_deploy_config(
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
     )
     runtime = _get_runtime(deploy_config.runtime)
-    deployment_name = (
-        deploy_config.deployment_name or checkpoint_details.checkpoints[0].id
-    )
+    deployment_name = None
+    first_checkpoint_name = checkpoint_details.checkpoints[0].name
+    # We allow for autoincrementing when the checkpoint matches the regex pattern.
+    # In cases where the autoincrementing deployment name is not supported,
+    # ask the user for a deployment name
+    if CHECKPOINT_PATTERN.match(first_checkpoint_name):
+        deployment_name = deploy_config.deployment_name or first_checkpoint_name
+    else:
+        # prompt the user for the deployment name
+        deployment_name = inquirer.text(
+            message="Enter the deployment name.", default=first_checkpoint_name
+        ).execute()
+        if not deployment_name:
+            raise click.UsageError("Deployment name is required.")
+
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
@@ -251,7 +266,7 @@ def _hydrate_checkpoints(
     return Checkpoint(
         training_job_id=job_id,
         id=checkpoint_id,
-        name=checkpoint_id,
+        name=checkpoint_id.replace("/", "--"),
         lora_rank=_get_lora_rank(checkpoint),
     )
 
