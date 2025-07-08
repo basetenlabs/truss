@@ -25,11 +25,6 @@ def import_deploy_checkpoints_config(
         yield config
 
 
-@contextlib.contextmanager
-def import_cache_config(module_path: pathlib.Path) -> Iterator[definitions.CacheConfig]:
-    with import_target(module_path, definitions.CacheConfig) as cache_config:
-        yield cache_config
-
 
 @contextlib.contextmanager
 def import_target(module_path: pathlib.Path, target_type: Type[T]) -> Iterator[T]:
