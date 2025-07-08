@@ -28,6 +28,8 @@ def test_import_with_single_training_project():
     with loader.import_training_project(job_src) as training_project:
         assert training_project.name == "first-project"
         assert training_project.job.compute.cpu_count == 4
+        assert training_project.job.runtime.cache_config.enabled
+        assert training_project.job.runtime.cache_config.enable_legacy_hf_mount
 
 
 def test_import_directory_fails():
@@ -54,13 +56,6 @@ def test_import_deploy_checkpoints_config():
             deploy_checkpoints_config.checkpoint_details.checkpoints[1].id
             == "checkpoint-42"
         )
-
-
-def test_import_cache_config():
-    job_src = TEST_ROOT / "import" / "project_with_cache_config.py"
-    with loader.import_cache_config(job_src) as cache_config:
-        assert cache_config.enabled
-        assert cache_config.enable_legacy_hf_mount
 
 
 def test_import_handles_training_project_with_deploy_checkpoints_config():

@@ -6,6 +6,7 @@ runtime_config = definitions.Runtime(
         "FOO_VAR": "FOO_VAL",
         "BAR_VAR": definitions.SecretReference(name="BAR_SECRET"),
     },
+    cache_config=definitions.CacheConfig(enabled=True, enable_legacy_hf_mount=True),
 )
 
 training_job = definitions.TrainingJob(
