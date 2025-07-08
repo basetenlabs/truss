@@ -72,7 +72,9 @@ async def run_baseten_benchmark(length):
     ram_readings = []
     stop_event = threading.Event()
     monitor_thread = threading.Thread(
-        target=resource_monitor, args=(cpu_readings, ram_readings, stop_event, 0.1), daemon=True
+        target=resource_monitor,
+        args=(cpu_readings, ram_readings, stop_event, 0.1),
+        daemon=True,
     )
     monitor_thread.start()
 
@@ -133,7 +135,9 @@ async def run_asyncopenai_benchmark(length):
     ram_readings = []
     stop_event = threading.Event()
     monitor_thread = threading.Thread(
-        target=resource_monitor, args=(cpu_readings, ram_readings, stop_event, 0.1), daemon=True
+        target=resource_monitor,
+        args=(cpu_readings, ram_readings, stop_event, 0.1),
+        daemon=True,
     )
     monitor_thread.start()
 

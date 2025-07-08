@@ -26,7 +26,7 @@ async def benchmark_every(
                 input=["Hello " * tokens_per_sentence] * sentences_per_request,
                 max_concurrent_requests=lb_split,
                 batch_size=1,
-                model="model"
+                model="model",
             )
             # TODO: use total time or
             return [(time.time() - t)]
