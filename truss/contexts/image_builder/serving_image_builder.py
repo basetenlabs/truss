@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -693,6 +694,16 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files,
             self._spec.build_commands,
         )
+        self._setup_build_hash_directory(build_dir)
+
+    def _setup_build_hash_directory(self, build_dir: Path) -> None:
+        build_hash_path = build_dir / "build_hash"
+        if build_hash_path.exists():
+            shutil.rmtree(build_hash_path)
+        shutil.copytree(build_dir, build_hash_path)
+        # remove the config.yaml file from the build_hash directory
+        # we will use only config_build_time.yaml to compute the hash
+        (build_hash_path / "config.yaml").unlink()
 
     def _render_dockerfile(
         self,
