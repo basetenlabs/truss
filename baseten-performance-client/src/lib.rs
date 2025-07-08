@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::cmp::min;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::vec;
@@ -24,31 +24,27 @@ use tokio::task::JoinError;
 
 // --- Constants ---
 const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
+const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
 const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
-const MAX_CONCURRENCY_HIGH_BATCH: usize = 512;
-const MAX_CONCURRENCY_LOW_BATCH: usize = 264;
+const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
+const MAX_CONCURRENCY_LOW_BATCH: usize = 512;
 const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 const DEFAULT_CONCURRENCY: usize = 32;
-const MAX_BATCH_SIZE: usize = 128;
+const MAX_BATCH_SIZE: usize = 1024;
 const DEFAULT_BATCH_SIZE: usize = 128;
 const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or network errors
 const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
-
-static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
-    option_env!("PERF_CLIENT_STAGING_ADDRESS")
-        .unwrap_or("app.development.baseten.co")
-        .split(',')
-        .map(String::from)
-        .collect()
-});
+const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.03; // 3% of timeout requests can be retried
 
 // --- Global Tokio Runtime ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
                                                              // Add this constant
 const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
 const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C"; // New constant for Ctrl+C
+
+// Providers that are known to be slow with this client
+const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
 
 static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     let runtime = Arc::new(Runtime::new().expect("Failed to create global Tokio runtime"));
@@ -61,8 +57,33 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     });
     runtime
 });
+static DEFAULT_STAGING_ADDRESS: &[u8] = &[
+    0x61, 0x70, 0x70, 0x2e, 0x73, 0x74, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x62, 0x61, 0x73, 0x65,
+    0x74, 0x65, 0x6e, 0x2e, 0x63, 0x6f, 0x2c,
+];
+static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
+    option_env!("PERF_CLIENT_STAGING_ADDRESS")
+        .unwrap_or(std::str::from_utf8(DEFAULT_STAGING_ADDRESS).unwrap())
+        .split(',')
+        .map(String::from)
+        .collect()
+});
+
+// in case of timeouts, we can retry a small percentage of requests
+// to not fail entire batch
+fn calculate_retry_timeout_budget(total_requests: usize) -> usize {
+    (total_requests as f64 * RETRY_TIMEOUT_BUDGET_PERCENTAGE).ceil() as usize
+}
+
+struct SendRequestConfig {
+    max_retries: u32,
+    initial_backoff: Duration,
+    retry_budget: Option<Arc<AtomicUsize>>,
+    cancel_token: Arc<AtomicBool>,
+}
 
 pyo3::import_exception!(requests, HTTPError);
+pyo3::import_exception!(requests, Timeout);
 
 // --- OpenAI Compatible Structures ---
 #[derive(Serialize, Debug, Clone)]
@@ -393,6 +414,15 @@ impl PerformanceClient {
     #[pyo3(signature = (base_url, api_key = None))]
     fn new(base_url: String, api_key: Option<String>) -> PyResult<Self> {
         let api_key = PerformanceClient::get_api_key(api_key)?;
+        if WARNING_SLOW_PROVIDERS
+            .iter()
+            .any(|&provider| base_url.contains(provider))
+        {
+            eprintln!(
+                "Warning: Using {} as the base URL might be slow. Consider using baseten.com instead.",
+                base_url.clone()
+            );
+        }
         Ok(PerformanceClient {
             api_key,
             base_url,
@@ -1023,6 +1053,7 @@ async fn send_single_embedding_request(
     dimensions: Option<u32>,
     user: Option<String>,
     request_timeout: Duration,
+    config: &SendRequestConfig,
 ) -> Result<OpenAIEmbeddingsResponse, PyErr> {
     let request_payload = OpenAIEmbeddingsRequest {
         input: texts_batch,
@@ -1040,12 +1071,7 @@ async fn send_single_embedding_request(
         .json(&request_payload)
         .timeout(request_timeout);
 
-    let response = send_request_with_retry(
-        request_builder,
-        MAX_HTTP_RETRIES,
-        Duration::from_millis(INITIAL_BACKOFF_MS),
-    )
-    .await?;
+    let response = send_request_with_retry(request_builder, config).await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
@@ -1073,6 +1099,10 @@ async fn process_embeddings_requests(
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
     let total_texts = texts.len();
+    let total_requests = (total_texts + batch_size - 1) / batch_size;
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_requests,
+    )));
     let cancel_token = Arc::new(AtomicBool::new(false));
     let model_for_response = model.clone();
 
@@ -1087,6 +1117,7 @@ async fn process_embeddings_requests(
         let user_text_batch_owned = user_text_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
+        let retry_budget_clone = Arc::clone(&retry_budget);
         let individual_request_timeout = request_timeout_duration;
         let current_batch_absolute_start_index = batch_index * batch_size;
 
@@ -1095,6 +1126,12 @@ async fn process_embeddings_requests(
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let request_time_start = Instant::now(); // Measure time for single request
+            let config = SendRequestConfig {
+                max_retries: MAX_HTTP_RETRIES,
+                initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
+            };
             let result = send_single_embedding_request(
                 client_clone,
                 user_text_batch_owned,
@@ -1105,6 +1142,7 @@ async fn process_embeddings_requests(
                 dimensions_clone,
                 user_clone,
                 individual_request_timeout,
+                &config,
             )
             .await;
             let request_time_elapsed = request_time_start.elapsed(); // Get duration
@@ -1178,6 +1216,7 @@ async fn send_single_rerank_request(
     api_key: String,
     base_url: String,
     request_timeout: Duration,
+    config: &SendRequestConfig,
 ) -> Result<Vec<RerankResult>, PyErr> {
     let request_payload = RerankRequest {
         query,
@@ -1196,12 +1235,7 @@ async fn send_single_rerank_request(
         .json(&request_payload)
         .timeout(request_timeout);
 
-    let response = send_request_with_retry(
-        request_builder,
-        MAX_HTTP_RETRIES,
-        Duration::from_millis(INITIAL_BACKOFF_MS),
-    )
-    .await?;
+    let response = send_request_with_retry(request_builder, config).await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
@@ -1229,6 +1263,10 @@ async fn process_rerank_requests(
     // Updated return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
+    let total_requests = (texts.len() + batch_size - 1) / batch_size;
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_requests,
+    )));
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for (batch_idx, texts_batch) in texts.chunks(batch_size).enumerate() {
@@ -1240,6 +1278,7 @@ async fn process_rerank_requests(
         let texts_batch_owned = texts_batch.to_vec();
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
+        let retry_budget_clone = Arc::clone(&retry_budget);
         let individual_request_timeout = request_timeout_duration;
         // Calculate the starting index for this batch relative to the original `texts` Vec
         let current_batch_absolute_start_index = batch_idx * batch_size;
@@ -1249,6 +1288,12 @@ async fn process_rerank_requests(
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let request_time_start = Instant::now();
+            let config = SendRequestConfig {
+                max_retries: MAX_HTTP_RETRIES,
+                initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
+            };
             let result = send_single_rerank_request(
                 client_clone,
                 query_clone,
@@ -1260,6 +1305,7 @@ async fn process_rerank_requests(
                 api_key_clone,
                 base_url_clone,
                 individual_request_timeout,
+                &config,
             )
             .await;
             let request_time_elapsed = request_time_start.elapsed();
@@ -1314,6 +1360,7 @@ async fn send_single_classify_request(
     api_key: String,
     base_url: String,
     request_timeout: Duration,
+    config: &SendRequestConfig,
 ) -> Result<Vec<Vec<ClassificationResult>>, PyErr> {
     let request_payload = ClassifyRequest {
         inputs,
@@ -1330,12 +1377,7 @@ async fn send_single_classify_request(
         .json(&request_payload)
         .timeout(request_timeout);
 
-    let response = send_request_with_retry(
-        request_builder,
-        MAX_HTTP_RETRIES,
-        Duration::from_millis(INITIAL_BACKOFF_MS),
-    )
-    .await?;
+    let response = send_request_with_retry(request_builder, config).await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
@@ -1363,6 +1405,10 @@ async fn process_classify_requests(
     // Updated return type
     let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
     let mut tasks = Vec::new();
+    let total_requests = (inputs.len() + batch_size - 1) / batch_size;
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_requests,
+    )));
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for input_chunk_slice in inputs.chunks(batch_size) {
@@ -1374,6 +1420,7 @@ async fn process_classify_requests(
             input_chunk_slice.iter().map(|s| vec![s.clone()]).collect();
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
+        let retry_budget_clone = Arc::clone(&retry_budget);
         let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
@@ -1381,6 +1428,12 @@ async fn process_classify_requests(
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
 
             let request_time_start = Instant::now();
+            let config = SendRequestConfig {
+                max_retries: MAX_HTTP_RETRIES,
+                initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
+            };
             let result = send_single_classify_request(
                 client_clone,
                 inputs_for_api_owned,
@@ -1390,6 +1443,7 @@ async fn process_classify_requests(
                 api_key_clone,
                 base_url_clone,
                 individual_request_timeout,
+                &config,
             )
             .await;
             let request_time_elapsed = request_time_start.elapsed();
@@ -1438,6 +1492,7 @@ async fn send_single_batch_post_request(
     payload_json: JsonValue,
     api_key: String,
     request_timeout: Duration,
+    config: &SendRequestConfig,
 ) -> Result<(JsonValue, HashMap<String, String>), PyErr> {
     // Updated return type
     let request_builder = client
@@ -1446,12 +1501,7 @@ async fn send_single_batch_post_request(
         .json(&payload_json)
         .timeout(request_timeout);
 
-    let response = send_request_with_retry(
-        request_builder,
-        MAX_HTTP_RETRIES,
-        Duration::from_millis(INITIAL_BACKOFF_MS),
-    )
-    .await?;
+    let response = send_request_with_retry(request_builder, config).await?;
 
     let successful_response = ensure_successful_response(response).await?;
 
@@ -1488,6 +1538,9 @@ async fn process_batch_post_requests(
     let mut tasks = Vec::new();
     let cancel_token = Arc::new(AtomicBool::new(false));
     let total_payloads = payloads_json.len();
+    let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+        total_payloads,
+    )));
 
     for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
         let client_clone = client.clone();
@@ -1496,6 +1549,7 @@ async fn process_batch_post_requests(
         let url_path_clone = url_path.clone();
         let semaphore_clone = Arc::clone(&semaphore);
         let cancel_token_clone = Arc::clone(&cancel_token);
+        let retry_budget_clone = Arc::clone(&retry_budget);
         let individual_request_timeout = request_timeout_duration;
 
         tasks.push(tokio::spawn(async move {
@@ -1508,6 +1562,12 @@ async fn process_batch_post_requests(
                 url_path_clone.trim_start_matches('/')
             );
             let request_time_start = std::time::Instant::now();
+            let config = SendRequestConfig {
+                max_retries: MAX_HTTP_RETRIES,
+                initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                retry_budget: Some(retry_budget_clone),
+                cancel_token: cancel_token_clone.clone(),
+            };
             // send_single_batch_post_request now returns (JsonValue, HashMap<String, String>)
             let result_tuple = send_single_batch_post_request(
                 client_clone,
@@ -1515,6 +1575,7 @@ async fn process_batch_post_requests(
                 payload_item_json,
                 api_key_clone,
                 individual_request_timeout,
+                &config,
             )
             .await;
 
@@ -1695,11 +1756,11 @@ async fn ensure_successful_response(
 
 async fn send_request_with_retry(
     request_builder: reqwest::RequestBuilder,
-    max_retries: u32,
-    initial_backoff: Duration,
+    config: &SendRequestConfig,
 ) -> Result<reqwest::Response, PyErr> {
     let mut retries_done = 0;
-    let mut current_backoff = initial_backoff;
+    let mut current_backoff = config.initial_backoff;
+    let max_retries = config.max_retries;
 
     loop {
         let request_builder_clone = request_builder
@@ -1713,32 +1774,50 @@ async fn send_request_with_retry(
                 }
 
                 // Not a success, check if it's a retryable HTTP error (429 or 5xx)
-                if response.status().as_u16() == 429 || response.status().is_server_error() {
+                let status = response.status();
+                if status.as_u16() == 429 || status.is_server_error() {
+                    // 429 or 5xx are retryable up to max_retries.
                     if retries_done >= max_retries {
                         // Max retries performed for these HTTP errors
-                        // Ensure this goes through your HTTPError mapping
                         return ensure_successful_response(response).await;
                     }
-                    // If not max retries, fall through to common retry logic below
+                // If not max retries, fall through to common retry logic below
+                } else if status.is_client_error() {
+                    // Non-retryable client error (e.g., 400, 401, 403, 413).
+                    // Signal cancellation for other tasks and return the error.
+                    config.cancel_token.store(true, Ordering::SeqCst);
+                    return ensure_successful_response(response).await;
                 } else {
-                    // Non-retryable HTTP error (e.g., 400, 401, 403, 404)
-                    // Ensure this goes through your HTTPError mapping and then return
+                    // Other non-success, non-retryable status.
                     return ensure_successful_response(response).await;
                 }
             }
             Err(network_err) => {
                 // This handles "error sending request" (reqwest::Error)
+
                 if network_err.is_timeout() {
-                    // Directly return a 408 Timeout error without retry
-                    return Err(PyErr::new::<HTTPError, _>((
-                        408,
-                        "A request timed out on client side.".to_string(),
-                    )));
+                    // Handle timeout errors specifically
+                    if let Some(retry_budget) = config.retry_budget.as_ref() {
+                        // Atomically decrement and check the retry budget.
+                        // fetch_sub returns the previous value. If it was 1 or less, the budget is now exhausted.
+                        if retry_budget.fetch_sub(1, Ordering::SeqCst) < 1 {
+                            config.cancel_token.store(true, Ordering::SeqCst);
+                            return Err(PyErr::new::<Timeout, _>((
+                                408,
+                                format!(
+                                    "Request timed out and retry budget is exhausted: {}",
+                                    network_err
+                                ),
+                            )));
+                        }
+                    }
                 }
 
-                println!("Network/send error: {}", network_err);
                 if retries_done >= 2 {
+                    // allow up to 2 retries for network/send errors
+                    // such as dns resolution failures or
                     // Max retries performed for network/send errors
+                    config.cancel_token.store(true, Ordering::SeqCst);
                     return Err(PyValueError::new_err(format!(
                         "Request failed after {} retries with network/send error: {}",
                         retries_done, network_err

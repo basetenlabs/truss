@@ -17,6 +17,7 @@ from truss.cli.train.types import (
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
+    ALLOWED_LORA_RANKS,
     DEFAULT_LORA_RANK,
     Checkpoint,
     CheckpointList,
@@ -257,7 +258,16 @@ def _hydrate_checkpoints(
 
 def _get_lora_rank(checkpoint_resp: dict) -> int:
     lora_adapter_config = checkpoint_resp.get("lora_adapter_config") or {}
-    return lora_adapter_config.get("r") or DEFAULT_LORA_RANK
+    lora_rank = lora_adapter_config.get("r") or DEFAULT_LORA_RANK
+
+    # If the API returns an invalid value, raise an error
+    if lora_rank not in ALLOWED_LORA_RANKS:
+        raise ValueError(
+            f"LoRA rank {lora_rank} from checkpoint is not in allowed values {sorted(ALLOWED_LORA_RANKS)}. "
+            f"Please use a valid LoRA rank."
+        )
+
+    return lora_rank
 
 
 def _get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
