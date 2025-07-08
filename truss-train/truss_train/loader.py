@@ -25,7 +25,6 @@ def import_deploy_checkpoints_config(
         yield config
 
 
-
 @contextlib.contextmanager
 def import_target(module_path: pathlib.Path, target_type: Type[T]) -> Iterator[T]:
     module_name = module_path.stem
