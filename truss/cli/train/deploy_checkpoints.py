@@ -42,6 +42,7 @@ HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 
 # If we change this, make sure to update the logic in backend codebase
 CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
+ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
 
 
 def prepare_checkpoint_deploy(
@@ -54,9 +55,7 @@ def prepare_checkpoint_deploy(
         checkpoint_deploy_config, remote_provider, project_id, job_id
     )
     rendered_truss = _render_vllm_lora_truss_config(checkpoint_deploy_config)
-    truss_directory = Path(
-        tempfile.mkdtemp(suffix=f"{checkpoint_deploy_config.deployment_name}")
-    )
+    truss_directory = Path(tempfile.mkdtemp())
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
     console.print(rendered_truss, style="green")
@@ -105,15 +104,18 @@ def _ensure_deployment_name(
     if deploy_config_deployment_name:
         return deploy_config_deployment_name
 
-    first_checkpoint_name = checkpoints[0].name
-    # We allow for autoincrementing when the checkpoint matches the regex pattern.
-    # In cases where the autoincrementing deployment name is not supported,
-    # ask the user for a deployment name
-    if CHECKPOINT_PATTERN.match(first_checkpoint_name):
-        return first_checkpoint_name
+    default_deployment_name = "checkpoint"
+
+    first_checkpoint_name = checkpoints[0].name.replace("/", "--")
+    if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
+        # We allow for autoincrementing when the checkpoint matches the regex pattern.
+        # In cases where the autoincrementing deployment name is not supported,
+        # ask the user for a deployment name
+        if CHECKPOINT_PATTERN.match(first_checkpoint_name) and len(checkpoints) == 1:
+            return first_checkpoint_name
     # prompt the user for the deployment name
     deployment_name = inquirer.text(
-        message="Enter the deployment name.", default=first_checkpoint_name
+        message="Enter the deployment name.", default=default_deployment_name
     ).execute()
     if not deployment_name:
         raise click.UsageError("Deployment name is required.")
@@ -277,10 +279,7 @@ def _hydrate_checkpoints(
     return Checkpoint(
         training_job_id=job_id,
         id=checkpoint_id,
-        # Because the checkpoint id is a relative path, we need to
-        # replace slashes with something we can persist to disk. This is important
-        # for persisting the truss to disk.
-        name=checkpoint_id.replace("/", "--"),
+        name=checkpoint_id,
         lora_rank=_get_lora_rank(checkpoint),
     )
 
