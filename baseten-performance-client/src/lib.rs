@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::cmp::min;
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -1818,9 +1819,36 @@ async fn send_request_with_retry(
                     // such as dns resolution failures or
                     // Max retries performed for network/send errors
                     config.cancel_token.store(true, Ordering::SeqCst);
+
+                    let url = network_err
+                        .url()
+                        .map_or_else(|| "unknown URL", |u| u.as_str())
+                        .to_string();
+
+                    let mut error_details =
+                        format!("Request to {} failed after {} retries. ", url, retries_done);
+
+                    if network_err.is_connect() {
+                        error_details.push_str("This was a connection error. Please check if the host is reachable and your network/firewall settings. ");
+                    } else if network_err.is_timeout() {
+                        error_details.push_str("The request timed out. The server may be overloaded or not responding. ");
+                    }
+
+                    // Append the chain of source errors for detailed diagnostics.
+                    let mut sources = String::new();
+                    let mut source_opt = network_err.source();
+                    while let Some(source) = source_opt {
+                        sources.push_str(&format!("\n  Caused by: {}", source));
+                        source_opt = source.source();
+                    }
+
+                    if !sources.is_empty() {
+                        error_details.push_str(&format!("Root cause analysis:{}", sources));
+                    }
+
                     return Err(PyValueError::new_err(format!(
-                        "Request failed after {} retries with network/send error: {}",
-                        retries_done, network_err
+                        "Network error: {}\n Network error details: {}",
+                        network_err, error_details
                     )));
                 }
                 // If not max retries, fall through to common retry logic below
