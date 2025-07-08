@@ -4,12 +4,7 @@
 
 {%- set requires_live_reload = config.live_reload and not config.docker_server %}
 
-{%- if requires_live_reload %}
-{% include "control_venv.Dockerfile.jinja" %}
-{%- endif %} {#- endif requires_live_reload #}
-
 {% extends "base.Dockerfile.jinja" %}
-
 
 {% block base_image_patch %}
 {# If user base image is supplied in config, apply build commands from truss base image #}
@@ -31,7 +26,7 @@ RUN apt update && \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
-RUN pip install -r {{ base_server_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
+RUN {{ sys_pip_install_command }} -r {{ base_server_requirements_filename }} --no-cache-dir
     {%- endif %} {#- endif not config.docker_server #}
 
     {%- if requires_live_reload %}
@@ -49,7 +44,7 @@ RUN ln -sf {{ config.base_image.python_executable_path }} /usr/local/bin/python
 {% block install_requirements %}
     {%- if should_install_server_requirements %}
 COPY ./{{ server_requirements_filename }} {{ server_requirements_filename }}
-RUN pip install -r {{ server_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
+RUN {{ sys_pip_install_command }} -r {{ server_requirements_filename }} --no-cache-dir
     {%- endif %} {#- endif should_install_server_requirements #}
 {{ super() }}
 {% endblock %} {#- endblock install_requirements #}
@@ -99,16 +94,11 @@ COPY ./truss /app/truss
 
 COPY ./config.yaml /app/config.yaml
 {%- if requires_live_reload %}
+RUN uv python install {{ control_python_version }}
+RUN uv venv /control/.env --python {{ control_python_version }}
+
 COPY ./control /control
-
-# NB(nikhil): Copy the virtual env, and system dependencies for the
-# python version specific to the control server. We need to run ldconfig
-# so dynamic linking works.
-COPY --from=control-server-venv /usr/local/lib/ /usr/local/lib/
-COPY --from=control-server-venv /control/.env /control/.env
-RUN ldconfig
-
-RUN /control/.env/bin/pip install -r /control/requirements.txt
+RUN uv pip install -r /control/requirements.txt --python /control/.env/bin/python
 {%- endif %} {#- endif requires_live_reload #}
 
 {%- if model_dir_exists %}
@@ -122,7 +112,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         curl nginx python3-pip && \
         rm -rf /var/lib/apt/lists/*
 COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
-RUN pip install -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+RUN {{ sys_pip_install_command }} -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_log_dir = "/var/log/supervisor" %}

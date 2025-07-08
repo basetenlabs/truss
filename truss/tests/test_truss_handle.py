@@ -136,6 +136,8 @@ def _generate_base_image_variations(
         ("python:alpine", "/usr/local/bin/python3", True),
         ("python:2.7-slim", "/usr/local/bin/python", True),
         ("python:3.7-slim", "/usr/local/bin/python3", True),
+        # Base image with `uv` already included.
+        ("ghcr.io/astral-sh/uv:python3.11-bookworm", "/usr/local/bin/python3", True),
     ],
 )
 def test_build_serving_docker_image_from_user_base_image_live_reload(
