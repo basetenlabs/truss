@@ -249,13 +249,13 @@ def print_deploy_checkpoints_success_message(
         Text("\nTo run the model with the LoRA adapter,"),
         Text("ensure your `model` parameter is set to one of"),
         Text(
-            f"{[x.id for x in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints]}",
+            f"{[x.name for x in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints]}",
             style="magenta",
         ),
         Text("in your request. An example request body might look like this:"),
         Text(
             "\n{"
-            + f'"model": {prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints[0].id}, "messages": [...]'
+            + f'"model": {prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints[0].name}, "messages": [...]'
             + "}",
             style="green",
         ),
