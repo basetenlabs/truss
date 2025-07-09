@@ -9,8 +9,9 @@ RUN $PYTHON_EXECUTABLE -c "import sys; \
     and sys.version_info.minor <= 13 \
     else sys.exit(1)" \
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.13"; exit 1; }
-RUN if ! command -v uv >/dev/null 2>&1; then (curl -LsSf https://astral.sh/uv/0.7.19/install.sh | sh) >/dev/null 2>&1; fi
-ENV PATH="/root/.local/bin:$PATH"
+RUN if command -v pip >/dev/null 2>&1; then \
+      pip install --upgrade pip --no-cache-dir && rm -rf /root/.cache/pip; \
+    fi
 ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
 RUN apt update && \
@@ -24,9 +25,9 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 COPY ./base_server_requirements.txt base_server_requirements.txt
-RUN uv pip install --system -r base_server_requirements.txt --no-cache-dir
+RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 COPY ./requirements.txt requirements.txt
-RUN uv pip install --system -r requirements.txt --no-cache-dir
+RUN pip install -r requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 ENV APP_HOME="/app"
 WORKDIR $APP_HOME
 COPY ./data /app/data
