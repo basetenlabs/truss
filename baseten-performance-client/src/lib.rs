@@ -15,6 +15,7 @@ use serde_json::Value as JsonValue;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::error::Error;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -38,6 +39,8 @@ const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
 const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.03; // 3% of timeout requests can be retried
 const HTTP2_WINDOW_SIZE: u32 = 2_097_152; // 2 MB
+const HTTP2_CLIENT_POOL_SIZE: usize = 64;
+const HTTP2_CLIENT_MAX_QUEUED: usize = 8;
 
 // --- Global Tokio Runtime ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -326,12 +329,46 @@ struct BatchPostResponse {
     response_headers: Vec<PyObject>, // New field for headers
 }
 
+#[derive(Clone)]
+enum HttpClientWrapper {
+    Http1(Arc<Client>),
+    Http2(Arc<Vec<(Arc<AtomicUsize>, Arc<Client>)>>), // (inflight_requests, client)
+}
+
+impl HttpClientWrapper {
+    fn get_client(&self) -> (Arc<Client>, Option<Arc<AtomicUsize>>) {
+        match self {
+            HttpClientWrapper::Http1(client) => (client.clone(), None),
+            HttpClientWrapper::Http2(pool) => {
+                // First, try to find the first client in the pool that is not "full".
+                // This fills clients sequentially.
+                if let Some((count, client)) = pool.iter().find(|(count, _)| {
+                    count.load(Ordering::Relaxed) < HTTP2_CLIENT_MAX_QUEUED
+                }) {
+                    count.fetch_add(1, Ordering::Relaxed);
+                    return (client.clone(), Some(count.clone()));
+                }
+
+                // If all clients are "full" (>= 8 requests), fall back to the one
+                // with the fewest requests overall. This handles high load.
+                let (count, client) = pool
+                    .iter()
+                    .min_by_key(|(count, _)| count.load(Ordering::Relaxed))
+                    .unwrap(); // Pool is never empty, so unwrap is safe.
+
+                count.fetch_add(1, Ordering::Relaxed);
+                (client.clone(), Some(count.clone()))
+            }
+        }
+    }
+}
+
 // --- PerformanceClient Definition ---
 #[pyclass]
 struct PerformanceClient {
     api_key: String,
     base_url: String,
-    client: Client,
+    client_wrapper: HttpClientWrapper,
     runtime: Arc<Runtime>,
 }
 
@@ -459,12 +496,22 @@ impl PerformanceClient {
             );
         }
 
-        let client = PerformanceClient::get_http_client(http_version)?;
+        let client_wrapper = if http_version == 2 {
+            let mut pool = Vec::with_capacity(HTTP2_CLIENT_POOL_SIZE);
+            for _ in 0..HTTP2_CLIENT_POOL_SIZE {
+                let client = PerformanceClient::get_http_client(2)?;
+                pool.push((Arc::new(AtomicUsize::new(0)), Arc::new(client)));
+            }
+            HttpClientWrapper::Http2(Arc::new(pool))
+        } else {
+            let client = PerformanceClient::get_http_client(1)?;
+            HttpClientWrapper::Http1(Arc::new(client))
+        };
 
         Ok(PerformanceClient {
             api_key,
             base_url,
-            client,
+            client_wrapper,
             runtime: Arc::clone(&GLOBAL_RUNTIME),
         })
     }
@@ -498,7 +545,7 @@ impl PerformanceClient {
         )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
-        let client_clone = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
@@ -512,7 +559,7 @@ impl PerformanceClient {
 
                 rt.spawn(async move {
                     let res = process_embeddings_requests(
-                        client_clone,
+                        client_wrapper_clone,
                         input,
                         model,
                         api_key_clone,
@@ -573,14 +620,14 @@ impl PerformanceClient {
         )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
-        let client_clone = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
 
         let future = async move {
             let time_start_async_op = Instant::now();
             let (mut api_response, batch_durations) = process_embeddings_requests(
-                client_clone,
+                client_wrapper_clone,
                 input,
                 model,
                 api_key_clone,
@@ -633,7 +680,7 @@ impl PerformanceClient {
             &self.base_url,
         )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
-        let client = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
@@ -647,7 +694,7 @@ impl PerformanceClient {
                     std::sync::mpsc::channel::<Result<(Vec<RerankResult>, Vec<Duration>), PyErr>>();
                 rt.spawn(async move {
                     let res = process_rerank_requests(
-                        client,
+                        client_wrapper_clone,
                         query,
                         texts,
                         raw_scores,
@@ -710,7 +757,7 @@ impl PerformanceClient {
         )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
-        let client_clone = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
         let truncation_direction_owned = truncation_direction.to_string();
@@ -719,7 +766,7 @@ impl PerformanceClient {
             let time_start_async_op = Instant::now();
             // process_rerank_requests returns (Vec<RerankResult>, Vec<Duration>)
             let (core_data, batch_durations) = process_rerank_requests(
-                client_clone,
+                client_wrapper_clone,
                 query,
                 texts,
                 raw_scores,
@@ -772,7 +819,7 @@ impl PerformanceClient {
             &self.base_url,
         )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
-        let client = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
@@ -787,7 +834,7 @@ impl PerformanceClient {
                 >();
                 rt.spawn(async move {
                     let res = process_classify_requests(
-                        client,
+                        client_wrapper_clone,
                         inputs,
                         raw_scores,
                         truncate,
@@ -847,7 +894,7 @@ impl PerformanceClient {
         )?;
         let timeout_duration = PerformanceClient::validate_and_get_timeout_duration(timeout_s)?;
 
-        let client_clone = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
         let truncation_direction_owned = truncation_direction.to_string();
@@ -856,7 +903,7 @@ impl PerformanceClient {
             let time_start_async_op = Instant::now();
             // process_classify_requests returns (Vec<Vec<ClassificationResult>>, Vec<Duration>)
             let (core_data, batch_durations) = process_classify_requests(
-                client_clone,
+                client_wrapper_clone,
                 inputs,
                 raw_scores,
                 truncate,
@@ -916,7 +963,7 @@ impl PerformanceClient {
             payloads_json.push(json_val);
         }
 
-        let client = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let rt = Arc::clone(&self.runtime);
@@ -930,7 +977,7 @@ impl PerformanceClient {
             let (tx, rx) = std::sync::mpsc::channel();
             rt.spawn(async move {
                 let res = process_batch_post_requests(
-                    client,
+                    client_wrapper_clone,
                     url_path,
                     payloads_json,
                     api_key,
@@ -964,6 +1011,7 @@ impl PerformanceClient {
                     idx, e
                 ))
             })?;
+            #[allow(deprecated)]
             results_py.push(py_obj_bound.to_object(py));
 
             let headers_py_obj = pythonize(py, &headers_map).map_err(|e| {
@@ -1018,7 +1066,7 @@ impl PerformanceClient {
             payloads_json.push(json_val);
         }
 
-        let client_clone = self.client.clone();
+        let client_wrapper_clone = self.client_wrapper.clone();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
 
@@ -1026,7 +1074,7 @@ impl PerformanceClient {
             let time_start_async_op = std::time::Instant::now();
 
             let response_data_with_times_and_headers = process_batch_post_requests(
-                client_clone,
+                client_wrapper_clone,
                 url_path,
                 payloads_json,
                 api_key_clone,
@@ -1055,7 +1103,7 @@ impl PerformanceClient {
                             idx, e
                         ))
                     })?;
-                    results_py.push(py_obj_bound.to_object(py_gil));
+                    results_py.push(py_obj_bound.into_py(py_gil));
 
                     let headers_py_obj = pythonize(py_gil, &headers_map).map_err(|e| {
                         PyValueError::new_err(format!(
@@ -1082,7 +1130,7 @@ impl PerformanceClient {
 
 // --- Send Single Embedding Request ---
 async fn send_single_embedding_request(
-    client: Client,
+    client: &Client,
     texts_batch: Vec<String>,
     model: String,
     api_key: String,
@@ -1121,7 +1169,7 @@ async fn send_single_embedding_request(
 
 // --- Process Embeddings Requests ---
 async fn process_embeddings_requests(
-    client: Client,
+    client_wrapper: HttpClientWrapper,
     texts: Vec<String>,
     model: String,
     api_key: String,
@@ -1145,7 +1193,7 @@ async fn process_embeddings_requests(
     let model_for_response = model.clone();
 
     for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
-        let client_clone = client.clone();
+        let client_wrapper_clone = client_wrapper.clone();
         let model_for_task = model.clone();
         let api_key_clone = api_key.clone();
         let base_url_clone = base_url.clone();
@@ -1162,6 +1210,7 @@ async fn process_embeddings_requests(
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
+            let (client, counter) = client_wrapper_clone.get_client();
 
             let request_time_start = Instant::now(); // Measure time for single request
             let config = SendRequestConfig {
@@ -1171,7 +1220,7 @@ async fn process_embeddings_requests(
                 cancel_token: cancel_token_clone.clone(),
             };
             let result = send_single_embedding_request(
-                client_clone,
+                &client,
                 user_text_batch_owned,
                 model_for_task,
                 api_key_clone,
@@ -1183,6 +1232,9 @@ async fn process_embeddings_requests(
                 &config,
             )
             .await;
+            if let Some(c) = counter {
+                c.fetch_sub(1, Ordering::Relaxed);
+            }
             let request_time_elapsed = request_time_start.elapsed(); // Get duration
 
             match result {
@@ -1244,7 +1296,7 @@ async fn process_embeddings_requests(
 
 // --- Send Single Rerank Request ---
 async fn send_single_rerank_request(
-    client: Client,
+    client: &Client,
     query: String,
     texts_batch: Vec<String>,
     raw_scores: bool,
@@ -1285,7 +1337,7 @@ async fn send_single_rerank_request(
 
 // --- Process Rerank Requests ---
 async fn process_rerank_requests(
-    client: Client,
+    client_wrapper: HttpClientWrapper,
     query: String,
     texts: Vec<String>,
     raw_scores: bool,
@@ -1308,7 +1360,7 @@ async fn process_rerank_requests(
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for (batch_idx, texts_batch) in texts.chunks(batch_size).enumerate() {
-        let client_clone = client.clone();
+        let client_wrapper_clone = client_wrapper.clone();
         let query_clone = query.clone();
         let api_key_clone = api_key.clone();
         let base_url_clone = base_url.clone();
@@ -1324,6 +1376,7 @@ async fn process_rerank_requests(
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
+            let (client, counter) = client_wrapper_clone.get_client();
 
             let request_time_start = Instant::now();
             let config = SendRequestConfig {
@@ -1333,7 +1386,7 @@ async fn process_rerank_requests(
                 cancel_token: cancel_token_clone.clone(),
             };
             let result = send_single_rerank_request(
-                client_clone,
+                &client,
                 query_clone,
                 texts_batch_owned,
                 raw_scores,
@@ -1346,6 +1399,9 @@ async fn process_rerank_requests(
                 &config,
             )
             .await;
+            if let Some(c) = counter {
+                c.fetch_sub(1, Ordering::Relaxed);
+            }
             let request_time_elapsed = request_time_start.elapsed();
 
             match result {
@@ -1376,7 +1432,7 @@ async fn process_rerank_requests(
             process_task_outcome(result, &mut first_error, &cancel_token)
         {
             all_results_data.extend(batch_data_part);
-            individual_batch_durations.push(duration);
+            individual_batch_durations.push(duration); // Collect duration
         }
     }
 
@@ -1390,7 +1446,7 @@ async fn process_rerank_requests(
 
 // --- Send Single Classify Request ---
 async fn send_single_classify_request(
-    client: Client,
+    client: &Client,
     inputs: Vec<Vec<String>>,
     raw_scores: bool,
     truncate: bool,
@@ -1429,7 +1485,7 @@ async fn send_single_classify_request(
 
 // --- Process Classify Requests ---
 async fn process_classify_requests(
-    client: Client,
+    client_wrapper: HttpClientWrapper,
     inputs: Vec<String>,
     raw_scores: bool,
     truncate: bool,
@@ -1450,7 +1506,7 @@ async fn process_classify_requests(
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     for input_chunk_slice in inputs.chunks(batch_size) {
-        let client_clone = client.clone();
+        let client_wrapper_clone = client_wrapper.clone();
         let api_key_clone = api_key.clone();
         let base_url_clone = base_url.clone();
         let truncation_direction_clone = truncation_direction.clone();
@@ -1464,6 +1520,7 @@ async fn process_classify_requests(
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
+            let (client, counter) = client_wrapper_clone.get_client();
 
             let request_time_start = Instant::now();
             let config = SendRequestConfig {
@@ -1473,7 +1530,7 @@ async fn process_classify_requests(
                 cancel_token: cancel_token_clone.clone(),
             };
             let result = send_single_classify_request(
-                client_clone,
+                &client,
                 inputs_for_api_owned,
                 raw_scores,
                 truncate,
@@ -1484,6 +1541,9 @@ async fn process_classify_requests(
                 &config,
             )
             .await;
+            if let Some(c) = counter {
+                c.fetch_sub(1, Ordering::Relaxed);
+            }
             let request_time_elapsed = request_time_start.elapsed();
 
             match result {
@@ -1525,7 +1585,7 @@ async fn process_classify_requests(
 // --- Send Single Batch Post Request ---
 // Now returns (JsonValue, HashMap<String, String>)
 async fn send_single_batch_post_request(
-    client: Client,
+    client: &Client,
     full_url: String,
     payload_json: JsonValue,
     api_key: String,
@@ -1563,7 +1623,7 @@ async fn send_single_batch_post_request(
 // --- Process Batch Post Requests ---
 // Now returns Result<Vec<(JsonValue, HashMap<String, String>, Duration)>, PyErr>
 async fn process_batch_post_requests(
-    client: Client,
+    client_wrapper: HttpClientWrapper,
     url_path: String,
     payloads_json: Vec<JsonValue>,
     api_key: String,
@@ -1581,7 +1641,7 @@ async fn process_batch_post_requests(
     )));
 
     for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
-        let client_clone = client.clone();
+        let client_wrapper_clone = client_wrapper.clone();
         let api_key_clone = api_key.clone();
         let base_url_clone = base_url.clone();
         let url_path_clone = url_path.clone();
@@ -1593,6 +1653,7 @@ async fn process_batch_post_requests(
         tasks.push(tokio::spawn(async move {
             let permit_guard =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
+            let (client, counter) = client_wrapper_clone.get_client();
 
             let full_url = format!(
                 "{}/{}",
@@ -1608,7 +1669,7 @@ async fn process_batch_post_requests(
             };
             // send_single_batch_post_request now returns (JsonValue, HashMap<String, String>)
             let result_tuple = send_single_batch_post_request(
-                client_clone,
+                &client,
                 full_url,
                 payload_item_json,
                 api_key_clone,
@@ -1616,6 +1677,9 @@ async fn process_batch_post_requests(
                 &config,
             )
             .await;
+            if let Some(c) = counter {
+                c.fetch_sub(1, Ordering::Relaxed);
+            }
 
             drop(permit_guard);
             let request_time_elapsed = request_time_start.elapsed();
