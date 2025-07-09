@@ -123,6 +123,7 @@ struct OpenAIEmbeddingData {
 #[pymethods]
 impl OpenAIEmbeddingData {
     #[getter]
+    #[allow(deprecated)]
     fn embedding(&self, py: Python) -> PyObject {
         match &self.embedding_internal {
             EmbeddingVariant::Base64(s) => s.to_object(py),
@@ -222,7 +223,7 @@ impl OpenAIEmbeddingsResponse {
             .map_err(|e| {
                 PyValueError::new_err(format!("Failed to create ndarray from embeddings: {}", e))
             })?;
-
+        #[allow(deprecated)]
         Ok(array.into_pyarray_bound(py))
     }
 }
@@ -1049,6 +1050,7 @@ impl PerformanceClient {
                     idx, e
                 ))
             })?;
+            #[allow(deprecated)]
             collected_headers_py.push(headers_py_obj.to_object(py));
 
             individual_request_times_collected.push(duration.as_secs_f64());
@@ -1132,6 +1134,7 @@ impl PerformanceClient {
                             idx, e
                         ))
                     })?;
+                    #[allow(deprecated)]
                     results_py.push(py_obj_bound.into_py(py_gil));
 
                     let headers_py_obj = pythonize(py_gil, &headers_map).map_err(|e| {
@@ -1140,6 +1143,7 @@ impl PerformanceClient {
                             idx, e
                         ))
                     })?;
+                    #[allow(deprecated)]
                     collected_headers_py.push(headers_py_obj.to_object(py_gil));
 
                     individual_request_times_collected.push(duration.as_secs_f64());
