@@ -143,7 +143,7 @@ async def test_trt_llm_truss_predict(
             assert resp == expected_predict_response
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_trt_llm_truss_missing_model_py(
     trt_llm_truss_container_fs, helpers, connected_request
 ):
