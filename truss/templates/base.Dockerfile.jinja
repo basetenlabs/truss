@@ -3,7 +3,8 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
 
 {%- set UV_VERSION = "0.7.19" %}
-{%- set sys_pip_install_command = "uv pip install --system" %}
+{# Detect if in active virtual environment, otherwise default to --system python discovery. #}
+{%- set sys_pip_install_command = 'if [ -n "$VIRTUAL_ENV" ]; then uv pip install; else uv pip install --system; fi' %}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
