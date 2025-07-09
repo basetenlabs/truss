@@ -240,7 +240,7 @@ class PerformanceClient:
         >>> array = embeddings.numpy()
     """
     def __init__(
-        self, base_url: builtins.str, api_key: typing.Optional[builtins.str] = None
+        self, base_url: builtins.str, api_key: typing.Optional[builtins.str] = None, experimental_use_http2: builtins.bool = False
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
@@ -248,9 +248,11 @@ class PerformanceClient:
         Args:
             base_url: The base URL of the API.
             api_key: The API key. If not provided, environment variables will be checked.
+            experimental_use_http2: If True, enables HTTP/2 support. Otherwise forces HTTP/1.1. Defaults to HTTP/1.1.
+                Under high concurrency, HTTP/1.1 delivers better performance and is the better default choice.
 
         Example:
-            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key", experimental_use_http2=True)
         """
         ...
 
