@@ -21,7 +21,9 @@ micro_batch_size = (
     16  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
 HTTP2 = False
-client_b = PerformanceClient(api_key=api_key, base_url=api_base_embed,experimental_use_http2=HTTP2)
+client_b = PerformanceClient(
+    api_key=api_key, base_url=api_base_embed, experimental_use_http2=HTTP2
+)
 client_oai = AsyncOpenAI(api_key=api_key, base_url=api_base_embed, timeout=1024)
 
 
@@ -195,7 +197,15 @@ async def run_all_benchmarks():
 
 def write_results_csv(results, filename="benchmark_results.csv"):
     """Writes benchmark results to a CSV file."""
-    fieldnames = ["client", "length", "duration", "max_cpu", "avg_cpu", "readings", "max_ram"]
+    fieldnames = [
+        "client",
+        "length",
+        "duration",
+        "max_cpu",
+        "avg_cpu",
+        "readings",
+        "max_ram",
+    ]
     with open(filename, "w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -210,5 +220,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    print(f"Starting benchmark comparison for PerformanceClient(http2={HTTP2}) and AsyncOpenAI")
+    print(
+        f"Starting benchmark comparison for PerformanceClient(http2={HTTP2}) and AsyncOpenAI"
+    )
     asyncio.run(main())

@@ -240,7 +240,10 @@ class PerformanceClient:
         >>> array = embeddings.numpy()
     """
     def __init__(
-        self, base_url: builtins.str, api_key: typing.Optional[builtins.str] = None, experimental_use_http2: builtins.bool = False
+        self,
+        base_url: builtins.str,
+        api_key: typing.Optional[builtins.str] = None,
+        experimental_use_http2: builtins.bool = False,
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
