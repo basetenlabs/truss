@@ -407,6 +407,36 @@ impl PerformanceClient {
         }
         Ok(actual_concurrency)
     }
+
+    fn get_http_client(http_version: u8) -> PyResult<Client> {
+        let mut client_builder = Client::builder();
+
+        if http_version == 2 {
+            // Configure for HTTP/2
+            // http2 is not fast, as multiplexing is not a good idea for many >1k requests
+            client_builder = client_builder
+                .http2_initial_connection_window_size(HTTP2_WINDOW_SIZE)
+                .http2_initial_stream_window_size(HTTP2_WINDOW_SIZE)
+                .http2_max_frame_size(65_536)
+                .http2_prior_knowledge();
+        } else {
+            // Configure for HTTP/1.1
+            client_builder = client_builder.http1_only();
+        }
+
+        client_builder
+            // Allow a large number of idle connections per host.
+            .pool_max_idle_per_host(32_768)
+            .pool_idle_timeout(Duration::from_secs(240))
+            // Disable Nagle's algorithm for lower latency on small requests.
+            .tcp_nodelay(true)
+            .user_agent(concat!(
+                "baseten-performance-client/",
+                env!("CARGO_PKG_VERSION")
+            ))
+            .build()
+            .map_err(|e| PyValueError::new_err(format!("Failed to create HTTP client: {}", e)))
+    }
 }
 
 #[pymethods]
@@ -429,33 +459,7 @@ impl PerformanceClient {
             );
         }
 
-        let mut client_builder = Client::builder();
-
-        if http_version == 2 {
-            // Configure for HTTP/2
-            // http2 is not fast, as multiplexing is not a good idea for many >1k requests
-            client_builder = client_builder
-                .http2_initial_connection_window_size(HTTP2_WINDOW_SIZE)
-                .http2_initial_stream_window_size(HTTP2_WINDOW_SIZE)
-                .http2_max_frame_size(65_536)
-                .http2_prior_knowledge();
-        } else {
-            // Configure for HTTP/1.1
-            client_builder = client_builder.http1_only();
-        }
-
-        let client = client_builder
-            // Allow a large number of idle connections per host.
-            .pool_max_idle_per_host(32_768)
-            .pool_idle_timeout(Duration::from_secs(240))
-            // Disable Nagle's algorithm for lower latency on small requests.
-            .tcp_nodelay(true)
-            .user_agent(concat!(
-                "baseten-performance-client/",
-                env!("CARGO_PKG_VERSION")
-            ))
-            .build()
-            .map_err(|e| PyValueError::new_err(format!("Failed to create HTTP client: {}", e)))?;
+        let client = PerformanceClient::get_http_client(http_version)?;
 
         Ok(PerformanceClient {
             api_key,
