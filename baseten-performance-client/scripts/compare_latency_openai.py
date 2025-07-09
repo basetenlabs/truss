@@ -20,9 +20,9 @@ benchmark_lengths = [128, 512, 2048, 8192, 32768, 131072]
 micro_batch_size = (
     16  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
-HTTP2 = False
+HTTP_VERSION = 1
 client_b = PerformanceClient(
-    api_key=api_key, base_url=api_base_embed, experimental_use_http2=HTTP2
+    api_key=api_key, base_url=api_base_embed, http_version=HTTP_VERSION
 )
 client_oai = AsyncOpenAI(api_key=api_key, base_url=api_base_embed, timeout=1024)
 
@@ -221,6 +221,6 @@ async def main():
 
 if __name__ == "__main__":
     print(
-        f"Starting benchmark comparison for PerformanceClient(http2={HTTP2}) and AsyncOpenAI"
+        f"Starting benchmark comparison for PerformanceClient(http={HTTP_VERSION}) and AsyncOpenAI"
     )
     asyncio.run(main())

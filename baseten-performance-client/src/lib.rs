@@ -412,11 +412,11 @@ impl PerformanceClient {
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, experimental_use_http2 = false))]
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1))]
     fn new(
         base_url: String,
         api_key: Option<String>,
-        experimental_use_http2: bool,
+        http_version: u8, // 1 for HTTP/1.1, 2 for HTTP/2
     ) -> PyResult<Self> {
         let api_key = PerformanceClient::get_api_key(api_key)?;
         if WARNING_SLOW_PROVIDERS
@@ -431,7 +431,7 @@ impl PerformanceClient {
 
         let mut client_builder = Client::builder();
 
-        if experimental_use_http2 {
+        if http_version == 2 {
             // Configure for HTTP/2
             // http2 is not fast, as multiplexing is not a good idea for many >1k requests
             client_builder = client_builder
