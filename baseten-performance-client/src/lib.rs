@@ -335,18 +335,48 @@ enum HttpClientWrapper {
     Http2(Arc<Vec<(Arc<AtomicUsize>, Arc<Client>)>>), // (inflight_requests, client)
 }
 
+struct ClientGuard {
+    client: Arc<Client>,
+    counter: Option<Arc<AtomicUsize>>,
+}
+
+impl ClientGuard {
+    fn new(client: Arc<Client>, counter: Option<Arc<AtomicUsize>>) -> Self {
+        if let Some(ref counter) = counter {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+        Self { client, counter }
+    }
+}
+
+impl Drop for ClientGuard {
+    fn drop(&mut self) {
+        if let Some(ref counter) = self.counter {
+            counter.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+}
+
+impl Deref for ClientGuard {
+    type Target = Client;
+
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
+
 impl HttpClientWrapper {
-    fn get_client(&self) -> (Arc<Client>, Option<Arc<AtomicUsize>>) {
+    fn get_client(&self) -> ClientGuard {
         match self {
-            HttpClientWrapper::Http1(client) => (client.clone(), None),
+            HttpClientWrapper::Http1(client) => ClientGuard::new(client.clone(), None),
             HttpClientWrapper::Http2(pool) => {
                 // First, try to find the first client in the pool that is not "full".
                 // This fills clients sequentially.
-                if let Some((count, client)) = pool.iter().find(|(count, _)| {
-                    count.load(Ordering::Relaxed) < HTTP2_CLIENT_MAX_QUEUED
-                }) {
-                    count.fetch_add(1, Ordering::Relaxed);
-                    return (client.clone(), Some(count.clone()));
+                if let Some((count, client)) = pool
+                    .iter()
+                    .find(|(count, _)| count.load(Ordering::Relaxed) < HTTP2_CLIENT_MAX_QUEUED)
+                {
+                    return ClientGuard::new(client.clone(), Some(count.clone()));
                 }
 
                 // If all clients are "full" (>= 8 requests), fall back to the one
@@ -356,8 +386,7 @@ impl HttpClientWrapper {
                     .min_by_key(|(count, _)| count.load(Ordering::Relaxed))
                     .unwrap(); // Pool is never empty, so unwrap is safe.
 
-                count.fetch_add(1, Ordering::Relaxed);
-                (client.clone(), Some(count.clone()))
+                return ClientGuard::new(client.clone(), Some(count.clone()));
             }
         }
     }
@@ -1210,7 +1239,7 @@ async fn process_embeddings_requests(
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-            let (client, counter) = client_wrapper_clone.get_client();
+            let client = client_wrapper_clone.get_client();
 
             let request_time_start = Instant::now(); // Measure time for single request
             let config = SendRequestConfig {
@@ -1232,9 +1261,6 @@ async fn process_embeddings_requests(
                 &config,
             )
             .await;
-            if let Some(c) = counter {
-                c.fetch_sub(1, Ordering::Relaxed);
-            }
             let request_time_elapsed = request_time_start.elapsed(); // Get duration
 
             match result {
@@ -1376,7 +1402,7 @@ async fn process_rerank_requests(
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-            let (client, counter) = client_wrapper_clone.get_client();
+            let client = client_wrapper_clone.get_client();
 
             let request_time_start = Instant::now();
             let config = SendRequestConfig {
@@ -1399,9 +1425,6 @@ async fn process_rerank_requests(
                 &config,
             )
             .await;
-            if let Some(c) = counter {
-                c.fetch_sub(1, Ordering::Relaxed);
-            }
             let request_time_elapsed = request_time_start.elapsed();
 
             match result {
@@ -1520,7 +1543,7 @@ async fn process_classify_requests(
         tasks.push(tokio::spawn(async move {
             let _permit =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-            let (client, counter) = client_wrapper_clone.get_client();
+            let client = client_wrapper_clone.get_client();
 
             let request_time_start = Instant::now();
             let config = SendRequestConfig {
@@ -1541,9 +1564,6 @@ async fn process_classify_requests(
                 &config,
             )
             .await;
-            if let Some(c) = counter {
-                c.fetch_sub(1, Ordering::Relaxed);
-            }
             let request_time_elapsed = request_time_start.elapsed();
 
             match result {
@@ -1653,7 +1673,7 @@ async fn process_batch_post_requests(
         tasks.push(tokio::spawn(async move {
             let permit_guard =
                 acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone()).await?;
-            let (client, counter) = client_wrapper_clone.get_client();
+            let client = client_wrapper_clone.get_client();
 
             let full_url = format!(
                 "{}/{}",
@@ -1677,9 +1697,6 @@ async fn process_batch_post_requests(
                 &config,
             )
             .await;
-            if let Some(c) = counter {
-                c.fetch_sub(1, Ordering::Relaxed);
-            }
 
             drop(permit_guard);
             let request_time_elapsed = request_time_start.elapsed();
