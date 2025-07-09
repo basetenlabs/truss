@@ -20,9 +20,9 @@ benchmark_lengths = [128, 512, 2048, 8192, 32768, 131072]
 micro_batch_size = (
     16  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
-HTTP_VERSION = 1
-client_b = PerformanceClient(
-    api_key=api_key, base_url=api_base_embed, http_version=HTTP_VERSION
+client_b = PerformanceClient(api_key=api_key, base_url=api_base_embed, http_version=1)
+client_b_http2 = PerformanceClient(
+    api_key=api_key, base_url=api_base_embed, http_version=2
 )
 client_oai = AsyncOpenAI(api_key=api_key, base_url=api_base_embed, timeout=1024)
 
@@ -56,13 +56,13 @@ def resource_monitor(cpu_usage_list, ram_usage_list, stop_event, interval=0.1):
             break
 
 
-async def run_baseten_benchmark(length):
+async def run_baseten_benchmark(length, client=client_b):
     """Run a single PerformanceClient benchmark with CPU monitoring."""
     # Prepare input data
     full_input_texts = ["Hello world"] * length
 
     # Warm-up run
-    _ = await client_b.async_embed(
+    _ = await client.async_embed(
         input=full_input_texts[:512],
         model="text-embedding-3-small",
         max_concurrent_requests=512,
@@ -82,7 +82,7 @@ async def run_baseten_benchmark(length):
 
     # Timed run
     time_start = time.monotonic()
-    response = await client_b.async_embed(
+    response = await client.async_embed(
         input=full_input_texts,
         model="text-embedding-3-small",
         max_concurrent_requests=512,
@@ -104,7 +104,7 @@ async def run_baseten_benchmark(length):
     assert embeddings_array.shape[0] == length
 
     return {
-        "client": "PerformanceClient",
+        "client": f"PerformanceClient HTTP",
         "length": length,
         "duration": duration,
         "max_cpu": max_cpu,
@@ -182,15 +182,22 @@ async def run_all_benchmarks():
         print(
             f"\nRunning benchmark for length: {length}, concurrent requests {length // micro_batch_size}"
         )
-        res_baseten = await run_baseten_benchmark(length)
+        res_baseten = await run_baseten_benchmark(length, client_b)
         print(
-            f"PerformanceClient: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%, max_ram={res_baseten['max_ram']:.2f} MB"
-        )
-        res_async = await run_asyncopenai_benchmark(length)
-        print(
-            f"AsyncOpenAI  : duration={res_async['duration']:.4f} s, max_cpu={res_async['max_cpu']:.2f}%"
+            f"PerformanceClient HTTP1: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%, max_ram={res_baseten['max_ram']:.2f} MB"
         )
         results.append(res_baseten)
+
+        res_baseten_http2 = await run_baseten_benchmark(length, client_b_http2)
+        print(
+            f"PerformanceClient HTTP2: duration={res_baseten_http2['duration']:.4f} s, max_cpu={res_baseten_http2['max_cpu']:.2f}%, max_ram={res_baseten_http2['max_ram']:.2f} MB"
+        )
+        res_baseten_http2["client"] = "PerformanceClient HTTP2"
+        results.append(res_baseten_http2)
+        res_async = await run_asyncopenai_benchmark(length)
+        print(
+            f"AsyncOpenAI            : duration={res_async['duration']:.4f} s, max_cpu={res_async['max_cpu']:.2f}%"
+        )
         results.append(res_async)
     return results
 
@@ -220,7 +227,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    print(
-        f"Starting benchmark comparison for PerformanceClient(http={HTTP_VERSION}) and AsyncOpenAI"
-    )
+    print(f"Starting benchmark comparison for PerformanceClient() and AsyncOpenAI")
     asyncio.run(main())
