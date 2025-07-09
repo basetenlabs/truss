@@ -104,7 +104,7 @@ async def run_baseten_benchmark(length, client=client_b):
     assert embeddings_array.shape[0] == length
 
     return {
-        "client": f"PerformanceClient HTTP",
+        "client": "PerformanceClient HTTP",
         "length": length,
         "duration": duration,
         "max_cpu": max_cpu,
@@ -227,5 +227,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    print(f"Starting benchmark comparison for PerformanceClient() and AsyncOpenAI")
+    print("Starting benchmark comparison for PerformanceClient() and AsyncOpenAI")
     asyncio.run(main())
