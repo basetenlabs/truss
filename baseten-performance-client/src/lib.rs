@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::cmp::min;
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -36,12 +37,12 @@ const MAX_HTTP_RETRIES: u32 = 4; // Max number of retries for HTTP 429 or networ
 const INITIAL_BACKOFF_MS: u64 = 125; // Initial backoff in milliseconds
 const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60); // Max backoff duration
 const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.03; // 3% of timeout requests can be retried
+const HTTP2_WINDOW_SIZE: u32 = 2_097_152; // 2 MB
 
 // --- Global Tokio Runtime ---
-static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false); // New global flag
-                                                             // Add this constant
+static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false);
 const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
-const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C"; // New constant for Ctrl+C
+const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C";
 
 // Providers that are known to be slow with this client
 const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
@@ -423,10 +424,26 @@ impl PerformanceClient {
                 base_url.clone()
             );
         }
+        let client = Client::builder()
+            // Allow a large number of idle connections per host.
+            .pool_max_idle_per_host(131072)
+            // Disable Nagle's algorithm for lower latency on small requests.
+            .tcp_nodelay(true)
+            .user_agent(concat!(
+                "baseten-performance-client/",
+                env!("CARGO_PKG_VERSION")
+            ))
+            // default settings are 65536 bytes for HTTP/2 initial window size.
+            // http2 currently not used in beefeater, so this is just for future reference.
+            .http2_initial_connection_window_size(HTTP2_WINDOW_SIZE)
+            .http2_initial_stream_window_size(HTTP2_WINDOW_SIZE)
+            .build()
+            .map_err(|e| PyValueError::new_err(format!("Failed to create HTTP client: {}", e)))?;
+
         Ok(PerformanceClient {
             api_key,
             base_url,
-            client: Client::new(),
+            client,
             runtime: Arc::clone(&GLOBAL_RUNTIME),
         })
     }
@@ -1818,9 +1835,36 @@ async fn send_request_with_retry(
                     // such as dns resolution failures or
                     // Max retries performed for network/send errors
                     config.cancel_token.store(true, Ordering::SeqCst);
+
+                    let url = network_err
+                        .url()
+                        .map_or_else(|| "unknown URL", |u| u.as_str())
+                        .to_string();
+
+                    let mut error_details =
+                        format!("Request to {} failed after {} retries. ", url, retries_done);
+
+                    if network_err.is_connect() {
+                        error_details.push_str("This was a connection error. Please check if the host is reachable and your network/firewall settings. ");
+                    } else if network_err.is_timeout() {
+                        error_details.push_str("The request timed out. The server may be overloaded or not responding. ");
+                    }
+
+                    // Append the chain of source errors for detailed diagnostics.
+                    let mut sources = String::new();
+                    let mut source_opt = network_err.source();
+                    while let Some(source) = source_opt {
+                        sources.push_str(&format!("\n  Caused by: {}", source));
+                        source_opt = source.source();
+                    }
+
+                    if !sources.is_empty() {
+                        error_details.push_str(&format!("Root cause analysis:{}", sources));
+                    }
+
                     return Err(PyValueError::new_err(format!(
-                        "Request failed after {} retries with network/send error: {}",
-                        retries_done, network_err
+                        "Network error: {}\n Network error details: {}",
+                        network_err, error_details
                     )));
                 }
                 // If not max retries, fall through to common retry logic below

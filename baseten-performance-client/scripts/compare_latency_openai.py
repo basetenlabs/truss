@@ -26,7 +26,7 @@ client_oai = AsyncOpenAI(api_key=api_key, base_url=api_base_embed, timeout=1024)
 
 
 # --- CPU Monitor Function ---
-def cpu_monitor(cpu_usage_list, stop_event, interval=0.1):
+def resource_monitor(cpu_usage_list, ram_usage_list, stop_event, interval=0.1):
     """Collects CPU usage readings for the current process.
     The value represents the process's CPU utilization as a percentage,
     where 100% means one full core is utilized by the process.
@@ -44,6 +44,9 @@ def cpu_monitor(cpu_usage_list, stop_event, interval=0.1):
                 usage is not None
             ):  # cpu_percent can return None if called too quickly with interval=None
                 cpu_usage_list.append(usage)
+            # RAM Usage (Resident Set Size in MB)
+            ram_usage_mb = process.memory_info().rss / (1024 * 1024)
+            ram_usage_list.append(ram_usage_mb)
         except psutil.NoSuchProcess:  # Process might have ended
             break
         except Exception as e:
@@ -58,17 +61,20 @@ async def run_baseten_benchmark(length):
 
     # Warm-up run
     _ = await client_b.async_embed(
-        input=full_input_texts[:2048],
+        input=full_input_texts[:512],
         model="text-embedding-3-small",
         max_concurrent_requests=512,
-        batch_size=micro_batch_size,
+        batch_size=1,
     )
 
     # Setup CPU monitor
     cpu_readings = []
+    ram_readings = []
     stop_event = threading.Event()
     monitor_thread = threading.Thread(
-        target=cpu_monitor, args=(cpu_readings, stop_event, 0.1), daemon=True
+        target=resource_monitor,
+        args=(cpu_readings, ram_readings, stop_event, 0.1),
+        daemon=True,
     )
     monitor_thread.start()
 
@@ -89,7 +95,7 @@ async def run_baseten_benchmark(length):
     monitor_thread.join(timeout=2)
     max_cpu = max(cpu_readings) if cpu_readings else 0.0
     avg_cpu = sum(cpu_readings) / len(cpu_readings) if cpu_readings else 0.0
-
+    max_ram = max(ram_readings) if ram_readings else 0.0
     # Basic validations
     assert isinstance(response, OpenAIEmbeddingsResponse)
     assert len(response.data) == length
@@ -102,6 +108,7 @@ async def run_baseten_benchmark(length):
         "max_cpu": max_cpu,
         "avg_cpu": avg_cpu,
         "readings": len(cpu_readings),
+        "max_ram": max_ram,
     }
 
 
@@ -125,9 +132,12 @@ async def run_asyncopenai_benchmark(length):
 
     # Setup CPU monitor
     cpu_readings = []
+    ram_readings = []
     stop_event = threading.Event()
     monitor_thread = threading.Thread(
-        target=cpu_monitor, args=(cpu_readings, stop_event, 0.1), daemon=True
+        target=resource_monitor,
+        args=(cpu_readings, ram_readings, stop_event, 0.1),
+        daemon=True,
     )
     monitor_thread.start()
 
@@ -147,6 +157,7 @@ async def run_asyncopenai_benchmark(length):
     monitor_thread.join(timeout=2)
     max_cpu = max(cpu_readings) if cpu_readings else 0.0
     avg_cpu = sum(cpu_readings) / len(cpu_readings) if cpu_readings else 0.0
+    max_ram = max(ram_readings) if ram_readings else 0.0
 
     assert len(all_embeddings) == length
     assert embeddings_array.shape[0] == length
@@ -158,6 +169,7 @@ async def run_asyncopenai_benchmark(length):
         "max_cpu": max_cpu,
         "avg_cpu": avg_cpu,
         "readings": len(cpu_readings),
+        "max_ram": max_ram,
     }
 
 
@@ -170,7 +182,7 @@ async def run_all_benchmarks():
         )
         res_baseten = await run_baseten_benchmark(length)
         print(
-            f"PerformanceClient: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%"
+            f"PerformanceClient: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%, max_ram={res_baseten['max_ram']:.2f} MB"
         )
         res_async = await run_asyncopenai_benchmark(length)
         print(
