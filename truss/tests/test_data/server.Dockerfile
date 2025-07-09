@@ -2,7 +2,7 @@ ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3 AS truss_server
 ENV PYTHON_EXECUTABLE="/usr/local/bin/python3"
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN /usr/local/bin/python3 -c "import sys; \
+RUN $PYTHON_EXECUTABLE -c "import sys; \
     sys.exit(0) \
     if sys.version_info.major == 3 \
     and sys.version_info.minor >= 8 \
@@ -27,9 +27,9 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 COPY ./base_server_requirements.txt base_server_requirements.txt
-RUN uv pip install --python /usr/local/bin/python3 -r base_server_requirements.txt --no-cache-dir
+RUN uv pip install --system -r base_server_requirements.txt --no-cache-dir
 COPY ./requirements.txt requirements.txt
-RUN uv pip install --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
+RUN uv pip install --system -r requirements.txt --no-cache-dir
 ENV APP_HOME="/app"
 WORKDIR $APP_HOME
 COPY ./data /app/data

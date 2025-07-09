@@ -1,20 +1,13 @@
 ARG PYVERSION={{ config.python_version }}
 FROM {{ base_image_name_and_tag }} AS truss_server
-
-{%- set python_exec_path = config.base_image.python_executable_path or '$(which python3)' %}
-{# NB(nikhil): Our `uv` installation commands require a full path to the python interpreter, but it relies #}
-{# on shell expansion to do so if `python_executable_path` is not provided. This expansion doesn't work for certain #}
-{# docker commands (ENV, ENTRYPPOINT), so we point that to `python3` as a default. #}
-{%- set python_executable = config.base_image.python_executable_path or 'python3' %}
-ENV PYTHON_EXECUTABLE="{{ python_executable }}"
+ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
 
 {%- set UV_VERSION = "0.7.19" %}
-{# Use the python executable currently on the path, will respect activated virtual envs. #}
-{%- set sys_pip_install_command = "uv pip install --python " + python_exec_path %}
+{%- set sys_pip_install_command = "uv pip install --system" %}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN {{ python_exec_path }} -c "import sys; \
+RUN $PYTHON_EXECUTABLE -c "import sys; \
     sys.exit(0) \
     if sys.version_info.major == {{ supported_python_major_version_in_custom_base_image }} \
     and sys.version_info.minor >= {{ min_supported_python_minor_version_in_custom_base_image }} \
