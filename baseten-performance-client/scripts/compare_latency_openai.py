@@ -63,7 +63,7 @@ async def run_baseten_benchmark(length, client=client_b):
 
     # Warm-up run
     _ = await client.async_embed(
-        input=["Hello world"] * 512,
+        input=["Hello world"] * 1024,
         model="text-embedding-3-small",
         max_concurrent_requests=512,
         batch_size=1,
