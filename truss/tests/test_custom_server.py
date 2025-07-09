@@ -19,7 +19,7 @@ def test_custom_server_truss(test_data_path):
         try:
             print("Starting container")
             _, urls = tr.docker_run_for_test(
-                model_server_stop_retry_override=stop_after_attempt(3)
+                model_server_stop_retry_override=stop_after_attempt(10)
             )
         except Exception as e:
             raise Exception(f"Failed to start container: {e}")

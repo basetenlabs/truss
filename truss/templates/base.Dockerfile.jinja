@@ -1,10 +1,20 @@
 ARG PYVERSION={{ config.python_version }}
 FROM {{ base_image_name_and_tag }} AS truss_server
-ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
+
+{%- set python_exec_path = config.base_image.python_executable_path or '$(which python3)' %}
+{# NB(nikhil): Our `uv` installation commands require a full path to the python interpreter, but it relies #}
+{# on shell expansion to do so if `python_executable_path` is not provided. This expansion doesn't work for certain #}
+{# docker commands (ENV, ENTRYPPOINT), so we point that to `python3` as a default. #}
+{%- set python_executable = config.base_image.python_executable_path or 'python3' %}
+ENV PYTHON_EXECUTABLE="{{ python_executable }}"
+
+{%- set UV_VERSION = "0.7.19" %}
+{# Use the python executable currently on the path, will respect activated virtual envs. #}
+{%- set sys_pip_install_command = "uv pip install --python " + python_exec_path %}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN $PYTHON_EXECUTABLE -c "import sys; \
+RUN {{ python_exec_path }} -c "import sys; \
     sys.exit(0) \
     if sys.version_info.major == {{ supported_python_major_version_in_custom_base_image }} \
     and sys.version_info.minor >= {{ min_supported_python_minor_version_in_custom_base_image }} \
@@ -13,18 +23,22 @@ RUN $PYTHON_EXECUTABLE -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-# NB(nikhil): Only run `pip` if present in image, certain custom servers don't have it.
-RUN if command -v pip >/dev/null 2>&1; then \
-      pip install --upgrade pip --no-cache-dir && rm -rf /root/.cache/pip; \
-    fi
+{% block install_uv %}
+{# Install `uv` and `curl` if not already present in the image. #}
+RUN if ! command -v uv >/dev/null 2>&1; then \
+    command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
+    curl -LsSf https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh >/dev/null 2>&1; \
+fi
+ENV PATH="/root/.local/bin:$PATH"
+{% endblock %}
 
 {% block base_image_patch %}
 {% endblock %}
 
 {% if config.model_framework.value == 'huggingface_transformer' %}
     {% if config.resources.use_gpu %}
-# HuggingFace pytorch gpu support needs mkl
-RUN pip install mkl
+{# HuggingFace pytorch gpu support needs mkl. #}
+RUN {{ sys_pip_install_command }} install mkl
     {% endif %}
 {% endif %}
 
@@ -45,11 +59,11 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ sys
 {% block install_requirements %}
     {%- if should_install_user_requirements_file %}
 COPY ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
-RUN pip install -r {{ user_supplied_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
+RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} --no-cache-dir
     {%- endif %}
     {%- if should_install_requirements %}
 COPY ./{{ config_requirements_filename }} {{ config_requirements_filename }}
-RUN pip install -r {{ config_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
+RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} --no-cache-dir
 {%- endif %}
 {% endblock %}
 
