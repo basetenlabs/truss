@@ -5,7 +5,7 @@ import pytest
 
 from truss.base import truss_config
 from truss_train import deployment
-from truss_train.definitions import Compute, Image, Runtime, TrainingJob
+from truss_train.definitions import CacheConfig, Compute, Image, Runtime, TrainingJob
 
 
 @mock.patch("truss.remote.baseten.utils.transfer.multipart_upload_boto3")
@@ -44,7 +44,11 @@ def test_prepare_push(
         TrainingJob(
             image=Image(base_image="hello-world"),
             compute=compute,
-            runtime=Runtime(enable_cache=enable_cache),
+            runtime=Runtime(
+                cache_config=CacheConfig(
+                    enabled=enable_cache, enable_legacy_hf_mount=True
+                )
+            ),
         ),
     )
     assert len(prepared_job.runtime_artifacts) == 1
@@ -57,6 +61,7 @@ def test_prepare_push(
         )
     else:
         assert prepared_job.compute.accelerator is None
-    assert prepared_job.runtime.enable_cache == enable_cache
+    assert prepared_job.runtime.cache_config.enabled == enable_cache
+    assert prepared_job.runtime.cache_config.enable_legacy_hf_mount
     # ensure that serialization works
     prepared_job.model_dump()

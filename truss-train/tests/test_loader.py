@@ -28,6 +28,8 @@ def test_import_with_single_training_project():
     with loader.import_training_project(job_src) as training_project:
         assert training_project.name == "first-project"
         assert training_project.job.compute.cpu_count == 4
+        assert training_project.job.runtime.cache_config.enabled
+        assert not training_project.job.runtime.cache_config.enable_legacy_hf_mount
 
 
 def test_import_directory_fails():

@@ -1,10 +1,14 @@
 from typing import Dict, List, Optional, Union
 
 import pydantic
+from pydantic import field_validator, model_validator
 
 from truss.base import custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
+
+# Allowed LoRA rank values for vLLM
+ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
 
 
 class SecretReference(custom_types.SafeModel):
@@ -44,11 +48,42 @@ class CheckpointingConfig(custom_types.SafeModel):
     checkpoint_path: Optional[str] = None
 
 
+class CacheConfig(custom_types.SafeModel):
+    enabled: bool = False
+    enable_legacy_hf_mount: bool = False
+
+
 class Runtime(custom_types.SafeModel):
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
-    enable_cache: bool = False
+    enable_cache: Optional[bool] = None
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()
+    cache_config: Optional[CacheConfig] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_cache_config(cls, values):
+        enable_cache = values.get("enable_cache")
+        cache_config = values.get("cache_config")
+
+        if enable_cache is not None and cache_config is not None:
+            raise ValueError(
+                "Cannot set both 'enable_cache' and 'cache_config'. "
+                "'enable_cache' is deprecated. Prefer migrating to 'cache_config' with "
+                "`enabled=True` and `enable_legacy_hf_cache=True`."
+            )
+
+        # Migrate enable_cache to cache_config if enable_cache is True
+        if enable_cache is not None and cache_config is None:
+            values["cache_config"] = CacheConfig(
+                enabled=enable_cache, enable_legacy_hf_mount=enable_cache
+            )
+
+        values.pop(
+            "enable_cache", None
+        )  # Remove deprecated field or else it will fail server-side validation
+
+        return values
 
 
 class Image(custom_types.SafeModel):
@@ -80,6 +115,15 @@ class Checkpoint(custom_types.SafeModel):
     lora_rank: Optional[int] = (
         None  # lora rank will be fetched through the API if available.
     )
+
+    @field_validator("lora_rank")
+    @classmethod
+    def validate_lora_rank(cls, v):
+        if v is not None and v not in ALLOWED_LORA_RANKS:
+            raise ValueError(
+                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}"
+            )
+        return v
 
     def to_truss_config(self) -> truss_config.Checkpoint:
         return truss_config.Checkpoint(

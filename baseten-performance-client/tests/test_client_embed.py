@@ -53,7 +53,7 @@ CLASSIFY_REACHABLE = RERANK_REACHABLE
 
 
 @pytest.mark.parametrize(
-    "batch_size,max_concurrent_requests", [(1, 1000), (1000, 1), (1000, 1000), (0, 0)]
+    "batch_size,max_concurrent_requests", [(1, 2000), (2000, 1), (2000, 2000), (0, 0)]
 )
 def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
     client = PerformanceClient(base_url=base_url_fake, api_key=api_key)
@@ -76,7 +76,7 @@ def test_not_nice_concurrency_settings():
             ["Hello world", "Hello world 2"],
             model="my_model",
             batch_size=1,
-            max_concurrent_requests=384,
+            max_concurrent_requests=700,
         )
     assert "be nice" in str(excinfo.value)
 

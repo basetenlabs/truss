@@ -10,6 +10,11 @@ import pytest
 
 from truss.templates.shared.lazy_data_resolver import LazyDataResolverV2
 
+pytestmark = pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="BPTR tests require a specific directory and will fail on macOS",
+)
+
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 TARGET_FILE = Path("nested/config.json")
 

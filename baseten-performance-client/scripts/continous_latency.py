@@ -6,14 +6,14 @@ import time
 from baseten_performance_client import PerformanceClient
 
 client = PerformanceClient(
-    base_url="https://model-e3mxl42q.api.baseten.co/environments/production/sync"
+    base_url="https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
 )
 
 
 async def benchmark_every(
     interval=0.01,
     lb_split=128,
-    tokens_per_request=500,
+    tokens_per_sentence=500,
     sentences_per_request=1,
     n_requests=1000,
     n_users=1,
@@ -22,16 +22,17 @@ async def benchmark_every(
         """kicks of a single task to measure latency."""
         try:
             t = time.time()
-            await client.async_classify(
-                inputs=["Hello " * tokens_per_request] * sentences_per_request,
+            await client.async_embed(
+                input=["Hello " * tokens_per_sentence] * sentences_per_request,
                 max_concurrent_requests=lb_split,
                 batch_size=1,
-                truncate=False,
+                model="model",
             )
             # TODO: use total time or
             return [(time.time() - t)]
         except Exception as e:
             print(f"Error in task: {e}")
+            return [(time.time() - t)]
 
     async def simulate_single_user(launches_blocking=False):
         """user may launch tasks with concurrency=1 (blocking=True)
