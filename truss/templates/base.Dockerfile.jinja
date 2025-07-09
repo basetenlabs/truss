@@ -17,11 +17,8 @@ RUN $PYTHON_EXECUTABLE -c "import sys; \
 {% endblock %}
 
 {% block install_uv %}
-{# Install `uv` and `curl` if not already present in the image. #}
-RUN if ! command -v uv >/dev/null 2>&1; then \
-    command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
-    curl -LsSf https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh >/dev/null 2>&1; \
-fi
+{# Install `uv` if not already present in the image. #}
+RUN if ! command -v uv >/dev/null 2>&1; then (curl -LsSf https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh) >/dev/null 2>&1; fi
 ENV PATH="/root/.local/bin:$PATH"
 {% endblock %}
 

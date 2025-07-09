@@ -9,10 +9,7 @@ RUN $PYTHON_EXECUTABLE -c "import sys; \
     and sys.version_info.minor <= 13 \
     else sys.exit(1)" \
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.13"; exit 1; }
-RUN if ! command -v uv >/dev/null 2>&1; then \
-    command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
-    curl -LsSf https://astral.sh/uv/0.7.19/install.sh | sh >/dev/null 2>&1; \
-fi
+RUN if ! command -v uv >/dev/null 2>&1; then (curl -LsSf https://astral.sh/uv/0.7.19/install.sh | sh) >/dev/null 2>&1; fi
 ENV PATH="/root/.local/bin:$PATH"
 ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
