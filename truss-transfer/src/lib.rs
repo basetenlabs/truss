@@ -40,7 +40,7 @@ static SECRETS_BASE_PATH: &str = "/secrets";
 static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
     "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
 static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 300.0;
-static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 100.0; // small instances expect slower speed
+static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 60.0; // small instances expect slower speed
 static TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB: u64 = 100;
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
@@ -803,9 +803,9 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
         download_path
     );
     Ok(())
-}// Get the desired download speed from the environment variable or use a heuristic.
-// Heuristcally, if the number of CPU cores is 64 or fewer, use a lower speed.
-// If the environment variable is not set, use a random number between 25 and 300 MB/s.
+} // Get the desired download speed from the environment variable or use a heuristic.
+  // Heuristcally, if the number of CPU cores is 64 or fewer, use a lower speed.
+  // If the environment variable is not set, use a random number between 25 and 300 MB/s.
 fn get_desired_speed() -> f64 {
     if let Ok(speed) = env::var(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_ENV_VAR) {
         if let Ok(speed) = speed.parse::<f64>() {
