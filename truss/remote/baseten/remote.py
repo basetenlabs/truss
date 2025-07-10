@@ -427,8 +427,9 @@ class BasetenRemote(TrussRemote):
         console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
         self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
-        console.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
+        console.print(f"👀 Watching for changes to truss at '{watch_path}'...")
         for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
+            console.print("Changes detected, creating patch...")
             self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
     def _patch(
@@ -559,7 +560,7 @@ class BasetenRemote(TrussRemote):
         console: "rich_console.Console",
         error_console: "rich_console.Console",
     ):
-        result = self._patch(watch_path, truss_ignore_patterns)
+        result = self._patch(watch_path, truss_ignore_patterns, console=console)
         if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
             console.print(result.message, style="green")
         else:

@@ -17,12 +17,19 @@ class Example:
         return {"name": self.name, "input": self.input}
 
 
+_SAFE_MODEL_CONFIG = pydantic.ConfigDict(
+    arbitrary_types_allowed=False, strict=True, validate_assignment=True
+)
+
+
+class SafeModelNoExtra(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(**_SAFE_MODEL_CONFIG, extra="forbid")
+
+
 class SafeModel(pydantic.BaseModel):
     """Pydantic base model with reasonable config."""
 
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False, strict=True, validate_assignment=True
-    )
+    model_config = pydantic.ConfigDict(**_SAFE_MODEL_CONFIG)
 
 
 class SafeModelNonSerializable(pydantic.BaseModel):

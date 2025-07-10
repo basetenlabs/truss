@@ -1,12 +1,12 @@
 [package]
 name = "baseten_performance_client"
-version = "0.0.4"
+version = "0.0.6"
 edition = "2021"
 
 [dependencies]
 pyo3 = { version = "0.24", features = ["extension-module", "abi3-py38"] }
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "json", "stream", "http2", "default-tls"] }
+reqwest = { version = "0.12.12", features = ["blocking", "json", "stream", "http2", "default-tls", "native-tls-alpn"] }
 openssl = { version = "0.10", features = ["vendored"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

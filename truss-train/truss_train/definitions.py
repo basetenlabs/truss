@@ -11,11 +11,11 @@ DEFAULT_LORA_RANK = 16
 ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
 
 
-class SecretReference(custom_types.SafeModel):
+class SecretReference(custom_types.SafeModelNoExtra):
     name: str
 
 
-class Compute(custom_types.SafeModel):
+class Compute(custom_types.SafeModelNoExtra):
     node_count: int = 1
     cpu_count: int = 1
     memory: str = "2Gi"
@@ -43,17 +43,17 @@ class Compute(custom_types.SafeModel):
         )
 
 
-class CheckpointingConfig(custom_types.SafeModel):
+class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
 
 
-class CacheConfig(custom_types.SafeModel):
+class CacheConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     enable_legacy_hf_mount: bool = False
 
 
-class Runtime(custom_types.SafeModel):
+class Runtime(custom_types.SafeModelNoExtra):
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: Optional[bool] = None
@@ -86,11 +86,11 @@ class Runtime(custom_types.SafeModel):
         return values
 
 
-class Image(custom_types.SafeModel):
+class Image(custom_types.SafeModelNoExtra):
     base_image: str
 
 
-class TrainingJob(custom_types.SafeModel):
+class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
@@ -101,14 +101,14 @@ class TrainingJob(custom_types.SafeModel):
         return data
 
 
-class TrainingProject(custom_types.SafeModel):
+class TrainingProject(custom_types.SafeModelNoExtra):
     name: str
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
 
 
-class Checkpoint(custom_types.SafeModel):
+class Checkpoint(custom_types.SafeModelNoExtra):
     training_job_id: str
     id: str
     name: str
@@ -131,7 +131,7 @@ class Checkpoint(custom_types.SafeModel):
         )
 
 
-class CheckpointList(custom_types.SafeModel):
+class CheckpointList(custom_types.SafeModelNoExtra):
     download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
@@ -143,11 +143,11 @@ class CheckpointList(custom_types.SafeModel):
         )
 
 
-class DeployCheckpointsRuntime(custom_types.SafeModel):
+class DeployCheckpointsRuntime(custom_types.SafeModelNoExtra):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
 
 
-class DeployCheckpointsConfig(custom_types.SafeModel):
+class DeployCheckpointsConfig(custom_types.SafeModelNoExtra):
     checkpoint_details: Optional[CheckpointList] = None
     model_name: Optional[str] = None
     deployment_name: Optional[str] = None
