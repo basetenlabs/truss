@@ -19,8 +19,8 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 # MacOS does not allow setting /build without disabling SIP, so allow override
 # This is useful for local builds, where we want to build in a different directory
-if os.environ.get("TRUSS_WORKING_DIR"):
-    working_dir = pathlib.Path(os.environ["TRUSS_WORKING_DIR"])
+if truss_working_dir := os.environ.get("TRUSS_WORKING_DIR"):
+    working_dir = pathlib.Path(truss_working_dir)
 else:
     working_dir = pathlib.Path("/")
 
