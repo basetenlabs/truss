@@ -23,7 +23,8 @@ use tokio::sync::Semaphore;
 // For logging
 use env_logger::Builder;
 use fs2;
-use log::{debug, error, info, warn, LevelFilter}; // Add this line
+use log::{debug, error, info, warn, LevelFilter};
+use num_cpus; // Add this line
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
@@ -35,8 +36,11 @@ static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR"
 static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
 static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 4 * 24; // 4 days
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
-static HF_TOKEN_PATH: &str = "/secrets/hf_access_token";
-static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 400.0;
+static SECRETS_BASE_PATH: &str = "/secrets";
+static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
+    "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
+static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 350.0;
+static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 90.0; // small instances expect slower speed
 static TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB: u64 = 100;
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
@@ -91,16 +95,36 @@ fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>) ->
         })
 }
 
+#[derive(Debug, Deserialize, Clone)]
+enum ResolutionType {
+    #[serde(rename = "http")]
+    Http,
+    #[serde(rename = "gcs")]
+    Gcs,
+}
+
+impl Default for ResolutionType {
+    fn default() -> Self {
+        ResolutionType::Http
+    }
+}
+
 /// Corresponds to `Resolution` in the Python code
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Resolution {
     url: String,
+    #[serde(default)]
+    resolution_type: ResolutionType,
     expiration_timestamp: i64,
+}
+
+fn default_runtime_secret_name() -> String {
+    "hf_access_token".to_string()
 }
 
 /// Corresponds to `BasetenPointer` in the Python code
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct BasetenPointer {
     resolution: Resolution,
     uid: String,
@@ -108,6 +132,9 @@ struct BasetenPointer {
     hashtype: String,
     hash: String,
     size: u64,
+    // defaults to `hf_access_token` if not provided
+    #[serde(default = "default_runtime_secret_name")]
+    runtime_secret_name: String,
 }
 
 /// Corresponds to `BasetenPointerManifest` in the Python code
@@ -290,7 +317,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     let mut tasks: FuturesUnordered<
         tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>,
     > = FuturesUnordered::new();
-    for (file_name, (resolved_url, hash, size)) in resolution_map {
+    for (file_name, pointer) in resolution_map {
         let download_dir = download_dir.clone();
         let client = client.clone();
         let sem_clone = semaphore.clone();
@@ -299,11 +326,12 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             debug!("Handling file: {}", file_name);
             download_file_with_cache(
                 &client,
-                &resolved_url,
+                &pointer.resolution.url,
                 &download_dir,
                 &file_name,
-                &hash,
-                size,
+                &pointer.hash,
+                pointer.size,
+                &pointer.runtime_secret_name,
                 read_from_b10cache,
                 write_to_b10cache,
             )
@@ -334,7 +362,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 /// Validate expiration and build a vector of (file_name, (URL, hash, size)).
 fn build_resolution_map(
     bptr_manifest: &BasetenPointerManifest,
-) -> Result<Vec<(String, (String, String, u64))>> {
+) -> Result<Vec<(String, BasetenPointer)>> {
     let now = chrono::Utc::now().timestamp();
     let mut out = Vec::new();
 
@@ -348,10 +376,7 @@ fn build_resolution_map(
                 bptr.hash
             ));
         }
-        out.push((
-            bptr.file_name.clone(),
-            (bptr.resolution.url.clone(), bptr.hash.clone(), bptr.size),
-        ));
+        out.push((bptr.file_name.clone(), bptr.clone()));
     }
 
     Ok(out)
@@ -371,6 +396,7 @@ async fn download_file_with_cache(
     file_name: &str,
     hash: &str,
     size: u64,
+    runtime_secret_name: &str,
     read_from_b10cache: bool,
     write_to_b10cache: bool,
 ) -> Result<()> {
@@ -419,7 +445,7 @@ async fn download_file_with_cache(
         }
     }
     // Download the file to the local path
-    download_to_path(client, url, &destination, size).await?;
+    download_to_path(client, url, &destination, size, runtime_secret_name).await?;
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache {
@@ -446,7 +472,13 @@ fn sanitize_url(url: &str) -> String {
 
 /// Stream a download from `url` into the specified `path`.
 /// Returns an error if the download fails or if the file size does not match the expected size.
-async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) -> Result<()> {
+async fn download_to_path(
+    client: &Client,
+    url: &str,
+    path: &Path,
+    size: u64,
+    runtime_secret_name: &str,
+) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await.context(format!(
             "Failed to create directory for download path: {:?}",
@@ -458,7 +490,7 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     debug!("Starting download to {:?} from {}", path, sanitized_url);
     let mut request_builder = client.get(url);
     if url.starts_with("https://huggingface.co") {
-        if let Some(token) = get_hf_token() {
+        if let Some(token) = get_secret_from_file(runtime_secret_name) {
             request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
     }
@@ -496,25 +528,22 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: u64) ->
     Ok(())
 }
 
-fn get_hf_token() -> Option<String> {
-    if let Ok(env_token) = std::env::var("HF_TOKEN") {
-        if !env_token.is_empty() {
-            debug!("Found HF token in environment variable");
-            return Some(env_token);
-        }
-    }
-    if std::path::Path::new(HF_TOKEN_PATH).exists() {
-        if let Ok(contents) = std::fs::read_to_string(HF_TOKEN_PATH) {
+// e.g. for `hf_access_token` reads /secrets/hf_access_token and returns its contents
+fn get_secret_from_file(name: &str) -> Option<String> {
+    let path = Path::new(SECRETS_BASE_PATH).join(name);
+    if path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&path) {
             let trimmed = contents.trim().to_string();
             if !trimmed.is_empty() {
-                debug!("Found HF token in {}", HF_TOKEN_PATH);
+                debug!("Found secret in token in {}", path.display());
                 return Some(trimmed);
             }
         }
     }
     warn!(
-        "No HF token found in environment variable or {}. Using unauthenticated access to download from huggingface.co. Make sure you set `hf_access_token` in your Baseten.co secrets and add `secrets:- hf_access_token: null` to your config.yaml.",
-        HF_TOKEN_PATH
+        "No secret found in {path}. Using unauthenticated access. Make sure to set `{name}` in your Baseten.co secrets and add `secrets:- {name}: null` to your config.yaml.",
+        path = path.display(),
+        name = name
     );
     None
 }
@@ -774,6 +803,25 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
         download_path
     );
     Ok(())
+} // Get the desired download speed from the environment variable or use a heuristic.
+  // Heuristcally, if the number of CPU cores is 64 or fewer, use a lower speed.
+  // If the environment variable is not set, use a random number between 25 and 300 MB/s.
+fn get_desired_speed() -> f64 {
+    if let Ok(speed) = env::var(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR) {
+        if let Ok(speed) = speed.parse::<f64>() {
+            return speed;
+        }
+    }
+
+    // if we have 16 or fewer cpu cores, use a lower speed
+    let speed_threshold = if num_cpus::get() <= 16 {
+        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES
+    } else {
+        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS
+    };
+
+    // fallback to a random number between 10 MB/s and speed_threshold
+    10.0 + rand::random::<f64>() * (speed_threshold - 10.0)
 }
 
 /// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
@@ -785,8 +833,7 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
                                                    // random number, uniform between 25 and 400 MB/s as a threshold
                                                    // using random instead of fixed number to e.g. avoid catastrophic
                                                    // events e.g. huggingface is down, where b10cache will have more load.
-    let desired_speed: f64 =
-        25.0 + rand::random::<f64>() * (TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS - 25.0);
+    let desired_speed: f64 = get_desired_speed();
 
     for bptr in &manifest.pointers {
         let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
@@ -806,7 +853,10 @@ async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result
                 if bytes_read.is_ok() {
                     let elapsed_secs = elapsed_time.as_secs_f64();
                     let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
-                    warn!("b10cache: Read speed of {:.2} MB/s", speed);
+                    warn!(
+                        "b10cache: Read speed of {:.2} MB/s, desired: {:.2} MB/s",
+                        speed, desired_speed
+                    );
                     if speed > desired_speed {
                         return Ok(true); // Use b10cache
                     } else {
@@ -933,6 +983,7 @@ mod tests {
         let pointer = BasetenPointer {
             resolution: Resolution {
                 url: "http://example.com/file".into(),
+                resolution_type: ResolutionType::Http,
                 expiration_timestamp: future_timestamp,
             },
             uid: "123".into(),
@@ -940,6 +991,7 @@ mod tests {
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
             size: 1024,
+            runtime_secret_name: "hf_access_token".into(),
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
@@ -949,9 +1001,6 @@ mod tests {
         let map = result.unwrap();
         assert_eq!(map.len(), 1);
         assert_eq!(map[0].0, "file.txt");
-        assert_eq!(map[0].1 .0, "http://example.com/file");
-        assert_eq!(map[0].1 .1, "abcdef");
-        assert_eq!(map[0].1 .2, 1024);
     }
 
     #[test]
@@ -961,6 +1010,7 @@ mod tests {
         let pointer = BasetenPointer {
             resolution: Resolution {
                 url: "http://example.com/file".into(),
+                resolution_type: ResolutionType::Http,
                 expiration_timestamp: past_timestamp,
             },
             uid: "123".into(),
@@ -968,6 +1018,7 @@ mod tests {
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
             size: 1024,
+            runtime_secret_name: "hf_access_token".into(),
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
