@@ -4,7 +4,11 @@ logfile=/dev/null            ; Disable logging to file (send logs to /dev/null)
 logfile_maxbytes=0           ; No size limit on logfile (since logging is disabled)
 
 [program:model-server]
+{%- if is_deploy_checkpoints %}
+command=%(ENV_BT_DOCKER_SERVER_START_CMD)s        ; Note: supervisord will look for the environment variable FOO if we give here ENV_FOO
+{%- else %}
 command={{start_command}}    ; Command to start the model server (provided by Jinja variable)
+{%- endif %}
 startsecs=30                 ; Wait 30 seconds before assuming the server is running
 autostart=true               ; Automatically start the program when supervisord starts
 autorestart=true             ; Always restart the program if it exits, no matter what the exit code
