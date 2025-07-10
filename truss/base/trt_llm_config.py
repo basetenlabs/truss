@@ -166,21 +166,22 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=131072)] = 8192
     tensor_parallel_size: Annotated[int, Field(strict=True, ge=1)] = 1
     enable_chunked_prefill: bool = True
-    config_kwargs: Dict[str, Union[str, int, float, dict]] = {}
+    served_model_name: Optional[str] = None
+    patch_kwargs: Optional[Dict[str, Union[str, int, float, dict]]] = None
 
-    @field_validator("config_kwargs", mode="after")
+    @field_validator("patch_kwargs", mode="after")
     @classmethod
-    def validate_config_kwargs(cls, config):
+    def validate_patch_kwargs(cls, config):
         if config:
             logger.warning(
-                "trt_llm.runtime.config_kwargs is a preview feature. "
+                "trt_llm.runtime.patch_kwargs is a preview feature. "
                 "Fields may change in the future."
             )
         forbidden_keys = ["build_config"] + list(cls.__fields__)
         for key in forbidden_keys:
             if key in config:
-                raise ValueError(
-                    f"runtime.config_kwargs cannot contain the key '{key}'. "
+                logger.error(
+                    f"runtime.config_kwargs contains the key '{key}'. This is already a field in the TRTLLMRuntimeConfigurationV2. "
                     "Please use the appropriate field in the TRTLLMRuntimeConfigurationV2."
                 )
 
