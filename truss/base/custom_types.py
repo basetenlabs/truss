@@ -23,9 +23,7 @@ _SAFE_MODEL_CONFIG = pydantic.ConfigDict(
 
 
 class SafeModelNoExtra(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(
-        **_SAFE_MODEL_CONFIG, extra="forbid", frozen=True
-    )
+    model_config = pydantic.ConfigDict(**_SAFE_MODEL_CONFIG, extra="forbid")
 
 
 class SafeModel(pydantic.BaseModel):
