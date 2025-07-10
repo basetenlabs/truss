@@ -71,3 +71,16 @@ maturin build --release
     /usr/lib/x86_64-linux-gnu/libcrypto.so.3
 📦 Built wheel for CPython 3.9 to /workspace/model-performance/michaelfeil/truss/truss-transfer/target/wheels/truss_transfer-0.1.0-cp39-cp39-manylinux_2_34_x86_64.whl
 ```
+
+### Release a new version and make it the default version used in the serving image builder for new deploys
+truss-transfer gets bundled with truss in the context-builder phase. In this phase, the truss-transfer version gets installed.
+To make truss-transfer bundeable, it needs to be published to pypi and github releases. 
+
+1. Open a PR with rust changes
+2. Change the version to x.z.y+1.rc0 
+3. Run a `Buid and Release truss-transfer" action https://github.com/basetenlabs/truss/actions with "release to pypi = true"
+4. Make x.z.y+1.rc0  as truss pyproject.toml, and server_requirements.txt dependency
+5. Bump truss to a new truss.rcX, publish truss.rcX to pypy.org (main.yml action)
+6. pip install truss=truss.rcX locally and truss push (on example that uses python truss)
+7. Merge PR
+8. Wait for CLI binary to be released
