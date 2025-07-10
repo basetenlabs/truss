@@ -814,14 +814,14 @@ fn get_desired_speed() -> f64 {
     }
 
     // if we have 64 or fewer cpu cores, use a lower speed
-    let used_speed = if num_cpus::get() <= 64 {
+    let speed_threshold = if num_cpus::get() <= 64 {
         TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES
     } else {
         TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS
     };
 
-    // fallback to a random number between 25 and 300 MB/s
-    25.0 + rand::random::<f64>() * (used_speed - 25.0)
+    // fallback to a random number between 25 MB/s and speed_threshold
+    25.0 + rand::random::<f64>() * (speed_threshold - 25.0)
 }
 
 /// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
