@@ -807,7 +807,7 @@ async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Resul
   // Heuristcally, if the number of CPU cores is 64 or fewer, use a lower speed.
   // If the environment variable is not set, use a random number between 25 and 300 MB/s.
 fn get_desired_speed() -> f64 {
-    if let Ok(speed) = env::var(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_ENV_VAR) {
+    if let Ok(speed) = env::var(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR) {
         if let Ok(speed) = speed.parse::<f64>() {
             return speed;
         }
