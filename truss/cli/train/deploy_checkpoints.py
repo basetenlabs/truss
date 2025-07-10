@@ -60,10 +60,9 @@ def prepare_checkpoint_deploy(
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
-    buildless_deploy: bool,
 ) -> PrepareCheckpointResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
-        checkpoint_deploy_config, remote_provider, project_id, job_id, buildless_deploy
+        checkpoint_deploy_config, remote_provider, project_id, job_id
     )
     rendered_truss = _render_vllm_lora_truss_config(checkpoint_deploy_config)
     truss_directory = Path(
@@ -73,8 +72,7 @@ def prepare_checkpoint_deploy(
     # temporary: explicitly set server-side truss version
     rendered_truss.runtime.truss_server_version_override = "0.9.110rc008"
     rendered_truss.write_to_yaml_file(truss_config_path)
-    if buildless_deploy:
-        create_build_time_config(truss_directory)
+    create_build_time_config(truss_directory)
     console.print(rendered_truss, style="green")
     console.print(f"Writing truss config to {truss_config_path}", style="yellow")
     return PrepareCheckpointResult(
@@ -88,7 +86,6 @@ def _hydrate_deploy_config(
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
-    buildless_deploy: bool,
 ) -> DeployCheckpointsConfigComplete:
     checkpoint_details = _get_checkpoint_details(
         remote_provider, deploy_config.checkpoint_details, project_id, job_id
@@ -112,7 +109,6 @@ def _hydrate_deploy_config(
         deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
-        buildless_deploy=buildless_deploy,
     )
 
 
@@ -145,7 +141,6 @@ def _render_vllm_lora_truss_config(
             truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
             start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
 
-    truss_deploy_config.buildless_deploy = checkpoint_deploy.buildless_deploy
     checkpoint_parts = []
     for truss_checkpoint in truss_deploy_config.training_checkpoints.checkpoints:  # type: ignore
         ckpt_path = Path(

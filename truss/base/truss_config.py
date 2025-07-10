@@ -587,7 +587,6 @@ class TrussConfig(custom_types.ConfigModel):
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
 
     # deploying from checkpoint
-    buildless_deploy: Optional[bool] = None
     training_checkpoints: Optional[CheckpointList] = None
 
     # Internal / Legacy.

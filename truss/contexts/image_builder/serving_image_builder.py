@@ -687,8 +687,7 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files,
             self._spec.build_commands,
         )
-        if config.buildless_deploy:
-            self._setup_build_hash_directory(build_dir)
+        self._setup_build_hash_directory(build_dir)
 
     def _setup_build_hash_directory(self, build_dir: Path) -> None:
         build_hash_path = build_dir / "build_hash"
