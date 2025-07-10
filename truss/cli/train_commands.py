@@ -228,6 +228,13 @@ def get_job_metrics(
 @click.option(
     "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
+@click.option(
+    "--buildless-deploy",
+    is_flag=True,
+    default=False,  # Explicitly set default to False
+    required=False,
+    help="Deploy faster by reducing the number of builds with smarter change detection",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def deploy_checkpoints(
@@ -236,6 +243,7 @@ def deploy_checkpoints(
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
+    buildless_deploy: bool,
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -250,7 +258,10 @@ def deploy_checkpoints(
     prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
         remote_provider,
         train_cli.PrepareCheckpointArgs(
-            project_id=project_id, job_id=job_id, deploy_config_path=config
+            project_id=project_id,
+            job_id=job_id,
+            deploy_config_path=config,
+            buildless_deploy=buildless_deploy,
         ),
     )
 

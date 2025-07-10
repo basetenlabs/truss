@@ -231,14 +231,22 @@ def prepare_checkpoint_deploy(
 ) -> PrepareCheckpointResult:
     if not args.deploy_config_path:
         return deploy_checkpoints.prepare_checkpoint_deploy(
-            remote_provider, DeployCheckpointsConfig(), args.project_id, args.job_id
+            remote_provider,
+            DeployCheckpointsConfig(),
+            args.project_id,
+            args.job_id,
+            args.buildless_deploy,
         )
     #### User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:
         return deploy_checkpoints.prepare_checkpoint_deploy(
-            remote_provider, checkpoint_deploy, args.project_id, args.job_id
+            remote_provider,
+            checkpoint_deploy,
+            args.project_id,
+            args.job_id,
+            args.buildless_deploy,
         )
 
 

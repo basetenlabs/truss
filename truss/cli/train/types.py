@@ -15,6 +15,7 @@ class PrepareCheckpointArgs:
     project_id: Optional[str]
     job_id: Optional[str]
     deploy_config_path: Optional[str]
+    buildless_deploy: bool = False
 
 
 class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
@@ -28,6 +29,7 @@ class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
     deployment_name: str
     runtime: DeployCheckpointsRuntime
     compute: Compute
+    buildless_deploy: bool
 
 
 @dataclass

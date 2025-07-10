@@ -71,9 +71,10 @@ def prepare_checkpoint_deploy(
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
+    buildless_deploy: bool,
 ) -> PrepareCheckpointResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
-        checkpoint_deploy_config, remote_provider, project_id, job_id
+        checkpoint_deploy_config, remote_provider, project_id, job_id, buildless_deploy
     )
     rendered_truss = _render_vllm_lora_truss_config(checkpoint_deploy_config)
     truss_directory = Path(
@@ -81,7 +82,8 @@ def prepare_checkpoint_deploy(
     )
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
-    create_build_time_config(truss_directory)
+    if buildless_deploy:
+        create_build_time_config(truss_directory)
     console.print(rendered_truss, style="green")
     console.print(f"Writing truss config to {truss_config_path}", style="yellow")
     return PrepareCheckpointResult(
@@ -95,6 +97,7 @@ def _hydrate_deploy_config(
     remote_provider: BasetenRemote,
     project_id: Optional[str],
     job_id: Optional[str],
+    buildless_deploy: bool,
 ) -> DeployCheckpointsConfigComplete:
     checkpoint_details = _get_checkpoint_details(
         remote_provider, deploy_config.checkpoint_details, project_id, job_id
@@ -118,6 +121,7 @@ def _hydrate_deploy_config(
         deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
+        buildless_deploy=buildless_deploy,
     )
 
 
