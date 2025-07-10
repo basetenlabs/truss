@@ -95,7 +95,7 @@ fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>) ->
         })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 enum ResolutionType {
     #[serde(rename = "http")]
     Http,
@@ -110,7 +110,7 @@ impl Default for ResolutionType {
 }
 
 /// Corresponds to `Resolution` in the Python code
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Resolution {
     url: String,
     #[serde(default)]
