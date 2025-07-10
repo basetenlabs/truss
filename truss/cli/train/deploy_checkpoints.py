@@ -70,6 +70,8 @@ def prepare_checkpoint_deploy(
         tempfile.mkdtemp(suffix=f"{checkpoint_deploy_config.deployment_name}")
     )
     truss_config_path = truss_directory / "config.yaml"
+    # temporary: explicitly set server-side truss version
+    rendered_truss.runtime.truss_server_version_override = "0.9.110rc008"
     rendered_truss.write_to_yaml_file(truss_config_path)
     if buildless_deploy:
         create_build_time_config(truss_directory)
