@@ -41,26 +41,15 @@ VLLM_LORA_START_COMMAND = Template(
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 
 
-# This is a list of trussconfig attributes that we want to exclude from the build hash.
-# We want to exclude these because they are not relevant at build time, and they
-# apply only at runtime.
-build_time_truss_config_exclusion_list = [
-    "docker_server",  # Runtime docker server and its associated start command
-    "resources",  # Runtime no. of GPUs, memory etc.
-    "runtime",  # Timeouts, instrumentation, runtime transport etc.
-    "training_checkpoints",  # Checkpoints to be supplied at runtime
-]
-
-
 def create_build_time_config(context_path_str: Path) -> None:
     """Create a build time config for the truss, excludes run-time only attributes."""
     # read the truss config from /build/context/config.yaml
     with open(context_path_str / "config.yaml", "r") as f:
         truss_config = yaml.safe_load(f)
-    # exclude the config_attributes in build_time_truss_config_exclusion_list
-    for attr in build_time_truss_config_exclusion_list:
-        if attr in truss_config:
-            del truss_config[attr]
+    # we will set the start command at runtime, so we don't need to include it in the build hash
+    del truss_config["docker_server"]["start_command"]
+    # we will set the checkpoints at runtime, so we don't need to include them in the build hash
+    del truss_config["training_checkpoints"]
     # write the truss config back to /build/context/build_hash/config.yaml
     with open(context_path_str / "config_build_time.yaml", "w") as f:
         yaml.dump(truss_config, f)
