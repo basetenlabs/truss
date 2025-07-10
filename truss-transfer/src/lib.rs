@@ -317,7 +317,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     let mut tasks: FuturesUnordered<
         tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>,
     > = FuturesUnordered::new();
-    for (file_name, (pointer)) in resolution_map {
+    for (file_name, pointer) in resolution_map {
         let download_dir = download_dir.clone();
         let client = client.clone();
         let sem_clone = semaphore.clone();
@@ -490,7 +490,7 @@ async fn download_to_path(
     debug!("Starting download to {:?} from {}", path, sanitized_url);
     let mut request_builder = client.get(url);
     if url.starts_with("https://huggingface.co") {
-        if let Some(token) = get_secret_from_file(runtime_secret_name.to_string()) {
+        if let Some(token) = get_secret_from_file(runtime_secret_name) {
             request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
     }
