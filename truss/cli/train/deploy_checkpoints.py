@@ -143,6 +143,16 @@ def _render_vllm_lora_truss_config(
             truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
             start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
 
+    truss_deploy_config.buildless_deploy = checkpoint_deploy.buildless_deploy
+    checkpoint_parts = []
+    for truss_checkpoint in truss_deploy_config.training_checkpoints.checkpoints:  # type: ignore
+        ckpt_path = Path(
+            truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
+            truss_checkpoint.id,
+        )
+        checkpoint_parts.append(f"{truss_checkpoint.name}={ckpt_path}")
+    checkpoint_str = " ".join(checkpoint_parts)
+
     max_lora_rank = max(
         [
             checkpoint.lora_rank or DEFAULT_LORA_RANK
@@ -157,7 +167,7 @@ def _render_vllm_lora_truss_config(
 
     start_command_args = {
         "base_model_id": checkpoint_deploy.checkpoint_details.base_model_id,
-        "lora_modules": "__CHECKPOINT_DIR_PLACEHOLDER__",
+        "lora_modules": checkpoint_str,
         "envvars": start_command_envvars,
         "max_lora_rank": max_lora_rank,
         "specify_tensor_parallelism": specify_tensor_parallelism,
