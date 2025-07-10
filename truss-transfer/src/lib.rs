@@ -39,8 +39,8 @@ static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 static SECRETS_BASE_PATH: &str = "/secrets";
 static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
     "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
-static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 300.0;
-static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 60.0; // small instances expect slower speed
+static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 350.0;
+static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 90.0; // small instances expect slower speed
 static TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB: u64 = 100;
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
@@ -813,15 +813,15 @@ fn get_desired_speed() -> f64 {
         }
     }
 
-    // if we have 64 or fewer cpu cores, use a lower speed
-    let speed_threshold = if num_cpus::get() <= 64 {
+    // if we have 16 or fewer cpu cores, use a lower speed
+    let speed_threshold = if num_cpus::get() <= 16 {
         TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES
     } else {
         TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS
     };
 
-    // fallback to a random number between 25 MB/s and speed_threshold
-    25.0 + rand::random::<f64>() * (speed_threshold - 25.0)
+    // fallback to a random number between 10 MB/s and speed_threshold
+    10.0 + rand::random::<f64>() * (speed_threshold - 10.0)
 }
 
 /// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.

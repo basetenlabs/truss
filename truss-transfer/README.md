@@ -31,6 +31,8 @@ TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/bptr-resolved"
 # deleting all files from other tenants in the org to make space for this deployment.
 # "/cache/org/artifacts/truss_transfer_managed_v1";
 TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR="48" # sets it to two days.
+# sets the expected speed that is measured to decide if b10fs is a fast state.
+TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS="100"
 ```
 
 ### Running the CLI as binary
