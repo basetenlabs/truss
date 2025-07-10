@@ -9,6 +9,7 @@ runtime_config = definitions.Runtime(
     cache_config=definitions.CacheConfig(enabled=True, enable_legacy_hf_mount=False),
 )
 
+
 training_job = definitions.TrainingJob(
     image=definitions.Image(base_image="base-image"),
     compute=definitions.Compute(node_count=1, cpu_count=4),

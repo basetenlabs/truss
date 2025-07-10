@@ -11,5 +11,5 @@ runtime_config = definitions.Runtime(
 _ = definitions.TrainingJob(
     image=definitions.Image(base_image="base-image"),
     compute=definitions.Compute(node_count=1, cpu_count=1),
-    runtime_config=runtime_config,
+    runtime=runtime_config,
 )
