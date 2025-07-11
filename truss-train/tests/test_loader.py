@@ -1,5 +1,6 @@
 import pathlib
 
+import pydantic
 import pytest
 
 from truss_train import loader
@@ -28,6 +29,18 @@ def test_import_with_single_training_project():
     with loader.import_training_project(job_src) as training_project:
         assert training_project.name == "first-project"
         assert training_project.job.compute.cpu_count == 4
+        assert training_project.job.runtime.cache_config.enabled
+        assert not training_project.job.runtime.cache_config.enable_legacy_hf_mount
+
+
+def test_import_rejects_extra_fields():
+    """Test that importing a config with extra fields raises a validation error."""
+    job_src = TEST_ROOT / "import" / "config_with_extra_field.py"
+    with pytest.raises(
+        pydantic.ValidationError, match="Extra inputs are not permitted"
+    ):
+        with loader.import_training_project(job_src):
+            pass
 
 
 def test_import_directory_fails():

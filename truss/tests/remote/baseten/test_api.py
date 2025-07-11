@@ -429,7 +429,7 @@ def test_upsert_training_project(mock_post, baseten_api):
             name="training-project",
             job=train_definitions.TrainingJob(
                 image=train_definitions.Image(base_image="base-image"),
-                runtime_config=train_definitions.Runtime(
+                runtime=train_definitions.Runtime(
                     start_commands=["/bin/bash entrypoint.sh"]
                 ),
             ),

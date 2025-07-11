@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -40,6 +41,10 @@ VLLM_LORA_START_COMMAND = Template(
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 
+# If we change this, make sure to update the logic in backend codebase
+CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
+ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
+
 
 def create_build_time_config(context_path_str: Path) -> None:
     """Create a build time config for the truss, excludes run-time only attributes."""
@@ -65,9 +70,7 @@ def prepare_checkpoint_deploy(
         checkpoint_deploy_config, remote_provider, project_id, job_id
     )
     rendered_truss = _render_vllm_lora_truss_config(checkpoint_deploy_config)
-    truss_directory = Path(
-        tempfile.mkdtemp(suffix=f"{checkpoint_deploy_config.deployment_name}")
-    )
+    truss_directory = Path(tempfile.mkdtemp())
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
     create_build_time_config(truss_directory)
@@ -85,7 +88,7 @@ def _hydrate_deploy_config(
     project_id: Optional[str],
     job_id: Optional[str],
 ) -> DeployCheckpointsConfigComplete:
-    checkpoint_details = _get_checkpoint_details(
+    checkpoint_details = _ensure_checkpoint_details(
         remote_provider, deploy_config.checkpoint_details, project_id, job_id
     )
     base_model_id = checkpoint_details.base_model_id
@@ -93,14 +96,15 @@ def _hydrate_deploy_config(
         raise ValueError(
             "Unable to infer base model id. Reach out to Baseten for support."
         )
-    compute = _get_compute(deploy_config.compute)
+    compute = _ensure_compute_spec(deploy_config.compute)
     model_name = (
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
     )
-    runtime = _get_runtime(deploy_config.runtime)
-    deployment_name = (
-        deploy_config.deployment_name or checkpoint_details.checkpoints[0].id
+    runtime = _ensure_runtime_config(deploy_config.runtime)
+    deployment_name = _ensure_deployment_name(
+        deploy_config.deployment_name, checkpoint_details.checkpoints
     )
+
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
@@ -108,6 +112,30 @@ def _hydrate_deploy_config(
         runtime=runtime,
         compute=compute,
     )
+
+
+def _ensure_deployment_name(
+    deploy_config_deployment_name: Optional[str], checkpoints: List[Checkpoint]
+) -> str:
+    if deploy_config_deployment_name:
+        return deploy_config_deployment_name
+
+    default_deployment_name = "checkpoint"
+
+    first_checkpoint_name = checkpoints[0].name.replace("/", "--")
+    if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
+        # We allow for autoincrementing when the checkpoint matches the regex pattern.
+        # In cases where the autoincrementing deployment name is not supported,
+        # ask the user for a deployment name
+        if CHECKPOINT_PATTERN.match(first_checkpoint_name) and len(checkpoints) == 1:
+            return first_checkpoint_name
+    # prompt the user for the deployment name
+    deployment_name = inquirer.text(
+        message="Enter the deployment name.", default=default_deployment_name
+    ).execute()
+    if not deployment_name:
+        raise click.UsageError("Deployment name is required.")
+    return deployment_name
 
 
 def _render_vllm_lora_truss_config(
@@ -172,7 +200,7 @@ def _render_vllm_lora_truss_config(
     return truss_deploy_config
 
 
-def _get_checkpoint_details(
+def _ensure_checkpoint_details(
     remote_provider: BasetenRemote,
     checkpoint_details: Optional[CheckpointList],
     project_id: Optional[str],
@@ -306,7 +334,7 @@ def _get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
     return user_input
 
 
-def _get_compute(compute: Optional[Compute]) -> Compute:
+def _ensure_compute_spec(compute: Optional[Compute]) -> Compute:
     if not compute:
         compute = Compute(cpu_count=0, memory="0Mi")
     compute.accelerator = _get_accelerator_if_specified(compute.accelerator)
@@ -351,7 +379,7 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
     return base_model_id
 
 
-def _get_runtime(
+def _ensure_runtime_config(
     runtime: Optional[DeployCheckpointsRuntime],
 ) -> DeployCheckpointsRuntime:
     if not runtime:

@@ -1048,18 +1048,16 @@ def _wait_for_docker_build(container) -> None:
 
 
 def _wait_for_model_server(url: str, stop: stop_after_delay) -> Response:  # type: ignore[return]
-    for attempt in Retrying(
+    retry_config = Retrying(
         stop=stop,
-        wait=wait_fixed(2),
+        wait=wait_fixed(0.5),
         retry=(
             retry_if_result(lambda response: response.status_code in [502, 503])
             | retry_if_exception_type(exceptions.ConnectionError)
         ),
         reraise=True,
-    ):
-        with attempt:
-            response = requests.get(url)
-            return response
+    )
+    return retry_config(requests.get, url)
 
 
 def wait_for_truss(

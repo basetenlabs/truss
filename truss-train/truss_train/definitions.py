@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Union
 
 import pydantic
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 from truss.base import custom_types, truss_config
 
@@ -11,11 +11,11 @@ DEFAULT_LORA_RANK = 16
 ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
 
 
-class SecretReference(custom_types.SafeModel):
+class SecretReference(custom_types.SafeModelNoExtra):
     name: str
 
 
-class Compute(custom_types.SafeModel):
+class Compute(custom_types.SafeModelNoExtra):
     node_count: int = 1
     cpu_count: int = 1
     memory: str = "2Gi"
@@ -43,23 +43,54 @@ class Compute(custom_types.SafeModel):
         )
 
 
-class CheckpointingConfig(custom_types.SafeModel):
+class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
 
 
-class Runtime(custom_types.SafeModel):
+class CacheConfig(custom_types.SafeModelNoExtra):
+    enabled: bool = False
+    enable_legacy_hf_mount: bool = False
+
+
+class Runtime(custom_types.SafeModelNoExtra):
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
-    enable_cache: bool = False
+    enable_cache: Optional[bool] = None
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()
+    cache_config: Optional[CacheConfig] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_cache_config(cls, values):
+        enable_cache = values.get("enable_cache")
+        cache_config = values.get("cache_config")
+
+        if enable_cache is not None and cache_config is not None:
+            raise ValueError(
+                "Cannot set both 'enable_cache' and 'cache_config'. "
+                "'enable_cache' is deprecated. Prefer migrating to 'cache_config' with "
+                "`enabled=True` and `enable_legacy_hf_cache=True`."
+            )
+
+        # Migrate enable_cache to cache_config if enable_cache is True
+        if enable_cache is not None and cache_config is None:
+            values["cache_config"] = CacheConfig(
+                enabled=enable_cache, enable_legacy_hf_mount=enable_cache
+            )
+
+        values.pop(
+            "enable_cache", None
+        )  # Remove deprecated field or else it will fail server-side validation
+
+        return values
 
 
-class Image(custom_types.SafeModel):
+class Image(custom_types.SafeModelNoExtra):
     base_image: str
 
 
-class TrainingJob(custom_types.SafeModel):
+class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
@@ -70,14 +101,14 @@ class TrainingJob(custom_types.SafeModel):
         return data
 
 
-class TrainingProject(custom_types.SafeModel):
+class TrainingProject(custom_types.SafeModelNoExtra):
     name: str
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
 
 
-class Checkpoint(custom_types.SafeModel):
+class Checkpoint(custom_types.SafeModelNoExtra):
     training_job_id: str
     id: str
     name: str
@@ -100,7 +131,7 @@ class Checkpoint(custom_types.SafeModel):
         )
 
 
-class CheckpointList(custom_types.SafeModel):
+class CheckpointList(custom_types.SafeModelNoExtra):
     download_folder: str = truss_config.DEFAULT_TRAINING_CHECKPOINT_FOLDER
     base_model_id: Optional[str] = None
     checkpoints: List[Checkpoint] = []
@@ -112,11 +143,11 @@ class CheckpointList(custom_types.SafeModel):
         )
 
 
-class DeployCheckpointsRuntime(custom_types.SafeModel):
+class DeployCheckpointsRuntime(custom_types.SafeModelNoExtra):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
 
 
-class DeployCheckpointsConfig(custom_types.SafeModel):
+class DeployCheckpointsConfig(custom_types.SafeModelNoExtra):
     checkpoint_details: Optional[CheckpointList] = None
     model_name: Optional[str] = None
     deployment_name: Optional[str] = None
