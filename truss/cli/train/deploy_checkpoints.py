@@ -69,8 +69,6 @@ def prepare_checkpoint_deploy(
         tempfile.mkdtemp(suffix=f"{checkpoint_deploy_config.deployment_name}")
     )
     truss_config_path = truss_directory / "config.yaml"
-    # temporary: explicitly set server-side truss version
-    rendered_truss.runtime.truss_server_version_override = "0.9.110rc008"
     rendered_truss.write_to_yaml_file(truss_config_path)
     create_build_time_config(truss_directory)
     console.print(rendered_truss, style="green")
@@ -149,7 +147,6 @@ def _render_vllm_lora_truss_config(
         )
         checkpoint_parts.append(f"{truss_checkpoint.name}={ckpt_path}")
     checkpoint_str = " ".join(checkpoint_parts)
-
     max_lora_rank = max(
         [
             checkpoint.lora_rank or DEFAULT_LORA_RANK
