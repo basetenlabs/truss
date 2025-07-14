@@ -22,6 +22,9 @@ def test_custom_server_truss(test_data_path):
                 model_server_stop_retry_override=stop_after_attempt(10)
             )
         except Exception as e:
+            import traceback
+
+            traceback.print_exc()
             raise Exception(f"Failed to start container: {e}")
 
         response = requests.post(urls.predict_url, json={})
