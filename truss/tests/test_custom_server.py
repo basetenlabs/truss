@@ -8,10 +8,11 @@ from truss.truss_handle.truss_handle import TrussHandle
 
 
 @pytest.mark.integration
-def test_custom_server_truss(test_data_path):
+@pytest.mark.parametrize("test_truss", ["test_custom_server_truss", "test_go_custom_server_truss"])
+def test_custom_server_truss(test_data_path, test_truss):
     with ensure_kill_all():
         print("Running test_custom_server_truss")
-        truss_dir = test_data_path / "test_custom_server_truss"
+        truss_dir = test_data_path / test_truss
         print(f"truss_dir: {truss_dir}")
         tr = TrussHandle(truss_dir)
         print("Setting secret")
