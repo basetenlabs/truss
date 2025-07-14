@@ -120,8 +120,7 @@ COPY ./proxy.conf {{ proxy_config_path }}
 RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
-ENV SERVER_START_CMD="supervisord -c {{ supervisor_config_path }}"
-RUN /nginx_venv/.venv/bin/supervisord --help
+ENV SERVER_START_CMD="/nginx_venv/.venv/bin/supervisord -c {{ supervisor_config_path }}"
 ENTRYPOINT ["/nginx_venv/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
     {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
