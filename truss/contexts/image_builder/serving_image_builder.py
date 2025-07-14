@@ -556,12 +556,6 @@ class ServingImageBuilder(ImageBuilder):
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
         if config.docker_server is not None:
-            self._copy_into_build_dir(
-                TEMPLATES_DIR / "docker_server_requirements.txt",
-                build_dir,
-                "docker_server_requirements.txt",
-            )
-
             generate_docker_server_nginx_config(build_dir, config)
 
             generate_docker_server_supervisord_config(build_dir, config)
