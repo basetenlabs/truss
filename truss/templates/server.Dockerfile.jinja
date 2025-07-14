@@ -98,7 +98,7 @@ RUN uv python install {{ control_python_version }}
 RUN uv venv /control/.env --python {{ control_python_version }}
 
 COPY ./control /control
-RUN uv pip install -r /control/requirements.txt --python /control/.env/bin/python
+RUN uv pip install -r /control/requirements.txt --python /control/.env/bin/python --no-cache-dir
 {%- endif %} {#- endif requires_live_reload #}
 
 {%- if model_dir_exists %}
@@ -109,10 +109,13 @@ COPY ./{{ config.model_module_dir }} /app/model
 {% block run %}
     {%- if config.docker_server %}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl nginx python3-pip && \
-        rm -rf /var/lib/apt/lists/*
+        curl nginx && rm -rf /var/lib/apt/lists/*
 COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
-RUN {{ sys_pip_install_command }} -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+
+{# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
+RUN uv python install {{ control_python_version }}
+RUN uv venv /docker_server/.venv --python {{ control_python_version }}
+RUN uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt --no-cache-dir
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_log_dir = "/var/log/supervisor" %}
@@ -121,8 +124,8 @@ COPY ./proxy.conf {{ proxy_config_path }}
 RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
-ENV SERVER_START_CMD="supervisord -c {{ supervisor_config_path }}"
-ENTRYPOINT ["supervisord", "-c", "{{ supervisor_config_path }}"]
+ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
+ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
     {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
 ENV CONTROL_SERVER_PORT="8080"

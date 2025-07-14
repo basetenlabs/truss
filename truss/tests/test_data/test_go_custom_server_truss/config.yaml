@@ -1,0 +1,20 @@
+base_image:
+  image: baseten/go-custom-server-test:0.1.0
+docker_server:
+  start_command: ./server
+  predict_endpoint: /predict
+  server_port: 8000
+  readiness_endpoint: /
+  liveness_endpoint: /
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+model_name: Test Go Docker Server Truss
+secrets:
+  hf_access_token: null
+environment_variables:
+  HF_TOKEN: 123456
+runtime:
+  predict_concurrency: 1
