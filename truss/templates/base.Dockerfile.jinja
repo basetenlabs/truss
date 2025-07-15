@@ -10,7 +10,9 @@ ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
 {%- set UV_VERSION = "0.7.19" %}
 {# Use the python executable currently on the path, will respect activated virtual envs. #}
-{%- set sys_pip_install_command = "uv pip install --python " + python_exec_path %}
+{# We use `unsafe-best-match` since `uv` is stricter about having multiple registries, but sometimes #}
+{# we need to search for versions across multiple. #}
+{%- set sys_pip_install_command = "uv pip install --index-strategy unsafe-best-match --python " + python_exec_path %}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
