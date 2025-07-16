@@ -1,6 +1,6 @@
 use baseten_performance_client_core::{
     ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
-    CoreRerankResponse, PerformanceClientCore,
+    CoreRerankResponse, PerformanceClientCore, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
 };
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
@@ -9,12 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
-// Default constants
-// deprecated, use core.constants.rs instead
-// TODO: remove the 3 constants below!!
-const DEFAULT_CONCURRENCY: u32 = 32;
-const DEFAULT_BATCH_SIZE: u32 = 4;
-const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
+// Use constants from core crate - no more hardcoded values!
 
 // Helper function to create NAPI errors
 fn create_napi_error(msg: &str) -> napi::Error {
@@ -212,8 +207,8 @@ impl PerformanceClient {
         }
 
         let max_concurrent_requests =
-            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY) as usize;
-        let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE) as usize;
+            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
+        let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
         let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
 
         let result = self
@@ -266,8 +261,8 @@ impl PerformanceClient {
         }
 
         let max_concurrent_requests =
-            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY) as usize;
-        let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE) as usize;
+            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
+        let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
         let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
 
         let result = self
@@ -319,8 +314,8 @@ impl PerformanceClient {
         }
 
         let max_concurrent_requests =
-            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY) as usize;
-        let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE) as usize;
+            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
+        let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
         let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
 
         let result = self
@@ -367,7 +362,7 @@ impl PerformanceClient {
         }
 
         let max_concurrent_requests =
-            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY) as usize;
+            max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
         let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
 
         let result = self

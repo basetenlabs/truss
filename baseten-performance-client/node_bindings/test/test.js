@@ -64,11 +64,11 @@ runner.test('Constructor should create client with valid parameters', () => {
     assert(client instanceof PerformanceClient, 'Should create PerformanceClient instance');
 });
 
-// Test 2: Constructor with invalid URL
-runner.test('Constructor should handle invalid URL', () => {
+// Test 2: Constructor with invalid API key
+runner.test('Constructor should handle missing API key', () => {
     assertThrows(() => {
-        new PerformanceClient("", TEST_API_KEY);
-    }, 'Should throw error for empty URL');
+        new PerformanceClient(TEST_BASE_URL);
+    }, 'Should throw error for missing API key');
 });
 
 // Test 3: Embed method parameter validation
@@ -163,9 +163,15 @@ runner.test('Methods should handle optional parameters', () => {
 
 // Test 10: Test with environment variables
 runner.test('Constructor should work with environment variables', () => {
+    // Set env var first
+    process.env.BASETEN_API_KEY = "test-key";
+
     // Test without explicit API key (should use environment variable)
     const client = new PerformanceClient(TEST_BASE_URL);
     assert(client instanceof PerformanceClient, 'Should create client with env var API key');
+
+    // Clean up
+    delete process.env.BASETEN_API_KEY;
 });
 
 // Run all tests

@@ -1,0 +1,47 @@
+{
+  "name": "baseten-performance-client",
+  "version": "0.0.6",
+  "description": "High performance client for Baseten.co endpoints",
+  "main": "index.js",
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "node test/test.js",
+    "prepublishOnly": "napi prepublish -t npm",
+    "artifacts": "napi artifacts"
+  },
+  "napi": {
+    "name": "baseten-performance-client-node",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-pc-windows-msvc",
+        "armv7-unknown-linux-gnueabihf",
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-musl"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michaelfeil/baseten-performance-client.git"
+  },
+  "keywords": [
+    "baseten",
+    "performance",
+    "client",
+    "embedding",
+    "reranking",
+    "classification"
+  ],
+  "author": "Michael Feil",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ]
+}
