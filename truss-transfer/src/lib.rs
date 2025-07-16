@@ -29,7 +29,7 @@ pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, R
 pub use hf_metadata::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
 
 // Re-export BasetenPointer API
-pub use basetenpointer::{create_basetenpointer};
+pub use basetenpointer::create_basetenpointer;
 
 // Tests module
 #[cfg(test)]

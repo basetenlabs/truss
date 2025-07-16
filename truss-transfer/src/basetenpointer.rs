@@ -1,7 +1,5 @@
 use crate::hf_metadata::model_cache_hf_to_b10ptr;
-use crate::types::{
-    BasetenPointer, ModelRepo, ResolutionType,
-};
+use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
 use serde_json;
 
 /// Create a BasetenPointer from a HuggingFace model repository
@@ -13,7 +11,6 @@ pub async fn create_basetenpointer(
     let json = serde_json::to_string_pretty(&manifest)?;
     Ok(json)
 }
-
 
 #[cfg(test)]
 mod tests {

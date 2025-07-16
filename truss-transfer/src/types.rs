@@ -66,7 +66,7 @@ pub struct ModelRepo {
     #[pyo3(get, set)]
     pub runtime_secret_name: String,
     #[pyo3(get, set)]
-    pub kind: ResolutionType
+    pub kind: ResolutionType,
 }
 
 #[pymethods]
@@ -105,7 +105,7 @@ impl ModelRepo {
                     eprintln!("Unknown kind: {}", kind);
                     ResolutionType::Http // Default to Http if unknown kind
                 }
-            }
+            },
         }
     }
 }
