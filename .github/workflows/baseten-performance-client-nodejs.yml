@@ -414,7 +414,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: bindings-armv7-unknown-linux-gnueabihf
-          path: .
+          path: baseten-performance-client/node_bindings
       - name: List packages
         run: ls -R .
         shell: bash
