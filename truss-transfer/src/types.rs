@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
+#[pyclass]
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum ResolutionType {
     #[serde(rename = "http", alias = "hf")]
@@ -64,6 +65,8 @@ pub struct ModelRepo {
     pub volume_folder: String,
     #[pyo3(get, set)]
     pub runtime_secret_name: String,
+    #[pyo3(get, set)]
+    pub kind: ResolutionType
 }
 
 #[pymethods]
@@ -73,6 +76,7 @@ impl ModelRepo {
         repo_id,
         revision,
         volume_folder,
+        kind = "hf".to_string(),
         allow_patterns = None,
         ignore_patterns = None,
         runtime_secret_name = "hf_access_token".to_string(),
@@ -81,6 +85,7 @@ impl ModelRepo {
         repo_id: String,
         revision: String,
         volume_folder: String,
+        kind: String,
         allow_patterns: Option<Vec<String>>,
         ignore_patterns: Option<Vec<String>>,
         runtime_secret_name: String,
@@ -91,7 +96,16 @@ impl ModelRepo {
             allow_patterns,
             ignore_patterns,
             volume_folder,
-            runtime_secret_name: runtime_secret_name
+            runtime_secret_name: runtime_secret_name,
+            kind: match kind.as_str() {
+                "http" | "hf" => ResolutionType::Http,
+                "gcs" => ResolutionType::Gcs,
+                _ => {
+                    // TODO raise actual pyvalueerror
+                    eprintln!("Unknown kind: {}", kind);
+                    ResolutionType::Http // Default to Http if unknown kind
+                }
+            }
         }
     }
 }

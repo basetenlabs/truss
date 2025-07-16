@@ -1,5 +1,7 @@
 use crate::hf_metadata::model_cache_hf_to_b10ptr;
-use crate::types::ModelRepo;
+use crate::types::{
+    BasetenPointer, ModelRepo, ResolutionType,
+};
 use serde_json;
 
 /// Create a BasetenPointer from a HuggingFace model repository
@@ -12,16 +14,11 @@ pub async fn create_basetenpointer(
     Ok(json)
 }
 
-/// Function to read runtime secrets from the filesystem
-/// This reads the HuggingFace token from /secrets/<secret_name>
-pub fn read_runtime_secret(secret_name: &str) -> Result<String, std::io::Error> {
-    // duplicate of get_secret_from_file function in download.rs :/
-    let secret_path = format!("/secrets/{}", secret_name);
-    std::fs::read_to_string(secret_path).map(|s| s.trim().to_string())
-}
 
 #[cfg(test)]
 mod tests {
+    use crate::Resolution;
+
     use super::*;
 
     #[tokio::test]
@@ -31,6 +28,7 @@ mod tests {
             revision: "main".to_string(),
             allow_patterns: None,
             ignore_patterns: Some(vec!["*.md".to_string()]),
+            kind: ResolutionType::Http,
             volume_folder: "test_model".to_string(),
             runtime_secret_name: "hf_access_token".to_string(),
         }];

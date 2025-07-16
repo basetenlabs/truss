@@ -266,6 +266,7 @@ mod tests {
             repo_id: "test/model".to_string(),
             revision: "main".to_string(),
             allow_patterns: None,
+            kind: ResolutionType::Http,
             ignore_patterns: Some(vec!["*.md".to_string()]),
             volume_folder: "test".to_string(),
             runtime_secret_name: "hf_access_token".to_string(),
