@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::path::Path;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
+use std::path::Path;
 #[cfg(windows)]
 use std::time::UNIX_EPOCH;
 

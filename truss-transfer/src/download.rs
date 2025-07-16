@@ -55,7 +55,9 @@ pub async fn download_file_with_cache(
                 "Found {} in b10cache. Attempting to create symlink...",
                 hash
             );
-            if let Err(e) = crate::cache::create_symlink_or_skip(&cache_path, &destination, size).await {
+            if let Err(e) =
+                crate::cache::create_symlink_or_skip(&cache_path, &destination, size).await
+            {
                 warn!(
                     "Symlink creation failed: {}.  Proceeding with direct download.",
                     e

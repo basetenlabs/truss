@@ -31,7 +31,8 @@ pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 pub static SECRETS_BASE_PATH: &str = "/secrets";
 
 /// Environment variable for b10fs download speed
-pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
+pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
+    "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
 
 /// Default download speed for b10fs (MB/s)
 pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 350.0;

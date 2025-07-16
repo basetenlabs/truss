@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub enum ResolutionType {
-    #[serde(rename = "http")]
+    #[serde(rename = "http", alias = "hf")]
     Http,
     #[serde(rename = "gcs")]
     Gcs,
@@ -24,6 +24,7 @@ pub struct Resolution {
 }
 
 fn default_runtime_secret_name() -> String {
+    // TODO: remove this default once its adopted.
     "hf_access_token".to_string()
 }
 
