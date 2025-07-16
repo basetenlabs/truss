@@ -3,32 +3,37 @@
   "version": "0.0.1",
   "description": "High performance client for Baseten.co endpoints",
   "main": "index.js",
-  "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
-    "test": "node test/test.js",
-    "prepublishOnly": "napi prepublish -t npm",
-    "artifacts": "napi artifacts"
-  },
+  "types": "index.d.ts",
   "napi": {
-    "name": "baseten-performance-client-node",
+    "name": "baseten-performance-client",
     "triples": {
       "additional": [
         "aarch64-apple-darwin",
+        "aarch64-linux-android",
         "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
         "aarch64-pc-windows-msvc",
         "armv7-unknown-linux-gnueabihf",
+        "armv7-unknown-linux-musleabihf",
         "x86_64-unknown-linux-musl",
-        "aarch64-unknown-linux-musl"
+        "x86_64-unknown-freebsd",
+        "i686-pc-windows-msvc",
+        "armv7-linux-androideabi",
+        "universal-apple-darwin",
+        "riscv64gc-unknown-linux-gnu"
       ]
     }
   },
+  "license": "MIT",
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.0"
+    "@napi-rs/cli": "^2.18.4",
+    "ava": "^6.0.1"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/michaelfeil/baseten-performance-client.git"
+  "ava": {
+    "timeout": "3m"
+  },
+  "engines": {
+    "node": ">= 10"
   },
   "keywords": [
     "baseten",
@@ -38,10 +43,13 @@
     "reranking",
     "classification"
   ],
-  "author": "Michael Feil",
-  "license": "MIT",
-  "files": [
-    "index.js",
-    "index.d.ts"
-  ]
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "ava",
+    "universal": "napi universal",
+    "version": "napi version"
+  }
 }

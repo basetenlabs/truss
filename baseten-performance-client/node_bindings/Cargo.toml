@@ -1,6 +1,6 @@
 [package]
-name = "baseten-performance-client-node"
-version = "0.0.6"
+name = "baseten-performance-client"
+version = "0.0.1"
 edition = "2021"
 
 [lib]
@@ -18,3 +18,7 @@ once_cell = { workspace = true }
 
 [build-dependencies]
 napi-build = "2.1"
+
+[profile.release]
+lto = true
+strip = "symbols"
