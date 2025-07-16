@@ -152,6 +152,25 @@ impl PerformanceClientCore {
         Ok(actual_concurrency)
     }
 
+    /// Validates common request parameters and returns validated values
+    /// This consolidates validation logic used across all API methods
+    pub fn validate_request_parameters(
+        &self,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> Result<(usize, Duration), ClientError> {
+        let validated_concurrency = Self::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.base_url,
+        )?;
+
+        let validated_timeout = Self::validate_and_get_timeout_duration(timeout_s)?;
+
+        Ok((validated_concurrency, validated_timeout))
+    }
+
     pub fn get_http_client(http_version: u8) -> Result<Client, ClientError> {
         let mut client_builder = Client::builder();
 

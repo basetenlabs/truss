@@ -346,14 +346,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let core_client = self.core_client.clone();
@@ -419,14 +414,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let core_client = self.core_client.clone();
@@ -482,14 +472,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let core_client = self.core_client.clone();
@@ -558,14 +543,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let core_client = self.core_client.clone();
@@ -621,14 +601,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let core_client = self.core_client.clone();
@@ -693,14 +668,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let core_client = self.core_client.clone();
@@ -751,14 +721,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            128,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, 128, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
@@ -857,14 +822,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            128,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+        let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, 128, timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());

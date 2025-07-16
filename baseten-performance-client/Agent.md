@@ -28,7 +28,24 @@ PyO3 translations and Python-specific functionality:
 ```
 
 ## MISSING:
-ClassificationResponse etc are not defined, just in lib.rs below. Its important to add them to add parity.
+Improvments:
+large parts of the codebase perform:
+let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.core_client.base_url,
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
+
+        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+It would be better to abstract this once inside the core logic handler. Same goes for batch_post.
+Best would be to move this into core.process_embeddings_requests, and not leave it up to the client. The validation can happen in the tokio task.
+
+Consolidate duplicates, and move them into the core lib to lower the complexity of writing sync/async or other lang bindings.
+
+Also logic with async and sync is duplicated.
 
 ### Future Language Support
 This structure makes it easy to add:
