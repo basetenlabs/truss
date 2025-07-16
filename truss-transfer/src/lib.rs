@@ -3,15 +3,18 @@
 // with support for Python and CLI bindings
 
 // Module declarations
-mod basetenpointer;
 mod bindings;
 mod cache;
 mod constants;
 mod core;
+mod create;
 mod download;
-mod hf_metadata;
 mod speed_checks;
 mod types;
+
+// CLI module (only when cli feature is enabled)
+#[cfg(feature = "cli")]
+mod cli;
 
 // Re-export the main public API to maintain compatibility
 pub use bindings::{lazy_data_resolve, truss_transfer};
@@ -20,16 +23,16 @@ pub use core::lazy_data_resolve_entrypoint;
 
 // Re-export the main function for CLI usage
 #[cfg(feature = "cli")]
-pub use bindings::main;
+pub use cli::main;
 
 // Re-export types for external use
 pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, ResolutionType};
 
 // Re-export HuggingFace functionality
-pub use hf_metadata::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
+pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
 
 // Re-export BasetenPointer API
-pub use basetenpointer::create_basetenpointer;
+pub use create::create_basetenpointer;
 
 // Tests module
 #[cfg(test)]

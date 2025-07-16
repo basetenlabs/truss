@@ -1,4 +1,4 @@
-use crate::hf_metadata::model_cache_hf_to_b10ptr;
+use super::model_cache_hf_to_b10ptr;
 use crate::types::ModelRepo;
 use serde_json;
 
@@ -15,8 +15,7 @@ pub async fn create_basetenpointer(
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
-    use crate::Resolution;
+    use crate::types::{ModelRepo, ResolutionType};
 
     use super::*;
 

@@ -6,19 +6,17 @@ use chrono;
 use env_logger::Builder;
 use log::{warn, LevelFilter};
 
-#[cfg(feature = "cli")]
-use log::{error, info};
+
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::{pyclass, pymethods, wrap_pyfunction};
 
-use crate::basetenpointer::create_basetenpointer;
+use crate::create::create_basetenpointer;
 use crate::constants::*;
 use crate::core::lazy_data_resolve_entrypoint;
 use crate::types::{ModelRepo, ResolutionType};
 
-#[cfg(feature = "cli")]
-use anyhow::Result;
+
 
 static INIT_LOGGER: Once = Once::new();
 
@@ -183,20 +181,7 @@ pub fn create_basetenpointer_from_models(models: Vec<Bound<'_, PyModelRepo>>) ->
         .map_err(|e| PyException::new_err(e.to_string()))
 }
 
-/// Running the CLI directly.
-#[cfg(feature = "cli")]
-pub fn main() -> anyhow::Result<()> {
-    init_logger_once();
-    info!("truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
 
-    // Pass the first CLI argument as the download directory, if provided.
-    let download_dir = std::env::args().nth(1);
-    if let Err(e) = lazy_data_resolve_entrypoint(download_dir) {
-        error!("Error during execution: {}", e);
-        std::process::exit(1);
-    }
-    Ok(())
-}
 
 /// Python module definition
 #[pymodule]
