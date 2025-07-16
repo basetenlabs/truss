@@ -15,9 +15,7 @@ use pyo3::{pyclass, pymethods, wrap_pyfunction};
 use crate::basetenpointer::create_basetenpointer;
 use crate::constants::*;
 use crate::core::lazy_data_resolve_entrypoint;
-use crate::types::{
-    ModelRepo, ResolutionType,
-};
+use crate::types::{ModelRepo, ResolutionType};
 
 #[cfg(feature = "cli")]
 use anyhow::Result;

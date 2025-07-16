@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use pyo3::pyclass;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum ResolutionType {
