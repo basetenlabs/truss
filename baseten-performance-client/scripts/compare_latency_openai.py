@@ -4,6 +4,7 @@ import os
 import threading
 import time
 
+import baseten_performance_client
 import numpy as np
 import psutil
 from baseten_performance_client import OpenAIEmbeddingsResponse, PerformanceClient
@@ -227,5 +228,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    print("Starting benchmark comparison for PerformanceClient() and AsyncOpenAI")
+    print(
+        f"Starting benchmark comparison for PerformanceClient() and AsyncOpenAI, v{baseten_performance_client.__version__}"
+    )
     asyncio.run(main())
