@@ -86,8 +86,8 @@ struct OpenAIEmbeddingsResponse {
     data: Vec<OpenAIEmbeddingData>,
     model: String,
     usage: OpenAIUsage,
-    total_time: Option<f64>,
-    individual_request_times: Option<Vec<f64>>,
+    total_time: f64,
+    individual_request_times: Vec<f64>,
 }
 
 impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
@@ -101,8 +101,14 @@ impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
                 .collect(),
             model: core.model,
             usage: OpenAIUsage::from(core.usage),
-            total_time: core.total_time,
-            individual_request_times: core.individual_request_times,
+            total_time: match core.total_time {
+                Some(t) => t,
+                None => 0.0,
+            },
+            individual_request_times: match core.individual_request_times {
+                Some(times) => times,
+                None => Vec::new(),
+            },
         }
     }
 }
@@ -187,8 +193,8 @@ impl From<CoreRerankResult> for RerankResult {
 struct RerankResponse {
     object: String,
     data: Vec<RerankResult>,
-    total_time: Option<f64>,
-    individual_request_times: Option<Vec<f64>>,
+    total_time: f64,
+    individual_request_times: Vec<f64>,
 }
 
 impl From<CoreRerankResponse> for RerankResponse {
@@ -196,8 +202,14 @@ impl From<CoreRerankResponse> for RerankResponse {
         RerankResponse {
             object: core.object,
             data: core.data.into_iter().map(RerankResult::from).collect(),
-            total_time: core.total_time,
-            individual_request_times: core.individual_request_times,
+            total_time: match core.total_time {
+                Some(t) => t,
+                None => 0.0,
+            },
+            individual_request_times: match core.individual_request_times {
+                Some(times) => times,
+                None => Vec::new(),
+            },
         }
     }
 }
@@ -205,12 +217,8 @@ impl From<CoreRerankResponse> for RerankResponse {
 #[pymethods]
 impl RerankResponse {
     #[new]
-    #[pyo3(signature = (data, total_time = None, individual_request_times = None))]
-    fn new(
-        data: Vec<RerankResult>,
-        total_time: Option<f64>,
-        individual_request_times: Option<Vec<f64>>,
-    ) -> Self {
+    #[pyo3(signature = (data, total_time, individual_request_times))]
+    fn new(data: Vec<RerankResult>, total_time: f64, individual_request_times: Vec<f64>) -> Self {
         RerankResponse {
             object: "list".to_string(),
             data,
@@ -244,8 +252,8 @@ impl From<CoreClassificationResult> for ClassificationResult {
 struct ClassificationResponse {
     object: String,
     data: Vec<Vec<ClassificationResult>>,
-    total_time: Option<f64>,
-    individual_request_times: Option<Vec<f64>>,
+    total_time: f64,
+    individual_request_times: Vec<f64>,
 }
 
 impl From<CoreClassificationResponse> for ClassificationResponse {
@@ -257,8 +265,14 @@ impl From<CoreClassificationResponse> for ClassificationResponse {
                 .into_iter()
                 .map(|batch| batch.into_iter().map(ClassificationResult::from).collect())
                 .collect(),
-            total_time: core.total_time,
-            individual_request_times: core.individual_request_times,
+            total_time: match core.total_time {
+                Some(t) => t,
+                None => 0.0,
+            },
+            individual_request_times: match core.individual_request_times {
+                Some(times) => times,
+                None => Vec::new(),
+            },
         }
     }
 }
@@ -266,11 +280,11 @@ impl From<CoreClassificationResponse> for ClassificationResponse {
 #[pymethods]
 impl ClassificationResponse {
     #[new]
-    #[pyo3(signature = (data, total_time = None, individual_request_times = None))]
+    #[pyo3(signature = (data, total_time, individual_request_times))]
     fn new(
         data: Vec<Vec<ClassificationResult>>,
-        total_time: Option<f64>,
-        individual_request_times: Option<Vec<f64>>,
+        total_time: f64,
+        individual_request_times: Vec<f64>,
     ) -> Self {
         ClassificationResponse {
             object: "list".to_string(),
@@ -383,8 +397,8 @@ impl PerformanceClient {
             .collect();
 
         let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
-        api_response.total_time = Some(total_time_val.as_secs_f64());
-        api_response.individual_request_times = Some(individual_times_val);
+        api_response.total_time = total_time_val.as_secs_f64();
+        api_response.individual_request_times = individual_times_val;
 
         Ok(api_response)
     }
@@ -409,7 +423,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         let future = async move {
-            let (core_response, batch_durations, _core_total_time) = core_client
+            let (core_response, batch_durations, core_total_time) = core_client
                 .process_embeddings_requests(
                     input,
                     model,
@@ -429,8 +443,8 @@ impl PerformanceClient {
                 .collect();
 
             let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
-            api_response.total_time = Some(_core_total_time.as_secs_f64());
-            api_response.individual_request_times = Some(individual_times_val);
+            api_response.total_time = core_total_time.as_secs_f64();
+            api_response.individual_request_times = individual_times_val;
 
             Ok(api_response)
         };
@@ -496,8 +510,8 @@ impl PerformanceClient {
             .collect();
 
         let mut api_response = RerankResponse::from(core_response);
-        api_response.total_time = Some(total_time_val.as_secs_f64());
-        api_response.individual_request_times = Some(individual_times_val);
+        api_response.total_time = total_time_val.as_secs_f64();
+        api_response.individual_request_times = individual_times_val;
 
         Ok(api_response)
     }
@@ -524,7 +538,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
-            let (core_response, batch_durations, _core_total_time) = core_client
+            let (core_response, batch_durations, core_total_time) = core_client
                 .process_rerank_requests(
                     query,
                     texts,
@@ -545,8 +559,8 @@ impl PerformanceClient {
                 .collect();
 
             let mut api_response = RerankResponse::from(core_response);
-            api_response.total_time = Some(_core_total_time.as_secs_f64());
-            api_response.individual_request_times = Some(individual_times_val);
+            api_response.total_time = core_total_time.as_secs_f64();
+            api_response.individual_request_times = individual_times_val;
 
             Ok(api_response)
         };
@@ -601,15 +615,15 @@ impl PerformanceClient {
             }
         })?;
 
-        let (core_response, batch_durations, _core_total_time) = result_from_async_task;
+        let (core_response, batch_durations, core_total_time) = result_from_async_task;
         let individual_times_val: Vec<f64> = batch_durations
             .into_iter()
             .map(|d| d.as_secs_f64())
             .collect();
 
         let mut api_response = ClassificationResponse::from(core_response);
-        api_response.total_time = Some(_core_total_time.as_secs_f64());
-        api_response.individual_request_times = Some(individual_times_val);
+        api_response.total_time = core_total_time.as_secs_f64();
+        api_response.individual_request_times = individual_times_val;
 
         Ok(api_response)
     }
@@ -634,7 +648,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
-            let (core_response, batch_durations, _core_total_time) = core_client
+            let (core_response, batch_durations, core_total_time) = core_client
                 .process_classify_requests(
                     inputs,
                     raw_scores,
@@ -653,8 +667,8 @@ impl PerformanceClient {
                 .collect();
 
             let mut api_response = ClassificationResponse::from(core_response);
-            api_response.total_time = Some(_core_total_time.as_secs_f64());
-            api_response.individual_request_times = Some(individual_times_val);
+            api_response.total_time = core_total_time.as_secs_f64();
+            api_response.individual_request_times = individual_times_val;
 
             Ok(api_response)
         };
