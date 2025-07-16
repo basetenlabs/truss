@@ -157,7 +157,134 @@ impl OpenAIEmbeddingsResponse {
     }
 }
 
-// Additional response types (Rerank, Classification, BatchPost) need to be implemented below.
+// --- Rerank Response Types ---
+#[derive(Debug, Clone)]
+#[pyclass]
+struct RerankResult {
+    #[pyo3(get)]
+    index: usize,
+    #[pyo3(get)]
+    score: f64,
+    #[pyo3(get)]
+    text: Option<String>,
+}
+
+impl From<CoreRerankResult> for RerankResult {
+    fn from(core: CoreRerankResult) -> Self {
+        RerankResult {
+            index: core.index,
+            score: core.score,
+            text: core.text,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[pyclass(get_all, frozen)]
+struct RerankResponse {
+    object: String,
+    data: Vec<RerankResult>,
+    total_time: Option<f64>,
+    individual_request_times: Option<Vec<f64>>,
+}
+
+impl From<CoreRerankResponse> for RerankResponse {
+    fn from(core: CoreRerankResponse) -> Self {
+        RerankResponse {
+            object: core.object,
+            data: core.data.into_iter().map(RerankResult::from).collect(),
+            total_time: core.total_time,
+            individual_request_times: core.individual_request_times,
+        }
+    }
+}
+
+#[pymethods]
+impl RerankResponse {
+    #[new]
+    #[pyo3(signature = (data, total_time = None, individual_request_times = None))]
+    fn new(
+        data: Vec<RerankResult>,
+        total_time: Option<f64>,
+        individual_request_times: Option<Vec<f64>>,
+    ) -> Self {
+        RerankResponse {
+            object: "list".to_string(),
+            data,
+            total_time,
+            individual_request_times,
+        }
+    }
+}
+
+// --- Classification Response Types ---
+#[derive(Debug, Clone)]
+#[pyclass]
+struct ClassificationResult {
+    #[pyo3(get)]
+    label: String,
+    #[pyo3(get)]
+    score: f64,
+}
+
+impl From<CoreClassificationResult> for ClassificationResult {
+    fn from(core: CoreClassificationResult) -> Self {
+        ClassificationResult {
+            label: core.label,
+            score: core.score,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[pyclass(get_all, frozen)]
+struct ClassificationResponse {
+    object: String,
+    data: Vec<Vec<ClassificationResult>>,
+    total_time: Option<f64>,
+    individual_request_times: Option<Vec<f64>>,
+}
+
+impl From<CoreClassificationResponse> for ClassificationResponse {
+    fn from(core: CoreClassificationResponse) -> Self {
+        ClassificationResponse {
+            object: core.object,
+            data: core.data.into_iter().map(|batch|
+                batch.into_iter().map(ClassificationResult::from).collect()
+            ).collect(),
+            total_time: core.total_time,
+            individual_request_times: core.individual_request_times,
+        }
+    }
+}
+
+#[pymethods]
+impl ClassificationResponse {
+    #[new]
+    #[pyo3(signature = (data, total_time = None, individual_request_times = None))]
+    fn new(
+        data: Vec<Vec<ClassificationResult>>,
+        total_time: Option<f64>,
+        individual_request_times: Option<Vec<f64>>,
+    ) -> Self {
+        ClassificationResponse {
+            object: "list".to_string(),
+            data,
+            total_time,
+            individual_request_times,
+        }
+    }
+}
+
+// --- Batch Post Response Types ---
+#[pyclass(get_all)]
+struct BatchPostResponse {
+    data: Vec<PyObject>,
+    total_time: f64,
+    individual_request_times: Vec<f64>,
+    response_headers: Vec<PyObject>,
+}
+
 #[pyclass]
 struct PerformanceClient {
     core_client: PerformanceClientCore,
@@ -339,7 +466,11 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;
-    // TODO: Add other response classes
+    m.add_class::<RerankResult>()?;
+    m.add_class::<RerankResponse>()?;
+    m.add_class::<ClassificationResult>()?;
+    m.add_class::<ClassificationResponse>()?;
+    m.add_class::<BatchPostResponse>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
