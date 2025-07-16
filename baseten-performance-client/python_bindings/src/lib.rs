@@ -464,7 +464,265 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    // TODO: Add rerank, classify, and batch_post methods following the same pattern
+    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn rerank(
+        &self,
+        py: Python,
+        query: String,
+        texts: Vec<String>,
+        raw_scores: bool,
+        return_text: bool,
+        truncate: bool,
+        truncation_direction: &str,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<RerankResponse> {
+        if texts.is_empty() {
+            return Err(PyValueError::new_err("Texts list cannot be empty"));
+        }
+
+        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.core_client.base_url,
+        ).map_err(Self::convert_core_error_to_py_err)?;
+
+        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+        let core_client = self.core_client.clone();
+        let rt = Arc::clone(&self.runtime);
+        let truncation_direction_owned = truncation_direction.to_string();
+        let time_start = Instant::now();
+
+        let result_from_async_task = py.allow_threads(move || {
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            rt.spawn(async move {
+                let res = core_client.process_rerank_requests(
+                    query,
+                    texts,
+                    raw_scores,
+                    return_text,
+                    truncate,
+                    truncation_direction_owned,
+                    max_concurrent_requests,
+                    batch_size,
+                    timeout_duration,
+                ).await;
+                let _ = tx.send(res);
+            });
+
+            match rx.recv() {
+                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
+                Err(e) => Err(PyValueError::new_err(format!(
+                    "Failed to receive rerank result (channel error): {}",
+                    e
+                ))),
+            }
+        })?;
+
+        let (core_response, batch_durations) = result_from_async_task;
+        let total_time_val = time_start.elapsed().as_secs_f64();
+        let individual_times_val: Vec<f64> = batch_durations
+            .into_iter()
+            .map(|d| d.as_secs_f64())
+            .collect();
+
+        let mut api_response = RerankResponse::from(core_response);
+        api_response.total_time = Some(total_time_val);
+        api_response.individual_request_times = Some(individual_times_val);
+
+        Ok(api_response)
+    }
+
+    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn async_rerank<'py>(
+        &self,
+        py: Python<'py>,
+        query: String,
+        texts: Vec<String>,
+        raw_scores: bool,
+        return_text: bool,
+        truncate: bool,
+        truncation_direction: &str,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if texts.is_empty() {
+            return Err(PyValueError::new_err("Texts list cannot be empty"));
+        }
+
+        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.core_client.base_url,
+        ).map_err(Self::convert_core_error_to_py_err)?;
+
+        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+        let core_client = self.core_client.clone();
+        let truncation_direction_owned = truncation_direction.to_string();
+
+        let future = async move {
+            let time_start_async_op = Instant::now();
+
+            let (core_response, batch_durations) = core_client.process_rerank_requests(
+                query,
+                texts,
+                raw_scores,
+                return_text,
+                truncate,
+                truncation_direction_owned,
+                max_concurrent_requests,
+                batch_size,
+                timeout_duration,
+            ).await.map_err(Self::convert_core_error_to_py_err)?;
+
+            let total_time_val = time_start_async_op.elapsed().as_secs_f64();
+            let individual_times_val: Vec<f64> = batch_durations
+                .into_iter()
+                .map(|d| d.as_secs_f64())
+                .collect();
+
+            let mut api_response = RerankResponse::from(core_response);
+            api_response.total_time = Some(total_time_val);
+            api_response.individual_request_times = Some(individual_times_val);
+
+            Ok(api_response)
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
+
+    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn classify(
+        &self,
+        py: Python,
+        inputs: Vec<String>,
+        raw_scores: bool,
+        truncate: bool,
+        truncation_direction: &str,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<ClassificationResponse> {
+        if inputs.is_empty() {
+            return Err(PyValueError::new_err("Inputs list cannot be empty"));
+        }
+
+        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.core_client.base_url,
+        ).map_err(Self::convert_core_error_to_py_err)?;
+
+        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+        let core_client = self.core_client.clone();
+        let rt = Arc::clone(&self.runtime);
+        let truncation_direction_owned = truncation_direction.to_string();
+        let time_start = Instant::now();
+
+        let result_from_async_task = py.allow_threads(move || {
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            rt.spawn(async move {
+                let res = core_client.process_classify_requests(
+                    inputs,
+                    raw_scores,
+                    truncate,
+                    truncation_direction_owned,
+                    max_concurrent_requests,
+                    batch_size,
+                    timeout_duration,
+                ).await;
+                let _ = tx.send(res);
+            });
+
+            match rx.recv() {
+                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
+                Err(e) => Err(PyValueError::new_err(format!(
+                    "Failed to receive classify result (channel error): {}",
+                    e
+                ))),
+            }
+        })?;
+
+        let (core_response, batch_durations) = result_from_async_task;
+        let total_time_val = time_start.elapsed().as_secs_f64();
+        let individual_times_val: Vec<f64> = batch_durations
+            .into_iter()
+            .map(|d| d.as_secs_f64())
+            .collect();
+
+        let mut api_response = ClassificationResponse::from(core_response);
+        api_response.total_time = Some(total_time_val);
+        api_response.individual_request_times = Some(individual_times_val);
+
+        Ok(api_response)
+    }
+
+    #[pyo3(name = "async_classify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn async_classify<'py>(
+        &self,
+        py: Python<'py>,
+        inputs: Vec<String>,
+        raw_scores: bool,
+        truncate: bool,
+        truncation_direction: &str,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if inputs.is_empty() {
+            return Err(PyValueError::new_err("Inputs list cannot be empty"));
+        }
+
+        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
+            max_concurrent_requests,
+            batch_size,
+            &self.core_client.base_url,
+        ).map_err(Self::convert_core_error_to_py_err)?;
+
+        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+        let core_client = self.core_client.clone();
+        let truncation_direction_owned = truncation_direction.to_string();
+
+        let future = async move {
+            let time_start_async_op = Instant::now();
+
+            let (core_response, batch_durations) = core_client.process_classify_requests(
+                inputs,
+                raw_scores,
+                truncate,
+                truncation_direction_owned,
+                max_concurrent_requests,
+                batch_size,
+                timeout_duration,
+            ).await.map_err(Self::convert_core_error_to_py_err)?;
+
+            let total_time_val = time_start_async_op.elapsed().as_secs_f64();
+            let individual_times_val: Vec<f64> = batch_durations
+                .into_iter()
+                .map(|d| d.as_secs_f64())
+                .collect();
+
+            let mut api_response = ClassificationResponse::from(core_response);
+            api_response.total_time = Some(total_time_val);
+            api_response.individual_request_times = Some(individual_times_val);
+
+            Ok(api_response)
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
 }
 
 #[pymodule]

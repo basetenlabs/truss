@@ -333,6 +333,198 @@ impl PerformanceClientCore {
         };
         Ok((final_response, individual_batch_durations))
     }
+
+    pub async fn process_rerank_requests(
+        &self,
+        query: String,
+        texts: Vec<String>,
+        raw_scores: bool,
+        return_text: bool,
+        truncate: bool,
+        truncation_direction: String,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        request_timeout_duration: Duration,
+    ) -> Result<(CoreRerankResponse, Vec<Duration>), ClientError> {
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+        let mut tasks = Vec::new();
+        let total_requests = (texts.len() + batch_size - 1) / batch_size;
+        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+            total_requests,
+        )));
+        let cancel_token = Arc::new(AtomicBool::new(false));
+
+        for (batch_idx, texts_batch) in texts.chunks(batch_size).enumerate() {
+            let client_wrapper_clone = self.client_wrapper.clone();
+            let query_clone = query.clone();
+            let api_key_clone = self.api_key.clone();
+            let base_url_clone = self.base_url.clone();
+            let truncation_direction_clone = truncation_direction.clone();
+            let texts_batch_owned = texts_batch.to_vec();
+            let semaphore_clone = Arc::clone(&semaphore);
+            let cancel_token_clone = Arc::clone(&cancel_token);
+            let retry_budget_clone = Arc::clone(&retry_budget);
+            let individual_request_timeout = request_timeout_duration;
+            let current_batch_absolute_start_index = batch_idx * batch_size;
+
+            tasks.push(tokio::spawn(async move {
+                let _permit =
+                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
+                        .await?;
+                let client = client_wrapper_clone.get_client();
+
+                let request_time_start = Instant::now();
+                let config = SendRequestConfig {
+                    max_retries: MAX_HTTP_RETRIES,
+                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                    retry_budget: Some(retry_budget_clone),
+                    cancel_token: cancel_token_clone.clone(),
+                };
+                let result = send_single_rerank_request(
+                    &client,
+                    query_clone,
+                    texts_batch_owned,
+                    raw_scores,
+                    return_text,
+                    truncate,
+                    truncation_direction_clone,
+                    api_key_clone,
+                    base_url_clone,
+                    individual_request_timeout,
+                    &config,
+                )
+                .await;
+                let request_time_elapsed = request_time_start.elapsed();
+
+                match result {
+                    Ok(mut batch_results) => {
+                        for item in &mut batch_results {
+                            item.index += current_batch_absolute_start_index;
+                        }
+                        Ok((batch_results, request_time_elapsed))
+                    }
+                    Err(e) => {
+                        cancel_token_clone.store(true, Ordering::SeqCst);
+                        Err(e)
+                    }
+                }
+            }));
+        }
+
+        let task_join_results = join_all(tasks).await;
+
+        let mut all_results_data: Vec<CoreRerankResult> = Vec::new();
+        let mut individual_batch_durations: Vec<Duration> = Vec::new();
+        let mut first_error: Option<ClientError> = None;
+
+        for result in task_join_results {
+            if let Some((batch_data_part, duration)) =
+                process_task_outcome(result, &mut first_error, &cancel_token)
+            {
+                all_results_data.extend(batch_data_part);
+                individual_batch_durations.push(duration);
+            }
+        }
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        all_results_data.sort_by_key(|d| d.index);
+        let core_response = CoreRerankResponse::new(all_results_data, None, None);
+        Ok((core_response, individual_batch_durations))
+    }
+
+    // Core classify processing logic
+    pub async fn process_classify_requests(
+        &self,
+        inputs: Vec<String>,
+        raw_scores: bool,
+        truncate: bool,
+        truncation_direction: String,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        request_timeout_duration: Duration,
+    ) -> Result<(CoreClassificationResponse, Vec<Duration>), ClientError> {
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+        let mut tasks = Vec::new();
+        let total_requests = (inputs.len() + batch_size - 1) / batch_size;
+        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+            total_requests,
+        )));
+        let cancel_token = Arc::new(AtomicBool::new(false));
+
+        for input_chunk_slice in inputs.chunks(batch_size) {
+            let client_wrapper_clone = self.client_wrapper.clone();
+            let api_key_clone = self.api_key.clone();
+            let base_url_clone = self.base_url.clone();
+            let truncation_direction_clone = truncation_direction.clone();
+            let inputs_for_api_owned: Vec<Vec<String>> =
+                input_chunk_slice.iter().map(|s| vec![s.clone()]).collect();
+            let semaphore_clone = Arc::clone(&semaphore);
+            let cancel_token_clone = Arc::clone(&cancel_token);
+            let retry_budget_clone = Arc::clone(&retry_budget);
+            let individual_request_timeout = request_timeout_duration;
+
+            tasks.push(tokio::spawn(async move {
+                let _permit =
+                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
+                        .await?;
+                let client = client_wrapper_clone.get_client();
+
+                let request_time_start = Instant::now();
+                let config = SendRequestConfig {
+                    max_retries: MAX_HTTP_RETRIES,
+                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                    retry_budget: Some(retry_budget_clone),
+                    cancel_token: cancel_token_clone.clone(),
+                };
+                let result = send_single_classify_request(
+                    &client,
+                    inputs_for_api_owned,
+                    raw_scores,
+                    truncate,
+                    truncation_direction_clone,
+                    api_key_clone,
+                    base_url_clone,
+                    individual_request_timeout,
+                    &config,
+                )
+                .await;
+                let request_time_elapsed = request_time_start.elapsed();
+
+                match result {
+                    Ok(batch_results) => Ok((batch_results, request_time_elapsed)),
+                    Err(e) => {
+                        cancel_token_clone.store(true, Ordering::SeqCst);
+                        Err(e)
+                    }
+                }
+            }));
+        }
+
+        let task_join_results = join_all(tasks).await;
+
+        let mut all_results_data: Vec<Vec<CoreClassificationResult>> = Vec::new();
+        let mut individual_batch_durations: Vec<Duration> = Vec::new();
+        let mut first_error: Option<ClientError> = None;
+
+        for result in task_join_results {
+            if let Some((batch_data_part, duration)) =
+                process_task_outcome(result, &mut first_error, &cancel_token)
+            {
+                all_results_data.extend(batch_data_part);
+                individual_batch_durations.push(duration);
+            }
+        }
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        let core_response = CoreClassificationResponse::new(all_results_data, None, None);
+        Ok((core_response, individual_batch_durations))
+    }
 }
 
 // Helper functions for sending individual requests
@@ -371,6 +563,80 @@ async fn send_single_embedding_request(
         .json::<CoreOpenAIEmbeddingsResponse>()
         .await
         .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))
+}
+
+async fn send_single_rerank_request(
+    client: &Client,
+    query: String,
+    texts_batch: Vec<String>,
+    raw_scores: bool,
+    return_text: bool,
+    truncate: bool,
+    truncation_direction: String,
+    api_key: String,
+    base_url: String,
+    request_timeout: Duration,
+    config: &SendRequestConfig,
+) -> Result<Vec<CoreRerankResult>, ClientError> {
+    let request_payload = CoreRerankRequest {
+        query,
+        raw_scores,
+        return_text,
+        texts: texts_batch,
+        truncate,
+        truncation_direction,
+    };
+
+    let url = format!("{}/rerank", base_url.trim_end_matches('/'));
+
+    let request_builder = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&request_payload)
+        .timeout(request_timeout);
+
+    let response = send_request_with_retry(request_builder, config).await?;
+    let successful_response = ensure_successful_response(response).await?;
+
+    successful_response
+        .json::<Vec<CoreRerankResult>>()
+        .await
+        .map_err(|e| ClientError::Serialization(format!("Failed to parse rerank response JSON: {}", e)))
+}
+
+async fn send_single_classify_request(
+    client: &Client,
+    inputs: Vec<Vec<String>>,
+    raw_scores: bool,
+    truncate: bool,
+    truncation_direction: String,
+    api_key: String,
+    base_url: String,
+    request_timeout: Duration,
+    config: &SendRequestConfig,
+) -> Result<Vec<Vec<CoreClassificationResult>>, ClientError> {
+    let request_payload = CoreClassifyRequest {
+        inputs,
+        raw_scores,
+        truncate,
+        truncation_direction,
+    };
+
+    let url = format!("{}/predict", base_url.trim_end_matches('/'));
+
+    let request_builder = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&request_payload)
+        .timeout(request_timeout);
+
+    let response = send_request_with_retry(request_builder, config).await?;
+    let successful_response = ensure_successful_response(response).await?;
+
+    successful_response
+        .json::<Vec<Vec<CoreClassificationResult>>>()
+        .await
+        .map_err(|e| ClientError::Serialization(format!("Failed to parse classify response JSON: {}", e)))
 }
 
 async fn ensure_successful_response(
