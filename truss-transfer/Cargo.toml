@@ -14,17 +14,22 @@ futures-util = "0.3"
 bytes = "1.5"
 pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 serde_yaml = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
 rand = "0.9"
 fs2 = "0.4"
-reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "stream", "http2", "default-tls"] }
+reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "stream", "http2", "default-tls", "json"] }
 # static linking of openssl, as rustls-tls is failing to build on aaarch64
 openssl = { version = "0.10", features = ["vendored"] }
 num_cpus = "1.17.0"
 # Logging dependencies
 log = "0.4"
 env_logger = "0.10"
+# HuggingFace and utility dependencies
+hf-hub = { version = "0.4.3", features = ["tokio"] }
+glob = "0.3"
+thiserror = "1.0"
 
 [features]
 cli = []

@@ -204,7 +204,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             log::debug!("Handling file: {}", file_name);
             download_file_with_cache(
                 &client,
-                &pointer.resolution.url,
+                &pointer.resolution.as_ref().unwrap().url,
                 &download_dir,
                 &file_name,
                 &pointer.hash,
@@ -245,8 +245,10 @@ pub fn build_resolution_map(
     let mut out = Vec::new();
 
     for bptr in &bptr_manifest.pointers {
-        if bptr.resolution.expiration_timestamp < now {
-            return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
+        if let Some(ref resolution) = bptr.resolution {
+            if resolution.expiration_timestamp < now {
+                return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
+            }
         }
         if bptr.hash.contains('/') {
             return Err(anyhow!(

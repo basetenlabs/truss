@@ -3,11 +3,13 @@
 // with support for Python and CLI bindings
 
 // Module declarations
+mod basetenpointer;
 mod bindings;
 mod cache;
 mod constants;
 mod core;
 mod download;
+mod hf_metadata;
 mod speed_checks;
 mod types;
 
@@ -21,7 +23,13 @@ pub use core::lazy_data_resolve_entrypoint;
 pub use bindings::main;
 
 // Re-export types for external use
-pub use types::{BasetenPointer, BasetenPointerManifest, Resolution, ResolutionType};
+pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, ResolutionType};
+
+// Re-export HuggingFace functionality
+pub use hf_metadata::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
+
+// Re-export BasetenPointer API
+pub use basetenpointer::{create_basetenpointer, read_runtime_secret};
 
 // Tests module
 #[cfg(test)]
@@ -62,11 +70,11 @@ mod tests {
         // Create a pointer with an expiration timestamp in the future.
         let future_timestamp = chrono::Utc::now().timestamp() + 3600; // one hour in the future
         let pointer = BasetenPointer {
-            resolution: Resolution {
+            resolution: Some(Resolution {
                 url: "http://example.com/file".into(),
                 resolution_type: ResolutionType::Http,
                 expiration_timestamp: future_timestamp,
-            },
+            }),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -89,11 +97,11 @@ mod tests {
         // Create a pointer that has already expired.
         let past_timestamp = chrono::Utc::now().timestamp() - 3600; // one hour in the past
         let pointer = BasetenPointer {
-            resolution: Resolution {
+            resolution: Some(Resolution {
                 url: "http://example.com/file".into(),
                 resolution_type: ResolutionType::Http,
                 expiration_timestamp: past_timestamp,
-            },
+            }),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),

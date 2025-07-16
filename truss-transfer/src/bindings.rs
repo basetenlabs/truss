@@ -9,8 +9,10 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
+use crate::basetenpointer::create_basetenpointer;
 use crate::constants::*;
 use crate::core::lazy_data_resolve_entrypoint;
+use crate::types::ModelRepo;
 
 #[cfg(feature = "cli")]
 use anyhow::Result;
@@ -67,6 +69,17 @@ pub fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
         .map_err(|err| PyException::new_err(err.to_string()))
 }
 
+/// Python function for creating a BasetenPointer JSON from a list of ModelRepo
+/// This creates BasetenPointer objects from HuggingFace model repositories
+/// signature is create_basetenpointer_from_models(models: Vec<ModelRepo>) -> PyResult<String> {
+#[pyfunction]
+pub fn create_basetenpointer_from_models(models: Vec<ModelRepo>) -> PyResult<String> {
+    // Use async runtime to call the async function
+    let rt = tokio::runtime::Runtime::new().map_err(|e| PyException::new_err(e.to_string()))?;
+    rt.block_on(async move { create_basetenpointer(models).await })
+        .map_err(|e| PyException::new_err(e.to_string()))
+}
+
 /// Running the CLI directly.
 #[cfg(feature = "cli")]
 pub fn main() -> anyhow::Result<()> {
@@ -86,6 +99,8 @@ pub fn main() -> anyhow::Result<()> {
 #[pymodule]
 pub fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lazy_data_resolve, m)?)?;
+    m.add_function(wrap_pyfunction!(create_basetenpointer_from_models, m)?)?;
+    m.add_class::<ModelRepo>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
