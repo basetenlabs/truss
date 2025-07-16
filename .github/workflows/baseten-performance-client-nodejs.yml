@@ -32,9 +32,9 @@ jobs:
           - host: macos-latest
             target: x86_64-apple-darwin
             build: yarn build --target x86_64-apple-darwin
-          - host: windows-latest
-            build: yarn build --target x86_64-pc-windows-msvc
-            target: x86_64-pc-windows-msvc
+          # - host: windows-latest
+          #   build: yarn build --target x86_64-pc-windows-msvc
+          #   target: x86_64-pc-windows-msvc
           # - host: windows-latest
           #   build: |
           #     yarn build --target i686-pc-windows-msvc
