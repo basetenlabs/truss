@@ -23,7 +23,7 @@ npm install @baseten/performance-client
 const { PerformanceClient } = require('@baseten/performance-client');
 
 const apiKey = process.env.BASETEN_API_KEY;
-const baseUrl = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync";
+const baseUrl = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
 // Also works with OpenAI or Mixedbread APIs
 // const baseUrl = "https://api.openai.com" or "https://api.mixedbread.com"
 

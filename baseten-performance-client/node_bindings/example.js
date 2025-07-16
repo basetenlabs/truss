@@ -3,8 +3,9 @@ const { PerformanceClient } = require('./index.js');
 // Example usage of the Baseten Performance Client for Node.js
 
 async function main() {
-    // Initialize the client
-    const baseUrl = process.env.BASETEN_URL || "https://model-yqv0rjjw.api.baseten.co/environments/production/sync";
+    // Initialize clients for different endpoints
+    const embedBaseUrl = process.env.EMBED_URL || "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
+    const rerankBaseUrl = process.env.RERANK_URL || "https://model-abc123.api.baseten.co/environments/production/sync";
     const apiKey = process.env.BASETEN_API_KEY || process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
@@ -12,7 +13,9 @@ async function main() {
         process.exit(1);
     }
 
-    const client = new PerformanceClient(baseUrl, apiKey);
+    // Create separate clients for different endpoints
+    const embedClient = new PerformanceClient(embedBaseUrl, apiKey);
+    const rerankClient = new PerformanceClient(rerankBaseUrl, apiKey);
 
     console.log('🚀 Baseten Performance Client Example');
     console.log('=====================================\n');
@@ -21,7 +24,7 @@ async function main() {
     console.log('1. Testing Embeddings...');
     try {
         const texts = ["Hello world", "This is a test", "Node.js is awesome"];
-        const embedResponse = client.embed(
+        const embedResponse = embedClient.embed(
             texts,
             "text-embedding-3-small", // or your model name
             null, // encoding_format
@@ -54,7 +57,7 @@ async function main() {
             "Python is popular for data science"
         ];
 
-        const rerankResponse = client.rerank(
+        const rerankResponse = rerankClient.rerank(
             query,
             docs,
             false, // raw_scores
@@ -84,7 +87,7 @@ async function main() {
             "It's okay, nothing special."
         ];
 
-        const classifyResponse = client.classify(
+        const classifyResponse = rerankClient.classify(
             textsToClassify,
             false, // raw_scores
             false, // truncate
@@ -114,7 +117,7 @@ async function main() {
             { "model": "text-embedding-3-small", "input": ["World"] }
         ];
 
-        const batchResponse = client.batch_post(
+        const batchResponse = embedClient.batch_post(
             "/v1/embeddings", // URL path
             payloads,
             4,  // max_concurrent_requests
