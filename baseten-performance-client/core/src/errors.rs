@@ -16,7 +16,9 @@ impl fmt::Display for ClientError {
         match self {
             ClientError::Timeout(msg) => write!(f, "Timeout error: {}", msg),
             ClientError::Network(msg) => write!(f, "Network error: {}", msg),
-            ClientError::Http { status, message } => write!(f, "HTTP {} error: {}", status, message),
+            ClientError::Http { status, message } => {
+                write!(f, "HTTP {} error: {}", status, message)
+            }
             ClientError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
             ClientError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             ClientError::Cancellation(msg) => write!(f, "Operation cancelled: {}", msg),

@@ -95,7 +95,11 @@ impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
     fn from(core: CoreOpenAIEmbeddingsResponse) -> Self {
         OpenAIEmbeddingsResponse {
             object: core.object,
-            data: core.data.into_iter().map(OpenAIEmbeddingData::from).collect(),
+            data: core
+                .data
+                .into_iter()
+                .map(OpenAIEmbeddingData::from)
+                .collect(),
             model: core.model,
             usage: OpenAIUsage::from(core.usage),
             total_time: core.total_time,
@@ -249,9 +253,11 @@ impl From<CoreClassificationResponse> for ClassificationResponse {
     fn from(core: CoreClassificationResponse) -> Self {
         ClassificationResponse {
             object: core.object,
-            data: core.data.into_iter().map(|batch|
-                batch.into_iter().map(ClassificationResult::from).collect()
-            ).collect(),
+            data: core
+                .data
+                .into_iter()
+                .map(|batch| batch.into_iter().map(ClassificationResult::from).collect())
+                .collect(),
             total_time: core.total_time,
             individual_request_times: core.individual_request_times,
         }
@@ -308,11 +314,7 @@ impl PerformanceClient {
 impl PerformanceClient {
     #[new]
     #[pyo3(signature = (base_url, api_key = None, http_version = 1))]
-    fn new(
-        base_url: String,
-        api_key: Option<String>,
-        http_version: u8,
-    ) -> PyResult<Self> {
+    fn new(base_url: String, api_key: Option<String>, http_version: u8) -> PyResult<Self> {
         let core_client = PerformanceClientCore::new(base_url, api_key, http_version)
             .map_err(Self::convert_core_error_to_py_err)?;
 
@@ -348,7 +350,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             batch_size,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -361,16 +364,18 @@ impl PerformanceClient {
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
-                let res = core_client.process_embeddings_requests(
-                    input,
-                    model,
-                    encoding_format,
-                    dimensions,
-                    user,
-                    max_concurrent_requests,
-                    batch_size,
-                    timeout_duration,
-                ).await;
+                let res = core_client
+                    .process_embeddings_requests(
+                        input,
+                        model,
+                        encoding_format,
+                        dimensions,
+                        user,
+                        max_concurrent_requests,
+                        batch_size,
+                        timeout_duration,
+                    )
+                    .await;
                 let _ = tx.send(res);
             });
 
@@ -418,7 +423,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             batch_size,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -428,16 +434,19 @@ impl PerformanceClient {
         let future = async move {
             let time_start_async_op = Instant::now();
 
-            let (core_response, batch_durations) = core_client.process_embeddings_requests(
-                input,
-                model,
-                encoding_format,
-                dimensions,
-                user,
-                max_concurrent_requests,
-                batch_size,
-                timeout_duration,
-            ).await.map_err(Self::convert_core_error_to_py_err)?;
+            let (core_response, batch_durations) = core_client
+                .process_embeddings_requests(
+                    input,
+                    model,
+                    encoding_format,
+                    dimensions,
+                    user,
+                    max_concurrent_requests,
+                    batch_size,
+                    timeout_duration,
+                )
+                .await
+                .map_err(Self::convert_core_error_to_py_err)?;
 
             let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
@@ -457,8 +466,6 @@ impl PerformanceClient {
 
     // TODO: Add rerank, classify, and batch_post methods following the same pattern
 }
-
-
 
 #[pymodule]
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {

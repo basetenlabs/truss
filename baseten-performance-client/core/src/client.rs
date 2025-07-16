@@ -10,7 +10,7 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{Semaphore};
+use tokio::sync::Semaphore;
 
 pub struct SendRequestConfig {
     pub max_retries: u32,
@@ -251,7 +251,9 @@ impl PerformanceClientCore {
             let current_batch_absolute_start_index = batch_index * batch_size;
 
             tasks.push(tokio::spawn(async move {
-                let _permit = acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None).await?;
+                let _permit =
+                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
+                        .await?;
                 let client = client_wrapper_clone.get_client();
 
                 let request_time_start = Instant::now();
@@ -273,7 +275,8 @@ impl PerformanceClientCore {
                     user_clone,
                     individual_request_timeout,
                     &config,
-                ).await;
+                )
+                .await;
                 let request_time_elapsed = request_time_start.elapsed();
 
                 match result {
@@ -370,7 +373,9 @@ async fn send_single_embedding_request(
         .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))
 }
 
-async fn ensure_successful_response(response: reqwest::Response) -> Result<reqwest::Response, ClientError> {
+async fn ensure_successful_response(
+    response: reqwest::Response,
+) -> Result<reqwest::Response, ClientError> {
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response
@@ -395,9 +400,9 @@ async fn send_request_with_retry(
     let max_retries = config.max_retries;
 
     loop {
-        let request_builder_clone = request_builder
-            .try_clone()
-            .ok_or_else(|| ClientError::Network("Failed to clone request builder for retry".to_string()))?;
+        let request_builder_clone = request_builder.try_clone().ok_or_else(|| {
+            ClientError::Network("Failed to clone request builder for retry".to_string())
+        })?;
 
         match request_builder_clone.send().await {
             Ok(response) => {
