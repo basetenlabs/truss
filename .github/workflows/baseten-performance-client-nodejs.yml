@@ -141,7 +141,15 @@ jobs:
         with:
           image: ${{ matrix.settings.docker }}
           options: '--user 0:0 -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
-          run: ${{ matrix.settings.build }}
+          run: |
+            if command -v apk &> /dev/null; then
+              # Alpine-based image
+              apk add --no-cache perl openssl-dev build-base
+            elif command -v apt-get &> /dev/null; then
+              # Debian-based image
+              apt-get update && apt-get install -y perl libssl-dev
+            fi
+            ${{ matrix.settings.build }}
       - name: Build
         run: ${{ matrix.settings.build }}
         if: ${{ !matrix.settings.docker }}
@@ -266,7 +274,7 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-slim yarn test
+        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-slim bash -c "apt-get update && apt-get install -y perl libssl-dev && yarn test"
   test-linux-x64-musl-binding:
     name: Test bindings on x86_64-unknown-linux-musl - node@${{ matrix.node }}
     needs:
@@ -299,7 +307,7 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-alpine yarn test
+        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-alpine sh -c "apk add --no-cache perl openssl-dev && yarn test"
   test-linux-aarch64-gnu-binding:
     name: Test bindings on aarch64-unknown-linux-gnu - node@${{ matrix.node }}
     needs:
@@ -338,6 +346,7 @@ jobs:
           options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
+            apt-get update && apt-get install -y perl libssl-dev
             yarn test
             ls -la
   test-linux-aarch64-musl-binding:
@@ -372,6 +381,7 @@ jobs:
           options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
+            apk add --no-cache perl openssl-dev
             yarn test
   test-linux-arm-gnueabihf-binding:
     name: Test bindings on armv7-unknown-linux-gnueabihf - node@${{ matrix.node }}
@@ -410,6 +420,7 @@ jobs:
           options: '--platform linux/arm/v7 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
+            apt-get update && apt-get install -y perl libssl-dev
             yarn test
             ls -la
   universal-macOS:
