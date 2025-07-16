@@ -1,7 +1,11 @@
 // Constants used throughout the truss_transfer crate
 
-/// Path to the lazy data resolver manifest
-pub static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
+/// Alternative manifest paths to check
+pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
+    "/bptr/bptr-manifest",
+    "/bptr/bptr-manifest.json",
+    "/bptr/static-bptr-manifest.json",
+];
 
 /// Cache directory for b10fs
 pub static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";

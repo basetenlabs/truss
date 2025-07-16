@@ -9,6 +9,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::{error, info, warn};
 use rand;
 use reqwest::Client;
+use serde_json;
 use serde_yaml;
 use tokio::fs;
 use tokio::sync::Semaphore;
@@ -58,39 +59,62 @@ pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<Stri
 
 /// Asynchronous implementation of the lazy data resolver logic.
 async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> Result<()> {
-    info!(
-        "Checking if manifest file exists at `{}`...",
-        LAZY_DATA_RESOLVER_PATH
-    );
+    info!("Checking for manifest files in multiple locations...");
 
     let mut num_workers = num_workers;
 
-    // 1. Check if bptr-manifest file exists
-    let manifest_path = Path::new(LAZY_DATA_RESOLVER_PATH);
-    if !manifest_path.is_file() {
+    // 1. Check multiple manifest locations and collect all available manifests
+    let mut all_manifests = Vec::new();
+    let mut found_paths = Vec::new();
+
+    for manifest_path_str in LAZY_DATA_RESOLVER_PATHS {
+        let manifest_path = Path::new(manifest_path_str);
+        if manifest_path.is_file() {
+            info!("Found manifest file at: {}", manifest_path_str);
+            found_paths.push(manifest_path_str);
+
+            // 2. Parse YAML/JSON asynchronously
+            let file_data = fs::read_to_string(manifest_path)
+                .await
+                .with_context(|| format!("Unable to read manifest from {}", manifest_path_str))?;
+
+            // todo: try both JSON and YAML parsing
+            // If it fails, we will try the other format
+            let bptr_manifest: BasetenPointerManifest = if manifest_path_str.ends_with(".json") {
+                serde_json::from_str(&file_data).with_context(|| {
+                    format!("Failed to parse JSON manifest from {}", manifest_path_str)
+                })?
+            } else {
+                serde_yaml::from_str(&file_data).with_context(|| {
+                    format!("Failed to parse YAML manifest from {}", manifest_path_str)
+                })?
+            };
+
+            all_manifests.push(bptr_manifest);
+        }
+    }
+
+    if all_manifests.is_empty() {
         return Err(anyhow!(
-            "Manifest file not found at `{}`. Please ensure the file exists before running.",
-            LAZY_DATA_RESOLVER_PATH
+            "No manifest files found at any of the following locations: {}. Please ensure at least one manifest file exists before running.",
+            LAZY_DATA_RESOLVER_PATHS.join(", ")
         ));
     }
 
-    // 2. Parse YAML asynchronously
-    info!("Manifest file found. Reading YAML...");
-    let yaml_data = fs::read_to_string(manifest_path)
-        .await
-        .context("Unable to read YAML from bptr-manifest")?;
-    let bptr_manifest: BasetenPointerManifest =
-        serde_yaml::from_str(&yaml_data).context("Failed to parse Baseten pointer manifest")?;
+    // 3. Merge all manifests
+    let merged_manifest = merge_manifests(all_manifests)?;
     info!(
-        "Successfully read manifest. Number of pointers: {}",
-        bptr_manifest.pointers.len()
+        "Successfully merged {} manifests from {}. Total pointers: {}",
+        found_paths.len(),
+        found_paths.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", "),
+        merged_manifest.pointers.len()
     );
 
-    // 3. Validate expiration and build the resolution map
-    let mut resolution_map = build_resolution_map(&bptr_manifest)?;
+    // 4. Validate expiration and build the resolution map
+    let mut resolution_map = build_resolution_map(&merged_manifest)?;
     info!("All pointers validated successfully.");
 
-    // 4. Check if b10cache is enabled
+    // 5. Check if b10cache is enabled
     let allowed_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
         .unwrap_or_else(|_| "false".into())
         .to_lowercase()
@@ -114,14 +138,14 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         use rand::seq::SliceRandom;
         resolution_map.shuffle(&mut rand::rng());
 
-        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        let manifest_hash_to_size_map: HashMap<String, u64> = bptr_manifest
+        let current_hashes = current_hashes_from_manifest(&merged_manifest);
+        let manifest_hash_to_size_map: HashMap<String, u64> = merged_manifest
             .pointers
             .iter()
             .map(|p| (p.hash.clone(), p.size))
             .collect();
 
-        let sum_manifest_size_bytes: u64 = bptr_manifest.pointers.iter().map(|p| p.size).sum();
+        let sum_manifest_size_bytes: u64 = merged_manifest.pointers.iter().map(|p| p.size).sum();
 
         // Clean up cache and get space statistics
         let (available_volume_bytes, manifest_files_in_cache_bytes) =
@@ -153,7 +177,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 
         // todo: check speed of b10cache (e.g. is faster than 100MB/s)
         // and stop using b10cache if download speed is faster
-        match is_b10cache_fast_heuristic(&bptr_manifest).await {
+        match is_b10cache_fast_heuristic(&merged_manifest).await {
             Ok(speed) => {
                 if speed {
                     info!("b10cache is faster than downloading.");
@@ -179,7 +203,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         info!("b10cache is not enabled for read or write.");
     }
 
-    // 5. Build concurrency limit
+    // 6. Build concurrency limit
     info!("Using {} concurrent workers.", num_workers);
 
     let semaphore = Arc::new(Semaphore::new(num_workers));
@@ -190,7 +214,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
         .build()?;
 
-    // 6. Spawn download tasks
+    // 7. Spawn download tasks
     info!("Spawning download tasks...");
     let mut tasks: FuturesUnordered<
         tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>,
@@ -217,7 +241,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         }));
     }
 
-    // 7. Await all tasks
+    // 8. Await all tasks
     info!("Awaiting completion of all download tasks...");
     while let Some(join_result) = tasks.next().await {
         match join_result {
@@ -262,6 +286,46 @@ pub fn build_resolution_map(
     Ok(out)
 }
 
-fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
+pub fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
     manifest.pointers.iter().map(|p| p.hash.clone()).collect()
+}
+
+/// Merge multiple manifests into a single manifest, handling duplicate files
+pub fn merge_manifests(manifests: Vec<BasetenPointerManifest>) -> Result<BasetenPointerManifest> {
+    let mut merged_pointers = Vec::new();
+    let mut seen_files = HashSet::new();
+    let manifests_count = manifests.len();
+
+    for manifest in manifests {
+        for pointer in manifest.pointers {
+            let file_key = format!("{}:{}", pointer.file_name, pointer.hash);
+
+            if seen_files.contains(&file_key) {
+                // Skip duplicate files (same file name and hash)
+                continue;
+            }
+
+            // Check for conflicting files (same file name but different hash)
+            let conflicting_file = merged_pointers.iter().find(|p: &&BasetenPointer| {
+                p.file_name == pointer.file_name && p.hash != pointer.hash
+            });
+
+            if let Some(conflicting) = conflicting_file {
+                warn!(
+                    "Conflicting file found: {} has hash {} in one manifest and {} in another. Using the first one.",
+                    pointer.file_name, conflicting.hash, pointer.hash
+                );
+                continue;
+            }
+
+            seen_files.insert(file_key);
+            merged_pointers.push(pointer);
+        }
+    }
+
+    info!("Merged {} pointers from {} manifests", merged_pointers.len(), manifests_count);
+
+    Ok(BasetenPointerManifest {
+        pointers: merged_pointers,
+    })
 }

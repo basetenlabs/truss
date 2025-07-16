@@ -6,17 +6,14 @@ use chrono;
 use env_logger::Builder;
 use log::{warn, LevelFilter};
 
-
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::{pyclass, pymethods, wrap_pyfunction};
 
-use crate::create::create_basetenpointer;
 use crate::constants::*;
 use crate::core::lazy_data_resolve_entrypoint;
+use crate::create::create_basetenpointer;
 use crate::types::{ModelRepo, ResolutionType};
-
-
 
 static INIT_LOGGER: Once = Once::new();
 
@@ -180,8 +177,6 @@ pub fn create_basetenpointer_from_models(models: Vec<Bound<'_, PyModelRepo>>) ->
     rt.block_on(async move { create_basetenpointer(models).await })
         .map_err(|e| PyException::new_err(e.to_string()))
 }
-
-
 
 /// Python module definition
 #[pymodule]

@@ -1,9 +1,57 @@
+use crate::constants::SECRETS_BASE_PATH;
 use crate::types::{BasetenPointer, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
+use log::{debug, warn};
 use std::collections::HashMap;
+use std::env;
+use std::fs;
 use std::path::Path;
 use tokio::time::{sleep, Duration};
+
+/// Get HuggingFace token from multiple sources
+/// 1. Check file system at /secrets/{runtime_secret_name}
+/// 2. Check environment variables: HF_TOKEN or HUGGING_FACE_HUB_TOKEN
+/// 3. Return None if not found
+fn get_hf_token(runtime_secret_name: &str) -> Option<String> {
+    // 1. Try to read from secrets file
+    let secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
+    if secret_path.exists() {
+        if let Ok(contents) = fs::read_to_string(&secret_path) {
+            let trimmed = contents.trim().to_string();
+            if !trimmed.is_empty() {
+                debug!("Found HF token in secrets file: {}", secret_path.display());
+                return Some(trimmed);
+            }
+        }
+    }
+
+    // 2. Try environment variables
+    // Check for HF_TOKEN first (common in many setups)
+    if let Ok(token) = env::var("HF_TOKEN") {
+        let trimmed = token.trim().to_string();
+        if !trimmed.is_empty() {
+            debug!("Found HF token in HF_TOKEN environment variable");
+            return Some(trimmed);
+        }
+    }
+
+    // Check for HUGGING_FACE_HUB_TOKEN (official HF environment variable)
+    if let Ok(token) = env::var("HUGGING_FACE_HUB_TOKEN") {
+        let trimmed = token.trim().to_string();
+        if !trimmed.is_empty() {
+            debug!("Found HF token in HUGGING_FACE_HUB_TOKEN environment variable");
+            return Some(trimmed);
+        }
+    }
+
+    // 3. No token found
+    warn!(
+        "No HuggingFace token found in {} or environment variables (HF_TOKEN, HUGGING_FACE_HUB_TOKEN). Using unauthenticated access.",
+        secret_path.display()
+    );
+    None
+}
 
 /// Error types for HuggingFace operations
 #[derive(Debug, thiserror::Error)]
@@ -116,8 +164,10 @@ pub async fn metadata_hf_repo(
     revision: &str,
     allow_patterns: Option<&[String]>,
     ignore_patterns: Option<&[String]>,
+    token: Option<String>,
 ) -> Result<HashMap<String, HfFileMetadata>, HfError> {
     let api = ApiBuilder::new()
+        .with_token(token)
         .build()
         .map_err(|_e| HfError::InvalidMetadata)?;
     let repo = Repo::with_revision(repo_id.to_string(), RepoType::Model, revision.to_string());
@@ -170,6 +220,9 @@ pub async fn model_cache_hf_to_b10ptr(
         let mut exception: Option<HfError> = None;
         let mut metadata_result = None;
 
+        // Get token for this model
+        let token = get_hf_token(&model.runtime_secret_name);
+
         // Retry mechanism (up to 3 times)
         for attempt in 0..3 {
             match metadata_hf_repo(
@@ -177,6 +230,7 @@ pub async fn model_cache_hf_to_b10ptr(
                 &model.revision,
                 model.allow_patterns.as_deref(),
                 model.ignore_patterns.as_deref(),
+                token.clone(),
             )
             .await
             {
@@ -279,5 +333,53 @@ mod tests {
         assert_eq!(model_repo.revision, "main");
         assert_eq!(model_repo.volume_folder, "test");
         assert_eq!(model_repo.runtime_secret_name, "hf_access_token");
+    }
+
+    #[test]
+    fn test_get_hf_token_from_env() {
+        // Test that get_hf_token can read from environment variables
+        use std::env;
+
+        // Clean up any existing env vars
+        env::remove_var("HF_TOKEN");
+        env::remove_var("HUGGING_FACE_HUB_TOKEN");
+
+        // Test with HF_TOKEN
+        env::set_var("HF_TOKEN", "test_token_123");
+        let token = get_hf_token("hf_access_token");
+        assert_eq!(token, Some("test_token_123".to_string()));
+
+        // Clean up
+        env::remove_var("HF_TOKEN");
+
+        // Test with HUGGING_FACE_HUB_TOKEN
+        env::set_var("HUGGING_FACE_HUB_TOKEN", "test_token_456");
+        let token = get_hf_token("hf_access_token");
+        assert_eq!(token, Some("test_token_456".to_string()));
+
+        // Clean up
+        env::remove_var("HUGGING_FACE_HUB_TOKEN");
+
+        // Test with no token
+        let token = get_hf_token("hf_access_token");
+        assert_eq!(token, None);
+    }
+
+    #[test]
+    fn test_get_hf_token_priority() {
+        // Test that environment variables have the right priority
+        use std::env;
+
+        // Set both environment variables
+        env::set_var("HF_TOKEN", "hf_token_value");
+        env::set_var("HUGGING_FACE_HUB_TOKEN", "hf_hub_token_value");
+
+        // HF_TOKEN should take precedence over HUGGING_FACE_HUB_TOKEN
+        let token = get_hf_token("hf_access_token");
+        assert_eq!(token, Some("hf_token_value".to_string()));
+
+        // Clean up
+        env::remove_var("HF_TOKEN");
+        env::remove_var("HUGGING_FACE_HUB_TOKEN");
     }
 }
