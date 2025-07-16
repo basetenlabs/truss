@@ -54,14 +54,25 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 name = "baseten_performance_client"
 version = "0.0.6"
 dependencies = [
+ "baseten_performance_client_core",
  "futures",
  "ndarray",
  "numpy",
  "once_cell",
- "openssl",
  "pyo3",
  "pyo3-async-runtimes",
  "pythonize",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "baseten_performance_client_core"
+version = "0.0.6"
+dependencies = [
+ "futures",
+ "once_cell",
+ "openssl",
  "rand",
  "reqwest",
  "serde",

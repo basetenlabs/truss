@@ -1,3 +1,50 @@
+## Modular Architecture (COMPLETED ✅)
+
+The codebase has been successfully refactored into a modular structure with the following packages:
+
+### Core Package (`core/`)
+Pure Rust business logic without Python dependencies:
+- **`constants.rs`**: All configuration constants (timeouts, concurrency limits, etc.)
+- **`errors.rs`**: Custom error types with proper error handling
+- **`http.rs`**: HTTP request/response type definitions for all API endpoints
+- **`client.rs`**: Core HTTP client logic, request processing, and async handling
+- **`utils.rs`**: Utility functions (retry logic, semaphore handling, etc.)
+
+### Python Bindings Package (`python_bindings/`)
+PyO3 translations and Python-specific functionality:
+- **`lib.rs`**: Python module definition and PyO3 wrappers
+- Converts core types to Python-compatible classes
+- Handles async Python integration with pyo3-async-runtimes
+
+### Workspace Structure
+```
+├── core/                    # Pure Rust business logic
+│   ├── src/
+│   └── Cargo.toml
+├── python_bindings/         # PyO3 Python bindings
+│   ├── src/
+│   └── Cargo.toml
+└── Cargo.toml              # Workspace configuration
+```
+
+## MISSING:
+ClassificationResponse etc are not defined, just in lib.rs below. Its important to add them to add parity.
+
+### Future Language Support
+This structure makes it easy to add:
+- **TypeScript NAPI bindings** (`typescript_bindings/`)
+- **Go bindings** (`go_bindings/`)
+- **Other language bindings**
+
+All would reuse the same core Rust business logic.
+
+## Build Commands
+- `cargo check` - Check all packages
+- `cargo build` - Build the Python module
+- `cargo test` - Run tests
+
+## Development Notes
+```libs.rs that should be refactored.
 // implements client for openai embeddings
 // as python api that fans out to multiple requests
 use futures::future::join_all;
@@ -2008,3 +2055,4 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
+```

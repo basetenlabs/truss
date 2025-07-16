@@ -1,0 +1,14 @@
+[package]
+name = "baseten_performance_client_core"
+version = "0.0.6"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+openssl = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+once_cell = { workspace = true }
+rand = { workspace = true }
