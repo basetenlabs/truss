@@ -232,7 +232,7 @@ impl PerformanceClientCore {
         })
     }
 
-    // Core embeddings processing logic
+    // Core embeddings processing logic with built-in validation and timing
     pub async fn process_embeddings_requests(
         &self,
         texts: Vec<String>,
@@ -242,9 +242,14 @@ impl PerformanceClientCore {
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
-        request_timeout_duration: Duration,
-    ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>), ClientError> {
-        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+        timeout_s: f64,
+    ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>, Duration), ClientError> {
+        let start_time = std::time::Instant::now();
+
+        // Validate parameters internally
+        let (validated_concurrency, request_timeout_duration) =
+            self.validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
+        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let total_texts = texts.len();
         let total_requests = (total_texts + batch_size - 1) / batch_size;
@@ -350,7 +355,8 @@ impl PerformanceClientCore {
             total_time: None,
             individual_request_times: None,
         };
-        Ok((final_response, individual_batch_durations))
+        let total_time = start_time.elapsed();
+        Ok((final_response, individual_batch_durations, total_time))
     }
 
     pub async fn process_rerank_requests(
@@ -363,9 +369,14 @@ impl PerformanceClientCore {
         truncation_direction: String,
         max_concurrent_requests: usize,
         batch_size: usize,
-        request_timeout_duration: Duration,
-    ) -> Result<(CoreRerankResponse, Vec<Duration>), ClientError> {
-        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+        timeout_s: f64,
+    ) -> Result<(CoreRerankResponse, Vec<Duration>, Duration), ClientError> {
+        let start_time: Instant = std::time::Instant::now();
+
+        // Validate parameters internally
+        let (validated_concurrency, request_timeout_duration) =
+            self.validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
+        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let total_requests = (texts.len() + batch_size - 1) / batch_size;
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
@@ -451,7 +462,8 @@ impl PerformanceClientCore {
 
         all_results_data.sort_by_key(|d| d.index);
         let core_response = CoreRerankResponse::new(all_results_data, None, None);
-        Ok((core_response, individual_batch_durations))
+        let total_time = start_time.elapsed();
+        Ok((core_response, individual_batch_durations, total_time))
     }
 
     // Core classify processing logic
@@ -463,9 +475,14 @@ impl PerformanceClientCore {
         truncation_direction: String,
         max_concurrent_requests: usize,
         batch_size: usize,
-        request_timeout_duration: Duration,
-    ) -> Result<(CoreClassificationResponse, Vec<Duration>), ClientError> {
-        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+        timeout_s: f64,
+    ) -> Result<(CoreClassificationResponse, Vec<Duration>, Duration), ClientError> {
+        let start_time = std::time::Instant::now();
+
+        // Validate parameters internally
+        let (validated_concurrency, request_timeout_duration) =
+            self.validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
+        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let total_requests = (inputs.len() + batch_size - 1) / batch_size;
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
@@ -542,7 +559,8 @@ impl PerformanceClientCore {
         }
 
         let core_response = CoreClassificationResponse::new(all_results_data, None, None);
-        Ok((core_response, individual_batch_durations))
+        let total_time = start_time.elapsed();
+        Ok((core_response, individual_batch_durations, total_time))
     }
 
     // Core batch post processing logic
@@ -551,16 +569,24 @@ impl PerformanceClientCore {
         url_path: String,
         payloads_json: Vec<serde_json::Value>,
         max_concurrent_requests: usize,
-        request_timeout_duration: Duration,
+        timeout_s: f64,
     ) -> Result<
-        Vec<(
-            serde_json::Value,
-            std::collections::HashMap<String, String>,
+        (
+            Vec<(
+                serde_json::Value,
+                std::collections::HashMap<String, String>,
+                Duration,
+            )>,
             Duration,
-        )>,
+        ),
         ClientError,
     > {
-        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+        let start_time = std::time::Instant::now();
+
+        // Validate parameters internally (using batch_size of 128 for validation)
+        let (validated_concurrency, request_timeout_duration) =
+            self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
+        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let cancel_token = Arc::new(AtomicBool::new(false));
         let total_payloads = payloads_json.len();
@@ -656,7 +682,8 @@ impl PerformanceClientCore {
             .map(|(_, val, headers, dur)| (val, headers, dur))
             .collect();
 
-        Ok(final_results)
+        let total_time = start_time.elapsed();
+        Ok((final_results, total_time))
     }
 }
 

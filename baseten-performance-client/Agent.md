@@ -29,36 +29,32 @@ PyO3 translations and Python-specific functionality:
 
 ## MISSING:
 Improvments:
-large parts of the codebase perform:
-let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.core_client.base_url,
-        )
-        .map_err(Self::convert_core_error_to_py_err)?;
-
-        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
 
 It would be better to abstract this once inside the core logic handler. Same goes for batch_post.
 Best would be to move this into core.process_embeddings_requests, and not leave it up to the client. The validation can happen in the tokio task.
 
-Consolidate duplicates, and move them into the core lib to lower the complexity of writing sync/async or other lang bindings.
-
 Also logic with async and sync is duplicated.
 
-### Future Language Support
-This structure makes it easy to add:
-- **TypeScript NAPI bindings** (`typescript_bindings/`)
-- **Go bindings** (`go_bindings/`)
-- **Other language bindings**
+example: please move the
 
-All would reuse the same core Rust business logic.
+```
+let (max_concurrent_requests, timeout_duration) = self
+            .core_client
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+```
+
+inside the core libary from the bindings, such that check is not duplicated in lib.rs (bindings), but once inside of the core libary. For that, max_concurrent_requests, batch_size, timeout_s are now passed to the core libary as arguments.
+
+Same goes for the recording of timings, which should be part of the tokio thread.
+Consolidate duplicates, and move them into the core lib to lower the complexity of writing sync/async or other lang bindings. Bindings should be smaller, and contain durplicate code for sync and async.
+
 
 ## Build Commands
 - `cargo check` - Check all packages
 - `cargo build` - Build the Python module
 - `cargo test` - Run tests
+- .venv/bin/activate && cd python_bindings && maturin build (for python bindings build.)
 
 ## Development Notes
 ```libs.rs that should be refactored.

@@ -7,7 +7,6 @@ use pyo3::prelude::*;
 use pyo3_async_runtimes;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::runtime::Runtime;
 
 // --- Global Tokio Runtime (Python-specific) ---
@@ -346,14 +345,8 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let core_client = self.core_client.clone();
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
-        let time_start_sync_op = Instant::now();
 
         let result_from_async_task = py.allow_threads(move || {
             let (tx, rx) = std::sync::mpsc::channel();
@@ -368,7 +361,7 @@ impl PerformanceClient {
                         user,
                         max_concurrent_requests,
                         batch_size,
-                        timeout_duration,
+                        timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -383,15 +376,14 @@ impl PerformanceClient {
             }
         })?;
 
-        let (core_response, batch_durations) = result_from_async_task;
-        let total_time_val = time_start_sync_op.elapsed().as_secs_f64();
+        let (core_response, batch_durations, total_time_val) = result_from_async_task;
         let individual_times_val: Vec<f64> = batch_durations
             .into_iter()
             .map(|d| d.as_secs_f64())
             .collect();
 
         let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
-        api_response.total_time = Some(total_time_val);
+        api_response.total_time = Some(total_time_val.as_secs_f64());
         api_response.individual_request_times = Some(individual_times_val);
 
         Ok(api_response)
@@ -414,17 +406,10 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let core_client = self.core_client.clone();
 
         let future = async move {
-            let time_start_async_op = Instant::now();
-
-            let (core_response, batch_durations) = core_client
+            let (core_response, batch_durations, _core_total_time) = core_client
                 .process_embeddings_requests(
                     input,
                     model,
@@ -433,19 +418,18 @@ impl PerformanceClient {
                     user,
                     max_concurrent_requests,
                     batch_size,
-                    timeout_duration,
+                    timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
 
-            let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
                 .into_iter()
                 .map(|d| d.as_secs_f64())
                 .collect();
 
             let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
-            api_response.total_time = Some(total_time_val);
+            api_response.total_time = Some(_core_total_time.as_secs_f64());
             api_response.individual_request_times = Some(individual_times_val);
 
             Ok(api_response)
@@ -472,15 +456,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
         let truncation_direction_owned = truncation_direction.to_string();
-        let time_start = Instant::now();
 
         let result_from_async_task = py.allow_threads(move || {
             let (tx, rx) = std::sync::mpsc::channel();
@@ -496,7 +474,7 @@ impl PerformanceClient {
                         truncation_direction_owned,
                         max_concurrent_requests,
                         batch_size,
-                        timeout_duration,
+                        timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -511,15 +489,14 @@ impl PerformanceClient {
             }
         })?;
 
-        let (core_response, batch_durations) = result_from_async_task;
-        let total_time_val = time_start.elapsed().as_secs_f64();
+        let (core_response, batch_durations, total_time_val) = result_from_async_task;
         let individual_times_val: Vec<f64> = batch_durations
             .into_iter()
             .map(|d| d.as_secs_f64())
             .collect();
 
         let mut api_response = RerankResponse::from(core_response);
-        api_response.total_time = Some(total_time_val);
+        api_response.total_time = Some(total_time_val.as_secs_f64());
         api_response.individual_request_times = Some(individual_times_val);
 
         Ok(api_response)
@@ -543,18 +520,11 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let core_client = self.core_client.clone();
         let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
-            let time_start_async_op = Instant::now();
-
-            let (core_response, batch_durations) = core_client
+            let (core_response, batch_durations, _core_total_time) = core_client
                 .process_rerank_requests(
                     query,
                     texts,
@@ -564,19 +534,18 @@ impl PerformanceClient {
                     truncation_direction_owned,
                     max_concurrent_requests,
                     batch_size,
-                    timeout_duration,
+                    timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
 
-            let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
                 .into_iter()
                 .map(|d| d.as_secs_f64())
                 .collect();
 
             let mut api_response = RerankResponse::from(core_response);
-            api_response.total_time = Some(total_time_val);
+            api_response.total_time = Some(_core_total_time.as_secs_f64());
             api_response.individual_request_times = Some(individual_times_val);
 
             Ok(api_response)
@@ -601,15 +570,9 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
         let truncation_direction_owned = truncation_direction.to_string();
-        let time_start = Instant::now();
 
         let result_from_async_task = py.allow_threads(move || {
             let (tx, rx) = std::sync::mpsc::channel();
@@ -623,7 +586,7 @@ impl PerformanceClient {
                         truncation_direction_owned,
                         max_concurrent_requests,
                         batch_size,
-                        timeout_duration,
+                        timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -638,15 +601,14 @@ impl PerformanceClient {
             }
         })?;
 
-        let (core_response, batch_durations) = result_from_async_task;
-        let total_time_val = time_start.elapsed().as_secs_f64();
+        let (core_response, batch_durations, _core_total_time) = result_from_async_task;
         let individual_times_val: Vec<f64> = batch_durations
             .into_iter()
             .map(|d| d.as_secs_f64())
             .collect();
 
         let mut api_response = ClassificationResponse::from(core_response);
-        api_response.total_time = Some(total_time_val);
+        api_response.total_time = Some(_core_total_time.as_secs_f64());
         api_response.individual_request_times = Some(individual_times_val);
 
         Ok(api_response)
@@ -668,18 +630,11 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let core_client = self.core_client.clone();
         let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
-            let time_start_async_op = Instant::now();
-
-            let (core_response, batch_durations) = core_client
+            let (core_response, batch_durations, _core_total_time) = core_client
                 .process_classify_requests(
                     inputs,
                     raw_scores,
@@ -687,19 +642,18 @@ impl PerformanceClient {
                     truncation_direction_owned,
                     max_concurrent_requests,
                     batch_size,
-                    timeout_duration,
+                    timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
 
-            let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
                 .into_iter()
                 .map(|d| d.as_secs_f64())
                 .collect();
 
             let mut api_response = ClassificationResponse::from(core_response);
-            api_response.total_time = Some(total_time_val);
+            api_response.total_time = Some(_core_total_time.as_secs_f64());
             api_response.individual_request_times = Some(individual_times_val);
 
             Ok(api_response)
@@ -721,11 +675,6 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, 128, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
         for (idx, py_obj) in payloads.into_iter().enumerate() {
             let bound_obj = py_obj.bind(py);
@@ -740,7 +689,6 @@ impl PerformanceClient {
 
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
-        let time_start = std::time::Instant::now();
 
         let result_from_async_task = py.allow_threads(move || {
             let (tx, rx) = std::sync::mpsc::channel();
@@ -751,7 +699,7 @@ impl PerformanceClient {
                         url_path,
                         payloads_json,
                         max_concurrent_requests,
-                        timeout_duration,
+                        timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -766,7 +714,7 @@ impl PerformanceClient {
             }
         })?;
 
-        let response_data_with_times_and_headers = result_from_async_task;
+        let (response_data_with_times_and_headers, total_time) = result_from_async_task;
 
         let mut results_py: Vec<PyObject> =
             Vec::with_capacity(response_data_with_times_and_headers.len());
@@ -798,8 +746,7 @@ impl PerformanceClient {
 
             individual_request_times_collected.push(duration.as_secs_f64());
         }
-
-        let total_time = time_start.elapsed().as_secs_f64();
+        let total_time = total_time.as_secs_f64();
 
         Ok(BatchPostResponse {
             data: results_py,
@@ -822,11 +769,6 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let (max_concurrent_requests, timeout_duration) = self
-            .core_client
-            .validate_request_parameters(max_concurrent_requests, 128, timeout_s)
-            .map_err(Self::convert_core_error_to_py_err)?;
-
         let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
         for (idx, py_obj) in payloads.into_iter().enumerate() {
             let bound_obj = py_obj.bind(py);
@@ -842,19 +784,15 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         let future = async move {
-            let time_start_async_op = std::time::Instant::now();
-
-            let response_data_with_times_and_headers = core_client
+            let (response_data_with_times_and_headers, total_time) = core_client
                 .process_batch_post_requests(
                     url_path,
                     payloads_json,
                     max_concurrent_requests,
-                    timeout_duration,
+                    timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
-
-            let total_time_async_op = time_start_async_op.elapsed().as_secs_f64();
 
             Python::with_gil(|py_gil| {
                 let mut results_py: Vec<PyObject> =
@@ -891,7 +829,7 @@ impl PerformanceClient {
 
                 Ok(BatchPostResponse {
                     data: results_py,
-                    total_time: total_time_async_op,
+                    total_time: total_time.as_secs_f64(),
                     individual_request_times: individual_request_times_collected,
                     response_headers: collected_headers_py,
                 })
