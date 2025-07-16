@@ -525,6 +525,107 @@ impl PerformanceClientCore {
         let core_response = CoreClassificationResponse::new(all_results_data, None, None);
         Ok((core_response, individual_batch_durations))
     }
+
+    // Core batch post processing logic
+    pub async fn process_batch_post_requests(
+        &self,
+        url_path: String,
+        payloads_json: Vec<serde_json::Value>,
+        max_concurrent_requests: usize,
+        request_timeout_duration: Duration,
+    ) -> Result<Vec<(serde_json::Value, std::collections::HashMap<String, String>, Duration)>, ClientError> {
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
+        let mut tasks = Vec::new();
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        let total_payloads = payloads_json.len();
+        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+            total_payloads,
+        )));
+
+        for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
+            let client_wrapper_clone = self.client_wrapper.clone();
+            let api_key_clone = self.api_key.clone();
+            let base_url_clone = self.base_url.clone();
+            let url_path_clone = url_path.clone();
+            let semaphore_clone = Arc::clone(&semaphore);
+            let cancel_token_clone = Arc::clone(&cancel_token);
+            let retry_budget_clone = Arc::clone(&retry_budget);
+            let individual_request_timeout = request_timeout_duration;
+
+            tasks.push(tokio::spawn(async move {
+                let _permit =
+                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
+                        .await?;
+                let client = client_wrapper_clone.get_client();
+
+                let full_url = format!(
+                    "{}/{}",
+                    base_url_clone.trim_end_matches('/'),
+                    url_path_clone.trim_start_matches('/')
+                );
+                let request_time_start = std::time::Instant::now();
+                let config = SendRequestConfig {
+                    max_retries: MAX_HTTP_RETRIES,
+                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                    retry_budget: Some(retry_budget_clone),
+                    cancel_token: cancel_token_clone.clone(),
+                };
+
+                let result_tuple = send_single_batch_post_request(
+                    &client,
+                    full_url,
+                    payload_item_json,
+                    api_key_clone,
+                    individual_request_timeout,
+                    &config,
+                )
+                .await;
+
+                let request_time_elapsed = request_time_start.elapsed();
+
+                match result_tuple {
+                    Ok((response_json_value, headers_map)) => {
+                        Ok((
+                            index,
+                            response_json_value,
+                            headers_map,
+                            request_time_elapsed,
+                        ))
+                    }
+                    Err(e) => {
+                        cancel_token_clone.store(true, Ordering::SeqCst);
+                        Err(e)
+                    }
+                }
+            }));
+        }
+
+        let task_join_results = join_all(tasks).await;
+        let mut indexed_results: Vec<(usize, serde_json::Value, std::collections::HashMap<String, String>, Duration)> =
+            Vec::with_capacity(total_payloads);
+        let mut first_error: Option<ClientError> = None;
+
+        for result in task_join_results {
+            if let Some(indexed_data_part) =
+                process_task_outcome(result, &mut first_error, &cancel_token)
+            {
+                indexed_results.push(indexed_data_part);
+            }
+        }
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
+
+        let final_results: Vec<(serde_json::Value, std::collections::HashMap<String, String>, Duration)> = indexed_results
+            .into_iter()
+            .map(|(_, val, headers, dur)| (val, headers, dur))
+            .collect();
+
+        Ok(final_results)
+    }
 }
 
 // Helper functions for sending individual requests
@@ -637,6 +738,40 @@ async fn send_single_classify_request(
         .json::<Vec<Vec<CoreClassificationResult>>>()
         .await
         .map_err(|e| ClientError::Serialization(format!("Failed to parse classify response JSON: {}", e)))
+}
+
+async fn send_single_batch_post_request(
+    client: &Client,
+    full_url: String,
+    payload_json: serde_json::Value,
+    api_key: String,
+    request_timeout: Duration,
+    config: &SendRequestConfig,
+) -> Result<(serde_json::Value, std::collections::HashMap<String, String>), ClientError> {
+    let request_builder = client
+        .post(&full_url)
+        .bearer_auth(api_key)
+        .json(&payload_json)
+        .timeout(request_timeout);
+
+    let response = send_request_with_retry(request_builder, config).await?;
+    let successful_response = ensure_successful_response(response).await?;
+
+    // Extract headers
+    let mut headers_map = std::collections::HashMap::new();
+    for (name, value) in successful_response.headers().iter() {
+        headers_map.insert(
+            name.as_str().to_string(),
+            String::from_utf8_lossy(value.as_bytes()).into_owned(),
+        );
+    }
+
+    let response_json_value: serde_json::Value = successful_response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))?;
+
+    Ok((response_json_value, headers_map))
 }
 
 async fn ensure_successful_response(

@@ -723,6 +723,201 @@ impl PerformanceClient {
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
+
+    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn batch_post(
+        &self,
+        py: Python,
+        url_path: String,
+        payloads: Vec<PyObject>,
+        max_concurrent_requests: usize,
+        timeout_s: f64,
+    ) -> PyResult<BatchPostResponse> {
+        if payloads.is_empty() {
+            return Err(PyValueError::new_err("Payloads list cannot be empty"));
+        }
+
+        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
+            max_concurrent_requests,
+            128,
+            &self.core_client.base_url,
+        ).map_err(Self::convert_core_error_to_py_err)?;
+
+        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+        let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
+        for (idx, py_obj) in payloads.into_iter().enumerate() {
+            let bound_obj = py_obj.bind(py);
+            let json_val = pythonize::depythonize(bound_obj).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to depythonize payload at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            payloads_json.push(json_val);
+        }
+
+        let core_client = self.core_client.clone();
+        let rt = Arc::clone(&self.runtime);
+        let time_start = std::time::Instant::now();
+
+        let result_from_async_task = py.allow_threads(move || {
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            rt.spawn(async move {
+                let res = core_client.process_batch_post_requests(
+                    url_path,
+                    payloads_json,
+                    max_concurrent_requests,
+                    timeout_duration,
+                ).await;
+                let _ = tx.send(res);
+            });
+
+            match rx.recv() {
+                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
+                Err(e) => Err(PyValueError::new_err(format!(
+                    "Failed to receive batch_post result (channel error): {}",
+                    e
+                ))),
+            }
+        })?;
+
+        let response_data_with_times_and_headers = result_from_async_task;
+
+        let mut results_py: Vec<PyObject> =
+            Vec::with_capacity(response_data_with_times_and_headers.len());
+        let mut individual_request_times_collected: Vec<f64> =
+            Vec::with_capacity(response_data_with_times_and_headers.len());
+        let mut collected_headers_py: Vec<PyObject> =
+            Vec::with_capacity(response_data_with_times_and_headers.len());
+
+        for (idx, (json_val, headers_map, duration)) in
+            response_data_with_times_and_headers.into_iter().enumerate()
+        {
+            let py_obj_bound = pythonize::pythonize(py, &json_val).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to pythonize response data at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            #[allow(deprecated)]
+            results_py.push(py_obj_bound.to_object(py));
+
+            let headers_py_obj = pythonize::pythonize(py, &headers_map).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to pythonize headers at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            #[allow(deprecated)]
+            collected_headers_py.push(headers_py_obj.to_object(py));
+
+            individual_request_times_collected.push(duration.as_secs_f64());
+        }
+
+        let total_time = time_start.elapsed().as_secs_f64();
+
+        Ok(BatchPostResponse {
+            data: results_py,
+            total_time,
+            individual_request_times: individual_request_times_collected,
+            response_headers: collected_headers_py,
+        })
+    }
+
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S))]
+    fn async_batch_post<'py>(
+        &self,
+        py: Python<'py>,
+        url_path: String,
+        payloads: Vec<PyObject>,
+        max_concurrent_requests: usize,
+        timeout_s: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if payloads.is_empty() {
+            return Err(PyValueError::new_err("Payloads list cannot be empty"));
+        }
+
+        let max_concurrent_requests = PerformanceClientCore::validate_concurrency_parameters(
+            max_concurrent_requests,
+            128,
+            &self.core_client.base_url,
+        ).map_err(Self::convert_core_error_to_py_err)?;
+
+        let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+        let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
+        for (idx, py_obj) in payloads.into_iter().enumerate() {
+            let bound_obj = py_obj.bind(py);
+            let json_val = pythonize::depythonize(bound_obj).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Failed to depythonize payload at index {}: {}",
+                    idx, e
+                ))
+            })?;
+            payloads_json.push(json_val);
+        }
+
+        let core_client = self.core_client.clone();
+
+        let future = async move {
+            let time_start_async_op = std::time::Instant::now();
+
+            let response_data_with_times_and_headers = core_client.process_batch_post_requests(
+                url_path,
+                payloads_json,
+                max_concurrent_requests,
+                timeout_duration,
+            ).await.map_err(Self::convert_core_error_to_py_err)?;
+
+            let total_time_async_op = time_start_async_op.elapsed().as_secs_f64();
+
+            Python::with_gil(|py_gil| {
+                let mut results_py: Vec<PyObject> =
+                    Vec::with_capacity(response_data_with_times_and_headers.len());
+                let mut individual_request_times_collected: Vec<f64> =
+                    Vec::with_capacity(response_data_with_times_and_headers.len());
+                let mut collected_headers_py: Vec<PyObject> =
+                    Vec::with_capacity(response_data_with_times_and_headers.len());
+
+                for (idx, (json_val, headers_map, duration)) in
+                    response_data_with_times_and_headers.into_iter().enumerate()
+                {
+                    let py_obj_bound = pythonize::pythonize(py_gil, &json_val).map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to pythonize response data at index {}: {}",
+                            idx, e
+                        ))
+                    })?;
+                    #[allow(deprecated)]
+                    results_py.push(py_obj_bound.into_py(py_gil));
+
+                    let headers_py_obj = pythonize::pythonize(py_gil, &headers_map).map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to pythonize headers at index {}: {}",
+                            idx, e
+                        ))
+                    })?;
+                    #[allow(deprecated)]
+                    collected_headers_py.push(headers_py_obj.to_object(py_gil));
+
+                    individual_request_times_collected.push(duration.as_secs_f64());
+                }
+
+                Ok(BatchPostResponse {
+                    data: results_py,
+                    total_time: total_time_async_op,
+                    individual_request_times: individual_request_times_collected,
+                    response_headers: collected_headers_py,
+                })
+            })
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
 }
 
 #[pymodule]
