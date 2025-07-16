@@ -118,7 +118,7 @@ runner.test('Batch post method should validate empty payloads', () => {
     const client = new PerformanceClient(TEST_BASE_URL, TEST_API_KEY);
 
     assertThrows(() => {
-        client.batch_post("/test", []);
+        client.batchPost("/test", []);
     }, 'Should throw error for empty payloads array');
 });
 
@@ -131,7 +131,7 @@ runner.test('Methods should handle network errors gracefully', () => {
         () => client.embed(["test"], "model"),
         () => client.rerank("query", ["text1", "text2"]),
         () => client.classify(["text1", "text2"]),
-        () => client.batch_post("/test", [{"key": "value"}])
+        () => client.batchPost("/test", [{"key": "value"}])
     ];
 
     testCases.forEach((testCase, index) => {
@@ -154,7 +154,7 @@ runner.test('Methods should handle optional parameters', () => {
         client.embed(["test"], "model", null, 384, null, 16, 2, 30);
         client.rerank("query", ["text"], true, false, true, "Left", 8, 1, 30);
         client.classify(["text"], true, false, "Right", 8, 1, 30);
-        client.batch_post("/test", [{"test": "data"}], 16, 30);
+        client.batchPost("/test", [{"test": "data"}], 16, 30);
     } catch (error) {
         // Allow network errors, but not parameter type errors
         assert(!error.message.includes('type'), 'Should handle optional parameters correctly');
@@ -172,6 +172,17 @@ runner.test('Constructor should work with environment variables', () => {
 
     // Clean up
     delete process.env.BASETEN_API_KEY;
+});
+
+// Test 11: Test all expected methods are available
+runner.test('All expected methods should be available', () => {
+    const client = new PerformanceClient(TEST_BASE_URL, TEST_API_KEY);
+
+    const expectedMethods = ['embed', 'rerank', 'classify', 'batchPost'];
+
+    expectedMethods.forEach(method => {
+        assert(typeof client[method] === 'function', `Method ${method} should be available`);
+    });
 });
 
 // Run all tests

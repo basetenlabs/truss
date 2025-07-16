@@ -86,7 +86,7 @@ export class PerformanceClient {
     timeoutS?: number
   ): ClassificationResponse;
 
-  batch_post(
+  batchPost(
     urlPath: string,
     payloads: any[],
     maxConcurrentRequests?: number,

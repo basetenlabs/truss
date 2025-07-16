@@ -1,120 +1,105 @@
-# High Performance Node.js Client for Baseten.co
+# High performance client for Baseten.co - Node.js Bindings
 
-This library provides a high-performance Node.js client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent POST requests to any URL, also outside of baseten.co. The client is built on top of Rust using napi-rs, reqwest, and tokio for maximum performance while providing a simple JavaScript API.
+This library provides a high-performance Node.js client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent POST requests to any URL, also outside of baseten.co. The PerformanceClient is built on top of Rust (using napi-rs), reqwest and tokio and is MIT licensed.
 
-## Features
+Similar to the Python version, this client supports >1200 rps per client and was benchmarked in [our blog](https://www.baseten.co/blog/your-client-code-matters-10x-higher-embedding-throughput-with-python-and-rust/).
 
-- **High Performance**: Built with Rust and tokio for maximum concurrent throughput
-- **Concurrent Requests**: Handles thousands of concurrent requests efficiently
-- **Multiple AI APIs**: Works with Baseten.co, OpenAI, Mixedbread, and other compatible APIs
-- **Batch Processing**: Intelligent batching for optimal performance
-- **TypeScript Support**: Full TypeScript type definitions included
-- **Cross-Platform**: Works on Windows, macOS, and Linux
+![benchmarks](https://www.baseten.co/_next/image/?url=https%3A%2F%2Fwww.datocms-assets.com%2F104802%2F1749832130-diagram-9.png%3Fauto%3Dformat%26fit%3Dmax%26w%3D1200&w=3840&q=75)
 
 ## Installation
 
 ```bash
-npm install @baseten/performance-client
+npm install baseten-performance-client
 ```
 
 ## Usage
 
+### Basic Setup
+
+Since different endpoints require different clients, you'll typically need to create separate clients for embeddings and reranking:
+
 ```javascript
-const { PerformanceClient } = require('@baseten/performance-client');
+const { PerformanceClient } = require('baseten-performance-client');
 
 const apiKey = process.env.BASETEN_API_KEY;
-const baseUrl = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
-// Also works with OpenAI or Mixedbread APIs
-// const baseUrl = "https://api.openai.com" or "https://api.mixedbread.com"
+const embedBaseUrl = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
+const rerankBaseUrl = "https://model-abc123.api.baseten.co/environments/production/sync";
 
-const client = new PerformanceClient(baseUrl, apiKey);
+// Create separate clients for different endpoints
+const embedClient = new PerformanceClient(embedBaseUrl, apiKey);
+const rerankClient = new PerformanceClient(rerankBaseUrl, apiKey);
 ```
 
 ### Embeddings
 
-#### Basic Embedding
-
 ```javascript
 const texts = ["Hello world", "Example text", "Another sample"];
-const response = client.embed(
-    texts,
-    "my_model",
-    null, // encoding_format
-    null, // dimensions
-    null, // user
-    32,   // max_concurrent_requests
-    4,    // batch_size
-    360   // timeout_s
-);
 
-// Accessing embedding data
-console.log(`Model used: ${response.model}`);
-console.log(`Total tokens used: ${response.usage.total_tokens}`);
-console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+try {
+    const response = embedClient.embed(
+        texts,
+        "text-embedding-3-small", // model
+        null, // encoding_format
+        null, // dimensions
+        null, // user
+        8,    // max_concurrent_requests
+        2,    // batch_size
+        30    // timeout_s
+    );
 
-if (response.individual_request_times) {
-    response.individual_request_times.forEach((time, i) => {
-        console.log(`Time for batch ${i}: ${time.toFixed(4)}s`);
+    console.log(`Model used: ${response.model}`);
+    console.log(`Total tokens used: ${response.usage.total_tokens}`);
+    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+
+    if (response.individual_request_times) {
+        response.individual_request_times.forEach((time, i) => {
+            console.log(`  Time for batch ${i}: ${time.toFixed(4)}s`);
+        });
+    }
+
+    response.data.forEach((embedding, i) => {
+        console.log(`Embedding for text ${i} (original input index ${embedding.index}):`);
+        console.log(`  First 3 dimensions: ${embedding.embedding.slice(0, 3)}`);
+        console.log(`  Length: ${embedding.embedding.length}`);
     });
+} catch (error) {
+    console.error('Embedding failed:', error.message);
 }
-
-response.data.forEach((embeddingData, i) => {
-    console.log(`Embedding for text ${i} (original index ${embeddingData.index}):`);
-    console.log(`  First 3 dimensions: ${embeddingData.embedding.slice(0, 3)}`);
-    console.log(`  Length: ${embeddingData.embedding.length}`);
-});
-```
-
-#### With TypeScript
-
-```typescript
-import { PerformanceClient } from '@baseten/performance-client';
-
-const client = new PerformanceClient(baseUrl, apiKey);
-
-const texts: string[] = ["Hello world", "Example text"];
-const response = client.embed(
-    texts,
-    "my_model",
-    null, // encoding_format
-    null, // dimensions
-    null, // user
-    32,   // max_concurrent_requests
-    4,    // batch_size
-    360   // timeout_s
-);
-
-// TypeScript will provide full type safety
-console.log(`Model: ${response.model}`);
-response.data.forEach(item => {
-    console.log(`Index: ${item.index}, Embedding length: ${item.embedding.length}`);
-});
 ```
 
 ### Reranking
 
 ```javascript
 const query = "What is the best framework?";
-const documents = ["Doc 1 text", "Doc 2 text", "Doc 3 text"];
+const documents = [
+    "Machine learning is a subset of artificial intelligence",
+    "JavaScript is a programming language",
+    "Deep learning uses neural networks",
+    "Python is popular for data science"
+];
 
-const rerankResponse = client.rerank(
-    query,
-    documents,
-    false, // raw_scores
-    true,  // return_text
-    false, // truncate
-    "Right", // truncation_direction
-    16,    // max_concurrent_requests
-    2,     // batch_size
-    360    // timeout_s
-);
+try {
+    const response = rerankClient.rerank(
+        query,
+        documents,
+        false, // raw_scores
+        true,  // return_text
+        false, // truncate
+        "Right", // truncation_direction
+        4,     // max_concurrent_requests
+        2,     // batch_size
+        30     // timeout_s
+    );
 
-rerankResponse.data.forEach(result => {
-    console.log(`Index: ${result.index}, Score: ${result.score}`);
-    if (result.text) {
-        console.log(`Text: ${result.text}`);
-    }
-});
+    console.log(`Reranked ${response.data.length} documents`);
+    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+
+    response.data.forEach((result, i) => {
+        console.log(`${i + 1}. Score: ${result.score.toFixed(3)} - ${result.text?.substring(0, 50)}...`);
+    });
+} catch (error) {
+    console.error('Reranking failed:', error.message);
+}
 ```
 
 ### Classification
@@ -126,171 +111,169 @@ const textsToClassify = [
     "Neutral experience."
 ];
 
-const classifyResponse = client.classify(
-    textsToClassify,
-    false, // raw_scores
-    false, // truncate
-    "Right", // truncation_direction
-    16,    // max_concurrent_requests
-    2,     // batch_size
-    360    // timeout_s
-);
+try {
+    const response = rerankClient.classify(
+        textsToClassify,
+        false, // raw_scores
+        false, // truncate
+        "Right", // truncation_direction
+        4,     // max_concurrent_requests
+        2,     // batch_size
+        30     // timeout_s
+    );
 
-classifyResponse.data.forEach(group => {
-    group.forEach(result => {
-        console.log(`Label: ${result.label}, Score: ${result.score}`);
+    console.log(`Classified ${response.data.length} texts`);
+    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+
+    response.data.forEach((group, i) => {
+        console.log(`Text ${i + 1}:`);
+        group.forEach(result => {
+            console.log(`  ${result.label}: ${result.score.toFixed(3)}`);
+        });
     });
-});
+} catch (error) {
+    console.error('Classification failed:', error.message);
+}
 ```
 
 ### General Batch POST
 
-The batch_post method is generic and can be used to send POST requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON data.
+The batch_post method is generic and can be used to send POST requests to any URL, not limited to Baseten endpoints:
 
 ```javascript
-const payload1 = { model: "my_model", input: ["Batch request sample 1"] };
-const payload2 = { model: "my_model", input: ["Batch request sample 2"] };
+const payloads = [
+    { "model": "text-embedding-3-small", "input": ["Hello"] },
+    { "model": "text-embedding-3-small", "input": ["World"] }
+];
 
-const batchResponse = client.batch_post(
-    "/v1/embeddings", // URL path
-    [payload1, payload2], // payloads
-    96,  // max_concurrent_requests
-    360  // timeout_s
-);
+try {
+    const response = embedClient.batchPost(
+        "/v1/embeddings", // URL path
+        payloads,
+        4,  // max_concurrent_requests
+        30  // timeout_s
+    );
 
-console.log(`Total time for batch POST: ${batchResponse.total_time.toFixed(4)}s`);
+    console.log(`Processed ${response.data.length} batch requests`);
+    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
 
-batchResponse.data.forEach((respData, i) => {
-    console.log(`Response ${i + 1}:`);
-    console.log(`  Data:`, respData);
-    console.log(`  Headers:`, batchResponse.response_headers[i]);
-    console.log(`  Time taken: ${batchResponse.individual_request_times[i].toFixed(4)}s`);
-});
+    response.data.forEach((result, i) => {
+        console.log(`Request ${i + 1}: ${JSON.stringify(result).substring(0, 100)}...`);
+    });
+
+    // Access response headers and individual request times
+    response.response_headers.forEach((headers, i) => {
+        console.log(`Response ${i + 1} headers:`, headers);
+    });
+
+    response.individual_request_times.forEach((time, i) => {
+        console.log(`Request ${i + 1} took: ${time.toFixed(4)}s`);
+    });
+} catch (error) {
+    console.error('Batch POST failed:', error.message);
+}
 ```
 
 ## API Reference
 
-### PerformanceClient
-
-#### Constructor
+### Constructor
 
 ```javascript
-new PerformanceClient(baseUrl, apiKey?)
+new PerformanceClient(baseUrl, apiKey)
 ```
 
-- `baseUrl`: Base URL for the API
-- `apiKey`: Optional API key (can also be set via `BASETEN_API_KEY` or `OPENAI_API_KEY` environment variables)
+- `baseUrl` (string): The base URL for the API endpoint
+- `apiKey` (string, optional): API key. If not provided, will use `BASETEN_API_KEY` or `OPENAI_API_KEY` environment variables
 
-#### Methods
+### Methods
 
-##### `embed(input, model, encodingFormat?, dimensions?, user?, maxConcurrentRequests?, batchSize?, timeoutS?)`
+#### embed(input, model, encoding_format, dimensions, user, max_concurrent_requests, batch_size, timeout_s)
 
-Process embeddings requests.
+- `input` (Array<string>): List of texts to embed
+- `model` (string): Model name
+- `encoding_format` (string, optional): Encoding format
+- `dimensions` (number, optional): Number of dimensions
+- `user` (string, optional): User identifier
+- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
+- `batch_size` (number, optional): Batch size (default: 128)
+- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
 
-- `input`: Array of strings to embed
-- `model`: Model name
-- `encodingFormat`: Optional encoding format
-- `dimensions`: Optional output dimensions
-- `user`: Optional user identifier
-- `maxConcurrentRequests`: Number of concurrent requests (default: 32)
-- `batchSize`: Batch size (default: 4)
-- `timeoutS`: Timeout in seconds (default: 3600)
+#### rerank(query, texts, raw_scores, return_text, truncate, truncation_direction, max_concurrent_requests, batch_size, timeout_s)
 
-##### `rerank(query, texts, rawScores?, returnText?, truncate?, truncationDirection?, maxConcurrentRequests?, batchSize?, timeoutS?)`
+- `query` (string): Query text
+- `texts` (Array<string>): List of texts to rerank
+- `raw_scores` (boolean, optional): Return raw scores (default: false)
+- `return_text` (boolean, optional): Return text in response (default: false)
+- `truncate` (boolean, optional): Truncate long texts (default: false)
+- `truncation_direction` (string, optional): "Left" or "Right" (default: "Right")
+- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
+- `batch_size` (number, optional): Batch size (default: 128)
+- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
 
-Process reranking requests.
+#### classify(inputs, raw_scores, truncate, truncation_direction, max_concurrent_requests, batch_size, timeout_s)
 
-- `query`: Query string
-- `texts`: Array of texts to rerank
-- `rawScores`: Return raw scores (default: false)
-- `returnText`: Return text in results (default: false)
-- `truncate`: Truncate texts (default: false)
-- `truncationDirection`: "Left" or "Right" (default: "Right")
-- `maxConcurrentRequests`: Number of concurrent requests (default: 32)
-- `batchSize`: Batch size (default: 4)
-- `timeoutS`: Timeout in seconds (default: 3600)
+- `inputs` (Array<string>): List of texts to classify
+- `raw_scores` (boolean, optional): Return raw scores (default: false)
+- `truncate` (boolean, optional): Truncate long texts (default: false)
+- `truncation_direction` (string, optional): "Left" or "Right" (default: "Right")
+- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
+- `batch_size` (number, optional): Batch size (default: 128)
+- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
 
-##### `classify(inputs, rawScores?, truncate?, truncationDirection?, maxConcurrentRequests?, batchSize?, timeoutS?)`
+#### batchPost(url_path, payloads, max_concurrent_requests, timeout_s)
 
-Process classification requests.
-
-- `inputs`: Array of strings to classify
-- `rawScores`: Return raw scores (default: false)
-- `truncate`: Truncate texts (default: false)
-- `truncationDirection`: "Left" or "Right" (default: "Right")
-- `maxConcurrentRequests`: Number of concurrent requests (default: 32)
-- `batchSize`: Batch size (default: 4)
-- `timeoutS`: Timeout in seconds (default: 3600)
-
-##### `batch_post(urlPath, payloads, maxConcurrentRequests?, timeoutS?)`
-
-Send generic batch POST requests.
-
-- `urlPath`: URL path for the requests
-- `payloads`: Array of JSON payloads
-- `maxConcurrentRequests`: Number of concurrent requests (default: 32)
-- `timeoutS`: Timeout in seconds (default: 3600)
+- `url_path` (string): URL path for the POST request
+- `payloads` (Array<Object>): List of JSON payloads
+- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
+- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
 
 ## Error Handling
 
-The client can throw several types of errors:
-
-- **Invalid Parameters**: Thrown for invalid input parameters (empty arrays, invalid timeouts, etc.)
-- **Network Errors**: Connection issues, timeouts, DNS resolution failures
-- **HTTP Errors**: Authentication failures (403), server errors (5xx), not found (404)
-- **Serialization Errors**: Invalid JSON data
+The client throws standard JavaScript errors for various failure cases:
 
 ```javascript
 try {
-    const response = client.embed(
-        ["Hello world"],
-        "my_model",
-        null, null, null, 32, 4, 60
-    );
-    console.log("Success:", response);
+    const response = embedClient.embed(texts, "model");
 } catch (error) {
-    console.error("Error:", error.message);
+    if (error.message.includes('cannot be empty')) {
+        console.error('Parameter validation error:', error.message);
+    } else if (error.message.includes('HTTP')) {
+        console.error('Network error:', error.message);
+    } else {
+        console.error('Other error:', error.message);
+    }
 }
 ```
 
-## Performance
+## Testing
 
-This client is designed for high-performance scenarios and can handle thousands of concurrent requests efficiently. The Rust implementation with tokio provides excellent performance characteristics compared to pure JavaScript implementations.
+Run the test suite:
+
+```bash
+npm test
+```
+
+The tests use a simple built-in test framework and validate parameter handling, constructor behavior, and error conditions.
 
 ## Development
 
-### Building from Source
-
-Requirements:
-- Node.js 14+
-- Rust toolchain
-- napi-rs CLI
+To build the native module:
 
 ```bash
 # Install dependencies
 npm install
 
-# Build the native module
+# Build release version
 npm run build
 
-# Run tests
-npm test
+# Build debug version
+npm run build:debug
 ```
 
-### Testing
+## Benchmarks
 
-```bash
-# Run tests
-npm test
-
-# Run specific test
-node test/embeddings.test.js
-```
+Like the Python version, this Node.js client provides significant performance improvements over standard HTTP clients, especially for high-throughput embedding and reranking workloads.
 
 ## License
 
 MIT License
-
-## Contributing
-
-Contributions are welcome! Please ensure your code follows the existing style and includes appropriate tests.
