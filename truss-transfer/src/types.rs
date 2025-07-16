@@ -1,8 +1,7 @@
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
+use pyo3::pyclass;
 
-#[pyclass]
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum ResolutionType {
     #[serde(rename = "http", alias = "hf")]
     Http,
@@ -50,62 +49,13 @@ pub struct BasetenPointerManifest {
 }
 
 /// Model cache entry configuration
-#[pyclass]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelRepo {
-    #[pyo3(get, set)]
     pub repo_id: String,
-    #[pyo3(get, set)]
     pub revision: String,
-    #[pyo3(get, set)]
     pub allow_patterns: Option<Vec<String>>,
-    #[pyo3(get, set)]
     pub ignore_patterns: Option<Vec<String>>,
-    #[pyo3(get, set)]
     pub volume_folder: String,
-    #[pyo3(get, set)]
     pub runtime_secret_name: String,
-    #[pyo3(get, set)]
     pub kind: ResolutionType,
-}
-
-#[pymethods]
-impl ModelRepo {
-    #[new]
-    #[pyo3(signature = (
-        repo_id,
-        revision,
-        volume_folder,
-        kind = "hf".to_string(),
-        allow_patterns = None,
-        ignore_patterns = None,
-        runtime_secret_name = "hf_access_token".to_string(),
-    ))]
-    pub fn new(
-        repo_id: String,
-        revision: String,
-        volume_folder: String,
-        kind: String,
-        allow_patterns: Option<Vec<String>>,
-        ignore_patterns: Option<Vec<String>>,
-        runtime_secret_name: String,
-    ) -> Self {
-        ModelRepo {
-            repo_id,
-            revision,
-            allow_patterns,
-            ignore_patterns,
-            volume_folder,
-            runtime_secret_name: runtime_secret_name,
-            kind: match kind.as_str() {
-                "http" | "hf" => ResolutionType::Http,
-                "gcs" => ResolutionType::Gcs,
-                _ => {
-                    // TODO raise actual pyvalueerror
-                    eprintln!("Unknown kind: {}", kind);
-                    ResolutionType::Http // Default to Http if unknown kind
-                }
-            },
-        }
-    }
 }

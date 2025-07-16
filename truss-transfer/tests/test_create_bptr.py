@@ -8,7 +8,7 @@ print(f"truss_transfer version: {truss_transfer.__version__}")
 def test_dolly():
     # fix the below models
     models = [
-        truss_transfer.ModelRepo(
+        truss_transfer.PyModelRepo(
             repo_id="julien-c/dummy-unknown",
             revision="60b8d3fe22aebb024b573f1cca224db3126d10f3",
             runtime_secret_name="hf_access_token_2",

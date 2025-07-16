@@ -4,15 +4,20 @@ use std::sync::Once;
 
 use chrono;
 use env_logger::Builder;
-use log::{error, info, warn, LevelFilter};
+use log::{warn, LevelFilter};
+
+#[cfg(feature = "cli")]
+use log::{error, info};
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
+use pyo3::{pyclass, pymethods, wrap_pyfunction};
 
 use crate::basetenpointer::create_basetenpointer;
 use crate::constants::*;
 use crate::core::lazy_data_resolve_entrypoint;
-use crate::types::ModelRepo;
+use crate::types::{
+    ModelRepo, ResolutionType,
+};
 
 #[cfg(feature = "cli")]
 use anyhow::Result;
@@ -69,13 +74,113 @@ pub fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
         .map_err(|err| PyException::new_err(err.to_string()))
 }
 
+// create PyModelRepo
+#[pyclass]
+#[derive(Clone)]
+pub struct PyModelRepo {
+    #[pyo3(get, set)]
+    pub repo_id: String,
+    #[pyo3(get, set)]
+    pub revision: String,
+    #[pyo3(get, set)]
+    pub allow_patterns: Option<Vec<String>>,
+    #[pyo3(get, set)]
+    pub ignore_patterns: Option<Vec<String>>,
+    #[pyo3(get, set)]
+    pub volume_folder: String,
+    #[pyo3(get, set)]
+    pub runtime_secret_name: String,
+    #[pyo3(get, set)]
+    pub kind: String,
+}
+
+#[pymethods]
+impl PyModelRepo {
+    #[new]
+    #[pyo3(signature = (
+        repo_id,
+        revision,
+        volume_folder,
+        kind = "hf".to_string(),
+        allow_patterns = None,
+        ignore_patterns = None,
+        runtime_secret_name = "hf_access_token".to_string(),
+    ))]
+    pub fn new(
+        repo_id: String,
+        revision: String,
+        volume_folder: String,
+        kind: String,
+        allow_patterns: Option<Vec<String>>,
+        ignore_patterns: Option<Vec<String>>,
+        runtime_secret_name: String,
+    ) -> Self {
+        PyModelRepo {
+            repo_id,
+            revision,
+            allow_patterns,
+            ignore_patterns,
+            volume_folder,
+            runtime_secret_name,
+            kind,
+        }
+    }
+}
+
+// impl into ModelRepo for PyModelRepo
+impl From<PyModelRepo> for ModelRepo {
+    fn from(py_model_repo: PyModelRepo) -> Self {
+        ModelRepo {
+            repo_id: py_model_repo.repo_id,
+            revision: py_model_repo.revision,
+            allow_patterns: py_model_repo.allow_patterns,
+            ignore_patterns: py_model_repo.ignore_patterns,
+            volume_folder: py_model_repo.volume_folder,
+            runtime_secret_name: py_model_repo.runtime_secret_name,
+            kind: match py_model_repo.kind.as_str() {
+                "http" | "hf" => ResolutionType::Http,
+                "gcs" => ResolutionType::Gcs,
+                _ => {
+                    warn!("Unknown kind: {}. Defaulting to Http.", py_model_repo.kind);
+                    ResolutionType::Http
+                }
+            },
+        }
+    }
+}
+
+// impl into ModelRepo for Bound<'_, PyModelRepo>
+impl From<Bound<'_, PyModelRepo>> for ModelRepo {
+    fn from(py_model_repo: Bound<'_, PyModelRepo>) -> Self {
+        let py_model_repo = py_model_repo.borrow();
+        ModelRepo {
+            repo_id: py_model_repo.repo_id.clone(),
+            revision: py_model_repo.revision.clone(),
+            allow_patterns: py_model_repo.allow_patterns.clone(),
+            ignore_patterns: py_model_repo.ignore_patterns.clone(),
+            volume_folder: py_model_repo.volume_folder.clone(),
+            runtime_secret_name: py_model_repo.runtime_secret_name.clone(),
+            kind: match py_model_repo.kind.as_str() {
+                "http" | "hf" => ResolutionType::Http,
+                "gcs" => ResolutionType::Gcs,
+                _ => {
+                    warn!("Unknown kind: {}. Defaulting to Http.", py_model_repo.kind);
+                    ResolutionType::Http
+                }
+            },
+        }
+    }
+}
+
 /// Python function for creating a BasetenPointer JSON from a list of ModelRepo
 /// This creates BasetenPointer objects from HuggingFace model repositories
 /// signature is create_basetenpointer_from_models(models: Vec<ModelRepo>) -> PyResult<String> {
 #[pyfunction]
-pub fn create_basetenpointer_from_models(models: Vec<ModelRepo>) -> PyResult<String> {
+pub fn create_basetenpointer_from_models(models: Vec<Bound<'_, PyModelRepo>>) -> PyResult<String> {
     // Use async runtime to call the async function
     let rt = tokio::runtime::Runtime::new().map_err(|e| PyException::new_err(e.to_string()))?;
+    // convert PyModelRepo to ModelRepo
+    let models: Vec<ModelRepo> = models.into_iter().map(Into::into).collect();
     rt.block_on(async move { create_basetenpointer(models).await })
         .map_err(|e| PyException::new_err(e.to_string()))
 }
@@ -100,7 +205,7 @@ pub fn main() -> anyhow::Result<()> {
 pub fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lazy_data_resolve, m)?)?;
     m.add_function(wrap_pyfunction!(create_basetenpointer_from_models, m)?)?;
-    m.add_class::<ModelRepo>()?;
+    m.add_class::<PyModelRepo>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

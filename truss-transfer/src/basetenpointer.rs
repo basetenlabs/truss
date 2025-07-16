@@ -1,5 +1,5 @@
 use crate::hf_metadata::model_cache_hf_to_b10ptr;
-use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
+use crate::types::ModelRepo;
 use serde_json;
 
 /// Create a BasetenPointer from a HuggingFace model repository
@@ -8,12 +8,14 @@ pub async fn create_basetenpointer(
     cache: Vec<ModelRepo>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let manifest = model_cache_hf_to_b10ptr(cache).await?;
+    // todo: filter between hf and gcs models and combine them.
     let json = serde_json::to_string_pretty(&manifest)?;
     Ok(json)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
     use crate::Resolution;
 
     use super::*;

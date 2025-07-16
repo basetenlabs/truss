@@ -3,7 +3,6 @@ use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
 use std::collections::HashMap;
 use std::path::Path;
-use std::vec;
 use tokio::time::{sleep, Duration};
 
 /// Error types for HuggingFace operations
@@ -164,6 +163,10 @@ pub async fn model_cache_hf_to_b10ptr(
     let mut basetenpointers = Vec::new();
 
     for model in &cache {
+        // skip if its not a hf repo
+        if model.kind != ResolutionType::Http {
+            continue;
+        }
         let mut exception: Option<HfError> = None;
         let mut metadata_result = None;
 
