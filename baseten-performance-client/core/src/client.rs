@@ -232,7 +232,7 @@ impl PerformanceClientCore {
         })
     }
 
-    // Core embeddings processing logic with built-in validation and timing
+    // Core embeddings processing logic
     pub async fn process_embeddings_requests(
         &self,
         texts: Vec<String>,
@@ -247,8 +247,8 @@ impl PerformanceClientCore {
         let start_time = std::time::Instant::now();
 
         // Validate parameters internally
-        let (validated_concurrency, request_timeout_duration) =
-            self.validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
+        let (validated_concurrency, request_timeout_duration) = self
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let total_texts = texts.len();
@@ -374,8 +374,8 @@ impl PerformanceClientCore {
         let start_time: Instant = std::time::Instant::now();
 
         // Validate parameters internally
-        let (validated_concurrency, request_timeout_duration) =
-            self.validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
+        let (validated_concurrency, request_timeout_duration) = self
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let total_requests = (texts.len() + batch_size - 1) / batch_size;
@@ -480,8 +480,8 @@ impl PerformanceClientCore {
         let start_time = std::time::Instant::now();
 
         // Validate parameters internally
-        let (validated_concurrency, request_timeout_duration) =
-            self.validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
+        let (validated_concurrency, request_timeout_duration) = self
+            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let total_requests = (inputs.len() + batch_size - 1) / batch_size;
@@ -571,21 +571,18 @@ impl PerformanceClientCore {
         max_concurrent_requests: usize,
         timeout_s: f64,
     ) -> Result<
-        (
-            Vec<(
-                serde_json::Value,
-                std::collections::HashMap<String, String>,
-                Duration,
-            )>,
+        (Vec<(
+            serde_json::Value,
+            std::collections::HashMap<String, String>,
             Duration,
-        ),
+        )>, Duration),
         ClientError,
     > {
         let start_time = std::time::Instant::now();
 
         // Validate parameters internally (using batch_size of 128 for validation)
-        let (validated_concurrency, request_timeout_duration) =
-            self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
+        let (validated_concurrency, request_timeout_duration) = self
+            .validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let mut tasks = Vec::new();
         let cancel_token = Arc::new(AtomicBool::new(false));
