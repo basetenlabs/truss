@@ -552,7 +552,14 @@ impl PerformanceClientCore {
         payloads_json: Vec<serde_json::Value>,
         max_concurrent_requests: usize,
         request_timeout_duration: Duration,
-    ) -> Result<Vec<(serde_json::Value, std::collections::HashMap<String, String>, Duration)>, ClientError> {
+    ) -> Result<
+        Vec<(
+            serde_json::Value,
+            std::collections::HashMap<String, String>,
+            Duration,
+        )>,
+        ClientError,
+    > {
         let semaphore = Arc::new(Semaphore::new(max_concurrent_requests));
         let mut tasks = Vec::new();
         let cancel_token = Arc::new(AtomicBool::new(false));
@@ -603,14 +610,12 @@ impl PerformanceClientCore {
                 let request_time_elapsed = request_time_start.elapsed();
 
                 match result_tuple {
-                    Ok((response_json_value, headers_map)) => {
-                        Ok((
-                            index,
-                            response_json_value,
-                            headers_map,
-                            request_time_elapsed,
-                        ))
-                    }
+                    Ok((response_json_value, headers_map)) => Ok((
+                        index,
+                        response_json_value,
+                        headers_map,
+                        request_time_elapsed,
+                    )),
                     Err(e) => {
                         cancel_token_clone.store(true, Ordering::SeqCst);
                         Err(e)
@@ -620,8 +625,12 @@ impl PerformanceClientCore {
         }
 
         let task_join_results = join_all(tasks).await;
-        let mut indexed_results: Vec<(usize, serde_json::Value, std::collections::HashMap<String, String>, Duration)> =
-            Vec::with_capacity(total_payloads);
+        let mut indexed_results: Vec<(
+            usize,
+            serde_json::Value,
+            std::collections::HashMap<String, String>,
+            Duration,
+        )> = Vec::with_capacity(total_payloads);
         let mut first_error: Option<ClientError> = None;
 
         for result in task_join_results {
@@ -638,7 +647,11 @@ impl PerformanceClientCore {
 
         indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
 
-        let final_results: Vec<(serde_json::Value, std::collections::HashMap<String, String>, Duration)> = indexed_results
+        let final_results: Vec<(
+            serde_json::Value,
+            std::collections::HashMap<String, String>,
+            Duration,
+        )> = indexed_results
             .into_iter()
             .map(|(_, val, headers, dur)| (val, headers, dur))
             .collect();
@@ -721,7 +734,9 @@ async fn send_single_rerank_request(
     successful_response
         .json::<Vec<CoreRerankResult>>()
         .await
-        .map_err(|e| ClientError::Serialization(format!("Failed to parse rerank response JSON: {}", e)))
+        .map_err(|e| {
+            ClientError::Serialization(format!("Failed to parse rerank response JSON: {}", e))
+        })
 }
 
 async fn send_single_classify_request(
@@ -756,7 +771,9 @@ async fn send_single_classify_request(
     successful_response
         .json::<Vec<Vec<CoreClassificationResult>>>()
         .await
-        .map_err(|e| ClientError::Serialization(format!("Failed to parse classify response JSON: {}", e)))
+        .map_err(|e| {
+            ClientError::Serialization(format!("Failed to parse classify response JSON: {}", e))
+        })
 }
 
 async fn send_single_batch_post_request(
