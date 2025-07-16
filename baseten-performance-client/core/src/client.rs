@@ -145,7 +145,7 @@ impl PerformanceClientCore {
             && batch_size < CONCURRENCY_HIGH_BATCH_SWITCH
         {
             return Err(ClientError::InvalidParameter(format!(
-                "max_concurrent_requests must be less than {} when batch_size is less than {}.",
+                "max_concurrent_requests must be less than {} when batch_size is less than {}. Please be nice to the server side.",
                 MAX_CONCURRENCY_LOW_BATCH, CONCURRENCY_HIGH_BATCH_SWITCH
             )));
         }

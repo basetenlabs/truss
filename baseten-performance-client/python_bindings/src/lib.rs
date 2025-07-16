@@ -486,7 +486,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             batch_size,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -500,17 +501,19 @@ impl PerformanceClient {
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
-                let res = core_client.process_rerank_requests(
-                    query,
-                    texts,
-                    raw_scores,
-                    return_text,
-                    truncate,
-                    truncation_direction_owned,
-                    max_concurrent_requests,
-                    batch_size,
-                    timeout_duration,
-                ).await;
+                let res = core_client
+                    .process_rerank_requests(
+                        query,
+                        texts,
+                        raw_scores,
+                        return_text,
+                        truncate,
+                        truncation_direction_owned,
+                        max_concurrent_requests,
+                        batch_size,
+                        timeout_duration,
+                    )
+                    .await;
                 let _ = tx.send(res);
             });
 
@@ -559,7 +562,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             batch_size,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -570,17 +574,20 @@ impl PerformanceClient {
         let future = async move {
             let time_start_async_op = Instant::now();
 
-            let (core_response, batch_durations) = core_client.process_rerank_requests(
-                query,
-                texts,
-                raw_scores,
-                return_text,
-                truncate,
-                truncation_direction_owned,
-                max_concurrent_requests,
-                batch_size,
-                timeout_duration,
-            ).await.map_err(Self::convert_core_error_to_py_err)?;
+            let (core_response, batch_durations) = core_client
+                .process_rerank_requests(
+                    query,
+                    texts,
+                    raw_scores,
+                    return_text,
+                    truncate,
+                    truncation_direction_owned,
+                    max_concurrent_requests,
+                    batch_size,
+                    timeout_duration,
+                )
+                .await
+                .map_err(Self::convert_core_error_to_py_err)?;
 
             let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
@@ -618,7 +625,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             batch_size,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -632,15 +640,17 @@ impl PerformanceClient {
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
-                let res = core_client.process_classify_requests(
-                    inputs,
-                    raw_scores,
-                    truncate,
-                    truncation_direction_owned,
-                    max_concurrent_requests,
-                    batch_size,
-                    timeout_duration,
-                ).await;
+                let res = core_client
+                    .process_classify_requests(
+                        inputs,
+                        raw_scores,
+                        truncate,
+                        truncation_direction_owned,
+                        max_concurrent_requests,
+                        batch_size,
+                        timeout_duration,
+                    )
+                    .await;
                 let _ = tx.send(res);
             });
 
@@ -687,7 +697,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             batch_size,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -698,15 +709,18 @@ impl PerformanceClient {
         let future = async move {
             let time_start_async_op = Instant::now();
 
-            let (core_response, batch_durations) = core_client.process_classify_requests(
-                inputs,
-                raw_scores,
-                truncate,
-                truncation_direction_owned,
-                max_concurrent_requests,
-                batch_size,
-                timeout_duration,
-            ).await.map_err(Self::convert_core_error_to_py_err)?;
+            let (core_response, batch_durations) = core_client
+                .process_classify_requests(
+                    inputs,
+                    raw_scores,
+                    truncate,
+                    truncation_direction_owned,
+                    max_concurrent_requests,
+                    batch_size,
+                    timeout_duration,
+                )
+                .await
+                .map_err(Self::convert_core_error_to_py_err)?;
 
             let total_time_val = time_start_async_op.elapsed().as_secs_f64();
             let individual_times_val: Vec<f64> = batch_durations
@@ -741,7 +755,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             128,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -766,12 +781,14 @@ impl PerformanceClient {
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
-                let res = core_client.process_batch_post_requests(
-                    url_path,
-                    payloads_json,
-                    max_concurrent_requests,
-                    timeout_duration,
-                ).await;
+                let res = core_client
+                    .process_batch_post_requests(
+                        url_path,
+                        payloads_json,
+                        max_concurrent_requests,
+                        timeout_duration,
+                    )
+                    .await;
                 let _ = tx.send(res);
             });
 
@@ -844,7 +861,8 @@ impl PerformanceClient {
             max_concurrent_requests,
             128,
             &self.core_client.base_url,
-        ).map_err(Self::convert_core_error_to_py_err)?;
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         let timeout_duration = PerformanceClientCore::validate_and_get_timeout_duration(timeout_s)
             .map_err(Self::convert_core_error_to_py_err)?;
@@ -866,12 +884,15 @@ impl PerformanceClient {
         let future = async move {
             let time_start_async_op = std::time::Instant::now();
 
-            let response_data_with_times_and_headers = core_client.process_batch_post_requests(
-                url_path,
-                payloads_json,
-                max_concurrent_requests,
-                timeout_duration,
-            ).await.map_err(Self::convert_core_error_to_py_err)?;
+            let response_data_with_times_and_headers = core_client
+                .process_batch_post_requests(
+                    url_path,
+                    payloads_json,
+                    max_concurrent_requests,
+                    timeout_duration,
+                )
+                .await
+                .map_err(Self::convert_core_error_to_py_err)?;
 
             let total_time_async_op = time_start_async_op.elapsed().as_secs_f64();
 
@@ -895,12 +916,13 @@ impl PerformanceClient {
                     #[allow(deprecated)]
                     results_py.push(py_obj_bound.into_py(py_gil));
 
-                    let headers_py_obj = pythonize::pythonize(py_gil, &headers_map).map_err(|e| {
-                        PyValueError::new_err(format!(
-                            "Failed to pythonize headers at index {}: {}",
-                            idx, e
-                        ))
-                    })?;
+                    let headers_py_obj =
+                        pythonize::pythonize(py_gil, &headers_map).map_err(|e| {
+                            PyValueError::new_err(format!(
+                                "Failed to pythonize headers at index {}: {}",
+                                idx, e
+                            ))
+                        })?;
                     #[allow(deprecated)]
                     collected_headers_py.push(headers_py_obj.to_object(py_gil));
 
