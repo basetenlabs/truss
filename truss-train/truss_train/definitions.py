@@ -86,8 +86,41 @@ class Runtime(custom_types.SafeModelNoExtra):
         return values
 
 
+class AWSIAMAuthSettings(custom_types.SafeModelNoExtra):
+    access_key_id_secret_name: str = truss_config.DEFAULT_AWS_ACCESS_KEY_SECRET_NAME
+    secret_access_key_secret_name: str = (
+        truss_config.DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME
+    )
+
+
+class GCPServiceAccountJSONAuthSettings(custom_types.SafeModelNoExtra):
+    secret_name: str
+
+
+class DockerAuthSettings(custom_types.SafeModelNoExtra):
+    auth_method: truss_config.DockerAuthType
+    registry: Optional[str] = ""
+    aws_iam_auth_settings: Optional[AWSIAMAuthSettings] = None
+    gcp_service_account_json_auth_settings: Optional[
+        GCPServiceAccountJSONAuthSettings
+    ] = None
+
+    def __post_init__(self):
+        if self.auth_method == truss_config.DockerAuthType.AWS_IAM:
+            if self.aws_iam_auth_settings is None:
+                raise ValueError(
+                    "aws_iam_auth_settings is required when auth_method is AWS_IAM"
+                )
+        elif self.auth_method == truss_config.DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
+            if self.gcp_service_account_json_auth_settings is None:
+                raise ValueError(
+                    "gcp_service_account_json_auth_settings is required when auth_method is GCP_SERVICE_ACCOUNT_JSON"
+                )
+
+
 class Image(custom_types.SafeModelNoExtra):
     base_image: str
+    docker_auth_settings: Optional[DockerAuthSettings] = None
 
 
 class TrainingJob(custom_types.SafeModelNoExtra):
