@@ -1222,8 +1222,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 [[package]]
 name = "reqwest"
 version = "0.12.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43e734407157c3c2034e0258f5e4473ddb361b1e85f95a66690d67264d7cd1da"
+source = "git+https://github.com/seanmonstar/reqwest?tag=v0.12.12#8b8fdd2552ad645c7e9dd494930b3e95e2aedef2"
 dependencies = [
  "base64",
  "bytes",

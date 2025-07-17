@@ -106,7 +106,11 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!(
         "Successfully merged {} manifests from {}. Total pointers: {}",
         found_paths.len(),
-        found_paths.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", "),
+        found_paths
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
         merged_manifest.pointers.len()
     );
 
@@ -323,7 +327,11 @@ pub fn merge_manifests(manifests: Vec<BasetenPointerManifest>) -> Result<Baseten
         }
     }
 
-    info!("Merged {} pointers from {} manifests", merged_pointers.len(), manifests_count);
+    info!(
+        "Merged {} pointers from {} manifests",
+        merged_pointers.len(),
+        manifests_count
+    );
 
     Ok(BasetenPointerManifest {
         pointers: merged_pointers,

@@ -214,7 +214,11 @@ mod tests {
         assert_eq!(merged.pointers.len(), 2);
 
         // Verify both files are present
-        let file_names: Vec<&str> = merged.pointers.iter().map(|p| p.file_name.as_str()).collect();
+        let file_names: Vec<&str> = merged
+            .pointers
+            .iter()
+            .map(|p| p.file_name.as_str())
+            .collect();
         assert!(file_names.contains(&"file1.txt"));
         assert!(file_names.contains(&"file2.txt"));
     }
@@ -363,9 +367,18 @@ mod tests {
 
         // Test environment variable names
         assert_eq!(BASETEN_FS_ENABLED_ENV_VAR, "BASETEN_FS_ENABLED");
-        assert_eq!(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR, "TRUSS_TRANSFER_DOWNLOAD_DIR");
-        assert_eq!(TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR, "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS");
-        assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR, "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS");
+        assert_eq!(
+            TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR,
+            "TRUSS_TRANSFER_DOWNLOAD_DIR"
+        );
+        assert_eq!(
+            TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR,
+            "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS"
+        );
+        assert_eq!(
+            TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR,
+            "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS"
+        );
         assert_eq!(SECRETS_BASE_PATH, "/secrets");
 
         // Test manifest paths

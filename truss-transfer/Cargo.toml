@@ -31,6 +31,10 @@ hf-hub = { version = "0.4.3", features = ["tokio"] }
 glob = "0.3"
 thiserror = "1.0"
 
+# Use patch to override the reqwest dependency used by all crates in the dependency tree
+[patch.crates-io]
+reqwest = { git = "https://github.com/seanmonstar/reqwest", tag = "v0.12.12", default-features = false, features = ["blocking", "stream", "http2", "default-tls", "json"] }
+
 [features]
 cli = []
 
