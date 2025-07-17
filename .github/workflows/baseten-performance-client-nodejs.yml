@@ -421,7 +421,7 @@ jobs:
           options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
-            apt-get update && apt-get install -y perl libssl-dev
+            cp baseten_performance_client/node_bindings/*.node .
             yarn test
             ls -la
   test-linux-aarch64-musl-binding:
@@ -457,10 +457,10 @@ jobs:
           options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
-            apk add --no-cache perl openssl-dev
+            cp baseten_performance_client/node_bindings/*.node .
             yarn test
   test-linux-arm-gnueabihf-binding:
-    if: false # TODO: enable relative path issue when testing
+    if: false # TODO: we currently do not compile this
     name: Test bindings on armv7-unknown-linux-gnueabihf - node@${{ matrix.node }}
     needs:
       - build
@@ -501,7 +501,7 @@ jobs:
             yarn test
             ls -la
   universal-macOS:
-    if: false # TODO: enable relative path issue when testing
+    if: false # we currently do not compile this
     name: Build universal macOS binary
     needs:
       - build
