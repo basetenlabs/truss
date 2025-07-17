@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 class Resolution(BaseModel):
     url: str
     expiration_timestamp: int
+    resolution_type: str = "HF"  # TODO: remove the default
 
 
 class BasetenPointer(BaseModel):
@@ -26,6 +27,7 @@ class BasetenPointer(BaseModel):
     hashtype: str
     hash: str
     size: int
+    runtime_secret_name: str = "hf_access_token"  # TODO: remove the default
 
 
 class BasetenPointerList(BaseModel):
@@ -125,11 +127,13 @@ def model_cache_hf_to_b10ptr(cache: "ModelCache") -> BasetenPointerList:
                 hashtype="etag",
                 hash=content["etag"],
                 size=content["size"],
+                runtime_secret_name=model.runtime_secret_name,
                 resolution=Resolution(
                     url=content["url"],
                     expiration_timestamp=int(
                         4044816725  # 90 years in the future, hf does not expire. needs to be static, to have cache hits.
                     ),
+                    resolution_type=model.kind.value,
                 ),
             )
             for filename, content in metadata_hf_repo_list.items()
