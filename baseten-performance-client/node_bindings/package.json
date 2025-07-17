@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client",
-  "version": "0.0.0",
+  "version": "0.0.1-rc0",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
