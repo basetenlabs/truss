@@ -19,12 +19,6 @@ permissions:
     paths:
       - "baseten-performance-client/**"
       - ".github/workflows/baseten-performance-client-nodejs.yml"
-    paths-ignore:
-      - '**/*.md'
-      - LICENSE
-      - '**/*.gitignore'
-      - .editorconfig
-      - docs/**
   pull_request: null
   workflow_dispatch: null
 jobs:
