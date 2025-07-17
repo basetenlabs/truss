@@ -138,6 +138,8 @@ async def proxy_ws(client_ws: WebSocket):
                     async def forward_to_server():
                         while True:
                             message = await client_ws.receive()
+                            if message.get("type") == "websocket.disconnect":
+                                break
                             if "text" in message:
                                 await server_ws.send_text(message["text"])
                             elif "bytes" in message:
@@ -146,6 +148,8 @@ async def proxy_ws(client_ws: WebSocket):
                     async def forward_to_client():
                         while True:
                             message = await server_ws.receive()
+                            if message is None:
+                                break
                             if isinstance(message, TextMessage):
                                 await client_ws.send_text(message.data)
                             elif isinstance(message, BytesMessage):

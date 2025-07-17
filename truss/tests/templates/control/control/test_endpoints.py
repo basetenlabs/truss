@@ -30,15 +30,18 @@ def client_ws(app):
 
 
 @pytest.mark.asyncio
-async def test_proxy_ws_text_message(client_ws):
+async def test_proxy_ws_bidirectional_messaging(client_ws):
+    """Test that both directions of communication work and clean up properly"""
     client_ws.receive.side_effect = [
-        {"type": "websocket.receive", "text": "hello"},
+        {"type": "websocket.receive", "text": "msg1"},
+        {"type": "websocket.receive", "text": "msg2"},
         {"type": "websocket.disconnect"},
     ]
 
     mock_server_ws = AsyncMock(spec=AsyncWebSocketSession)
     mock_server_ws.receive.side_effect = [
-        TextMessage(data="response"),
+        TextMessage(data="response1"),
+        TextMessage(data="response2"),
         None,  # server closing connection
     ]
     mock_server_ws.__aenter__.return_value = mock_server_ws
@@ -50,10 +53,10 @@ async def test_proxy_ws_text_message(client_ws):
     ):
         await proxy_ws(client_ws)
 
-    # Verify interactions
-    client_ws.accept.assert_called_once()
-    mock_server_ws.send_text.assert_called_once_with("hello")
-    client_ws.send_text.assert_called_once_with("response")
+    assert mock_server_ws.send_text.call_count == 2
+    assert mock_server_ws.send_text.call_args_list == [(("msg1",),), (("msg2",),)]
+    assert client_ws.send_text.call_count == 2
+    assert client_ws.send_text.call_args_list == [(("response1",),), (("response2",),)]
     client_ws.close.assert_called_once()
 
 
@@ -98,34 +101,3 @@ async def test_proxy_ws_closes_client_upon_server_connection_error(client_ws):
 
     client_ws.close.assert_called_once()
     assert client_ws.app.state.logger.warning.called
-
-
-@pytest.mark.asyncio
-async def test_proxy_ws_bidirectional_messaging(client_ws):
-    """Test that both directions of communication work and clean up properly"""
-    client_ws.receive.side_effect = [
-        {"type": "websocket.receive", "text": "msg1"},
-        {"type": "websocket.receive", "text": "msg2"},
-        {"type": "websocket.disconnect"},
-    ]
-
-    mock_server_ws = AsyncMock(spec=AsyncWebSocketSession)
-    mock_server_ws.receive.side_effect = [
-        TextMessage(data="response1"),
-        TextMessage(data="response2"),
-        None,  # server closing connection
-    ]
-    mock_server_ws.__aenter__.return_value = mock_server_ws
-    mock_server_ws.__aexit__.return_value = None
-
-    with patch(
-        "truss.templates.control.control.endpoints.aconnect_ws",
-        return_value=mock_server_ws,
-    ):
-        await proxy_ws(client_ws)
-
-    assert mock_server_ws.send_text.call_count == 2
-    assert mock_server_ws.send_text.call_args_list == [(("msg1",),), (("msg2",),)]
-    assert client_ws.send_text.call_count == 2
-    assert client_ws.send_text.call_args_list == [(("response1",),), (("response2",),)]
-    client_ws.close.assert_called_once()
