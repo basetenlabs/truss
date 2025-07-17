@@ -277,3 +277,7 @@ Like the Python version, this Node.js client provides significant performance im
 ## License
 
 MIT License
+
+## Acknowledgements:
+Venkatesh Narayan (Clay.com) for the prototpe of this here https://github.com/basetenlabs/truss/pull/1778
+and Suren (Baseten) for getting a PoC and protyping the release pipeline. https://github.com/suren-atoyan/rust-ts-package
