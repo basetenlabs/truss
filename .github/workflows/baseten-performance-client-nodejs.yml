@@ -231,7 +231,6 @@ jobs:
             baseten-performance-client/node_bindings/*.node
           if-no-files-found: error
   test-macOS-windows-binding:
-    if: false # TODO: enable relative path issue when testing
     name: Test bindings on ${{ matrix.settings.target }} - node@${{ matrix.node }}
     needs:
       - build
@@ -504,12 +503,12 @@ jobs:
     needs:
       # - build-freebsd
       - test-macOS-windows-binding
-      - test-linux-x64-gnu-binding
-      - test-linux-x64-musl-binding
-      - test-linux-aarch64-gnu-binding
-      - test-linux-aarch64-musl-binding
-      - test-linux-arm-gnueabihf-binding
-      - universal-macOS
+      # - test-linux-x64-gnu-binding
+      # - test-linux-x64-musl-binding
+      # - test-linux-aarch64-gnu-binding
+      # - test-linux-aarch64-musl-binding
+      # - test-linux-arm-gnueabihf-binding
+      # - universal-macOS
     steps:
       - uses: actions/checkout@v4
       - name: Setup node
