@@ -1,7 +1,9 @@
 import test from 'ava'
 
-import { sum } from '../index.js'
+import { PerformanceClient } from '../index.js'
 
-// test('sum from native', (t) => {
-//   t.is(sum(1, 2), 3)
-// })
+// Test client initialization
+test('PerformanceClient initialization', (t) => {
+  const client = new PerformanceClient('https://api.example.com', 'test-api-key')
+  t.truthy(client, 'Client should be initialized')
+})
