@@ -277,7 +277,6 @@ jobs:
           cp baseten-performance-client/node_bindings/*.node .
           yarn test
   test-linux-x64-gnu-binding:
-    if: false # TODO: enable relative path issue when testing
     name: Test bindings on Linux-x64-gnu - node@${{ matrix.node }}
     needs:
       - build
@@ -307,7 +306,7 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-slim bash -c "apt-get update && apt-get install -y perl libssl-dev && yarn test"
+        run: docker run --rm -v $(pwd):/build -w /build/ node:${{ matrix.node }}-slim bash -c "cp baseten-performance-client/node_bindings/*.node . && yarn test"
   test-linux-x64-musl-binding:
     if: false # TODO: enable relative path issue when testing
     name: Test bindings on x86_64-unknown-linux-musl - node@${{ matrix.node }}
@@ -538,7 +537,7 @@ jobs:
         run: |
           # npm config set provenance true
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
-          npm publish --tag next --access public
+          npm publish --access public
           if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$";
           then
             npm publish --access public
