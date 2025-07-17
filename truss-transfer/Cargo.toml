@@ -33,8 +33,10 @@ thiserror = "1.0"
 
 # Use patch to override the reqwest dependency used by all crates in the dependency tree
 [patch.crates-io]
+# override reqwest to use native-tls instead of rustls
 reqwest = { git = "https://github.com/seanmonstar/reqwest", tag = "v0.12.12", default-features = false, features = ["blocking", "stream", "http2", "default-tls", "json"] }
-
+# override ureq to use native-tls instead of rustls
+ureq = { git = "https://github.com/algesten/ureq", tag = "2.12.1", default-features = false, features = ["native-tls", "gzip"] }
 [features]
 cli = []
 
