@@ -66,15 +66,12 @@ jobs:
           #   BEGIN failed--compilation aborted at /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/util/perl/OpenSSL/config.pm line 19.
           #   Compilation failed in require at ./Configure line 23.
           #   BEGIN failed--compilation aborted at ./Configure line 23.
-
-
-
           #   Error configuring OpenSSL build:
           #       'perl' reported failure with exit code: 2
           #       Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
-          - host: windows-latest
-            build: yarn build --target x86_64-pc-windows-msvc
-            target: x86_64-pc-windows-msvc
+          # - host: windows-latest
+          #   build: yarn build --target x86_64-pc-windows-msvc
+          #   target: x86_64-pc-windows-msvc
           # - host: windows-latest
           #   build: |
           #     yarn build --target i686-pc-windows-msvc
@@ -385,9 +382,8 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-alpine sh -c "apk add --no-cache perl openssl-dev && yarn test"
+        run: docker run --rm -v $(pwd):/build -w /build/ node:${{ matrix.node }}-alpine sh -c "cp baseten-performance-client/node_bindings/*.node . && yarn test"
   test-linux-aarch64-gnu-binding:
-    if: false # TODO: enable relative path issue when testing
     name: Test bindings on aarch64-unknown-linux-gnu - node@${{ matrix.node }}
     needs:
       - build
