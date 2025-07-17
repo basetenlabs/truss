@@ -72,9 +72,9 @@ jobs:
           #   Error configuring OpenSSL build:
           #       'perl' reported failure with exit code: 2
           #       Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
-          # - host: windows-latest
-          #   build: yarn build --target x86_64-pc-windows-msvc
-          #   target: x86_64-pc-windows-msvc
+          - host: windows-latest
+            build: yarn build --target x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-msvc
           # - host: windows-latest
           #   build: |
           #     yarn build --target i686-pc-windows-msvc
@@ -113,13 +113,16 @@ jobs:
           - host: ubuntu-latest
             target: armv7-linux-androideabi
             build: yarn build --target armv7-linux-androideabi
-          - host: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-            build: |-
-              set -e &&
-              rustup target add aarch64-unknown-linux-musl &&
-              yarn build --target aarch64-unknown-linux-musl
+          # fails with
+          # = note: LC_ALL="C" PATH="/root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/lib/rustlib/x86_64-unknown-linux-musl/bin:/tmp/xfs-9b7203d8:/aarch64-linux-musl-cross/bin:/usr/local/cargo/bin/rustup:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" VSLANG="1033" "cc" "-Wl,--version-script=/tmp/rustcmRZtLt/list" "-Wl,--no-undefined-version" "/tmp/rustcmRZtLt/symbols.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.00.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.01.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.02.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-
+          #           /usr/lib/gcc/x86_64-alpine-linux-musl/14.2.0/../../../../x86_64-alpine-linux-musl/bin/ld: /build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.00.rcgu.o: error adding symbols: file in wrong format
+          # - host: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+          #   build: |-
+          #     set -e &&
+          #     rustup target add aarch64-unknown-linux-musl &&
+          #     yarn build --target aarch64-unknown-linux-musl
           # TODO: enable again
           #   AARCH64_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR unset
           #     cargo:warning=openssl-src: failed to build OpenSSL from source
