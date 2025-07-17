@@ -1,11 +1,11 @@
-const { PerformanceClient } = require('../index.js');
+const { PerformanceClient } = require('../performance-client.node');
 
 // Test configuration
 const TEST_BASE_URL = process.env.TEST_BASE_URL || "https://httpbin.org";
 const TEST_API_KEY = process.env.TEST_API_KEY || "test-key";
 
 // Simple test framework
-class TestRunner {
+class TestRunner { // todo: needs to be compatible with AVA
     constructor() {
         this.tests = [];
         this.passed = 0;
