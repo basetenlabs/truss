@@ -977,3 +977,97 @@ def test_supported_versions_are_sorted():
     assert semvers == semvers_sorted, (
         f"{constants.SUPPORTED_PYTHON_VERSIONS} must be sorted ascendingly"
     )
+
+
+@pytest.mark.parametrize(
+    "transport_config",
+    [
+        # Valid GRPC config
+        pytest.param(
+            {
+                "runtime": {"transport": {"kind": "grpc"}},
+                "docker_server": {"start_command": "python main.py"},
+            },
+            id="valid-grpc-minimal",
+        ),
+        # Valid HTTP config
+        pytest.param(
+            {
+                "runtime": {"transport": {"kind": "http"}},
+                "docker_server": {
+                    "start_command": "./start.sh",
+                    "server_port": 8080,
+                    "predict_endpoint": "/predict",
+                    "readiness_endpoint": "/ready",
+                    "liveness_endpoint": "/health",
+                },
+            },
+            id="valid-http-full",
+        ),
+        # Valid WebSocket config
+        pytest.param(
+            {
+                "runtime": {"transport": {"kind": "websocket"}},
+                "docker_server": {
+                    "start_command": "./start.sh",
+                    "server_port": 8080,
+                    "predict_endpoint": "/predict",
+                    "readiness_endpoint": "/ready",
+                    "liveness_endpoint": "/health",
+                },
+            },
+            id="valid-websocket-full",
+        ),
+        # Valid HTTP with no docker_server
+        pytest.param(
+            {"runtime": {"transport": {"kind": "http"}}}, id="valid-http-no-docker"
+        ),
+    ],
+)
+def test_valid_transport_configurations(transport_config, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.dump(transport_config))
+    config = TrussConfig.from_yaml(config_path)
+    assert config.runtime.transport.kind == TransportKind(
+        transport_config["runtime"]["transport"]["kind"]
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_config,expected_error",
+    [
+        # GRPC with additional fields
+        pytest.param(
+            {
+                "runtime": {"transport": {"kind": "grpc"}},
+                "docker_server": {
+                    "start_command": "./start.sh",
+                    "server_port": 8080,
+                    "predict_endpoint": "/predict",
+                },
+            },
+            "When transport kind is GRPC, docker_server should only have start_command defined",
+            id="invalid-grpc-extra-fields",
+        ),
+        # HTTP with missing fields
+        pytest.param(
+            {
+                "runtime": {"transport": {"kind": "http"}},
+                "docker_server": {"start_command": "./start.sh", "server_port": 8080},
+            },
+            "When transport kind is not GRPC, docker_server must either be absent or have all fields defined",
+            id="invalid-http-missing-fields",
+        ),
+        # Missing docker_server with GRPC
+        pytest.param(
+            {"runtime": {"transport": {"kind": "grpc"}}},
+            "docker_server is required when transport kind is GRPC",
+            id="invalid-grpc-missing-docker",
+        ),
+    ],
+)
+def test_invalid_transport_configurations(invalid_config, expected_error, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.dump(invalid_config))
+    with pytest.raises(ValueError, match=expected_error):
+        TrussConfig.from_yaml(config_path)

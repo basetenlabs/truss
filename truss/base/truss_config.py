@@ -542,10 +542,10 @@ class BaseImage(custom_types.ConfigModel):
 
 class DockerServer(custom_types.ConfigModel):
     start_command: str
-    server_port: int
-    predict_endpoint: str
-    readiness_endpoint: str
-    liveness_endpoint: str
+    server_port: Optional[int] = None
+    predict_endpoint: Optional[str] = None
+    readiness_endpoint: Optional[str] = None
+    liveness_endpoint: Optional[str] = None
 
 
 class Checkpoint(custom_types.ConfigModel):
@@ -719,6 +719,45 @@ class TrussConfig(custom_types.ConfigModel):
             return None
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
+
+    @pydantic.model_validator(mode="after")
+    def _validate_docker_server(self) -> "TrussConfig":
+        is_grpc = self.runtime.transport.kind == TransportKind.GRPC
+        has_docker_server = self.docker_server is not None
+
+        if is_grpc:
+            if not has_docker_server:
+                raise ValueError(
+                    "docker_server is required when transport kind is GRPC"
+                )
+            optional_fields = [
+                "server_port",
+                "predict_endpoint",
+                "readiness_endpoint",
+                "liveness_endpoint",
+            ]
+            if any(
+                getattr(self.docker_server, field) is not None
+                for field in optional_fields
+            ):
+                raise ValueError(
+                    "When transport kind is GRPC, docker_server should only have start_command defined"
+                )
+        elif has_docker_server:
+            optional_fields = [
+                "server_port",
+                "predict_endpoint",
+                "readiness_endpoint",
+                "liveness_endpoint",
+            ]
+            if any(
+                getattr(self.docker_server, field) is None for field in optional_fields
+            ):
+                raise ValueError(
+                    "When transport kind is not GRPC, docker_server must either be absent or have all fields defined"
+                )
+
+        return self
 
 
 def _map_to_supported_python_version(python_version: str) -> str:
