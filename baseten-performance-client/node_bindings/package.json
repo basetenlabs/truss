@@ -23,6 +23,10 @@
       ]
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/basetenlabs/truss"
+  },
   "license": "MIT",
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
