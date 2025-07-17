@@ -270,7 +270,9 @@ jobs:
         shell: bash
       - name: Test bindings
         run: |
-          cd baseten-performance-client/node_bindings
+          echo "Current directory: $(pwd)"
+          echo "Node __dirname: $(node -e "console.log(require('path').resolve(__dirname))")"
+          cp baseten-performance-client/node_bindings/*.node .
           yarn test
   test-linux-x64-gnu-binding:
     if: false # TODO: enable relative path issue when testing
