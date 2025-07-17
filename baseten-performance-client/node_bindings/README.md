@@ -16,7 +16,7 @@ npm install baseten-performance-client
 
 ### Basic Setup
 
-Since different endpoints require different clients, you'll typically need to create separate clients for embeddings and reranking:
+Since different endpoints require different clients, you'll typically need to create separate clients for embeddings and reranking deployments.
 
 ```javascript
 const { PerformanceClient } = require('baseten-performance-client');
