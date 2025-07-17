@@ -525,6 +525,12 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    if tr.spec.config.runtime.transport.kind == "grpc" and not publish and not promote:
+        raise click.UsageError(
+            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command with --promote or --publish."
+        )
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -532,7 +538,6 @@ def push(
         include_git_info = user_config.settings.include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
-    tr = _get_truss_from_directory(target_directory=target_directory)
 
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
