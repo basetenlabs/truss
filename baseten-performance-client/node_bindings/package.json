@@ -1,28 +1,11 @@
 {
-  "name": "baseten-performance-client",
-  "version": "0.0.1",
-  "description": "High performance client for Baseten.co endpoints",
+  "name": "@baseten/performance-client",
+  "version": "0.0.1-rc0",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "baseten-performance-client",
-    "triples": {
-      "additional": [
-        "aarch64-apple-darwin",
-        "aarch64-linux-android",
-        "aarch64-unknown-linux-gnu",
-        "aarch64-unknown-linux-musl",
-        "aarch64-pc-windows-msvc",
-        "armv7-unknown-linux-gnueabihf",
-        "armv7-unknown-linux-musleabihf",
-        "x86_64-unknown-linux-musl",
-        "x86_64-unknown-freebsd",
-        "i686-pc-windows-msvc",
-        "armv7-linux-androideabi",
-        "universal-apple-darwin",
-        "riscv64gc-unknown-linux-gnu"
-      ]
-    }
+    "name": "performance-client",
+    "triples": {}
   },
   "license": "MIT",
   "devDependencies": {
@@ -35,14 +18,6 @@
   "engines": {
     "node": ">= 10"
   },
-  "keywords": [
-    "baseten",
-    "performance",
-    "client",
-    "embedding",
-    "reranking",
-    "classification"
-  ],
   "scripts": {
     "artifacts": "napi artifacts",
     "build": "napi build --platform --release",
@@ -51,5 +26,11 @@
     "test": "ava",
     "universal": "napi universal",
     "version": "napi version"
+  },
+  "packageManager": "yarn@4.9.2",
+  "optionalDependencies": {
+    "@baseten/performance-client-win32-x64-msvc": "0.0.0",
+    "@baseten/performance-client-darwin-x64": "0.0.0",
+    "@baseten/performance-client-linux-x64-gnu": "0.0.0"
   }
 }
