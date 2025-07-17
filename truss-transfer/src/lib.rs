@@ -1,953 +1,45 @@
-use std::collections::{HashMap, HashSet};
-use std::env;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::Once;
-use std::sync::{Arc, Mutex, OnceLock};
-
-use anyhow::{anyhow, Context, Result};
-use bytes::Bytes;
-use futures_util::stream::{FuturesUnordered, StreamExt};
-use pyo3::exceptions::PyException;
-use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
-use reqwest::Client;
-use serde::Deserialize;
-#[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
-#[cfg(windows)]
-use std::time::UNIX_EPOCH;
-use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::Semaphore;
-// For logging
-use env_logger::Builder;
-use fs2;
-use log::{debug, error, info, warn, LevelFilter};
-use num_cpus; // Add this line
-
-// Constants
-static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
-static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
-static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600; // 6 hours
-static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
-static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
-static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
-static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
-static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 4 * 24; // 4 days
-static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
-static SECRETS_BASE_PATH: &str = "/secrets";
-static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
-    "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
-static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 350.0;
-static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 90.0; // small instances expect slower speed
-static TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB: u64 = 100;
-
-// Global lock to serialize downloads (NOTE: this is process-local only)
-// For multi-process synchronization (e.g. in a “double start” scenario),
-// consider using a file-based lock instead.
-static GLOBAL_DOWNLOAD_LOCK: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
-
-/// Initialize the global lock if it hasn't been initialized yet.
-fn get_global_lock() -> &'static Arc<Mutex<()>> {
-    GLOBAL_DOWNLOAD_LOCK.get_or_init(|| Arc::new(Mutex::new(())))
-}
-
-static INIT_LOGGER: Once = Once::new();
-
-fn init_logger_once() {
-    // Initialize the logger with a default level of `info`
-    INIT_LOGGER.call_once(|| {
-        // Check if the environment variable "RUST_LOG" is set.
-        // If not, default to "info".
-        let rust_log = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-        let level = rust_log.parse::<LevelFilter>().unwrap_or(LevelFilter::Info);
-
-        let _ = Builder::new()
-            .filter_level(level)
-            .format(|buf, record| {
-                // Prettier log format: [timestamp] [LEVEL] [module] message
-                writeln!(
-                    buf,
-                    "[{}] [{:<5}] {}",
-                    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
-                    record.level(),
-                    record.args()
-                )
-            })
-            .try_init();
-    });
-}
-
-fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>) -> String {
-    // Order:
-    // 1. optional_download_dir, if provided
-    // 2. TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR environment variable
-    // 3. TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK (with a warning)
-    optional_download_dir
-        .or_else(|| env::var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR).ok())
-        .unwrap_or_else(|| {
-            warn!(
-                "No download directory provided. Please set `export {}=/path/to/dir` or pass it as an argument. Using fallback: {}",
-                TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR, TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK
-            );
-            TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK.into()
-        })
-}
-
-#[derive(Debug, Deserialize, Clone)]
-enum ResolutionType {
-    #[serde(rename = "http")]
-    Http,
-    #[serde(rename = "gcs")]
-    Gcs,
-}
-
-impl Default for ResolutionType {
-    fn default() -> Self {
-        ResolutionType::Http
-    }
-}
-
-/// Corresponds to `Resolution` in the Python code
-#[derive(Debug, Deserialize, Clone)]
-struct Resolution {
-    url: String,
-    #[serde(default)]
-    resolution_type: ResolutionType,
-    expiration_timestamp: i64,
-}
-
-fn default_runtime_secret_name() -> String {
-    "hf_access_token".to_string()
-}
-
-/// Corresponds to `BasetenPointer` in the Python code
-#[allow(dead_code)]
-#[derive(Debug, Deserialize, Clone)]
-struct BasetenPointer {
-    resolution: Resolution,
-    uid: String,
-    file_name: String,
-    hashtype: String,
-    hash: String,
-    size: u64,
-    // defaults to `hf_access_token` if not provided
-    #[serde(default = "default_runtime_secret_name")]
-    runtime_secret_name: String,
-}
-
-/// Corresponds to `BasetenPointerManifest` in the Python code
-#[derive(Debug, Deserialize)]
-struct BasetenPointerManifest {
-    pointers: Vec<BasetenPointer>,
-}
-
-/// Python-callable function to read the manifest and download data.
-/// By default, it will use the `TRUSS_TRANSFER_DOWNLOAD_DIR` environment variable.
-#[pyfunction]
-#[pyo3(signature = (download_dir=None))]
-fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
-    Python::with_gil(|py| py.allow_threads(|| lazy_data_resolve_entrypoint(download_dir)))
-        .map_err(|err| PyException::new_err(err.to_string()))
-}
-
-/// Shared entrypoint for both Python and CLI
-fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> {
-    init_logger_once();
-    let num_workers = TRUSS_TRANSFER_NUM_WORKERS_DEFAULT;
-    let download_dir = resolve_truss_transfer_download_dir(download_dir);
-
-    // Ensure the global lock is initialized
-    let lock = get_global_lock();
-
-    info!("Acquiring global download lock...");
-    let _guard = lock
-        .lock()
-        .map_err(|_| anyhow!("Global lock was poisoned"))?;
-    info!("Starting downloads to: {}", download_dir);
-
-    // Build the Tokio runtime after acquiring the lock.
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .context("Failed to build Tokio runtime")?;
-
-    // Run the asynchronous logic.
-    rt.block_on(async { lazy_data_resolve_async(download_dir.clone().into(), num_workers).await })?;
-    Ok(download_dir)
-}
-
-/// Asynchronous implementation of the lazy data resolver logic.
-async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> Result<()> {
-    info!(
-        "Checking if manifest file exists at `{}`...",
-        LAZY_DATA_RESOLVER_PATH
-    );
-
-    let mut num_workers = num_workers;
-
-    // 1. Check if bptr-manifest file exists
-    let manifest_path = Path::new(LAZY_DATA_RESOLVER_PATH);
-    if !manifest_path.is_file() {
-        return Err(anyhow!(
-            "Manifest file not found at `{}`. Please ensure the file exists before running.",
-            LAZY_DATA_RESOLVER_PATH
-        ));
-    }
-
-    // 2. Parse YAML asynchronously
-    info!("Manifest file found. Reading YAML...");
-    let yaml_data = fs::read_to_string(manifest_path)
-        .await
-        .context("Unable to read YAML from bptr-manifest")?;
-    let bptr_manifest: BasetenPointerManifest =
-        serde_yaml::from_str(&yaml_data).context("Failed to parse Baseten pointer manifest")?;
-    info!(
-        "Successfully read manifest. Number of pointers: {}",
-        bptr_manifest.pointers.len()
-    );
-
-    // 3. Validate expiration and build the resolution map
-    let mut resolution_map = build_resolution_map(&bptr_manifest)?;
-    info!("All pointers validated successfully.");
-
-    // 4. Check if b10cache is enabled
-    let allowed_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
-        .unwrap_or_else(|_| "false".into())
-        .to_lowercase()
-        .as_str()
-    {
-        "1" | "true" => true,
-        _ => false,
-    };
-    let mut read_from_b10cache = allowed_b10_cache;
-    let mut write_to_b10cache = allowed_b10_cache;
-
-    if allowed_b10_cache {
-        info!("b10cache is enabled.");
-        // create cache directory if it doesn't exist
-        fs::create_dir_all(CACHE_DIR)
-            .await
-            .context("Failed to create b10cache directory")?;
-        // shuffle the resolution map to randomize the order of downloads
-        // in a multi-worker inital start scenario (cold-boost + x)
-        // This is to avoid the same file being downloaded by multiple workers
-        use rand::seq::SliceRandom;
-        resolution_map.shuffle(&mut rand::rng());
-
-        let current_hashes = current_hashes_from_manifest(&bptr_manifest);
-        let manifest_hash_to_size_map: HashMap<String, u64> = bptr_manifest
-            .pointers
-            .iter()
-            .map(|p| (p.hash.clone(), p.size))
-            .collect();
-
-        let sum_manifest_size_bytes: u64 = bptr_manifest.pointers.iter().map(|p| p.size).sum();
-
-        // Clean up cache and get space statistics
-        let (available_volume_bytes, manifest_files_in_cache_bytes) =
-            cleanup_b10cache_and_get_space_stats(&current_hashes, &manifest_hash_to_size_map)
-                .await?;
-
-        let additional_bytes_to_cache =
-            sum_manifest_size_bytes.saturating_sub(manifest_files_in_cache_bytes);
-        let min_required_headroom_bytes =
-            TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB * 1024 * 1024 * 1024;
-
-        if available_volume_bytes > additional_bytes_to_cache + min_required_headroom_bytes {
-            info!(
-                "Sufficient space for b10cache write: Available on volume: {:.2}GB, Additional for current manifest: {:.2}GB, Required headroom: {}GB. Enabling write to b10cache.",
-                available_volume_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                additional_bytes_to_cache as f64 / (1024.0 * 1024.0 * 1024.0),
-                TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB
-            );
-            // write_to_b10cache remains true (its default if allowed_b10_cache is true)
-        } else {
-            warn!(
-                "Insufficient space for b10cache write: Available on volume: {:.2}GB, Additional for current manifest: {:.2}GB, Required headroom: {}GB. Disabling write to b10cache.",
-                available_volume_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                additional_bytes_to_cache as f64 / (1024.0 * 1024.0 * 1024.0),
-                TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB
-            );
-            write_to_b10cache = false;
-        }
-
-        // todo: check speed of b10cache (e.g. is faster than 100MB/s)
-        // and stop using b10cache if download speed is faster
-        match is_b10cache_fast_heuristic(&bptr_manifest).await {
-            Ok(speed) => {
-                if speed {
-                    info!("b10cache is faster than downloading.");
-                } else {
-                    info!("b10cache is slower than downloading. Not reading from b10cache.");
-                    read_from_b10cache = false;
-                }
-            }
-            Err(e) => {
-                warn!("Failed to check b10cache speed: {}", e);
-            }
-        }
-
-        // only use at max 2 workers for b10cache, to avoid conflicts on parallel writes
-        if write_to_b10cache {
-            num_workers = num_workers.min(2);
-        }
-        info!(
-            "b10cache use: Read: {}, Write: {}",
-            read_from_b10cache, write_to_b10cache
-        );
-    } else {
-        info!("b10cache is not enabled for read or write.");
-    }
-
-    // 5. Build concurrency limit
-    info!("Using {} concurrent workers.", num_workers);
-
-    let semaphore = Arc::new(Semaphore::new(num_workers));
-    let client = Client::builder()
-        // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
-        .tcp_keepalive(std::time::Duration::from_secs(15))
-        .http2_keep_alive_interval(Some(std::time::Duration::from_secs(15)))
-        .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
-        .build()?;
-
-    // 6. Spawn download tasks
-    info!("Spawning download tasks...");
-    let mut tasks: FuturesUnordered<
-        tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>,
-    > = FuturesUnordered::new();
-    for (file_name, pointer) in resolution_map {
-        let download_dir = download_dir.clone();
-        let client = client.clone();
-        let sem_clone = semaphore.clone();
-        tasks.push(tokio::spawn(async move {
-            let _permit = sem_clone.acquire_owned().await;
-            debug!("Handling file: {}", file_name);
-            download_file_with_cache(
-                &client,
-                &pointer.resolution.url,
-                &download_dir,
-                &file_name,
-                &pointer.hash,
-                pointer.size,
-                &pointer.runtime_secret_name,
-                read_from_b10cache,
-                write_to_b10cache,
-            )
-            .await
-        }));
-    }
-
-    // 7. Await all tasks
-    info!("Awaiting completion of all download tasks...");
-    while let Some(join_result) = tasks.next().await {
-        match join_result {
-            Ok(Ok(())) => {} // task succeeded
-            Ok(Err(e)) => {
-                error!("A download task failed: {}", e);
-                return Err(anyhow!("Download failure: {}", e));
-            }
-            Err(e) => {
-                error!("A Tokio task panicked: {}", e);
-                return Err(anyhow!("Tokio task panicked: {}", e));
-            }
-        }
-    }
-
-    info!("All downloads completed successfully!");
-    Ok(())
-}
-
-/// Validate expiration and build a vector of (file_name, (URL, hash, size)).
-fn build_resolution_map(
-    bptr_manifest: &BasetenPointerManifest,
-) -> Result<Vec<(String, BasetenPointer)>> {
-    let now = chrono::Utc::now().timestamp();
-    let mut out = Vec::new();
-
-    for bptr in &bptr_manifest.pointers {
-        if bptr.resolution.expiration_timestamp < now {
-            return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
-        }
-        if bptr.hash.contains('/') {
-            return Err(anyhow!(
-                "Hash {} contains '/', which is not allowed",
-                bptr.hash
-            ));
-        }
-        out.push((bptr.file_name.clone(), bptr.clone()));
-    }
-
-    Ok(out)
-}
-async fn check_metadata_size(path: &Path, size: u64) -> bool {
-    match fs::metadata(path).await {
-        Ok(metadata) => size == metadata.len() as u64,
-        Err(_) => false, // If metadata cannot be accessed, consider it a size mismatch
-    }
-}
-
-/// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
-async fn download_file_with_cache(
-    client: &Client,
-    url: &str,
-    download_dir: &Path,
-    file_name: &str,
-    hash: &str,
-    size: u64,
-    runtime_secret_name: &str,
-    read_from_b10cache: bool,
-    write_to_b10cache: bool,
-) -> Result<()> {
-    let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
-    let cache_path = Path::new(CACHE_DIR).join(hash);
-
-    // Skip download if file exists with the expected size.
-    if check_metadata_size(&destination, size).await {
-        info!(
-            "File {} already exists with correct size. Skipping download.",
-            file_name
-        );
-        return Ok(());
-    } else if destination.exists() {
-        warn!(
-            "File {} exists but size mismatch. Redownloading.",
-            file_name
-        );
-    }
-
-    // If b10cache is enabled, try symlinking from the cache
-    if read_from_b10cache {
-        // Check metadata and size first
-        if check_metadata_size(&cache_path, size).await {
-            debug!(
-                "Found {} in b10cache. Attempting to create symlink...",
-                hash
-            );
-            if let Err(e) = create_symlink_or_skip(&cache_path, &destination, size).await {
-                warn!(
-                    "Symlink creation failed: {}.  Proceeding with direct download.",
-                    e
-                );
-            } else {
-                info!(
-                    "Symlink created successfully. Skipping download for {}.",
-                    file_name
-                );
-                return Ok(());
-            }
-        } else {
-            warn!(
-                "Found {} in b10cache but size mismatch. b10cache is inconsistent. Proceeding to download.",
-                hash
-            );
-        }
-    }
-    // Download the file to the local path
-    download_to_path(client, url, &destination, size, runtime_secret_name).await?;
-
-    // After the file is locally downloaded, optionally move it to b10cache.
-    if write_to_b10cache {
-        match handle_write_b10cache(&destination, &cache_path).await {
-            Ok(_) => debug!("b10cache handled successfully."),
-            Err(e) => {
-                // even if the handle_write_b10cache fails, we still continue.
-                warn!("Failed to handle b10cache: {}", e);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Sanitize a URL by removing query parameters if they exist for logging purposes.
-fn sanitize_url(url: &str) -> String {
-    if let Some(index) = url.find('?') {
-        url[..index].to_string()
-    } else {
-        url.to_string()
-    }
-}
-
-/// Stream a download from `url` into the specified `path`.
-/// Returns an error if the download fails or if the file size does not match the expected size.
-async fn download_to_path(
-    client: &Client,
-    url: &str,
-    path: &Path,
-    size: u64,
-    runtime_secret_name: &str,
-) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).await.context(format!(
-            "Failed to create directory for download path: {:?}",
-            parent
-        ))?;
-    }
-
-    let sanitized_url = sanitize_url(url);
-    debug!("Starting download to {:?} from {}", path, sanitized_url);
-    let mut request_builder = client.get(url);
-    if url.starts_with("https://huggingface.co") {
-        if let Some(token) = get_secret_from_file(runtime_secret_name) {
-            request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
-        }
-    }
-    let resp = request_builder
-        .send()
-        .await?
-        .error_for_status()
-        .map_err(|e| {
-            let status = e.status().map_or("unknown".into(), |s| s.to_string());
-            anyhow!("HTTP status {} for url ({})", status, sanitized_url,)
-        })?;
-    let mut stream = resp.bytes_stream();
-
-    let mut file = fs::File::create(path).await?;
-    while let Some(chunk_result) = stream.next().await {
-        let chunk: Bytes = chunk_result?;
-        file.write_all(&chunk).await?;
-    }
-    // make sure all data is written to disk
-    file.flush().await?;
-    file.sync_all().await?;
-
-    let metadata = fs::metadata(path).await?;
-    let written = metadata.len();
-    if written as u64 != size {
-        Err(anyhow!(
-            "Downloaded file size mismatch for {:?} (expected {}, got {})",
-            path,
-            size,
-            written
-        ))?;
-    }
-
-    info!("Completed download to {:?}", path);
-    Ok(())
-}
-
-// e.g. for `hf_access_token` reads /secrets/hf_access_token and returns its contents
-fn get_secret_from_file(name: &str) -> Option<String> {
-    let path = Path::new(SECRETS_BASE_PATH).join(name);
-    if path.exists() {
-        if let Ok(contents) = std::fs::read_to_string(&path) {
-            let trimmed = contents.trim().to_string();
-            if !trimmed.is_empty() {
-                debug!("Found secret in token in {}", path.display());
-                return Some(trimmed);
-            }
-        }
-    }
-    warn!(
-        "No secret found in {path}. Using unauthenticated access. Make sure to set `{name}` in your Baseten.co secrets and add `secrets:- {name}: null` to your config.yaml.",
-        path = path.display(),
-        name = name
-    );
-    None
-}
-
-fn get_b10fs_cleanup_threshold_hours() -> u64 {
-    env::var(TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS)
-}
-
-fn current_hashes_from_manifest(manifest: &BasetenPointerManifest) -> HashSet<String> {
-    manifest.pointers.iter().map(|p| p.hash.clone()).collect()
-}
-
-/// Helper function to get the file’s last access time as a Unix timestamp.
-/// On Unix, it uses `metadata.atime()`. On Windows, it uses `metadata.accessed()`.
-fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
-    #[cfg(unix)]
-    {
-        Ok(metadata.atime())
-    }
-    #[cfg(windows)]
-    {
-        let accessed = metadata.accessed()?;
-        let duration = accessed.duration_since(UNIX_EPOCH).unwrap_or_default();
-        Ok(duration.as_secs() as i64)
-    }
-}
-
-/// cleans up cache files and calculates total cache utilization.
-/// Returns a tuple: (available_volume_bytes, manifest_files_in_cache_bytes).
-/// Files are cleaned up if they:
-/// - Have not been accessed within the threshold AND are not in `current_hashes`
-pub async fn cleanup_b10cache_and_get_space_stats(
-    current_hashes: &HashSet<String>,
-    manifest_hash_to_size_map: &HashMap<String, u64>,
-) -> Result<(u64, u64)> {
-    // Returns (available_volume_bytes, manifest_files_in_cache_bytes)
-    let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
-    let cache_dir_path = Path::new(CACHE_DIR);
-    let now = chrono::Utc::now().timestamp();
-    let threshold_seconds = cleanup_threshold_hours * 3600;
-
-    let mut dir = fs::read_dir(cache_dir_path)
-        .await
-        .with_context(|| format!("Failed to read cache directory: {:?}", cache_dir_path))?;
-
-    let mut total_bytes_managed_in_cache = 0u64; // All files kept in cache (manifest or not old enough)
-    let mut total_files_managed_in_cache = 0usize;
-    let mut manifest_files_in_cache_bytes = 0u64; // Size of files from current manifest, correctly cached
-
-    info!(
-        "Analyzing b10cache at {} with a cleanup threshold of {} hours ({} days)",
-        CACHE_DIR,
-        cleanup_threshold_hours,
-        cleanup_threshold_hours as f64 / 24.0
-    );
-
-    while let Some(entry) = dir.next_entry().await? {
-        let path = entry.path();
-        // Only process files
-        if path.is_file() {
-            let metadata = fs::metadata(&path).await?;
-            let actual_file_size = metadata.len();
-            let atime = get_atime(&metadata)?;
-
-            if let Some(file_name_hash) = path.file_name().and_then(|n| n.to_str()) {
-                if let Some(expected_size) = manifest_hash_to_size_map.get(file_name_hash) {
-                    // File is part of the current manifest
-                    total_bytes_managed_in_cache += actual_file_size;
-                    total_files_managed_in_cache += 1;
-                    if actual_file_size == *expected_size {
-                        manifest_files_in_cache_bytes += actual_file_size;
-                    } else {
-                        warn!(
-                            "Cached file {} (hash: {}) has incorrect size. Expected {}, got {}. Not counting towards current manifest cache size.",
-                            path.display(), file_name_hash, expected_size, actual_file_size
-                        );
-                        // This file, though in manifest, is corrupted in cache.
-                        // It won't be deleted by age here, but download logic might replace it if it tries to use it.
-                    }
-                } else if now - atime > threshold_seconds as i64
-                    && !current_hashes.contains(file_name_hash)
-                {
-                    // File is NOT in current manifest AND is older than threshold
-                    info!(
-                        "Deleting old cached file {} ({} bytes): not in current manifest and not accessed for over {} hours",
-                        file_name_hash, actual_file_size, cleanup_threshold_hours
-                    );
-                    if let Err(e) = fs::remove_file(&path).await {
-                        warn!("Failed to delete cached file {:?}: {}", path, e);
-                    }
-                } else {
-                    // File is NOT in current manifest but is NOT old enough to delete OR
-                    // it IS in current_hashes but somehow not in manifest_hash_to_size_map (should not happen if maps are consistent)
-                    // or it was in manifest_hash_to_size_map but had wrong size (already handled above for manifest_files_in_cache_bytes)
-                    if !manifest_hash_to_size_map.contains_key(file_name_hash) {
-                        // only log if truly not in manifest
-                        debug!(
-                            "Keeping non-manifest file {} ({} bytes): last accessed {} minutes ago.",
-                            file_name_hash,
-                            actual_file_size,
-                            (now - atime) / 60
-                        );
-                        total_bytes_managed_in_cache += actual_file_size;
-                        total_files_managed_in_cache += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    info!(
-        "Cache analysis complete: {} files managed in cache totaling {:.2} GB. Correctly cached files from current manifest: {:.2} GB.",
-        total_files_managed_in_cache,
-        total_bytes_managed_in_cache as f64 / (1024.0 * 1024.0 * 1024.0),
-        manifest_files_in_cache_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
-    );
-
-    // Get available disk space for CACHE_DIR's volume
-    let stats = fs2::statvfs(cache_dir_path)
-        .with_context(|| format!("Failed to get volume stats for {:?}", cache_dir_path))?;
-    let available_bytes = stats.available_space(); // f_bavail * f_frsize (available to non-root)
-
-    info!(
-        "Total available space on volume for {}: {:.2} GB ({} bytes)",
-        CACHE_DIR,
-        available_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-        available_bytes
-    );
-
-    Ok((available_bytes, manifest_files_in_cache_bytes))
-}
-/// handling new b10cache:
-/// 1. Copy the local file (download_path) to a temporary cache file with a “.incomplete” suffix.
-/// 2. Verify that the copied file’s size matches the expected size.
-/// - (1.), (2.), (3.) with error handling for concurrency.
-/// 3. If the sizes match:
-///    - Atomically rename the temporary file to the final cache path.
-///    - Delete the local file (deduplicate).
-///    - Create a symlink from the cache file to the original local path.
-/// 4. If the sizes do not match:
-///    - Delete the .incomplete file and keep the local file.
-async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> Result<()> {
-    info!(
-        "b10cache enabled: copying file from {:?} to cache and creating symlink back to {:?}",
-        download_path, cache_path
-    );
-    let size = fs::metadata(download_path).await?.len();
-    // check if cache_path exists and has the same size, concurrency with other replica.
-    if cache_path.exists() {
-        let cache_metadata = fs::metadata(cache_path).await?;
-        if cache_metadata.len() as u64 == size {
-            info!(
-                "Cache file {:?} already exists with the same size. Skipping copy to b10fs.",
-                cache_path
-            );
-            update_atime_by_reading(cache_path)
-                .await
-                .context("Failed to update atime for cache file")?;
-            return Ok(());
-        }
-    }
-
-    // Build the temporary incomplete file path.
-    let mut should_copy = true;
-    let incomplete_cache_path = cache_path.with_extension("incomplete");
-    if incomplete_cache_path.exists() {
-        // Check if the incomplete file has the expected size.
-        if check_metadata_size(&incomplete_cache_path, size).await {
-            should_copy = false;
-        } else {
-            warn!(
-                "Incomplete cache file {:?} already exists. Deleting it.",
-                incomplete_cache_path
-            );
-            match fs::remove_file(&incomplete_cache_path).await {
-                Ok(_) => info!("Deleted incomplete cache file."),
-                Err(e) => warn!("Failed to delete incomplete cache file: {}", e),
-            }
-        }
-    }
-
-    if should_copy {
-        // Copy the local file to the incomplete cache file.
-        info!(
-            "Copying local file {:?} to temporary incomplete cache file {:?}",
-            download_path, incomplete_cache_path
-        );
-        match fs::copy(download_path, &incomplete_cache_path).await {
-            Ok(_) => info!("Successfully copied to incomplete cache file."),
-            Err(e) => {
-                warn!("Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage.", e);
-                return Ok(());
-            }
-        }
-    }
-
-    let incomplete_metadata = match fs::metadata(&incomplete_cache_path).await {
-        Ok(metadata) => metadata,
-        Err(e) => {
-            warn!("Failed to get metadata for incomplete cache file: {}. Maybe b10cache has no storage or concurrency issue.", e);
-            return Ok(());
-        }
-    };
-
-    if incomplete_metadata.len() as u64 != size {
-        warn!(
-            "Size mismatch in incomplete cache file: expected {} bytes, got {} bytes. Keeping local file and cleaning up b10cache - perhaps related to high concurrency.",
-            size,
-            incomplete_metadata.len()
-        );
-        match fs::remove_file(&incomplete_cache_path).await {
-            Ok(_) => info!("Deleted incomplete cache file."),
-            Err(e) => warn!("Failed to delete incomplete cache file: {}", e),
-        };
-        return Ok(());
-    }
-
-    // Atomically rename the incomplete file to the final cache file.
-    info!(
-        "Atomic rename: renaming incomplete cache file {:?} to final cache file {:?}",
-        incomplete_cache_path, cache_path
-    );
-    fs::rename(&incomplete_cache_path, cache_path)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to atomically rename incomplete cache file {:?} to final cache file {:?}",
-                incomplete_cache_path, cache_path
-            )
-        })?;
-
-    // Delete the local file as its copy is now in the cache.
-    info!("Deleting local file at {:?}", download_path);
-    fs::remove_file(download_path)
-        .await
-        .with_context(|| format!("Failed to delete local file {:?}", download_path))?;
-
-    // Create a symlink from the cache file to the original download location.
-    info!(
-        "Creating symlink from cache file {:?} to local file path {:?}",
-        cache_path, download_path
-    );
-    create_symlink_or_skip(cache_path, download_path, size)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to create symlink from cache file {:?} to local file path {:?}",
-                cache_path, download_path
-            )
-        })?;
-
-    info!(
-        "Successfully handled b10cache for file: {:?}",
-        download_path
-    );
-    Ok(())
-} // Get the desired download speed from the environment variable or use a heuristic.
-  // Heuristcally, if the number of CPU cores is 64 or fewer, use a lower speed.
-  // If the environment variable is not set, use a random number between 25 and 300 MB/s.
-fn get_desired_speed() -> f64 {
-    if let Ok(speed) = env::var(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR) {
-        if let Ok(speed) = speed.parse::<f64>() {
-            return speed;
-        }
-    }
-
-    // if we have 16 or fewer cpu cores, use a lower speed
-    let speed_threshold = if num_cpus::get() <= 16 {
-        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES
-    } else {
-        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS
-    };
-
-    // fallback to a random number between 10 MB/s and speed_threshold
-    10.0 + rand::random::<f64>() * (speed_threshold - 10.0)
-}
-
-/// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
-/// If the read speed is greater than e.g. 114MB/s, it returns true.
-/// If no file in the cache is larger than 128MB, it returns true.
-/// Otherwise, it returns false.
-async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
-    let benchmark_size: usize = 128 * 1024 * 1024; // 128MB
-                                                   // random number, uniform between 25 and 400 MB/s as a threshold
-                                                   // using random instead of fixed number to e.g. avoid catastrophic
-                                                   // events e.g. huggingface is down, where b10cache will have more load.
-    let desired_speed: f64 = get_desired_speed();
-
-    for bptr in &manifest.pointers {
-        let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
-
-        if bptr.size > (2 * benchmark_size as u64) && cache_path.exists() {
-            let metadata = fs::metadata(&cache_path).await?;
-            let file_size = metadata.len();
-            if file_size == bptr.size as u64 {
-                let mut file = fs::File::open(&cache_path)
-                    .await
-                    .with_context(|| format!("Failed to open file {:?}", cache_path))?;
-                // benchmark, read 100MB
-                let mut buffer = vec![0u8; benchmark_size]; // 100MB buffer
-                let start_time = std::time::Instant::now();
-                let bytes_read = file.read_exact(&mut buffer).await;
-                let elapsed_time = start_time.elapsed();
-                if bytes_read.is_ok() {
-                    let elapsed_secs = elapsed_time.as_secs_f64();
-                    let speed = (buffer.len() as f64 / 1024.0 / 1024.0) / elapsed_secs; // MB/s
-                    warn!(
-                        "b10cache: Read speed of {:.2} MB/s, desired: {:.2} MB/s",
-                        speed, desired_speed
-                    );
-                    if speed > desired_speed {
-                        return Ok(true); // Use b10cache
-                    } else {
-                        return Ok(false); // Don't use b10cache
-                    }
-                } else {
-                    // If reading fails, log the error and continue
-                    warn!(
-                        "Failed to read file {:?}: {}",
-                        cache_path,
-                        bytes_read.unwrap_err()
-                    );
-                }
-            }
-        }
-    }
-    info!("Skipping b10cache speed check.");
-    // no file > 512MB found in cache
-    return Ok(true);
-}
-
-// verifies that the file exists and updates its atime by reading it
-async fn update_atime_by_reading(path: &Path) -> Result<()> {
-    // Open the file in read-only mode.
-    let mut file = fs::File::open(path)
-        .await
-        .with_context(|| format!("Failed to open file {:?} for updating atime", path))?;
-    let mut buffer = [0u8; 1];
-    let _ = file.read(&mut buffer).await?;
-    Ok(())
-}
-
-/// Create a symlink from `src` to `dst` if `dst` does not exist.
-/// Returns Ok(()) if `dst` already exists.
-async fn create_symlink_or_skip(src: &Path, dst: &Path, size: u64) -> Result<()> {
-    let src_metadata = fs::metadata(src).await?;
-    if src_metadata.len() as u64 != size {
-        warn!(
-            "File size mismatch before symlink to {:?}. Expected {}, got {}",
-            dst,
-            size,
-            src_metadata.len()
-        );
-    }
-    if dst.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = dst.parent() {
-        std::fs::create_dir_all(parent)
-            .context("Failed to create parent directory for symlink destination")?;
-    }
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(src, dst).context("Failed to create Unix symlink")?;
-    }
-    #[cfg(windows)]
-    {
-        std::os::windows::fs::symlink_file(src, dst).context("Failed to create Windows symlink")?;
-    }
-    update_atime_by_reading(src)
-        .await
-        .context("Failed to update atime after symlink")?;
-    Ok(())
-}
-
-/// Running the CLI directly.
+// Modular truss_transfer library
+// This library provides functionality for downloading and caching files
+// with support for Python and CLI bindings
+
+// Module declarations
+mod bindings;
+mod cache;
+mod constants;
+mod core;
+mod create;
+mod download;
+mod speed_checks;
+mod types;
+
+// CLI module (only when cli feature is enabled)
 #[cfg(feature = "cli")]
-fn main() -> anyhow::Result<()> {
-    init_logger_once();
-    info!("truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
+mod cli;
 
-    // Pass the first CLI argument as the download directory, if provided.
-    let download_dir = std::env::args().nth(1);
-    if let Err(e) = lazy_data_resolve_entrypoint(download_dir) {
-        error!("Error during execution: {}", e);
-        std::process::exit(1);
-    }
-    Ok(())
-}
+// Re-export the main public API to maintain compatibility
+pub use bindings::{lazy_data_resolve, truss_transfer};
+pub use cache::cleanup_b10cache_and_get_space_stats;
+pub use core::lazy_data_resolve_entrypoint;
 
-/// Python module definition
-#[pymodule]
-fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(lazy_data_resolve, m)?)?;
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    Ok(())
-}
+// Re-export the main function for CLI usage
+#[cfg(feature = "cli")]
+pub use cli::main;
 
+// Re-export types for external use
+pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, ResolutionType};
+
+// Re-export HuggingFace functionality
+pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
+
+// Re-export BasetenPointer API
+pub use create::create_basetenpointer;
+
+// Tests module
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::bindings::resolve_truss_transfer_download_dir;
+    use crate::constants::*;
+    use crate::types::*;
     use std::env;
 
     #[test]
@@ -981,11 +73,11 @@ mod tests {
         // Create a pointer with an expiration timestamp in the future.
         let future_timestamp = chrono::Utc::now().timestamp() + 3600; // one hour in the future
         let pointer = BasetenPointer {
-            resolution: Resolution {
+            resolution: Some(Resolution {
                 url: "http://example.com/file".into(),
                 resolution_type: ResolutionType::Http,
                 expiration_timestamp: future_timestamp,
-            },
+            }),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -996,7 +88,7 @@ mod tests {
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
         };
-        let result = build_resolution_map(&manifest);
+        let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_ok());
         let map = result.unwrap();
         assert_eq!(map.len(), 1);
@@ -1008,11 +100,11 @@ mod tests {
         // Create a pointer that has already expired.
         let past_timestamp = chrono::Utc::now().timestamp() - 3600; // one hour in the past
         let pointer = BasetenPointer {
-            resolution: Resolution {
+            resolution: Some(Resolution {
                 url: "http://example.com/file".into(),
                 resolution_type: ResolutionType::Http,
                 expiration_timestamp: past_timestamp,
-            },
+            }),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -1023,14 +115,316 @@ mod tests {
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
         };
-        let result = build_resolution_map(&manifest);
+        let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_init_logger_once() {
         // Calling init_logger_once multiple times should not panic.
-        init_logger_once();
-        init_logger_once();
+        crate::bindings::init_logger_once();
+        crate::bindings::init_logger_once();
+    }
+
+    #[test]
+    fn test_build_resolution_map_invalid_hash_with_slash() {
+        // Create a pointer with a hash containing a slash (should fail)
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600;
+        let pointer = BasetenPointer {
+            resolution: Some(Resolution {
+                url: "http://example.com/file".into(),
+                resolution_type: ResolutionType::Http,
+                expiration_timestamp: future_timestamp,
+            }),
+            uid: "123".into(),
+            file_name: "file.txt".into(),
+            hashtype: "sha256".into(),
+            hash: "abc/def".into(), // Invalid hash with slash
+            size: 1024,
+            runtime_secret_name: "hf_access_token".into(),
+        };
+        let manifest = BasetenPointerManifest {
+            pointers: vec![pointer],
+        };
+        let result = crate::core::build_resolution_map(&manifest);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Hash"));
+    }
+
+    #[test]
+    fn test_build_resolution_map_no_resolution() {
+        // Create a pointer without resolution (should fail)
+        let pointer = BasetenPointer {
+            resolution: None,
+            uid: "123".into(),
+            file_name: "file.txt".into(),
+            hashtype: "sha256".into(),
+            hash: "abcdef".into(),
+            size: 1024,
+            runtime_secret_name: "hf_access_token".into(),
+        };
+        let manifest = BasetenPointerManifest {
+            pointers: vec![pointer],
+        };
+        let result = crate::core::build_resolution_map(&manifest);
+        assert!(result.is_ok()); // Should still be OK as resolution is checked only when available
+        assert_eq!(result.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_merge_manifests_basic() {
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600;
+
+        // Create two manifests with different files
+        let manifest1 = BasetenPointerManifest {
+            pointers: vec![BasetenPointer {
+                resolution: Some(Resolution {
+                    url: "http://example.com/file1".into(),
+                    resolution_type: ResolutionType::Http,
+                    expiration_timestamp: future_timestamp,
+                }),
+                uid: "123".into(),
+                file_name: "file1.txt".into(),
+                hashtype: "sha256".into(),
+                hash: "hash1".into(),
+                size: 1024,
+                runtime_secret_name: "hf_access_token".into(),
+            }],
+        };
+
+        let manifest2 = BasetenPointerManifest {
+            pointers: vec![BasetenPointer {
+                resolution: Some(Resolution {
+                    url: "http://example.com/file2".into(),
+                    resolution_type: ResolutionType::Http,
+                    expiration_timestamp: future_timestamp,
+                }),
+                uid: "456".into(),
+                file_name: "file2.txt".into(),
+                hashtype: "sha256".into(),
+                hash: "hash2".into(),
+                size: 2048,
+                runtime_secret_name: "hf_access_token".into(),
+            }],
+        };
+
+        let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
+        assert!(result.is_ok());
+        let merged = result.unwrap();
+        assert_eq!(merged.pointers.len(), 2);
+
+        // Verify both files are present
+        let file_names: Vec<&str> = merged
+            .pointers
+            .iter()
+            .map(|p| p.file_name.as_str())
+            .collect();
+        assert!(file_names.contains(&"file1.txt"));
+        assert!(file_names.contains(&"file2.txt"));
+    }
+
+    #[test]
+    fn test_merge_manifests_duplicates() {
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600;
+
+        // Create two manifests with the same file (same name and hash)
+        let pointer = BasetenPointer {
+            resolution: Some(Resolution {
+                url: "http://example.com/file".into(),
+                resolution_type: ResolutionType::Http,
+                expiration_timestamp: future_timestamp,
+            }),
+            uid: "123".into(),
+            file_name: "file.txt".into(),
+            hashtype: "sha256".into(),
+            hash: "samehash".into(),
+            size: 1024,
+            runtime_secret_name: "hf_access_token".into(),
+        };
+
+        let manifest1 = BasetenPointerManifest {
+            pointers: vec![pointer.clone()],
+        };
+
+        let manifest2 = BasetenPointerManifest {
+            pointers: vec![pointer],
+        };
+
+        let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
+        assert!(result.is_ok());
+        let merged = result.unwrap();
+        assert_eq!(merged.pointers.len(), 1); // Should deduplicate
+    }
+
+    #[test]
+    fn test_merge_manifests_conflicts() {
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600;
+
+        // Create two manifests with files that have the same name but different hashes
+        let pointer1 = BasetenPointer {
+            resolution: Some(Resolution {
+                url: "http://example.com/file".into(),
+                resolution_type: ResolutionType::Http,
+                expiration_timestamp: future_timestamp,
+            }),
+            uid: "123".into(),
+            file_name: "file.txt".into(),
+            hashtype: "sha256".into(),
+            hash: "hash1".into(),
+            size: 1024,
+            runtime_secret_name: "hf_access_token".into(),
+        };
+
+        let pointer2 = BasetenPointer {
+            resolution: Some(Resolution {
+                url: "http://example.com/file".into(),
+                resolution_type: ResolutionType::Http,
+                expiration_timestamp: future_timestamp,
+            }),
+            uid: "456".into(),
+            file_name: "file.txt".into(), // Same name
+            hashtype: "sha256".into(),
+            hash: "hash2".into(), // Different hash
+            size: 2048,
+            runtime_secret_name: "hf_access_token".into(),
+        };
+
+        let manifest1 = BasetenPointerManifest {
+            pointers: vec![pointer1],
+        };
+
+        let manifest2 = BasetenPointerManifest {
+            pointers: vec![pointer2],
+        };
+
+        let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
+        assert!(result.is_ok());
+        let merged = result.unwrap();
+        assert_eq!(merged.pointers.len(), 1); // Should keep only the first one
+        assert_eq!(merged.pointers[0].hash, "hash1"); // Should keep the first hash
+    }
+
+    #[test]
+    fn test_merge_manifests_empty() {
+        let result = crate::core::merge_manifests(vec![]);
+        assert!(result.is_ok());
+        let merged = result.unwrap();
+        assert_eq!(merged.pointers.len(), 0);
+    }
+
+    #[test]
+    fn test_current_hashes_from_manifest() {
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600;
+
+        let manifest = BasetenPointerManifest {
+            pointers: vec![
+                BasetenPointer {
+                    resolution: Some(Resolution {
+                        url: "http://example.com/file1".into(),
+                        resolution_type: ResolutionType::Http,
+                        expiration_timestamp: future_timestamp,
+                    }),
+                    uid: "123".into(),
+                    file_name: "file1.txt".into(),
+                    hashtype: "sha256".into(),
+                    hash: "hash1".into(),
+                    size: 1024,
+                    runtime_secret_name: "hf_access_token".into(),
+                },
+                BasetenPointer {
+                    resolution: Some(Resolution {
+                        url: "http://example.com/file2".into(),
+                        resolution_type: ResolutionType::Http,
+                        expiration_timestamp: future_timestamp,
+                    }),
+                    uid: "456".into(),
+                    file_name: "file2.txt".into(),
+                    hashtype: "sha256".into(),
+                    hash: "hash2".into(),
+                    size: 2048,
+                    runtime_secret_name: "hf_access_token".into(),
+                },
+            ],
+        };
+
+        let hashes = crate::core::current_hashes_from_manifest(&manifest);
+        assert_eq!(hashes.len(), 2);
+        assert!(hashes.contains("hash1"));
+        assert!(hashes.contains("hash2"));
+    }
+
+    #[test]
+    fn test_constants_values() {
+        // Test that constants have expected values
+        assert_eq!(TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK, "/tmp/bptr-resolved");
+        assert_eq!(CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
+        assert_eq!(BLOB_DOWNLOAD_TIMEOUT_SECS, 21600);
+        assert_eq!(TRUSS_TRANSFER_NUM_WORKERS_DEFAULT, 64);
+        assert_eq!(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS, 4 * 24);
+        assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 350.0);
+        assert_eq!(TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB, 100);
+        assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
+
+        // Test environment variable names
+        assert_eq!(BASETEN_FS_ENABLED_ENV_VAR, "BASETEN_FS_ENABLED");
+        assert_eq!(
+            TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR,
+            "TRUSS_TRANSFER_DOWNLOAD_DIR"
+        );
+        assert_eq!(
+            TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR,
+            "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS"
+        );
+        assert_eq!(
+            TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR,
+            "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS"
+        );
+        assert_eq!(SECRETS_BASE_PATH, "/secrets");
+
+        // Test manifest paths
+        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 3);
+        assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest"));
+        assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest.json"));
+        assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/static-bptr-manifest.json"));
+    }
+
+    #[test]
+    fn test_resolution_type_conversion() {
+        // Test that ResolutionType enum has expected values
+        let http_resolution = ResolutionType::Http;
+        let gcs_resolution = ResolutionType::Gcs;
+
+        // These should be different
+        assert_ne!(http_resolution, gcs_resolution);
+
+        // Test that they can be used in Resolution struct
+        let resolution = Resolution {
+            url: "http://example.com/file".into(),
+            resolution_type: http_resolution,
+            expiration_timestamp: chrono::Utc::now().timestamp() + 3600,
+        };
+        assert_eq!(resolution.resolution_type, ResolutionType::Http);
+    }
+
+    #[test]
+    fn test_model_repo_creation() {
+        // Test ModelRepo struct creation
+        let repo = ModelRepo {
+            repo_id: "test/repo".into(),
+            revision: "main".into(),
+            allow_patterns: Some(vec!["*.txt".into()]),
+            ignore_patterns: Some(vec!["*.log".into()]),
+            volume_folder: "test_folder".into(),
+            runtime_secret_name: "hf_token".into(),
+            kind: ResolutionType::Http,
+        };
+
+        assert_eq!(repo.repo_id, "test/repo");
+        assert_eq!(repo.revision, "main");
+        assert_eq!(repo.volume_folder, "test_folder");
+        assert_eq!(repo.runtime_secret_name, "hf_token");
+        assert_eq!(repo.kind, ResolutionType::Http);
+        assert_eq!(repo.allow_patterns.as_ref().unwrap().len(), 1);
+        assert_eq!(repo.ignore_patterns.as_ref().unwrap().len(), 1);
     }
 }
