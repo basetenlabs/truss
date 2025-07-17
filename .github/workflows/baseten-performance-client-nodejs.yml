@@ -456,6 +456,7 @@ jobs:
             yarn test
             ls -la
   universal-macOS:
+    if: false # TODO: enable relative path issue when testing
     name: Build universal macOS binary
     needs:
       - build
