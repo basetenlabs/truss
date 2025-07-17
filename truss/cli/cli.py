@@ -15,7 +15,7 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
-from truss.base.truss_config import Build, ModelServer
+from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
@@ -526,9 +526,13 @@ def push(
 
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
-    if tr.spec.config.runtime.transport.kind == "grpc" and not publish and not promote:
+    if (
+        tr.spec.config.runtime.transport.kind == TransportKind.GRPC
+        and not publish
+        and not promote
+    ):
         raise click.UsageError(
-            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command with --promote or --publish."
+            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command with --publish or --promote."
         )
 
     if not remote:
