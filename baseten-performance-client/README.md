@@ -18,7 +18,7 @@ import asyncio
 from baseten_performance_client import PerformanceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
 
 api_key = os.environ.get("BASETEN_API_KEY")
-base_url_embed = "https://model-yqv0rjjw.api.baseten.co/environments/production/sync"
+base_url_embed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
 # Also works with OpenAI or Mixedbread.
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
 client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
