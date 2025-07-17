@@ -16,6 +16,9 @@ permissions:
       - main
     tags-ignore:
       - '**'
+    paths:
+      - "baseten-performance-client/**"
+      - ".github/workflows/baseten-performance-client-nodejs.yml"
     paths-ignore:
       - '**/*.md'
       - LICENSE
