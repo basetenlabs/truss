@@ -105,18 +105,6 @@ class DockerAuthSettings(custom_types.SafeModelNoExtra):
         GCPServiceAccountJSONAuthSettings
     ] = None
 
-    def __post_init__(self):
-        if self.auth_method == truss_config.DockerAuthType.AWS_IAM:
-            if self.aws_iam_auth_settings is None:
-                raise ValueError(
-                    "aws_iam_auth_settings is required when auth_method is AWS_IAM"
-                )
-        elif self.auth_method == truss_config.DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
-            if self.gcp_service_account_json_auth_settings is None:
-                raise ValueError(
-                    "gcp_service_account_json_auth_settings is required when auth_method is GCP_SERVICE_ACCOUNT_JSON"
-                )
-
 
 class Image(custom_types.SafeModelNoExtra):
     base_image: str
