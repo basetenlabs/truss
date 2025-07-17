@@ -579,7 +579,6 @@ jobs:
         run: |
           # npm config set provenance true
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
-          npm publish --access public
           if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$";
           then
             npm publish --access public
@@ -589,5 +588,7 @@ jobs:
           else
             echo "Not a release, skipping publish"
           fi
+          echo "publishing release anyways with --next for debugging. "
+          npm publish --access public --tag next || echo "publishing failed."
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
