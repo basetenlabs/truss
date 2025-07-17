@@ -1,5 +1,5 @@
 {
-  "name": "baseten-performance-client",
+  "name": "@baseten/performance-client",
   "version": "0.0.1",
   "description": "High performance client for Baseten.co endpoints",
   "main": "index.js",
@@ -33,7 +33,7 @@
     "timeout": "3m"
   },
   "engines": {
-    "node": ">= 10"
+    "node": ">= 16"
   },
   "keywords": [
     "baseten",
