@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -357,10 +356,17 @@ def generate_docker_server_nginx_config(build_dir, config):
 
 
 def generate_docker_server_supervisord_config(build_dir, config):
-    # Copy the template file over, because we don't have any template variables to render
-    copy_tree_or_file(
-        DOCKER_SERVER_TEMPLATES_DIR / "supervisord.conf", build_dir / "supervisord.conf"
+    supervisord_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
     )
+    assert config.docker_server.start_command is not None, (
+        "docker_server.start_command is required to use custom server"
+    )
+    supervisord_contents = supervisord_template.render(
+        start_command=config.docker_server.start_command
+    )
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -687,23 +693,6 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files,
             self._spec.build_commands,
         )
-        self._setup_build_hash_directory(build_dir)
-
-    def _setup_build_hash_directory(self, build_dir: Path) -> None:
-        build_hash_path = build_dir / "build_hash"
-        if build_hash_path.exists():
-            shutil.rmtree(build_hash_path)
-        shutil.copytree(build_dir, build_hash_path)
-        # remove the config.yaml file from the build_hash directory
-        # we will use only config_build_time.yaml to compute the hash
-        config_file_path = build_hash_path / "config.yaml"
-        if config_file_path.exists():
-            config_file_path.unlink()
-        # similarly, remove the build-time config from the context directory
-        # else it will clobber prior hashes
-        config_build_time_file_path = build_dir / "config_build_time.yaml"
-        if config_build_time_file_path.exists():
-            config_build_time_file_path.unlink()
 
     def _render_dockerfile(
         self,
