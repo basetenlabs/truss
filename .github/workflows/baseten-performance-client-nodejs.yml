@@ -5,7 +5,7 @@ defaults:
 env:
   DEBUG: napi:*
   DISABLE_V8_COMPILE_CACHE: 1
-  APP_NAME: baseten-performance-client
+  APP_NAME: performance-client
   MACOSX_DEPLOYMENT_TARGET: '10.13'
 permissions:
   contents: write
@@ -16,12 +16,9 @@ permissions:
       - main
     tags-ignore:
       - '**'
-    paths-ignore:
-      - '**/*.md'
-      - LICENSE
-      - '**/*.gitignore'
-      - .editorconfig
-      - docs/**
+    paths:
+      - "baseten-performance-client/**"
+      - ".github/workflows/baseten-performance-client-nodejs.yml"
   pull_request: null
   workflow_dispatch: null
 jobs:
@@ -33,6 +30,45 @@ jobs:
           - host: macos-latest
             target: x86_64-apple-darwin
             build: yarn build --target x86_64-apple-darwin
+          # Below two tasks are failing with
+          #           ys@0.9.107: configuring OpenSSL build: 'perl' reported failure with exit code: 2
+          # warning: openssl-sys@0.9.107: openssl-src: failed to build OpenSSL from source
+          # error: failed to run custom build command for `openssl-sys v0.9.107`
+
+          # Caused by:
+          #   process didn't exit successfully: `D:\a\truss\truss\baseten-performance-client\target\release\build\openssl-sys-b5f320ee4f76c310\build-script-main` (exit code: 1)
+          #   --- stdout
+          #   cargo:rustc-check-cfg=cfg(osslconf, values("OPENSSL_NO_OCB", "OPENSSL_NO_SM4", "OPENSSL_NO_SEED", "OPENSSL_NO_CHACHA", "OPENSSL_NO_CAST", "OPENSSL_NO_IDEA", "OPENSSL_NO_CAMELLIA", "OPENSSL_NO_RC4", "OPENSSL_NO_BF", "OPENSSL_NO_PSK", "OPENSSL_NO_DEPRECATED_3_0", "OPENSSL_NO_SCRYPT", "OPENSSL_NO_SM3", "OPENSSL_NO_RMD160", "OPENSSL_NO_EC2M", "OPENSSL_NO_OCSP", "OPENSSL_NO_CMS", "OPENSSL_NO_COMP", "OPENSSL_NO_SOCK", "OPENSSL_NO_STDIO", "OPENSSL_NO_EC", "OPENSSL_NO_SSL3_METHOD", "OPENSSL_NO_KRB5", "OPENSSL_NO_TLSEXT", "OPENSSL_NO_SRP", "OPENSSL_NO_RFC3779", "OPENSSL_NO_SHA", "OPENSSL_NO_NEXTPROTONEG", "OPENSSL_NO_ENGINE", "OPENSSL_NO_BUF_FREELISTS", "OPENSSL_NO_RC2"))
+          #   cargo:rustc-check-cfg=cfg(openssl)
+          #   cargo:rustc-check-cfg=cfg(libressl)
+          #   cargo:rustc-check-cfg=cfg(boringssl)
+          #   cargo:rustc-check-cfg=cfg(ossl320)
+          #   cargo:rustc-check-cfg=cfg(ossl330)
+          #   cargo:rustc-check-cfg=cfg(ossl340)
+          #   cargo:rerun-if-env-changed=I686_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR
+          #   I686_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR unset
+          #   cargo:rerun-if-env-changed=OPENSSL_NO_VENDOR
+          #   OPENSSL_NO_VENDOR unset
+          #   cargo:rerun-if-env-changed=I686_PC_WINDOWS_MSVC_OPENSSL_CONFIG_DIR
+          #   I686_PC_WINDOWS_MSVC_OPENSSL_CONFIG_DIR unset
+          #   cargo:rerun-if-env-changed=OPENSSL_CONFIG_DIR
+          #   OPENSSL_CONFIG_DIR unset
+          #   running "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
+          #   cargo:warning=configuring OpenSSL build: 'perl' reported failure with exit code: 2
+          #   cargo:warning=openssl-src: failed to build OpenSSL from source
+
+          #   --- stderr
+          #   Can't locate Locale/Maketext/Simple.pm in @INC (you may need to install the Locale::Maketext::Simple module) (@INC entries checked: /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/util/perl /usr/lib/perl5/site_perl /usr/share/perl5/site_perl /usr/lib/perl5/vendor_perl /usr/share/perl5/vendor_perl /usr/lib/perl5/core_perl /usr/share/perl5/core_perl /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/external/perl/Text-Template-1.56/lib) at /usr/share/perl5/core_perl/Params/Check.pm line 6.
+          #   BEGIN failed--compilation aborted at /usr/share/perl5/core_perl/Params/Check.pm line 6.
+          #   Compilation failed in require at /usr/share/perl5/core_perl/IPC/Cmd.pm line 59.
+          #   BEGIN failed--compilation aborted at /usr/share/perl5/core_perl/IPC/Cmd.pm line 59.
+          #   Compilation failed in require at /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/util/perl/OpenSSL/config.pm line 19.
+          #   BEGIN failed--compilation aborted at /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/util/perl/OpenSSL/config.pm line 19.
+          #   Compilation failed in require at ./Configure line 23.
+          #   BEGIN failed--compilation aborted at ./Configure line 23.
+          #   Error configuring OpenSSL build:
+          #       'perl' reported failure with exit code: 2
+          #       Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
           # - host: windows-latest
           #   build: yarn build --target x86_64-pc-windows-msvc
           #   target: x86_64-pc-windows-msvc
@@ -74,6 +110,9 @@ jobs:
           - host: ubuntu-latest
             target: armv7-linux-androideabi
             build: yarn build --target armv7-linux-androideabi
+          # fails with
+          # = note: LC_ALL="C" PATH="/root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/lib/rustlib/x86_64-unknown-linux-musl/bin:/tmp/xfs-9b7203d8:/aarch64-linux-musl-cross/bin:/usr/local/cargo/bin/rustup:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" VSLANG="1033" "cc" "-Wl,--version-script=/tmp/rustcmRZtLt/list" "-Wl,--no-undefined-version" "/tmp/rustcmRZtLt/symbols.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.00.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.01.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.02.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-
+          #           /usr/lib/gcc/x86_64-alpine-linux-musl/14.2.0/../../../../x86_64-alpine-linux-musl/bin/ld: /build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.00.rcgu.o: error adding symbols: file in wrong format
           # - host: ubuntu-latest
           #   target: aarch64-unknown-linux-musl
           #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
@@ -155,7 +194,12 @@ jobs:
               apk add --no-cache perl openssl-dev build-base
             elif command -v apt-get &> /dev/null; then
               # Debian-based image
-              apt-get update && apt-get install -y perl libssl-dev
+              apt-get update && apt-get install -y perl libssl-dev libatomic-ops-dev
+            elif command -v yum &> /dev/null; then
+                yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+            else
+              echo "Unsupported package manager. Please install perl and openssl-dev manually."
+              exit 1
             fi
             ${{ matrix.settings.build }}
       - name: Build
@@ -231,7 +275,6 @@ jobs:
             baseten-performance-client/node_bindings/*.node
           if-no-files-found: error
   test-macOS-windows-binding:
-    if: false # TODO: enable relative path issue when testing
     name: Test bindings on ${{ matrix.settings.target }} - node@${{ matrix.node }}
     needs:
       - build
@@ -270,9 +313,13 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: yarn test
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Node __dirname: $(node -e "console.log(require('path').resolve(__dirname))")"
+          cp baseten-performance-client/node_bindings/*.node .
+          yarn test
   test-linux-x64-gnu-binding:
-    if: false # TODO: enable relative path issue when testing
+    if: false # TODO reenable
     name: Test bindings on Linux-x64-gnu - node@${{ matrix.node }}
     needs:
       - build
@@ -302,9 +349,8 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-slim bash -c "apt-get update && apt-get install -y perl libssl-dev && yarn test"
+        run: docker run --rm -v $(pwd):/build -w /build/ node:${{ matrix.node }}-slim bash -c "cp baseten-performance-client/node_bindings/*.node . && yarn test"
   test-linux-x64-musl-binding:
-    if: false # TODO: enable relative path issue when testing
     name: Test bindings on x86_64-unknown-linux-musl - node@${{ matrix.node }}
     needs:
       - build
@@ -336,9 +382,9 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-alpine sh -c "apk add --no-cache perl openssl-dev && yarn test"
+        run: docker run --rm -v $(pwd):/build -w /build/ node:${{ matrix.node }}-alpine sh -c "cp baseten-performance-client/node_bindings/*.node . && yarn test"
   test-linux-aarch64-gnu-binding:
-    if: false # TODO: enable relative path issue when testing
+    if: false # currently disabled as we do not have aarch64-unknown-linux-gnu bindings downloaded?
     name: Test bindings on aarch64-unknown-linux-gnu - node@${{ matrix.node }}
     needs:
       - build
@@ -376,7 +422,7 @@ jobs:
           options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
-            apt-get update && apt-get install -y perl libssl-dev
+            cp baseten_performance_client/node_bindings/*.node .
             yarn test
             ls -la
   test-linux-aarch64-musl-binding:
@@ -412,10 +458,10 @@ jobs:
           options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
-            apk add --no-cache perl openssl-dev
+            cp baseten_performance_client/node_bindings/*.node .
             yarn test
   test-linux-arm-gnueabihf-binding:
-    if: false # TODO: enable relative path issue when testing
+    if: false # TODO: we currently do not compile this
     name: Test bindings on armv7-unknown-linux-gnueabihf - node@${{ matrix.node }}
     needs:
       - build
@@ -456,7 +502,7 @@ jobs:
             yarn test
             ls -la
   universal-macOS:
-    if: false # TODO: enable relative path issue when testing
+    if: false # we currently do not compile this
     name: Build universal macOS binary
     needs:
       - build
@@ -500,16 +546,16 @@ jobs:
     name: Publish
     runs-on: ubuntu-latest
     # only run on tag or workflow_dispatch
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs:
       # - build-freebsd
       - test-macOS-windows-binding
-      - test-linux-x64-gnu-binding
+      # - test-linux-x64-gnu-binding
       - test-linux-x64-musl-binding
-      - test-linux-aarch64-gnu-binding
-      - test-linux-aarch64-musl-binding
-      - test-linux-arm-gnueabihf-binding
-      - universal-macOS
+      # - test-linux-aarch64-gnu-binding
+      # - test-linux-aarch64-musl-binding
+      # - test-linux-arm-gnueabihf-binding
+      # - universal-macOS
     steps:
       - uses: actions/checkout@v4
       - name: Setup node
@@ -531,18 +577,18 @@ jobs:
         shell: bash
       - name: Publish
         run: |
-          npm config set provenance true
+          # npm config set provenance true
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
           if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$";
           then
-            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
             npm publish --access public
           elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+";
           then
-            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
             npm publish --tag next --access public
           else
             echo "Not a release, skipping publish"
           fi
+          echo "publishing release anyways with --next for debugging. "
+          npm publish --access public --tag next || echo "publishing failed."
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,21 @@
+{
+  "name": "@basetenlabs/performance-client-linux-x64-musl",
+  "version": "0.0.1-rc3",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "performance-client.linux-x64-musl.node",
+  "files": [
+    "performance-client.linux-x64-musl.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  },
+  "libc": [
+    "musl"
+  ]
+}

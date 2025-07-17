@@ -1,11 +1,10 @@
 {
-  "name": "baseten-performance-client",
-  "version": "0.0.1",
-  "description": "High performance client for Baseten.co endpoints",
+  "name": "@basetenlabs/performance-client",
+  "version": "0.0.1-rc3",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "baseten-performance-client",
+    "name": "performance-client",
     "triples": {
       "additional": [
         "aarch64-apple-darwin",
@@ -24,6 +23,10 @@
       ]
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/basetenlabs/truss"
+  },
   "license": "MIT",
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
@@ -35,6 +38,15 @@
   "engines": {
     "node": ">= 10"
   },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm --skip-gh-release",
+    "test": "ava",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
   "keywords": [
     "baseten",
     "performance",
@@ -43,13 +55,5 @@
     "reranking",
     "classification"
   ],
-  "scripts": {
-    "artifacts": "napi artifacts",
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm",
-    "test": "ava",
-    "universal": "napi universal",
-    "version": "napi version"
-  }
+  "packageManager": "yarn@4.9.2"
 }

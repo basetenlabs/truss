@@ -1,0 +1,18 @@
+{
+  "name": "@basetenlabs/performance-client-win32-x64-msvc",
+  "version": "0.0.1-rc3",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "performance-client.win32-x64-msvc.node",
+  "files": [
+    "performance-client.win32-x64-msvc.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  }
+}
