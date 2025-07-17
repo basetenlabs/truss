@@ -754,7 +754,7 @@ class TrussConfig(custom_types.ConfigModel):
                 getattr(self.docker_server, field) is None for field in optional_fields
             ):
                 raise ValueError(
-                    "When transport kind is not GRPC, docker_server must either be absent or have all fields defined"
+                    "When transport kind is not GRPC, docker_server must either be absent or have server_port, predict_endpoint, readiness_endpoint, and liveness_endpoint defined"
                 )
 
         return self

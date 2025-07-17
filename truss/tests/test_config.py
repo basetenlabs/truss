@@ -1055,7 +1055,7 @@ def test_valid_transport_configurations(transport_config, tmp_path):
                 "runtime": {"transport": {"kind": "http"}},
                 "docker_server": {"start_command": "./start.sh", "server_port": 8080},
             },
-            "When transport kind is not GRPC, docker_server must either be absent or have all fields defined",
+            "When transport kind is not GRPC, docker_server must either be absent or have server_port, predict_endpoint, readiness_endpoint, and liveness_endpoint defined",
             id="invalid-http-missing-fields",
         ),
         # Missing docker_server with GRPC
