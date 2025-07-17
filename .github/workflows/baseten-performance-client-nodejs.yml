@@ -152,7 +152,12 @@ jobs:
               apk add --no-cache perl openssl-dev build-base
             elif command -v apt-get &> /dev/null; then
               # Debian-based image
-              apt-get update && apt-get install -y perl libssl-dev
+              apt-get update && apt-get install -y perl libssl-dev libatomic-ops-dev
+            elif command -v yum &> /dev/null; then
+                yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+            else
+              echo "Unsupported package manager. Please install perl and openssl-dev manually."
+              exit 1
             fi
             ${{ matrix.settings.build }}
       - name: Build
@@ -532,6 +537,7 @@ jobs:
       - name: Publish
         run: |
           npm config set provenance true
+          npm publish --tag next --access public
           if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$";
           then
             echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
