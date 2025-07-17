@@ -1,3 +1,3 @@
-# `@baseten/performance-client-win32-x64-msvc`
+# `@basetenlabs/performance-client-win32-x64-msvc`
 
-This is the **x86_64-pc-windows-msvc** binary for `@baseten/performance-client`
+This is the **x86_64-pc-windows-msvc** binary for `@basetenlabs/performance-client`

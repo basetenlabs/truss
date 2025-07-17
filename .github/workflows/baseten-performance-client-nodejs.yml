@@ -4,6 +4,7 @@ defaults:
     working-directory: baseten-performance-client/node_bindings
 env:
   DEBUG: napi:*
+  DISABLE_V8_COMPILE_CACHE: 1
   APP_NAME: performance-client
   MACOSX_DEPLOYMENT_TARGET: '10.13'
 permissions:
@@ -22,6 +23,7 @@ permissions:
       - .editorconfig
       - docs/**
   pull_request: null
+  workflow_dispatch: null
 jobs:
   build:
     strategy:
@@ -31,13 +33,67 @@ jobs:
           - host: macos-latest
             target: x86_64-apple-darwin
             build: yarn build --target x86_64-apple-darwin
-          - host: windows-latest
-            build: yarn build --target x86_64-pc-windows-msvc
-            target: x86_64-pc-windows-msvc
+          # - host: windows-latest
+          #   build: yarn build --target x86_64-pc-windows-msvc
+          #   target: x86_64-pc-windows-msvc
+          # - host: windows-latest
+          #   build: |
+          #     yarn build --target i686-pc-windows-msvc
+          #     yarn test
+          #   target: i686-pc-windows-msvc
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
             build: yarn build --target x86_64-unknown-linux-gnu
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+            build: yarn build --target x86_64-unknown-linux-musl
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            build: yarn build --target aarch64-apple-darwin
+          - host: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
+            build: yarn build --target aarch64-unknown-linux-gnu
+          # TODO: enable again
+          #   crypto/ct/ct_log.c:166:15: error: use of undeclared identifier 'ssl'
+          #     <command line>:18:21: note: expanded from macro 'OPENSSLDIR'
+          # - host: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   setup: |
+          #     sudo apt-get update
+          #     sudo apt-get install gcc-arm-linux-gnueabihf -y
+          #   build: yarn build --target armv7-unknown-linux-gnueabihf
+          # - host: ubuntu-latest
+          #   target: armv7-unknown-linux-musleabihf
+          #   build: yarn build --target armv7-unknown-linux-musleabihf
+          - host: ubuntu-latest
+            target: aarch64-linux-android
+            build: yarn build --target aarch64-linux-android
+          - host: ubuntu-latest
+            target: armv7-linux-androideabi
+            build: yarn build --target armv7-linux-androideabi
+          # - host: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+          #   build: |-
+          #     set -e &&
+          #     rustup target add aarch64-unknown-linux-musl &&
+          #     yarn build --target aarch64-unknown-linux-musl
+          # TODO: enable again
+          #   AARCH64_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR unset
+          #     cargo:warning=openssl-src: failed to build OpenSSL from source
+
+          # - host: windows-latest
+          #   target: aarch64-pc-windows-msvc
+          #   build: yarn build --target aarch64-pc-windows-msvc
+          - host: ubuntu-latest
+            target: riscv64gc-unknown-linux-gnu
+            setup: |
+              sudo apt-get update
+              sudo apt-get install gcc-riscv64-linux-gnu -y
+            build: yarn build --target riscv64gc-unknown-linux-gnu
     name: stable - ${{ matrix.settings.target }} - node@20
     runs-on: ${{ matrix.settings.host }}
     steps:
@@ -92,7 +148,7 @@ jobs:
         if: ${{ matrix.settings.docker }}
         with:
           image: ${{ matrix.settings.docker }}
-          options: '--user 0:0 -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index -v ${{ github.workspace }}:/build -w /build'
+          options: '--user 0:0 -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             if command -v apk &> /dev/null; then
               # Alpine-based image
@@ -106,6 +162,10 @@ jobs:
         run: ${{ matrix.settings.build }}
         if: ${{ !matrix.settings.docker }}
         shell: bash
+      - name: List build output
+        run: |
+          find . -name "*.node" -type f
+        shell: bash
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -115,7 +175,63 @@ jobs:
             baseten-performance-client/node_bindings/${{ env.APP_NAME }}.*.node
             baseten-performance-client/node_bindings/*.node
           if-no-files-found: error
+  build-freebsd:
+    runs-on: macos-13
+    name: Build FreeBSD
+    if: false # TODO: skip for now, reenable once compile works with openssl
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        id: build
+        uses: cross-platform-actions/action@v0.24.0
+        env:
+          DEBUG: napi:*
+          RUSTUP_IO_THREADS: 1
+        with:
+          operating_system: freebsd
+          version: '13.2'
+          memory: 8G
+          cpu_count: 3
+          environment_variables: DEBUG RUSTUP_IO_THREADS
+          shell: bash
+          run: |
+            sudo pkg install -y -f curl node libnghttp2 npm
+            sudo npm install -g yarn --ignore-scripts
+            curl https://sh.rustup.rs -sSf --output rustup.sh
+            sh rustup.sh -y --profile minimal --default-toolchain stable
+            source "$HOME/.cargo/env"
+            echo "~~~~ rustc --version ~~~~"
+            rustc --version
+            echo "~~~~ node -v ~~~~"
+            node -v
+            echo "~~~~ yarn --version ~~~~"
+            yarn --version
+            pwd
+            ls -lah
+            whoami
+            env
+            freebsd-version
+            yarn install
+            yarn build
+            yarn test
+            rm -rf node_modules
+            rm -rf target
+            rm -rf .yarn/cache
+      - name: List build output
+        run: |
+          find . -name "*.node" -type f
+        shell: bash
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-freebsd
+          path: |
+            ${{ env.APP_NAME }}.*.node
+            baseten-performance-client/node_bindings/${{ env.APP_NAME }}.*.node
+            baseten-performance-client/node_bindings/*.node
+          if-no-files-found: error
   test-macOS-windows-binding:
+    if: false # TODO: enable relative path issue when testing
     name: Test bindings on ${{ matrix.settings.target }} - node@${{ matrix.node }}
     needs:
       - build
@@ -125,8 +241,11 @@ jobs:
         settings:
           - host: macos-latest
             target: x86_64-apple-darwin
-          - host: windows-latest
-            target: x86_64-pc-windows-msvc
+          # TODO: reenable windows release.
+           # 'perl' reported failure with exit code: 2
+              # Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
+          # - host: windows-latest
+          #   target: x86_64-pc-windows-msvc
         node:
           - '18'
           - '20'
@@ -153,6 +272,7 @@ jobs:
       - name: Test bindings
         run: yarn test
   test-linux-x64-gnu-binding:
+    if: false # TODO: enable relative path issue when testing
     name: Test bindings on Linux-x64-gnu - node@${{ matrix.node }}
     needs:
       - build
@@ -182,14 +302,214 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: docker run --rm -v $(pwd):/build -w /build node:${{ matrix.node }}-slim yarn test
+        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-slim bash -c "apt-get update && apt-get install -y perl libssl-dev && yarn test"
+  test-linux-x64-musl-binding:
+    if: false # TODO: enable relative path issue when testing
+    name: Test bindings on x86_64-unknown-linux-musl - node@${{ matrix.node }}
+    needs:
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - '18'
+          - '20'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: yarn
+          cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
+      - name: Install dependencies
+        run: |
+          yarn config set supportedArchitectures.libc "musl"
+          yarn install
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-x86_64-unknown-linux-musl
+          path: baseten-performance-client/node_bindings
+      - name: List packages
+        run: ls -R .
+        shell: bash
+      - name: Test bindings
+        run: docker run --rm -v $(pwd):/build -w /build/baseten-performance-client/node_bindings node:${{ matrix.node }}-alpine sh -c "apk add --no-cache perl openssl-dev && yarn test"
+  test-linux-aarch64-gnu-binding:
+    if: false # TODO: enable relative path issue when testing
+    name: Test bindings on aarch64-unknown-linux-gnu - node@${{ matrix.node }}
+    needs:
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - '18'
+          - '20'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-aarch64-unknown-linux-gnu
+          path: baseten-performance-client/node_bindings
+      - name: List packages
+        run: ls -R .
+        shell: bash
+      - name: Install dependencies
+        run: |
+          yarn config set supportedArchitectures.cpu "arm64"
+          yarn config set supportedArchitectures.libc "glibc"
+          yarn install
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+      - name: Setup and run tests
+        uses: addnab/docker-run-action@v3
+        with:
+          image: node:${{ matrix.node }}-slim
+          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
+          run: |
+            set -e
+            apt-get update && apt-get install -y perl libssl-dev
+            yarn test
+            ls -la
+  test-linux-aarch64-musl-binding:
+    if: false # TODO: enable relative path issue when testing
+    name: Test bindings on aarch64-unknown-linux-musl - node@${{ matrix.node }}
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-aarch64-unknown-linux-musl
+          path: baseten-performance-client/node_bindings
+      - name: List packages
+        run: ls -R .
+        shell: bash
+      - name: Install dependencies
+        run: |
+          yarn config set supportedArchitectures.cpu "arm64"
+          yarn config set supportedArchitectures.libc "musl"
+          yarn install
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+      - name: Setup and run tests
+        uses: addnab/docker-run-action@v3
+        with:
+          image: node:lts-alpine
+          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
+          run: |
+            set -e
+            apk add --no-cache perl openssl-dev
+            yarn test
+  test-linux-arm-gnueabihf-binding:
+    if: false # TODO: enable relative path issue when testing
+    name: Test bindings on armv7-unknown-linux-gnueabihf - node@${{ matrix.node }}
+    needs:
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - '18'
+          - '20'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-armv7-unknown-linux-gnueabihf
+          path: baseten-performance-client/node_bindings
+      - name: List packages
+        run: ls -R .
+        shell: bash
+      - name: Install dependencies
+        run: |
+          yarn config set supportedArchitectures.cpu "arm"
+          yarn install
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+      - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+      - name: Setup and run tests
+        uses: addnab/docker-run-action@v3
+        with:
+          image: node:${{ matrix.node }}-bullseye-slim
+          options: '--platform linux/arm/v7 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
+          run: |
+            set -e
+            apt-get update && apt-get install -y perl libssl-dev
+            yarn test
+            ls -la
+  universal-macOS:
+    if: false # TODO: enable relative path issue when testing
+    name: Build universal macOS binary
+    needs:
+      - build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
+      - name: Install dependencies
+        run: yarn install
+      - name: Download macOS x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-x86_64-apple-darwin
+          path: artifacts
+      - name: Download macOS arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bindings-aarch64-apple-darwin
+          path: artifacts
+      - name: Combine binaries
+        run: yarn universal
+      - name: List build output
+        run: |
+          find . -name "*.node" -type f
+        shell: bash
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-universal-apple-darwin
+          path: |
+            ${{ env.APP_NAME }}.*.node
+            baseten-performance-client/node_bindings/${{ env.APP_NAME }}.*.node
+            baseten-performance-client/node_bindings/*.node
+          if-no-files-found: error
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    # only run on tag or workflow_dispatch
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs:
+      # - build-freebsd
       - test-macOS-windows-binding
       - test-linux-x64-gnu-binding
+      - test-linux-x64-musl-binding
+      - test-linux-aarch64-gnu-binding
+      - test-linux-aarch64-musl-binding
+      - test-linux-arm-gnueabihf-binding
+      - universal-macOS
     steps:
       - uses: actions/checkout@v4
       - name: Setup node

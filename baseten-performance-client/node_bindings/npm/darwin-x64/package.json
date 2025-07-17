@@ -1,5 +1,5 @@
 {
-  "name": "@baseten/performance-client-darwin-x64",
+  "name": "@basetenlabs/performance-client-darwin-x64",
   "version": "0.0.1-rc0",
   "os": [
     "darwin"

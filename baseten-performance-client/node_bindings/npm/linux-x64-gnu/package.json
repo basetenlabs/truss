@@ -1,5 +1,5 @@
 {
-  "name": "@baseten/performance-client-linux-x64-gnu",
+  "name": "@basetenlabs/performance-client-linux-x64-gnu",
   "version": "0.0.1-rc0",
   "os": [
     "linux"

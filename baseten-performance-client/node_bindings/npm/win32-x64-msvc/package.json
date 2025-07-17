@@ -1,5 +1,5 @@
 {
-  "name": "@baseten/performance-client-win32-x64-msvc",
+  "name": "@basetenlabs/performance-client-win32-x64-msvc",
   "version": "0.0.1-rc0",
   "os": [
     "win32"
