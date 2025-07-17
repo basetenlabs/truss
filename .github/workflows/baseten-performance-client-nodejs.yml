@@ -269,7 +269,9 @@ jobs:
         run: ls -R .
         shell: bash
       - name: Test bindings
-        run: yarn test
+        run: |
+          cd baseten-performance-client/node_bindings
+          yarn test
   test-linux-x64-gnu-binding:
     if: false # TODO: enable relative path issue when testing
     name: Test bindings on Linux-x64-gnu - node@${{ matrix.node }}
