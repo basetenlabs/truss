@@ -67,9 +67,6 @@ backend/staticfiles/**/*
 backend/cov_html/*
 k8s/on-prem/deps/*
 
-# yarn lock file
-yarn.lock
-
 .eslintcache
 /.pytest_cache/
 

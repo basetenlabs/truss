@@ -3990,37 +3990,37 @@ test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,
 
 [[package]]
 name = "truss-transfer"
-version = "0.0.14rc0"
+version = "0.0.15rc0"
 description = "Speed up file transfers with the baseten.co + baseten_fs."
 optional = false
 python-versions = ">=3.8"
 groups = ["dev-server"]
 files = [
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-macosx_10_12_x86_64.whl", hash = "sha256:2f8397af9e16cbe8e23f6c6cfecdbe53686824f673306ec80fee8b507a218895"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:5a90a6cd1dd1e21e18e98ee7346c513897c047d4d8f0aa36db3df07bc8e872aa"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7ff708c611b3f7e8497362f0af5066593932182ce6886e7f3cc50e34eae21956"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:078c06ba5717333f2406869c1ce12a6fb68957dcd95e2d19fdcbb88cf2d72a5a"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:8c5e2e4b167c63f2f1ff2becd749470e5b384d20d6ca68732c7928f1a2b2be4e"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:5d749462a0b5f332444486b719514fdc2bc671617a9a1d577216f32126625e3b"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ce7637ee951eefb0333b9859d8169ddcc5bcc21f34a1dd3b74e4aff020908b44"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:332edcae6d92f81b88c56327bcfa52d3fa8badf99f6f32c47546aeaaec41ff12"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-musllinux_1_2_armv7l.whl", hash = "sha256:56a9513b95809ff15edd24117e748c21bf476a1c62f8f7423b11d0295a220e94"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-musllinux_1_2_i686.whl", hash = "sha256:7993c0054a5b57d97516d70658f10ffbc1a06a62f9cfc428a1de3df920c1e80a"},
-    {file = "truss_transfer-0.0.14rc0-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:e7626bc9eb36b89a41ce525f78dd1d7f7c3df189b996aa3fd784e485d88637dd"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:f0d5842c729c957e2d30118309f2878956181c0bb5a53f3055fecb6ecdc6bd16"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:eb38214cf5299e1cdb7528c09f6c8b1eebcbf88f612a0bfe742a416cdf3b6463"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:646986be206498a98fe9be3d31bc890b0a5acbff3def859c572b30fd82f36e87"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:2b54097c993ae8a0e648c4e364a7078fdeef650d8e0a077d3ed93711ac91c5a6"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:6d3133aa95bbfd2943ac187e6b6a23bf9ef43150477ff4c0de0e3e291b25f34a"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:cf601fb4e4b8541a32d973ae33365e2161ff1ba85da8cdad732e99dceb857301"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d9c1be067749b741f76531e18a3e9df774c25bc07799f146593c632f188b1321"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:cac2b9a2011c743d2e9df3a1240910a472374f810915e10d53afae52c2183e87"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:9bec615711b3d0b0eb021eafabe5e1cb5eabd9663802a1ec6728fca66de9c9a5"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-musllinux_1_2_i686.whl", hash = "sha256:dafc995706e6fe40dca11250fdeaf5f1933b4be8d32a3a8b40cf6089e0992199"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e513b368511b1e0e67ecb2349590e93be2fcd5272b20d2faf0d8627d09603afe"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-win32.whl", hash = "sha256:626a8ac813e7d28fd6010baf461ccd2d751aae1c0732a15a61d14a09abe2170b"},
-    {file = "truss_transfer-0.0.14rc0-cp38-abi3-win_amd64.whl", hash = "sha256:e476d2dbf948cdd7c1d758de2fd7af0303dea5917ac02c895b209a1fcbc5eb0d"},
-    {file = "truss_transfer-0.0.14rc0.tar.gz", hash = "sha256:861caee7bb96dc1266afb9b4f42616a6cf86c696020a7f1823255832108ed9d4"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-macosx_10_12_x86_64.whl", hash = "sha256:a6da7bb3cc306c2f14c543cf614cd0ec0e7f488e68b09a30a1acfa9be430e652"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:a1fb800f5f47d2ba3b606c8fbf59cf7f904ded17e94b787ecd09d31f886e7599"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:dbc659cca8cddafecd68173d8d2db129bb47177a5d8bde042cb924e8e1735bf8"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:760d2754d65eee6eaf9e61fa3935b87a0e66ce1d2bd2214f719a3b21c28df40f"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:cbd8bca1161cd758b1f8e6304fdc2b116e5f856b77e4c4a692e0195b297b1ade"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:25482a84f63ed61fc2b8d2c5e953b2f1d32bf5c2aaa2ec99129b2b044accad9d"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f2a44c30b774d7d6ecf64b3b149fa55a355e58862f2f369dc19c6e3fdba14681"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:c70f3f08ce11ff41c3f6a4f0f4beaffa9055f90e3ce43e2354237eed92fabac4"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-musllinux_1_2_armv7l.whl", hash = "sha256:109116bd3c4c8fe3619e0198a808766be47053c79321771186237936ac9c2c73"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-musllinux_1_2_i686.whl", hash = "sha256:9d8793a1b95d3460e64e9d4357760fe7f9aa355c1561b9c015d559ebedbd1df4"},
+    {file = "truss_transfer-0.0.15rc0-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:26a04af39613bd673eb4eb1dbfcbfb1c86cff21327e1314c3f0f73846a5778a2"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6f8748144d5823266bd7657aa935527413856cc70570613a1100c37146db2a80"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:0b2de2dd5b0a21c2350bef447506657a841bcefadb26af4143075abdbc2eeb19"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7fd25df1fb64e5104f5968061025365538611ac5f47f7a39dcf88797f56bffc4"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:aa7f0c61d973751f5acd8e089ca743d3da678b9a284f6d3bce0d858716c07880"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ba6eeb65a5d90349a7ec797a1b2b45ef3be559858e4eb7ec71e21a4950fcec5f"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:fa4f6ed2306bcb459ed6c990348add994eb4d2ef065c37596166eb53904c87c5"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:505baaf7337a3057e99e61528fae9c96b0a5b2246aec65e3628851ccb916df3f"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:be904b4112e7cfcbec813024ec08559497275e48b4a2b917386562030596bcf2"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:5141c6516d2800ac50fe1b6394dffe0387dca7a5f0429a502348f3203485c0d0"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-musllinux_1_2_i686.whl", hash = "sha256:5a91a4be7c0c5c71c95b3687842809024ec975fa73338697be0c1e44303d73f3"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:540cb2f9cfc4275b962b198123fbe4e4527cdb937f2bb3b1e0d4ad0d519027fb"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-win32.whl", hash = "sha256:0dbc94529471136be1f58ea31f10dfb149b9f7332ca6f92c8fc886764f0054e7"},
+    {file = "truss_transfer-0.0.15rc0-cp38-abi3-win_amd64.whl", hash = "sha256:9d74049e4a618c1d4dec1ef86d2e56418b40f5a19a5a5758d75689b776ee124e"},
+    {file = "truss_transfer-0.0.15rc0.tar.gz", hash = "sha256:c0177fb8965b9939618b02d1f0913513d0c1e2b1a76a9bcf09b8cc50b35c0a03"},
 ]
 
 [[package]]
@@ -4683,4 +4683,4 @@ all = []
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.14"
-content-hash = "e6138de501ca3d2fe7009b4deb747bff55e33e286c10ed3be47e69e296e1c5a8"
+content-hash = "80d1254a619ce677896ee5b3e4173ff9af4ef709197396cb0422ef0148a9e0cd"

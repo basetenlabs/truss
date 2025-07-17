@@ -130,6 +130,11 @@ class AcceleratorSpec(custom_types.ConfigModel):
         return schema
 
 
+class ModelRepoSourceKind(str, enum.Enum):
+    HF = "hf"
+    GCS = "gcs"
+
+
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
     revision: Optional[Annotated[str, pydantic.StringConstraints(min_length=1)]] = None
@@ -139,6 +144,8 @@ class ModelRepo(custom_types.ConfigModel):
         Annotated[str, pydantic.StringConstraints(min_length=1)]
     ] = None
     use_volume: bool = False
+    kind: ModelRepoSourceKind = ModelRepoSourceKind.HF
+    runtime_secret_name: str = "hf_access_token"
 
     @property
     def runtime_path(self) -> pathlib.Path:

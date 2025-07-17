@@ -1,38 +1,282 @@
 # Truss-Transfer
 
-Python-optional download utility
+Python-optional download utility for resolving Baseten Pointers (bptr).
 
+## Installation
 
-```base
+```bash
 pip install truss-transfer
 # pip install /workspace/model-performance/michaelfeil/truss/truss-transfer/target/wheels/truss_transfer-0.1.0-cp39-cp39-manylinux_2_34_x86_64.whl
 ```
 
+## How to Resolve a bptr
+
+### Via Python Package
+
 ```python
 import truss_transfer
 
+# Resolve bptr using default download directory from environment
+result_dir = truss_transfer.lazy_data_resolve()
+
+# Resolve bptr with custom download directory
+result_dir = truss_transfer.lazy_data_resolve("/custom/download/path")
+
+# Example usage in a data loader
 def lazy_data_loader(download_dir: str):
     print(f"download using {truss_transfer.__version__}")
     try:
-        truss_transfer.lazy_data_resolve(str(download_dir))
+        resolved_dir = truss_transfer.lazy_data_resolve(str(download_dir))
+        print(f"Files resolved to: {resolved_dir}")
+        return resolved_dir
     except Exception as e:
         print(f"Lazy data resolution failed: {e}")
         raise
 ```
 
-Environment variables:
+### Via CLI
 
 ```bash
-# If b10fs is enabled and mounted to `/cache/org/artifacts`. Can be 1 or 0.
-BASETEN_FS_ENABLED=0
-# if the file path is a relative path e.g. "model.safetensors", what path to preceed it with. No effect if the path in the manifest is absolute (`/tmp/mymodel/model.safetensors`)
-TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/bptr-resolved"
-# after how much time since the last access of the file,
-# deleting all files from other tenants in the org to make space for this deployment.
-# "/cache/org/artifacts/truss_transfer_managed_v1";
-TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR="48" # sets it to two days.
-# sets the expected speed that is measured to decide if b10fs is a fast state.
-TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS="100"
+# Using the compiled binary
+./target/x86_64-unknown-linux-musl/release/truss_transfer_cli /tmp/download_dir
+
+# Using the Python package CLI
+python -m truss_transfer /tmp/download_dir
+```
+
+## How to Build a bptr and Save it via Python
+
+You can create Baseten Pointers from HuggingFace models using the Python API:
+
+```python
+import truss_transfer
+import json
+
+# Define models to include in the bptr
+models = [
+    truss_transfer.PyModelRepo(
+        repo_id="microsoft/DialoGPT-medium",
+        revision="main",
+        volume_folder="dialogpt",
+        kind="hf",  # "hf" for HuggingFace, "gcs" for Google Cloud Storage
+        runtime_secret_name="hf_access_token",
+        allow_patterns=["*.safetensors", "*.json"],  # Optional: specific file patterns
+        ignore_patterns=["*.txt"]  # Optional: patterns to ignore
+    ),
+    truss_transfer.PyModelRepo(
+        repo_id="julien-c/dummy-unknown",
+        revision="60b8d3fe22aebb024b573f1cca224db3126d10f3",
+        volume_folder="julien_dummy",
+        runtime_secret_name="hf_access_token_2"
+    )
+]
+
+# Create the bptr manifest
+bptr_manifest = truss_transfer.create_basetenpointer_from_models(models)
+
+# Save to file
+with open("/bptr/bptr-manifest", "w") as f:
+    f.write(bptr_manifest)
+
+# Or parse as JSON for programmatic use
+manifest_data = json.loads(bptr_manifest)
+print(f"Created bptr with {len(manifest_data)} pointers")
+```
+
+### PyModelRepo Parameters
+
+- **`repo_id`**: Repository identifier (e.g., "microsoft/DialoGPT-medium")
+- **`revision`**: Git commit hash or branch name (e.g., "main", commit hash)
+- **`volume_folder`**: Local folder name where files will be stored
+- **`kind`**: Repository type - "hf" for HuggingFace, "gcs" for Google Cloud Storage
+- **`runtime_secret_name`**: Name of the secret containing access token
+- **`allow_patterns`**: Optional list of file patterns to include
+- **`ignore_patterns`**: Optional list of file patterns to exclude
+
+## End-to-End Flow
+
+Here's a complete example of creating and resolving a bptr:
+
+### Step 1: Create a bptr Manifest
+
+```python
+import truss_transfer
+import json
+import os
+
+# Create models configuration
+models = [
+    truss_transfer.PyModelRepo(
+        repo_id="microsoft/DialoGPT-medium",
+        revision="main",
+        volume_folder="dialogpt",
+        runtime_secret_name="hf_access_token"
+    )
+]
+
+# Generate the bptr manifest
+bptr_manifest = truss_transfer.create_basetenpointer_from_models(models)
+
+# Ensure the directory exists
+os.makedirs("/bptr", exist_ok=True)
+
+# Save the manifest
+with open("/bptr/bptr-manifest", "w") as f:
+    f.write(bptr_manifest)
+
+print("bptr manifest created successfully!")
+```
+
+### Step 2: Set up Environment (Optional)
+
+```bash
+# Configure download location
+export TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/my-models"
+
+# Enable b10fs caching (optional)
+export BASETEN_FS_ENABLED=1
+
+# Set up authentication (if needed)
+export HF_TOKEN="your-huggingface-token"
+# Or use the official HuggingFace environment variable
+export HUGGING_FACE_HUB_TOKEN="your-huggingface-token"
+```
+
+### Step 3: Resolve the bptr
+
+```python
+import truss_transfer
+
+# Resolve the bptr - downloads files to the specified directory
+resolved_dir = truss_transfer.lazy_data_resolve("/tmp/my-models")
+print(f"Files downloaded to: {resolved_dir}")
+
+# Now you can use the downloaded files
+import os
+files = os.listdir(resolved_dir)
+print(f"Downloaded files: {files}")
+```
+
+### Step 4: Use the Downloaded Files
+
+```python
+# Example: Load a model from the resolved directory
+model_path = os.path.join(resolved_dir, "dialogpt")
+# Your model loading code here...
+```
+
+### Complete Workflow
+
+```python
+# Complete example combining creation and resolution
+import truss_transfer
+import json
+import os
+
+def create_and_resolve_bptr():
+    # 1. Create bptr manifest
+    models = [
+        truss_transfer.PyModelRepo(
+            repo_id="microsoft/DialoGPT-medium",
+            revision="main",
+            volume_folder="dialogpt",
+            runtime_secret_name="hf_access_token"
+        )
+    ]
+
+    bptr_manifest = truss_transfer.create_basetenpointer_from_models(models)
+
+    # 2. Save manifest
+    os.makedirs("/bptr", exist_ok=True)
+    with open("/bptr/bptr-manifest", "w") as f:
+        f.write(bptr_manifest)
+
+    # 3. Resolve bptr
+    resolved_dir = truss_transfer.lazy_data_resolve("/tmp/my-models")
+
+    # 4. Verify files were downloaded
+    dialogpt_path = os.path.join(resolved_dir, "dialogpt")
+    if os.path.exists(dialogpt_path):
+        files = os.listdir(dialogpt_path)
+        print(f"Successfully downloaded {len(files)} files to {dialogpt_path}")
+        return dialogpt_path
+    else:
+        raise Exception("Model files not found after resolution")
+
+# Run the workflow
+model_path = create_and_resolve_bptr()
+```
+
+## Environment Variables and Settings
+
+The following environment variables can be used to configure truss-transfer behavior:
+
+### Core Configuration
+
+- **`TRUSS_TRANSFER_DOWNLOAD_DIR`** (default: `/tmp/bptr-resolved`)
+  - Directory where resolved files will be downloaded
+  - Used when no explicit download directory is provided
+  - Can be overridden by passing a directory to the CLI or Python function
+
+- **`RUST_LOG`** (default: `info`)
+  - Controls logging level: `error`, `warn`, `info`, `debug`, `trace`
+  - Example: `RUST_LOG=debug` for detailed logging
+
+### Authentication
+
+- **`HF_TOKEN`** (optional)
+  - HuggingFace access token for accessing private repositories
+  - Takes precedence over `HUGGING_FACE_HUB_TOKEN`
+  - Used when `runtime_secret_name` is `hf_token` or `hf_access_token`
+
+- **`HUGGING_FACE_HUB_TOKEN`** (optional)
+  - Official HuggingFace Hub token environment variable
+  - Used as fallback if `HF_TOKEN` is not set
+  - Allows access to private HuggingFace repositories
+
+### Baseten FS (b10fs) Configuration
+
+- **`BASETEN_FS_ENABLED`** (default: `false`)
+  - Enable/disable Baseten FS caching: `1`/`true` to enable, `0`/`false` to disable
+  - When enabled, files are cached in `/cache/org/artifacts/truss_transfer_managed_v1`
+
+- **`TRUSS_TRANSFER_B10FS_CLEANUP_HOURS`** (default: `96`)
+  - Hours after last access before deleting cached files from other tenants
+  - Helps manage disk space by removing old cached files
+  - Example: `TRUSS_TRANSFER_B10FS_CLEANUP_HOURS=48` for 2 days
+
+- **`TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS`** (default: `350`)
+  - Expected download speed in MB/s for b10fs performance benchmarking
+  - Used to determine if b10fs is faster than direct download
+  - Lower values make b10fs more likely to be used
+
+### Example Configuration
+
+```bash
+# Basic setup
+export TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/my-models"
+export RUST_LOG=info
+
+# With b10fs enabled and authentication
+export BASETEN_FS_ENABLED=1
+export TRUSS_TRANSFER_B10FS_CLEANUP_HOURS=48
+export TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS=100
+export HF_TOKEN="your-huggingface-token"
+```
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests without network dependencies
+cargo test --lib
+
+# Run Python tests
+python -m pytest tests/
 ```
 
 ### Running the CLI as binary
