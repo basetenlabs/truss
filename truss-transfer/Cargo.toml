@@ -27,7 +27,7 @@ num_cpus = "1.17.0"
 log = "0.4"
 env_logger = "0.10"
 # HuggingFace and utility dependencies
-hf-hub = { version = "0.4.3", features = ["tokio","native-tls"] }
+hf-hub = { version = "0.4.3", features = ["tokio","native-tls"], default-features = false }
 glob = "0.3"
 thiserror = "1.0"
 
