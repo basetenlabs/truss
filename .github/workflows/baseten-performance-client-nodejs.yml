@@ -201,12 +201,16 @@ jobs:
               exit 1
             fi
             ${{ matrix.settings.build }}
-      - name: Install Perl modules on Windows
+      - name: Setup Windows Perl environment
         if: ${{ matrix.settings.host == 'windows-latest' }}
         run: |
-          # Install required Perl modules for OpenSSL build
-          cpan -i Locale::Maketext::Simple IPC::Cmd
-        shell: bash
+          # Install required Perl modules using chocolatey
+          choco install strawberryperl -y --force
+          # Refresh environment variables
+          refreshenv
+          # Install required Perl modules
+          cpan -T -i Locale::Maketext::Simple IPC::Cmd
+        shell: pwsh
       - name: Build
         run: ${{ matrix.settings.build }}
         if: ${{ !matrix.settings.docker }}
