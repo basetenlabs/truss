@@ -13,6 +13,7 @@ def test_dolly():
             revision="60b8d3fe22aebb024b573f1cca224db3126d10f3",
             runtime_secret_name="hf_access_token_2",
             volume_folder="julien_dummy",
+            kind="hf",
         )
     ]
 

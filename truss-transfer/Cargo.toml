@@ -30,6 +30,8 @@ env_logger = "0.10"
 hf-hub = { git = "https://github.com/michaelfeil/hf-hub", tag = "0.0.1", features = ["tokio","native-tls"], default-features = false }
 thiserror = "1.0"
 glob = "0.3"
+# Object store for GCS/S3 support
+object_store = { version = "0.11", features = ["gcp", "aws"] }
 
 # Use patch to override the reqwest dependency used by all crates in the dependency tree
 [patch.crates-io]
