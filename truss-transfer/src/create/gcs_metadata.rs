@@ -14,11 +14,13 @@ use chrono;
 #[derive(Debug, thiserror::Error)]
 pub enum GcsError {
     #[error("Invalid metadata")]
+    #[allow(dead_code)]
     InvalidMetadata,
 }
 
 /// GCS file metadata
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct GcsFileMetadata {
     /// ETag or equivalent hash
     pub etag: String,
