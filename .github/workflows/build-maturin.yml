@@ -60,10 +60,10 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: "false"
-          manylinux: auto
+          manylinux: manylinux_2_28
           # set export CFLAGS_aarch64_unknown_linux_gnu="-D__ARM_ARCH=8" for aarch64
-          docker-options: >
-            ${{ matrix.platform.target == 'aarch64' && '--env CFLAGS_aarch64_unknown_linux_gnu="-D__ARM_ARCH=8"' || '' }}
+          # docker-options: >
+          #   ${{ matrix.platform.target == 'aarch64' && '--env CFLAGS_aarch64_unknown_linux_gnu="-D__ARM_ARCH=8"' || '' }}
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
