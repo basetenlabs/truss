@@ -1,7 +1,6 @@
-use object_store::Error;
 use pyo3::pyclass;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use serde_json;
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum ResolutionType {

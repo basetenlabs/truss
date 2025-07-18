@@ -163,7 +163,6 @@ def test_dolly():
                 assert pointer[field] == expected[field], f"Field {field} mismatch"
             except AssertionError as e:
                 print(f"Error in pointer {pointer['uid']}: {e}")
-                breakpoint()
 
         assert models[0].revision in pointer["resolution"]["url"], (
             f"Revision mismatch in {field}"
