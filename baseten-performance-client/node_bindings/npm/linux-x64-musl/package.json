@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client-linux-x64-musl",
-  "version": "0.0.1-rc3",
+  "version": "0.0.1-r4",
   "os": [
     "linux"
   ],
