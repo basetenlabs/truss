@@ -17,7 +17,7 @@ use tokio::sync::Semaphore;
 use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
 use crate::constants::*;
-use crate::download::download_file_with_cache;
+use crate::download::{download_file_with_cache, get_secret_from_file};
 use crate::speed_checks::is_b10cache_fast_heuristic;
 use crate::types::{BasetenPointer, BasetenPointerManifest};
 
