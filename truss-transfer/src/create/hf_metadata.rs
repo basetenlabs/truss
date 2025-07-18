@@ -8,6 +8,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use tokio::time::{sleep, Duration};
+use super::filter_repo_files;
 
 /// Get HuggingFace token from multiple sources
 /// 1. Check file system at /secrets/{runtime_secret_name}
@@ -69,47 +70,6 @@ pub struct HfFileMetadata {
     pub etag: String,
     pub url: String,
     pub size: u64,
-}
-
-/// Filter repository files based on patterns
-pub fn filter_repo_files(
-    files: Vec<String>,
-    allow_patterns: Option<&[String]>,
-    ignore_patterns: Option<&[String]>,
-) -> Result<Vec<String>, HfError> {
-    let mut filtered_files = files;
-
-    // Apply allow patterns (if specified, only keep files that match)
-    if let Some(patterns) = allow_patterns {
-        filtered_files = filtered_files
-            .into_iter()
-            .filter(|file| {
-                patterns.iter().any(|pattern| {
-                    glob::Pattern::new(pattern)
-                        .map_err(|e| HfError::Pattern(e.to_string()))
-                        .map(|p| p.matches(file))
-                        .unwrap_or(false)
-                })
-            })
-            .collect();
-    }
-
-    // Apply ignore patterns (remove files that match)
-    if let Some(patterns) = ignore_patterns {
-        filtered_files = filtered_files
-            .into_iter()
-            .filter(|file| {
-                !patterns.iter().any(|pattern| {
-                    glob::Pattern::new(pattern)
-                        .map_err(|e| HfError::Pattern(e.to_string()))
-                        .map(|p| p.matches(file))
-                        .unwrap_or(false)
-                })
-            })
-            .collect();
-    }
-
-    Ok(filtered_files)
 }
 
 /// Get HuggingFace file metadata using the hf-hub crate
@@ -189,7 +149,7 @@ pub async fn metadata_hf_repo(
         .collect();
     let filtered_files = filter_repo_files(files, allow_patterns, ignore_patterns)?;
 
-    let mut metadata_map = HashMap::new();
+    let mut metadata_map: HashMap<String, HfFileMetadata> = HashMap::new();
 
     for file in filtered_files {
         let metadata = get_hf_metadata(&api, repo_id, real_revision, &file).await?;
