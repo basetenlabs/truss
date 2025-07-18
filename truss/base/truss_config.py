@@ -616,6 +616,13 @@ class TrussConfig(custom_types.ConfigModel):
     apply_library_patches: bool = True
     spec_version: str = "2.0"
 
+    DOCKER_SERVER_OPTIONAL_FIELDS: ClassVar[list[str]] = [
+        "server_port",
+        "predict_endpoint",
+        "readiness_endpoint",
+        "liveness_endpoint",
+    ]
+
     class Config:
         protected_namespaces = ()  # Silence warnings about fields starting with `model_`.
 
@@ -728,33 +735,22 @@ class TrussConfig(custom_types.ConfigModel):
         if is_grpc:
             if not has_docker_server:
                 raise ValueError(
-                    "docker_server is required when transport kind is GRPC"
+                    "docker_server is required when transport kind is gRPC"
                 )
-            optional_fields = [
-                "server_port",
-                "predict_endpoint",
-                "readiness_endpoint",
-                "liveness_endpoint",
-            ]
             if any(
                 getattr(self.docker_server, field) is not None
-                for field in optional_fields
+                for field in TrussConfig.DOCKER_SERVER_OPTIONAL_FIELDS
             ):
                 raise ValueError(
-                    "When transport kind is GRPC, docker_server should only have start_command defined"
+                    "When transport kind is gRPC, docker_server should only have start_command defined"
                 )
         elif has_docker_server:
-            optional_fields = [
-                "server_port",
-                "predict_endpoint",
-                "readiness_endpoint",
-                "liveness_endpoint",
-            ]
             if any(
-                getattr(self.docker_server, field) is None for field in optional_fields
+                getattr(self.docker_server, field) is None
+                for field in TrussConfig.DOCKER_SERVER_OPTIONAL_FIELDS
             ):
                 raise ValueError(
-                    "When transport kind is not GRPC, docker_server must either be absent or have server_port, predict_endpoint, readiness_endpoint, and liveness_endpoint defined"
+                    "Please define server_port, predict_endpoint, readiness_endpoint, and liveness_endpoint for docker_server"
                 )
 
         return self
