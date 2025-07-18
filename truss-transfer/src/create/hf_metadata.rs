@@ -1,3 +1,4 @@
+use super::filter_repo_files;
 use crate::download::get_secret_from_file;
 use crate::types::{BasetenPointer, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
@@ -8,7 +9,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use tokio::time::{sleep, Duration};
-use super::filter_repo_files;
 
 /// Get HuggingFace token from multiple sources
 /// 1. Check file system at /secrets/{runtime_secret_name}

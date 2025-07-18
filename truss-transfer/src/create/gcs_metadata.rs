@@ -1,13 +1,13 @@
 use crate::types::{BasetenPointer, ModelRepo, Resolution, ResolutionType};
 use chrono;
+use futures_util::stream::StreamExt;
 use log::{debug, info};
 use object_store::gcp::GoogleCloudStorageBuilder;
 use object_store::ObjectStore;
+use rand;
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
-use rand;
-use futures_util::stream::StreamExt;
 // super::filter::filter_repo_files;
 
 /// Error types for GCS operations
@@ -43,14 +43,21 @@ pub struct GcsFileMetadata {
 /// Parse GCS URI (gs://bucket/path) into bucket and prefix
 fn parse_gcs_uri(uri: &str) -> Result<(String, String), GcsError> {
     if !uri.starts_with("gs://") {
-        return Err(GcsError::InvalidUri(format!("URI must start with gs://: {}", uri)));
+        return Err(GcsError::InvalidUri(format!(
+            "URI must start with gs://: {}",
+            uri
+        )));
     }
 
     let path = &uri[5..]; // Remove "gs://"
     let parts: Vec<&str> = path.splitn(2, '/').collect();
 
     let bucket = parts[0].to_string();
-    let prefix = if parts.len() > 1 { parts[1].to_string() } else { String::new() };
+    let prefix = if parts.len() > 1 {
+        parts[1].to_string()
+    } else {
+        String::new()
+    };
 
     Ok((bucket, prefix))
 }
@@ -152,7 +159,10 @@ async fn metadata_gcs_bucket(
         object_store::path::Path::from(prefix.clone())
     };
 
-    debug!("Listing GCS objects in bucket: {}, prefix: {}", bucket, prefix);
+    debug!(
+        "Listing GCS objects in bucket: {}, prefix: {}",
+        bucket, prefix
+    );
 
     let mut object_stream = gcs.list(Some(&prefix_path));
 
@@ -162,7 +172,8 @@ async fn metadata_gcs_bucket(
         let file_name = if prefix.is_empty() {
             file_path.clone()
         } else {
-            file_path.strip_prefix(&format!("{}/", prefix))
+            file_path
+                .strip_prefix(&format!("{}/", prefix))
                 .unwrap_or(&file_path)
                 .to_string()
         };
@@ -176,7 +187,9 @@ async fn metadata_gcs_bucket(
         // filter_repo_files(files, allow_patterns, ignore_patterns)?;
 
         let metadata = GcsFileMetadata {
-            etag: object.e_tag.unwrap_or_else(|| format!("gcs-{}", rand::random::<u64>())),
+            etag: object
+                .e_tag
+                .unwrap_or_else(|| format!("gcs-{}", rand::random::<u64>())),
             size: object.size,
             path: file_path.clone(),
             last_modified: object.last_modified,
@@ -185,7 +198,11 @@ async fn metadata_gcs_bucket(
         file_metadata.insert(file_name, metadata);
     }
 
-    info!("Found {} files in GCS bucket {}", file_metadata.len(), bucket);
+    info!(
+        "Found {} files in GCS bucket {}",
+        file_metadata.len(),
+        bucket
+    );
     Ok(file_metadata)
 }
 
@@ -207,7 +224,8 @@ pub async fn model_cache_gcs_to_b10ptr(
             &model.runtime_secret_name,
             model.allow_patterns.as_deref(),
             model.ignore_patterns.as_deref(),
-        ).await?;
+        )
+        .await?;
 
         for (file_name, file_metadata) in metadata {
             let full_file_path = if model.volume_folder.is_empty() {
@@ -219,13 +237,17 @@ pub async fn model_cache_gcs_to_b10ptr(
             // Create a temporary HTTP URL for the GCS object
             // This will be replaced with pre-signed URLs in resolution phase
             let (bucket, _) = parse_gcs_uri(&model.repo_id)?;
-            let temp_url = format!("https://storage.googleapis.com/{}/{}", bucket, file_metadata.path);
+            let temp_url = format!(
+                "https://storage.googleapis.com/{}/{}",
+                bucket, file_metadata.path
+            );
 
             let pointer = BasetenPointer {
                 resolution: Some(Resolution {
                     url: temp_url,
                     resolution_type: ResolutionType::Gcs,
-                    expiration_timestamp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp(),
+                    expiration_timestamp: (chrono::Utc::now() + chrono::Duration::hours(24))
+                        .timestamp(),
                 }),
                 uid: format!("gcs-{}", file_metadata.etag),
                 file_name: full_file_path,
@@ -279,13 +301,25 @@ mod tests {
         let ignore_patterns = vec!["*.md".to_string()];
 
         // Should allow safetensors files
-        assert!(!should_ignore_file("model.safetensors", Some(&allow_patterns), Some(&ignore_patterns)));
+        assert!(!should_ignore_file(
+            "model.safetensors",
+            Some(&allow_patterns),
+            Some(&ignore_patterns)
+        ));
 
         // Should ignore md files
-        assert!(should_ignore_file("README.md", Some(&allow_patterns), Some(&ignore_patterns)));
+        assert!(should_ignore_file(
+            "README.md",
+            Some(&allow_patterns),
+            Some(&ignore_patterns)
+        ));
 
         // Should ignore files not in allow patterns
-        assert!(should_ignore_file("model.txt", Some(&allow_patterns), Some(&ignore_patterns)));
+        assert!(should_ignore_file(
+            "model.txt",
+            Some(&allow_patterns),
+            Some(&ignore_patterns)
+        ));
 
         // Should allow when no patterns specified
         assert!(!should_ignore_file("any_file.txt", None, None));

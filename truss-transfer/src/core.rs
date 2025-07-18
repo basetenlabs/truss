@@ -17,7 +17,7 @@ use tokio::sync::Semaphore;
 use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
 use crate::constants::*;
-use crate::download::{download_file_with_cache, get_secret_from_file};
+use crate::download::download_file_with_cache;
 use crate::speed_checks::is_b10cache_fast_heuristic;
 use crate::types::{BasetenPointer, BasetenPointerManifest};
 
@@ -217,6 +217,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         .http2_keep_alive_interval(Some(std::time::Duration::from_secs(15)))
         .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
         .build()?;
+
+    // resolve the gcs / s3 and pre-sign the urls
+    // 6.1 TODO: create features for this to pre-sign url at runtime.
 
     // 7. Spawn download tasks
     info!("Spawning download tasks...");
