@@ -87,12 +87,12 @@ class Runtime(custom_types.SafeModelNoExtra):
 
 
 class AWSIAMAuthDetails(custom_types.SafeModelNoExtra):
-    access_key_secret_name: SecretReference
-    secret_access_key_secret_name: SecretReference
+    access_key_secret: SecretReference
+    secret_access_key_secret: SecretReference
 
 
 class GCPServiceAccountJSONAuthDetails(custom_types.SafeModelNoExtra):
-    service_account_json_secret_name: SecretReference
+    service_account_json_secret: SecretReference
 
 
 class DockerAuth(custom_types.SafeModelNoExtra):
