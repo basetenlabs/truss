@@ -201,10 +201,21 @@ jobs:
               exit 1
             fi
             ${{ matrix.settings.build }}
+      - name: Install Perl modules on Windows
+        if: ${{ matrix.settings.host == 'windows-latest' }}
+        run: |
+          # Install required Perl modules for OpenSSL build
+          cpan -i Locale::Maketext::Simple IPC::Cmd
+        shell: bash
       - name: Build
         run: ${{ matrix.settings.build }}
         if: ${{ !matrix.settings.docker }}
         shell: bash
+        env:
+          # Additional OpenSSL environment variables for Windows builds
+          OPENSSL_STATIC: 1
+          OPENSSL_VENDOR: 1
+          OPENSSL_NO_VENDOR: 0
       - name: List build output
         run: |
           find . -name "*.node" -type f
