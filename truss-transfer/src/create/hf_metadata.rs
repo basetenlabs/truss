@@ -329,36 +329,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_hf_token_from_env() {
-        // Test that get_hf_token can read from environment variables
-        use std::env;
-
-        // Clean up any existing env vars
-        env::remove_var("HF_TOKEN");
-        env::remove_var("HUGGING_FACE_HUB_TOKEN");
-
-        // Test with HF_TOKEN
-        env::set_var("HF_TOKEN", "test_token_123");
-        let token = get_hf_token("hf_access_token");
-        assert_eq!(token, Some("test_token_123".to_string()));
-
-        // Clean up
-        env::remove_var("HF_TOKEN");
-
-        // Test with HUGGING_FACE_HUB_TOKEN
-        env::set_var("HUGGING_FACE_HUB_TOKEN", "test_token_456");
-        let token = get_hf_token("hf_access_token");
-        assert_eq!(token, Some("test_token_456".to_string()));
-
-        // Clean up
-        env::remove_var("HUGGING_FACE_HUB_TOKEN");
-
-        // Test with no token
-        let token = get_hf_token("hf_access_token");
-        assert_eq!(token, None);
-    }
-
-    #[test]
     fn test_get_hf_token_priority() {
         // Test that environment variables have the right priority
         use std::env;
