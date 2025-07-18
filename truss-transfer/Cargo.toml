@@ -1,6 +1,6 @@
 [package]
 name = "truss_transfer"
-version = "0.0.15-rc1"
+version = "0.0.15"
 edition = "2021"
 
 [lib]
