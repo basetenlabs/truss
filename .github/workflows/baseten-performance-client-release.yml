@@ -12,7 +12,8 @@ on:
   pull_request:
     paths:
       - "baseten-performance-client/**"
-  workflow_dispatch:
+      - ".github/workflows/**"
+    workflow_dispatch:
     inputs:
       publish_pypi:
         description: "Publish to PyPI? (true/false)"
