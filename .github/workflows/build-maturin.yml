@@ -73,26 +73,26 @@ jobs:
                 echo "Neither apt-get nor yum is installed. Please install a package manager."
                 exit 1
             fi
-      - name: Build free-threaded wheels
-        uses: PyO3/maturin-action@v1
-        if: ${{ matrix.platform.target != 'aarch64' || matrix.platform.target != 'armv7' }}
-        with:
-          working-directory: ${{ inputs.folder }}
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist -i python3.13t
-          sccache: "false"
-          manylinux: auto
-          docker-options: >
-            ${{ matrix.platform.target == 'armv7' && '--env RING_PREGENERATE_ASM=false' || '' }}
-          before-script-linux: |
-            if command -v apt-get &> /dev/null; then
-                apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
-            elif command -v yum &> /dev/null; then
-                yum install openssl-devel perl-IPC-Cmd -y
-            else
-                echo "Neither apt-get nor yum is installed. Please install a package manager."
-                exit 1
-            fi
+      # - name: Build free-threaded wheels
+      #   uses: PyO3/maturin-action@v1
+      #   if: ${{ matrix.platform.target != 'aarch64' || matrix.platform.target != 'armv7' }}
+      #   with:
+      #     working-directory: ${{ inputs.folder }}
+      #     target: ${{ matrix.platform.target }}
+      #     args: --release --out dist -i python3.13t
+      #     sccache: "false"
+      #     manylinux: auto
+      #     docker-options: >
+      #       ${{ matrix.platform.target == 'armv7' && '--env RING_PREGENERATE_ASM=false' || '' }}
+      #     before-script-linux: |
+      #       if command -v apt-get &> /dev/null; then
+      #           apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
+      #       elif command -v yum &> /dev/null; then
+      #           yum install openssl-devel perl-IPC-Cmd -y
+      #       else
+      #           echo "Neither apt-get nor yum is installed. Please install a package manager."
+      #           exit 1
+      #       fi
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
