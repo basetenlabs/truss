@@ -18,7 +18,7 @@ permissions:
       - '**'
     paths:
       - "baseten-performance-client/**"
-      - ".github/workflows/baseten-performance-client-nodejs.yml"
+      - ".github/workflows/**"
   pull_request: null
   workflow_dispatch: null
 jobs:

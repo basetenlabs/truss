@@ -161,7 +161,7 @@ pub async fn download_to_path(
 }
 
 /// Read secret from file (e.g. for `hf_access_token` reads /secrets/hf_access_token and returns its contents)
-fn get_secret_from_file(name: &str) -> Option<String> {
+pub fn get_secret_from_file(name: &str) -> Option<String> {
     let path = Path::new(SECRETS_BASE_PATH).join(name);
     if path.exists() {
         if let Ok(contents) = std::fs::read_to_string(&path) {

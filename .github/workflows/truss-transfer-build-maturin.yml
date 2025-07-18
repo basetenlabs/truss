@@ -12,6 +12,7 @@ on:
   pull_request:
     paths:
       - "truss-transfer/**"
+      - ".github/workflows/**"
   workflow_dispatch:
     inputs:
       publish_pypi:
