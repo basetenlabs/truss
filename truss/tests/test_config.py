@@ -982,7 +982,6 @@ def test_supported_versions_are_sorted():
 @pytest.mark.parametrize(
     "transport_config",
     [
-        # Valid GRPC config
         pytest.param(
             {
                 "runtime": {"transport": {"kind": "grpc"}},
@@ -990,7 +989,6 @@ def test_supported_versions_are_sorted():
             },
             id="valid-grpc-minimal",
         ),
-        # Valid HTTP config
         pytest.param(
             {
                 "runtime": {"transport": {"kind": "http"}},
@@ -1004,7 +1002,6 @@ def test_supported_versions_are_sorted():
             },
             id="valid-http-full",
         ),
-        # Valid WebSocket config
         pytest.param(
             {
                 "runtime": {"transport": {"kind": "websocket"}},
@@ -1018,7 +1015,6 @@ def test_supported_versions_are_sorted():
             },
             id="valid-websocket-full",
         ),
-        # Valid HTTP with no docker_server
         pytest.param(
             {"runtime": {"transport": {"kind": "http"}}}, id="valid-http-no-docker"
         ),
@@ -1036,7 +1032,6 @@ def test_valid_transport_configurations(transport_config, tmp_path):
 @pytest.mark.parametrize(
     "invalid_config,expected_error",
     [
-        # GRPC with additional fields
         pytest.param(
             {
                 "runtime": {"transport": {"kind": "grpc"}},
@@ -1046,22 +1041,20 @@ def test_valid_transport_configurations(transport_config, tmp_path):
                     "predict_endpoint": "/predict",
                 },
             },
-            "When transport kind is GRPC, docker_server should only have start_command defined",
+            "When transport kind is gRPC, docker_server should only have start_command defined",
             id="invalid-grpc-extra-fields",
         ),
-        # HTTP with missing fields
         pytest.param(
             {
                 "runtime": {"transport": {"kind": "http"}},
                 "docker_server": {"start_command": "./start.sh", "server_port": 8080},
             },
-            "When transport kind is not GRPC, docker_server must either be absent or have server_port, predict_endpoint, readiness_endpoint, and liveness_endpoint defined",
+            "Please define server_port, predict_endpoint, readiness_endpoint, and liveness_endpoint for docker_server",
             id="invalid-http-missing-fields",
         ),
-        # Missing docker_server with GRPC
         pytest.param(
             {"runtime": {"transport": {"kind": "grpc"}}},
-            "docker_server is required when transport kind is GRPC",
+            "docker_server is required when transport kind is gRPC",
             id="invalid-grpc-missing-docker",
         ),
     ],
