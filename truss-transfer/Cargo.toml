@@ -31,7 +31,7 @@ hf-hub = { git = "https://github.com/michaelfeil/hf-hub", tag = "0.0.1", feature
 thiserror = "1.0"
 glob = "0.3"
 # Object store for GCS/S3 support - commented out for now due to API compatibility issues
-# object_store = { version = "0.11", features = ["gcp", "aws"] }
+object_store = { version = "0.12.3", features = ["gcp", "aws"] }
 
 # Use patch to override the reqwest dependency used by all crates in the dependency tree
 [patch.crates-io]
