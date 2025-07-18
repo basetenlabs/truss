@@ -1,4 +1,4 @@
-use crate::constants::SECRETS_BASE_PATH;
+use crate::download::get_secret_from_file;
 use crate::types::{BasetenPointer, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
@@ -15,15 +15,9 @@ use tokio::time::{sleep, Duration};
 /// 3. Return None if not found
 fn get_hf_token(runtime_secret_name: &str) -> Option<String> {
     // 1. Try to read from secrets file
-    let secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
-    if secret_path.exists() {
-        if let Ok(contents) = fs::read_to_string(&secret_path) {
-            let trimmed = contents.trim().to_string();
-            if !trimmed.is_empty() {
-                debug!("Found HF token in secrets file: {}", secret_path.display());
-                return Some(trimmed);
-            }
-        }
+    let secret = get_secret_from_file(runtime_secret_name);
+    if secret.is_some() {
+        return secret;
     }
 
     // 2. Try environment variables
@@ -47,8 +41,7 @@ fn get_hf_token(runtime_secret_name: &str) -> Option<String> {
 
     // 3. No token found
     warn!(
-        "No HuggingFace token found in {} or environment variables (HF_TOKEN, HUGGING_FACE_HUB_TOKEN). Using unauthenticated access.",
-        secret_path.display()
+        "No HuggingFace token found secrets or environment variables (HF_TOKEN, HUGGING_FACE_HUB_TOKEN). Using unauthenticated access.",
     );
     None
 }

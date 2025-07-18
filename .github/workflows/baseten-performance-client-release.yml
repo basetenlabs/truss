@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - "baseten-performance-client/**"
+      - ".github/workflows/**"
     tags:
       - "*"
   pull_request:

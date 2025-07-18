@@ -1,4 +1,4 @@
-use super::{model_cache_hf_to_b10ptr, model_cache_gcs_to_b10ptr};
+use super::{model_cache_gcs_to_b10ptr, model_cache_hf_to_b10ptr};
 use crate::types::{ModelRepo, ResolutionType};
 use log::info;
 use serde_json;
@@ -11,8 +11,14 @@ pub async fn create_basetenpointer(
     let mut all_pointers = Vec::new();
 
     // Separate models by type
-    let hf_models: Vec<_> = cache.iter().filter(|m| m.kind == ResolutionType::Http).collect();
-    let gcs_models: Vec<_> = cache.iter().filter(|m| m.kind == ResolutionType::Gcs).collect();
+    let hf_models: Vec<_> = cache
+        .iter()
+        .filter(|m| m.kind == ResolutionType::Http)
+        .collect();
+    let gcs_models: Vec<_> = cache
+        .iter()
+        .filter(|m| m.kind == ResolutionType::Gcs)
+        .collect();
 
     // Process HuggingFace models
     if !hf_models.is_empty() {
