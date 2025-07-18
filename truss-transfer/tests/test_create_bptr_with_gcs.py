@@ -10,6 +10,7 @@ def test_dolly():
     models = [
         truss_transfer.PyModelRepo(
             repo_id="gs://llama-3-2-1b-instruct/",
+            revision="main",
             runtime_secret_name="gcs-account",
             volume_folder="julien_dummy",
             kind="gcs",
