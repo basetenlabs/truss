@@ -1,4 +1,5 @@
 use super::filter_repo_files;
+use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::download::get_secret_from_file;
 use crate::types::{BasetenPointer, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
@@ -6,7 +7,6 @@ use hf_hub::{Repo, RepoType};
 use log::{debug, warn};
 use std::collections::HashMap;
 use std::env;
-use std::fs;
 use std::path::Path;
 use tokio::time::{sleep, Duration};
 
@@ -209,7 +209,7 @@ pub async fn model_cache_hf_to_b10ptr(
         // Convert metadata to BasetenPointer format
         for (filename, metadata) in metadata_hf_repo_list {
             let uid = format!("{}:{}:{}", model.repo_id, model.revision, filename);
-            let runtime_path = format!("/app/model_cache/{}", model.volume_folder);
+            let runtime_path = format!("{}/{}", RUNTIME_MODEL_CACHE_PATH, model.volume_folder);
             let file_path = Path::new(&runtime_path).join(&filename);
 
             let pointer = BasetenPointer {

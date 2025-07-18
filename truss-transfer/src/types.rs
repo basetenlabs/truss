@@ -1,5 +1,7 @@
+use object_store::Error;
 use pyo3::pyclass;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum ResolutionType {
@@ -58,4 +60,19 @@ pub struct ModelRepo {
     pub volume_folder: String,
     pub runtime_secret_name: String,
     pub kind: ResolutionType,
+}
+
+/// Error types for GCS operations
+#[derive(Debug, thiserror::Error)]
+pub enum GcsError {
+    #[error("Invalid metadata")]
+    InvalidMetadata,
+    #[error("Object store error: {0}")]
+    ObjectStore(#[from] object_store::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Invalid GCS URI: {0}")]
+    InvalidUri(String),
 }
