@@ -498,7 +498,6 @@ jobs:
           options: '--platform linux/arm/v7 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
           run: |
             set -e
-            apt-get update && apt-get install -y perl libssl-dev
             yarn test
             ls -la
   universal-macOS:
