@@ -7,6 +7,9 @@ env:
   DISABLE_V8_COMPILE_CACHE: 1
   APP_NAME: performance-client
   MACOSX_DEPLOYMENT_TARGET: '10.13'
+  # Use vendored SSL to avoid OpenSSL build issues
+  OPENSSL_STATIC: 1
+  OPENSSL_VENDOR: 1
 permissions:
   contents: write
   id-token: write
@@ -69,14 +72,14 @@ jobs:
           #   Error configuring OpenSSL build:
           #       'perl' reported failure with exit code: 2
           #       Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
-          # - host: windows-latest
-          #   build: yarn build --target x86_64-pc-windows-msvc
-          #   target: x86_64-pc-windows-msvc
-          # - host: windows-latest
-          #   build: |
-          #     yarn build --target i686-pc-windows-msvc
-          #     yarn test
-          #   target: i686-pc-windows-msvc
+          - host: windows-latest
+            build: yarn build --target x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-msvc
+          - host: windows-latest
+            build: |
+              yarn build --target i686-pc-windows-msvc
+              yarn test
+            target: i686-pc-windows-msvc
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
@@ -120,13 +123,9 @@ jobs:
           #     set -e &&
           #     rustup target add aarch64-unknown-linux-musl &&
           #     yarn build --target aarch64-unknown-linux-musl
-          # TODO: enable again
-          #   AARCH64_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR unset
-          #     cargo:warning=openssl-src: failed to build OpenSSL from source
-
-          # - host: windows-latest
-          #   target: aarch64-pc-windows-msvc
-          #   build: yarn build --target aarch64-pc-windows-msvc
+          - host: windows-latest
+            target: aarch64-pc-windows-msvc
+            build: yarn build --target aarch64-pc-windows-msvc
           - host: ubuntu-latest
             target: riscv64gc-unknown-linux-gnu
             setup: |
@@ -187,7 +186,7 @@ jobs:
         if: ${{ matrix.settings.docker }}
         with:
           image: ${{ matrix.settings.docker }}
-          options: '--user 0:0 -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
+          options: '--user 0:0 -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings --env OPENSSL_STATIC=1 --env OPENSSL_VENDOR=1'
           run: |
             if command -v apk &> /dev/null; then
               # Alpine-based image
@@ -284,11 +283,9 @@ jobs:
         settings:
           - host: macos-latest
             target: x86_64-apple-darwin
-          # TODO: reenable windows release.
-           # 'perl' reported failure with exit code: 2
-              # Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
-          # - host: windows-latest
-          #   target: x86_64-pc-windows-msvc
+          # Windows builds now work with vendored SSL
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
         node:
           - '18'
           - '20'

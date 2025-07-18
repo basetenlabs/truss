@@ -44,6 +44,7 @@
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm --skip-gh-release",
     "test": "ava",
+    "test:integration": "node __test__/test_with_key.js",
     "universal": "napi universal",
     "version": "napi version"
   },
