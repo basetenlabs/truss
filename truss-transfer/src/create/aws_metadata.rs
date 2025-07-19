@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::{debug, info};
-use std::collections::HashMap;
+use log::info;
 
 use crate::secrets::get_secret_from_file;
 use crate::types::{BasetenPointer, ModelRepo, Resolution, S3Resolution};

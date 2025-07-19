@@ -5,11 +5,13 @@
 // Module declarations
 mod bindings;
 mod cache;
+mod config;
 mod constants;
 mod core;
 mod create;
 mod download;
 mod download_core;
+mod errors;
 mod secrets;
 mod speed_checks;
 mod types;

@@ -53,11 +53,41 @@ impl GcsResolution {
     }
 }
 
-mod s3_resolution;
-pub use s3_resolution::S3Resolution;
+/// S3 resolution with bucket name and region
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct S3Resolution {
+    pub bucket_name: String,
+    pub key: String,
+    pub region: Option<String>,
+}
 
-mod azure_resolution;
-pub use azure_resolution::AzureResolution;
+impl S3Resolution {
+    pub fn new(bucket_name: String, key: String, region: Option<String>) -> Self {
+        Self {
+            bucket_name,
+            key,
+            region,
+        }
+    }
+}
+
+/// Azure Blob Storage resolution with container and blob path
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AzureResolution {
+    pub account_name: String,
+    pub container_name: String,
+    pub blob_name: String,
+}
+
+impl AzureResolution {
+    pub fn new(account_name: String, container_name: String, blob_name: String) -> Self {
+        Self {
+            account_name,
+            container_name,
+            blob_name,
+        }
+    }
+}
 
 /// Union type representing different resolution types
 #[derive(Debug, Serialize, Deserialize, Clone)]
