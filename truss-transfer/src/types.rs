@@ -10,21 +10,59 @@ pub enum ResolutionType {
     Gcs,
 }
 
-impl Default for ResolutionType {
-    fn default() -> Self {
-        ResolutionType::Http
+impl ToString for ResolutionType {
+    fn to_string(&self) -> String {
+        match self {
+            ResolutionType::Http => "http".to_string(),
+            ResolutionType::Gcs => "gcs".to_string(),
+        }
     }
 }
 
-/// Corresponds to `Resolution` in the Python code
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Resolution {
+pub struct HttpResolution {
     pub url: String,
-    #[serde(default)]
-    pub resolution_type: ResolutionType,
     pub expiration_timestamp: i64,
+    resolution_type: ResolutionType,
 }
 
+impl HttpResolution {
+    pub fn new(url: String, expiration_timestamp: i64) -> Self {
+        Self {
+            url,
+            expiration_timestamp,
+            resolution_type: ResolutionType::Http,
+        }
+    }
+}
+
+/// GCS resolution with bucket name
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GcsResolution {
+    pub url: String,
+    pub bucket_name: String,
+    resolution_type: ResolutionType,
+}
+
+impl GcsResolution {
+    pub fn new(url: String, bucket_name: String) -> Self {
+        Self {
+            url,
+            bucket_name,
+            resolution_type: ResolutionType::Gcs,
+        }
+    }
+}
+
+/// Union type representing different resolution types
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(tag = "resolution_type")]
+pub enum Resolution {
+    #[serde(rename = "http")]
+    Http(HttpResolution),
+    #[serde(rename = "gcs")]
+    Gcs(GcsResolution),
+}
 fn default_runtime_secret_name() -> String {
     // TODO: remove this default once its adopted.
     "hf_access_token".to_string()
@@ -32,7 +70,7 @@ fn default_runtime_secret_name() -> String {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BasetenPointer {
-    pub resolution: Option<Resolution>,
+    pub resolution: Resolution,
     pub uid: String,
     pub file_name: String,
     pub hashtype: String,
@@ -64,8 +102,6 @@ pub struct ModelRepo {
 /// Error types for GCS operations
 #[derive(Debug, thiserror::Error)]
 pub enum GcsError {
-    #[error("Invalid metadata")]
-    InvalidMetadata,
     #[error("Object store error: {0}")]
     ObjectStore(#[from] object_store::Error),
     #[error("JSON error: {0}")]

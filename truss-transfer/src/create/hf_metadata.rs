@@ -1,7 +1,7 @@
 use super::filter_repo_files;
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::download::get_secret_from_file;
-use crate::types::{BasetenPointer, ModelRepo, Resolution, ResolutionType};
+use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
 use log::{debug, warn};
@@ -213,11 +213,10 @@ pub async fn model_cache_hf_to_b10ptr(
             let file_path = Path::new(&runtime_path).join(&filename);
 
             let pointer = BasetenPointer {
-                resolution: Some(Resolution {
-                    url: metadata.url,
-                    resolution_type: ResolutionType::Http,
-                    expiration_timestamp: 4044816725, // 90 years in the future
-                }),
+                resolution: Resolution::Http(HttpResolution::new(
+                    metadata.url,
+                    4044816725, // 90 years in the future
+                )),
                 uid,
                 file_name: file_path.to_string_lossy().to_string(),
                 hashtype: "etag".to_string(),

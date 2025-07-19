@@ -1,6 +1,8 @@
 use super::filter::should_ignore_file;
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
-use crate::types::{BasetenPointer, GcsError, ModelRepo, Resolution, ResolutionType};
+use crate::types::{
+    BasetenPointer, GcsError, GcsResolution, ModelRepo, Resolution, ResolutionType,
+};
 use chrono;
 use futures_util::stream::StreamExt;
 use log::{debug, info};
@@ -12,7 +14,6 @@ use std::fs;
 
 /// GCS file metadata
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct GcsFileMetadata {
     /// MD5 hash of the file content
     pub md5_hash: String,
@@ -169,18 +170,9 @@ pub async fn model_cache_gcs_to_b10ptr(
             // Create a temporary HTTP URL for the GCS object
             // This will be replaced with pre-signed URLs in resolution phase
             let (bucket, _) = parse_gcs_uri(&model.repo_id)?;
-            let temp_url = format!(
-                "https://storage.googleapis.com/{}/{}",
-                bucket, file_metadata.path
-            );
 
             let pointer = BasetenPointer {
-                resolution: Some(Resolution {
-                    url: temp_url,
-                    resolution_type: ResolutionType::Gcs,
-                    expiration_timestamp: (chrono::Utc::now() + chrono::Duration::hours(24))
-                        .timestamp(),
-                }),
+                resolution: Resolution::Gcs(GcsResolution::new(file_metadata.path, bucket)),
                 uid: format!("gcs-{}", file_metadata.md5_hash),
                 file_name: full_file_path,
                 hashtype: "md5".to_string(),

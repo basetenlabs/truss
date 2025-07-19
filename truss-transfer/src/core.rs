@@ -19,7 +19,7 @@ use crate::cache::cleanup_b10cache_and_get_space_stats;
 use crate::constants::*;
 use crate::download::download_file_with_cache;
 use crate::speed_checks::is_b10cache_fast_heuristic;
-use crate::types::{BasetenPointer, BasetenPointerManifest};
+use crate::types::{BasetenPointer, BasetenPointerManifest, Resolution};
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a "double start" scenario),
@@ -233,9 +233,19 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         tasks.push(tokio::spawn(async move {
             let _permit = sem_clone.acquire_owned().await;
             log::debug!("Handling file: {}", file_name);
+            let resolution = &pointer.resolution;
+            let http_resolution = match resolution {
+                Resolution::Http(http_resolution) => http_resolution,
+                _ => {
+                    return Err(anyhow!(
+                        "Expected HTTP resolution, found: {:?}. This needs to be pre-signed.",
+                        resolution
+                    ));
+                }
+            };
             download_file_with_cache(
                 &client,
-                &pointer.resolution.as_ref().unwrap().url,
+                &http_resolution.url,
                 &download_dir,
                 &file_name,
                 &pointer.hash,
@@ -276,11 +286,17 @@ pub fn build_resolution_map(
     let mut out = Vec::new();
 
     for bptr in &bptr_manifest.pointers {
-        if let Some(ref resolution) = bptr.resolution {
-            if resolution.expiration_timestamp < now {
-                return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
+        match &bptr.resolution {
+            Resolution::Http(http_resolution) => {
+                if http_resolution.expiration_timestamp < now {
+                    return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
+                }
+            }
+            _ => {
+                // GCS or other types do not have expiration, so we skip this check
             }
         }
+
         if bptr.hash.contains('/') {
             return Err(anyhow!(
                 "Hash {} contains '/', which is not allowed",
