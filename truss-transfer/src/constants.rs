@@ -22,6 +22,9 @@ pub static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 /// Environment variable for download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 
+/// Environment variable for model cache path (where models are stored in containers)
+pub static TRUSS_TRANSFER_MODEL_CACHE_PATH_ENV_VAR: &str = "TRUSS_TRANSFER_MODEL_CACHE_PATH";
+
 /// Environment variable for b10fs cleanup hours
 pub static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
 
@@ -31,9 +34,13 @@ pub static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 4 * 24;
 /// Fallback download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 
+/// Default model cache path
+pub static RUNTIME_MODEL_CACHE_PATH_DEFAULT: &str = "/app/model_cache";
+
 /// Base path for secrets
 pub static SECRETS_BASE_PATH: &str = "/secrets";
 
+/// Legacy constant for backward compatibility
 pub static RUNTIME_MODEL_CACHE_PATH: &str = "/app/model_cache";
 
 /// Environment variable for b10fs download speed
