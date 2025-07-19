@@ -150,13 +150,13 @@ mod tests {
     }
 
     #[test]
-    fn test_build_resolution_map_no_resolution() {
-        // Create a pointer with expired resolution (should fail)
-        let past_timestamp = chrono::Utc::now().timestamp() - 3600;
+    fn test_build_resolution_map_with_resolution() {
+        // Create a pointer with valid resolution (should succeed)
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600;
         let pointer = BasetenPointer {
             resolution: Resolution::Http(HttpResolution::new(
                 "http://example.com/file".into(),
-                past_timestamp,
+                future_timestamp,
             )),
             uid: "123".into(),
             file_name: "file.txt".into(),

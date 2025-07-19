@@ -23,6 +23,7 @@ impl ToString for ResolutionType {
 pub struct HttpResolution {
     pub url: String,
     pub expiration_timestamp: i64,
+    #[serde(default = "default_http_resolution_type")]
     resolution_type: ResolutionType,
 }
 
@@ -41,6 +42,7 @@ impl HttpResolution {
 pub struct GcsResolution {
     pub path: String,
     pub bucket_name: String,
+    #[serde(default = "default_gcs_resolution_type")]
     resolution_type: ResolutionType,
 }
 
@@ -55,15 +57,55 @@ impl GcsResolution {
 }
 
 /// Union type representing different resolution types
-/// forbidden to use a custom serialize
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(tag = "resolution_type")]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(from = "MaybeTaggedResolution")]
 pub enum Resolution {
-    // http should be resolved as default of the tagged enum
+    Http(HttpResolution),
+    Gcs(GcsResolution),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum MaybeTaggedResolution {
+    Tagged(TaggedResolution),
+    UntaggedHttp {
+        url: String,
+        expiration_timestamp: i64,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "resolution_type")]
+enum TaggedResolution {
     #[serde(rename = "http")]
     Http(HttpResolution),
     #[serde(rename = "gcs")]
     Gcs(GcsResolution),
+}
+
+impl From<MaybeTaggedResolution> for Resolution {
+    fn from(resolution: MaybeTaggedResolution) -> Resolution {
+        match resolution {
+            MaybeTaggedResolution::Tagged(TaggedResolution::Http(http)) => Resolution::Http(http),
+            MaybeTaggedResolution::Tagged(TaggedResolution::Gcs(gcs)) => Resolution::Gcs(gcs),
+            MaybeTaggedResolution::UntaggedHttp {
+                url,
+                expiration_timestamp,
+            } => Resolution::Http(HttpResolution {
+                url,
+                expiration_timestamp,
+                resolution_type: ResolutionType::Http,
+            }),
+        }
+    }
+}
+
+fn default_http_resolution_type() -> ResolutionType {
+    ResolutionType::Http
+}
+
+fn default_gcs_resolution_type() -> ResolutionType {
+    ResolutionType::Gcs
 }
 
 fn default_runtime_secret_name() -> String {
@@ -129,7 +171,10 @@ mod tests {
         }"#;
 
         let resolution: HttpResolution = serde_json::from_str(json).unwrap();
-        assert_eq!(resolution.url, "https://cdn.baseten.co/docs/production/Gettysburg.mp3");
+        assert_eq!(
+            resolution.url,
+            "https://cdn.baseten.co/docs/production/Gettysburg.mp3"
+        );
         assert_eq!(resolution.expiration_timestamp, 2683764059);
     }
 
@@ -157,7 +202,10 @@ mod tests {
         let resolution: Resolution = serde_json::from_str(json).unwrap();
         match resolution {
             Resolution::Http(http_res) => {
-                assert_eq!(http_res.url, "https://cdn.baseten.co/docs/production/Gettysburg.mp3");
+                assert_eq!(
+                    http_res.url,
+                    "https://cdn.baseten.co/docs/production/Gettysburg.mp3"
+                );
             }
             _ => panic!("Expected HTTP resolution"),
         }
@@ -216,12 +264,12 @@ mod tests {
         assert_eq!(manifest.pointers.len(), 2);
 
         match &manifest.pointers[0].resolution {
-            Resolution::Http(_) => {},
+            Resolution::Http(_) => {}
             _ => panic!("Expected HTTP resolution for first pointer"),
         }
 
         match &manifest.pointers[1].resolution {
-            Resolution::Gcs(_) => {},
+            Resolution::Gcs(_) => {}
             _ => panic!("Expected GCS resolution for second pointer"),
         }
     }
@@ -261,9 +309,95 @@ mod tests {
 
         for pointer in &manifest.pointers {
             match &pointer.resolution {
-                Resolution::Http(_) => {},
+                Resolution::Http(_) => {}
                 _ => panic!("Expected HTTP resolution for historic format"),
             }
         }
+    }
+
+    // Real-world GCS manifest test with duplicate resolution_type fields
+    #[test]
+    fn test_baseten_pointer_manifest_gcs_real_world() {
+        let json = r#"{
+            "pointers": [
+                {
+                    "resolution": {
+                        "resolution_type": "gcs",
+                        "path": "tokenizer.json",
+                        "bucket_name": "llama-3-2-1b-instruct"
+                    },
+                    "uid": "gcs-3ff6b653d22a2676f3a03bd7b5d7ff88",
+                    "file_name": "/app/model_cache/tokenizer.json",
+                    "hashtype": "md5",
+                    "hash": "3ff6b653d22a2676f3a03bd7b5d7ff88",
+                    "size": 9085657,
+                    "runtime_secret_name": "gcs-account"
+                },
+                {
+                    "resolution": {
+                        "path": "USE_POLICY.md",
+                        "bucket_name": "llama-3-2-1b-instruct",
+                        "resolution_type": "gcs"
+                    },
+                    "uid": "gcs-1729addd533ca7a6e956e3f077f4a4e9",
+                    "file_name": "/app/model_cache/USE_POLICY.md",
+                    "hashtype": "md5",
+                    "hash": "1729addd533ca7a6e956e3f077f4a4e9",
+                    "size": 6021,
+                    "runtime_secret_name": "gcs-account"
+                }
+            ]
+        }"#;
+
+        let manifest: BasetenPointerManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.pointers.len(), 2);
+
+        // Check first pointer
+        match &manifest.pointers[0].resolution {
+            Resolution::Gcs(gcs_res) => {
+                assert_eq!(gcs_res.path, "tokenizer.json");
+                assert_eq!(gcs_res.bucket_name, "llama-3-2-1b-instruct");
+            }
+            _ => panic!("Expected GCS resolution for first pointer"),
+        }
+        assert_eq!(
+            manifest.pointers[0].uid,
+            "gcs-3ff6b653d22a2676f3a03bd7b5d7ff88"
+        );
+        assert_eq!(
+            manifest.pointers[0].file_name,
+            "/app/model_cache/tokenizer.json"
+        );
+        assert_eq!(manifest.pointers[0].hashtype, "md5");
+        assert_eq!(
+            manifest.pointers[0].hash,
+            "3ff6b653d22a2676f3a03bd7b5d7ff88"
+        );
+        assert_eq!(manifest.pointers[0].size, 9085657);
+        assert_eq!(manifest.pointers[0].runtime_secret_name, "gcs-account");
+
+        // Check second pointer
+        match &manifest.pointers[1].resolution {
+            Resolution::Gcs(gcs_res) => {
+                assert_eq!(gcs_res.path, "USE_POLICY.md");
+                assert_eq!(gcs_res.bucket_name, "llama-3-2-1b-instruct");
+            }
+            _ => panic!("Expected GCS resolution for second pointer"),
+        }
+        assert_eq!(
+            manifest.pointers[1].uid,
+            "gcs-1729addd533ca7a6e956e3f077f4a4e9"
+        );
+        assert_eq!(
+            manifest.pointers[1].file_name,
+            "/app/model_cache/USE_POLICY.md"
+        );
+        assert_eq!(manifest.pointers[1].hashtype, "md5");
+        assert_eq!(
+            manifest.pointers[1].hash,
+            "1729addd533ca7a6e956e3f077f4a4e9"
+        );
+        assert_eq!(manifest.pointers[1].size, 6021);
+        assert_eq!(manifest.pointers[1].runtime_secret_name, "gcs-account");
     }
 }

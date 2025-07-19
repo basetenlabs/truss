@@ -52,8 +52,7 @@ pub fn gcs_storage(
     runtime_secret_name: &str,
 ) -> Result<object_store::gcp::GoogleCloudStorage, GcsError> {
     let secret_path = format!("/secrets/{}", runtime_secret_name);
-    let credentials_json = fs::read_to_string(&secret_path)
-        .map_err(|e| GcsError::Io(e))?;
+    let credentials_json = fs::read_to_string(&secret_path).map_err(|e| GcsError::Io(e))?;
 
     GoogleCloudStorageBuilder::new()
         .with_service_account_key(&credentials_json)
@@ -168,10 +167,7 @@ pub async fn model_cache_gcs_to_b10ptr(
         .await?;
 
         for (file_name, file_metadata) in metadata {
-            let full_file_path = format!(
-                "{}/{}",
-                RUNTIME_MODEL_CACHE_PATH, file_name
-            );
+            let full_file_path = format!("{}/{}", RUNTIME_MODEL_CACHE_PATH, file_name);
             // Create a temporary HTTP URL for the GCS object
             // This will be replaced with pre-signed URLs in resolution phase
             let (bucket, _) = parse_gcs_uri(&model.repo_id)?;
