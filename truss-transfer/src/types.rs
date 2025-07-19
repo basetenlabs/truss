@@ -56,7 +56,7 @@ impl GcsResolution {
 
 /// Union type representing different resolution types
 /// forbidden to use a custom serialize
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "resolution_type")]
 pub enum Resolution {
     // http should be resolved as default of the tagged enum
