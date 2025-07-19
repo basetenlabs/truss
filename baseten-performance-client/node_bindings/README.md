@@ -2,8 +2,6 @@
 
 This library provides a high-performance Node.js client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent POST requests to any URL, also outside of baseten.co. The PerformanceClient is built on top of Rust (using napi-rs), reqwest and tokio and is MIT licensed.
 
-> **Beta Status**: Packages release are currently in beta and are actively evolving. They are not cross-compiled to all platforms that Node.js supports.
-
 Similar to the Python version, this client supports >1200 rps per client and was benchmarked in [our blog](https://www.baseten.co/blog/your-client-code-matters-10x-higher-embedding-throughput-with-python-and-rust/).
 
 ![benchmarks](https://www.baseten.co/_next/image/?url=https%3A%2F%2Fwww.datocms-assets.com%2F104802%2F1749832130-diagram-9.png%3Fauto%3Dformat%26fit%3Dmax%26w%3D1200&w=3840&q=75)
