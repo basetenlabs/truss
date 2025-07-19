@@ -8,6 +8,10 @@ pub enum ResolutionType {
     Http,
     #[serde(rename = "gcs")]
     Gcs,
+    #[serde(rename = "s3")]
+    S3,
+    #[serde(rename = "azure")]
+    Azure,
 }
 
 impl ToString for ResolutionType {
@@ -15,6 +19,8 @@ impl ToString for ResolutionType {
         match self {
             ResolutionType::Http => "http".to_string(),
             ResolutionType::Gcs => "gcs".to_string(),
+            ResolutionType::S3 => "s3".to_string(),
+            ResolutionType::Azure => "azure".to_string(),
         }
     }
 }
@@ -43,12 +49,15 @@ pub struct GcsResolution {
 
 impl GcsResolution {
     pub fn new(path: String, bucket_name: String) -> Self {
-        Self {
-            path,
-            bucket_name,
-        }
+        Self { path, bucket_name }
     }
 }
+
+mod s3_resolution;
+pub use s3_resolution::S3Resolution;
+
+mod azure_resolution;
+pub use azure_resolution::AzureResolution;
 
 /// Union type representing different resolution types
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -56,6 +65,8 @@ impl GcsResolution {
 pub enum Resolution {
     Http(HttpResolution),
     Gcs(GcsResolution),
+    S3(S3Resolution),
+    Azure(AzureResolution),
 }
 
 #[derive(Deserialize)]
@@ -75,6 +86,10 @@ enum TaggedResolution {
     Http(HttpResolution),
     #[serde(rename = "gcs")]
     Gcs(GcsResolution),
+    #[serde(rename = "s3")]
+    S3(S3Resolution),
+    #[serde(rename = "azure")]
+    Azure(AzureResolution),
 }
 
 impl From<MaybeTaggedResolution> for Resolution {
@@ -82,6 +97,10 @@ impl From<MaybeTaggedResolution> for Resolution {
         match resolution {
             MaybeTaggedResolution::Tagged(TaggedResolution::Http(http)) => Resolution::Http(http),
             MaybeTaggedResolution::Tagged(TaggedResolution::Gcs(gcs)) => Resolution::Gcs(gcs),
+            MaybeTaggedResolution::Tagged(TaggedResolution::S3(s3)) => Resolution::S3(s3),
+            MaybeTaggedResolution::Tagged(TaggedResolution::Azure(azure)) => {
+                Resolution::Azure(azure)
+            }
             MaybeTaggedResolution::UntaggedHttp {
                 url,
                 expiration_timestamp,
@@ -98,6 +117,8 @@ impl Into<TaggedResolution> for Resolution {
         match self {
             Resolution::Http(http) => TaggedResolution::Http(http),
             Resolution::Gcs(gcs) => TaggedResolution::Gcs(gcs),
+            Resolution::S3(s3) => TaggedResolution::S3(s3),
+            Resolution::Azure(azure) => TaggedResolution::Azure(azure),
         }
     }
 }
