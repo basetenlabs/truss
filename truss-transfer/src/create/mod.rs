@@ -5,5 +5,4 @@ pub mod hf_metadata;
 
 pub use basetenpointer::*;
 pub use filter::*;
-pub use gcs_metadata::*;
 pub use hf_metadata::*;

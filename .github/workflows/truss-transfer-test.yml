@@ -80,3 +80,8 @@ jobs:
             echo "❌ Test failed: output directory not created."
             exit 1
           fi
+
+      - name: Rust tests
+        run: |
+          cargo test --release --target x86_64-unknown-linux-musl
+          cargo test --release
