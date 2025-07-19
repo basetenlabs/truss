@@ -161,8 +161,12 @@ pub async fn metadata_hf_repo(
 
 /// Convert ModelCache to BasetenPointer format
 /// Single repo wrapper for the main HF function
-pub async fn create_hf_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>, anyhow::Error> {
-    model_cache_hf_to_b10ptr(vec![repo.clone()]).await.map_err(Into::into)
+pub async fn create_hf_basetenpointers(
+    repo: &ModelRepo,
+) -> Result<Vec<BasetenPointer>, anyhow::Error> {
+    model_cache_hf_to_b10ptr(vec![repo.clone()])
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn model_cache_hf_to_b10ptr(

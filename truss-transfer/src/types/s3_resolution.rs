@@ -12,7 +12,7 @@ pub struct S3Resolution {
     pub bucket_name: String,
     pub key: String,
     pub region: Option<String>,
-    #[serde(default = "default_s3_resolution_type")]
+    #[serde(default = "default_s3_resolution_type", skip_serializing)]
     resolution_type: ResolutionType,
 }
 

@@ -1,4 +1,5 @@
 pub mod aws_metadata;
+pub mod azure_metadata;
 pub mod basetenpointer;
 pub mod filter;
 pub mod gcs_metadata;

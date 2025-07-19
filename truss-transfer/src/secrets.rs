@@ -9,7 +9,7 @@ use crate::constants::SECRETS_BASE_PATH;
 pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
     let secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
     debug!("Attempting to read secret from {:?}", secret_path);
-    
+
     match fs::read_to_string(&secret_path) {
         Ok(content) => {
             let trimmed = content.trim();

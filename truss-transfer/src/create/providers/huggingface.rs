@@ -2,9 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use log::debug;
 
-use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
-use crate::create::provider::StorageProvider;
 use crate::create::hf_metadata::create_hf_basetenpointers;
+use crate::create::provider::StorageProvider;
+use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
 
 pub struct HuggingFaceProvider;
 
@@ -22,10 +22,10 @@ impl StorageProvider for HuggingFaceProvider {
 
     fn can_handle(&self, repo: &ModelRepo) -> bool {
         // HuggingFace repos don't start with storage protocol URIs
-        !repo.repo_id.starts_with("gs://") && 
-        !repo.repo_id.starts_with("s3://") && 
-        !repo.repo_id.starts_with("azure://") &&
-        matches!(repo.kind, ResolutionType::Http)
+        !repo.repo_id.starts_with("gs://")
+            && !repo.repo_id.starts_with("s3://")
+            && !repo.repo_id.starts_with("azure://")
+            && matches!(repo.kind, ResolutionType::Http)
     }
 
     async fn create_pointers(&self, repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {

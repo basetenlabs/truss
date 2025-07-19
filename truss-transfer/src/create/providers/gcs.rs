@@ -2,9 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use log::debug;
 
-use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
-use crate::create::provider::StorageProvider;
 use crate::create::gcs_metadata::create_gcs_basetenpointers;
+use crate::create::provider::StorageProvider;
+use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
 
 pub struct GcsProvider;
 

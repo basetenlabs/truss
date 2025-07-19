@@ -5,9 +5,10 @@ use log::{debug, info, warn};
 use reqwest::Client;
 
 use crate::constants::*;
-use crate::download_core::{check_metadata_size, download_http_to_path, download_gcs_to_path, download_s3_to_path};
-
-
+use crate::download_core::{
+    check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path,
+    download_s3_to_path,
+};
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 /// Now handles both HTTP and GCS downloads with unified caching logic.
@@ -98,6 +99,17 @@ pub async fn download_file_with_cache(
             )
             .await?;
         }
+        crate::types::Resolution::Azure(azure_resolution) => {
+            download_azure_to_path(
+                &azure_resolution.account_name,
+                &azure_resolution.container_name,
+                &azure_resolution.blob_name,
+                &destination,
+                pointer.size,
+                &pointer.runtime_secret_name,
+            )
+            .await?;
+        }
     }
 
     // After the file is locally downloaded, optionally move it to b10cache.
@@ -113,5 +125,3 @@ pub async fn download_file_with_cache(
 
     Ok(())
 }
-
-

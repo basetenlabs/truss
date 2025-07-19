@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use log::{debug, info};
 use std::collections::HashMap;
 
-use crate::types::{BasetenPointer, ModelRepo, S3Resolution, Resolution};
 use crate::secrets::get_secret_from_file;
+use crate::types::{BasetenPointer, ModelRepo, Resolution, S3Resolution};
 
 /// Parse S3 URI into bucket and key components
 /// Expected format: s3://bucket-name/path/to/object
@@ -14,16 +14,22 @@ pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
 
     let without_prefix = &uri[5..]; // Remove "s3://"
     let parts: Vec<&str> = without_prefix.splitn(2, '/').collect();
-    
+
     if parts.len() != 2 {
-        return Err(anyhow!("Invalid S3 URI format: missing key part in {}", uri));
+        return Err(anyhow!(
+            "Invalid S3 URI format: missing key part in {}",
+            uri
+        ));
     }
 
     let bucket = parts[0].to_string();
     let key = parts[1].to_string();
 
     if bucket.is_empty() || key.is_empty() {
-        return Err(anyhow!("Invalid S3 URI format: empty bucket or key in {}", uri));
+        return Err(anyhow!(
+            "Invalid S3 URI format: empty bucket or key in {}",
+            uri
+        ));
     }
 
     Ok((bucket, key))
@@ -53,10 +59,9 @@ pub fn s3_storage(
     bucket_name: &str,
     runtime_secret_name: &str,
 ) -> Result<Box<dyn object_store::ObjectStore>, anyhow::Error> {
-    use object_store::aws::{AmazonS3Builder, AmazonS3};
+    use object_store::aws::{AmazonS3, AmazonS3Builder};
 
-    let mut builder = AmazonS3Builder::new()
-        .with_bucket_name(bucket_name);
+    let mut builder = AmazonS3Builder::new().with_bucket_name(bucket_name);
 
     // Read AWS credentials from single file
     if let Some(credentials_content) = get_secret_from_file(runtime_secret_name) {
@@ -65,7 +70,7 @@ pub fn s3_storage(
             builder = builder
                 .with_access_key_id(credentials.access_key_id)
                 .with_secret_access_key(credentials.secret_access_key);
-            
+
             if let Some(region) = credentials.region {
                 builder = builder.with_region(region);
             }
@@ -76,7 +81,7 @@ pub fn s3_storage(
                 if line.is_empty() || line.starts_with('#') {
                     continue;
                 }
-                
+
                 if let Some((key, value)) = line.split_once('=') {
                     match key.trim().to_lowercase().as_str() {
                         "access_key_id" | "aws_access_key_id" => {
@@ -108,16 +113,14 @@ pub async fn create_aws_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenP
 }
 
 /// Convert S3 ModelRepo to BasetenPointer format
-pub async fn model_cache_s3_to_b10ptr(
-    models: Vec<&ModelRepo>,
-) -> Result<Vec<BasetenPointer>> {
+pub async fn model_cache_s3_to_b10ptr(models: Vec<&ModelRepo>) -> Result<Vec<BasetenPointer>> {
     let mut basetenpointers = Vec::new();
 
     for model in models {
         info!("Processing S3 model: {}", model.repo_id);
-        
+
         let (bucket, prefix) = parse_s3_uri(&model.repo_id)?;
-        
+
         // For now, we'll create a simple implementation that assumes the S3 URI points to a specific object
         // In the future, this could be extended to list objects with the given prefix
         let key = prefix;
@@ -125,11 +128,13 @@ pub async fn model_cache_s3_to_b10ptr(
         let etag = "unknown"; // This would need to be fetched from S3 metadata
 
         let s3_resolution = S3Resolution::new(bucket.clone(), key.clone(), None);
-        
+
         let uid = format!("s3:{}:{}", bucket, key);
-        let file_name = format!("/app/model_cache/{}/{}", 
-            model.volume_folder, 
-            key.split('/').last().unwrap_or(&key));
+        let file_name = format!(
+            "/app/model_cache/{}/{}",
+            model.volume_folder,
+            key.split('/').last().unwrap_or(&key)
+        );
 
         let pointer = BasetenPointer {
             resolution: Resolution::S3(s3_resolution),
