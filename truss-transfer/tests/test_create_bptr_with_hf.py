@@ -116,6 +116,10 @@ MANIFEST_EXPECTED = [
 ]
 
 
+def sort_manifest(manifest):
+    return sorted(manifest, key=lambda x: x["uid"])
+
+
 def test_dolly():
     # fix the below models
     models = [
@@ -150,9 +154,7 @@ def test_dolly():
         "size",
         "runtime_secret_name",
     ]
-
-    def sort_manifest(manifest):
-        return sorted(manifest, key=lambda x: x["uid"])
+    resolution_fields = ["url", "resolution_type", "expiration_timestamp"]
 
     for pointer, expected in zip(
         sort_manifest(manifest), sort_manifest(MANIFEST_EXPECTED)
@@ -167,5 +169,13 @@ def test_dolly():
         assert models[0].revision in pointer["resolution"]["url"], (
             f"Revision mismatch in {field}"
         )
+        for field in resolution_fields:
+            assert field in pointer["resolution"], f"Missing resolution field: {field}"
+            try:
+                assert pointer["resolution"][field] == expected["resolution"][field], (
+                    f"Resolution field {field} mismatch"
+                )
+            except AssertionError as e:
+                print(f"Error in pointer {pointer['uid']}: {e}")
 
     print("✓ BasetenPointer structure validation passed")

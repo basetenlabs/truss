@@ -39,15 +39,15 @@ impl HttpResolution {
 /// GCS resolution with bucket name
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GcsResolution {
-    pub url: String,
+    pub path: String,
     pub bucket_name: String,
     resolution_type: ResolutionType,
 }
 
 impl GcsResolution {
-    pub fn new(url: String, bucket_name: String) -> Self {
+    pub fn new(path: String, bucket_name: String) -> Self {
         Self {
-            url,
+            path,
             bucket_name,
             resolution_type: ResolutionType::Gcs,
         }

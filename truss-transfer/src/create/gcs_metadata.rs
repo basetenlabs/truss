@@ -116,7 +116,7 @@ async fn metadata_gcs_bucket(
             })
             .unwrap_or_else(|| format!("gcs-{}", rand::random::<u64>()));
 
-        if object.size == 0 && !file_name.ends_with(".lock") {
+        if object.size == 0 {
             debug!("Skipping empty lock file: {}", file_name);
             continue; // Skip empty files
         }
@@ -124,7 +124,7 @@ async fn metadata_gcs_bucket(
         let metadata = GcsFileMetadata {
             md5_hash,
             size: object.size,
-            path: format!("{}/{}", RUNTIME_MODEL_CACHE_PATH, file_name),
+            path: file_name.clone(),
             last_modified: object.last_modified,
         };
 
@@ -161,12 +161,10 @@ pub async fn model_cache_gcs_to_b10ptr(
         .await?;
 
         for (file_name, file_metadata) in metadata {
-            let full_file_path = if model.volume_folder.is_empty() {
-                file_name.clone()
-            } else {
-                format!("{}/{}", model.volume_folder, file_name)
-            };
-
+            let full_file_path = format!(
+                "{}/{}",
+                RUNTIME_MODEL_CACHE_PATH, file_name
+            );
             // Create a temporary HTTP URL for the GCS object
             // This will be replaced with pre-signed URLs in resolution phase
             let (bucket, _) = parse_gcs_uri(&model.repo_id)?;
