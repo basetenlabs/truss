@@ -55,14 +55,17 @@ impl GcsResolution {
 }
 
 /// Union type representing different resolution types
-#[derive(Debug, Deserialize, Serialize, Clone)]
+/// forbidden to use a custom serialize
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "resolution_type")]
 pub enum Resolution {
+    // http should be resolved as default of the tagged enum
     #[serde(rename = "http")]
     Http(HttpResolution),
     #[serde(rename = "gcs")]
     Gcs(GcsResolution),
 }
+
 fn default_runtime_secret_name() -> String {
     // TODO: remove this default once its adopted.
     "hf_access_token".to_string()
@@ -110,4 +113,157 @@ pub enum GcsError {
     Io(#[from] std::io::Error),
     #[error("Invalid GCS URI: {0}")]
     InvalidUri(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_http_resolution_from_json() {
+        let json = r#"{
+            "resolution_type": "http",
+            "url": "https://cdn.baseten.co/docs/production/Gettysburg.mp3",
+            "expiration_timestamp": 2683764059
+        }"#;
+
+        let resolution: HttpResolution = serde_json::from_str(json).unwrap();
+        assert_eq!(resolution.url, "https://cdn.baseten.co/docs/production/Gettysburg.mp3");
+        assert_eq!(resolution.expiration_timestamp, 2683764059);
+    }
+
+    #[test]
+    fn test_gcs_resolution_from_json() {
+        let json = r#"{
+            "resolution_type": "gcs",
+            "path": "models/llama-3-2-1b-instruct/model.bin",
+            "bucket_name": "llama-3-2-1b-instruct"
+        }"#;
+
+        let resolution: GcsResolution = serde_json::from_str(json).unwrap();
+        assert_eq!(resolution.path, "models/llama-3-2-1b-instruct/model.bin");
+        assert_eq!(resolution.bucket_name, "llama-3-2-1b-instruct");
+    }
+
+    #[test]
+    fn test_resolution_enum_http_from_json() {
+        let json = r#"{
+            "resolution_type": "http",
+            "url": "https://cdn.baseten.co/docs/production/Gettysburg.mp3",
+            "expiration_timestamp": 2683764059
+        }"#;
+
+        let resolution: Resolution = serde_json::from_str(json).unwrap();
+        match resolution {
+            Resolution::Http(http_res) => {
+                assert_eq!(http_res.url, "https://cdn.baseten.co/docs/production/Gettysburg.mp3");
+            }
+            _ => panic!("Expected HTTP resolution"),
+        }
+    }
+
+    #[test]
+    fn test_resolution_enum_gcs_from_json() {
+        let json = r#"{
+            "resolution_type": "gcs",
+            "path": "models/llama-3-2-1b-instruct/model.bin",
+            "bucket_name": "llama-3-2-1b-instruct"
+        }"#;
+
+        let resolution: Resolution = serde_json::from_str(json).unwrap();
+        match resolution {
+            Resolution::Gcs(gcs_res) => {
+                assert_eq!(gcs_res.path, "models/llama-3-2-1b-instruct/model.bin");
+                assert_eq!(gcs_res.bucket_name, "llama-3-2-1b-instruct");
+            }
+            _ => panic!("Expected GCS resolution"),
+        }
+    }
+
+    #[test]
+    fn test_baseten_pointer_manifest_current_format() {
+        let json = r#"{
+            "pointers": [
+                {
+                    "resolution": {
+                        "resolution_type": "http",
+                        "url": "https://cdn.baseten.co/docs/production/Gettysburg.mp3",
+                        "expiration_timestamp": 2683764059
+                    },
+                    "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                    "file_name": "random_github_file.yml",
+                    "hashtype": "blake3",
+                    "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                    "size": 75649
+                },
+                {
+                    "resolution": {
+                        "resolution_type": "gcs",
+                        "path": "models/llama-3-2-1b-instruct/model.bin",
+                        "bucket_name": "llama-3-2-1b-instruct"
+                    },
+                    "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                    "file_name": "model.bin",
+                    "hashtype": "blake3",
+                    "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63c2f375",
+                    "size": 75649
+                }
+            ]
+        }"#;
+
+        let manifest: BasetenPointerManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.pointers.len(), 2);
+
+        match &manifest.pointers[0].resolution {
+            Resolution::Http(_) => {},
+            _ => panic!("Expected HTTP resolution for first pointer"),
+        }
+
+        match &manifest.pointers[1].resolution {
+            Resolution::Gcs(_) => {},
+            _ => panic!("Expected GCS resolution for second pointer"),
+        }
+    }
+
+    // Historic format test - old manifests without resolution_type should default to HTTP
+    #[test]
+    fn test_baseten_pointer_manifest_historic_format() {
+        let json = r#"{
+            "pointers": [
+                {
+                    "resolution": {
+                        "url": "https://cdn.baseten.co/docs/production/Gettysburg.mp3",
+                        "expiration_timestamp": 2683764059
+                    },
+                    "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                    "file_name": "random_github_file.yml",
+                    "hashtype": "blake3",
+                    "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                    "size": 75649
+                },
+                {
+                    "resolution": {
+                        "url": "https://cdn.baseten.co/docs/production/Gettysburg.mp3",
+                        "expiration_timestamp": 2683764059
+                    },
+                    "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                    "file_name": "random_github_file2.yml",
+                    "hashtype": "blake3",
+                    "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63c2f375",
+                    "size": 75649
+                }
+            ]
+        }"#;
+
+        let manifest: BasetenPointerManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.pointers.len(), 2);
+
+        for pointer in &manifest.pointers {
+            match &pointer.resolution {
+                Resolution::Http(_) => {},
+                _ => panic!("Expected HTTP resolution for historic format"),
+            }
+        }
+    }
 }

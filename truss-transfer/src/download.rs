@@ -19,22 +19,20 @@ pub async fn check_metadata_size(path: &Path, size: u64) -> bool {
 }
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
+/// Now handles both HTTP and GCS downloads with unified caching logic.
 pub async fn download_file_with_cache(
     client: &Client,
-    url: &str,
+    pointer: &crate::types::BasetenPointer,
     download_dir: &Path,
     file_name: &str,
-    hash: &str,
-    size: u64,
-    runtime_secret_name: &str,
     read_from_b10cache: bool,
     write_to_b10cache: bool,
 ) -> Result<()> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
-    let cache_path = Path::new(CACHE_DIR).join(hash);
+    let cache_path = Path::new(CACHE_DIR).join(&pointer.hash);
 
     // Skip download if file exists with the expected size.
-    if check_metadata_size(&destination, size).await {
+    if check_metadata_size(&destination, pointer.size).await {
         info!(
             "File {} already exists with correct size. Skipping download.",
             file_name
@@ -50,13 +48,13 @@ pub async fn download_file_with_cache(
     // If b10cache is enabled, try symlinking from the cache
     if read_from_b10cache {
         // Check metadata and size first
-        if check_metadata_size(&cache_path, size).await {
+        if check_metadata_size(&cache_path, pointer.size).await {
             debug!(
                 "Found {} in b10cache. Attempting to create symlink...",
-                hash
+                pointer.hash
             );
             if let Err(e) =
-                crate::cache::create_symlink_or_skip(&cache_path, &destination, size).await
+                crate::cache::create_symlink_or_skip(&cache_path, &destination, pointer.size).await
             {
                 warn!(
                     "Symlink creation failed: {}.  Proceeding with direct download.",
@@ -72,12 +70,20 @@ pub async fn download_file_with_cache(
         } else {
             warn!(
                 "Found {} in b10cache but size mismatch. b10cache is inconsistent. Proceeding to download.",
-                hash
+                pointer.hash
             );
         }
     }
-    // Download the file to the local path
-    download_to_path(client, url, &destination, size, runtime_secret_name).await?;
+
+    // Download the file to the local path based on resolution type
+    match &pointer.resolution {
+        crate::types::Resolution::Http(http_resolution) => {
+            download_to_path(client, &http_resolution.url, &destination, pointer.size, &pointer.runtime_secret_name).await?;
+        }
+        crate::types::Resolution::Gcs(gcs_resolution) => {
+            download_gcs_to_path(&gcs_resolution.bucket_name, &gcs_resolution.path, &destination, pointer.size, &pointer.runtime_secret_name).await?;
+        }
+    }
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache {
@@ -178,4 +184,63 @@ pub fn get_secret_from_file(name: &str) -> Option<String> {
         name = name
     );
     None
+}
+
+/// Download a file from GCS to the specified path using object_store
+async fn download_gcs_to_path(
+    bucket_name: &str,
+    object_path: &str,
+    path: &Path,
+    size: u64,
+    runtime_secret_name: &str,
+) -> Result<()> {
+    use crate::create::gcs_metadata::gcs_storage;
+    use object_store::ObjectStore;
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await.context(format!(
+            "Failed to create directory for download path: {:?}",
+            parent
+        ))?;
+    }
+
+    debug!("Starting GCS download to {:?} from gs://{}/{}", path, bucket_name, object_path);
+
+    let gcs = gcs_storage(bucket_name, runtime_secret_name)
+        .map_err(|e| anyhow!("Failed to create GCS client: {}", e))?;
+
+    let object_path = object_store::path::Path::from(object_path);
+
+    // Download the object
+    let get_result = gcs.get(&object_path).await
+        .map_err(|e| anyhow!("Failed to download from GCS: {}", e))?;
+
+    let stream = get_result.into_stream();
+
+    let mut file = fs::File::create(path).await?;
+    let mut stream = stream;
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result
+            .map_err(|e| anyhow!("Error reading chunk from GCS: {}", e))?;
+        file.write_all(&chunk).await?;
+    }
+
+    // Ensure all data is written to disk
+    file.flush().await?;
+    file.sync_all().await?;
+
+    let metadata = fs::metadata(path).await?;
+    let written = metadata.len();
+    if written as u64 != size {
+        return Err(anyhow!(
+            "Downloaded file size mismatch for {:?} (expected {}, got {})",
+            path,
+            size,
+            written
+        ));
+    }
+
+    info!("Completed GCS download to {:?}", path);
+    Ok(())
 }

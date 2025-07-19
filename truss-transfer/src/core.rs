@@ -233,24 +233,11 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         tasks.push(tokio::spawn(async move {
             let _permit = sem_clone.acquire_owned().await;
             log::debug!("Handling file: {}", file_name);
-            let resolution = &pointer.resolution;
-            let http_resolution = match resolution {
-                Resolution::Http(http_resolution) => http_resolution,
-                _ => {
-                    return Err(anyhow!(
-                        "Expected HTTP resolution, found: {:?}. This needs to be pre-signed.",
-                        resolution
-                    ));
-                }
-            };
             download_file_with_cache(
                 &client,
-                &http_resolution.url,
+                &pointer,
                 &download_dir,
                 &file_name,
-                &pointer.hash,
-                pointer.size,
-                &pointer.runtime_secret_name,
                 read_from_b10cache,
                 write_to_b10cache,
             )

@@ -9,6 +9,7 @@ mod constants;
 mod core;
 mod create;
 mod download;
+
 mod speed_checks;
 mod types;
 
@@ -26,7 +27,7 @@ pub use core::lazy_data_resolve_entrypoint;
 pub use cli::main;
 
 // Re-export types for external use
-pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, ResolutionType};
+pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, ResolutionType, HttpResolution, GcsResolution};
 
 // Re-export HuggingFace functionality
 pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
@@ -73,11 +74,10 @@ mod tests {
         // Create a pointer with an expiration timestamp in the future.
         let future_timestamp = chrono::Utc::now().timestamp() + 3600; // one hour in the future
         let pointer = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: future_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                future_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -100,11 +100,10 @@ mod tests {
         // Create a pointer that has already expired.
         let past_timestamp = chrono::Utc::now().timestamp() - 3600; // one hour in the past
         let pointer = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: past_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                past_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
