@@ -17,9 +17,9 @@ use tokio::sync::Semaphore;
 use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
 use crate::constants::*;
-use crate::download::{download_file_with_cache, get_secret_from_file};
+use crate::download::download_file_with_cache;
 use crate::speed_checks::is_b10cache_fast_heuristic;
-use crate::types::{BasetenPointer, BasetenPointerManifest};
+use crate::types::{BasetenPointer, BasetenPointerManifest, Resolution};
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a "double start" scenario),
@@ -218,6 +218,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
         .build()?;
 
+    // resolve the gcs / s3 and pre-sign the urls
+    // 6.1 TODO: create features for this to pre-sign url at runtime.
+
     // 7. Spawn download tasks
     info!("Spawning download tasks...");
     let mut tasks: FuturesUnordered<
@@ -232,12 +235,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             log::debug!("Handling file: {}", file_name);
             download_file_with_cache(
                 &client,
-                &pointer.resolution.as_ref().unwrap().url,
+                &pointer,
                 &download_dir,
                 &file_name,
-                &pointer.hash,
-                pointer.size,
-                &pointer.runtime_secret_name,
                 read_from_b10cache,
                 write_to_b10cache,
             )
@@ -273,11 +273,17 @@ pub fn build_resolution_map(
     let mut out = Vec::new();
 
     for bptr in &bptr_manifest.pointers {
-        if let Some(ref resolution) = bptr.resolution {
-            if resolution.expiration_timestamp < now {
-                return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
+        match &bptr.resolution {
+            Resolution::Http(http_resolution) => {
+                if http_resolution.expiration_timestamp < now {
+                    return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
+                }
+            }
+            _ => {
+                // GCS or other types do not have expiration, so we skip this check
             }
         }
+
         if bptr.hash.contains('/') {
             return Err(anyhow!(
                 "Hash {} contains '/', which is not allowed",

@@ -1845,7 +1845,7 @@ dependencies = [
 
 [[package]]
 name = "truss_transfer"
-version = "0.0.16-rc0"
+version = "0.0.16-rc1"
 dependencies = [
  "anyhow",
  "bytes",

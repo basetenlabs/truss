@@ -1,4 +1,4 @@
-use super::{model_cache_gcs_to_b10ptr, model_cache_hf_to_b10ptr};
+use super::{gcs_metadata::model_cache_gcs_to_b10ptr, hf_metadata::model_cache_hf_to_b10ptr};
 use crate::types::{ModelRepo, ResolutionType};
 use log::info;
 use serde_json;

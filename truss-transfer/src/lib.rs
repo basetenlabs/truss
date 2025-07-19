@@ -9,6 +9,7 @@ mod constants;
 mod core;
 mod create;
 mod download;
+
 mod speed_checks;
 mod types;
 
@@ -26,7 +27,10 @@ pub use core::lazy_data_resolve_entrypoint;
 pub use cli::main;
 
 // Re-export types for external use
-pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, ResolutionType};
+pub use types::{
+    BasetenPointer, BasetenPointerManifest, GcsResolution, HttpResolution, ModelRepo, Resolution,
+    ResolutionType,
+};
 
 // Re-export HuggingFace functionality
 pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
@@ -73,11 +77,10 @@ mod tests {
         // Create a pointer with an expiration timestamp in the future.
         let future_timestamp = chrono::Utc::now().timestamp() + 3600; // one hour in the future
         let pointer = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: future_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                future_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -100,11 +103,10 @@ mod tests {
         // Create a pointer that has already expired.
         let past_timestamp = chrono::Utc::now().timestamp() - 3600; // one hour in the past
         let pointer = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: past_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                past_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -131,11 +133,10 @@ mod tests {
         // Create a pointer with a hash containing a slash (should fail)
         let future_timestamp = chrono::Utc::now().timestamp() + 3600;
         let pointer = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: future_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                future_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -152,10 +153,14 @@ mod tests {
     }
 
     #[test]
-    fn test_build_resolution_map_no_resolution() {
-        // Create a pointer without resolution (should fail)
+    fn test_build_resolution_map_with_resolution() {
+        // Create a pointer with valid resolution (should succeed)
+        let future_timestamp = chrono::Utc::now().timestamp() + 3600;
         let pointer = BasetenPointer {
-            resolution: None,
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                future_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -178,11 +183,10 @@ mod tests {
         // Create two manifests with different files
         let manifest1 = BasetenPointerManifest {
             pointers: vec![BasetenPointer {
-                resolution: Some(Resolution {
-                    url: "http://example.com/file1".into(),
-                    resolution_type: ResolutionType::Http,
-                    expiration_timestamp: future_timestamp,
-                }),
+                resolution: Resolution::Http(HttpResolution::new(
+                    "http://example.com/file1".into(),
+                    future_timestamp,
+                )),
                 uid: "123".into(),
                 file_name: "file1.txt".into(),
                 hashtype: "sha256".into(),
@@ -194,11 +198,10 @@ mod tests {
 
         let manifest2 = BasetenPointerManifest {
             pointers: vec![BasetenPointer {
-                resolution: Some(Resolution {
-                    url: "http://example.com/file2".into(),
-                    resolution_type: ResolutionType::Http,
-                    expiration_timestamp: future_timestamp,
-                }),
+                resolution: Resolution::Http(HttpResolution::new(
+                    "http://example.com/file2".into(),
+                    future_timestamp,
+                )),
                 uid: "456".into(),
                 file_name: "file2.txt".into(),
                 hashtype: "sha256".into(),
@@ -229,11 +232,10 @@ mod tests {
 
         // Create two manifests with the same file (same name and hash)
         let pointer = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: future_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                future_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -262,11 +264,10 @@ mod tests {
 
         // Create two manifests with files that have the same name but different hashes
         let pointer1 = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: future_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                future_timestamp,
+            )),
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
@@ -276,11 +277,10 @@ mod tests {
         };
 
         let pointer2 = BasetenPointer {
-            resolution: Some(Resolution {
-                url: "http://example.com/file".into(),
-                resolution_type: ResolutionType::Http,
-                expiration_timestamp: future_timestamp,
-            }),
+            resolution: Resolution::Http(HttpResolution::new(
+                "http://example.com/file".into(),
+                future_timestamp,
+            )),
             uid: "456".into(),
             file_name: "file.txt".into(), // Same name
             hashtype: "sha256".into(),
@@ -319,11 +319,10 @@ mod tests {
         let manifest = BasetenPointerManifest {
             pointers: vec![
                 BasetenPointer {
-                    resolution: Some(Resolution {
-                        url: "http://example.com/file1".into(),
-                        resolution_type: ResolutionType::Http,
-                        expiration_timestamp: future_timestamp,
-                    }),
+                    resolution: Resolution::Http(HttpResolution::new(
+                        "http://example.com/file1".into(),
+                        future_timestamp,
+                    )),
                     uid: "123".into(),
                     file_name: "file1.txt".into(),
                     hashtype: "sha256".into(),
@@ -332,11 +331,10 @@ mod tests {
                     runtime_secret_name: "hf_access_token".into(),
                 },
                 BasetenPointer {
-                    resolution: Some(Resolution {
-                        url: "http://example.com/file2".into(),
-                        resolution_type: ResolutionType::Http,
-                        expiration_timestamp: future_timestamp,
-                    }),
+                    resolution: Resolution::Http(HttpResolution::new(
+                        "http://example.com/file2".into(),
+                        future_timestamp,
+                    )),
                     uid: "456".into(),
                     file_name: "file2.txt".into(),
                     hashtype: "sha256".into(),
@@ -397,13 +395,15 @@ mod tests {
         // These should be different
         assert_ne!(http_resolution, gcs_resolution);
 
-        // Test that they can be used in Resolution struct
-        let resolution = Resolution {
-            url: "http://example.com/file".into(),
-            resolution_type: http_resolution,
-            expiration_timestamp: chrono::Utc::now().timestamp() + 3600,
-        };
-        assert_eq!(resolution.resolution_type, ResolutionType::Http);
+        // Test that they can be used in Resolution enum
+        let resolution = Resolution::Http(HttpResolution::new(
+            "http://example.com/file".into(),
+            chrono::Utc::now().timestamp() + 3600,
+        ));
+        match resolution {
+            Resolution::Http(_) => assert_eq!(http_resolution, ResolutionType::Http),
+            _ => panic!("Expected HTTP resolution"),
+        }
     }
 
     #[test]

@@ -1,29 +1,22 @@
-use crate::types::{BasetenPointer, ModelRepo};
+use super::filter::should_ignore_file;
+use crate::constants::RUNTIME_MODEL_CACHE_PATH;
+use crate::types::{
+    BasetenPointer, GcsError, GcsResolution, ModelRepo, Resolution, ResolutionType,
+};
 use chrono;
-// use log::{debug, info};
-// NOTE: object_store dependency temporarily removed due to API compatibility issues
-// use object_store::gcp::GoogleCloudStorageBuilder;
-// use object_store::ObjectStore;
-// use serde_json;
-// use std::collections::HashMap;
-// use std::fs;
-// use std::path::Path;
-// use std::sync::Arc;
-
-/// Error types for GCS operations
-#[derive(Debug, thiserror::Error)]
-pub enum GcsError {
-    #[error("Invalid metadata")]
-    #[allow(dead_code)]
-    InvalidMetadata,
-}
+use futures_util::stream::StreamExt;
+use log::{debug, info};
+use object_store::gcp::GoogleCloudStorageBuilder;
+use object_store::ObjectStore;
+use rand;
+use std::collections::HashMap;
+use std::fs;
 
 /// GCS file metadata
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct GcsFileMetadata {
-    /// ETag or equivalent hash
-    pub etag: String,
+    /// MD5 hash of the file content
+    pub md5_hash: String,
     /// File size in bytes
     pub size: u64,
     /// GCS object path
@@ -32,107 +25,188 @@ pub struct GcsFileMetadata {
     pub last_modified: chrono::DateTime<chrono::Utc>,
 }
 
+/// Parse GCS URI (gs://bucket/path) into bucket and prefix
+fn parse_gcs_uri(uri: &str) -> Result<(String, String), GcsError> {
+    if !uri.starts_with("gs://") {
+        return Err(GcsError::InvalidUri(format!(
+            "URI must start with gs://: {}",
+            uri
+        )));
+    }
+
+    let path = &uri[5..]; // Remove "gs://"
+    let parts: Vec<&str> = path.splitn(2, '/').collect();
+
+    let bucket = parts[0].to_string();
+    let prefix = if parts.len() > 1 {
+        parts[1].to_string()
+    } else {
+        String::new()
+    };
+
+    Ok((bucket, prefix))
+}
+
+pub fn gcs_storage(
+    bucket: &str,
+    runtime_secret_name: &str,
+) -> Result<object_store::gcp::GoogleCloudStorage, GcsError> {
+    let secret_path = format!("/secrets/{}", runtime_secret_name);
+    let credentials_json = fs::read_to_string(&secret_path).map_err(|e| GcsError::Io(e))?;
+
+    GoogleCloudStorageBuilder::new()
+        .with_service_account_key(&credentials_json)
+        .with_bucket_name(bucket)
+        .build()
+        .map_err(GcsError::ObjectStore)
+}
+
+/// Get metadata for all files in GCS bucket
+async fn metadata_gcs_bucket(
+    repo_id: &str,
+    runtime_secret_name: &str,
+    allow_patterns: Option<&[String]>,
+    ignore_patterns: Option<&[String]>,
+) -> Result<HashMap<String, GcsFileMetadata>, GcsError> {
+    let (bucket, prefix) = parse_gcs_uri(repo_id)?;
+
+    let gcs = gcs_storage(&bucket, runtime_secret_name)?;
+
+    let mut file_metadata = HashMap::new();
+
+    // List objects with prefix
+    let prefix_path = if prefix.is_empty() {
+        object_store::path::Path::from("")
+    } else {
+        object_store::path::Path::from(prefix.clone())
+    };
+
+    debug!(
+        "Listing GCS objects in bucket: {}, prefix: {}",
+        bucket, prefix
+    );
+
+    let mut object_stream = gcs.list(Some(&prefix_path));
+
+    while let Some(object_result) = object_stream.next().await {
+        let object = object_result?;
+        let file_path = object.location.to_string();
+        let file_name = if prefix.is_empty() {
+            file_path.clone()
+        } else {
+            file_path
+                .strip_prefix(&format!("{}/", prefix))
+                .unwrap_or(&file_path)
+                .to_string()
+        };
+
+        // Skip if this file should be ignored
+        if should_ignore_file(&file_name, allow_patterns, ignore_patterns) {
+            debug!("Ignoring file: {}", file_name);
+            continue;
+        }
+        // use filter_repo_files instead
+        // filter_repo_files(files, allow_patterns, ignore_patterns)?;
+
+        // Extract MD5 hash from GCS metadata or use ETag as fallback
+        let md5_hash = object
+            .e_tag
+            .as_ref()
+            .and_then(|etag| {
+                // GCS ETags often contain MD5 hash in quotes
+                if etag.starts_with('"') && etag.ends_with('"') && etag.len() == 34 {
+                    Some(etag[1..33].to_string()) // Extract MD5 from quoted ETag
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| format!("gcs-{}", rand::random::<u64>()));
+
+        if object.size == 0 {
+            debug!("Skipping empty lock file: {}", file_name);
+            continue; // Skip empty files
+        }
+
+        let metadata = GcsFileMetadata {
+            md5_hash,
+            size: object.size,
+            path: file_name.clone(),
+            last_modified: object.last_modified,
+        };
+
+        file_metadata.insert(file_name, metadata);
+    }
+
+    info!(
+        "Found {} files in GCS bucket {}",
+        file_metadata.len(),
+        bucket
+    );
+    Ok(file_metadata)
+}
+
 /// Convert GCS ModelRepo to BasetenPointer format
 pub async fn model_cache_gcs_to_b10ptr(
     models: Vec<&ModelRepo>,
 ) -> Result<Vec<BasetenPointer>, GcsError> {
-    let basetenpointers = Vec::new();
-    // return dummy data for now
+    let mut basetenpointers = Vec::new();
+
+    for model in models {
+        if model.kind != ResolutionType::Gcs {
+            continue;
+        }
+
+        info!("Processing GCS model: {}", model.repo_id);
+
+        let metadata = metadata_gcs_bucket(
+            &model.repo_id,
+            &model.runtime_secret_name,
+            model.allow_patterns.as_deref(),
+            model.ignore_patterns.as_deref(),
+        )
+        .await?;
+
+        for (file_name, file_metadata) in metadata {
+            let full_file_path = format!("{}/{}", RUNTIME_MODEL_CACHE_PATH, file_name);
+            // Create a temporary HTTP URL for the GCS object
+            // This will be replaced with pre-signed URLs in resolution phase
+            let (bucket, _) = parse_gcs_uri(&model.repo_id)?;
+
+            let pointer = BasetenPointer {
+                resolution: Resolution::Gcs(GcsResolution::new(file_metadata.path, bucket)),
+                uid: format!("gcs-{}", file_metadata.md5_hash),
+                file_name: full_file_path,
+                hashtype: "md5".to_string(),
+                hash: file_metadata.md5_hash,
+                size: file_metadata.size,
+                runtime_secret_name: model.runtime_secret_name.clone(),
+            };
+
+            basetenpointers.push(pointer);
+        }
+    }
+
+    info!("Created {} GCS basetenpointers", basetenpointers.len());
     Ok(basetenpointers)
-
-    // for model in models {
-    //     if model.kind != ResolutionType::Gcs {
-    //         continue;
-    //     }
-
-    //     info!("Processing GCS model: {}", model.repo_id);
-
-    //     let metadata = metadata_gcs_bucket(
-    //         &model.repo_id,
-    //         &model.runtime_secret_name,
-    //         model.allow_patterns.as_deref(),
-    //         model.ignore_patterns.as_deref(),
-    //     ).await?;
-    //
-    //     for (file_name, file_metadata) in metadata {
-    //         let full_file_path = if model.volume_folder.is_empty() {
-    //             file_name.clone()
-    //         } else {
-    //             format!("{}/{}", model.volume_folder, file_name)
-    //         };
-
-    //         // Create a temporary HTTP URL for the GCS object
-    //         // This will be replaced with pre-signed URLs in resolution phase
-    //         let temp_url = format!("https://storage.googleapis.com/{}", file_metadata.path);
-
-    //         let pointer = BasetenPointer {
-    //             resolution: Some(Resolution {
-    //                 url: temp_url,
-    //                 resolution_type: ResolutionType::Gcs,
-    //                 expiration_timestamp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp(),
-    //             }),
-    //             uid: format!("gcs-{}", file_metadata.etag),
-    //             file_name: full_file_path,
-    //             hashtype: "etag".to_string(),
-    //             hash: file_metadata.etag,
-    //             size: file_metadata.size,
-    //             runtime_secret_name: model.runtime_secret_name.clone(),
-    //         };
-
-    //         basetenpointers.push(pointer);
-    //     }
-    // }
-
-    // info!("Created {} GCS basetenpointers", basetenpointers.len());
-    // Ok(basetenpointers)
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     // use crate::types::ResolutionType;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     #[test]
-//     fn test_parse_gcs_uri() {
-//         // Test valid URIs
-//         let (bucket, prefix) = parse_gcs_uri("gs://my-bucket/path/to/file").unwrap();
-//         assert_eq!(bucket, "my-bucket");
-//         assert_eq!(prefix, "path/to/file");
+    #[test]
+    fn test_parse_gcs_uri() {
+        // Test valid URIs
+        let (bucket, prefix) = parse_gcs_uri("gs://my-bucket/path/to/file").unwrap();
+        assert_eq!(bucket, "my-bucket");
+        assert_eq!(prefix, "path/to/file");
 
-//         let (bucket, prefix) = parse_gcs_uri("gs://my-bucket").unwrap();
-//         assert_eq!(bucket, "my-bucket");
-//         assert_eq!(prefix, "");
+        let (bucket, prefix) = parse_gcs_uri("gs://my-bucket").unwrap();
+        assert_eq!(bucket, "my-bucket");
+        assert_eq!(prefix, "");
 
-//         // Test invalid URIs
-//         assert!(parse_gcs_uri("s3://my-bucket").is_err());
-//         assert!(parse_gcs_uri("invalid").is_err());
-//     }
-
-//     #[test]
-//     fn test_glob_match() {
-//         assert!(glob_match("*.txt", "file.txt"));
-//         assert!(glob_match("*.json", "config.json"));
-//         assert!(!glob_match("*.txt", "file.json"));
-//         assert!(glob_match("*", "anything"));
-//         assert!(glob_match("prefix*", "prefix_file.txt"));
-//         assert!(!glob_match("prefix*", "other_file.txt"));
-//     }
-
-//     #[test]
-//     fn test_should_ignore_file() {
-//         let allow_patterns = vec!["*.safetensors".to_string(), "*.json".to_string()];
-//         let ignore_patterns = vec!["*.md".to_string()];
-
-//         // Should allow safetensors files
-//         assert!(!should_ignore_file("model.safetensors", Some(&allow_patterns), Some(&ignore_patterns)));
-
-//         // Should ignore md files
-//         assert!(should_ignore_file("README.md", Some(&allow_patterns), Some(&ignore_patterns)));
-
-//         // Should ignore files not in allow patterns
-//         assert!(should_ignore_file("model.txt", Some(&allow_patterns), Some(&ignore_patterns)));
-
-//         // Should allow when no patterns specified
-//         assert!(!should_ignore_file("any_file.txt", None, None));
-//     }
-// }
+        // Test invalid URIs
+        assert!(parse_gcs_uri("s3://my-bucket").is_err());
+        assert!(parse_gcs_uri("invalid").is_err());
+    }
+}

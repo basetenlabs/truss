@@ -34,6 +34,8 @@ pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 /// Base path for secrets
 pub static SECRETS_BASE_PATH: &str = "/secrets";
 
+pub static RUNTIME_MODEL_CACHE_PATH: &str = "/app/model_cache";
+
 /// Environment variable for b10fs download speed
 pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
     "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
