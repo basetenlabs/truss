@@ -30,53 +30,14 @@ jobs:
           - host: macos-latest
             target: x86_64-apple-darwin
             build: yarn build --target x86_64-apple-darwin
-          # Below two tasks are failing with
-          #           ys@0.9.107: configuring OpenSSL build: 'perl' reported failure with exit code: 2
-          # warning: openssl-sys@0.9.107: openssl-src: failed to build OpenSSL from source
-          # error: failed to run custom build command for `openssl-sys v0.9.107`
-
-          # Caused by:
-          #   process didn't exit successfully: `D:\a\truss\truss\baseten-performance-client\target\release\build\openssl-sys-b5f320ee4f76c310\build-script-main` (exit code: 1)
-          #   --- stdout
-          #   cargo:rustc-check-cfg=cfg(osslconf, values("OPENSSL_NO_OCB", "OPENSSL_NO_SM4", "OPENSSL_NO_SEED", "OPENSSL_NO_CHACHA", "OPENSSL_NO_CAST", "OPENSSL_NO_IDEA", "OPENSSL_NO_CAMELLIA", "OPENSSL_NO_RC4", "OPENSSL_NO_BF", "OPENSSL_NO_PSK", "OPENSSL_NO_DEPRECATED_3_0", "OPENSSL_NO_SCRYPT", "OPENSSL_NO_SM3", "OPENSSL_NO_RMD160", "OPENSSL_NO_EC2M", "OPENSSL_NO_OCSP", "OPENSSL_NO_CMS", "OPENSSL_NO_COMP", "OPENSSL_NO_SOCK", "OPENSSL_NO_STDIO", "OPENSSL_NO_EC", "OPENSSL_NO_SSL3_METHOD", "OPENSSL_NO_KRB5", "OPENSSL_NO_TLSEXT", "OPENSSL_NO_SRP", "OPENSSL_NO_RFC3779", "OPENSSL_NO_SHA", "OPENSSL_NO_NEXTPROTONEG", "OPENSSL_NO_ENGINE", "OPENSSL_NO_BUF_FREELISTS", "OPENSSL_NO_RC2"))
-          #   cargo:rustc-check-cfg=cfg(openssl)
-          #   cargo:rustc-check-cfg=cfg(libressl)
-          #   cargo:rustc-check-cfg=cfg(boringssl)
-          #   cargo:rustc-check-cfg=cfg(ossl320)
-          #   cargo:rustc-check-cfg=cfg(ossl330)
-          #   cargo:rustc-check-cfg=cfg(ossl340)
-          #   cargo:rerun-if-env-changed=I686_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR
-          #   I686_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR unset
-          #   cargo:rerun-if-env-changed=OPENSSL_NO_VENDOR
-          #   OPENSSL_NO_VENDOR unset
-          #   cargo:rerun-if-env-changed=I686_PC_WINDOWS_MSVC_OPENSSL_CONFIG_DIR
-          #   I686_PC_WINDOWS_MSVC_OPENSSL_CONFIG_DIR unset
-          #   cargo:rerun-if-env-changed=OPENSSL_CONFIG_DIR
-          #   OPENSSL_CONFIG_DIR unset
-          #   running "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
-          #   cargo:warning=configuring OpenSSL build: 'perl' reported failure with exit code: 2
-          #   cargo:warning=openssl-src: failed to build OpenSSL from source
-
-          #   --- stderr
-          #   Can't locate Locale/Maketext/Simple.pm in @INC (you may need to install the Locale::Maketext::Simple module) (@INC entries checked: /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/util/perl /usr/lib/perl5/site_perl /usr/share/perl5/site_perl /usr/lib/perl5/vendor_perl /usr/share/perl5/vendor_perl /usr/lib/perl5/core_perl /usr/share/perl5/core_perl /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/external/perl/Text-Template-1.56/lib) at /usr/share/perl5/core_perl/Params/Check.pm line 6.
-          #   BEGIN failed--compilation aborted at /usr/share/perl5/core_perl/Params/Check.pm line 6.
-          #   Compilation failed in require at /usr/share/perl5/core_perl/IPC/Cmd.pm line 59.
-          #   BEGIN failed--compilation aborted at /usr/share/perl5/core_perl/IPC/Cmd.pm line 59.
-          #   Compilation failed in require at /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/util/perl/OpenSSL/config.pm line 19.
-          #   BEGIN failed--compilation aborted at /d/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/build/src/util/perl/OpenSSL/config.pm line 19.
-          #   Compilation failed in require at ./Configure line 23.
-          #   BEGIN failed--compilation aborted at ./Configure line 23.
-          #   Error configuring OpenSSL build:
-          #       'perl' reported failure with exit code: 2
-          #       Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
-          # - host: windows-latest
-          #   build: yarn build --target x86_64-pc-windows-msvc
-          #   target: x86_64-pc-windows-msvc
-          # - host: windows-latest
-          #   build: |
-          #     yarn build --target i686-pc-windows-msvc
-          #     yarn test
-          #   target: i686-pc-windows-msvc
+          - host: windows-latest
+            build: yarn build --target x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-msvc
+          - host: windows-latest
+            build: |
+              yarn build --target i686-pc-windows-msvc
+              yarn test
+            target: i686-pc-windows-msvc
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
@@ -95,24 +56,21 @@ jobs:
           # TODO: enable again
           #   crypto/ct/ct_log.c:166:15: error: use of undeclared identifier 'ssl'
           #     <command line>:18:21: note: expanded from macro 'OPENSSLDIR'
-          # - host: ubuntu-latest
-          #   target: armv7-unknown-linux-gnueabihf
-          #   setup: |
-          #     sudo apt-get update
-          #     sudo apt-get install gcc-arm-linux-gnueabihf -y
-          #   build: yarn build --target armv7-unknown-linux-gnueabihf
-          # - host: ubuntu-latest
-          #   target: armv7-unknown-linux-musleabihf
-          #   build: yarn build --target armv7-unknown-linux-musleabihf
+          - host: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            setup: |
+              sudo apt-get update
+              sudo apt-get install gcc-arm-linux-gnueabihf -y
+            build: yarn build --target armv7-unknown-linux-gnueabihf
+          - host: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            build: yarn build --target armv7-unknown-linux-musleabihf
           - host: ubuntu-latest
             target: aarch64-linux-android
             build: yarn build --target aarch64-linux-android
           - host: ubuntu-latest
             target: armv7-linux-androideabi
             build: yarn build --target armv7-linux-androideabi
-          # fails with
-          # = note: LC_ALL="C" PATH="/root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/lib/rustlib/x86_64-unknown-linux-musl/bin:/tmp/xfs-9b7203d8:/aarch64-linux-musl-cross/bin:/usr/local/cargo/bin/rustup:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" VSLANG="1033" "cc" "-Wl,--version-script=/tmp/rustcmRZtLt/list" "-Wl,--no-undefined-version" "/tmp/rustcmRZtLt/symbols.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.00.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.01.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.02.rcgu.o" "/build/baseten-performance-client/target/aarch64-unknown-linux-
-          #           /usr/lib/gcc/x86_64-alpine-linux-musl/14.2.0/../../../../x86_64-alpine-linux-musl/bin/ld: /build/baseten-performance-client/target/aarch64-unknown-linux-musl/release/deps/baseten_performance_client.baseten_performance_client.686fd879e2ea1c80-cgu.00.rcgu.o: error adding symbols: file in wrong format
           # - host: ubuntu-latest
           #   target: aarch64-unknown-linux-musl
           #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
@@ -120,13 +78,10 @@ jobs:
           #     set -e &&
           #     rustup target add aarch64-unknown-linux-musl &&
           #     yarn build --target aarch64-unknown-linux-musl
-          # TODO: enable again
-          #   AARCH64_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR unset
-          #     cargo:warning=openssl-src: failed to build OpenSSL from source
 
-          # - host: windows-latest
-          #   target: aarch64-pc-windows-msvc
-          #   build: yarn build --target aarch64-pc-windows-msvc
+          - host: windows-latest
+            target: aarch64-pc-windows-msvc
+            build: yarn build --target aarch64-pc-windows-msvc
           - host: ubuntu-latest
             target: riscv64gc-unknown-linux-gnu
             setup: |
@@ -221,8 +176,8 @@ jobs:
           if-no-files-found: error
   build-freebsd:
     runs-on: macos-13
+    if: false # we currently do not compile this
     name: Build FreeBSD
-    if: false # TODO: skip for now, reenable once compile works with openssl
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -284,11 +239,8 @@ jobs:
         settings:
           - host: macos-latest
             target: x86_64-apple-darwin
-          # TODO: reenable windows release.
-           # 'perl' reported failure with exit code: 2
-              # Command failed: "perl" "./Configure" "--prefix=D:/a/truss/truss/baseten-performance-client/target/i686-pc-windows-msvc/release/build/openssl-sys-653f4201b14b98a2/out/openssl-build/install" "--openssldir=SYS$MANAGER:[OPENSSL]" "no-shared" "no-module" "no-ssl3" "no-tests" "no-comp" "no-zlib" "no-zlib-dynamic" "--libdir=lib" "no-md2" "no-rc5" "no-weak-ssl-ciphers" "no-camellia" "no-idea" "no-seed" "no-capieng" "no-asm" "VC-WIN32"
-          # - host: windows-latest
-          #   target: x86_64-pc-windows-msvc
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
         node:
           - '18'
           - '20'
@@ -319,7 +271,6 @@ jobs:
           cp baseten-performance-client/node_bindings/*.node .
           yarn test
   test-linux-x64-gnu-binding:
-    if: false # TODO reenable
     name: Test bindings on Linux-x64-gnu - node@${{ matrix.node }}
     needs:
       - build
@@ -384,8 +335,8 @@ jobs:
       - name: Test bindings
         run: docker run --rm -v $(pwd):/build -w /build/ node:${{ matrix.node }}-alpine sh -c "cp baseten-performance-client/node_bindings/*.node . && yarn test"
   test-linux-aarch64-gnu-binding:
-    if: false # currently disabled as we do not have aarch64-unknown-linux-gnu bindings downloaded?
     name: Test bindings on aarch64-unknown-linux-gnu - node@${{ matrix.node }}
+    if: false # relative path issue.
     needs:
       - build
     strategy:
@@ -419,14 +370,14 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: node:${{ matrix.node }}-slim
-          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
+          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/'
           run: |
             set -e
             cp baseten_performance_client/node_bindings/*.node .
             yarn test
             ls -la
   test-linux-aarch64-musl-binding:
-    if: false # TODO: enable relative path issue when testing
+    if: false # TODO: we don't compile for this yet
     name: Test bindings on aarch64-unknown-linux-musl - node@${{ matrix.node }}
     needs:
       - build
@@ -455,13 +406,13 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: node:lts-alpine
-          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
+          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/'
           run: |
             set -e
             cp baseten_performance_client/node_bindings/*.node .
             yarn test
   test-linux-arm-gnueabihf-binding:
-    if: false # TODO: we currently do not compile this
+    if: false # relative path issue.
     name: Test bindings on armv7-unknown-linux-gnueabihf - node@${{ matrix.node }}
     needs:
       - build
@@ -495,9 +446,12 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: node:${{ matrix.node }}-bullseye-slim
-          options: '--platform linux/arm/v7 -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
+          options: '--platform linux/arm/v7 -v ${{ github.workspace }}:/build -w /build/'
           run: |
             set -e
+            # cannot stat baseten_performance_client/node_bindings/*.node: No such file or directory
+            # --
+            cp baseten_performance_client/node_bindings/*.node .
             yarn test
             ls -la
   universal-macOS:
@@ -549,7 +503,7 @@ jobs:
     needs:
       # - build-freebsd
       - test-macOS-windows-binding
-      # - test-linux-x64-gnu-binding
+      - test-linux-x64-gnu-binding
       - test-linux-x64-musl-binding
       # - test-linux-aarch64-gnu-binding
       # - test-linux-aarch64-musl-binding
