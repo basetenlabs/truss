@@ -27,7 +27,10 @@ pub use core::lazy_data_resolve_entrypoint;
 pub use cli::main;
 
 // Re-export types for external use
-pub use types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution, ResolutionType, HttpResolution, GcsResolution};
+pub use types::{
+    BasetenPointer, BasetenPointerManifest, GcsResolution, HttpResolution, ModelRepo, Resolution,
+    ResolutionType,
+};
 
 // Re-export HuggingFace functionality
 pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};

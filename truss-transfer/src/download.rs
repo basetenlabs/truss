@@ -78,10 +78,24 @@ pub async fn download_file_with_cache(
     // Download the file to the local path based on resolution type
     match &pointer.resolution {
         crate::types::Resolution::Http(http_resolution) => {
-            download_to_path(client, &http_resolution.url, &destination, pointer.size, &pointer.runtime_secret_name).await?;
+            download_to_path(
+                client,
+                &http_resolution.url,
+                &destination,
+                pointer.size,
+                &pointer.runtime_secret_name,
+            )
+            .await?;
         }
         crate::types::Resolution::Gcs(gcs_resolution) => {
-            download_gcs_to_path(&gcs_resolution.bucket_name, &gcs_resolution.path, &destination, pointer.size, &pointer.runtime_secret_name).await?;
+            download_gcs_to_path(
+                &gcs_resolution.bucket_name,
+                &gcs_resolution.path,
+                &destination,
+                pointer.size,
+                &pointer.runtime_secret_name,
+            )
+            .await?;
         }
     }
 
@@ -204,7 +218,10 @@ async fn download_gcs_to_path(
         ))?;
     }
 
-    debug!("Starting GCS download to {:?} from gs://{}/{}", path, bucket_name, object_path);
+    debug!(
+        "Starting GCS download to {:?} from gs://{}/{}",
+        path, bucket_name, object_path
+    );
 
     let gcs = gcs_storage(bucket_name, runtime_secret_name)
         .map_err(|e| anyhow!("Failed to create GCS client: {}", e))?;
@@ -212,7 +229,9 @@ async fn download_gcs_to_path(
     let object_path = object_store::path::Path::from(object_path);
 
     // Download the object
-    let get_result = gcs.get(&object_path).await
+    let get_result = gcs
+        .get(&object_path)
+        .await
         .map_err(|e| anyhow!("Failed to download from GCS: {}", e))?;
 
     let stream = get_result.into_stream();
@@ -221,8 +240,7 @@ async fn download_gcs_to_path(
     let mut stream = stream;
 
     while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result
-            .map_err(|e| anyhow!("Error reading chunk from GCS: {}", e))?;
+        let chunk = chunk_result.map_err(|e| anyhow!("Error reading chunk from GCS: {}", e))?;
         file.write_all(&chunk).await?;
     }
 

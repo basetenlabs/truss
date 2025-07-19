@@ -23,8 +23,6 @@ impl ToString for ResolutionType {
 pub struct HttpResolution {
     pub url: String,
     pub expiration_timestamp: i64,
-    #[serde(default = "default_http_resolution_type")]
-    resolution_type: ResolutionType,
 }
 
 impl HttpResolution {
@@ -32,7 +30,6 @@ impl HttpResolution {
         Self {
             url,
             expiration_timestamp,
-            resolution_type: ResolutionType::Http,
         }
     }
 }
@@ -42,8 +39,6 @@ impl HttpResolution {
 pub struct GcsResolution {
     pub path: String,
     pub bucket_name: String,
-    #[serde(default = "default_gcs_resolution_type")]
-    resolution_type: ResolutionType,
 }
 
 impl GcsResolution {
@@ -51,14 +46,13 @@ impl GcsResolution {
         Self {
             path,
             bucket_name,
-            resolution_type: ResolutionType::Gcs,
         }
     }
 }
 
 /// Union type representing different resolution types
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(from = "MaybeTaggedResolution")]
+#[serde(from = "MaybeTaggedResolution", into = "TaggedResolution")]
 pub enum Resolution {
     Http(HttpResolution),
     Gcs(GcsResolution),
@@ -74,7 +68,7 @@ enum MaybeTaggedResolution {
     },
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "resolution_type")]
 enum TaggedResolution {
     #[serde(rename = "http")]
@@ -94,18 +88,18 @@ impl From<MaybeTaggedResolution> for Resolution {
             } => Resolution::Http(HttpResolution {
                 url,
                 expiration_timestamp,
-                resolution_type: ResolutionType::Http,
             }),
         }
     }
 }
 
-fn default_http_resolution_type() -> ResolutionType {
-    ResolutionType::Http
-}
-
-fn default_gcs_resolution_type() -> ResolutionType {
-    ResolutionType::Gcs
+impl Into<TaggedResolution> for Resolution {
+    fn into(self) -> TaggedResolution {
+        match self {
+            Resolution::Http(http) => TaggedResolution::Http(http),
+            Resolution::Gcs(gcs) => TaggedResolution::Gcs(gcs),
+        }
+    }
 }
 
 fn default_runtime_secret_name() -> String {
