@@ -1848,6 +1848,7 @@ name = "truss_transfer"
 version = "0.0.16-rc1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "chrono",
  "env_logger",

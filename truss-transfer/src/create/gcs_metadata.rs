@@ -146,6 +146,11 @@ async fn metadata_gcs_bucket(
 }
 
 /// Convert GCS ModelRepo to BasetenPointer format
+/// Single repo wrapper for the main GCS function
+pub async fn create_gcs_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>, anyhow::Error> {
+    model_cache_gcs_to_b10ptr(vec![repo]).await.map_err(Into::into)
+}
+
 pub async fn model_cache_gcs_to_b10ptr(
     models: Vec<&ModelRepo>,
 ) -> Result<Vec<BasetenPointer>, GcsError> {

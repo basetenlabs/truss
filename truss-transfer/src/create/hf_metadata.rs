@@ -1,6 +1,6 @@
 use super::filter_repo_files;
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
-use crate::download::get_secret_from_file;
+use crate::secrets::get_secret_from_file;
 use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
@@ -160,6 +160,11 @@ pub async fn metadata_hf_repo(
 }
 
 /// Convert ModelCache to BasetenPointer format
+/// Single repo wrapper for the main HF function
+pub async fn create_hf_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>, anyhow::Error> {
+    model_cache_hf_to_b10ptr(vec![repo.clone()]).await.map_err(Into::into)
+}
+
 pub async fn model_cache_hf_to_b10ptr(
     cache: Vec<ModelRepo>,
 ) -> Result<Vec<BasetenPointer>, HfError> {

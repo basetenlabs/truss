@@ -14,7 +14,7 @@ use tokio::fs;
 use tokio::io::AsyncReadExt;
 
 use crate::constants::*;
-use crate::download::check_metadata_size;
+use crate::download_core::check_metadata_size;
 
 /// Get the cleanup threshold hours from environment variable
 fn get_b10fs_cleanup_threshold_hours() -> u64 {

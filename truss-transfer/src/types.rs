@@ -8,6 +8,8 @@ pub enum ResolutionType {
     Http,
     #[serde(rename = "gcs")]
     Gcs,
+    #[serde(rename = "s3")]
+    S3,
 }
 
 impl ToString for ResolutionType {
@@ -15,6 +17,7 @@ impl ToString for ResolutionType {
         match self {
             ResolutionType::Http => "http".to_string(),
             ResolutionType::Gcs => "gcs".to_string(),
+            ResolutionType::S3 => "s3".to_string(),
         }
     }
 }
@@ -50,12 +53,16 @@ impl GcsResolution {
     }
 }
 
+mod s3_resolution;
+pub use s3_resolution::S3Resolution;
+
 /// Union type representing different resolution types
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(from = "MaybeTaggedResolution", into = "TaggedResolution")]
 pub enum Resolution {
     Http(HttpResolution),
     Gcs(GcsResolution),
+    S3(S3Resolution),
 }
 
 #[derive(Deserialize)]
@@ -75,6 +82,8 @@ enum TaggedResolution {
     Http(HttpResolution),
     #[serde(rename = "gcs")]
     Gcs(GcsResolution),
+    #[serde(rename = "s3")]
+    S3(S3Resolution),
 }
 
 impl From<MaybeTaggedResolution> for Resolution {
@@ -82,6 +91,7 @@ impl From<MaybeTaggedResolution> for Resolution {
         match resolution {
             MaybeTaggedResolution::Tagged(TaggedResolution::Http(http)) => Resolution::Http(http),
             MaybeTaggedResolution::Tagged(TaggedResolution::Gcs(gcs)) => Resolution::Gcs(gcs),
+            MaybeTaggedResolution::Tagged(TaggedResolution::S3(s3)) => Resolution::S3(s3),
             MaybeTaggedResolution::UntaggedHttp {
                 url,
                 expiration_timestamp,
@@ -98,6 +108,7 @@ impl Into<TaggedResolution> for Resolution {
         match self {
             Resolution::Http(http) => TaggedResolution::Http(http),
             Resolution::Gcs(gcs) => TaggedResolution::Gcs(gcs),
+            Resolution::S3(s3) => TaggedResolution::S3(s3),
         }
     }
 }
