@@ -47,6 +47,21 @@ fn parse_gcs_uri(uri: &str) -> Result<(String, String), GcsError> {
     Ok((bucket, prefix))
 }
 
+pub fn gcs_storage(
+    bucket: &str,
+    runtime_secret_name: &str,
+) -> Result<object_store::gcp::GoogleCloudStorage, GcsError> {
+    let secret_path = format!("/secrets/{}", runtime_secret_name);
+    let credentials_json = fs::read_to_string(&secret_path)
+        .map_err(|e| GcsError::Io(e))?;
+
+    GoogleCloudStorageBuilder::new()
+        .with_service_account_key(&credentials_json)
+        .with_bucket_name(bucket)
+        .build()
+        .map_err(GcsError::ObjectStore)
+}
+
 /// Get metadata for all files in GCS bucket
 async fn metadata_gcs_bucket(
     repo_id: &str,
@@ -56,15 +71,7 @@ async fn metadata_gcs_bucket(
 ) -> Result<HashMap<String, GcsFileMetadata>, GcsError> {
     let (bucket, prefix) = parse_gcs_uri(repo_id)?;
 
-    // Read GCS service account credentials
-    let secret_path = format!("/secrets/{}", runtime_secret_name);
-    let credentials_json = fs::read_to_string(&secret_path)?;
-
-    // Build GCS client
-    let gcs = GoogleCloudStorageBuilder::new()
-        .with_service_account_key(&credentials_json)
-        .with_bucket_name(&bucket)
-        .build()?;
+    let gcs = gcs_storage(&bucket, runtime_secret_name)?;
 
     let mut file_metadata = HashMap::new();
 
