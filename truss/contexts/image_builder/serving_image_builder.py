@@ -338,16 +338,20 @@ def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: 
         ]
         # create BasetenPointer from models
         basetenpointer_json = create_basetenpointer_from_models(models=py_models)
-        basetenpointer = json.dumps({"pointers": json.loads(basetenpointer_json)})
-        logging.warning(f"debug: created new basetenpointer: {basetenpointer}")
+        pointers = json.loads(basetenpointer_json)
+        basetenpointer_list = json.dumps({"pointers": pointers}, indent=2)
+        logging.info(f"debug: created {len(pointers)} number of BasetenPointers")
+        logging.warning(f"pointers json: {basetenpointer_list}")
+        with open(build_dir / "bptr-manifest", "w") as f:
+            f.write(basetenpointer_list)
     except Exception as e:
         logging.warning(f"debug: failed to create BasetenPointer: {e}")
-    # TODO: remove below section + remove logging lines above.
-    # builds BasetenManifest for caching
-    basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
-    # write json of bastenpointers into build dir
-    with open(build_dir / "bptr-manifest", "w") as f:
-        f.write(basetenpointers.model_dump_json())
+        # TODO: remove below section + remove logging lines above.
+        # builds BasetenManifest for caching
+        basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
+        # write json of bastenpointers into build dir
+        with open(build_dir / "bptr-manifest", "w") as f:
+            f.write(basetenpointers.model_dump_json())
 
 
 def generate_docker_server_nginx_config(build_dir, config):
