@@ -131,8 +131,12 @@ class AcceleratorSpec(custom_types.ConfigModel):
 
 
 class ModelRepoSourceKind(str, enum.Enum):
+    """syned with `pub enum ResolutionType` in truss-transfer"""
+
     HF = "hf"
     GCS = "gcs"
+    S3 = "s3"
+    AZURE = "azure"
 
 
 class ModelRepo(custom_types.ConfigModel):

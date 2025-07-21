@@ -325,8 +325,9 @@ To make truss-transfer bundeable, it needs to be published to pypi and github re
 1. Open a PR with rust changes
 2. Change the version to x.z.y+1.rc0 in Cargo.toml and push change to branch a.
 3. Run a `Buid and Release truss-transfer" action https://github.com/basetenlabs/truss/actions with "release to pypi = true" on this branch a.
-4. Make x.z.y+1.rc0  as truss pyproject.toml, and server_requirements.txt dependency
-5. Bump truss to a new truss.rcX, publish truss.rcX to pypy.org (main.yml action)
+4. Make x.z.y+1.rc0  as truss pyproject.toml, and templates/server/requirements.txt dependency
+5. Edit truss to a new truss.rcX, publish truss.rcX to pypy.org (main.yml action)
 6. pip install truss=truss.rcX locally and truss push (on example that uses python truss)
 7. Merge PR
-8. Wait for CLI binary to be released
+8. Wait for CLI binary to be released under assets as part of a new tag (https://github.com/basetenlabs/truss/releases)
+9. add the CLI to the server.Dockerfile.jinja to have it available for trussless.
