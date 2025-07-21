@@ -3994,7 +3994,7 @@ version = "0.0.16rc1"
 description = "Speed up file transfers with the baseten.co + baseten_fs."
 optional = false
 python-versions = ">=3.8"
-groups = ["dev-server"]
+groups = ["main"]
 files = [
     {file = "truss_transfer-0.0.16rc1-cp313-cp313t-macosx_10_12_x86_64.whl", hash = "sha256:82aacc866a3d21e8a2acc22e8fc9c08c550db4ed0bf71057a87aadb7be9f498f"},
     {file = "truss_transfer-0.0.16rc1-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:6613e103d5b13e5c7812628c1a3cc781b101d1efc05cdcbc8d58be6cf9bef9b5"},
@@ -4681,4 +4681,4 @@ all = []
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.14"
-content-hash = "1f889e770526f647e73cd8fecbb9d3f55501629435f34d5bc61e8fbbbfdc9052"
+content-hash = "a0e987732db2bda91860b66dc189dbeacbedafaede6cea7f23f68774cc9236e2"
