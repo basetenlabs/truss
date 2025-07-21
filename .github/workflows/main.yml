@@ -62,7 +62,7 @@ jobs:
   publish-rc-to-pypi:
     needs: [detect-version-changed]
     if: >
-      ${{ !failure() && !cancelled() && 
+      ${{ !failure() && !cancelled() &&
          (needs.detect-version-changed.outputs.release_version == 'true' && needs.detect-version-changed.outputs.is_prerelease_version == 'true')
          || github.event.inputs.force_pypi == 'true' }}
     runs-on: ubuntu-22.04
