@@ -4,7 +4,7 @@ use log::{debug, warn};
 use object_store::ObjectStore;
 use rand;
 
-use crate::create::common_metadata::{CloudMetadataProvider, create_single_cloud_basetenpointers};
+use crate::create::common_metadata::{create_single_cloud_basetenpointers, CloudMetadataProvider};
 use crate::create::gcs_metadata::{gcs_storage, parse_gcs_uri};
 use crate::create::provider::StorageProvider;
 use crate::types::{BasetenPointer, GcsResolution, ModelRepo, Resolution, ResolutionType};
@@ -23,20 +23,27 @@ impl CloudMetadataProvider for GcsProvider {
     fn parse_uri(&self, uri: &str) -> Result<(String, String)> {
         parse_gcs_uri(uri).map_err(Into::into)
     }
-    
-    fn create_object_store(&self, bucket: &str, runtime_secret_name: &str) -> Result<Box<dyn ObjectStore>> {
+
+    fn create_object_store(
+        &self,
+        bucket: &str,
+        runtime_secret_name: &str,
+    ) -> Result<Box<dyn ObjectStore>> {
         let gcs = gcs_storage(bucket, runtime_secret_name)?;
         Ok(Box::new(gcs))
     }
-    
+
     fn create_resolution(&self, bucket: &str, object_path: &str) -> Resolution {
-        Resolution::Gcs(GcsResolution::new(object_path.to_string(), bucket.to_string()))
+        Resolution::Gcs(GcsResolution::new(
+            object_path.to_string(),
+            bucket.to_string(),
+        ))
     }
-    
+
     fn hash_type(&self) -> &'static str {
         "md5"
     }
-    
+
     fn extract_hash(&self, meta: &object_store::ObjectMeta) -> String {
         // Extract MD5 hash from GCS metadata or use ETag as fallback
         meta.e_tag
@@ -51,7 +58,7 @@ impl CloudMetadataProvider for GcsProvider {
             })
             .unwrap_or_else(|| format!("gcs-{}", rand::random::<u64>()))
     }
-    
+
     fn generate_uid(&self, _bucket: &str, _object_path: &str, hash: &str) -> String {
         format!("gcs-{}", hash)
     }

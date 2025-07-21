@@ -93,7 +93,7 @@ mod tests {
         assert!(glob_match("*", "anything"));
         assert!(glob_match("prefix*", "prefix_file.txt"));
         assert!(!glob_match("prefix*", "other_file.txt"));
-        
+
         // Test lock file pattern specifically
         assert!(glob_match("*.lock", "tokenizer_config.json.lock"));
         assert!(glob_match("*.lock", "file.lock"));

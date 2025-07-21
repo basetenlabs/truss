@@ -3,9 +3,9 @@ use futures_util::stream::StreamExt;
 use log::{debug, info};
 use object_store::ObjectStore;
 
+use super::filter::should_ignore_file;
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::types::{BasetenPointer, ModelRepo, Resolution};
-use super::filter::should_ignore_file;
 
 /// Common metadata extraction interface for cloud storage providers
 #[async_trait::async_trait]
