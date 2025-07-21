@@ -337,7 +337,7 @@ def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: 
             for model in config.model_cache.models
         ]
         # create BasetenPointer from models
-        basetenpointer_json = create_basetenpointer_from_models(py_models=py_models)
+        basetenpointer_json = create_basetenpointer_from_models(models=py_models)
         basetenpointer = json.dumps({"pointers": json.loads(basetenpointer_json)})
         logging.warning(f"debug: created new basetenpointer: {basetenpointer}")
     except Exception as e:
