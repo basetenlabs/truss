@@ -31,13 +31,3 @@ pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
         }
     }
 }
-
-/// Check if runtime secret name corresponds to a HuggingFace token
-pub fn is_hf_token(runtime_secret_name: &str) -> bool {
-    runtime_secret_name.contains("hf_access_token") || runtime_secret_name == "hf_token"
-}
-
-/// Check if runtime secret name corresponds to a GCS service account
-pub fn is_gcs_service_account(runtime_secret_name: &str) -> bool {
-    runtime_secret_name.contains("gcs") || runtime_secret_name.contains("service_account")
-}
