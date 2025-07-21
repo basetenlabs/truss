@@ -1,9 +1,9 @@
-use anyhow::Result;
-use async_trait::async_trait;
-use log::{debug, warn};
 use crate::create::aws_metadata::create_aws_basetenpointers;
 use crate::create::provider::StorageProvider;
 use crate::types::{BasetenPointer, ModelRepo, ResolutionType};
+use anyhow::Result;
+use async_trait::async_trait;
+use log::{debug, warn};
 
 pub struct AwsProvider;
 

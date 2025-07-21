@@ -1,11 +1,7 @@
 use anyhow::{anyhow, Result};
-use futures_util::stream::StreamExt;
-use log::info;
-use rand;
 
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;
-use crate::types::{BasetenPointer, ModelRepo, Resolution, S3Resolution};
+use crate::types::{BasetenPointer, ModelRepo};
 /// Parse S3 URI into bucket and key components
 /// Expected format: s3://bucket-name/path/to/object
 pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
@@ -100,68 +96,11 @@ pub fn s3_storage(
 
 /// Single repo wrapper for the main S3 function
 pub async fn create_aws_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
-    model_cache_s3_to_b10ptr(vec![repo]).await
-}
-
-/// Convert S3 ModelRepo to BasetenPointer format
-pub async fn model_cache_s3_to_b10ptr(models: Vec<&ModelRepo>) -> Result<Vec<BasetenPointer>> {
-    let mut basetenpointers = Vec::new();
-
-    for model in models {
-        info!("Processing S3 model: {}", model.repo_id);
-
-        let (bucket, key_prefix) = parse_s3_uri(&model.repo_id)?;
-
-        // Create S3 storage client
-        let object_store = s3_storage(&bucket, &model.runtime_secret_name)?;
-
-        // List all objects with the given prefix
-        let prefix = object_store::path::Path::from(key_prefix.clone());
-        let mut list_stream = object_store.list(Some(&prefix));
-
-        while let Some(meta) = list_stream.next().await.transpose()
-            .map_err(|e| anyhow!("Failed to list S3 objects: {}", e))? {
-
-            let object_key = meta.location.to_string();
-
-            // Extract relative path from the prefix
-            let _relative_path = if key_prefix.is_empty() {
-                object_key.clone()
-            } else {
-                object_key
-                    .strip_prefix(&format!("{}/", key_prefix))
-                    .unwrap_or(&object_key)
-                    .to_string()
-            };
-
-            let etag = meta.e_tag.unwrap_or_else(|| format!("s3-{}", rand::random::<u64>()));
-
-            let s3_resolution = S3Resolution::new(bucket.clone(), object_key.clone(), None);
-
-            let uid = format!("s3:{}:{}", bucket, object_key);
-            let file_name = format!(
-                "{}/{}/{}",
-                RUNTIME_MODEL_CACHE_PATH,
-                model.volume_folder,
-                object_key.split('/').last().unwrap_or(&object_key)
-            );
-
-            let pointer = BasetenPointer {
-                resolution: Resolution::S3(s3_resolution),
-                uid,
-                file_name,
-                hashtype: "etag".to_string(),
-                hash: etag,
-                size: meta.size,
-                runtime_secret_name: model.runtime_secret_name.clone(),
-            };
-
-            basetenpointers.push(pointer);
-        }
-    }
-
-    info!("Created {} S3 basetenpointers", basetenpointers.len());
-    Ok(basetenpointers)
+    // Use new common implementation
+    use crate::create::{
+        aws_provider::AwsProvider, common_metadata::create_single_cloud_basetenpointers,
+    };
+    create_single_cloud_basetenpointers(&AwsProvider, repo).await
 }
 
 #[cfg(test)]

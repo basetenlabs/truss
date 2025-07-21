@@ -1,11 +1,7 @@
 use anyhow::{anyhow, Result};
-use futures_util::stream::StreamExt;
-use log::info;
-use rand;
 
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;
-use crate::types::{AzureResolution, BasetenPointer, ModelRepo, Resolution};
+use crate::types::{BasetenPointer, ModelRepo};
 
 /// Parse Azure Blob Storage URI into account, container, and blob components
 /// Expected format: azure://accountname/containername/path/to/blob
@@ -74,9 +70,7 @@ pub fn parse_azure_uri(uri: &str) -> Result<(String, String, String)> {
 /// Azure credentials structure for parsing from single file
 #[derive(Debug, serde::Deserialize)]
 struct AzureCredentials {
-    account_name: String,
     account_key: Option<String>,
-    sas_token: Option<String>,
     #[serde(default)]
     use_emulator: bool,
 }
@@ -146,72 +140,11 @@ pub fn azure_storage(
 
 /// Single repo wrapper for the main Azure function
 pub async fn create_azure_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
-    model_cache_azure_to_b10ptr(vec![repo]).await
-}
-
-/// Convert Azure ModelRepo to BasetenPointer format
-pub async fn model_cache_azure_to_b10ptr(models: Vec<&ModelRepo>) -> Result<Vec<BasetenPointer>> {
-    let mut basetenpointers = Vec::new();
-
-    for model in models {
-        info!("Processing Azure model: {}", model.repo_id);
-
-        let (account, container, blob_prefix) = parse_azure_uri(&model.repo_id)?;
-
-        // Create Azure storage client
-        let object_store = azure_storage(&account, &model.runtime_secret_name)?;
-
-        // List all objects with the given prefix
-        let prefix = object_store::path::Path::from(blob_prefix.clone());
-        let mut list_stream = object_store.list(Some(&prefix));
-
-        while let Some(meta) = list_stream.next().await.transpose()
-            .map_err(|e| anyhow!("Failed to list Azure objects: {}", e))? {
-
-            let blob_path = meta.location.to_string();
-
-            // Extract relative path from the prefix
-            let _relative_path = if blob_prefix.is_empty() {
-                blob_path.clone()
-            } else {
-                blob_path
-                    .strip_prefix(&format!("{}/", blob_prefix))
-                    .unwrap_or(&blob_path)
-                    .to_string()
-            };
-
-            let etag = meta.e_tag.unwrap_or_else(|| format!("azure-{}", rand::random::<u64>()));
-
-            let azure_resolution = AzureResolution::new(
-                account.clone(),
-                container.clone(),
-                blob_path.clone()
-            );
-
-            let uid = format!("azure:{}:{}:{}", account, container, blob_path);
-            let file_name = format!(
-                "{}/{}/{}",
-                RUNTIME_MODEL_CACHE_PATH,
-                model.volume_folder,
-                blob_path.split('/').last().unwrap_or(&blob_path)
-            );
-
-            let pointer = BasetenPointer {
-                resolution: Resolution::Azure(azure_resolution),
-                uid,
-                file_name,
-                hashtype: "etag".to_string(),
-                hash: etag,
-                size: meta.size,
-                runtime_secret_name: model.runtime_secret_name.clone(),
-            };
-
-            basetenpointers.push(pointer);
-        }
-    }
-
-    info!("Created {} Azure basetenpointers", basetenpointers.len());
-    Ok(basetenpointers)
+    // Use new common implementation
+    use crate::create::{
+        azure_provider::AzureProvider, common_metadata::create_single_cloud_basetenpointers,
+    };
+    create_single_cloud_basetenpointers(&AzureProvider, repo).await
 }
 
 #[cfg(test)]

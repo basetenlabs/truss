@@ -32,7 +32,10 @@ impl StorageProvider for AzureProvider {
             repo.repo_id
         );
         if !self.can_handle(repo) {
-            warn!("Azure Blob Storage provider cannot handle repo: {}", repo.repo_id);
+            warn!(
+                "Azure Blob Storage provider cannot handle repo: {}",
+                repo.repo_id
+            );
         }
         create_azure_basetenpointers(repo).await
     }
