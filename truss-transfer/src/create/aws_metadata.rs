@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::{debug, info};
-use std::collections::HashMap;
+use log::info;
 
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;

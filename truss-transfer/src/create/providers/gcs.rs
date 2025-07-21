@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, warn};
 
 use crate::create::gcs_metadata::create_gcs_basetenpointers;
 use crate::create::provider::StorageProvider;
@@ -26,6 +26,9 @@ impl StorageProvider for GcsProvider {
 
     async fn create_pointers(&self, repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
         debug!("Creating GCS pointers for repo: {}", repo.repo_id);
+        if !self.can_handle(repo) {
+            warn!("GCS provider cannot handle repo: {}", repo.repo_id);
+        }
         create_gcs_basetenpointers(repo).await
     }
 }

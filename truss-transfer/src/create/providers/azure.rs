@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, warn};
 
 use crate::create::azure_metadata::create_azure_basetenpointers;
 use crate::create::provider::StorageProvider;
@@ -31,6 +31,9 @@ impl StorageProvider for AzureProvider {
             "Creating Azure Blob Storage pointers for repo: {}",
             repo.repo_id
         );
+        if !self.can_handle(repo) {
+            warn!("Azure Blob Storage provider cannot handle repo: {}", repo.repo_id);
+        }
         create_azure_basetenpointers(repo).await
     }
 }
