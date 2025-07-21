@@ -16,15 +16,16 @@ on:
   workflow_dispatch:
     inputs:
       publish_pypi:
-        description: "Publish to PyPI? (true/false)"
+        description: "Publish to PyPI?"
         required: false
-        default: "false"
+        type: boolean
+        default: false
 
 jobs:
   build-package:
     uses: ./.github/workflows/build-maturin.yml
     with:
       folder: truss-transfer
-      publish_pypi: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true' || startsWith(github.ref, 'refs/tags/') }}
+      publish_pypi: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi || startsWith(github.ref, 'refs/tags/') }}
     secrets:
       PYPI_TOKEN: ${{ secrets.TRUSS_TRANSFER_PYPI_API_TOKEN }}
