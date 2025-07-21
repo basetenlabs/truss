@@ -16,7 +16,6 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
-from truss_transfer import PyModelRepo, create_basetenpointer_from_models
 
 from truss.base import constants, truss_config
 from truss.base.constants import (
@@ -323,6 +322,8 @@ def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: 
     assert config.model_cache.is_v2
     assert all(model.volume_folder is not None for model in config.model_cache.models)
     try:
+        from truss_transfer import PyModelRepo, create_basetenpointer_from_models
+
         py_models = [
             PyModelRepo(
                 repo_id=model.repo_id,
