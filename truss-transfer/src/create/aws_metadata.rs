@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 
 use crate::secrets::get_secret_from_file;
-use crate::types::{BasetenPointer, ModelRepo};
 /// Parse S3 URI into bucket and key components
 /// Expected format: s3://bucket-name/path/to/object
 pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
@@ -92,15 +91,6 @@ pub fn s3_storage(
         .map_err(|e| anyhow!("Failed to create S3 client: {}", e))?;
 
     Ok(Box::new(s3))
-}
-
-/// Single repo wrapper for the main S3 function
-pub async fn create_aws_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
-    // Use new common implementation
-    use crate::create::{
-        aws_provider::AwsProvider, common_metadata::create_single_cloud_basetenpointers,
-    };
-    create_single_cloud_basetenpointers(&AwsProvider, repo).await
 }
 
 #[cfg(test)]

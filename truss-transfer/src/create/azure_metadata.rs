@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 
 use crate::secrets::get_secret_from_file;
-use crate::types::{BasetenPointer, ModelRepo};
 
 /// Parse Azure Blob Storage URI into account, container, and blob components
 /// Expected format: azure://accountname/containername/path/to/blob
@@ -136,15 +135,6 @@ pub fn azure_storage(
         .map_err(|e| anyhow!("Failed to create Azure client: {}", e))?;
 
     Ok(Box::new(azure))
-}
-
-/// Single repo wrapper for the main Azure function
-pub async fn create_azure_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
-    // Use new common implementation
-    use crate::create::{
-        azure_provider::AzureProvider, common_metadata::create_single_cloud_basetenpointers,
-    };
-    create_single_cloud_basetenpointers(&AzureProvider, repo).await
 }
 
 #[cfg(test)]

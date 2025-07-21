@@ -1,4 +1,4 @@
-use crate::types::{BasetenPointer, GcsError, ModelRepo};
+use crate::types::GcsError;
 use object_store::gcp::GoogleCloudStorageBuilder;
 use std::fs;
 
@@ -36,18 +36,6 @@ pub fn gcs_storage(
         .with_bucket_name(bucket)
         .build()
         .map_err(GcsError::ObjectStore)
-}
-
-/// Convert GCS ModelRepo to BasetenPointer format
-/// Single repo wrapper for the main GCS function
-pub async fn create_gcs_basetenpointers(
-    repo: &ModelRepo,
-) -> Result<Vec<BasetenPointer>, anyhow::Error> {
-    // Use new common implementation
-    use crate::create::{
-        common_metadata::create_single_cloud_basetenpointers, gcs_provider::GcsProvider,
-    };
-    create_single_cloud_basetenpointers(&GcsProvider, repo).await
 }
 
 #[cfg(test)]
