@@ -9,7 +9,8 @@ mod constants;
 mod core;
 mod create;
 mod download;
-
+mod download_core;
+mod secrets;
 mod speed_checks;
 mod types;
 

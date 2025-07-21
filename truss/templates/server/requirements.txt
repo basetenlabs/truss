@@ -18,7 +18,7 @@ psutil>=5.9.4
 python-json-logger>=2.0.2
 pyyaml>=6.0.0
 requests>=2.31.0
-truss-transfer==0.0.14
+truss-transfer==0.0.16rc2
 uvicorn>=0.24.0
 uvloop>=0.19.0
 websockets>=10.0

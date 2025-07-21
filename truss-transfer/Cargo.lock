@@ -991,6 +991,7 @@ dependencies = [
  "futures",
  "http",
  "http-body-util",
+ "httparse",
  "humantime",
  "hyper",
  "itertools",
@@ -1845,9 +1846,10 @@ dependencies = [
 
 [[package]]
 name = "truss_transfer"
-version = "0.0.16-rc1"
+version = "0.0.16-rc3"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "chrono",
  "env_logger",
@@ -1866,6 +1868,7 @@ dependencies = [
  "serde_yaml",
  "thiserror 1.0.69",
  "tokio",
+ "url",
 ]
 
 [[package]]
