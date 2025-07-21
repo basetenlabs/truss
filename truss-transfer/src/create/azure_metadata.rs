@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Result};
+use futures_util::stream::StreamExt;
 use log::info;
+use rand;
 
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;
@@ -154,37 +156,61 @@ pub async fn model_cache_azure_to_b10ptr(models: Vec<&ModelRepo>) -> Result<Vec<
     for model in models {
         info!("Processing Azure model: {}", model.repo_id);
 
-        let (account, container, blob) = parse_azure_uri(&model.repo_id)?;
+        let (account, container, blob_prefix) = parse_azure_uri(&model.repo_id)?;
 
-        // For now, we'll create a simple implementation that assumes the Azure URI points to a specific blob
-        // In the future, this could be extended to list blobs with the given prefix
-        let size = 0; // This would need to be fetched from Azure metadata
-        let etag = "unknown"; // This would need to be fetched from Azure metadata
+        // Create Azure storage client
+        let object_store = azure_storage(&account, &model.runtime_secret_name)?;
 
-        let azure_resolution =
-            AzureResolution::new(account.clone(), container.clone(), blob.clone());
+        // List all objects with the given prefix
+        let prefix = object_store::path::Path::from(blob_prefix.clone());
+        let mut list_stream = object_store.list(Some(&prefix));
 
-        let uid = format!("azure:{}:{}:{}", account, container, blob);
-        let file_name = format!(
-            "{}/{}/{}",
-            RUNTIME_MODEL_CACHE_PATH,
-            model.volume_folder,
-            blob.split('/').last().unwrap_or(&blob)
-        );
+        while let Some(meta) = list_stream.next().await.transpose()
+            .map_err(|e| anyhow!("Failed to list Azure objects: {}", e))? {
 
-        let pointer = BasetenPointer {
-            resolution: Resolution::Azure(azure_resolution),
-            uid,
-            file_name,
-            hashtype: "etag".to_string(),
-            hash: etag.to_string(),
-            size,
-            runtime_secret_name: model.runtime_secret_name.clone(),
-        };
+            let blob_path = meta.location.to_string();
 
-        basetenpointers.push(pointer);
+            // Extract relative path from the prefix
+            let _relative_path = if blob_prefix.is_empty() {
+                blob_path.clone()
+            } else {
+                blob_path
+                    .strip_prefix(&format!("{}/", blob_prefix))
+                    .unwrap_or(&blob_path)
+                    .to_string()
+            };
+
+            let etag = meta.e_tag.unwrap_or_else(|| format!("azure-{}", rand::random::<u64>()));
+
+            let azure_resolution = AzureResolution::new(
+                account.clone(),
+                container.clone(),
+                blob_path.clone()
+            );
+
+            let uid = format!("azure:{}:{}:{}", account, container, blob_path);
+            let file_name = format!(
+                "{}/{}/{}",
+                RUNTIME_MODEL_CACHE_PATH,
+                model.volume_folder,
+                blob_path.split('/').last().unwrap_or(&blob_path)
+            );
+
+            let pointer = BasetenPointer {
+                resolution: Resolution::Azure(azure_resolution),
+                uid,
+                file_name,
+                hashtype: "etag".to_string(),
+                hash: etag,
+                size: meta.size,
+                runtime_secret_name: model.runtime_secret_name.clone(),
+            };
+
+            basetenpointers.push(pointer);
+        }
     }
 
+    info!("Created {} Azure basetenpointers", basetenpointers.len());
     Ok(basetenpointers)
 }
 

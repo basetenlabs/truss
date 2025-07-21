@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Result};
+use futures_util::stream::StreamExt;
 use log::info;
+use rand;
 
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;
@@ -32,16 +34,6 @@ pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
     }
 
     Ok((bucket, key))
-}
-
-/// AWS S3 file metadata structure
-#[derive(Debug, Clone)]
-pub struct S3FileMetadata {
-    pub bucket: String,
-    pub key: String,
-    pub size: u64,
-    pub etag: String,
-    pub region: Option<String>,
 }
 
 /// AWS credentials structure for parsing from single file
@@ -118,37 +110,57 @@ pub async fn model_cache_s3_to_b10ptr(models: Vec<&ModelRepo>) -> Result<Vec<Bas
     for model in models {
         info!("Processing S3 model: {}", model.repo_id);
 
-        let (bucket, prefix) = parse_s3_uri(&model.repo_id)?;
+        let (bucket, key_prefix) = parse_s3_uri(&model.repo_id)?;
 
-        // For now, we'll create a simple implementation that assumes the S3 URI points to a specific object
-        // In the future, this could be extended to list objects with the given prefix
-        let key = prefix;
-        let size = 0; // This would need to be fetched from S3 metadata
-        let etag = "unknown"; // This would need to be fetched from S3 metadata
+        // Create S3 storage client
+        let object_store = s3_storage(&bucket, &model.runtime_secret_name)?;
 
-        let s3_resolution = S3Resolution::new(bucket.clone(), key.clone(), None);
+        // List all objects with the given prefix
+        let prefix = object_store::path::Path::from(key_prefix.clone());
+        let mut list_stream = object_store.list(Some(&prefix));
 
-        let uid = format!("s3:{}:{}", bucket, key);
-        let file_name = format!(
-            "{}/{}/{}",
-            RUNTIME_MODEL_CACHE_PATH,
-            model.volume_folder,
-            key.split('/').last().unwrap_or(&key)
-        );
+        while let Some(meta) = list_stream.next().await.transpose()
+            .map_err(|e| anyhow!("Failed to list S3 objects: {}", e))? {
 
-        let pointer = BasetenPointer {
-            resolution: Resolution::S3(s3_resolution),
-            uid,
-            file_name,
-            hashtype: "etag".to_string(),
-            hash: etag.to_string(),
-            size,
-            runtime_secret_name: model.runtime_secret_name.clone(),
-        };
+            let object_key = meta.location.to_string();
 
-        basetenpointers.push(pointer);
+            // Extract relative path from the prefix
+            let _relative_path = if key_prefix.is_empty() {
+                object_key.clone()
+            } else {
+                object_key
+                    .strip_prefix(&format!("{}/", key_prefix))
+                    .unwrap_or(&object_key)
+                    .to_string()
+            };
+
+            let etag = meta.e_tag.unwrap_or_else(|| format!("s3-{}", rand::random::<u64>()));
+
+            let s3_resolution = S3Resolution::new(bucket.clone(), object_key.clone(), None);
+
+            let uid = format!("s3:{}:{}", bucket, object_key);
+            let file_name = format!(
+                "{}/{}/{}",
+                RUNTIME_MODEL_CACHE_PATH,
+                model.volume_folder,
+                object_key.split('/').last().unwrap_or(&object_key)
+            );
+
+            let pointer = BasetenPointer {
+                resolution: Resolution::S3(s3_resolution),
+                uid,
+                file_name,
+                hashtype: "etag".to_string(),
+                hash: etag,
+                size: meta.size,
+                runtime_secret_name: model.runtime_secret_name.clone(),
+            };
+
+            basetenpointers.push(pointer);
+        }
     }
 
+    info!("Created {} S3 basetenpointers", basetenpointers.len());
     Ok(basetenpointers)
 }
 

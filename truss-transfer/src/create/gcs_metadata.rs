@@ -122,11 +122,6 @@ async fn metadata_gcs_bucket(
             })
             .unwrap_or_else(|| format!("gcs-{}", rand::random::<u64>()));
 
-        if object.size == 0 {
-            debug!("Skipping empty lock file: {}", file_name);
-            continue; // Skip empty files
-        }
-
         let metadata = GcsFileMetadata {
             md5_hash,
             size: object.size,
