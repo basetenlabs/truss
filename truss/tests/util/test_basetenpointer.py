@@ -197,7 +197,6 @@ def test_with_main():
                 "resolution": {
                     "url": "https://huggingface.co/intfloat/llm-retriever-base/resolve/41dec486b25746052d3335decc8f5961607418a0/.gitattributes",
                     "expiration_timestamp": 4044816725,
-                    "resolution_type": "hf",
                 },
                 "uid": "intfloat/llm-retriever-base:main:.gitattributes",
                 "file_name": "/app/model_cache/mistral_demo/.gitattributes",
@@ -210,7 +209,6 @@ def test_with_main():
                 "resolution": {
                     "url": "https://huggingface.co/intfloat/llm-retriever-base/resolve/41dec486b25746052d3335decc8f5961607418a0/model.safetensors",
                     "expiration_timestamp": 4044816725,
-                    "resolution_type": "hf",
                 },
                 "uid": "intfloat/llm-retriever-base:main:model.safetensors",
                 "file_name": "/app/model_cache/mistral_demo/model.safetensors",

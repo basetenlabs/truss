@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -319,6 +320,29 @@ def get_files_to_model_cache_v1(config: TrussConfig, truss_dir: Path, build_dir:
 
 def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: Path):
     assert config.model_cache.is_v2
+    assert all(model.volume_folder is not None for model in config.model_cache.models)
+    try:
+        from truss_transfer import PyModelRepo, create_basetenpointer_from_models
+
+        py_models = [
+            PyModelRepo(
+                repo_id=model.repo_id,
+                revision=model.revision,
+                runtime_secret_name=model.runtime_secret_name,
+                allow_patterns=model.allow_patterns,
+                ignore_patterns=model.ignore_patterns,
+                volume_folder=model.volume_folder,
+                kind=model.kind.value,
+            )
+            for model in config.model_cache.models
+        ]
+        # create BasetenPointer from models
+        basetenpointer_json = create_basetenpointer_from_models(py_models=py_models)
+        basetenpointer = json.dumps({"pointers": json.loads(basetenpointer_json)})
+        logging.warning(f"debug: created new basetenpointer: {basetenpointer}")
+    except Exception as e:
+        logging.warning(f"debug: failed to create BasetenPointer: {e}")
+    # TODO: remove below section + remove logging lines above.
     # builds BasetenManifest for caching
     basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
     # write json of bastenpointers into build dir
