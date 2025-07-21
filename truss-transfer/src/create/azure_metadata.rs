@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
 use log::info;
 
+use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;
 use crate::types::{AzureResolution, BasetenPointer, ModelRepo, Resolution};
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 
 /// Parse Azure Blob Storage URI into account, container, and blob components
 /// Expected format: azure://accountname/containername/path/to/blob

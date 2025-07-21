@@ -2,9 +2,9 @@ use anyhow::{anyhow, Result};
 use log::{debug, info};
 use std::collections::HashMap;
 
+use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;
 use crate::types::{BasetenPointer, ModelRepo, Resolution, S3Resolution};
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 /// Parse S3 URI into bucket and key components
 /// Expected format: s3://bucket-name/path/to/object
 pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
