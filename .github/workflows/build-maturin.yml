@@ -38,16 +38,26 @@ jobs:
         platform:
           - runner: ubuntu-22.04
             target: x86_64
+            manylinux: auto
+            ft: true
           - runner: ubuntu-22.04
             target: x86
+            manylinux: auto
+            ft: true
           - runner: ubuntu-22.04
             target: aarch64
+            manylinux: manylinux_2_28
+            ft: false
           - runner: ubuntu-22.04
             target: armv7
+            manylinux: manylinux_2_28
+            ft: false
             # - runner: ubuntu-22.04
             #   target: s390x
           - runner: ubuntu-22.04
             target: ppc64le
+            manylinux: auto
+            ft: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,19 +70,22 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: "false"
-          manylinux: auto
+          manylinux: ${{ matrix.platform.manylinux }}
+          # set export CFLAGS_aarch64_unknown_linux_gnu="-D__ARM_ARCH=8" for aarch64
+          # docker-options: >
+          #   ${{ matrix.platform.target == 'aarch64' && '--env CFLAGS_aarch64_unknown_linux_gnu="-D__ARM_ARCH=8"' || '' }}
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
             elif command -v yum &> /dev/null; then
-                yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+                yum install openssl-devel perl-IPC-Cmd -y
             else
                 echo "Neither apt-get nor yum is installed. Please install a package manager."
                 exit 1
             fi
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
-        if: ${{ matrix.platform.target != 'aarch64' || matrix.platform.target != 'armv7' }}
+        if: ${{ matrix.platform.ft }}
         with:
           working-directory: ${{ inputs.folder }}
           target: ${{ matrix.platform.target }}
@@ -85,7 +98,7 @@ jobs:
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
             elif command -v yum &> /dev/null; then
-                yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+                yum install openssl-devel perl-IPC-Cmd -y
             else
                 echo "Neither apt-get nor yum is installed. Please install a package manager."
                 exit 1

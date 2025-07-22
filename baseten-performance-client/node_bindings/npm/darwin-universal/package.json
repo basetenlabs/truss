@@ -1,0 +1,15 @@
+{
+  "name": "@basetenlabs/performance-client-darwin-universal",
+  "version": "0.0.1",
+  "os": [
+    "darwin"
+  ],
+  "main": "performance-client.darwin-universal.node",
+  "files": [
+    "performance-client.darwin-universal.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  }
+}

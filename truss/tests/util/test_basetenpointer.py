@@ -18,6 +18,7 @@ def test_dolly_12b():
                 revision="19308160448536e378e3db21a73a751579ee7fdd",
                 use_volume=True,
                 volume_folder="databricks_dolly_v2_12b",
+                runtime_secret_name="hf_access_token",
             )
         ]
     )
@@ -202,6 +203,7 @@ def test_with_main():
                 "hashtype": "etag",
                 "hash": "a6344aac8c09253b3b630fb776ae94478aa0275b",
                 "size": 1519,
+                "runtime_secret_name": "hf_access_token",
             },
             {
                 "resolution": {
@@ -213,6 +215,7 @@ def test_with_main():
                 "hashtype": "etag",
                 "hash": "565dd4f1cc6318ccf07af8680c27fd935b3b56ca2684d1af58abcd4e8bf6ecfa",
                 "size": 437955512,
+                "runtime_secret_name": "hf_access_token",
             },
         ]
     }

@@ -4,9 +4,14 @@ import time
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Optional
+from typing import Optional, Union
 
-LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
+LAZY_DATA_RESOLVER_PATH = [
+    # synced with pub static LAZY_DATA_RESOLVER_PATHS: &[&str]
+    Path("/bptr/bptr-manifest"),
+    Path("/bptr/bptr-manifest.json"),
+    Path("/bptr/static-bptr-manifest.json"),
+]
 
 MISSING_COLLECTION_MESSAGE = """model_cache: Data was not collected. Missing lazy_data_resolver.block_until_download_complete().
 This is a potential bug by the user implementation of model.py when using model_cache.
@@ -43,7 +48,7 @@ class LazyDataResolverV2:
         self._lock = Lock()
         self._start_time = time.time()
         self.logger = logger or logging.getLogger(__name__)
-        self._is_collected_by_user = not LAZY_DATA_RESOLVER_PATH.exists()
+        self._is_collected_by_user = not self.bptr_exists()
         thread = Thread(target=self._prefetch_in_thread, daemon=True)
         thread.start()
 
@@ -60,6 +65,11 @@ class LazyDataResolverV2:
                 print("Error while printing error message on exit:", e)
 
         atexit.register(print_error_message_on_exit_if_not_collected)
+
+    @staticmethod
+    def bptr_exists():
+        """Check if the bptr manifest file exists."""
+        return any(path.exists() for path in LAZY_DATA_RESOLVER_PATH)
 
     def _prefetch_in_thread(self):
         """Invokes the download ahead of time, before user doubles down on the download"""
@@ -79,13 +89,17 @@ class LazyDataResolverV2:
         time.sleep(0.5)
 
     @lru_cache(maxsize=None)
-    def _fetch(self) -> str:
+    def _fetch(self) -> Union[str, Exception]:
         """cached and locked method to fetch the data."""
-        if not LAZY_DATA_RESOLVER_PATH.is_file():
+        if not self.bptr_exists():
             return ""  # no data to resolve
         import truss_transfer
 
-        return truss_transfer.lazy_data_resolve(str(self._data_dir))
+        try:
+            return truss_transfer.lazy_data_resolve(str(self._data_dir))
+        except Exception as e:
+            self.logger.error(f"Error occurred while fetching data: {e}")
+            return e
 
     def raise_if_not_collected(self):
         """We require the user to call `block_until_download_complete` before using the data.
@@ -118,6 +132,10 @@ class LazyDataResolverV2:
         self._is_collected_by_user = issue_collect or self._is_collected_by_user
         with self._lock:
             result = self._fetch()
+            if isinstance(result, Exception):
+                raise RuntimeError(
+                    f"Error occurred while fetching data: {result}"
+                ) from result
             if log_stats and result:
                 self.logger.info(
                     f"model_cache: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."

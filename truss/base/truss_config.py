@@ -130,6 +130,15 @@ class AcceleratorSpec(custom_types.ConfigModel):
         return schema
 
 
+class ModelRepoSourceKind(str, enum.Enum):
+    """syned with `pub enum ResolutionType` in truss-transfer"""
+
+    HF = "hf"
+    GCS = "gcs"
+    S3 = "s3"
+    AZURE = "azure"
+
+
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
     revision: Optional[Annotated[str, pydantic.StringConstraints(min_length=1)]] = None
@@ -139,6 +148,8 @@ class ModelRepo(custom_types.ConfigModel):
         Annotated[str, pydantic.StringConstraints(min_length=1)]
     ] = None
     use_volume: bool = False
+    kind: ModelRepoSourceKind = ModelRepoSourceKind.HF
+    runtime_secret_name: str = "hf_access_token"
 
     @property
     def runtime_path(self) -> pathlib.Path:
@@ -150,9 +161,9 @@ class ModelRepo(custom_types.ConfigModel):
         use_volume = v.get("use_volume", False)
         if not use_volume:
             return v
-        if v.get("revision") is None:
+        if v.get("kind") == ModelRepoSourceKind.HF.value and v.get("revision") is None:
             logger.warning(
-                "the key `revision: str` is required for use_volume=True repos."
+                "the key `revision: str` is required for use_volume=True huggingface repos."
             )
             raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
         if v.get("volume_folder") is None or len(v["volume_folder"]) == 0:

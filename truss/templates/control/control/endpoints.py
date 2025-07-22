@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
+from httpx_ws import _exceptions as httpx_ws_exceptions
 from httpx_ws import aconnect_ws
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
@@ -125,35 +126,44 @@ async def _safe_close_ws(ws: WebSocket, logger: logging.Logger):
 
 
 async def proxy_ws(client_ws: WebSocket):
-    await client_ws.accept()
     proxy_client: httpx.AsyncClient = client_ws.app.state.proxy_client
     logger = client_ws.app.state.logger
 
     for attempt in inference_retries():
         with attempt:
-            async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
-                # Unfortunate, but FastAPI and httpx-ws have slightly different abstractions
-                # for sending data, so it's not easy to create a unified wrapper.
-                async def forward_to_server():
-                    while True:
-                        message = await client_ws.receive()
-                        if "text" in message:
-                            await server_ws.send_text(message["text"])
-                        elif "bytes" in message:
-                            await server_ws.send_bytes(message["bytes"])
+            try:
+                async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
+                    # Unfortunate, but FastAPI and httpx-ws have slightly different abstractions
+                    # for sending data, so it's not easy to create a unified wrapper.
+                    async def forward_to_server():
+                        while True:
+                            message = await client_ws.receive()
+                            if message.get("type") == "websocket.disconnect":
+                                break
+                            if "text" in message:
+                                await server_ws.send_text(message["text"])
+                            elif "bytes" in message:
+                                await server_ws.send_bytes(message["bytes"])
 
-                async def forward_to_client():
-                    while True:
-                        message = await server_ws.receive()
-                        if isinstance(message, TextMessage):
-                            await client_ws.send_text(message.data)
-                        elif isinstance(message, BytesMessage):
-                            await client_ws.send_bytes(message.data)
+                    async def forward_to_client():
+                        while True:
+                            message = await server_ws.receive()
+                            if message is None:
+                                break
+                            if isinstance(message, TextMessage):
+                                await client_ws.send_text(message.data)
+                            elif isinstance(message, BytesMessage):
+                                await client_ws.send_bytes(message.data)
 
-                try:
-                    await asyncio.gather(forward_to_client(), forward_to_server())
-                finally:
-                    await _safe_close_ws(client_ws, logger)
+                    await client_ws.accept()
+                    try:
+                        await asyncio.gather(forward_to_client(), forward_to_server())
+                    finally:
+                        await _safe_close_ws(client_ws, logger)
+            except httpx_ws_exceptions.HTTPXWSException as e:
+                logger.warning(f"WebSocket connection rejected: {e}")
+                await _safe_close_ws(client_ws, logger)
+                break
 
 
 control_app.add_websocket_route("/v1/websocket", proxy_ws)

@@ -1,0 +1,60 @@
+{
+  "name": "@basetenlabs/performance-client",
+  "version": "0.0.1",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "performance-client",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-linux-android",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "aarch64-pc-windows-msvc",
+        "armv7-unknown-linux-gnueabihf",
+        "armv7-unknown-linux-musleabihf",
+        "x86_64-unknown-linux-musl",
+        "x86_64-unknown-freebsd",
+        "i686-pc-windows-msvc",
+        "armv7-linux-androideabi",
+        "universal-apple-darwin",
+        "riscv64gc-unknown-linux-gnu"
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/basetenlabs/truss"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "ava": "^6.0.1"
+  },
+  "ava": {
+    "timeout": "3m"
+  },
+  "engines": {
+    "node": ">= 10"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm --skip-gh-release",
+    "test": "ava",
+    "test:integration": "node __test__/test_with_key.js",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "keywords": [
+    "baseten",
+    "performance",
+    "client",
+    "embedding",
+    "reranking",
+    "classification"
+  ],
+  "packageManager": "yarn@4.9.2"
+}

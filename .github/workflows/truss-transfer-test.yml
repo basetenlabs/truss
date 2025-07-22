@@ -38,7 +38,7 @@ jobs:
         run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
-          cp ./example-bptr-manifest.json /bptr/bptr-manifest
+          cp ./example-bptr-manifest.json /bptr/static-bptr-manifest.json
 
           source .venv/bin/activate
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_no_cache/test')"
@@ -80,3 +80,8 @@ jobs:
             echo "❌ Test failed: output directory not created."
             exit 1
           fi
+
+      - name: Rust tests
+        run: |
+          cargo test --release --target x86_64-unknown-linux-musl
+          cargo test --release

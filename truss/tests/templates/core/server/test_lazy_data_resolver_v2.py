@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(
     reason="BPTR tests require a specific directory and will fail on macOS",
 )
 
-LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
+LAZY_DATA_RESOLVER_PATH = Path("/bptr/static-bptr-manifest.json")
 TARGET_FILE = Path("nested/config.json")
 
 

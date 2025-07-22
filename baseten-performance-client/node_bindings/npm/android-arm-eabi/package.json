@@ -1,0 +1,18 @@
+{
+  "name": "@basetenlabs/performance-client-android-arm-eabi",
+  "version": "0.0.1",
+  "os": [
+    "android"
+  ],
+  "cpu": [
+    "arm"
+  ],
+  "main": "performance-client.android-arm-eabi.node",
+  "files": [
+    "performance-client.android-arm-eabi.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  }
+}

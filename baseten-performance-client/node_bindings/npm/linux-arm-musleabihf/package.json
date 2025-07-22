@@ -1,0 +1,18 @@
+{
+  "name": "@basetenlabs/performance-client-linux-arm-musleabihf",
+  "version": "0.0.1",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm"
+  ],
+  "main": "performance-client.linux-arm-musleabihf.node",
+  "files": [
+    "performance-client.linux-arm-musleabihf.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  }
+}
