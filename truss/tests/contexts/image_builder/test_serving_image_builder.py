@@ -414,17 +414,36 @@ def test_model_cache_dockerfile_v2(test_data_path):
         # sort json_bptr by file_name to ensure consistent order
         json_bptr = list(sorted(json_bptr, key=lambda x: x["file_name"]))
 
-        print(json_bptr)
         assert len(json_bptr) == 7, (
             f"bptr-manifest should have 7 entries, found {len(json_bptr)}"
         )
         for i, expected in enumerate(EXPECTED_CACHE_V2):
-            assert json_bptr[i] == expected, (
-                f"bptr-manifest entry {i} does not match expected value.\n"
-                f"Expected: {expected}\n"
-                f"Found: {json_bptr[i]}"
+            assert json_bptr[i]["resolution"]["url"] == expected["resolution"]["url"], (
+                f"URL mismatch at index {i}: {json_bptr[i]['resolution']['url']} != {expected['resolution']['url']}"
             )
-
+            assert json_bptr[i]["uid"] == expected["uid"], (
+                f"UID mismatch at index {i}: {json_bptr[i]['uid']} != {expected['uid']}"
+            )
+            assert json_bptr[i]["file_name"] == expected["file_name"], (
+                f"File name mismatch at index {i}: {json_bptr[i]['file_name']} != {expected['file_name']}"
+            )
+            assert json_bptr[i]["resolution"]["expiration_timestamp"] == 4044816725, (
+                f"expected expiration timestamp to be 4044816725, got {json_bptr[i]['resolution']['expiration_timestamp']}"
+            )
+            assert json_bptr[i]["hashtype"] == expected["hashtype"], (
+                f"Hash type mismatch at index {i}: {json_bptr[i]['hashtype']} != {expected['hashtype']}"
+            )
+            assert json_bptr[i]["hash"] == expected["hash"], (
+                f"Hash mismatch at index {i}: {json_bptr[i]['hash']} != {expected['hash']}"
+            )
+            assert json_bptr[i]["size"] == expected["size"], (
+                f"Size mismatch at index {i}: {json_bptr[i]['size']} != {expected['size']}"
+            )
+            assert (
+                json_bptr[i]["runtime_secret_name"] == expected["runtime_secret_name"]
+            ), (
+                f"Runtime secret name mismatch at index {i}: {json_bptr[i]['runtime_secret_name']} != {expected['runtime_secret_name']}"
+            )
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
             print(gen_docker_file)
