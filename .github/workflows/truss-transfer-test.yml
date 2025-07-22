@@ -38,7 +38,7 @@ jobs:
         run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
-          cp ./example-bptr-manifest.json /bptr/bptr-manifest
+          cp ./example-bptr-manifest.json /bptr/static-bptr-manifest
 
           source .venv/bin/activate
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_no_cache/test')"

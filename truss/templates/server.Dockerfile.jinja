@@ -79,7 +79,7 @@ RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-
 RUN chmod +x /usr/local/bin/truss-transfer-cli
 RUN mkdir /bptr
 RUN echo "hash {{model_cache_hash}}"
-COPY ./bptr-manifest /bptr/bptr-manifest
+COPY ./bptr-manifest /bptr/static-bptr-manifest.json
 {%- endif %} {#- endif model_cache_v2 #}
 
 {%- if not config.docker_server %}

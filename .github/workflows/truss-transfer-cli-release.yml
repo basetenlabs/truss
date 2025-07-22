@@ -56,7 +56,7 @@ jobs:
         run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
-          cp ./example-bptr-manifest.json /bptr/bptr-manifest
+          cp ./example-bptr-manifest.json /bptr/static-bptr-manifest.json
           dist/cli/${{ env.NAME }} ./example_bptr_resolved
           if [ ! -d "./example_bptr_resolved" ]; then
             echo "❌ Test failed: output directory not created."
