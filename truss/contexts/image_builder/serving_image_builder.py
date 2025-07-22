@@ -341,7 +341,7 @@ def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: 
         pointers = json.loads(basetenpointer_json)
         basetenpointer_list = json.dumps({"pointers": pointers}, indent=2)
         logging.info(f"debug: created {len(pointers)} number of BasetenPointers")
-        logging.warning(f"pointers json: {basetenpointer_list}")
+        logging.info(f"pointers json: {basetenpointer_list}")
         with open(build_dir / "bptr-manifest", "w") as f:
             f.write(basetenpointer_list)
     except Exception as e:
