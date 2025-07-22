@@ -6,7 +6,11 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Optional, Union
 
-LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
+LAZY_DATA_RESOLVER_PATH = [
+    Path("/bptr/bptr-manifest"),
+    Path("/bptr/bptr-manifest.json"),
+    Path("/bptr/static-bptr-manifest.json"),
+]
 
 MISSING_COLLECTION_MESSAGE = """model_cache: Data was not collected. Missing lazy_data_resolver.block_until_download_complete().
 This is a potential bug by the user implementation of model.py when using model_cache.
@@ -43,7 +47,7 @@ class LazyDataResolverV2:
         self._lock = Lock()
         self._start_time = time.time()
         self.logger = logger or logging.getLogger(__name__)
-        self._is_collected_by_user = not LAZY_DATA_RESOLVER_PATH.exists()
+        self._is_collected_by_user = not self.bptr_exists()
         thread = Thread(target=self._prefetch_in_thread, daemon=True)
         thread.start()
 
@@ -60,6 +64,11 @@ class LazyDataResolverV2:
                 print("Error while printing error message on exit:", e)
 
         atexit.register(print_error_message_on_exit_if_not_collected)
+
+    @staticmethod
+    def bptr_exists():
+        """Check if the bptr manifest file exists."""
+        return any(path.exists() for path in LAZY_DATA_RESOLVER_PATH)
 
     def _prefetch_in_thread(self):
         """Invokes the download ahead of time, before user doubles down on the download"""
@@ -81,7 +90,7 @@ class LazyDataResolverV2:
     @lru_cache(maxsize=None)
     def _fetch(self) -> Union[str, Exception]:
         """cached and locked method to fetch the data."""
-        if not LAZY_DATA_RESOLVER_PATH.is_file():
+        if not self.bptr_exists():
             return ""  # no data to resolve
         import truss_transfer
 
