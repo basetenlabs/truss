@@ -301,6 +301,101 @@ def test_model_cache_dockerfile(test_data_path):
             assert "bptr-manifest" not in gen_docker_file
 
 
+EXPECTED_CACHE_V2 = [
+    {
+        "resolution": {
+            "resolution_type": "http",
+            "url": "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/.gitattributes",
+            "expiration_timestamp": 4044816725,
+        },
+        "uid": "julien-c/EsperBERTo-small:4c7798256a4a6d577738150840c8f728361496d6:.gitattributes",
+        "file_name": "/app/model_cache/julien_c_esper/.gitattributes",
+        "hashtype": "etag",
+        "hash": "602b71f15d40ed68c5f96330e3f3175a76a32126",
+        "size": 445,
+        "runtime_secret_name": "hf_access_token",
+    },
+    {
+        "resolution": {
+            "resolution_type": "http",
+            "url": "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/README.md",
+            "expiration_timestamp": 4044816725,
+        },
+        "uid": "julien-c/EsperBERTo-small:4c7798256a4a6d577738150840c8f728361496d6:README.md",
+        "file_name": "/app/model_cache/julien_c_esper/README.md",
+        "hashtype": "etag",
+        "hash": "d7edf6bd2a681fb0175f7735299831ee1b22b812",
+        "size": 1413,
+        "runtime_secret_name": "hf_access_token",
+    },
+    {
+        "resolution": {
+            "resolution_type": "http",
+            "url": "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/config.json",
+            "expiration_timestamp": 4044816725,
+        },
+        "uid": "julien-c/EsperBERTo-small:4c7798256a4a6d577738150840c8f728361496d6:config.json",
+        "file_name": "/app/model_cache/julien_c_esper/config.json",
+        "hashtype": "etag",
+        "hash": "c807d42b45f184a2a5eaa545d631318a6dd60c85",
+        "size": 480,
+        "runtime_secret_name": "hf_access_token",
+    },
+    {
+        "resolution": {
+            "resolution_type": "http",
+            "url": "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/merges.txt",
+            "expiration_timestamp": 4044816725,
+        },
+        "uid": "julien-c/EsperBERTo-small:4c7798256a4a6d577738150840c8f728361496d6:merges.txt",
+        "file_name": "/app/model_cache/julien_c_esper/merges.txt",
+        "hashtype": "etag",
+        "hash": "6ee367d875af60a472c7a7b62b2ad1871a148769",
+        "size": 510797,
+        "runtime_secret_name": "hf_access_token",
+    },
+    {
+        "resolution": {
+            "resolution_type": "http",
+            "url": "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/model.safetensors",
+            "expiration_timestamp": 4044816725,
+        },
+        "uid": "julien-c/EsperBERTo-small:4c7798256a4a6d577738150840c8f728361496d6:model.safetensors",
+        "file_name": "/app/model_cache/julien_c_esper/model.safetensors",
+        "hashtype": "etag",
+        "hash": "3bd197b27f13e2f146649d7be97da73cd4876526222d2eddf6f7462e6d7756ff",
+        "size": 336392830,
+        "runtime_secret_name": "hf_access_token",
+    },
+    {
+        "resolution": {
+            "resolution_type": "http",
+            "url": "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/tokenizer_config.json",
+            "expiration_timestamp": 4044816725,
+        },
+        "uid": "julien-c/EsperBERTo-small:4c7798256a4a6d577738150840c8f728361496d6:tokenizer_config.json",
+        "file_name": "/app/model_cache/julien_c_esper/tokenizer_config.json",
+        "hashtype": "etag",
+        "hash": "7072d8c5ec1711e21e191d22976b4454337c5a3d",
+        "size": 19,
+        "runtime_secret_name": "hf_access_token",
+    },
+    {
+        "resolution": {
+            "resolution_type": "http",
+            "url": "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/vocab.json",
+            "expiration_timestamp": 4044816725,
+        },
+        "uid": "julien-c/EsperBERTo-small:4c7798256a4a6d577738150840c8f728361496d6:vocab.json",
+        "file_name": "/app/model_cache/julien_c_esper/vocab.json",
+        "hashtype": "etag",
+        "hash": "9ef72a0a21e4c48042163248d2e44bbcd5598016",
+        "size": 1020643,
+        "runtime_secret_name": "hf_access_token",
+    },
+]
+
+
 def test_model_cache_dockerfile_v2(test_data_path):
     truss_dir = test_data_path / "test_truss_server_model_cache_v2"
     tr = TrussHandle(truss_dir)
@@ -316,49 +411,47 @@ def test_model_cache_dockerfile_v2(test_data_path):
         assert (tmp_path / "bptr-manifest").exists(), "bptr-manifest not found"
         with open(tmp_path / "bptr-manifest", "r") as f:
             json_bptr = json.load(f)["pointers"]
-        print(json_bptr)
+        # sort json_bptr by file_name to ensure consistent order
+        json_bptr = list(sorted(json_bptr, key=lambda x: x["file_name"]))
+
         assert len(json_bptr) == 7, (
             f"bptr-manifest should have 7 entries, found {len(json_bptr)}"
         )
-        assert (
-            json_bptr[0]["file_name"]
-            == "/app/model_cache/julien_c_esper/.gitattributes"
-        )
-        assert json_bptr[0]["hash"] == "602b71f15d40ed68c5f96330e3f3175a76a32126"
-        assert json_bptr[0]["size"] == 445
-        assert (
-            json_bptr[0]["resolution"]["url"]
-            == "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/.gitattributes"
-        )
-        assert (
-            json_bptr[0]["resolution"]["expiration_timestamp"]
-            > time.time() + 20 * 365 * 24 * 60 * 60
-        ), (
-            f"Expected unix expiration timestamp to be at least 20 years ahead, but got {json_bptr[0]['resolution']['expiration_timestamp']}. "
-        )
-
-        # lfs files
-        assert (
-            json_bptr[4]["file_name"]
-            == "/app/model_cache/julien_c_esper/model.safetensors"
-        )
-        assert (
-            json_bptr[4]["hash"]
-            == "78ee94168f400dd136a1418a9f21f01ada049cdb3c064145b1400642cf342de6"
-        )
-        assert json_bptr[4]["size"] == 336392830
-        assert (
-            json_bptr[4]["resolution"]["url"]
-            == "https://huggingface.co/julien-c/EsperBERTo-small/resolve/4c7798256a4a6d577738150840c8f728361496d6/model.safetensors"
-        )
-
+        for i, expected in enumerate(EXPECTED_CACHE_V2):
+            assert json_bptr[i]["resolution"]["url"] == expected["resolution"]["url"], (
+                f"URL mismatch at index {i}: {json_bptr[i]['resolution']['url']} != {expected['resolution']['url']}"
+            )
+            assert json_bptr[i]["uid"] == expected["uid"], (
+                f"UID mismatch at index {i}: {json_bptr[i]['uid']} != {expected['uid']}"
+            )
+            assert json_bptr[i]["file_name"] == expected["file_name"], (
+                f"File name mismatch at index {i}: {json_bptr[i]['file_name']} != {expected['file_name']}"
+            )
+            assert json_bptr[i]["resolution"]["expiration_timestamp"] == 4044816725, (
+                f"expected expiration timestamp to be 4044816725, got {json_bptr[i]['resolution']['expiration_timestamp']}"
+            )
+            assert json_bptr[i]["hashtype"] == expected["hashtype"], (
+                f"Hash type mismatch at index {i}: {json_bptr[i]['hashtype']} != {expected['hashtype']}"
+            )
+            assert json_bptr[i]["hash"] == expected["hash"], (
+                f"Hash mismatch at index {i}: {json_bptr[i]['hash']} != {expected['hash']}"
+            )
+            assert json_bptr[i]["size"] == expected["size"], (
+                f"Size mismatch at index {i}: {json_bptr[i]['size']} != {expected['size']}"
+            )
+            assert (
+                json_bptr[i]["runtime_secret_name"] == expected["runtime_secret_name"]
+            ), (
+                f"Runtime secret name mismatch at index {i}: {json_bptr[i]['runtime_secret_name']} != {expected['runtime_secret_name']}"
+            )
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
             print(gen_docker_file)
             assert "truss-transfer" in gen_docker_file
-            assert "COPY ./bptr-manifest /bptr/bptr-manifest" in gen_docker_file, (
-                "bptr-manifest copy not found in Dockerfile"
-            )
+            assert (
+                "COPY ./bptr-manifest /bptr/static-bptr-manifest.json"
+                in gen_docker_file
+            ), "bptr-manifest copy not found in Dockerfile"
             assert "cache_warmer.py" not in gen_docker_file
 
 

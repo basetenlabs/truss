@@ -11,6 +11,7 @@ pub trait StorageProvider {
     fn name(&self) -> &'static str;
 
     /// Check if this provider can handle the given model repository
+    /// TODO: enable usage of this trait.
     fn can_handle(&self, repo: &ModelRepo) -> bool;
 
     /// Create basetenpointers for files in the repository

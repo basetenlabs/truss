@@ -1,10 +1,6 @@
 use anyhow::{anyhow, Result};
-use log::{debug, info};
-use std::collections::HashMap;
 
 use crate::secrets::get_secret_from_file;
-use crate::types::{BasetenPointer, ModelRepo, Resolution, S3Resolution};
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 /// Parse S3 URI into bucket and key components
 /// Expected format: s3://bucket-name/path/to/object
 pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
@@ -33,16 +29,6 @@ pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
     }
 
     Ok((bucket, key))
-}
-
-/// AWS S3 file metadata structure
-#[derive(Debug, Clone)]
-pub struct S3FileMetadata {
-    pub bucket: String,
-    pub key: String,
-    pub size: u64,
-    pub etag: String,
-    pub region: Option<String>,
 }
 
 /// AWS credentials structure for parsing from single file
@@ -105,52 +91,6 @@ pub fn s3_storage(
         .map_err(|e| anyhow!("Failed to create S3 client: {}", e))?;
 
     Ok(Box::new(s3))
-}
-
-/// Single repo wrapper for the main S3 function
-pub async fn create_aws_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
-    model_cache_s3_to_b10ptr(vec![repo]).await
-}
-
-/// Convert S3 ModelRepo to BasetenPointer format
-pub async fn model_cache_s3_to_b10ptr(models: Vec<&ModelRepo>) -> Result<Vec<BasetenPointer>> {
-    let mut basetenpointers = Vec::new();
-
-    for model in models {
-        info!("Processing S3 model: {}", model.repo_id);
-
-        let (bucket, prefix) = parse_s3_uri(&model.repo_id)?;
-
-        // For now, we'll create a simple implementation that assumes the S3 URI points to a specific object
-        // In the future, this could be extended to list objects with the given prefix
-        let key = prefix;
-        let size = 0; // This would need to be fetched from S3 metadata
-        let etag = "unknown"; // This would need to be fetched from S3 metadata
-
-        let s3_resolution = S3Resolution::new(bucket.clone(), key.clone(), None);
-
-        let uid = format!("s3:{}:{}", bucket, key);
-        let file_name = format!(
-            "{}/{}/{}",
-            RUNTIME_MODEL_CACHE_PATH,
-            model.volume_folder,
-            key.split('/').last().unwrap_or(&key)
-        );
-
-        let pointer = BasetenPointer {
-            resolution: Resolution::S3(s3_resolution),
-            uid,
-            file_name,
-            hashtype: "etag".to_string(),
-            hash: etag.to_string(),
-            size,
-            runtime_secret_name: model.runtime_secret_name.clone(),
-        };
-
-        basetenpointers.push(pointer);
-    }
-
-    Ok(basetenpointers)
 }
 
 #[cfg(test)]

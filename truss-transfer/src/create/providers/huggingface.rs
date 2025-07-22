@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, warn};
 
 use crate::create::hf_metadata::create_hf_basetenpointers;
 use crate::create::provider::StorageProvider;
@@ -30,6 +30,9 @@ impl StorageProvider for HuggingFaceProvider {
 
     async fn create_pointers(&self, repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
         debug!("Creating HuggingFace pointers for repo: {}", repo.repo_id);
+        if !self.can_handle(repo) {
+            warn!("HuggingFace provider cannot handle repo: {}", repo.repo_id);
+        }
         create_hf_basetenpointers(repo).await
     }
 }

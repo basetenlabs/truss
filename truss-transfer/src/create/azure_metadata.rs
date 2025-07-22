@@ -1,9 +1,6 @@
 use anyhow::{anyhow, Result};
-use log::info;
 
 use crate::secrets::get_secret_from_file;
-use crate::types::{AzureResolution, BasetenPointer, ModelRepo, Resolution};
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 
 /// Parse Azure Blob Storage URI into account, container, and blob components
 /// Expected format: azure://accountname/containername/path/to/blob
@@ -72,9 +69,7 @@ pub fn parse_azure_uri(uri: &str) -> Result<(String, String, String)> {
 /// Azure credentials structure for parsing from single file
 #[derive(Debug, serde::Deserialize)]
 struct AzureCredentials {
-    account_name: String,
     account_key: Option<String>,
-    sas_token: Option<String>,
     #[serde(default)]
     use_emulator: bool,
 }
@@ -140,52 +135,6 @@ pub fn azure_storage(
         .map_err(|e| anyhow!("Failed to create Azure client: {}", e))?;
 
     Ok(Box::new(azure))
-}
-
-/// Single repo wrapper for the main Azure function
-pub async fn create_azure_basetenpointers(repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
-    model_cache_azure_to_b10ptr(vec![repo]).await
-}
-
-/// Convert Azure ModelRepo to BasetenPointer format
-pub async fn model_cache_azure_to_b10ptr(models: Vec<&ModelRepo>) -> Result<Vec<BasetenPointer>> {
-    let mut basetenpointers = Vec::new();
-
-    for model in models {
-        info!("Processing Azure model: {}", model.repo_id);
-
-        let (account, container, blob) = parse_azure_uri(&model.repo_id)?;
-
-        // For now, we'll create a simple implementation that assumes the Azure URI points to a specific blob
-        // In the future, this could be extended to list blobs with the given prefix
-        let size = 0; // This would need to be fetched from Azure metadata
-        let etag = "unknown"; // This would need to be fetched from Azure metadata
-
-        let azure_resolution =
-            AzureResolution::new(account.clone(), container.clone(), blob.clone());
-
-        let uid = format!("azure:{}:{}:{}", account, container, blob);
-        let file_name = format!(
-            "{}/{}/{}",
-            RUNTIME_MODEL_CACHE_PATH,
-            model.volume_folder,
-            blob.split('/').last().unwrap_or(&blob)
-        );
-
-        let pointer = BasetenPointer {
-            resolution: Resolution::Azure(azure_resolution),
-            uid,
-            file_name,
-            hashtype: "etag".to_string(),
-            hash: etag.to_string(),
-            size,
-            runtime_secret_name: model.runtime_secret_name.clone(),
-        };
-
-        basetenpointers.push(pointer);
-    }
-
-    Ok(basetenpointers)
 }
 
 #[cfg(test)]
