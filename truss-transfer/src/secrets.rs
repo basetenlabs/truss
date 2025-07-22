@@ -31,3 +31,31 @@ pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
         }
     }
 }
+
+/// Get HuggingFace token from multiple sources
+/// 1. Check file system at /secrets/{runtime_secret_name}
+/// 2. Check environment variables: HF_TOKEN or HUGGING_FACE_HUB_TOKEN
+/// 3. Return None if not found
+pub fn get_hf_secret_from_file(hf_token_name: &str) -> Option<String> {
+    if let Some(token) = get_secret_from_file(hf_token_name) {
+        Some(token)
+    } else if let Ok(token) = std::env::var("HF_TOKEN") {
+        warn!(
+            "No secret found in {}, using HF_TOKEN environment variable",
+            hf_token_name
+        );
+        Some(token.trim().to_string())
+    } else if let Ok(token) = std::env::var("HUGGING_FACE_HUB_TOKEN") {
+        warn!(
+            "No secret found in {}, using HUGGING_FACE_HUB_TOKEN environment variable",
+            hf_token_name
+        );
+        Some(token.trim().to_string())
+    } else {
+        warn!(
+            "No secret found in {}, using unauthenticated access.",
+            hf_token_name
+        );
+        None
+    }
+}

@@ -3,7 +3,7 @@ use futures_util::stream::StreamExt;
 use log::{debug, info};
 use object_store::ObjectStore;
 
-use super::filter::{should_ignore_file, normalize_hash};
+use super::filter::{normalize_hash, should_ignore_file};
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::types::{BasetenPointer, ModelRepo, Resolution};
 

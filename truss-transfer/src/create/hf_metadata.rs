@@ -1,6 +1,6 @@
 use super::{filter_repo_files, normalize_hash};
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
-use crate::secrets::get_secret_from_file;
+use crate::secrets::get_hf_secret_from_file;
 use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
@@ -16,7 +16,7 @@ use tokio::time::{sleep, Duration};
 /// 3. Return None if not found
 fn get_hf_token(runtime_secret_name: &str) -> Option<String> {
     // 1. Try to read from secrets file
-    let secret = get_secret_from_file(runtime_secret_name);
+    let secret = get_hf_secret_from_file(runtime_secret_name);
     if secret.is_some() {
         return secret;
     }
