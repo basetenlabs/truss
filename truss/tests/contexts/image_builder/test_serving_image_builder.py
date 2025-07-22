@@ -316,6 +316,9 @@ def test_model_cache_dockerfile_v2(test_data_path):
         assert (tmp_path / "bptr-manifest").exists(), "bptr-manifest not found"
         with open(tmp_path / "bptr-manifest", "r") as f:
             json_bptr = json.load(f)["pointers"]
+        # sort json_bptr by file_name to ensure consistent order
+        json_bptr = list(sorted(json_bptr, key=lambda x: x["file_name"]))
+
         print(json_bptr)
         assert len(json_bptr) == 7, (
             f"bptr-manifest should have 7 entries, found {len(json_bptr)}"
