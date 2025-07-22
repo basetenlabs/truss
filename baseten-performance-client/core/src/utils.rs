@@ -1,20 +1,11 @@
 use crate::constants::RETRY_TIMEOUT_BUDGET_PERCENTAGE;
 use crate::constants::{CANCELLATION_ERROR_MESSAGE_DETAIL, CTRL_C_ERROR_MESSAGE_DETAIL};
 use crate::errors::ClientError;
-use once_cell::sync::Lazy;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-
-// Global state for staging addresses
-pub static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
-    option_env!("PERF_CLIENT_STAGING_ADDRESS")
-        .unwrap_or(std::str::from_utf8(crate::constants::DEFAULT_STAGING_ADDRESS).unwrap())
-        .split(',')
-        .map(String::from)
-        .collect()
-});
 
 /// Calculate retry timeout budget based on total requests
 pub fn calculate_retry_timeout_budget(total_requests: usize) -> usize {

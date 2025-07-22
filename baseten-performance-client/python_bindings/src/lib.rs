@@ -101,14 +101,8 @@ impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
                 .collect(),
             model: core.model,
             usage: OpenAIUsage::from(core.usage),
-            total_time: match core.total_time {
-                Some(t) => t,
-                None => 0.0,
-            },
-            individual_request_times: match core.individual_request_times {
-                Some(times) => times,
-                None => Vec::new(),
-            },
+            total_time: core.total_time,
+            individual_request_times: core.individual_request_times,
         }
     }
 }
@@ -202,14 +196,8 @@ impl From<CoreRerankResponse> for RerankResponse {
         RerankResponse {
             object: core.object,
             data: core.data.into_iter().map(RerankResult::from).collect(),
-            total_time: match core.total_time {
-                Some(t) => t,
-                None => 0.0,
-            },
-            individual_request_times: match core.individual_request_times {
-                Some(times) => times,
-                None => Vec::new(),
-            },
+            total_time: core.total_time,
+            individual_request_times: core.individual_request_times,
         }
     }
 }
@@ -265,14 +253,8 @@ impl From<CoreClassificationResponse> for ClassificationResponse {
                 .into_iter()
                 .map(|batch| batch.into_iter().map(ClassificationResult::from).collect())
                 .collect(),
-            total_time: match core.total_time {
-                Some(t) => t,
-                None => 0.0,
-            },
-            individual_request_times: match core.individual_request_times {
-                Some(times) => times,
-                None => Vec::new(),
-            },
+            total_time: core.total_time,
+            individual_request_times: core.individual_request_times,
         }
     }
 }
@@ -375,7 +357,9 @@ impl PerformanceClient {
                         user,
                         max_concurrent_requests,
                         batch_size,
+                        None,
                         timeout_s,
+                        None,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -432,7 +416,9 @@ impl PerformanceClient {
                     user,
                     max_concurrent_requests,
                     batch_size,
+                    None,
                     timeout_s,
+                    None,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -488,7 +474,9 @@ impl PerformanceClient {
                         truncation_direction_owned,
                         max_concurrent_requests,
                         batch_size,
+                        None,
                         timeout_s,
+                        None,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -548,7 +536,9 @@ impl PerformanceClient {
                     truncation_direction_owned,
                     max_concurrent_requests,
                     batch_size,
+                    None,
                     timeout_s,
+                    None,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -600,7 +590,9 @@ impl PerformanceClient {
                         truncation_direction_owned,
                         max_concurrent_requests,
                         batch_size,
+                        None,
                         timeout_s,
+                        None,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -656,7 +648,9 @@ impl PerformanceClient {
                     truncation_direction_owned,
                     max_concurrent_requests,
                     batch_size,
+                    None,
                     timeout_s,
+                    None,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -714,6 +708,7 @@ impl PerformanceClient {
                         payloads_json,
                         max_concurrent_requests,
                         timeout_s,
+                        None,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -804,6 +799,7 @@ impl PerformanceClient {
                     payloads_json,
                     max_concurrent_requests,
                     timeout_s,
+                    None,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;

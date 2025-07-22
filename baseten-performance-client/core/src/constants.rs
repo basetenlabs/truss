@@ -4,6 +4,7 @@ use std::time::Duration;
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
 pub const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
+pub const MIN_HEDGE_DELAY_S: f64 = 0.2;
 
 // Concurrency constants
 pub const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
@@ -29,12 +30,3 @@ pub const HTTP2_CLIENT_MAX_QUEUED: usize = 8;
 // Error messages
 pub const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
 pub const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C";
-
-// Provider warnings
-pub const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
-
-// Staging address (encrypted)
-pub const DEFAULT_STAGING_ADDRESS: &[u8] = &[
-    0x61, 0x70, 0x70, 0x2e, 0x73, 0x74, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x62, 0x61, 0x73, 0x65,
-    0x74, 0x65, 0x6e, 0x2e, 0x63, 0x6f, 0x2c,
-];

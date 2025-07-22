@@ -1,6 +1,7 @@
 use baseten_performance_client_core::{
     ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
-    CoreRerankResponse, PerformanceClientCore, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+    CoreRerankResponse, PerformanceClientCore, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY,
+    DEFAULT_REQUEST_TIMEOUT_S,
 };
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
@@ -50,8 +51,9 @@ pub struct OpenAIEmbeddingsResponse {
     pub data: Vec<OpenAIEmbeddingData>,
     pub model: String,
     pub usage: OpenAIUsage,
-    pub total_time: Option<f64>,
-    pub individual_request_times: Option<Vec<f64>>,
+    pub total_time: f64,
+    pub individual_request_times: Vec<f64>,
+    pub response_headers: Vec<HashMap<String, String>>,
 }
 
 impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
@@ -83,6 +85,7 @@ impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
             },
             total_time: core_response.total_time,
             individual_request_times: core_response.individual_request_times,
+            response_headers: core_response.response_headers
         }
     }
 }
@@ -98,8 +101,9 @@ pub struct RerankResult {
 pub struct RerankResponse {
     pub object: String,
     pub data: Vec<RerankResult>,
-    pub total_time: Option<f64>,
-    pub individual_request_times: Option<Vec<f64>>,
+    pub total_time: f64,
+    pub individual_request_times: Vec<f64>,
+    pub response_headers: Vec<HashMap<String, String>>,
 }
 
 impl From<CoreRerankResponse> for RerankResponse {
@@ -117,6 +121,7 @@ impl From<CoreRerankResponse> for RerankResponse {
                 .collect(),
             total_time: core_response.total_time,
             individual_request_times: core_response.individual_request_times,
+            response_headers: core_response.response_headers,
         }
     }
 }
@@ -131,8 +136,9 @@ pub struct ClassificationResult {
 pub struct ClassificationResponse {
     pub object: String,
     pub data: Vec<Vec<ClassificationResult>>,
-    pub total_time: Option<f64>,
-    pub individual_request_times: Option<Vec<f64>>,
+    pub total_time: f64,
+    pub individual_request_times: Vec<f64>,
+    pub response_headers: Vec<HashMap<String, String>>,
 }
 
 impl From<CoreClassificationResponse> for ClassificationResponse {
@@ -154,6 +160,7 @@ impl From<CoreClassificationResponse> for ClassificationResponse {
                 .collect(),
             total_time: core_response.total_time,
             individual_request_times: core_response.individual_request_times,
+            response_headers: core_response.response_headers,
         }
     }
 }
@@ -223,7 +230,9 @@ impl PerformanceClient {
                         user,
                         max_concurrent_requests,
                         batch_size,
+                        None,
                         timeout_s,
+                        None,
                     )
                     .await
             })
@@ -278,7 +287,9 @@ impl PerformanceClient {
                         truncation_direction.unwrap_or_else(|| "Right".to_string()),
                         max_concurrent_requests,
                         batch_size,
+                        None,
                         timeout_s,
+                        None,
                     )
                     .await
             })
@@ -329,7 +340,9 @@ impl PerformanceClient {
                         truncation_direction.unwrap_or_else(|| "Right".to_string()),
                         max_concurrent_requests,
                         batch_size,
+                        None,
                         timeout_s,
+                        None,
                     )
                     .await
             })
@@ -374,6 +387,7 @@ impl PerformanceClient {
                         payloads,
                         max_concurrent_requests,
                         timeout_s,
+                        None,
                     )
                     .await
             })
