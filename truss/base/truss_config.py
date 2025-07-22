@@ -161,9 +161,9 @@ class ModelRepo(custom_types.ConfigModel):
         use_volume = v.get("use_volume", False)
         if not use_volume:
             return v
-        if v.get("revision") is None:
+        if v.get("kind") == ModelRepoSourceKind.HF.value and v.get("revision") is None:
             logger.warning(
-                "the key `revision: str` is required for use_volume=True repos."
+                "the key `revision: str` is required for use_volume=True huggingface repos."
             )
             raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
         if v.get("volume_folder") is None or len(v["volume_folder"]) == 0:
