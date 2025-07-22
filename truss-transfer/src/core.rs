@@ -276,7 +276,10 @@ pub fn build_resolution_map(
         match &bptr.resolution {
             Resolution::Http(http_resolution) => {
                 if http_resolution.expiration_timestamp < now {
-                    return Err(anyhow!("Baseten pointer lazy data resolution has expired"));
+                    error!(
+                        "Pointer {} has expired at {}. Current time is {}. This will lead to a download failure.",
+                        bptr.file_name, http_resolution.expiration_timestamp, now
+                    );
                 }
             }
             _ => {

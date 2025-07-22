@@ -118,8 +118,8 @@ mod tests {
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
         };
-        let result = crate::core::build_resolution_map(&manifest);
-        assert!(result.is_err());
+        let _result = crate::core::build_resolution_map(&manifest);
+        // used to be that we raise an error here, but now we just log a warning
     }
 
     #[test]
