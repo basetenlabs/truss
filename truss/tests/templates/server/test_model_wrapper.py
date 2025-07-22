@@ -1,4 +1,3 @@
-import asyncio
 import importlib
 import os
 import sys
@@ -12,6 +11,7 @@ import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
 from starlette.requests import Request
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 
 @pytest.fixture
@@ -164,6 +164,18 @@ async def test_trt_llm_truss_missing_model_py(
         expected_predict_response = "test"
         mock_predict_called = False
 
+        # Need to import from the same path as ModelWrapper for retries to work.
+        errors_module = sys.modules["common.errors"]
+
+        # NB(nikhil): The underlying .load() takes longer on CI, so we wrap predict until the model is ready.
+        @retry(
+            retry=retry_if_exception_type(errors_module.ModelNotReady),
+            stop=stop_after_attempt(2),
+            wait=wait_fixed(0.5),
+        )
+        async def predict_with_retry(model_wrapper):
+            return await model_wrapper.predict({}, connected_request)
+
         async def mock_predict(return_value, request: Request):
             nonlocal mock_predict_called
             mock_predict_called = True
@@ -178,8 +190,7 @@ async def test_trt_llm_truss_missing_model_py(
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
-            await asyncio.sleep(0.05)  # Allow load thread to execute
-            resp = await model_wrapper.predict({}, connected_request)
+            resp = await predict_with_retry(model_wrapper)
             mock_extension.load.assert_called()
             mock_extension.model_override.assert_called()
             assert mock_predict_called

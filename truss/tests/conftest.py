@@ -685,14 +685,14 @@ class Helpers:
     @staticmethod
     @contextlib.contextmanager
     def sys_paths(*paths: Path):
-        num_paths = len(paths)
+        original_sys_path = sys.path[:]
         try:
             for path in paths:
-                sys.path.append(str(path))
+                # NB(nikhil): Insert at the beginning of the path to prefer the newest model being loaded.
+                sys.path.insert(0, str(path))
             yield
         finally:
-            for _ in range(num_paths):
-                sys.path.pop()
+            sys.path[:] = original_sys_path
 
     @staticmethod
     @contextlib.contextmanager
