@@ -86,20 +86,22 @@ class Runtime(custom_types.SafeModelNoExtra):
         return values
 
 
-class AWSIAMAuthDetails(custom_types.SafeModelNoExtra):
-    access_key_secret: SecretReference
-    secret_access_key_secret: SecretReference
+class AWSIAMDockerAuth(custom_types.SafeModelNoExtra):
+    access_key_secret_ref: SecretReference
+    secret_access_key_secret_ref: SecretReference
 
 
-class GCPServiceAccountJSONAuthDetails(custom_types.SafeModelNoExtra):
-    service_account_json_secret: SecretReference
+class GCPServiceAccountJSONDockerAuth(custom_types.SafeModelNoExtra):
+    service_account_json_secret_ref: SecretReference
 
 
 class DockerAuth(custom_types.SafeModelNoExtra):
     auth_method: truss_config.DockerAuthType
     registry: str
-    aws_iam_details: Optional[AWSIAMAuthDetails] = None
-    gcp_service_account_details: Optional[GCPServiceAccountJSONAuthDetails] = None
+    aws_iam_docker_auth: Optional[AWSIAMDockerAuth] = None
+    gcp_service_account_json_docker_auth: Optional[GCPServiceAccountJSONDockerAuth] = (
+        None
+    )
 
 
 class Image(custom_types.SafeModelNoExtra):
