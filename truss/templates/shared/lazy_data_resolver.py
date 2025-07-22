@@ -133,7 +133,9 @@ class LazyDataResolverV2:
         with self._lock:
             result = self._fetch()
             if isinstance(result, Exception):
-                raise result
+                raise RuntimeError(
+                    f"Error occurred while fetching data: {result}"
+                ) from result
             if log_stats and result:
                 self.logger.info(
                     f"model_cache: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
