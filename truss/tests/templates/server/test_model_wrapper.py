@@ -11,12 +11,7 @@ import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
 from starlette.requests import Request
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 
 @pytest.fixture
@@ -175,8 +170,8 @@ async def test_trt_llm_truss_missing_model_py(
         # NB(nikhil): The underlying .load() takes longer on CI, so we wrap predict until the model is ready.
         @retry(
             retry=retry_if_exception_type(errors_module.ModelNotReady),
-            stop=stop_after_attempt(10),
-            wait=wait_exponential(multiplier=1, min=1, max=10),
+            stop=stop_after_attempt(2),
+            wait=wait_fixed(0.5),
         )
         async def predict_with_retry(model_wrapper):
             return await model_wrapper.predict({}, connected_request)
