@@ -1,4 +1,4 @@
-use super::filter_repo_files;
+use super::{filter_repo_files, normalize_hash};
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_secret_from_file;
 use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, ResolutionType};
@@ -229,7 +229,7 @@ pub async fn model_cache_hf_to_b10ptr(
                 uid,
                 file_name: file_path.to_string_lossy().to_string(),
                 hashtype: "etag".to_string(),
-                hash: metadata.etag,
+                hash: normalize_hash(&metadata.etag),
                 size: metadata.size,
                 runtime_secret_name: model.runtime_secret_name.clone(),
             };

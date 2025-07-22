@@ -1,5 +1,15 @@
 use super::hf_metadata::HfError;
 
+pub fn normalize_hash(hash: &str) -> String {
+    // remove characters that break linux flat folder names, such as
+    // slashes, colons, etc.
+    let normalized = hash
+        .replace(['/', ':', '\\', '*', '?', '"', '<', '>', '|'], "_")
+        .replace(' ', "_");
+
+    normalized
+}
+
 /// Simple glob pattern matching
 pub fn glob_match(pattern: &str, text: &str) -> bool {
     if pattern == "*" {

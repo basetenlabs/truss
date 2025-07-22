@@ -3,7 +3,7 @@ use futures_util::stream::StreamExt;
 use log::{debug, info};
 use object_store::ObjectStore;
 
-use super::filter::should_ignore_file;
+use super::filter::{should_ignore_file, normalize_hash};
 use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::types::{BasetenPointer, ModelRepo, Resolution};
 
@@ -105,7 +105,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
                 uid,
                 file_name,
                 hashtype: provider.hash_type().to_string(),
-                hash,
+                hash: normalize_hash(&hash),
                 size: meta.size,
                 runtime_secret_name: model.runtime_secret_name.clone(),
             };
