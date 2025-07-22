@@ -179,3 +179,24 @@ def test_dolly():
                 print(f"Error in pointer {pointer['uid']}: {e}")
 
     print("✓ BasetenPointer structure validation passed")
+
+
+def test_qwen3():
+    models = [
+        truss_transfer.PyModelRepo(
+            repo_id="Qwen/Qwen3-Embedding-0.6B",
+            revision="main",
+            runtime_secret_name="hf_access_token_2",
+            volume_folder="julien_dummy",
+            kind="hf",
+        )
+    ]
+
+    print("Testing create_basetenpointer_from_models...")
+    result = truss_transfer.create_basetenpointer_from_models(models)
+    print("Success! Generated BasetenPointer manifest:")
+
+    # Parse and pretty print the JSON
+    manifest = json.loads(result)
+
+    print(json.dumps(manifest, indent=2))

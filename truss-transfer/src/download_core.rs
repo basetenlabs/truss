@@ -8,7 +8,7 @@ use reqwest::Client;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-use crate::secrets::get_secret_from_file;
+use crate::secrets::get_hf_secret_from_file;
 
 /// Check if file exists with expected size
 pub async fn check_metadata_size(path: &Path, size: u64) -> bool {
@@ -52,7 +52,7 @@ pub async fn download_http_to_path(
 
     // Add authentication if it's a HuggingFace URL
     if url.starts_with("https://huggingface.co") {
-        if let Some(token) = get_secret_from_file(runtime_secret_name) {
+        if let Some(token) = get_hf_secret_from_file(runtime_secret_name) {
             request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
     }

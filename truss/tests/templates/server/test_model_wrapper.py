@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import os
 import sys
@@ -177,6 +178,7 @@ async def test_trt_llm_truss_missing_model_py(
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
+            await asyncio.sleep(0.05)  # Allow load thread to execute
             resp = await model_wrapper.predict({}, connected_request)
             mock_extension.load.assert_called()
             mock_extension.model_override.assert_called()
