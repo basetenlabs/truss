@@ -183,9 +183,7 @@ impl PerformanceClient {
     let core_client =
       PerformanceClientCore::new(base_url, api_key, 2).map_err(convert_core_error_to_napi_error)?;
 
-    Ok(Self {
-      core_client,
-    })
+    Ok(Self { core_client })
   }
 
   #[napi]

@@ -167,21 +167,34 @@ impl Splittable<String> for Vec<String> {
                 max_chars,
                 max_batch_size,
             } => {
-                // policy, where we spilt until we are beyond max_chars or at max_batch_size-1, and then cut a new item.
-                // currently has a error where we increase max_batch_size if we reach max_batch_size
                 let mut batches = Vec::new();
+                if self.is_empty() {
+                    return batches;
+                }
+
                 let mut current_batch = Vec::new();
                 let mut current_chars = 0;
 
                 for item in self {
                     let item_chars = Self::char_count(item);
 
-                    // Start new batch if either condition is met:
-                    // 1. Adding this item would exceed max_chars
-                    // 2. Current batch already has max_batch_size items
+                    // If an item itself is larger than max_chars, it becomes its own batch.
+                    if item_chars > *max_chars {
+                        // First, push the current batch if it's not empty.
+                        if !current_batch.is_empty() {
+                            batches.push(current_batch);
+                            current_batch = Vec::new();
+                            current_chars = 0;
+                        }
+                        // Then, push the large item as its own batch.
+                        batches.push(vec![item.clone()]);
+                        continue;
+                    }
+
+                    // Start a new batch if the current one is full or adding the new item would exceed the char limit.
                     if !current_batch.is_empty()
-                        && (current_chars + item_chars > *max_chars
-                            || current_batch.len() >= *max_batch_size)
+                        && (current_batch.len() >= *max_batch_size
+                            || current_chars + item_chars > *max_chars)
                     {
                         batches.push(current_batch);
                         current_batch = Vec::new();
@@ -196,12 +209,7 @@ impl Splittable<String> for Vec<String> {
                     batches.push(current_batch);
                 }
 
-                // Fallback to max_batch_size if no batches created
-                if batches.is_empty() {
-                    vec![self.clone()]
-                } else {
-                    batches
-                }
+                batches
             }
         }
     }
@@ -249,8 +257,9 @@ impl Combinable for CoreOpenAIEmbeddingsResponse {
             }
         }
 
-        // Sort by index to maintain order
-        all_data.sort_by_key(|d| d.index);
+        // Batches are processed in order, so we can just extend.
+        // Sorting by index is not necessary if batches are handled correctly.
+        // all_data.sort_by_key(|d: &CoreOpenAIEmbeddingData| d.index);
 
         CoreOpenAIEmbeddingsResponse {
             object: "list".to_string(),
@@ -278,10 +287,7 @@ impl Combinable for Vec<CoreRerankResult> {
         for results in responses {
             all_results.extend(results);
         }
-
-        // Sort by index to maintain order
-        all_results.sort_by_key(|d| d.index);
-
+        // Sorting is handled by the generic processor, not needed here.
         all_results
     }
 }
@@ -301,9 +307,7 @@ impl Combinable for CoreRerankResponse {
             all_response_headers.extend(response.response_headers);
         }
 
-        // Sort by index to maintain order
-        all_data.sort_by_key(|d| d.index);
-
+        // Sorting is handled by the generic processor, not needed here.
         let mut combined = CoreRerankResponse::new(all_data, None, None);
         combined.response_headers = all_response_headers;
         combined
@@ -517,5 +521,155 @@ mod tests {
         assert_eq!(combined.usage.prompt_tokens, 18);
         assert_eq!(combined.usage.total_tokens, 27);
         assert_eq!(combined.model, "test-model");
+    }
+
+    #[test]
+    fn test_combine_preserves_order_without_sorting() {
+        // This test ensures that even if indices are out of order, the combine function
+        // preserves the order of the responses as they are passed in.
+        let response1 = CoreOpenAIEmbeddingsResponse {
+            object: "list".to_string(),
+            data: vec![CoreOpenAIEmbeddingData {
+                object: "embedding".to_string(),
+                embedding_internal: CoreEmbeddingVariant::FloatVector(vec![1.0]),
+                index: 1, // Intentionally out of order
+            }],
+            model: "test-model".to_string(),
+            usage: CoreOpenAIUsage {
+                prompt_tokens: 1,
+                total_tokens: 1,
+            },
+            total_time: -1.0,
+            individual_request_times: Vec::new(),
+            response_headers: Vec::new(),
+        };
+
+        let response2 = CoreOpenAIEmbeddingsResponse {
+            object: "list".to_string(),
+            data: vec![CoreOpenAIEmbeddingData {
+                object: "embedding".to_string(),
+                embedding_internal: CoreEmbeddingVariant::FloatVector(vec![2.0]),
+                index: 0, // Intentionally out of order
+            }],
+            model: "test-model".to_string(),
+            usage: CoreOpenAIUsage {
+                prompt_tokens: 1,
+                total_tokens: 1,
+            },
+            total_time: -1.0,
+            individual_request_times: Vec::new(),
+            response_headers: Vec::new(),
+        };
+
+        let combined = CoreOpenAIEmbeddingsResponse::combine(vec![response1, response2]);
+
+        assert_eq!(combined.data.len(), 2);
+        // Check that the order is [response1.data, response2.data], not sorted by index.
+        if let CoreEmbeddingVariant::FloatVector(v) = &combined.data[0].embedding_internal {
+            assert_eq!(v[0], 1.0);
+        } else {
+            panic!("Expected float vector");
+        }
+        if let CoreEmbeddingVariant::FloatVector(v) = &combined.data[1].embedding_internal {
+            assert_eq!(v[0], 2.0);
+        } else {
+            panic!("Expected float vector");
+        }
+    }
+
+    #[test]
+    fn test_split_by_max_chars_policy_comprehensive() {
+        let texts = vec![
+            "12345".to_string(),                 // 5 chars
+            "1234567890".to_string(),            // 10 chars
+            "123".to_string(),                   // 3 chars
+            "123456789012345678901".to_string(), // 21 chars (> 20)
+            "12345".to_string(),                 // 5 chars
+            "12345".to_string(),                 // 5 chars
+        ];
+
+        let policy = SplitPolicy::max_chars_per_request(20, 3);
+        let batches = texts.split(&policy);
+
+        assert_eq!(batches.len(), 3);
+        // Batch 1: 5 + 10 + 3 = 18 chars, 3 items. Next item would exceed batch size.
+        assert_eq!(batches[0], vec!["12345", "1234567890", "123"]);
+        // Batch 2: 21 chars. Item is larger than max_chars, so it's a batch on its own.
+        assert_eq!(batches[1], vec!["123456789012345678901"]);
+        // Batch 3: 5 + 5 = 10 chars, 2 items.
+        assert_eq!(batches[2], vec!["12345", "12345"]);
+    }
+
+    #[test]
+    fn test_split_with_empty_input() {
+        let texts: Vec<String> = vec![];
+
+        let policy_batch = SplitPolicy::max_batch_size(2);
+        let batches_batch = texts.split(&policy_batch);
+        assert!(batches_batch.is_empty());
+
+        let policy_chars = SplitPolicy::max_chars_per_request(100, 10);
+        let batches_chars = texts.split(&policy_chars);
+        assert!(batches_chars.is_empty());
+    }
+
+    #[test]
+    fn test_split_all_items_larger_than_max_chars() {
+        let texts = vec![
+            "12345678901".to_string(),   // 11 chars
+            "123456789012".to_string(),  // 12 chars
+            "1234567890123".to_string(), // 13 chars
+        ];
+
+        let policy = SplitPolicy::max_chars_per_request(10, 3);
+        let batches = texts.split(&policy);
+
+        assert_eq!(batches.len(), 3);
+        assert_eq!(batches[0], vec!["12345678901"]);
+        assert_eq!(batches[1], vec!["123456789012"]);
+        assert_eq!(batches[2], vec!["1234567890123"]);
+    }
+
+    #[test]
+    fn test_split_exact_max_chars_limit() {
+        let texts = vec![
+            "12345".to_string(),      // 5
+            "1234567890".to_string(), // 10
+            "12345".to_string(),      // 5
+            "next".to_string(),       // 4
+        ];
+
+        let policy = SplitPolicy::max_chars_per_request(20, 3);
+        let batches = texts.split(&policy);
+
+        assert_eq!(batches.len(), 2);
+        // Batch 1: 5 + 10 + 5 = 20 chars.
+        assert_eq!(batches[0], vec!["12345", "1234567890", "12345"]);
+        // Batch 2: The next item starts a new batch.
+        assert_eq!(batches[1], vec!["next"]);
+    }
+
+    #[test]
+    fn test_split_exact_max_batch_size_limit() {
+        let texts = vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+            "123456789".to_string(),
+            "12".to_string(),
+        ];
+
+        let policy = SplitPolicy::max_chars_per_request(6, 3);
+        let batches = texts.split(&policy);
+
+        assert_eq!(batches.len(), 4);
+        // Batch 1: 3 items, which is the max_batch_size.
+        assert_eq!(batches[0], vec!["1", "2", "3"]);
+        // Batch 2: The next item starts a new batch.
+        assert_eq!(batches[1], vec!["4"]);
+        // Batch 3: The last item is larger than max_chars, so it becomes its own batch.
+        assert_eq!(batches[2], vec!["123456789"]);
+        // Batch 4: The last item is smaller than max_chars, but previous one was larger so it becomes its own batch.
     }
 }

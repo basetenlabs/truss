@@ -2,15 +2,17 @@ use crate::constants::*;
 use crate::errors::ClientError;
 use crate::http::*;
 use crate::split_policy::*;
-use crate::utils::*;
-use futures::future::join_all;
+use crate::utils::{
+    acquire_permit_or_cancel, calculate_hedge_budget, calculate_retry_timeout_budget,
+};
+use rand::Rng;
 use reqwest::Client;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use rand::Rng;
+use tokio::task::JoinSet;
 
 pub struct SendRequestConfig {
     pub max_retries: u32,
@@ -250,6 +252,7 @@ impl PerformanceClientCore {
 
 impl PerformanceClientCore {
     // Generic batch processing method - handles pre-batched requests for ALL API types
+    // Uses JoinSet for better cancellation and lazy execution
     async fn process_batched_requests<T, R>(
         &self,
         batches: Vec<Vec<String>>,
@@ -266,7 +269,6 @@ impl PerformanceClientCore {
         let request_timeout_duration = config.timeout_duration();
 
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
-        let mut tasks = Vec::new();
         let total_requests = batches.len();
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
             total_requests,
@@ -282,8 +284,14 @@ impl PerformanceClientCore {
             }
         };
 
+        // Use JoinSet for better performance and cancellation
+        let mut join_set: JoinSet<Result<(R, Duration, usize, usize), ClientError>> =
+            JoinSet::new();
+        let mut indexed_results: Vec<(usize, R, Duration, usize)> =
+            Vec::with_capacity(total_requests);
+
         let mut current_absolute_index = 0;
-        for batch in batches {
+        for (batch_index, batch) in batches.into_iter().enumerate() {
             let current_batch_absolute_start_index = current_absolute_index;
             current_absolute_index += batch.len();
 
@@ -300,10 +308,9 @@ impl PerformanceClientCore {
             let payload = create_payload(batch);
             let url = endpoint_url(&base_url);
 
-            tasks.push(tokio::spawn(async move {
+            join_set.spawn(async move {
                 let _permit =
-                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None)
-                        .await?;
+                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None).await?;
                 let client = client_wrapper.get_client();
 
                 let request_time_start = Instant::now();
@@ -332,36 +339,37 @@ impl PerformanceClientCore {
                     response,
                     request_time_elapsed,
                     current_batch_absolute_start_index,
+                    batch_index, // Include batch index for ordering
                 ))
-            }));
+            });
         }
 
-        let task_join_results = join_all(tasks).await;
-        let mut responses = Vec::new();
-        let mut individual_batch_durations: Vec<Duration> = Vec::new();
-        let mut first_error: Option<ClientError> = None;
-
-        for result in task_join_results {
-            match result {
-                Ok(Ok((mut response, duration, start_index))) => {
-                    adjust_indices(&mut response, start_index);
-                    responses.push(response);
-                    individual_batch_durations.push(duration);
-                }
-                Ok(Err(e)) => {
-                    cancel_token.store(true, Ordering::SeqCst);
-                    first_error = Some(e);
-                    break;
+        // Process results as they complete with fast-fail cancellation
+        while let Some(task_result) = join_set.join_next().await {
+            match process_joinset_outcome(task_result, &cancel_token) {
+                Ok((response, duration, start_index, batch_index)) => {
+                    indexed_results.push((batch_index, response, duration, start_index));
                 }
                 Err(e) => {
-                    first_error = Some(ClientError::Network(format!("Task join error: {}", e)));
-                    break;
+                    // Cancel all remaining tasks immediately
+                    cancel_token.store(true, Ordering::SeqCst);
+                    join_set.abort_all();
+                    return Err(e);
                 }
             }
         }
 
-        if let Some(err) = first_error {
-            return Err(err);
+        // Sort results by original batch order to preserve ordering
+        indexed_results.sort_by_key(|&(batch_index, _, _, _)| batch_index);
+
+        // Extract responses and durations in correct order
+        let mut responses = Vec::with_capacity(total_requests);
+        let mut individual_batch_durations = Vec::with_capacity(total_requests);
+
+        for (_, mut response, duration, start_index) in indexed_results {
+            adjust_indices(&mut response, start_index);
+            responses.push(response);
+            individual_batch_durations.push(duration);
         }
 
         let combined_response = R::combine(responses);
@@ -557,8 +565,7 @@ impl PerformanceClientCore {
         Ok((response, durations, total_time))
     }
 
-    // Core batch post processing
-    // TODO: Use unified processing system for batch post requests
+    // Core batch post processing - optimized with JoinSet
     pub async fn process_batch_post_requests(
         &self,
         url_path: String,
@@ -577,14 +584,12 @@ impl PerformanceClientCore {
         ),
         ClientError,
     > {
-        // todo: use unified processing system, but not allowing char based policy.
         let start_time = std::time::Instant::now();
 
         // Validate parameters internally (using batch_size of 128 for validation)
         let (validated_concurrency, request_timeout_duration) =
             self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
-        let mut tasks = Vec::new();
         let cancel_token = Arc::new(AtomicBool::new(false));
         let total_payloads = payloads_json.len();
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
@@ -598,6 +603,26 @@ impl PerformanceClientCore {
                 Duration::from_secs_f64(delay),
             )
         });
+
+        // Use JoinSet for better performance and cancellation
+        let mut join_set: JoinSet<
+            Result<
+                (
+                    usize,
+                    serde_json::Value,
+                    std::collections::HashMap<String, String>,
+                    Duration,
+                ),
+                ClientError,
+            >,
+        > = JoinSet::new();
+        let mut indexed_results: Vec<(
+            usize,
+            serde_json::Value,
+            std::collections::HashMap<String, String>,
+            Duration,
+        )> = Vec::with_capacity(total_payloads);
+
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
@@ -609,10 +634,9 @@ impl PerformanceClientCore {
             let individual_request_timeout = request_timeout_duration;
             let hedge_budget = hedge_budget_delay.clone();
 
-            tasks.push(tokio::spawn(async move {
+            join_set.spawn(async move {
                 let _permit =
-                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None)
-                        .await?;
+                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None).await?;
                 let client = client_wrapper.get_client();
 
                 let full_url = format!(
@@ -654,28 +678,22 @@ impl PerformanceClientCore {
                         Err(e)
                     }
                 }
-            }));
+            });
         }
 
-        let task_join_results = join_all(tasks).await;
-        let mut indexed_results: Vec<(
-            usize,
-            serde_json::Value,
-            std::collections::HashMap<String, String>,
-            Duration,
-        )> = Vec::with_capacity(total_payloads);
-        let mut first_error: Option<ClientError> = None;
-
-        for result in task_join_results {
-            if let Some(indexed_data_part) =
-                process_task_outcome(result, &mut first_error, &cancel_token)
-            {
-                indexed_results.push(indexed_data_part);
+        // Process results as they complete with fast-fail cancellation
+        while let Some(task_result) = join_set.join_next().await {
+            match process_joinset_outcome(task_result, &cancel_token) {
+                Ok(indexed_data) => {
+                    indexed_results.push(indexed_data);
+                }
+                Err(e) => {
+                    // Cancel all remaining tasks immediately
+                    cancel_token.store(true, Ordering::SeqCst);
+                    join_set.abort_all();
+                    return Err(e);
+                }
             }
-        }
-
-        if let Some(err) = first_error {
-            return Err(err);
         }
 
         indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
@@ -825,7 +843,8 @@ async fn send_request_with_retry(
 
         retries_done += 1;
         let jitter = rand::rng().random_range(0..100);
-        let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION) + Duration::from_millis(jitter);
+        let backoff_duration =
+            current_backoff.min(MAX_BACKOFF_DURATION) + Duration::from_millis(jitter);
         tokio::time::sleep(backoff_duration).await;
         current_backoff = current_backoff.saturating_mul(4);
     }
@@ -894,6 +913,36 @@ async fn send_request_with_hedging(
                     Ok(response_result) => response_result.map_err(ClientError::from),
                     Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
                 }
+            }
+        }
+    }
+}
+
+/// Process JoinSet task outcome with improved error handling
+fn process_joinset_outcome<T>(
+    task_result: Result<Result<T, ClientError>, tokio::task::JoinError>,
+    cancel_token: &Arc<AtomicBool>,
+) -> Result<T, ClientError> {
+    match task_result {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(client_error)) => {
+            cancel_token.store(true, Ordering::SeqCst);
+            Err(client_error)
+        }
+        Err(join_error) => {
+            cancel_token.store(true, Ordering::SeqCst);
+            if join_error.is_cancelled() {
+                Err(ClientError::Cancellation("Task was cancelled".to_string()))
+            } else if join_error.is_panic() {
+                Err(ClientError::Network(format!(
+                    "Task panicked: {}",
+                    join_error
+                )))
+            } else {
+                Err(ClientError::Network(format!(
+                    "Task join error: {}",
+                    join_error
+                )))
             }
         }
     }

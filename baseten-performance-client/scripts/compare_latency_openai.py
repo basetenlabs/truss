@@ -17,7 +17,7 @@ if not api_key:
 api_base_embed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
 
 # Benchmark settings: list of lengths to test.
-benchmark_lengths = [64, 128, 256, 384, 512, 2048, 8192, 32768, 131072]
+benchmark_lengths = [16, 64, 128, 256, 384, 512, 2048, 8192, 32768, 131072]
 micro_batch_size = (
     16  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
