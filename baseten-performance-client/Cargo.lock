@@ -72,7 +72,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "baseten-performance-client"
-version = "0.0.1-rc3"
+version = "0.0.2-rc1"
 dependencies = [
  "baseten_performance_client_core",
  "futures",
@@ -810,6 +810,7 @@ dependencies = [
  "once_cell",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

@@ -82,7 +82,7 @@ async function runBasetenBenchmark(length, clientName = "PerformanceClient") {
         null, // dimensions
         null, // user
         512,  // maxConcurrentRequests
-        1     // batchSize
+        1    // batchSize
     );
 
     // Setup monitoring

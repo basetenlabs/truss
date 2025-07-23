@@ -7,8 +7,6 @@ use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::runtime::Runtime;
 
 // Use constants from core crate - no more hardcoded values!
 
@@ -176,7 +174,6 @@ pub struct BatchPostResponse {
 #[napi]
 pub struct PerformanceClient {
   core_client: PerformanceClientCore,
-  runtime: Arc<Runtime>,
 }
 
 #[napi]
@@ -186,18 +183,13 @@ impl PerformanceClient {
     let core_client =
       PerformanceClientCore::new(base_url, api_key, 2).map_err(convert_core_error_to_napi_error)?;
 
-    let runtime = Arc::new(
-      Runtime::new().map_err(|e| create_napi_error(&format!("Failed to create runtime: {}", e)))?,
-    );
-
     Ok(Self {
       core_client,
-      runtime,
     })
   }
 
   #[napi]
-  pub fn embed(
+  pub async fn embed(
     &self,
     input: Vec<String>,
     model: String,
@@ -222,24 +214,20 @@ impl PerformanceClient {
     let hedge_delay = hedge_delay;
 
     let result = self
-      .runtime
-      .block_on(async {
-        self
-          .core_client
-          .process_embeddings_requests(
-            input,
-            model,
-            encoding_format,
-            dimensions,
-            user,
-            max_concurrent_requests,
-            batch_size,
-            max_chars_per_request,
-            timeout_s,
-            hedge_delay,
-          )
-          .await
-      })
+      .core_client
+      .process_embeddings_requests(
+        input,
+        model,
+        encoding_format,
+        dimensions,
+        user,
+        max_concurrent_requests,
+        batch_size,
+        max_chars_per_request,
+        timeout_s,
+        hedge_delay,
+      )
+      .await
       .map_err(convert_core_error_to_napi_error)?;
 
     let (core_response, batch_durations, total_time) = result;
@@ -255,7 +243,7 @@ impl PerformanceClient {
   }
 
   #[napi]
-  pub fn rerank(
+  pub async fn rerank(
     &self,
     query: String,
     texts: Vec<String>,
@@ -281,25 +269,21 @@ impl PerformanceClient {
     let hedge_delay = hedge_delay;
 
     let result = self
-      .runtime
-      .block_on(async {
-        self
-          .core_client
-          .process_rerank_requests(
-            query,
-            texts,
-            raw_scores.unwrap_or(false),
-            return_text.unwrap_or(false),
-            truncate.unwrap_or(false),
-            truncation_direction.unwrap_or_else(|| "Right".to_string()),
-            max_concurrent_requests,
-            batch_size,
-            max_chars_per_request,
-            timeout_s,
-            hedge_delay,
-          )
-          .await
-      })
+      .core_client
+      .process_rerank_requests(
+        query,
+        texts,
+        raw_scores.unwrap_or(false),
+        return_text.unwrap_or(false),
+        truncate.unwrap_or(false),
+        truncation_direction.unwrap_or_else(|| "Right".to_string()),
+        max_concurrent_requests,
+        batch_size,
+        max_chars_per_request,
+        timeout_s,
+        hedge_delay,
+      )
+      .await
       .map_err(convert_core_error_to_napi_error)?;
 
     let (core_response, batch_durations, total_time) = result;
@@ -315,7 +299,7 @@ impl PerformanceClient {
   }
 
   #[napi]
-  pub fn classify(
+  pub async fn classify(
     &self,
     inputs: Vec<String>,
     raw_scores: Option<bool>,
@@ -339,23 +323,19 @@ impl PerformanceClient {
     let hedge_delay = hedge_delay;
 
     let result = self
-      .runtime
-      .block_on(async {
-        self
-          .core_client
-          .process_classify_requests(
-            inputs,
-            raw_scores.unwrap_or(false),
-            truncate.unwrap_or(false),
-            truncation_direction.unwrap_or_else(|| "Right".to_string()),
-            max_concurrent_requests,
-            batch_size,
-            max_chars_per_request,
-            timeout_s,
-            hedge_delay,
-          )
-          .await
-      })
+      .core_client
+      .process_classify_requests(
+        inputs,
+        raw_scores.unwrap_or(false),
+        truncate.unwrap_or(false),
+        truncation_direction.unwrap_or_else(|| "Right".to_string()),
+        max_concurrent_requests,
+        batch_size,
+        max_chars_per_request,
+        timeout_s,
+        hedge_delay,
+      )
+      .await
       .map_err(convert_core_error_to_napi_error)?;
 
     let (core_response, batch_durations, total_time) = result;
@@ -371,7 +351,7 @@ impl PerformanceClient {
   }
 
   #[napi]
-  pub fn batch_post(
+  pub async fn batch_post(
     &self,
     url_path: String,
     payloads: Vec<JsonValue>,
@@ -387,13 +367,9 @@ impl PerformanceClient {
     let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
 
     let result = self
-      .runtime
-      .block_on(async {
-        self
-          .core_client
-          .process_batch_post_requests(url_path, payloads, max_concurrent_requests, timeout_s, None)
-          .await
-      })
+      .core_client
+      .process_batch_post_requests(url_path, payloads, max_concurrent_requests, timeout_s, None)
+      .await
       .map_err(convert_core_error_to_napi_error)?;
 
     let (results, total_time) = result;

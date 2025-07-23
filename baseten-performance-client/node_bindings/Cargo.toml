@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 baseten_performance_client_core = { path = "../core", default-features = false, features = ["rustls"] }
-napi = { version = "2.16", features = ["napi4", "serde-json"] }
+napi = { version = "2.16", features = ["napi4", "serde-json","tokio_rt"] }
 napi-derive = "2.16"
 serde = { workspace = true }
 serde_json = { workspace = true }

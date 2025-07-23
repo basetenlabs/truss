@@ -1,16 +1,24 @@
 # High performance client for Baseten.co
 
-This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. PerformanceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps per client in [our blog](https://www.baseten.co/blog/your-client-code-matters-10x-higher-embedding-throughput-with-python-and-rust/). PerformanceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
+This library provides a high-performance client for Baseten.co endpoints including embeddings, reranking, and classification, available for both **Python/pip** and **Node.js/npm**. It was built for massive concurrent post requests to any URL, also outside of baseten.co. PerformanceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps per client in [our blog](https://www.baseten.co/blog/your-client-code-matters-10x-higher-embedding-throughput-with-python-and-rust/). PerformanceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
 
 ![benchmarks](https://www.baseten.co/_next/image/?url=https%3A%2F%2Fwww.datocms-assets.com%2F104802%2F1749832130-diagram-9.png%3Fauto%3Dformat%26fit%3Dmax%26w%3D1200&w=3840&q=75)
 
 ## Installation
 
-```
+### Python
+```bash
 pip install baseten_performance_client
 ```
 
+### Node.js
+```bash
+npm install baseten-performance-client
+```
+
 ## Usage
+
+### Python
 
 ```python
 import os
@@ -23,8 +31,20 @@ base_url_embed = "https://model-yqv4yjjq.api.baseten.co/environments/production/
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
 client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 ```
+
+### Node.js
+
+```javascript
+const { PerformanceClient } = require('baseten-performance-client');
+
+const apiKey = process.env.BASETEN_API_KEY;
+const baseUrlEmbed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
+// Also works with OpenAI or Mixedbread.
+// const baseUrlEmbed = "https://api.openai.com" or "https://api.mixedbread.com"
+const client = new PerformanceClient(baseUrlEmbed, apiKey);
+```
 ### Embeddings
-#### Synchronous Embedding
+#### Python Embedding
 
 ```python
 texts = ["Hello world", "Example text", "Another sample"]
@@ -33,7 +53,9 @@ response = client.embed(
     model="my_model",
     batch_size=4,
     max_concurrent_requests=32,
-    timeout_s=360
+    timeout_s=360,
+    max_chars_per_request=10000,  # Character-based batching (50-256,000)
+    hedge_delay=0.5  # Request hedging delay in seconds (min 0.2s)
 )
 
 # Accessing embedding data
@@ -64,6 +86,11 @@ if numpy_array.shape[0] > 0:
 
 Note: The embed method is versatile and can be used with any embeddings service, e.g. OpenAI API embeddings, not just for Baseten deployments.
 
+#### Advanced Parameters
+
+- **`max_chars_per_request`**: Character-based batching limit (50-256,000 characters). When set, requests are batched by character count rather than just input count, helping optimize for services with character-based pricing or processing limits.
+- **`hedge_delay`**: Request hedging delay in seconds (minimum 0.2s). Enables sending duplicate requests after a delay to improve latency if the original request is slow. Limited by a 5% budget to prevent excessive resource usage.
+
 #### Asynchronous Embedding
 
 ```python
@@ -74,12 +101,44 @@ async def async_embed():
         model="my_model",
         batch_size=2,
         max_concurrent_requests=16,
-        timeout_s=360
+        timeout_s=360,
+        max_chars_per_request=8000,
+        hedge_delay=1.5
     )
     print("Async embedding response:", response.data)
 
 # To run:
 # asyncio.run(async_embed())
+```
+
+#### Node.js Embedding
+
+```javascript
+// All methods in Node.js are async and return Promises
+const texts = ["Hello world", "Example text", "Another sample"];
+const response = await client.embed(
+    texts,                      // input
+    "my_model",                 // model
+    null,                       // encodingFormat
+    null,                       // dimensions
+    null,                       // user
+    32,                         // maxConcurrentRequests
+    4,                          // batchSize
+    360.0,                      // timeoutS
+    10000,                      // maxCharsPerRequest
+    0.5                         // hedgeDelay
+);
+
+// Accessing embedding data
+console.log(`Model used: ${response.model}`);
+console.log(`Total tokens used: ${response.usage.total_tokens}`);
+console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+
+response.data.forEach((embeddingData, i) => {
+    console.log(`Embedding for text ${i} (original input index ${embeddingData.index}):`);
+    console.log(`  First 3 dimensions: ${embeddingData.embedding.slice(0, 3)}`);
+    console.log(`  Length: ${embeddingData.embedding.length}`);
+});
 ```
 
 #### Embedding Benchmarks
@@ -137,6 +196,27 @@ async def async_batch_post_example():
 # To run:
 # asyncio.run(async_batch_post_example())
 ```
+
+#### Node.js Batch POST
+
+```javascript
+const payload1 = { model: "my_model", input: ["Batch request sample 1"] };
+const payload2 = { model: "my_model", input: ["Batch request sample 2"] };
+const responseObj = await client.batchPost(
+    "/v1/embeddings",           // urlPath
+    [payload1, payload2],       // payloads
+    96,                         // maxConcurrentRequests
+    360.0                       // timeoutS
+);
+
+console.log(`Total time for batch POST: ${responseObj.total_time.toFixed(4)}s`);
+responseObj.data.forEach((respData, i) => {
+    console.log(`Response ${i + 1}:`);
+    console.log(`  Data:`, respData);
+    console.log(`  Headers:`, responseObj.response_headers[i]);
+    console.log(`  Time taken: ${responseObj.individual_request_times[i].toFixed(4)}s`);
+});
+```
 ### Reranking
 Reranking compatible with BEI or text-embeddings-inference.
 
@@ -151,7 +231,9 @@ rerank_response = client.rerank(
     return_text=True,
     batch_size=2,
     max_concurrent_requests=16,
-    timeout_s=360
+    timeout_s=360,
+    max_chars_per_request=5000,
+    hedge_delay=1.5
 )
 for res in rerank_response.data:
     print(f"Index: {res.index} Score: {res.score}")
@@ -192,7 +274,9 @@ classify_response = client.classify(
     inputs=texts_to_classify,
     batch_size=2,
     max_concurrent_requests=16,
-    timeout_s=360
+    timeout_s=360.0,
+    max_chars_per_request=6000,
+    hedge_delay=10.0
 )
 for group in classify_response.data:
     for result in group:
