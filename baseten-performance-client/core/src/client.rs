@@ -371,9 +371,8 @@ impl PerformanceClientCore {
         &self,
         inputs: Vec<String>,
         config: &RequestProcessingConfig,
-        max_chars_per_request: Option<usize>,
     ) -> Vec<Vec<String>> {
-        if let Some(max_chars) = max_chars_per_request {
+        if let Some(max_chars) = config.max_chars_per_request {
             let policy =
                 SplitPolicy::max_chars_per_request(max_chars, config.max_concurrent_requests);
             inputs.split(&policy)
@@ -405,10 +404,11 @@ impl PerformanceClientCore {
             timeout_s,
             self.base_url.clone(),
             hedge_delay,
+            max_chars_per_request,
         )?;
 
         // Create batches
-        let batches = self.create_batches_with_config(texts, &config, max_chars_per_request);
+        let batches = self.create_batches_with_config(texts, &config);
 
         let (mut response, durations, total_time) = self
             .process_batched_requests(
@@ -460,10 +460,11 @@ impl PerformanceClientCore {
             timeout_s,
             self.base_url.clone(),
             hedge_delay,
+            max_chars_per_request,
         )?;
 
         // Create batches
-        let batches = self.create_batches_with_config(texts, &config, max_chars_per_request);
+        let batches = self.create_batches_with_config(texts, &config);
 
         let (results, durations, total_time) = self
             .process_batched_requests(
@@ -517,10 +518,11 @@ impl PerformanceClientCore {
             timeout_s,
             self.base_url.clone(),
             hedge_delay,
+            max_chars_per_request,
         )?;
 
         // Create batches
-        let batches = self.create_batches_with_config(inputs, &config, max_chars_per_request);
+        let batches = self.create_batches_with_config(inputs, &config);
 
         let (results, durations, total_time) = self
             .process_batched_requests(

@@ -23,6 +23,7 @@ pub struct RequestProcessingConfig {
     pub timeout_s: f64,
     pub base_url: String,
     pub hedge_delay: Option<f64>,
+    pub max_chars_per_request: Option<usize>,
 }
 
 impl RequestProcessingConfig {
@@ -33,6 +34,7 @@ impl RequestProcessingConfig {
         timeout_s: f64,
         base_url: String,
         hedge_delay: Option<f64>,
+        max_chars_per_request: Option<usize>,
     ) -> Result<Self, crate::errors::ClientError> {
         // Validate timeout
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&timeout_s) {
@@ -53,6 +55,15 @@ impl RequestProcessingConfig {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
                     "Hedge delay {:.3}s must be less than timeout {:.3}s minus minimum hedge delay {:.3}s.",
                     hedge_delay, timeout_s, MIN_HEDGE_DELAY_S
+                )));
+            }
+        }
+        if max_chars_per_request.is_some() {
+            let max_chars = max_chars_per_request.unwrap();
+            if max_chars < MIN_CHARACTERS_PER_REQUEST || max_chars > MAX_CHARACTERS_PER_REQUEST {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "max_chars_per_request must be between {} and {} characters.",
+                    MIN_CHARACTERS_PER_REQUEST, MAX_CHARACTERS_PER_REQUEST
                 )));
             }
         }
@@ -83,6 +94,7 @@ impl RequestProcessingConfig {
             timeout_s,
             base_url,
             hedge_delay,
+            max_chars_per_request,
         })
     }
 

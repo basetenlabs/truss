@@ -208,6 +208,8 @@ impl PerformanceClient {
         max_concurrent_requests: Option<u32>,
         batch_size: Option<u32>,
         timeout_s: Option<f64>,
+        max_chars_per_request: Option<u32>,
+        hedge_delay: Option<f64>,
     ) -> napi::Result<serde_json::Value> {
         if input.is_empty() {
             return Err(create_napi_error("Input list cannot be empty"));
@@ -217,6 +219,8 @@ impl PerformanceClient {
             max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
         let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
         let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
+        let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
+        let hedge_delay = hedge_delay;
 
         let result = self
             .runtime
@@ -230,9 +234,9 @@ impl PerformanceClient {
                         user,
                         max_concurrent_requests,
                         batch_size,
-                        None,
+                        max_chars_per_request,
                         timeout_s,
-                        None,
+                        hedge_delay,
                     )
                     .await
             })
@@ -240,13 +244,11 @@ impl PerformanceClient {
 
         let (core_response, batch_durations, total_time) = result;
         let mut response = OpenAIEmbeddingsResponse::from(core_response);
-        response.total_time = Some(total_time.as_secs_f64());
-        response.individual_request_times = Some(
-            batch_durations
-                .into_iter()
-                .map(|d| d.as_secs_f64())
-                .collect(),
-        );
+        response.total_time = total_time.as_secs_f64();
+        response.individual_request_times = batch_durations
+            .into_iter()
+            .map(|d| d.as_secs_f64())
+            .collect();
 
         serde_json::to_value(response)
             .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
@@ -264,6 +266,8 @@ impl PerformanceClient {
         max_concurrent_requests: Option<u32>,
         batch_size: Option<u32>,
         timeout_s: Option<f64>,
+        max_chars_per_request: Option<u32>,
+        hedge_delay: Option<f64>,
     ) -> napi::Result<serde_json::Value> {
         if texts.is_empty() {
             return Err(create_napi_error("Texts list cannot be empty"));
@@ -273,6 +277,8 @@ impl PerformanceClient {
             max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
         let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
         let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
+        let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
+        let hedge_delay = hedge_delay;
 
         let result = self
             .runtime
@@ -287,9 +293,9 @@ impl PerformanceClient {
                         truncation_direction.unwrap_or_else(|| "Right".to_string()),
                         max_concurrent_requests,
                         batch_size,
-                        None,
+                        max_chars_per_request,
                         timeout_s,
-                        None,
+                        hedge_delay,
                     )
                     .await
             })
@@ -297,13 +303,11 @@ impl PerformanceClient {
 
         let (core_response, batch_durations, total_time) = result;
         let mut response = RerankResponse::from(core_response);
-        response.total_time = Some(total_time.as_secs_f64());
-        response.individual_request_times = Some(
-            batch_durations
-                .into_iter()
-                .map(|d| d.as_secs_f64())
-                .collect(),
-        );
+        response.total_time =  total_time.as_secs_f64();
+        response.individual_request_times = batch_durations
+            .into_iter()
+            .map(|d| d.as_secs_f64())
+            .collect();
 
         serde_json::to_value(response)
             .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
@@ -319,6 +323,8 @@ impl PerformanceClient {
         max_concurrent_requests: Option<u32>,
         batch_size: Option<u32>,
         timeout_s: Option<f64>,
+        max_chars_per_request: Option<u32>,
+        hedge_delay: Option<f64>,
     ) -> napi::Result<serde_json::Value> {
         if inputs.is_empty() {
             return Err(create_napi_error("Inputs list cannot be empty"));
@@ -328,6 +334,8 @@ impl PerformanceClient {
             max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
         let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
         let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
+        let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
+        let hedge_delay = hedge_delay;
 
         let result = self
             .runtime
@@ -340,9 +348,9 @@ impl PerformanceClient {
                         truncation_direction.unwrap_or_else(|| "Right".to_string()),
                         max_concurrent_requests,
                         batch_size,
-                        None,
+                        max_chars_per_request,
                         timeout_s,
-                        None,
+                        hedge_delay,
                     )
                     .await
             })
@@ -350,13 +358,11 @@ impl PerformanceClient {
 
         let (core_response, batch_durations, total_time) = result;
         let mut response = ClassificationResponse::from(core_response);
-        response.total_time = Some(total_time.as_secs_f64());
-        response.individual_request_times = Some(
-            batch_durations
-                .into_iter()
-                .map(|d| d.as_secs_f64())
-                .collect(),
-        );
+        response.total_time = total_time.as_secs_f64();
+        response.individual_request_times = batch_durations
+            .into_iter()
+            .map(|d| d.as_secs_f64())
+            .collect();
 
         serde_json::to_value(response)
             .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
