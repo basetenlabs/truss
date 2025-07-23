@@ -229,6 +229,16 @@ impl PerformanceClientCore {
             HttpClientWrapper::Http1(Arc::new(client))
         };
 
+        if WARNING_SLOW_PROVIDERS
+            .iter()
+            .any(|&provider| base_url.contains(provider))
+        {
+            eprintln!(
+                "Warning: Using {} as the base URL might be slow. Consider using baseten.com instead.",
+                base_url
+            );
+        }
+
         Ok(PerformanceClientCore {
             api_key,
             base_url,
@@ -264,9 +274,7 @@ impl PerformanceClientCore {
         let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = {
             match config.hedge_delay {
                 Some(delay) => Some((
-                    Arc::new(AtomicUsize::new(calculate_hedge_budget(
-                        total_requests,
-                    ))),
+                    Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
                     Duration::from_secs_f64(delay),
                 )),
                 None => None,

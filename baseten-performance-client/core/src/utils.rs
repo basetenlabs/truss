@@ -1,5 +1,5 @@
-use crate::constants::{RETRY_TIMEOUT_BUDGET_PERCENTAGE, HEDGE_BUDGET_PERCENTAGE};
 use crate::constants::{CANCELLATION_ERROR_MESSAGE_DETAIL, CTRL_C_ERROR_MESSAGE_DETAIL};
+use crate::constants::{HEDGE_BUDGET_PERCENTAGE, RETRY_TIMEOUT_BUDGET_PERCENTAGE};
 use crate::errors::ClientError;
 
 use std::sync::atomic::{AtomicBool, Ordering};

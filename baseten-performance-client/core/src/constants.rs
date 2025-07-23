@@ -35,3 +35,6 @@ pub const HTTP2_CLIENT_MAX_QUEUED: usize = 8;
 // Error messages
 pub const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
 pub const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C";
+
+// Slow providers where customers have reported issues
+pub const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
