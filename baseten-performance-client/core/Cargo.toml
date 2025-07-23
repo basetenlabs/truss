@@ -11,7 +11,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }
 once_cell = { workspace = true }
-async-trait = "0.1"
+async-trait = { workspace = true }
+rand = { workspace = true }
 
 [features]
 default = ["native-tls"]

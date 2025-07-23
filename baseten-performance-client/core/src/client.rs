@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
+use rand::Rng;
 
 pub struct SendRequestConfig {
     pub max_retries: u32,
@@ -114,7 +115,7 @@ impl HttpClientWrapper {
 #[derive(Clone)]
 pub struct PerformanceClientCore {
     pub api_key: String,
-    pub base_url: String,
+    pub base_url: Arc<str>,
     pub client_wrapper: HttpClientWrapper,
 }
 
@@ -240,8 +241,8 @@ impl PerformanceClientCore {
         }
 
         Ok(PerformanceClientCore {
-            api_key,
-            base_url,
+            api_key: api_key.into(),
+            base_url: base_url.into(),
             client_wrapper,
         })
     }
@@ -286,31 +287,32 @@ impl PerformanceClientCore {
             let current_batch_absolute_start_index = current_absolute_index;
             current_absolute_index += batch.len();
 
-            let client_wrapper_clone = self.client_wrapper.clone();
-            let api_key_clone = self.api_key.clone();
-            let base_url_clone = self.base_url.clone();
-            let semaphore_clone = Arc::clone(&semaphore);
-            let cancel_token_clone = Arc::clone(&cancel_token);
-            let retry_budget_clone = Arc::clone(&retry_budget);
-            let hedge_config_clone = hedge_config.clone();
+            // Only clone what's needed inside the async block
+            let client_wrapper = self.client_wrapper.clone();
+            let api_key = self.api_key.clone();
+            let base_url = self.base_url.clone();
+            let semaphore = Arc::clone(&semaphore);
+            let cancel_token = Arc::clone(&cancel_token);
+            let retry_budget = Arc::clone(&retry_budget);
+            let hedge_config = hedge_config.clone();
 
-            // Clone the closures to move them into the async block
-            let payload = create_payload(batch.clone());
-            let url = endpoint_url(&base_url_clone);
+            // Create payload and URL outside async block
+            let payload = create_payload(batch);
+            let url = endpoint_url(&base_url);
 
             tasks.push(tokio::spawn(async move {
                 let _permit =
-                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
+                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None)
                         .await?;
-                let client = client_wrapper_clone.get_client();
+                let client = client_wrapper.get_client();
 
                 let request_time_start = Instant::now();
                 let config = SendRequestConfig {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget_clone),
-                    cancel_token: cancel_token_clone.clone(),
-                    hedge_budget: hedge_config_clone,
+                    retry_budget: Some(retry_budget),
+                    cancel_token: cancel_token.clone(),
+                    hedge_budget: hedge_config,
                     timeout: request_timeout_duration,
                 };
 
@@ -319,7 +321,7 @@ impl PerformanceClientCore {
                     &client,
                     url,
                     payload,
-                    api_key_clone,
+                    api_key,
                     request_timeout_duration,
                     &config,
                 )
@@ -404,7 +406,7 @@ impl PerformanceClientCore {
             max_concurrent_requests,
             batch_size,
             timeout_s,
-            self.base_url.clone(),
+            self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
         )?;
@@ -459,7 +461,7 @@ impl PerformanceClientCore {
             max_concurrent_requests,
             batch_size,
             timeout_s,
-            self.base_url.clone(),
+            self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
         )?;
@@ -516,7 +518,7 @@ impl PerformanceClientCore {
             max_concurrent_requests,
             batch_size,
             timeout_s,
-            self.base_url.clone(),
+            self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
         )?;
@@ -597,34 +599,34 @@ impl PerformanceClientCore {
             )
         });
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
-            let client_wrapper_clone = self.client_wrapper.clone();
-            let api_key_clone = self.api_key.clone();
-            let base_url_clone = self.base_url.clone();
-            let url_path_clone = url_path.clone();
-            let semaphore_clone = Arc::clone(&semaphore);
-            let cancel_token_clone = Arc::clone(&cancel_token);
-            let retry_budget_clone = Arc::clone(&retry_budget);
+            let client_wrapper = self.client_wrapper.clone();
+            let api_key = self.api_key.clone();
+            let base_url = self.base_url.clone();
+            let url_path = url_path.clone();
+            let semaphore = Arc::clone(&semaphore);
+            let cancel_token = Arc::clone(&cancel_token);
+            let retry_budget = Arc::clone(&retry_budget);
             let individual_request_timeout = request_timeout_duration;
-            let hedge_budget_clone = hedge_budget_delay.clone();
+            let hedge_budget = hedge_budget_delay.clone();
 
             tasks.push(tokio::spawn(async move {
                 let _permit =
-                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
+                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None)
                         .await?;
-                let client = client_wrapper_clone.get_client();
+                let client = client_wrapper.get_client();
 
                 let full_url = format!(
                     "{}/{}",
-                    base_url_clone.trim_end_matches('/'),
-                    url_path_clone.trim_start_matches('/')
+                    base_url.trim_end_matches('/'),
+                    url_path.trim_start_matches('/')
                 );
                 let request_time_start = std::time::Instant::now();
                 let config = SendRequestConfig {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget_clone),
-                    cancel_token: cancel_token_clone.clone(),
-                    hedge_budget: hedge_budget_clone,
+                    retry_budget: Some(retry_budget),
+                    cancel_token: cancel_token.clone(),
+                    hedge_budget: hedge_budget,
                     timeout: individual_request_timeout,
                 };
 
@@ -632,7 +634,7 @@ impl PerformanceClientCore {
                     &client,
                     full_url,
                     payload_item_json,
-                    api_key_clone,
+                    api_key,
                     individual_request_timeout,
                     &config,
                 )
@@ -648,7 +650,7 @@ impl PerformanceClientCore {
                         request_time_elapsed,
                     )),
                     Err(e) => {
-                        cancel_token_clone.store(true, Ordering::SeqCst);
+                        cancel_token.store(true, Ordering::SeqCst);
                         Err(e)
                     }
                 }
@@ -822,7 +824,8 @@ async fn send_request_with_retry(
         }
 
         retries_done += 1;
-        let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION);
+        let jitter = rand::rng().random_range(0..100);
+        let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION) + Duration::from_millis(jitter);
         tokio::time::sleep(backoff_duration).await;
         current_backoff = current_backoff.saturating_mul(4);
     }
