@@ -4,7 +4,6 @@ use std::time::Duration;
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
 pub const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
-pub const MIN_HEDGE_DELAY_S: f64 = 0.2;
 
 // Concurrency constants
 pub const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
@@ -13,6 +12,10 @@ pub const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 pub const DEFAULT_CONCURRENCY: usize = 32;
 pub const MIN_CHARACTERS_PER_REQUEST: usize = 50;
 pub const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
+
+// hedging settings:
+pub const MIN_HEDGE_DELAY_S: f64 = 0.2;
+pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.05;
 
 // Batch size constants
 pub const MAX_BATCH_SIZE: usize = 1024;

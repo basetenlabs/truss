@@ -1,4 +1,4 @@
-use crate::constants::RETRY_TIMEOUT_BUDGET_PERCENTAGE;
+use crate::constants::{RETRY_TIMEOUT_BUDGET_PERCENTAGE, HEDGE_BUDGET_PERCENTAGE};
 use crate::constants::{CANCELLATION_ERROR_MESSAGE_DETAIL, CTRL_C_ERROR_MESSAGE_DETAIL};
 use crate::errors::ClientError;
 
@@ -10,6 +10,10 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 /// Calculate retry timeout budget based on total requests
 pub fn calculate_retry_timeout_budget(total_requests: usize) -> usize {
     (total_requests as f64 * RETRY_TIMEOUT_BUDGET_PERCENTAGE).ceil() as usize
+}
+
+pub fn calculate_hedge_budget(total_requests: usize) -> usize {
+    (total_requests as f64 * HEDGE_BUDGET_PERCENTAGE).ceil() as usize
 }
 
 /// Helper function to acquire permit and check for cancellation

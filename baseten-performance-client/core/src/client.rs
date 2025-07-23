@@ -261,16 +261,10 @@ impl PerformanceClientCore {
             total_requests,
         )));
         let cancel_token = Arc::new(AtomicBool::new(false));
-        // let hedge_budget_delay = {
-        //     (
-        //         Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests))),
-        //         config.hedge_delay,
-        //     )
-        // };
         let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = {
             match config.hedge_delay {
                 Some(delay) => Some((
-                    Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+                    Arc::new(AtomicUsize::new(calculate_hedge_budget(
                         total_requests,
                     ))),
                     Duration::from_secs_f64(delay),
@@ -791,47 +785,105 @@ async fn send_request_with_retry(
             ClientError::Network("Failed to clone request builder for retry".to_string())
         })?;
 
-        match request_builder_clone.send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    return Ok(response);
-                }
+        // Only hedge on the first request (retries_done == 0)
+        let should_hedge = retries_done == 0 && config.hedge_budget.is_some();
 
-                let status = response.status();
-                if status.as_u16() == 429 || status.is_server_error() {
-                    if retries_done >= max_retries {
-                        return ensure_successful_response(response).await;
-                    }
-                } else if status.is_client_error() {
-                    config.cancel_token.store(true, Ordering::SeqCst);
-                    return ensure_successful_response(response).await;
-                } else {
-                    return ensure_successful_response(response).await;
-                }
-            }
-            Err(network_err) => {
-                if network_err.is_timeout() {
-                    if let Some(retry_budget) = config.retry_budget.as_ref() {
-                        if retry_budget.fetch_sub(1, Ordering::SeqCst) < 1 {
-                            config.cancel_token.store(true, Ordering::SeqCst);
-                            return Err(ClientError::Timeout(format!(
-                                "Request timed out and retry budget is exhausted: {}",
-                                network_err
-                            )));
-                        }
-                    }
-                }
+        let response = if should_hedge {
+            send_request_with_hedging(request_builder_clone, config).await?
+        } else {
+            request_builder_clone
+                .send()
+                .await
+                .map_err(ClientError::from)?
+        };
 
-                if retries_done >= 2 {
-                    config.cancel_token.store(true, Ordering::SeqCst);
-                    return Err(ClientError::from(network_err));
-                }
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        let status = response.status();
+        if status.as_u16() == 429 || status.is_server_error() {
+            if retries_done >= max_retries {
+                return ensure_successful_response(response).await;
             }
+        } else if status.is_client_error() {
+            config.cancel_token.store(true, Ordering::SeqCst);
+            return ensure_successful_response(response).await;
+        } else {
+            return ensure_successful_response(response).await;
         }
 
         retries_done += 1;
         let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION);
         tokio::time::sleep(backoff_duration).await;
         current_backoff = current_backoff.saturating_mul(4);
+    }
+}
+
+async fn send_request_with_hedging(
+    request_builder: reqwest::RequestBuilder,
+    config: &SendRequestConfig,
+) -> Result<reqwest::Response, ClientError> {
+    let (hedge_budget, hedge_delay) = config.hedge_budget.as_ref().unwrap();
+
+    // Check if we have hedge budget available
+    if hedge_budget.load(Ordering::SeqCst) <= 0 {
+        // No hedge budget, use normal request
+        return request_builder.send().await.map_err(ClientError::from);
+    }
+
+    let request_builder_hedge = request_builder.try_clone().ok_or_else(|| {
+        ClientError::Network("Failed to clone request builder for hedging".to_string())
+    })?;
+
+    // Start the original request
+    let mut original_request = tokio::spawn(async move { request_builder.send().await });
+
+    // Wait for hedge delay
+    let hedge_timer = tokio::time::sleep(*hedge_delay);
+
+    tokio::select! {
+        // Original request completed before hedge delay
+        result = &mut original_request => {
+            match result {
+                Ok(response_result) => response_result.map_err(ClientError::from),
+                Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+            }
+        }
+        // Hedge delay expired, start hedged request
+        _ = hedge_timer => {
+            // Decrement hedge budget
+            if hedge_budget.fetch_sub(1, Ordering::SeqCst) > 0 {
+                let mut hedge_request = tokio::spawn(async move {
+                    request_builder_hedge.send().await
+                });
+
+                // Race between original and hedged request
+                tokio::select! {
+                    result = &mut original_request => {
+                        // Cancel hedge request if original completes first
+                        hedge_request.abort();
+                        match result {
+                            Ok(response_result) => response_result.map_err(ClientError::from),
+                            Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                        }
+                    }
+                    result = &mut hedge_request => {
+                        // Hedge request completed first
+                        original_request.abort();
+                        match result {
+                            Ok(response_result) => response_result.map_err(ClientError::from),
+                            Err(join_err) => Err(ClientError::Network(format!("Hedge request task failed: {}", join_err))),
+                        }
+                    }
+                }
+            } else {
+                // No hedge budget left, wait for original request
+                match original_request.await {
+                    Ok(response_result) => response_result.map_err(ClientError::from),
+                    Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                }
+            }
+        }
     }
 }

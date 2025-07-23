@@ -53,7 +53,7 @@ impl RequestProcessingConfig {
             }
             if hedge_delay >= timeout_s - MIN_HEDGE_DELAY_S {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
-                    "Hedge delay {:.3}s must be less than timeout {:.3}s minus minimum hedge delay {:.3}s.",
+                    "Hedge delay {:.3}s must be less than timeout minus minimum hedge delay ({:.3}s -{:.3}s).",
                     hedge_delay, timeout_s, MIN_HEDGE_DELAY_S
                 )));
             }
