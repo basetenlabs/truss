@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const os = require('os');
-const { PerformanceClient } = require('../node_bindings/performance-client.node');
+const { PerformanceClient } = require('./../node_bindings/index.js');
 
 // Configuration
 const apiKey = process.env.BASETEN_API_KEY;
@@ -13,8 +13,9 @@ if (!apiKey) {
 const apiBaseEmbed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
 
 // Benchmark settings
-const benchmarkLengths = [64, 128, 256, 384, 512, 2048, 8192, 32768, 131072];
-const microBatchSize = 16;
+const benchmarkLengths = [16, 64, 128, 256, 384, 512, 2048, 8192, 32768, 131072];
+const microBatchSize = 4;
+const maxConcurrent = 512; // Max concurrent requests for OpenAI API
 
 // Create clients
 const clientB = new PerformanceClient(apiBaseEmbed, apiKey);
@@ -81,7 +82,7 @@ async function runBasetenBenchmark(length, clientName = "PerformanceClient") {
         null, // encodingFormat
         null, // dimensions
         null, // user
-        512,  // maxConcurrentRequests
+        maxConcurrent,  // maxConcurrentRequests
         1    // batchSize
     );
 
@@ -130,16 +131,39 @@ async function runAsyncOpenAIBenchmark(length) {
     const inputTexts = Array(microBatchSize).fill("Hello world");
     const numTasks = Math.floor(length / microBatchSize);
 
-    // Rate limiting
-    let concurrentRequests = 0;
+
+    // Semaphore implementation for maxConcurrent
+    class Semaphore {
+        constructor(max) {
+            this.max = max;
+            this.current = 0;
+            this.queue = [];
+        }
+        async acquire() {
+            if (this.current < this.max) {
+                this.current++;
+                return;
+            }
+            return new Promise(resolve => {
+                this.queue.push(resolve);
+            }).then(() => {
+                this.current++;
+            });
+        }
+        release() {
+            this.current--;
+            if (this.queue.length > 0) {
+                const next = this.queue.shift();
+                next();
+            }
+        }
+    }
+
     const maxConcurrent = 512;
+    const semaphore = new Semaphore(maxConcurrent);
 
     async function createEmbedding() {
-        while (concurrentRequests >= maxConcurrent) {
-            await new Promise(resolve => setTimeout(resolve, 1));
-        }
-
-        concurrentRequests++;
+        await semaphore.acquire();
         try {
             const response = await fetch(`${apiBaseEmbed}/v1/embeddings`, {
                 method: 'POST',
@@ -159,7 +183,7 @@ async function runAsyncOpenAIBenchmark(length) {
 
             return await response.json();
         } finally {
-            concurrentRequests--;
+            semaphore.release();
         }
     }
 
