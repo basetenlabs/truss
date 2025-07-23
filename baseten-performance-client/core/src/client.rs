@@ -432,8 +432,7 @@ impl PerformanceClientCore {
 
         // Set timing information
         response.total_time = total_time.as_secs_f64();
-        response.individual_request_times =
-            durations.iter().map(|d| d.as_secs_f64()).collect();
+        response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
 
         Ok((response, durations, total_time))
     }
@@ -492,8 +491,7 @@ impl PerformanceClientCore {
 
         // Set timing information
         response.total_time = total_time.as_secs_f64();
-        response.individual_request_times =
-            durations.iter().map(|d| d.as_secs_f64()).collect();
+        response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
 
         Ok((response, durations, total_time))
     }
@@ -550,8 +548,7 @@ impl PerformanceClientCore {
 
         // Set timing information
         response.total_time = total_time.as_secs_f64();
-        response.individual_request_times =
-            durations.iter().map(|d| d.as_secs_f64()).collect();
+        response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
 
         Ok((response, durations, total_time))
     }
