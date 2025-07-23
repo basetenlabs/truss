@@ -383,7 +383,7 @@ impl PerformanceClientCore {
     ) -> Vec<Vec<String>> {
         if let Some(max_chars) = config.max_chars_per_request {
             let policy =
-                SplitPolicy::max_chars_per_request(max_chars, config.max_concurrent_requests);
+                SplitPolicy::max_chars_per_request(max_chars, config.batch_size);
             inputs.split(&policy)
         } else {
             inputs
