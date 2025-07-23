@@ -27,17 +27,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-trait"
-version = "0.1.88"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e539d3fca749fcee5236ab05e93a52867dd549cc157c8cb7f99595f3cedffdb5"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -106,7 +95,6 @@ dependencies = [
 name = "baseten_performance_client_core"
 version = "0.0.6"
 dependencies = [
- "async-trait",
  "futures",
  "once_cell",
  "openssl",

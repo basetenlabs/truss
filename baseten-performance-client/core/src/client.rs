@@ -243,7 +243,7 @@ impl PerformanceClientCore {
         }
 
         Ok(PerformanceClientCore {
-            api_key: api_key.into(),
+            api_key,
             base_url: base_url.into(),
             client_wrapper,
         })
@@ -258,7 +258,7 @@ impl PerformanceClientCore {
         batches: Vec<Vec<String>>,
         config: &RequestProcessingConfig,
         create_payload: impl Fn(Vec<String>) -> T + Send + Sync + 'static,
-        endpoint_url: impl Fn(&str) -> String + Send + Sync + 'static,
+        endpoint_url: Arc<str>,
         adjust_indices: impl Fn(&mut R, usize) + Send + Sync + 'static,
     ) -> Result<(R, Vec<Duration>, Duration), ClientError>
     where
@@ -274,15 +274,13 @@ impl PerformanceClientCore {
             total_requests,
         )));
         let cancel_token = Arc::new(AtomicBool::new(false));
-        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = {
-            match config.hedge_delay {
-                Some(delay) => Some((
+        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| (
                     Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
                     Duration::from_secs_f64(delay),
-                )),
-                None => None,
-            }
-        };
+                ));
+
+        // Calculate expected capacity from original batches for pre-allocation
+        let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
         // Use JoinSet for better performance and cancellation
         let mut join_set: JoinSet<Result<(R, Duration, usize, usize), ClientError>> =
@@ -298,7 +296,6 @@ impl PerformanceClientCore {
             // Only clone what's needed inside the async block
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
-            let base_url = self.base_url.clone();
             let semaphore = Arc::clone(&semaphore);
             let cancel_token = Arc::clone(&cancel_token);
             let retry_budget = Arc::clone(&retry_budget);
@@ -306,7 +303,7 @@ impl PerformanceClientCore {
 
             // Create payload and URL outside async block
             let payload = create_payload(batch);
-            let url = endpoint_url(&base_url);
+            let url = endpoint_url.clone();
 
             join_set.spawn(async move {
                 let _permit =
@@ -326,7 +323,7 @@ impl PerformanceClientCore {
                 // Send request with pre-created payload and URL
                 let response: R = send_http_request_with_retry(
                     &client,
-                    url,
+                    url.to_string(),
                     payload,
                     api_key,
                     request_timeout_duration,
@@ -372,7 +369,7 @@ impl PerformanceClientCore {
             individual_batch_durations.push(duration);
         }
 
-        let combined_response = R::combine(responses);
+        let combined_response = R::combine(responses, expected_capacity);
         let total_time = start_time.elapsed();
 
         Ok((combined_response, individual_batch_durations, total_time))
@@ -422,6 +419,9 @@ impl PerformanceClientCore {
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
+        // Pre-compute endpoint URL
+        let endpoint_url: Arc<str> = format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
+
         let (mut response, durations, total_time) = self
             .process_batched_requests(
                 batches,
@@ -433,7 +433,7 @@ impl PerformanceClientCore {
                     dimensions,
                     user: user.clone(),
                 },
-                |base_url| format!("{}/v1/embeddings", base_url.trim_end_matches('/')),
+                endpoint_url,
                 |response: &mut CoreOpenAIEmbeddingsResponse, start_index| {
                     for item in &mut response.data {
                         item.index += start_index;
@@ -477,6 +477,9 @@ impl PerformanceClientCore {
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
+        // Pre-compute endpoint URL
+        let endpoint_url: Arc<str> = format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
+
         let (results, durations, total_time) = self
             .process_batched_requests(
                 batches,
@@ -489,7 +492,7 @@ impl PerformanceClientCore {
                     truncate,
                     truncation_direction: truncation_direction.clone(),
                 },
-                |base_url| format!("{}/rerank", base_url.trim_end_matches('/')),
+                endpoint_url,
                 |results: &mut Vec<CoreRerankResult>, start_index| {
                     for item in results {
                         item.index += start_index;
@@ -534,6 +537,9 @@ impl PerformanceClientCore {
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
 
+        // Pre-compute endpoint URL
+        let endpoint_url: Arc<str> = format!("{}/predict", config.base_url.trim_end_matches('/')).into();
+
         let (results, durations, total_time) = self
             .process_batched_requests(
                 batches,
@@ -548,7 +554,7 @@ impl PerformanceClientCore {
                         truncation_direction: truncation_direction.clone(),
                     }
                 },
-                |base_url| format!("{}/predict", base_url.trim_end_matches('/')),
+                endpoint_url,
                 |_results: &mut Vec<Vec<CoreClassificationResult>>, _start_index| {
                     // Classification responses don't have index fields to adjust
                 },
@@ -650,7 +656,7 @@ impl PerformanceClientCore {
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                     retry_budget: Some(retry_budget),
                     cancel_token: cancel_token.clone(),
-                    hedge_budget: hedge_budget,
+                    hedge_budget,
                     timeout: individual_request_timeout,
                 };
 
@@ -857,7 +863,7 @@ async fn send_request_with_hedging(
     let (hedge_budget, hedge_delay) = config.hedge_budget.as_ref().unwrap();
 
     // Check if we have hedge budget available
-    if hedge_budget.load(Ordering::SeqCst) <= 0 {
+    if hedge_budget.load(Ordering::SeqCst) == 0 {
         // No hedge budget, use normal request
         return request_builder.send().await.map_err(ClientError::from);
     }

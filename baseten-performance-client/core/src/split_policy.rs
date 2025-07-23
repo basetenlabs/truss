@@ -1,7 +1,5 @@
 use crate::constants::*;
-use crate::errors::ClientError;
 use crate::http::*;
-use std::time::Duration;
 
 /// Policy for splitting requests into batches
 #[derive(Debug, Clone)]
@@ -60,7 +58,7 @@ impl RequestProcessingConfig {
         }
         if max_chars_per_request.is_some() {
             let max_chars = max_chars_per_request.unwrap();
-            if max_chars < MIN_CHARACTERS_PER_REQUEST || max_chars > MAX_CHARACTERS_PER_REQUEST {
+            if !(MIN_CHARACTERS_PER_REQUEST..=MAX_CHARACTERS_PER_REQUEST).contains(&max_chars) {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
                     "max_chars_per_request must be between {} and {} characters.",
                     MIN_CHARACTERS_PER_REQUEST, MAX_CHARACTERS_PER_REQUEST
@@ -147,7 +145,11 @@ pub trait Splittable<T> {
 /// Trait for response types that can be combined from multiple batches
 pub trait Combinable {
     /// Combine multiple responses into one, preserving order
-    fn combine(responses: Vec<Self>) -> Self
+    ///
+    /// # Arguments
+    /// * `responses` - Vector of responses to combine
+    /// * `expected_capacity` - Hint for pre-allocating internal vectors
+    fn combine(responses: Vec<Self>, expected_capacity: usize) -> Self
     where
         Self: Sized;
 }
@@ -158,7 +160,7 @@ impl Splittable<String> for Vec<String> {
         match policy {
             // splits, with max_batch_size >= 1
             SplitPolicy::MaxBatchSize(max_batch_size) => {
-                let batch_size = (self.len() + max_batch_size - 1) / max_batch_size;
+                let batch_size = self.len().div_ceil(*max_batch_size);
                 self.chunks(batch_size.max(1))
                     .map(|chunk| chunk.to_vec())
                     .collect()
@@ -221,7 +223,7 @@ impl Splittable<String> for Vec<String> {
 
 /// Implementation for CoreOpenAIEmbeddingsResponse
 impl Combinable for CoreOpenAIEmbeddingsResponse {
-    fn combine(responses: Vec<Self>) -> Self {
+    fn combine(responses: Vec<Self>, expected_capacity: usize) -> Self {
         if responses.is_empty() {
             return CoreOpenAIEmbeddingsResponse {
                 object: "list".to_string(),
@@ -237,13 +239,14 @@ impl Combinable for CoreOpenAIEmbeddingsResponse {
             };
         }
 
-        let mut all_data = Vec::new();
+        // Pre-allocate with capacity hint
+        let mut all_data = Vec::with_capacity(expected_capacity);
         let mut total_prompt_tokens = 0u32;
         let mut total_tokens = 0u32;
-        let mut all_individual_times = Vec::new();
+        let mut all_individual_times = Vec::with_capacity(expected_capacity);
         let mut has_times = false;
         let model = responses[0].model.clone();
-        let mut all_response_headers = Vec::new();
+        let mut all_response_headers = Vec::with_capacity(expected_capacity * 2); // Headers might have more items
 
         for response in responses {
             all_data.extend(response.data);
@@ -282,8 +285,8 @@ impl Combinable for CoreOpenAIEmbeddingsResponse {
 
 /// Implementation for Vec<CoreRerankResult>
 impl Combinable for Vec<CoreRerankResult> {
-    fn combine(responses: Vec<Self>) -> Self {
-        let mut all_results = Vec::new();
+    fn combine(responses: Vec<Self>, expected_capacity: usize) -> Self {
+        let mut all_results = Vec::with_capacity(expected_capacity);
         for results in responses {
             all_results.extend(results);
         }
@@ -294,13 +297,13 @@ impl Combinable for Vec<CoreRerankResult> {
 
 /// Implementation for CoreRerankResponse
 impl Combinable for CoreRerankResponse {
-    fn combine(responses: Vec<Self>) -> Self {
+    fn combine(responses: Vec<Self>, expected_capacity: usize) -> Self {
         if responses.is_empty() {
             return CoreRerankResponse::new(Vec::new(), None, None);
         }
 
-        let mut all_data = Vec::new();
-        let mut all_response_headers = Vec::new();
+        let mut all_data = Vec::with_capacity(expected_capacity);
+        let mut all_response_headers = Vec::with_capacity(expected_capacity * 2); // Headers might have more items
 
         for response in responses {
             all_data.extend(response.data);
@@ -316,8 +319,8 @@ impl Combinable for CoreRerankResponse {
 
 /// Implementation for Vec<Vec<CoreClassificationResult>>
 impl Combinable for Vec<Vec<CoreClassificationResult>> {
-    fn combine(responses: Vec<Self>) -> Self {
-        let mut all_results = Vec::new();
+    fn combine(responses: Vec<Self>, expected_capacity: usize) -> Self {
+        let mut all_results = Vec::with_capacity(expected_capacity);
         for results in responses {
             all_results.extend(results);
         }
@@ -327,13 +330,13 @@ impl Combinable for Vec<Vec<CoreClassificationResult>> {
 
 /// Implementation for CoreClassificationResponse
 impl Combinable for CoreClassificationResponse {
-    fn combine(responses: Vec<Self>) -> Self {
+    fn combine(responses: Vec<Self>, expected_capacity: usize) -> Self {
         if responses.is_empty() {
             return CoreClassificationResponse::new(Vec::new(), None, None);
         }
 
-        let mut all_data = Vec::new();
-        let mut all_response_headers = Vec::new();
+        let mut all_data = Vec::with_capacity(expected_capacity);
+        let mut all_response_headers = Vec::with_capacity(expected_capacity * 2); // Headers might have more items
 
         for response in responses {
             all_data.extend(response.data);
@@ -346,92 +349,6 @@ impl Combinable for CoreClassificationResponse {
     }
 }
 
-/// Trait for types that can process a single batch request
-#[async_trait::async_trait]
-pub trait BatchRequestProcessor<Input, Output> {
-    /// Process a single batch of inputs
-    async fn process_batch(&self, batch: Vec<Input>) -> Result<Output, ClientError>;
-
-    /// Adjust indices in the response based on absolute start index
-    fn adjust_indices(&self, response: &mut Output, start_index: usize);
-
-    // add a trait to combine a batch of responses
-    // and create a single response item.
-    // in case of batch_post, it could also be a new type
-    // fn combine_responses(responses: Vec<Output>, response_type: Outputype) -> OutputType {
-    //     Output::combine(responses)
-    // }
-}
-
-/// Generic unified request processor
-pub struct UnifiedRequestProcessor<P> {
-    processor: P,
-    max_concurrent_requests: usize,
-}
-
-impl<P> UnifiedRequestProcessor<P> {
-    pub fn new(processor: P, max_concurrent_requests: usize) -> Self {
-        Self {
-            processor,
-            max_concurrent_requests,
-        }
-    }
-}
-
-impl<P> UnifiedRequestProcessor<P> {
-    /// Process inputs with optional character-based batching
-    pub async fn process<Input, Output>(
-        &self,
-        inputs: Vec<Input>,
-        max_chars_per_request: Option<usize>,
-    ) -> Result<(Output, Vec<Duration>, Duration), ClientError>
-    where
-        P: BatchRequestProcessor<Input, Output> + Send + Sync,
-        Input: Clone + Send + 'static,
-        Output: Combinable + Send + 'static,
-        Vec<Input>: Splittable<Input>,
-    {
-        let start_time = std::time::Instant::now();
-
-        // Create batches based on policy
-        let policy = if let Some(max_chars) = max_chars_per_request {
-            SplitPolicy::max_chars_per_request(max_chars, self.max_concurrent_requests)
-        } else {
-            SplitPolicy::max_batch_size(self.max_concurrent_requests)
-        };
-
-        let batches = inputs.split(&policy);
-        let mut handles = Vec::new();
-        let mut current_absolute_index = 0;
-
-        for batch in batches {
-            let start_index = current_absolute_index;
-            current_absolute_index += batch.len();
-
-            // Process batch synchronously to avoid lifetime issues
-            let batch_start = std::time::Instant::now();
-            let mut response = self.processor.process_batch(batch).await?;
-            self.processor.adjust_indices(&mut response, start_index);
-            let duration = batch_start.elapsed();
-
-            handles.push((response, duration));
-        }
-
-        // Collect results
-        let mut responses = Vec::new();
-        let mut durations = Vec::new();
-
-        for (response, duration) in handles {
-            responses.push(response);
-            durations.push(duration);
-        }
-
-        let combined_response = Output::combine(responses);
-        let total_time = start_time.elapsed();
-
-        Ok((combined_response, durations, total_time))
-    }
-}
 
 #[cfg(test)]
 mod tests {

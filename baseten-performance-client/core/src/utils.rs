@@ -27,14 +27,14 @@ pub async fn acquire_permit_or_cancel(
         biased;
 
         // Check for global cancellation (e.g., Ctrl+C) if provided
-        _ = tokio::time::sleep(Duration::from_millis(1)), if global_cancel_token.as_ref().map_or(false, |token| token.load(Ordering::SeqCst)) => {
+        _ = tokio::time::sleep(Duration::from_millis(5)), if global_cancel_token.as_ref().is_some_and(|token| token.load(Ordering::SeqCst)) => {
             local_cancel_token.store(true, Ordering::SeqCst);
-            return Err(ClientError::Cancellation(CTRL_C_ERROR_MESSAGE_DETAIL.to_string()));
+            Err(ClientError::Cancellation(CTRL_C_ERROR_MESSAGE_DETAIL.to_string()))?
         }
 
         // Check for local cancellation token
-        _ = tokio::time::sleep(Duration::from_millis(1)), if local_cancel_token.load(Ordering::SeqCst) => {
-            return Err(ClientError::Cancellation(CANCELLATION_ERROR_MESSAGE_DETAIL.to_string()));
+        _ = tokio::time::sleep(Duration::from_millis(5)), if local_cancel_token.load(Ordering::SeqCst) => {
+            Err(ClientError::Cancellation(CANCELLATION_ERROR_MESSAGE_DETAIL.to_string()))?
         }
 
         // Try to acquire the permit
@@ -44,7 +44,7 @@ pub async fn acquire_permit_or_cancel(
             })?;
 
             // Re-check cancellation signals after acquiring the permit
-            if global_cancel_token.as_ref().map_or(false, |token| token.load(Ordering::SeqCst)) {
+            if global_cancel_token.as_ref().is_some_and(|token| token.load(Ordering::SeqCst)) {
                 local_cancel_token.store(true, Ordering::SeqCst);
                 return Err(ClientError::Cancellation(CTRL_C_ERROR_MESSAGE_DETAIL.to_string()));
             }

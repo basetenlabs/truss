@@ -89,6 +89,7 @@ async def run_baseten_benchmark(length, client=client_b):
         max_concurrent_requests=512,
         batch_size=micro_batch_size,
         hedge_delay=4,
+        max_chars_per_request=200,
     )
     embeddings_array = response.numpy()
     time_end = time.monotonic()
@@ -106,6 +107,9 @@ async def run_baseten_benchmark(length, client=client_b):
     assert isinstance(response, OpenAIEmbeddingsResponse)
     assert len(response.data) == length
     assert embeddings_array.shape[0] == length
+    assert list(range(length)) == [item.index for item in response.data], (
+        "Response indices do not match input order."
+    )
 
     return {
         "client": "PerformanceClient HTTP",
