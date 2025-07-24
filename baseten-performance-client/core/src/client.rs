@@ -1,22 +1,58 @@
 use crate::constants::*;
 use crate::errors::ClientError;
 use crate::http::*;
-use crate::utils::*;
-use futures::future::join_all;
+use crate::split_policy::*;
+use crate::utils::{
+    acquire_permit_or_cancel, calculate_hedge_budget, calculate_retry_timeout_budget,
+};
 use rand::Rng;
 use reqwest::Client;
-use std::cmp::min;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 pub struct SendRequestConfig {
     pub max_retries: u32,
     pub initial_backoff: Duration,
     pub retry_budget: Option<Arc<AtomicUsize>>,
     pub cancel_token: Arc<AtomicBool>,
+    pub hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
+    pub timeout: Duration,
+}
+
+impl SendRequestConfig {
+    /// Create a new SendRequestConfig with validation
+    pub fn new(
+        max_retries: u32,
+        initial_backoff: Duration,
+        retry_budget: Option<Arc<AtomicUsize>>,
+        cancel_token: Arc<AtomicBool>,
+        hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
+        timeout: Duration,
+    ) -> Result<Self, ClientError> {
+        // Validate that hedging timeout is higher than request timeout
+        if let Some((_, hedge_timeout)) = &hedge_budget {
+            if hedge_timeout <= &timeout {
+                return Err(ClientError::InvalidParameter(format!(
+                    "Hedge timeout ({:.3}s) must be higher than request timeout ({:.3}s)",
+                    hedge_timeout.as_secs_f64(),
+                    timeout.as_secs_f64()
+                )));
+            }
+        }
+
+        Ok(SendRequestConfig {
+            max_retries,
+            initial_backoff,
+            retry_budget,
+            cancel_token,
+            hedge_budget,
+            timeout,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -81,7 +117,7 @@ impl HttpClientWrapper {
 #[derive(Clone)]
 pub struct PerformanceClientCore {
     pub api_key: String,
-    pub base_url: String,
+    pub base_url: Arc<str>,
     pub client_wrapper: HttpClientWrapper,
 }
 
@@ -101,18 +137,6 @@ impl PerformanceClientCore {
         ))
     }
 
-    pub fn cap_concurrency_baseten_staging(base_url: &str, concurrency_desired: usize) -> usize {
-        if STAGING_ADDRESS
-            .iter()
-            .any(|provider| !provider.is_empty() && base_url.contains(provider))
-        {
-            let cap = rand::thread_rng().gen_range(16..=16384);
-            min(cap, concurrency_desired)
-        } else {
-            concurrency_desired
-        }
-    }
-
     pub fn validate_and_get_timeout_duration(timeout_s: f64) -> Result<Duration, ClientError> {
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&timeout_s) {
             return Err(ClientError::InvalidParameter(format!(
@@ -126,11 +150,7 @@ impl PerformanceClientCore {
     pub fn validate_concurrency_parameters(
         max_concurrent_requests: usize,
         batch_size: usize,
-        base_url: &str,
     ) -> Result<usize, ClientError> {
-        let actual_concurrency =
-            Self::cap_concurrency_baseten_staging(base_url, max_concurrent_requests);
-
         if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
             return Err(ClientError::InvalidParameter(format!(
                 "max_concurrent_requests must be greater than 0 and less than or equal to {}",
@@ -149,7 +169,7 @@ impl PerformanceClientCore {
                 MAX_CONCURRENCY_LOW_BATCH, CONCURRENCY_HIGH_BATCH_SWITCH
             )));
         }
-        Ok(actual_concurrency)
+        Ok(max_concurrent_requests)
     }
 
     /// Validates common request parameters and returns validated values
@@ -160,11 +180,8 @@ impl PerformanceClientCore {
         batch_size: usize,
         timeout_s: f64,
     ) -> Result<(usize, Duration), ClientError> {
-        let validated_concurrency = Self::validate_concurrency_parameters(
-            max_concurrent_requests,
-            batch_size,
-            &self.base_url,
-        )?;
+        let validated_concurrency =
+            Self::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
 
         let validated_timeout = Self::validate_and_get_timeout_duration(timeout_s)?;
 
@@ -203,16 +220,6 @@ impl PerformanceClientCore {
     ) -> Result<Self, ClientError> {
         let api_key = Self::get_api_key(api_key)?;
 
-        if WARNING_SLOW_PROVIDERS
-            .iter()
-            .any(|&provider| base_url.contains(provider))
-        {
-            eprintln!(
-                "Warning: Using {} as the base URL might be slow. Consider using baseten.com instead.",
-                base_url
-            );
-        }
-
         let client_wrapper = if http_version == 2 {
             let mut pool = Vec::with_capacity(HTTP2_CLIENT_POOL_SIZE);
             for _ in 0..HTTP2_CLIENT_POOL_SIZE {
@@ -225,14 +232,167 @@ impl PerformanceClientCore {
             HttpClientWrapper::Http1(Arc::new(client))
         };
 
+        if WARNING_SLOW_PROVIDERS
+            .iter()
+            .any(|&provider| base_url.contains(provider))
+        {
+            eprintln!(
+                "Warning: Using {} as the base URL might be slow. Consider using baseten.com instead.",
+                base_url
+            );
+        }
+
         Ok(PerformanceClientCore {
             api_key,
-            base_url,
+            base_url: base_url.into(),
             client_wrapper,
         })
     }
+}
 
-    // Core embeddings processing logic
+impl PerformanceClientCore {
+    // Generic batch processing method - handles pre-batched requests for ALL API types
+    // Uses JoinSet for better cancellation and lazy execution
+    async fn process_batched_requests<T, R>(
+        &self,
+        batches: Vec<Vec<String>>,
+        config: &RequestProcessingConfig,
+        create_payload: impl Fn(Vec<String>) -> T + Send + Sync + 'static,
+        endpoint_url: Arc<str>,
+        adjust_indices: impl Fn(&mut R, usize) + Send + Sync + 'static,
+    ) -> Result<(R, Vec<Duration>, Duration), ClientError>
+    where
+        T: serde::Serialize + Send + 'static,
+        R: serde::de::DeserializeOwned + Combinable + Send + 'static,
+    {
+        let start_time = std::time::Instant::now();
+        let request_timeout_duration = config.timeout_duration();
+
+        let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
+        let total_requests = batches.len();
+        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+            total_requests,
+        )));
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| (
+                    Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
+                    Duration::from_secs_f64(delay),
+                ));
+
+        // Calculate expected capacity from original batches for pre-allocation
+        let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
+
+        // Use JoinSet for better performance and cancellation
+        let mut join_set: JoinSet<Result<(R, Duration, usize, usize), ClientError>> =
+            JoinSet::new();
+        let mut indexed_results: Vec<(usize, R, Duration, usize)> =
+            Vec::with_capacity(total_requests);
+
+        let mut current_absolute_index = 0;
+        for (batch_index, batch) in batches.into_iter().enumerate() {
+            let current_batch_absolute_start_index = current_absolute_index;
+            current_absolute_index += batch.len();
+
+            // Only clone what's needed inside the async block
+            let client_wrapper = self.client_wrapper.clone();
+            let api_key = self.api_key.clone();
+            let semaphore = Arc::clone(&semaphore);
+            let cancel_token = Arc::clone(&cancel_token);
+            let retry_budget = Arc::clone(&retry_budget);
+            let hedge_config = hedge_config.clone();
+
+            // Create payload and URL outside async block
+            let payload = create_payload(batch);
+            let url = endpoint_url.clone();
+
+            join_set.spawn(async move {
+                let _permit =
+                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None).await?;
+                let client = client_wrapper.get_client();
+
+                let request_time_start = Instant::now();
+                let config = SendRequestConfig {
+                    max_retries: MAX_HTTP_RETRIES,
+                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                    retry_budget: Some(retry_budget),
+                    cancel_token: cancel_token.clone(),
+                    hedge_budget: hedge_config,
+                    timeout: request_timeout_duration,
+                };
+
+                // Send request with pre-created payload and URL
+                let response: R = send_http_request_with_retry(
+                    &client,
+                    url.to_string(),
+                    payload,
+                    api_key,
+                    request_timeout_duration,
+                    &config,
+                )
+                .await?;
+
+                let request_time_elapsed = request_time_start.elapsed();
+                Ok((
+                    response,
+                    request_time_elapsed,
+                    current_batch_absolute_start_index,
+                    batch_index, // Include batch index for ordering
+                ))
+            });
+        }
+
+        // Process results as they complete with fast-fail cancellation
+        while let Some(task_result) = join_set.join_next().await {
+            match process_joinset_outcome(task_result, &cancel_token) {
+                Ok((response, duration, start_index, batch_index)) => {
+                    indexed_results.push((batch_index, response, duration, start_index));
+                }
+                Err(e) => {
+                    // Cancel all remaining tasks immediately
+                    cancel_token.store(true, Ordering::SeqCst);
+                    join_set.abort_all();
+                    return Err(e);
+                }
+            }
+        }
+
+        // Sort results by original batch order to preserve ordering
+        indexed_results.sort_by_key(|&(batch_index, _, _, _)| batch_index);
+
+        // Extract responses and durations in correct order
+        let mut responses = Vec::with_capacity(total_requests);
+        let mut individual_batch_durations = Vec::with_capacity(total_requests);
+
+        for (_, mut response, duration, start_index) in indexed_results {
+            adjust_indices(&mut response, start_index);
+            responses.push(response);
+            individual_batch_durations.push(duration);
+        }
+
+        let combined_response = R::combine(responses, expected_capacity);
+        let total_time = start_time.elapsed();
+
+        Ok((combined_response, individual_batch_durations, total_time))
+    }
+
+    // Helper to create batches with policy and config
+    fn create_batches_with_config(
+        &self,
+        inputs: Vec<String>,
+        config: &RequestProcessingConfig,
+    ) -> Vec<Vec<String>> {
+        if let Some(max_chars) = config.max_chars_per_request {
+            let policy =
+                SplitPolicy::max_chars_per_request(max_chars, config.batch_size);
+            inputs.split(&policy)
+        } else {
+            inputs
+                .chunks(config.batch_size)
+                .map(|chunk| chunk.to_vec())
+                .collect()
+        }
+    }
+    // Core embeddings processing logic with unified interface
     pub async fn process_embeddings_requests(
         &self,
         texts: Vec<String>,
@@ -242,123 +402,54 @@ impl PerformanceClientCore {
         user: Option<String>,
         max_concurrent_requests: usize,
         batch_size: usize,
+        max_chars_per_request: Option<usize>,
         timeout_s: f64,
+        hedge_delay: Option<f64>,
     ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>, Duration), ClientError> {
-        let start_time = std::time::Instant::now();
+        // Create and validate config
+        let config = RequestProcessingConfig::new(
+            max_concurrent_requests,
+            batch_size,
+            timeout_s,
+            self.base_url.to_string(),
+            hedge_delay,
+            max_chars_per_request,
+        )?;
 
-        // Validate parameters internally
-        let (validated_concurrency, request_timeout_duration) = self
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
-        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
-        let mut tasks = Vec::new();
-        let total_texts = texts.len();
-        let total_requests = (total_texts + batch_size - 1) / batch_size;
-        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
-            total_requests,
-        )));
-        let cancel_token = Arc::new(AtomicBool::new(false));
-        let model_for_response = model.clone();
+        // Create batches
+        let batches = self.create_batches_with_config(texts, &config);
 
-        for (batch_index, user_text_batch) in texts.chunks(batch_size).enumerate() {
-            let client_wrapper_clone = self.client_wrapper.clone();
-            let model_for_task = model.clone();
-            let api_key_clone = self.api_key.clone();
-            let base_url_clone = self.base_url.clone();
-            let encoding_format_clone = encoding_format.clone();
-            let dimensions_clone = dimensions;
-            let user_clone = user.clone();
-            let user_text_batch_owned = user_text_batch.to_vec();
-            let semaphore_clone = Arc::clone(&semaphore);
-            let cancel_token_clone = Arc::clone(&cancel_token);
-            let retry_budget_clone = Arc::clone(&retry_budget);
-            let individual_request_timeout = request_timeout_duration;
-            let current_batch_absolute_start_index = batch_index * batch_size;
+        // Pre-compute endpoint URL
+        let endpoint_url: Arc<str> = format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
 
-            tasks.push(tokio::spawn(async move {
-                let _permit =
-                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
-                        .await?;
-                let client = client_wrapper_clone.get_client();
-
-                let request_time_start = Instant::now();
-                let config = SendRequestConfig {
-                    max_retries: MAX_HTTP_RETRIES,
-                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget_clone),
-                    cancel_token: cancel_token_clone.clone(),
-                };
-
-                let result = send_single_embedding_request(
-                    &client,
-                    user_text_batch_owned,
-                    model_for_task,
-                    api_key_clone,
-                    base_url_clone,
-                    encoding_format_clone,
-                    dimensions_clone,
-                    user_clone,
-                    individual_request_timeout,
-                    &config,
-                )
-                .await;
-                let request_time_elapsed = request_time_start.elapsed();
-
-                match result {
-                    Ok(mut response) => {
-                        for item in &mut response.data {
-                            item.index += current_batch_absolute_start_index;
-                        }
-                        Ok((response, request_time_elapsed))
+        let (mut response, durations, total_time) = self
+            .process_batched_requests(
+                batches,
+                &config,
+                move |batch| CoreOpenAIEmbeddingsRequest {
+                    input: batch,
+                    model: model.clone(),
+                    encoding_format: encoding_format.clone(),
+                    dimensions,
+                    user: user.clone(),
+                },
+                endpoint_url,
+                |response: &mut CoreOpenAIEmbeddingsResponse, start_index| {
+                    for item in &mut response.data {
+                        item.index += start_index;
                     }
-                    Err(e) => {
-                        cancel_token_clone.store(true, Ordering::SeqCst);
-                        Err(e)
-                    }
-                }
-            }));
-        }
+                },
+            )
+            .await?;
 
-        let task_join_results = join_all(tasks).await;
+        // Set timing information
+        response.total_time = total_time.as_secs_f64();
+        response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
 
-        let mut all_embedding_data: Vec<CoreOpenAIEmbeddingData> = Vec::with_capacity(total_texts);
-        let mut aggregated_prompt_tokens: u32 = 0;
-        let mut aggregated_total_tokens: u32 = 0;
-        let mut individual_batch_durations: Vec<Duration> = Vec::new();
-        let mut first_error: Option<ClientError> = None;
-
-        for result in task_join_results {
-            if let Some((response_part, duration_part)) =
-                process_task_outcome(result, &mut first_error, &cancel_token)
-            {
-                all_embedding_data.extend(response_part.data);
-                aggregated_prompt_tokens =
-                    aggregated_prompt_tokens.saturating_add(response_part.usage.prompt_tokens);
-                aggregated_total_tokens =
-                    aggregated_total_tokens.saturating_add(response_part.usage.total_tokens);
-                individual_batch_durations.push(duration_part);
-            }
-        }
-
-        if let Some(err) = first_error {
-            return Err(err);
-        }
-
-        all_embedding_data.sort_by_key(|d| d.index);
-        let final_response = CoreOpenAIEmbeddingsResponse {
-            object: "list".to_string(),
-            data: all_embedding_data,
-            model: model_for_response,
-            usage: CoreOpenAIUsage {
-                prompt_tokens: aggregated_prompt_tokens,
-                total_tokens: aggregated_total_tokens,
-            },
-            total_time: None,
-            individual_request_times: None,
-        };
-        let total_time = start_time.elapsed();
-        Ok((final_response, individual_batch_durations, total_time))
+        Ok((response, durations, total_time))
     }
 
+    // Core rerank processing logic with unified interface
     pub async fn process_rerank_requests(
         &self,
         query: String,
@@ -369,104 +460,58 @@ impl PerformanceClientCore {
         truncation_direction: String,
         max_concurrent_requests: usize,
         batch_size: usize,
+        max_chars_per_request: Option<usize>,
         timeout_s: f64,
+        hedge_delay: Option<f64>,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Duration), ClientError> {
-        let start_time: Instant = std::time::Instant::now();
+        // Create and validate config
+        let config = RequestProcessingConfig::new(
+            max_concurrent_requests,
+            batch_size,
+            timeout_s,
+            self.base_url.to_string(),
+            hedge_delay,
+            max_chars_per_request,
+        )?;
 
-        // Validate parameters internally
-        let (validated_concurrency, request_timeout_duration) = self
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
-        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
-        let mut tasks = Vec::new();
-        let total_requests = (texts.len() + batch_size - 1) / batch_size;
-        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
-            total_requests,
-        )));
-        let cancel_token = Arc::new(AtomicBool::new(false));
+        // Create batches
+        let batches = self.create_batches_with_config(texts, &config);
 
-        for (batch_idx, texts_batch) in texts.chunks(batch_size).enumerate() {
-            let client_wrapper_clone = self.client_wrapper.clone();
-            let query_clone = query.clone();
-            let api_key_clone = self.api_key.clone();
-            let base_url_clone = self.base_url.clone();
-            let truncation_direction_clone = truncation_direction.clone();
-            let texts_batch_owned = texts_batch.to_vec();
-            let semaphore_clone = Arc::clone(&semaphore);
-            let cancel_token_clone = Arc::clone(&cancel_token);
-            let retry_budget_clone = Arc::clone(&retry_budget);
-            let individual_request_timeout = request_timeout_duration;
-            let current_batch_absolute_start_index = batch_idx * batch_size;
+        // Pre-compute endpoint URL
+        let endpoint_url: Arc<str> = format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
 
-            tasks.push(tokio::spawn(async move {
-                let _permit =
-                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
-                        .await?;
-                let client = client_wrapper_clone.get_client();
-
-                let request_time_start = Instant::now();
-                let config = SendRequestConfig {
-                    max_retries: MAX_HTTP_RETRIES,
-                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget_clone),
-                    cancel_token: cancel_token_clone.clone(),
-                };
-                let result = send_single_rerank_request(
-                    &client,
-                    query_clone,
-                    texts_batch_owned,
+        let (results, durations, total_time) = self
+            .process_batched_requests(
+                batches,
+                &config,
+                move |batch| CoreRerankRequest {
+                    query: query.clone(),
+                    texts: batch,
                     raw_scores,
                     return_text,
                     truncate,
-                    truncation_direction_clone,
-                    api_key_clone,
-                    base_url_clone,
-                    individual_request_timeout,
-                    &config,
-                )
-                .await;
-                let request_time_elapsed = request_time_start.elapsed();
-
-                match result {
-                    Ok(mut batch_results) => {
-                        for item in &mut batch_results {
-                            item.index += current_batch_absolute_start_index;
-                        }
-                        Ok((batch_results, request_time_elapsed))
+                    truncation_direction: truncation_direction.clone(),
+                },
+                endpoint_url,
+                |results: &mut Vec<CoreRerankResult>, start_index| {
+                    for item in results {
+                        item.index += start_index;
                     }
-                    Err(e) => {
-                        cancel_token_clone.store(true, Ordering::SeqCst);
-                        Err(e)
-                    }
-                }
-            }));
-        }
+                },
+            )
+            .await?;
 
-        let task_join_results = join_all(tasks).await;
+        // Convert Vec<CoreRerankResult> to CoreRerankResponse
+        let mut response = CoreRerankResponse::new(results, None, None);
 
-        let mut all_results_data: Vec<CoreRerankResult> = Vec::new();
-        let mut individual_batch_durations: Vec<Duration> = Vec::new();
-        let mut first_error: Option<ClientError> = None;
+        // Set timing information
+        response.total_time = total_time.as_secs_f64();
+        response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
 
-        for result in task_join_results {
-            if let Some((batch_data_part, duration)) =
-                process_task_outcome(result, &mut first_error, &cancel_token)
-            {
-                all_results_data.extend(batch_data_part);
-                individual_batch_durations.push(duration);
-            }
-        }
-
-        if let Some(err) = first_error {
-            return Err(err);
-        }
-
-        all_results_data.sort_by_key(|d| d.index);
-        let core_response = CoreRerankResponse::new(all_results_data, None, None);
-        let total_time = start_time.elapsed();
-        Ok((core_response, individual_batch_durations, total_time))
+        Ok((response, durations, total_time))
     }
 
-    // Core classify processing logic
+    // Core classify processing logic with unified interface
     pub async fn process_classify_requests(
         &self,
         inputs: Vec<String>,
@@ -475,156 +520,151 @@ impl PerformanceClientCore {
         truncation_direction: String,
         max_concurrent_requests: usize,
         batch_size: usize,
+        max_chars_per_request: Option<usize>,
         timeout_s: f64,
+        hedge_delay: Option<f64>,
     ) -> Result<(CoreClassificationResponse, Vec<Duration>, Duration), ClientError> {
-        let start_time = std::time::Instant::now();
+        // Create and validate config
+        let config = RequestProcessingConfig::new(
+            max_concurrent_requests,
+            batch_size,
+            timeout_s,
+            self.base_url.to_string(),
+            hedge_delay,
+            max_chars_per_request,
+        )?;
 
-        // Validate parameters internally
-        let (validated_concurrency, request_timeout_duration) = self
-            .validate_request_parameters(max_concurrent_requests, batch_size, timeout_s)?;
-        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
-        let mut tasks = Vec::new();
-        let total_requests = (inputs.len() + batch_size - 1) / batch_size;
-        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
-            total_requests,
-        )));
-        let cancel_token = Arc::new(AtomicBool::new(false));
+        // Create batches
+        let batches = self.create_batches_with_config(inputs, &config);
 
-        for input_chunk_slice in inputs.chunks(batch_size) {
-            let client_wrapper_clone = self.client_wrapper.clone();
-            let api_key_clone = self.api_key.clone();
-            let base_url_clone = self.base_url.clone();
-            let truncation_direction_clone = truncation_direction.clone();
-            let inputs_for_api_owned: Vec<Vec<String>> =
-                input_chunk_slice.iter().map(|s| vec![s.clone()]).collect();
-            let semaphore_clone = Arc::clone(&semaphore);
-            let cancel_token_clone = Arc::clone(&cancel_token);
-            let retry_budget_clone = Arc::clone(&retry_budget);
-            let individual_request_timeout = request_timeout_duration;
+        // Pre-compute endpoint URL
+        let endpoint_url: Arc<str> = format!("{}/predict", config.base_url.trim_end_matches('/')).into();
 
-            tasks.push(tokio::spawn(async move {
-                let _permit =
-                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
-                        .await?;
-                let client = client_wrapper_clone.get_client();
-
-                let request_time_start = Instant::now();
-                let config = SendRequestConfig {
-                    max_retries: MAX_HTTP_RETRIES,
-                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget_clone),
-                    cancel_token: cancel_token_clone.clone(),
-                };
-                let result = send_single_classify_request(
-                    &client,
-                    inputs_for_api_owned,
-                    raw_scores,
-                    truncate,
-                    truncation_direction_clone,
-                    api_key_clone,
-                    base_url_clone,
-                    individual_request_timeout,
-                    &config,
-                )
-                .await;
-                let request_time_elapsed = request_time_start.elapsed();
-
-                match result {
-                    Ok(batch_results) => Ok((batch_results, request_time_elapsed)),
-                    Err(e) => {
-                        cancel_token_clone.store(true, Ordering::SeqCst);
-                        Err(e)
+        let (results, durations, total_time) = self
+            .process_batched_requests(
+                batches,
+                &config,
+                move |batch| {
+                    // Convert each string to Vec<String> as expected by the API
+                    let inputs: Vec<Vec<String>> = batch.into_iter().map(|s| vec![s]).collect();
+                    CoreClassifyRequest {
+                        inputs,
+                        raw_scores,
+                        truncate,
+                        truncation_direction: truncation_direction.clone(),
                     }
-                }
-            }));
-        }
+                },
+                endpoint_url,
+                |_results: &mut Vec<Vec<CoreClassificationResult>>, _start_index| {
+                    // Classification responses don't have index fields to adjust
+                },
+            )
+            .await?;
 
-        let task_join_results = join_all(tasks).await;
+        // Convert Vec<Vec<CoreClassificationResult>> to CoreClassificationResponse
+        let mut response = CoreClassificationResponse::new(results, None, None);
 
-        let mut all_results_data: Vec<Vec<CoreClassificationResult>> = Vec::new();
-        let mut individual_batch_durations: Vec<Duration> = Vec::new();
-        let mut first_error: Option<ClientError> = None;
+        // Set timing information
+        response.total_time = total_time.as_secs_f64();
+        response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
 
-        for result in task_join_results {
-            if let Some((batch_data_part, duration)) =
-                process_task_outcome(result, &mut first_error, &cancel_token)
-            {
-                all_results_data.extend(batch_data_part);
-                individual_batch_durations.push(duration);
-            }
-        }
-
-        if let Some(err) = first_error {
-            return Err(err);
-        }
-
-        let core_response = CoreClassificationResponse::new(all_results_data, None, None);
-        let total_time = start_time.elapsed();
-        Ok((core_response, individual_batch_durations, total_time))
+        Ok((response, durations, total_time))
     }
 
-    // Core batch post processing logic
+    // Core batch post processing - optimized with JoinSet
     pub async fn process_batch_post_requests(
         &self,
         url_path: String,
         payloads_json: Vec<serde_json::Value>,
         max_concurrent_requests: usize,
         timeout_s: f64,
+        hedge_delay: Option<f64>,
     ) -> Result<
-        (Vec<(
-            serde_json::Value,
-            std::collections::HashMap<String, String>,
+        (
+            Vec<(
+                serde_json::Value,
+                std::collections::HashMap<String, String>,
+                Duration,
+            )>,
             Duration,
-        )>, Duration),
+        ),
         ClientError,
     > {
         let start_time = std::time::Instant::now();
 
         // Validate parameters internally (using batch_size of 128 for validation)
-        let (validated_concurrency, request_timeout_duration) = self
-            .validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
+        let (validated_concurrency, request_timeout_duration) =
+            self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
-        let mut tasks = Vec::new();
         let cancel_token = Arc::new(AtomicBool::new(false));
         let total_payloads = payloads_json.len();
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
             total_payloads,
         )));
+        let hedge_budget_delay: Option<(Arc<AtomicUsize>, Duration)> = hedge_delay.map(|delay| {
+            (
+                Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+                    total_payloads,
+                ))),
+                Duration::from_secs_f64(delay),
+            )
+        });
+
+        // Use JoinSet for better performance and cancellation
+        let mut join_set: JoinSet<
+            Result<
+                (
+                    usize,
+                    serde_json::Value,
+                    std::collections::HashMap<String, String>,
+                    Duration,
+                ),
+                ClientError,
+            >,
+        > = JoinSet::new();
+        let mut indexed_results: Vec<(
+            usize,
+            serde_json::Value,
+            std::collections::HashMap<String, String>,
+            Duration,
+        )> = Vec::with_capacity(total_payloads);
 
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
-            let client_wrapper_clone = self.client_wrapper.clone();
-            let api_key_clone = self.api_key.clone();
-            let base_url_clone = self.base_url.clone();
-            let url_path_clone = url_path.clone();
-            let semaphore_clone = Arc::clone(&semaphore);
-            let cancel_token_clone = Arc::clone(&cancel_token);
-            let retry_budget_clone = Arc::clone(&retry_budget);
+            let client_wrapper = self.client_wrapper.clone();
+            let api_key = self.api_key.clone();
+            let base_url = self.base_url.clone();
+            let url_path = url_path.clone();
+            let semaphore = Arc::clone(&semaphore);
+            let cancel_token = Arc::clone(&cancel_token);
+            let retry_budget = Arc::clone(&retry_budget);
             let individual_request_timeout = request_timeout_duration;
+            let hedge_budget = hedge_budget_delay.clone();
 
-            tasks.push(tokio::spawn(async move {
+            join_set.spawn(async move {
                 let _permit =
-                    acquire_permit_or_cancel(semaphore_clone, cancel_token_clone.clone(), None)
-                        .await?;
-                let client = client_wrapper_clone.get_client();
+                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None).await?;
+                let client = client_wrapper.get_client();
 
                 let full_url = format!(
                     "{}/{}",
-                    base_url_clone.trim_end_matches('/'),
-                    url_path_clone.trim_start_matches('/')
+                    base_url.trim_end_matches('/'),
+                    url_path.trim_start_matches('/')
                 );
                 let request_time_start = std::time::Instant::now();
                 let config = SendRequestConfig {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget_clone),
-                    cancel_token: cancel_token_clone.clone(),
+                    retry_budget: Some(retry_budget),
+                    cancel_token: cancel_token.clone(),
+                    hedge_budget,
+                    timeout: individual_request_timeout,
                 };
 
-                let result_tuple = send_single_batch_post_request(
+                let result_tuple = send_http_request_with_headers(
                     &client,
                     full_url,
                     payload_item_json,
-                    api_key_clone,
+                    api_key,
                     individual_request_timeout,
                     &config,
                 )
@@ -640,32 +680,26 @@ impl PerformanceClientCore {
                         request_time_elapsed,
                     )),
                     Err(e) => {
-                        cancel_token_clone.store(true, Ordering::SeqCst);
+                        cancel_token.store(true, Ordering::SeqCst);
                         Err(e)
                     }
                 }
-            }));
+            });
         }
 
-        let task_join_results = join_all(tasks).await;
-        let mut indexed_results: Vec<(
-            usize,
-            serde_json::Value,
-            std::collections::HashMap<String, String>,
-            Duration,
-        )> = Vec::with_capacity(total_payloads);
-        let mut first_error: Option<ClientError> = None;
-
-        for result in task_join_results {
-            if let Some(indexed_data_part) =
-                process_task_outcome(result, &mut first_error, &cancel_token)
-            {
-                indexed_results.push(indexed_data_part);
+        // Process results as they complete with fast-fail cancellation
+        while let Some(task_result) = join_set.join_next().await {
+            match process_joinset_outcome(task_result, &cancel_token) {
+                Ok(indexed_data) => {
+                    indexed_results.push(indexed_data);
+                }
+                Err(e) => {
+                    // Cancel all remaining tasks immediately
+                    cancel_token.store(true, Ordering::SeqCst);
+                    join_set.abort_all();
+                    return Err(e);
+                }
             }
-        }
-
-        if let Some(err) = first_error {
-            return Err(err);
         }
 
         indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
@@ -684,137 +718,57 @@ impl PerformanceClientCore {
     }
 }
 
-// Helper functions for sending individual requests
-async fn send_single_embedding_request(
+// Unified HTTP request helper
+async fn send_http_request_with_retry<T, R>(
     client: &Client,
-    texts_batch: Vec<String>,
-    model: String,
+    url: String,
+    payload: T,
     api_key: String,
-    base_url: String,
-    encoding_format: Option<String>,
-    dimensions: Option<u32>,
-    user: Option<String>,
     request_timeout: Duration,
     config: &SendRequestConfig,
-) -> Result<CoreOpenAIEmbeddingsResponse, ClientError> {
-    let request_payload = CoreOpenAIEmbeddingsRequest {
-        input: texts_batch,
-        model,
-        encoding_format,
-        dimensions,
-        user,
-    };
-
-    let url = format!("{}/v1/embeddings", base_url.trim_end_matches('/'));
-
+) -> Result<R, ClientError>
+where
+    T: serde::Serialize,
+    R: serde::de::DeserializeOwned,
+{
     let request_builder = client
         .post(&url)
         .bearer_auth(api_key)
-        .json(&request_payload)
+        .json(&payload)
         .timeout(request_timeout);
 
+    // let response = send_request_with_retry(request_builder, config).await?;
+    // TODO race tokio tasks: sleep(hedge_delay) + request_with_retry + request, get the first one.
     let response = send_request_with_retry(request_builder, config).await?;
+
     let successful_response = ensure_successful_response(response).await?;
 
     successful_response
-        .json::<CoreOpenAIEmbeddingsResponse>()
+        .json::<R>()
         .await
         .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))
 }
 
-async fn send_single_rerank_request(
+// Unified HTTP request helper with headers extraction
+async fn send_http_request_with_headers<T>(
     client: &Client,
-    query: String,
-    texts_batch: Vec<String>,
-    raw_scores: bool,
-    return_text: bool,
-    truncate: bool,
-    truncation_direction: String,
+    url: String,
+    payload: T,
     api_key: String,
-    base_url: String,
     request_timeout: Duration,
     config: &SendRequestConfig,
-) -> Result<Vec<CoreRerankResult>, ClientError> {
-    let request_payload = CoreRerankRequest {
-        query,
-        raw_scores,
-        return_text,
-        texts: texts_batch,
-        truncate,
-        truncation_direction,
-    };
-
-    let url = format!("{}/rerank", base_url.trim_end_matches('/'));
-
+) -> Result<(serde_json::Value, std::collections::HashMap<String, String>), ClientError>
+where
+    T: serde::Serialize,
+{
     let request_builder = client
         .post(&url)
         .bearer_auth(api_key)
-        .json(&request_payload)
+        .json(&payload)
         .timeout(request_timeout);
 
     let response = send_request_with_retry(request_builder, config).await?;
-    let successful_response = ensure_successful_response(response).await?;
-
-    successful_response
-        .json::<Vec<CoreRerankResult>>()
-        .await
-        .map_err(|e| {
-            ClientError::Serialization(format!("Failed to parse rerank response JSON: {}", e))
-        })
-}
-
-async fn send_single_classify_request(
-    client: &Client,
-    inputs: Vec<Vec<String>>,
-    raw_scores: bool,
-    truncate: bool,
-    truncation_direction: String,
-    api_key: String,
-    base_url: String,
-    request_timeout: Duration,
-    config: &SendRequestConfig,
-) -> Result<Vec<Vec<CoreClassificationResult>>, ClientError> {
-    let request_payload = CoreClassifyRequest {
-        inputs,
-        raw_scores,
-        truncate,
-        truncation_direction,
-    };
-
-    let url = format!("{}/predict", base_url.trim_end_matches('/'));
-
-    let request_builder = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&request_payload)
-        .timeout(request_timeout);
-
-    let response = send_request_with_retry(request_builder, config).await?;
-    let successful_response = ensure_successful_response(response).await?;
-
-    successful_response
-        .json::<Vec<Vec<CoreClassificationResult>>>()
-        .await
-        .map_err(|e| {
-            ClientError::Serialization(format!("Failed to parse classify response JSON: {}", e))
-        })
-}
-
-async fn send_single_batch_post_request(
-    client: &Client,
-    full_url: String,
-    payload_json: serde_json::Value,
-    api_key: String,
-    request_timeout: Duration,
-    config: &SendRequestConfig,
-) -> Result<(serde_json::Value, std::collections::HashMap<String, String>), ClientError> {
-    let request_builder = client
-        .post(&full_url)
-        .bearer_auth(api_key)
-        .json(&payload_json)
-        .timeout(request_timeout);
-
-    let response = send_request_with_retry(request_builder, config).await?;
+    // hedge here with a second workstream, awaiting the first one or time of hedge
     let successful_response = ensure_successful_response(response).await?;
 
     // Extract headers
@@ -865,47 +819,137 @@ async fn send_request_with_retry(
             ClientError::Network("Failed to clone request builder for retry".to_string())
         })?;
 
-        match request_builder_clone.send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    return Ok(response);
-                }
+        // Only hedge on the first request (retries_done == 0)
+        let should_hedge = retries_done == 0 && config.hedge_budget.is_some();
 
-                let status = response.status();
-                if status.as_u16() == 429 || status.is_server_error() {
-                    if retries_done >= max_retries {
-                        return ensure_successful_response(response).await;
-                    }
-                } else if status.is_client_error() {
-                    config.cancel_token.store(true, Ordering::SeqCst);
-                    return ensure_successful_response(response).await;
-                } else {
-                    return ensure_successful_response(response).await;
-                }
-            }
-            Err(network_err) => {
-                if network_err.is_timeout() {
-                    if let Some(retry_budget) = config.retry_budget.as_ref() {
-                        if retry_budget.fetch_sub(1, Ordering::SeqCst) < 1 {
-                            config.cancel_token.store(true, Ordering::SeqCst);
-                            return Err(ClientError::Timeout(format!(
-                                "Request timed out and retry budget is exhausted: {}",
-                                network_err
-                            )));
-                        }
-                    }
-                }
+        let response = if should_hedge {
+            send_request_with_hedging(request_builder_clone, config).await?
+        } else {
+            request_builder_clone
+                .send()
+                .await
+                .map_err(ClientError::from)?
+        };
 
-                if retries_done >= 2 {
-                    config.cancel_token.store(true, Ordering::SeqCst);
-                    return Err(ClientError::from(network_err));
-                }
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        let status = response.status();
+        if status.as_u16() == 429 || status.is_server_error() {
+            if retries_done >= max_retries {
+                return ensure_successful_response(response).await;
             }
+        } else if status.is_client_error() {
+            config.cancel_token.store(true, Ordering::SeqCst);
+            return ensure_successful_response(response).await;
+        } else {
+            return ensure_successful_response(response).await;
         }
 
         retries_done += 1;
-        let backoff_duration = current_backoff.min(MAX_BACKOFF_DURATION);
+        let jitter = rand::rng().random_range(0..100);
+        let backoff_duration =
+            current_backoff.min(MAX_BACKOFF_DURATION) + Duration::from_millis(jitter);
         tokio::time::sleep(backoff_duration).await;
         current_backoff = current_backoff.saturating_mul(4);
+    }
+}
+
+async fn send_request_with_hedging(
+    request_builder: reqwest::RequestBuilder,
+    config: &SendRequestConfig,
+) -> Result<reqwest::Response, ClientError> {
+    let (hedge_budget, hedge_delay) = config.hedge_budget.as_ref().unwrap();
+
+    // Check if we have hedge budget available
+    if hedge_budget.load(Ordering::SeqCst) == 0 {
+        // No hedge budget, use normal request
+        return request_builder.send().await.map_err(ClientError::from);
+    }
+
+    let request_builder_hedge = request_builder.try_clone().ok_or_else(|| {
+        ClientError::Network("Failed to clone request builder for hedging".to_string())
+    })?;
+
+    // Start the original request
+    let mut original_request = tokio::spawn(async move { request_builder.send().await });
+
+    // Wait for hedge delay
+    let hedge_timer = tokio::time::sleep(*hedge_delay);
+
+    tokio::select! {
+        // Original request completed before hedge delay
+        result = &mut original_request => {
+            match result {
+                Ok(response_result) => response_result.map_err(ClientError::from),
+                Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+            }
+        }
+        // Hedge delay expired, start hedged request
+        _ = hedge_timer => {
+            // Decrement hedge budget
+            if hedge_budget.fetch_sub(1, Ordering::SeqCst) > 0 {
+                let mut hedge_request = tokio::spawn(async move {
+                    request_builder_hedge.send().await
+                });
+
+                // Race between original and hedged request
+                tokio::select! {
+                    result = &mut original_request => {
+                        // Cancel hedge request if original completes first
+                        hedge_request.abort();
+                        match result {
+                            Ok(response_result) => response_result.map_err(ClientError::from),
+                            Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                        }
+                    }
+                    result = &mut hedge_request => {
+                        // Hedge request completed first
+                        original_request.abort();
+                        match result {
+                            Ok(response_result) => response_result.map_err(ClientError::from),
+                            Err(join_err) => Err(ClientError::Network(format!("Hedge request task failed: {}", join_err))),
+                        }
+                    }
+                }
+            } else {
+                // No hedge budget left, wait for original request
+                match original_request.await {
+                    Ok(response_result) => response_result.map_err(ClientError::from),
+                    Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                }
+            }
+        }
+    }
+}
+
+/// Process JoinSet task outcome with improved error handling
+fn process_joinset_outcome<T>(
+    task_result: Result<Result<T, ClientError>, tokio::task::JoinError>,
+    cancel_token: &Arc<AtomicBool>,
+) -> Result<T, ClientError> {
+    match task_result {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(client_error)) => {
+            cancel_token.store(true, Ordering::SeqCst);
+            Err(client_error)
+        }
+        Err(join_error) => {
+            cancel_token.store(true, Ordering::SeqCst);
+            if join_error.is_cancelled() {
+                Err(ClientError::Cancellation("Task was cancelled".to_string()))
+            } else if join_error.is_panic() {
+                Err(ClientError::Network(format!(
+                    "Task panicked: {}",
+                    join_error
+                )))
+            } else {
+                Err(ClientError::Network(format!(
+                    "Task join error: {}",
+                    join_error
+                )))
+            }
+        }
     }
 }

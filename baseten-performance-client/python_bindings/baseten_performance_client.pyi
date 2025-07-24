@@ -279,6 +279,8 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
         batch_size: builtins.int = 16,  # DEFAULT_BATCH_SIZE
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
+        max_chars_per_request: typing.Optional[builtins.int] = None,
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> OpenAIEmbeddingsResponse:
         """
         Sends a list of strings to the embedding endpoint to generate embeddings.
@@ -292,6 +294,8 @@ class PerformanceClient:
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Number of texts per batch.
             timeout_s: Total timeout in seconds.
+            max_chars_per_request: Optional character-based batching limit.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             An OpenAIEmbeddingsResponse object.
@@ -323,6 +327,8 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
         batch_size: builtins.int = 16,  # DEFAULT_BATCH_SIZE
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
+        max_chars_per_request: typing.Optional[builtins.int] = None,
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> RerankResponse:
         """
         Reranks a set of texts based on the provided query.
@@ -337,6 +343,8 @@ class PerformanceClient:
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
             timeout_s: Overall timeout in seconds.
+            max_chars_per_request: Optional character-based batching limit.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             A RerankResponse object.
@@ -361,6 +369,8 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
         batch_size: builtins.int = 16,  # DEFAULT_BATCH_SIZE
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
+        max_chars_per_request: typing.Optional[builtins.int] = None,
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> ClassificationResponse:
         """
         Classifies each input text.
@@ -373,6 +383,8 @@ class PerformanceClient:
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
             timeout_s: Overall timeout in seconds.
+            max_chars_per_request: Optional character-based batching limit.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             A ClassificationResponse object.
@@ -395,6 +407,7 @@ class PerformanceClient:
         payloads: builtins.list[typing.Any],
         max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -409,6 +422,7 @@ class PerformanceClient:
             max_concurrent_requests: Maximum number of parallel requests.
             timeout_s: Total timeout in seconds for the entire batch operation,
                        also used as the timeout for each individual request.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             A BatchPostResponse object containing the list of responses,
@@ -441,6 +455,8 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,
         batch_size: builtins.int = 16,
         timeout_s: builtins.float = 3600.0,
+        max_chars_per_request: typing.Optional[builtins.int] = None,
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> OpenAIEmbeddingsResponse:
         """
         Asynchronously sends a list of texts to the embedding endpoint to generate embeddings.
@@ -454,6 +470,8 @@ class PerformanceClient:
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Number of texts per batch.
             timeout_s: Total timeout in seconds.
+            max_chars_per_request: Optional character-based batching limit.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             An awaitable OpenAIEmbeddingsResponse object.
@@ -479,6 +497,8 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,
         batch_size: builtins.int = 16,
         timeout_s: builtins.float = 3600.0,
+        max_chars_per_request: typing.Optional[builtins.int] = None,
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> RerankResponse:
         """
         Asynchronously reranks a set of texts based on the provided query.
@@ -493,6 +513,8 @@ class PerformanceClient:
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
             timeout_s: Overall timeout in seconds.
+            max_chars_per_request: Optional character-based batching limit.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             An awaitable RerankResponse object.
@@ -517,6 +539,8 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,
         batch_size: builtins.int = 16,
         timeout_s: builtins.float = 3600.0,
+        max_chars_per_request: typing.Optional[builtins.int] = None,
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> ClassificationResponse:
         """
         Asynchronously classifies each input text.
@@ -529,6 +553,8 @@ class PerformanceClient:
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
             timeout_s: Overall timeout in seconds.
+            max_chars_per_request: Optional character-based batching limit.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             An awaitable ClassificationResponse object.
@@ -551,6 +577,7 @@ class PerformanceClient:
         payloads: builtins.list[typing.Any],
         max_concurrent_requests: builtins.int = 32,
         timeout_s: builtins.float = 3600.0,
+        hedge_delay: typing.Optional[builtins.float] = None,
     ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -560,6 +587,7 @@ class PerformanceClient:
             payloads: A list of Python objects that are JSON-serializable.
             max_concurrent_requests: Maximum number of parallel requests.
             timeout_s: Total timeout in seconds for the batch operation.
+            hedge_delay: Optional request hedging delay in seconds.
 
         Returns:
             An awaitable BatchPostResponse object.

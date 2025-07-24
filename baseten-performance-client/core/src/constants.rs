@@ -10,6 +10,12 @@ pub const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
 pub const MAX_CONCURRENCY_LOW_BATCH: usize = 512;
 pub const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
 pub const DEFAULT_CONCURRENCY: usize = 32;
+pub const MIN_CHARACTERS_PER_REQUEST: usize = 50;
+pub const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
+
+// hedging settings:
+pub const MIN_HEDGE_DELAY_S: f64 = 0.2;
+pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.05;
 
 // Batch size constants
 pub const MAX_BATCH_SIZE: usize = 1024;
@@ -30,11 +36,5 @@ pub const HTTP2_CLIENT_MAX_QUEUED: usize = 8;
 pub const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
 pub const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C";
 
-// Provider warnings
+// Slow providers where customers have reported issues
 pub const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
-
-// Staging address (encrypted)
-pub const DEFAULT_STAGING_ADDRESS: &[u8] = &[
-    0x61, 0x70, 0x70, 0x2e, 0x73, 0x74, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x62, 0x61, 0x73, 0x65,
-    0x74, 0x65, 0x6e, 0x2e, 0x63, 0x6f, 0x2c,
-];

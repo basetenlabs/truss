@@ -17,7 +17,7 @@ if not api_key:
 api_base_embed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
 
 # Benchmark settings: list of lengths to test.
-benchmark_lengths = [64, 128, 256, 384, 512, 2048, 8192, 32768, 131072]
+benchmark_lengths = [16, 64, 128, 256, 384, 512, 2048, 8192, 32768, 131072]
 micro_batch_size = (
     16  # For AsyncOpenAI client; also used for the PerformanceClient batch
 )
@@ -88,9 +88,13 @@ async def run_baseten_benchmark(length, client=client_b):
         model="text-embedding-3-small",
         max_concurrent_requests=512,
         batch_size=micro_batch_size,
+        hedge_delay=4,
+        max_chars_per_request=200,
     )
     embeddings_array = response.numpy()
     time_end = time.monotonic()
+    p90 = np.percentile(response.individual_request_times, 90)
+    p99 = np.percentile(response.individual_request_times, 99)
     duration = time_end - time_start
 
     # Stop CPU monitoring
@@ -103,6 +107,9 @@ async def run_baseten_benchmark(length, client=client_b):
     assert isinstance(response, OpenAIEmbeddingsResponse)
     assert len(response.data) == length
     assert embeddings_array.shape[0] == length
+    assert list(range(length)) == [item.index for item in response.data], (
+        "Response indices do not match input order."
+    )
 
     return {
         "client": "PerformanceClient HTTP",
@@ -112,6 +119,8 @@ async def run_baseten_benchmark(length, client=client_b):
         "avg_cpu": avg_cpu,
         "readings": len(cpu_readings),
         "max_ram": max_ram,
+        "p90": p90,
+        "p99": p99,
     }
 
 
@@ -185,13 +194,13 @@ async def run_all_benchmarks():
         )
         res_baseten = await run_baseten_benchmark(length, client_b)
         print(
-            f"PerformanceClient HTTP1: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%, max_ram={res_baseten['max_ram']:.2f} MB"
+            f"PerformanceClient HTTP1: duration={res_baseten['duration']:.4f} s, max_cpu={res_baseten['max_cpu']:.2f}%, max_ram={res_baseten['max_ram']:.2f} MB p90={res_baseten['p90']:.4f}, p99={res_baseten['p99']:.4f}"
         )
         results.append(res_baseten)
 
         res_baseten_http2 = await run_baseten_benchmark(length, client_b_http2)
         print(
-            f"PerformanceClient HTTP2: duration={res_baseten_http2['duration']:.4f} s, max_cpu={res_baseten_http2['max_cpu']:.2f}%, max_ram={res_baseten_http2['max_ram']:.2f} MB"
+            f"PerformanceClient HTTP2: duration={res_baseten_http2['duration']:.4f} s, max_cpu={res_baseten_http2['max_cpu']:.2f}%, max_ram={res_baseten_http2['max_ram']:.2f} MB p90={res_baseten_http2['p90']:.4f}, p99={res_baseten_http2['p99']:.4f}"
         )
         res_baseten_http2["client"] = "PerformanceClient HTTP2"
         results.append(res_baseten_http2)
@@ -214,6 +223,7 @@ def write_results_csv(results, filename="benchmark_results.csv"):
         "readings",
         "max_ram",
     ]
+    results = [{k: v for k, v in r.items() if k in fieldnames} for r in results]
     with open(filename, "w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
