@@ -46,8 +46,10 @@ jobs:
       - name: test integration with fastapi server
         run: |
           source .venv/bin/activate
-          pip install fastapi uvicorn
+          pip install fastapi uvicorn anyio pytest
           python ./tests/integration_fastapi_server.py
+          python -m pytest tests
+
 
       - name: Install musl-tools
         run: sudo apt-get update && sudo apt-get install -y musl-tools libssl-dev libatomic-ops-dev
