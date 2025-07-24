@@ -43,10 +43,10 @@ jobs:
         run: |
           source .venv/bin/activate
           python -c "import baseten_performance_client; print(baseten_performance_client.__version__)"
-      - name: Download github file & test real bptr resolution
+      - name: test integration with fastapi server
         run: |
           source .venv/bin/activate
-          pip install fastapi
+          pip install fastapi uvicorn
           python ./tests/integration_fastapi_server.py
 
       - name: Install musl-tools
