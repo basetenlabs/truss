@@ -854,9 +854,9 @@ async fn send_request_with_retry(
             }
             Err(client_error) => {
                 // For network errors, check if we have a retry budget.
-                eprintln!("some error {:?}", client_error);
                 match client_error {
                     ClientError::Timeout(_) => {
+                        println!("client timeout error: {}", client_error);
                         config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                     }
                     ClientError::Connect(_) => retries_done <= 1,
@@ -936,6 +936,7 @@ async fn send_request_with_hedging(
                     result = &mut hedge_request => {
                         // Hedge request completed first
                         original_request.abort();
+                        println!("hedged request completed first, original request cancelled");
                         match result {
                             Ok(response_result) => response_result.map_err(ClientError::from),
                             Err(join_err) => Err(ClientError::Network(format!("Hedge request task failed: {}", join_err))),

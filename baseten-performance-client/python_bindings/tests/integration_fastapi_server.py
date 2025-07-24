@@ -133,7 +133,8 @@ def build_server():
             if hijack_payload.stall_x_many_requests >= processed_requests:
                 if hijack_payload.internal_server_error_no_stall:
                     raise fastapi.HTTPException(
-                        status_code=500, detail="Internal server error, no stall."
+                        status_code=500,
+                        detail="Internal server error, no stall, please retry another replica.",
                     )
                 elif hijack_payload.stall_for_seconds is not None:
                     await asyncio.sleep(hijack_payload.stall_for_seconds)
@@ -329,8 +330,12 @@ def run_client():
             "Indexes should match the range of number_of_requests"
         )
         reset_message = client.batch_post("/reset", [{}]).data[0]
-        assert reset_message["processed_requests"] >= number_of_requests // 4, (
-            "Processed requests should match the number of requests divided by batch size"
+        assert (
+            reset_message["processed_requests"]
+            == number_of_requests + stall_x_many_requests
+        ), "Processed requests should match the number of requests + stalled requests"
+        assert reset_message["successful_requests"] == number_of_requests, (
+            "Successful requests should match the number of requests"
         )
         print(f"Scenario stalled with {number_of_requests} requests passed.")
 
