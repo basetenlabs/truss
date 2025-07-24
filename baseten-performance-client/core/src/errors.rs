@@ -5,6 +5,7 @@ use std::fmt;
 pub enum ClientError {
     Timeout(String),
     Network(String),
+    Connect(String),
     Http { status: u16, message: String },
     InvalidParameter(String),
     Serialization(String),
@@ -19,6 +20,7 @@ impl fmt::Display for ClientError {
             ClientError::Http { status, message } => {
                 write!(f, "HTTP {} error: {}", status, message)
             }
+            ClientError::Connect(msg) => write!(f, "Connection error: {}", msg),
             ClientError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
             ClientError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             ClientError::Cancellation(msg) => write!(f, "Operation cancelled: {}", msg),
@@ -30,12 +32,19 @@ impl Error for ClientError {}
 
 impl From<reqwest::Error> for ClientError {
     fn from(err: reqwest::Error) -> Self {
+        let mut message = err.to_string();
+        let mut source = err.source();
+        while let Some(e) = source {
+            message.push_str(&format!("\n  caused by: {}", e));
+            source = e.source();
+        }
+
         if err.is_timeout() {
-            ClientError::Timeout(err.to_string())
+            ClientError::Timeout(message)
         } else if err.is_connect() {
-            ClientError::Network(format!("Connection error: {}", err))
+            ClientError::Connect(message)
         } else {
-            ClientError::Network(err.to_string())
+            ClientError::Network(message)
         }
     }
 }

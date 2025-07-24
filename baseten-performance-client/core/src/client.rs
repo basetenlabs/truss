@@ -17,7 +17,7 @@ use tokio::task::JoinSet;
 pub struct SendRequestConfig {
     pub max_retries: u32,
     pub initial_backoff: Duration,
-    pub retry_budget: Option<Arc<AtomicUsize>>,
+    pub retry_budget: Arc<AtomicUsize>,
     pub cancel_token: Arc<AtomicBool>,
     pub hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
     pub timeout: Duration,
@@ -28,7 +28,7 @@ impl SendRequestConfig {
     pub fn new(
         max_retries: u32,
         initial_backoff: Duration,
-        retry_budget: Option<Arc<AtomicUsize>>,
+        retry_budget: Arc<AtomicUsize>,
         cancel_token: Arc<AtomicBool>,
         hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
         timeout: Duration,
@@ -274,10 +274,12 @@ impl PerformanceClientCore {
             total_requests,
         )));
         let cancel_token = Arc::new(AtomicBool::new(false));
-        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| (
-                    Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
-                    Duration::from_secs_f64(delay),
-                ));
+        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| {
+            (
+                Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
+                Duration::from_secs_f64(delay),
+            )
+        });
 
         // Calculate expected capacity from original batches for pre-allocation
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
@@ -314,7 +316,7 @@ impl PerformanceClientCore {
                 let config = SendRequestConfig {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget),
+                    retry_budget: retry_budget,
                     cancel_token: cancel_token.clone(),
                     hedge_budget: hedge_config,
                     timeout: request_timeout_duration,
@@ -382,8 +384,7 @@ impl PerformanceClientCore {
         config: &RequestProcessingConfig,
     ) -> Vec<Vec<String>> {
         if let Some(max_chars) = config.max_chars_per_request {
-            let policy =
-                SplitPolicy::max_chars_per_request(max_chars, config.batch_size);
+            let policy = SplitPolicy::max_chars_per_request(max_chars, config.batch_size);
             inputs.split(&policy)
         } else {
             inputs
@@ -420,7 +421,8 @@ impl PerformanceClientCore {
         let batches = self.create_batches_with_config(texts, &config);
 
         // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> = format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
+        let endpoint_url: Arc<str> =
+            format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
 
         let (mut response, durations, total_time) = self
             .process_batched_requests(
@@ -478,7 +480,8 @@ impl PerformanceClientCore {
         let batches = self.create_batches_with_config(texts, &config);
 
         // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> = format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
+        let endpoint_url: Arc<str> =
+            format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
 
         let (results, durations, total_time) = self
             .process_batched_requests(
@@ -538,7 +541,8 @@ impl PerformanceClientCore {
         let batches = self.create_batches_with_config(inputs, &config);
 
         // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> = format!("{}/predict", config.base_url.trim_end_matches('/')).into();
+        let endpoint_url: Arc<str> =
+            format!("{}/predict", config.base_url.trim_end_matches('/')).into();
 
         let (results, durations, total_time) = self
             .process_batched_requests(
@@ -654,7 +658,7 @@ impl PerformanceClientCore {
                 let config = SendRequestConfig {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: Some(retry_budget),
+                    retry_budget: retry_budget,
                     cancel_token: cancel_token.clone(),
                     hedge_budget,
                     timeout: individual_request_timeout,
@@ -819,32 +823,55 @@ async fn send_request_with_retry(
             ClientError::Network("Failed to clone request builder for retry".to_string())
         })?;
 
-        // Only hedge on the first request (retries_done == 0)
-        let should_hedge = retries_done == 0 && config.hedge_budget.is_some();
+        // Only hedge on the first request (retries_done <= 1)
+        let should_hedge = retries_done <= 1 && config.hedge_budget.is_some();
 
-        let response = if should_hedge {
-            send_request_with_hedging(request_builder_clone, config).await?
+        let response_result = if should_hedge {
+            send_request_with_hedging(request_builder_clone, config).await
         } else {
             request_builder_clone
                 .send()
                 .await
-                .map_err(ClientError::from)?
+                .map_err(ClientError::from)
         };
 
-        if response.status().is_success() {
-            return Ok(response);
-        }
+        let should_retry = match &response_result {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    return Ok(response_result.unwrap());
+                }
 
-        let status = response.status();
-        if status.as_u16() == 429 || status.is_server_error() {
-            if retries_done >= max_retries {
-                return ensure_successful_response(response).await;
+                let is_retryable_status = status.as_u16() == 429 || status.is_server_error();
+                if is_retryable_status {
+                    true
+                } else {
+                    // For non-retryable client errors (e.g., 400), cancel other requests and propagate the error.
+                    config.cancel_token.store(true, Ordering::SeqCst);
+                    false
+                }
             }
-        } else if status.is_client_error() {
-            config.cancel_token.store(true, Ordering::SeqCst);
-            return ensure_successful_response(response).await;
-        } else {
-            return ensure_successful_response(response).await;
+            Err(client_error) => {
+                // For network errors, check if we have a retry budget.
+                match client_error {
+                    ClientError::Timeout(_) => {
+                        println!("client timeout error: {}", client_error);
+                        config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
+                    }
+                    ClientError::Connect(_) => retries_done <= 1,
+                    _ => false,
+                }
+            }
+        };
+        let should_retry = should_retry
+            && !config.cancel_token.load(Ordering::SeqCst)
+            && retries_done < max_retries;
+
+        if !should_retry {
+            return match response_result {
+                Ok(resp) => ensure_successful_response(resp).await,
+                Err(err) => Err(err),
+            };
         }
 
         retries_done += 1;
@@ -873,7 +900,8 @@ async fn send_request_with_hedging(
     })?;
 
     // Start the original request
-    let mut original_request = tokio::spawn(async move { request_builder.send().await });
+    let mut original_request =
+        tokio::spawn(async move { request_builder.send().await.map_err(ClientError::from) });
 
     // Wait for hedge delay
     let hedge_timer = tokio::time::sleep(*hedge_delay);
@@ -907,6 +935,7 @@ async fn send_request_with_hedging(
                     result = &mut hedge_request => {
                         // Hedge request completed first
                         original_request.abort();
+                        println!("hedged request completed first, original request cancelled");
                         match result {
                             Ok(response_result) => response_result.map_err(ClientError::from),
                             Err(join_err) => Err(ClientError::Network(format!("Hedge request task failed: {}", join_err))),

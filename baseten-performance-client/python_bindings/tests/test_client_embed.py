@@ -211,7 +211,7 @@ def test_embedding_high_volume_return_instant():
             batch_size=1,
             max_concurrent_requests=1,
         )
-    assert "Connection error" in str(excinfo.value)
+    assert "(Connect)" in str(excinfo.value)
     assert time.time() - t_0 < 5, (
         "Request took too long to fail seems like you didn't implement drop on first error"
     )

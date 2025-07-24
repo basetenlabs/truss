@@ -2,9 +2,18 @@ name: Test truss-transfer
 
 on:
   push:
+    branches:
+      - main
+      - master
+    paths:
+      - "truss-transfer/**"
+      - ".github/workflows/**"
     tags:
       - "*"
   pull_request:
+    paths:
+      - "truss-transfer/**"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:

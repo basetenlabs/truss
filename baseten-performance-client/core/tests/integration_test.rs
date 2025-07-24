@@ -73,7 +73,7 @@ async fn test_combine_responses() {
         response_headers: Vec::new(),
     };
 
-    let combined = CoreOpenAIEmbeddingsResponse::combine(vec![response1, response2]);
+    let combined = CoreOpenAIEmbeddingsResponse::combine(vec![response1, response2], 2);
 
     assert_eq!(combined.data.len(), 2);
     assert_eq!(combined.usage.prompt_tokens, 18);
@@ -113,7 +113,7 @@ fn test_rerank_response_combine() {
         Some(vec![0.7]),
     );
 
-    let combined = CoreRerankResponse::combine(vec![response1, response2]);
+    let combined = CoreRerankResponse::combine(vec![response1, response2], 2);
 
     assert_eq!(combined.data.len(), 2);
     assert_eq!(combined.data[0].score, 0.9);
@@ -144,7 +144,7 @@ fn test_classification_response_combine() {
         Some(vec![0.7]),
     );
 
-    let combined = CoreClassificationResponse::combine(vec![response1, response2]);
+    let combined = CoreClassificationResponse::combine(vec![response1, response2], 2);
 
     assert_eq!(combined.data.len(), 2);
     assert_eq!(combined.data[0][0].label, "positive");
@@ -160,12 +160,13 @@ fn test_send_request_config_hedge_timeout_validation() {
 
     let cancel_token = Arc::new(AtomicBool::new(false));
     let hedge_budget = Arc::new(AtomicUsize::new(100));
+    let retry_budget = Arc::new(AtomicUsize::new(100));
 
     // Test case 1: hedge timeout higher than request timeout (should succeed)
     let result = SendRequestConfig::new(
         3,
         Duration::from_millis(100),
-        None,
+        retry_budget.clone(),
         cancel_token.clone(),
         Some((hedge_budget.clone(), Duration::from_secs(2))), // hedge timeout = 2s
         Duration::from_secs(1),                               // request timeout = 1s
@@ -179,7 +180,7 @@ fn test_send_request_config_hedge_timeout_validation() {
     let result = SendRequestConfig::new(
         3,
         Duration::from_millis(100),
-        None,
+        retry_budget.clone(),
         cancel_token.clone(),
         Some((hedge_budget.clone(), Duration::from_secs(1))), // hedge timeout = 1s
         Duration::from_secs(1),                               // request timeout = 1s
@@ -193,7 +194,7 @@ fn test_send_request_config_hedge_timeout_validation() {
     let result = SendRequestConfig::new(
         3,
         Duration::from_millis(100),
-        None,
+        retry_budget.clone(),
         cancel_token.clone(),
         Some((hedge_budget.clone(), Duration::from_millis(500))), // hedge timeout = 0.5s
         Duration::from_secs(1),                                   // request timeout = 1s
@@ -207,7 +208,7 @@ fn test_send_request_config_hedge_timeout_validation() {
     let result = SendRequestConfig::new(
         3,
         Duration::from_millis(100),
-        None,
+        retry_budget.clone(),
         cancel_token.clone(),
         None, // no hedge budget
         Duration::from_secs(1),

@@ -301,6 +301,7 @@ impl PerformanceClient {
             ClientError::Serialization(msg) => PyValueError::new_err(msg),
             ClientError::Network(msg) => PyValueError::new_err(msg),
             ClientError::Cancellation(msg) => PyValueError::new_err(msg),
+            ClientError::Connect(msg) => PyValueError::new_err(msg),
         }
     }
 }

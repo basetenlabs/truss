@@ -1,0 +1,69 @@
+name: Test baseten-performance-client
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "baseten-performance-client/**"
+      - ".github/workflows/**"
+    tags:
+      - "*"
+  pull_request:
+    paths:
+      - "baseten-performance-client/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: baseten-performance-client/python_bindings
+
+jobs:
+  test-baseten-performance-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Create venv
+        run: python3 -m venv .venv
+      - name: Build wheels for python
+        uses: PyO3/maturin-action@v1
+        with:
+          command: develop
+          sccache: "false"
+          working-directory: baseten-performance-client/python_bindings
+      - name: Try import baseten-performance-client-maturin-publish
+        run: |
+          source .venv/bin/activate
+          python -c "import baseten_performance_client; print(baseten_performance_client.__version__)"
+      - name: test integration with fastapi server
+        run: |
+          source .venv/bin/activate
+          pip install fastapi uvicorn anyio pytest
+          python ./tests/integration_fastapi_server.py
+          export BASETEN_API_KEY="wrong"
+          python -m pytest tests
+
+
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools libssl-dev libatomic-ops-dev
+
+      - name: Install Rust with musl target
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rust-src
+          working-directory: baseten-performance-client
+
+      - name: Rust tests
+        run: |
+          cd .. # outside the python bindings
+          cargo test --release

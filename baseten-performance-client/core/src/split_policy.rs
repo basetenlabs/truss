@@ -349,7 +349,6 @@ impl Combinable for CoreClassificationResponse {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,7 +431,7 @@ mod tests {
             response_headers: Vec::new(),
         };
 
-        let combined = CoreOpenAIEmbeddingsResponse::combine(vec![response1, response2]);
+        let combined = CoreOpenAIEmbeddingsResponse::combine(vec![response1, response2], 2);
 
         assert_eq!(combined.data.len(), 2);
         assert_eq!(combined.usage.prompt_tokens, 18);
@@ -478,7 +477,7 @@ mod tests {
             response_headers: Vec::new(),
         };
 
-        let combined = CoreOpenAIEmbeddingsResponse::combine(vec![response1, response2]);
+        let combined = CoreOpenAIEmbeddingsResponse::combine(vec![response1, response2], 2);
 
         assert_eq!(combined.data.len(), 2);
         // Check that the order is [response1.data, response2.data], not sorted by index.
