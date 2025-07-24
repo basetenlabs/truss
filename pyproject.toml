@@ -184,7 +184,7 @@ markers = [
     "asyncio: marks tests as async.",
 ]
 # specify basetemp because the default `/private/var/...` interferes with truss_ignore, which also has a var/ pattern
-addopts = "--ignore=smoketests --ignore=baseten-performance-client/tests --basetemp=/tmp/pytest-temp"
+addopts = "--ignore=smoketests --ignore=baseten-performance-client --basetemp=/tmp/pytest-temp"
 
 [tool.ruff]
 src = [".", "truss-chains", "truss-train"]

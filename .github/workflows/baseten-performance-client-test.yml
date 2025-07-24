@@ -48,6 +48,7 @@ jobs:
           source .venv/bin/activate
           pip install fastapi uvicorn anyio pytest
           python ./tests/integration_fastapi_server.py
+          export BASETEN_API_KEY="wrong"
           python -m pytest tests
 
 
