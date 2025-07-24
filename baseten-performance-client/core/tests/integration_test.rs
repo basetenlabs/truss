@@ -153,7 +153,7 @@ fn test_classification_response_combine() {
 
 #[test]
 fn test_send_request_config_hedge_timeout_validation() {
-    use baseten_performance_client_core::client::SendRequestConfig;
+    use baseten_performance_client_core::http_client::SendRequestConfig;
     use std::sync::atomic::{AtomicBool, AtomicUsize};
     use std::sync::Arc;
     use std::time::Duration;
