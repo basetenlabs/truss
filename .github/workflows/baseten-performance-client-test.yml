@@ -21,7 +21,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: baseten-performance-client # Keeps default for run commands
+    working-directory: baseten-performance-client/python_bindings
 
 jobs:
   test-baseten-performance-client:
