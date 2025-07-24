@@ -80,7 +80,7 @@ def build_server():
     app.state.storage = {"processed_requests": 0, "successful_requests": 0}
     app.state.async_lock = asyncio.Lock()
 
-    def validate_hijack_payload(inputs: list[str]) -> HijackPayload:
+    def validate_hijack_payload(inputs: list[str]) -> list[HijackPayload]:
         """
         Validate the hijack payload.
         """
