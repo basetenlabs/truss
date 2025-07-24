@@ -21,7 +21,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: baseten-performance-client/python_bindings # Keeps default for run commands
+    working-directory: baseten-performance-client # Keeps default for run commands
 
 jobs:
   test-baseten-performance-client:
@@ -36,7 +36,6 @@ jobs:
       - name: Build wheels for python
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: baseten-performance-client
           command: develop
           sccache: "false"
       - name: Try import baseten-performance-client-maturin-publish
@@ -58,8 +57,10 @@ jobs:
           toolchain: stable
           override: true
           components: rust-src
+          working-directory: baseten-performance-client
 
       - name: Rust tests
+        with:
+          working-directory: baseten-performance-client
         run: |
-          cd ..
           cargo test --release
