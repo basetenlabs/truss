@@ -1,4 +1,3 @@
-use crate::client;
 use crate::constants::*;
 use crate::errors::ClientError;
 use crate::http::*;
