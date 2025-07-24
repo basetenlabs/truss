@@ -38,6 +38,7 @@ jobs:
         with:
           command: develop
           sccache: "false"
+          working-directory: baseten-performance-client/python_bindings
       - name: Try import baseten-performance-client-maturin-publish
         run: |
           source .venv/bin/activate
