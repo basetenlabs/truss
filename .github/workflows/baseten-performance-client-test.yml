@@ -60,7 +60,6 @@ jobs:
           working-directory: baseten-performance-client
 
       - name: Rust tests
-        with:
-          working-directory: baseten-performance-client
         run: |
+          cd .. # outside the python bindings
           cargo test --release
