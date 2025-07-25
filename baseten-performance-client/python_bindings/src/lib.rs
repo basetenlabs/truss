@@ -293,15 +293,25 @@ struct BatchPostResponse {
 #[pyclass]
 struct EventStreamIter {
     receiver: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<StreamEvent>>>,
-    #[allow(dead_code)]
-    task_handle: Option<JoinHandle<()>>,
+    task_handle: JoinHandle<()>,
     runtime: Arc<Runtime>,
+}
+impl Drop for EventStreamIter {
+    fn drop(&mut self) {
+        // When the iterator is garbage collected, ensure the background task is aborted.
+        self.task_handle.abort();
+    }
 }
 
 #[pymethods]
 impl EventStreamIter {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
+    }
+
+    fn abort(&self) {
+        // Abort the background task if it is still running
+        self.task_handle.abort();
     }
 
     fn __next__(&self, py: Python) -> PyResult<Option<PyObject>> {
@@ -1007,7 +1017,7 @@ impl PerformanceClient {
             py,
             EventStreamIter {
                 receiver: Arc::new(tokio::sync::Mutex::new(rx)),
-                task_handle: Some(handle),
+                task_handle: handle,
                 runtime: Arc::clone(&GLOBAL_RUNTIME),
             },
         )
@@ -1039,7 +1049,7 @@ impl PerformanceClient {
                     py,
                     EventStreamIter {
                         receiver: Arc::new(tokio::sync::Mutex::new(rx)),
-                        task_handle: Some(handle),
+                        task_handle: handle,
                         runtime: Arc::clone(&GLOBAL_RUNTIME),
                     },
                 )
