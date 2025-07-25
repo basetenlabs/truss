@@ -690,7 +690,7 @@ impl PerformanceClientCore {
 
     /// Start streaming SSE events from the given endpoint
     /// Returns a receiver for StreamEvents and a handle to the background task
-    pub fn stream_events(
+    pub fn stream(
         &self,
         endpoint: &str,
         payload: serde_json::Value,
