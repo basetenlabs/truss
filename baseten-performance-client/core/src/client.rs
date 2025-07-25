@@ -206,7 +206,7 @@ impl PerformanceClientCore {
             );
         }
 
-        let sse_client = Arc::new(SSEClient::new(api_key.clone(), base_url.clone()));
+        let sse_client = Arc::new(SSEClient::new(api_key.clone(), base_url.clone(), http_version));
 
         Ok(PerformanceClientCore {
             api_key,

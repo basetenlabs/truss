@@ -32,15 +32,17 @@ pub struct SSEClient {
 }
 
 impl SSEClient {
-    pub fn new(api_key: String, base_url: String) -> Self {
+    pub fn new(api_key: String, base_url: String, http_version: u8) -> Self {
         // Create optimized hyper client with connection pooling
-        let connector = hyper_rustls::HttpsConnectorBuilder::new()
+        let builder = hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
-            .https_or_http()
-            .enable_http1()
-            .enable_http2()
-            .build();
+            .https_or_http();
 
+        let connector = if http_version == 2 {
+            builder.enable_http2().build()
+        } else {
+            builder.enable_http1().build()
+        };
 
         let http_client = Arc::new(
             hyper::Client::builder()
