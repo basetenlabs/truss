@@ -82,6 +82,7 @@ pub struct PerformanceClientCore {
     pub api_key: String,
     pub base_url: Arc<str>,
     pub client_wrapper: HttpClientWrapper,
+    pub sse_client: Arc<SSEClient>,
 }
 
 impl PerformanceClientCore {
@@ -205,10 +206,13 @@ impl PerformanceClientCore {
             );
         }
 
+        let sse_client = Arc::new(SSEClient::new(api_key.clone(), base_url.clone()));
+
         Ok(PerformanceClientCore {
             api_key,
             base_url: base_url.into(),
             client_wrapper,
+            sse_client,
         })
     }
 }
@@ -692,7 +696,6 @@ impl PerformanceClientCore {
         payload: serde_json::Value,
         method: Option<String>,
     ) -> Result<(tokio::sync::mpsc::Receiver<StreamEvent>, JoinHandle<()>), ClientError> {
-        let sse_client = SSEClient::new(self.api_key.clone(), self.base_url.to_string());
-        sse_client.stream_events(endpoint, payload, method.unwrap_or("POST".to_string()))
+        self.sse_client.stream(endpoint, payload, method.unwrap_or("POST".to_string()))
     }
 }
