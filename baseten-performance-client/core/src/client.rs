@@ -695,30 +695,4 @@ impl PerformanceClientCore {
         let sse_client = SSEClient::new(self.api_key.clone(), self.base_url.to_string());
         sse_client.stream_events(endpoint, payload, method.unwrap_or("POST".to_string()))
     }
-
-    // /// Convenience method for streaming chat completions (OpenAI-compatible)
-    // pub fn stream_chat_completions(
-    //     &self,
-    //     messages: Vec<serde_json::Value>,
-    //     model: String,
-    //     max_tokens: Option<u32>,
-    //     temperature: Option<f32>,
-    //     stream: bool,
-    // ) -> Result<(tokio::sync::mpsc::Receiver<StreamEvent>, JoinHandle<()>), ClientError> {
-    //     let mut payload = serde_json::json!({
-    //         "messages": messages,
-    //         "model": model,
-    //         "stream": stream
-    //     });
-
-    //     if let Some(max_tokens) = max_tokens {
-    //         payload["max_tokens"] = serde_json::Value::Number(max_tokens.into());
-    //     }
-
-    //     if let Some(temperature) = temperature {
-    //         payload["temperature"] = serde_json::json!(temperature);
-    //     }
-
-    //     self.stream_events("v1/chat/completions", payload)
-    // }
 }
