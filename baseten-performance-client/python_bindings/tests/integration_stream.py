@@ -18,6 +18,14 @@ payload = {
     "stream_options": {"include_usage": True},
     "temperature": 0.0,
 }
+endpoint = "/v1/chat/completions"
+headers = {
+    "Authorization": f"Bearer {api_key}",
+    "Content-Type": "application/json",
+    "Accept": "text/event-stream",
+}
+VERBOSE = False
+
 client = PerformanceClient(base_url_stream, api_key=api_key)
 session = requests.Session()
 
@@ -39,16 +47,6 @@ def is_deployment_reachable(base_url, route="/v1/chat/completions", timeout=10):
     not is_deployment_reachable(base_url_stream), reason="Deployment not reachable"
 )
 def test_streaming():
-    # Define the endpoint and payload
-    endpoint = "/v1/chat/completions"
-    payload = {
-        "model": "my_model",
-        "messages": [{"role": "user", "content": "Tell me a very very long story."}],
-        "stream": True,
-        "max_tokens": 100,
-        "stream_options": {"include_usage": True},
-    }
-
     # Start streaming
     t = time.time()
     stream = client.stream(endpoint, payload)
@@ -65,7 +63,8 @@ def test_streaming():
     # Check if we received the expected number of events
     assert len(events) > 0, "No events received from the stream"
     times = [event[1] for event in events]
-    print(f"Received {len(events)} events in {times[-1]:.2f} seconds using sync")
+    if VERBOSE:
+        print(f"Received {len(events)} events in {times[-1]:.2f} seconds using sync")
     return times
 
 
@@ -73,9 +72,6 @@ def test_streaming():
     not is_deployment_reachable(base_url_stream), reason="Deployment not reachable"
 )
 async def test_streaming_async():
-    # Define the endpoint and payload
-    endpoint = "/v1/chat/completions"
-
     # Start streaming
     t = time.time()
     stream = await client.async_stream(endpoint, payload)
@@ -92,7 +88,8 @@ async def test_streaming_async():
     # Check if we received the expected number of events
     assert len(events) > 0, "No events received from the stream"
     times = [event[1] for event in events]
-    print(f"Received {len(events)} events in {times[-1]:.2f} seconds using async")
+    if VERBOSE:
+        print(f"Received {len(events)} events in {times[-1]:.2f} seconds using async")
     return times
 
 
@@ -100,13 +97,6 @@ async def test_streaming_async():
     not is_deployment_reachable(base_url_stream), reason="Deployment not reachable"
 )
 def test_streaming_requests_python():
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-    }
-    endpoint = "/v1/chat/completions"
-
     t = time.time()
 
     response = session.post(
@@ -132,23 +122,23 @@ def test_streaming_requests_python():
 
     assert len(events) > 0, "No events received from the stream"
     times = [event[1] for event in events]
-    print(f"Received {len(events)} events in {times[-1]:.2f} seconds using requests")
+    if VERBOSE:
+        print(
+            f"Received {len(events)} events in {times[-1]:.2f} seconds using requests"
+        )
     return times
 
 
 async def non_streaming_client():
-    # Define the endpoint and payload
-    endpoint = "/v1/chat/completions"
-    payload = {
-        "model": "my_model",
-        "messages": [{"role": "user", "content": "Tell me a very very long story."}],
-        "max_tokens": 100,
-        "temperature": 0.0,
-    }
+    payload_2 = payload.copy()
+    payload_2["stream"] = False  # Disable streaming for this request
     t = time.time()
-    await client.async_batch_post(endpoint, [payload])
+    await client.async_batch_post(endpoint, [payload_2])
     times = [time.time() - t]
-    print(f"Received response in {times[-1]:.2f} seconds using non-streaming client")
+    if VERBOSE:
+        print(
+            f"Received response in {times[-1]:.2f} seconds using non-streaming client"
+        )
     return times
 
 
@@ -184,7 +174,7 @@ if __name__ == "__main__":
     # print(f"Sync: {t1}, Async: {t2}, Requests: {t3}")
 
     # run each 10 times in parallel
-    number = 10
+    number = 50
     print(f"Running sync in parallel {number} times...")
     sync_results = make_function_pool(number, test_streaming)
     print(f"Sync results: {sync_results}")
