@@ -364,20 +364,21 @@ impl EventStreamIter {
                 Some(StreamEvent::Json(value)) => {
                     // Convert JSON (serde_json::Value) to a Python object (dict/list/etc)
                     Python::with_gil(|py| {
-                        let py_obj = pythonize::pythonize(py, &value)
-                            .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+                        let py_obj = pythonize::pythonize(py, &value).map_err(|e| {
+                            PyValueError::new_err(format!("JSON parse error: {}", e))
+                        })?;
                         Ok(py_obj.into_py(py))
                     })
                 }
                 Some(StreamEvent::Text(text)) => {
                     // Return plain text as Python str
-                    Python::with_gil(|py| {
-                        Ok(PyString::new(py, &text).into_py(py))
-                    })
+                    Python::with_gil(|py| Ok(PyString::new(py, &text).into_py(py)))
                 }
                 Some(StreamEvent::End) => {
                     // Signal end of iteration by raising StopAsyncIteration
-                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err("Stream ended"))
+                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err(
+                        "Stream ended",
+                    ))
                 }
                 Some(StreamEvent::Error(err)) => {
                     // Convert our ClientError into a Python exception
@@ -385,7 +386,9 @@ impl EventStreamIter {
                 }
                 None => {
                     // Channel closed unexpectedly. End iteration.
-                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err("Stream closed"))
+                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err(
+                        "Stream closed",
+                    ))
                 }
             }
         };
@@ -393,8 +396,6 @@ impl EventStreamIter {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 }
-
-
 
 #[pyclass]
 struct PerformanceClient {
