@@ -4,6 +4,7 @@ pub mod errors;
 pub mod http;
 pub mod http_client;
 pub mod split_policy;
+pub mod sse_specifics;
 pub mod utils;
 
 pub use client::PerformanceClientCore;

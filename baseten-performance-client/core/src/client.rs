@@ -3,6 +3,7 @@ use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
 use crate::split_policy::*;
+use crate::sse_specifics::{SSEClient, StreamEvent};
 use crate::utils::{
     acquire_permit_or_cancel, calculate_hedge_budget, calculate_retry_timeout_budget,
     process_joinset_outcome,
@@ -14,7 +15,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle, JoinSet};
 
 
 #[derive(Clone)]
@@ -682,4 +683,42 @@ impl PerformanceClientCore {
         let total_time = start_time.elapsed();
         Ok((final_results, total_time))
     }
+
+    /// Start streaming SSE events from the given endpoint
+    /// Returns a receiver for StreamEvents and a handle to the background task
+    pub fn stream_events(
+        &self,
+        endpoint: &str,
+        payload: serde_json::Value,
+        method: Option<String>,
+    ) -> Result<(tokio::sync::mpsc::Receiver<StreamEvent>, JoinHandle<()>), ClientError> {
+        let sse_client = SSEClient::new(self.api_key.clone(), self.base_url.to_string());
+        sse_client.stream_events(endpoint, payload, method.unwrap_or("POST".to_string()))
+    }
+
+    // /// Convenience method for streaming chat completions (OpenAI-compatible)
+    // pub fn stream_chat_completions(
+    //     &self,
+    //     messages: Vec<serde_json::Value>,
+    //     model: String,
+    //     max_tokens: Option<u32>,
+    //     temperature: Option<f32>,
+    //     stream: bool,
+    // ) -> Result<(tokio::sync::mpsc::Receiver<StreamEvent>, JoinHandle<()>), ClientError> {
+    //     let mut payload = serde_json::json!({
+    //         "messages": messages,
+    //         "model": model,
+    //         "stream": stream
+    //     });
+
+    //     if let Some(max_tokens) = max_tokens {
+    //         payload["max_tokens"] = serde_json::Value::Number(max_tokens.into());
+    //     }
+
+    //     if let Some(temperature) = temperature {
+    //         payload["temperature"] = serde_json::json!(temperature);
+    //     }
+
+    //     self.stream_events("v1/chat/completions", payload)
+    // }
 }

@@ -1,13 +1,16 @@
+use baseten_performance_client_core::sse_specifics::StreamEvent;
 use baseten_performance_client_core::*;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyString;
 use pyo3_async_runtimes;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
 
 // --- Global Tokio Runtime (Python-specific) ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -284,6 +287,59 @@ struct BatchPostResponse {
     total_time: f64,
     individual_request_times: Vec<f64>,
     response_headers: Vec<PyObject>,
+}
+
+// --- Streaming Types ---
+#[pyclass]
+struct EventStreamIter {
+    receiver: Mutex<tokio::sync::mpsc::Receiver<StreamEvent>>,
+    #[allow(dead_code)]
+    task_handle: Option<JoinHandle<()>>,
+}
+
+#[pymethods]
+impl EventStreamIter {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(mut slf: PyRefMut<'_, Self>, py: Python) -> PyResult<Option<PyObject>> {
+        // Extract the receiver to avoid borrowing issues
+        let receiver = slf.receiver.get_mut().unwrap();
+
+        // Wait for the next event from the channel, without blocking the GIL
+        let msg = py.allow_threads(|| {
+            // Use blocking_recv to receive synchronously
+            receiver.blocking_recv()
+        });
+
+        match msg {
+            Some(StreamEvent::Json(value)) => {
+                // Convert JSON (serde_json::Value) to a Python object (dict/list/etc)
+                let py_obj = pythonize::pythonize(py, &value)
+                    .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+                #[allow(deprecated)]
+                Ok(Some(py_obj.to_object(py)))
+            }
+            Some(StreamEvent::Text(text)) => {
+                // Return plain text as Python str
+                #[allow(deprecated)]
+                Ok(Some(PyString::new(py, &text).to_object(py)))
+            }
+            Some(StreamEvent::End) => {
+                // Signal end of iteration
+                Ok(None) // returning None -> StopIteration
+            }
+            Some(StreamEvent::Error(err)) => {
+                // Convert our ClientError into a Python exception
+                Err(PerformanceClient::convert_core_error_to_py_err(err))
+            }
+            None => {
+                // Channel closed unexpectedly. End iteration.
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[pyclass]
@@ -863,6 +919,39 @@ impl PerformanceClient {
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
+
+    /// Start streaming SSE events from the given endpoint
+    #[pyo3(signature = (endpoint, payload, method = None))]
+    fn stream_events(
+        &self,
+        py: Python,
+        endpoint: String,
+        payload: PyObject,
+        method: Option<String>,
+    ) -> PyResult<Py<EventStreamIter>> {
+        // Convert PyObject payload (Python dict) to serde_json::Value
+        let payload_json: serde_json::Value = pythonize::depythonize(payload.bind(py))
+            .map_err(|e| PyValueError::new_err(format!("Invalid payload: {}", e)))?;
+
+        let core_client = self.core_client.clone();
+        let rt = Arc::clone(&self.runtime);
+
+        // Since stream_events is sync but needs a runtime, we use block_on inside allow_threads.
+        let (rx, handle) = py
+            .allow_threads(move || {
+                rt.block_on(async { core_client.stream_events(&endpoint, payload_json, method) })
+            })
+            .map_err(Self::convert_core_error_to_py_err)?;
+
+        // Return a new EventStreamIter instance with the receiver side of the channel
+        Py::new(
+            py,
+            EventStreamIter {
+                receiver: Mutex::new(rx),
+                task_handle: Some(handle),
+            },
+        )
+    }
 }
 
 #[pymodule]
@@ -876,6 +965,7 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<ClassificationResult>()?;
     m.add_class::<ClassificationResponse>()?;
     m.add_class::<BatchPostResponse>()?;
+    m.add_class::<EventStreamIter>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
