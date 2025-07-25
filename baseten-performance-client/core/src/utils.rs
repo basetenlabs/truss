@@ -55,3 +55,33 @@ pub async fn acquire_permit_or_cancel(
         }
     }
 }
+
+/// Process JoinSet task outcome with improved error handling
+pub fn process_joinset_outcome<T>(
+    task_result: Result<Result<T, ClientError>, tokio::task::JoinError>,
+    cancel_token: &Arc<AtomicBool>,
+) -> Result<T, ClientError> {
+    match task_result {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(client_error)) => {
+            cancel_token.store(true, Ordering::SeqCst);
+            Err(client_error)
+        }
+        Err(join_error) => {
+            cancel_token.store(true, Ordering::SeqCst);
+            if join_error.is_cancelled() {
+                Err(ClientError::Cancellation("Task was cancelled".to_string()))
+            } else if join_error.is_panic() {
+                Err(ClientError::Network(format!(
+                    "Task panicked: {}",
+                    join_error
+                )))
+            } else {
+                Err(ClientError::Network(format!(
+                    "Task join error: {}",
+                    join_error
+                )))
+            }
+        }
+    }
+}
