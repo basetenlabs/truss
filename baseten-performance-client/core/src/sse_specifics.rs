@@ -34,7 +34,7 @@ impl SSEClient {
     }
 
     /// Start streaming SSE events from the given endpoint with a POST request
-    pub fn stream_events(
+    pub fn stream(
         &self,
         endpoint: &str,
         payload: Value,

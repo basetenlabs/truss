@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyString;
 use pyo3_async_runtimes;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 
@@ -292,9 +292,10 @@ struct BatchPostResponse {
 // --- Streaming Types ---
 #[pyclass]
 struct EventStreamIter {
-    receiver: Mutex<tokio::sync::mpsc::Receiver<StreamEvent>>,
+    receiver: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<StreamEvent>>>,
     #[allow(dead_code)]
     task_handle: Option<JoinHandle<()>>,
+    runtime: Arc<Runtime>,
 }
 
 #[pymethods]
@@ -303,14 +304,17 @@ impl EventStreamIter {
         slf
     }
 
-    fn __next__(mut slf: PyRefMut<'_, Self>, py: Python) -> PyResult<Option<PyObject>> {
-        // Extract the receiver to avoid borrowing issues
-        let receiver = slf.receiver.get_mut().unwrap();
+    fn __next__(&self, py: Python) -> PyResult<Option<PyObject>> {
+        let receiver = self.receiver.clone();
 
         // Wait for the next event from the channel, without blocking the GIL
         let msg = py.allow_threads(|| {
-            // Use blocking_recv to receive synchronously
-            receiver.blocking_recv()
+            // Use a runtime to block on the async receiver
+            let rt = Arc::clone(&self.runtime);
+            rt.block_on(async {
+                let mut receiver_guard = receiver.lock().await;
+                receiver_guard.recv().await
+            })
         });
 
         match msg {
@@ -340,7 +344,57 @@ impl EventStreamIter {
             }
         }
     }
+
+    /// Async iterator protocol - implement __aiter__
+    fn __aiter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Async iterator protocol - implement __anext__
+    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let receiver = self.receiver.clone();
+
+        let future = async move {
+            let msg = {
+                let mut receiver_guard = receiver.lock().await;
+                receiver_guard.recv().await
+            };
+
+            match msg {
+                Some(StreamEvent::Json(value)) => {
+                    // Convert JSON (serde_json::Value) to a Python object (dict/list/etc)
+                    Python::with_gil(|py| {
+                        let py_obj = pythonize::pythonize(py, &value)
+                            .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+                        Ok(py_obj.into_py(py))
+                    })
+                }
+                Some(StreamEvent::Text(text)) => {
+                    // Return plain text as Python str
+                    Python::with_gil(|py| {
+                        Ok(PyString::new(py, &text).into_py(py))
+                    })
+                }
+                Some(StreamEvent::End) => {
+                    // Signal end of iteration by raising StopAsyncIteration
+                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err("Stream ended"))
+                }
+                Some(StreamEvent::Error(err)) => {
+                    // Convert our ClientError into a Python exception
+                    Err(PerformanceClient::convert_core_error_to_py_err(err))
+                }
+                None => {
+                    // Channel closed unexpectedly. End iteration.
+                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err("Stream closed"))
+                }
+            }
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
 }
+
+
 
 #[pyclass]
 struct PerformanceClient {
@@ -947,10 +1001,47 @@ impl PerformanceClient {
         Py::new(
             py,
             EventStreamIter {
-                receiver: Mutex::new(rx),
+                receiver: Arc::new(tokio::sync::Mutex::new(rx)),
                 task_handle: Some(handle),
+                runtime: Arc::clone(&GLOBAL_RUNTIME),
             },
         )
+    }
+
+    /// Start streaming SSE events from the given endpoint (async version)
+    #[pyo3(name = "async_stream_events", signature = (endpoint, payload, method = None))]
+    fn async_stream_events<'py>(
+        &self,
+        py: Python<'py>,
+        endpoint: String,
+        payload: PyObject,
+        method: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        // Convert PyObject payload (Python dict) to serde_json::Value
+        let payload_json: serde_json::Value = pythonize::depythonize(payload.bind(py))
+            .map_err(|e| PyValueError::new_err(format!("Invalid payload: {}", e)))?;
+
+        let core_client = self.core_client.clone();
+
+        let future = async move {
+            let (rx, handle) = core_client
+                .stream_events(&endpoint, payload_json, method)
+                .map_err(PerformanceClient::convert_core_error_to_py_err)?;
+
+            // Return a new AsyncEventStreamIter instance with the receiver side of the channel
+            Python::with_gil(|py| {
+                Py::new(
+                    py,
+                    EventStreamIter {
+                        receiver: Arc::new(tokio::sync::Mutex::new(rx)),
+                        task_handle: Some(handle),
+                        runtime: Arc::clone(&GLOBAL_RUNTIME),
+                    },
+                )
+            })
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 }
 
