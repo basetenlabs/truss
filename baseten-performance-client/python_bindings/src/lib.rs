@@ -315,44 +315,43 @@ impl EventStreamIter {
     }
 
     fn __next__(&self, py: Python) -> PyResult<Option<PyObject>> {
-        let receiver = self.receiver.clone();
-
-        // Wait for the next event from the channel, without blocking the GIL
-        let msg = py.allow_threads(|| {
-            // Use a runtime to block on the async receiver
+        py.allow_threads(|| {
+            let receiver = self.receiver.clone();
             let rt = Arc::clone(&self.runtime);
-            rt.block_on(async {
+            let msg = rt.block_on(async {
                 let mut receiver_guard = receiver.lock().await;
                 receiver_guard.recv().await
-            })
-        });
+            });
 
-        match msg {
-            Some(StreamEvent::Json(value)) => {
-                // Convert JSON (serde_json::Value) to a Python object (dict/list/etc)
-                let py_obj = pythonize::pythonize(py, &value)
-                    .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
-                #[allow(deprecated)]
-                Ok(Some(py_obj.to_object(py)))
+            match msg {
+                Some(StreamEvent::Json(value)) => {
+                    // Re-acquire GIL for pythonize
+                    Python::with_gil(|py| {
+                        let py_obj = pythonize::pythonize(py, &value).map_err(|e| {
+                            PyValueError::new_err(format!("JSON parse error: {}", e))
+                        })?;
+                        #[allow(deprecated)]
+                        Ok(Some(py_obj.to_object(py)))
+                    })
+                }
+                Some(StreamEvent::Text(text)) => Python::with_gil(|py| {
+                    #[allow(deprecated)]
+                    Ok(Some(PyString::new(py, &text).to_object(py)))
+                }),
+                Some(StreamEvent::End) => {
+                    // Signal end of iteration by returning None
+                    Ok(None) // returning None -> StopIteration
+                }
+                Some(StreamEvent::Error(err)) => {
+                    // Convert our ClientError into a Python exception
+                    Err(PerformanceClient::convert_core_error_to_py_err(err))
+                }
+                None => {
+                    // Channel closed unexpectedly.
+                    Ok(None)
+                }
             }
-            Some(StreamEvent::Text(text)) => {
-                // Return plain text as Python str
-                #[allow(deprecated)]
-                Ok(Some(PyString::new(py, &text).to_object(py)))
-            }
-            Some(StreamEvent::End) => {
-                // Signal end of iteration
-                Ok(None) // returning None -> StopIteration
-            }
-            Some(StreamEvent::Error(err)) => {
-                // Convert our ClientError into a Python exception
-                Err(PerformanceClient::convert_core_error_to_py_err(err))
-            }
-            None => {
-                // Channel closed unexpectedly. End iteration.
-                Ok(None)
-            }
-        }
+        })
     }
 
     /// Async iterator protocol - implement __aiter__

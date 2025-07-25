@@ -17,7 +17,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use tokio::task::{JoinHandle, JoinSet};
 
-
 #[derive(Clone)]
 pub enum HttpClientWrapper {
     Http1(Arc<Client>),
@@ -206,7 +205,11 @@ impl PerformanceClientCore {
             );
         }
 
-        let sse_client = Arc::new(SSEClient::new(api_key.clone(), base_url.clone(), http_version));
+        let sse_client = Arc::new(SSEClient::new(
+            api_key.clone(),
+            base_url.clone(),
+            http_version,
+        ));
 
         Ok(PerformanceClientCore {
             api_key,
@@ -696,6 +699,7 @@ impl PerformanceClientCore {
         payload: serde_json::Value,
         method: Option<String>,
     ) -> Result<(tokio::sync::mpsc::Receiver<StreamEvent>, JoinHandle<()>), ClientError> {
-        self.sse_client.stream(endpoint, payload, method.unwrap_or("POST".to_string()))
+        self.sse_client
+            .stream(endpoint, payload, method.unwrap_or("POST".to_string()))
     }
 }

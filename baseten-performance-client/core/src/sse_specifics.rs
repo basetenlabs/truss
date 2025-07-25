@@ -1,10 +1,10 @@
 use crate::errors::ClientError;
-use eventsource_client::{ClientBuilder, Client};
+use eventsource_client::{Client, ClientBuilder};
+use futures::StreamExt;
 use serde_json::Value;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use futures::StreamExt;
-use std::sync::Arc;
 
 /// StreamEvent enum for messages sent from the background streaming task
 #[derive(Debug)]
@@ -72,14 +72,18 @@ impl SSEClient {
         let full_url = format!("{}/{}", base, endpoint);
 
         if !full_url.starts_with("http://") && !full_url.starts_with("https://") {
-            return Err(ClientError::InvalidParameter(format!("Invalid URL format: {} (base: {}, endpoint: {})", full_url, base, endpoint)));
+            return Err(ClientError::InvalidParameter(format!(
+                "Invalid URL format: {} (base: {}, endpoint: {})",
+                full_url, base, endpoint
+            )));
         }
 
         // Clone data for the async task
         let api_key = self.api_key.clone();
         let http_client = Arc::clone(&self.http_client);
-        let payload_json = serde_json::to_string(&payload)
-            .map_err(|e| ClientError::InvalidParameter(format!("Failed to serialize payload: {}", e)))?;
+        let payload_json = serde_json::to_string(&payload).map_err(|e| {
+            ClientError::InvalidParameter(format!("Failed to serialize payload: {}", e))
+        })?;
 
         // Pre-create auth header to avoid string formatting in async task
         let auth_header = format!("Bearer {}", api_key);
@@ -89,13 +93,19 @@ impl SSEClient {
             let result = async {
                 // Build client with shared HTTP client for connection pooling
                 let client = ClientBuilder::for_url(&full_url)
-                    .map_err(|e| ClientError::Network(format!("Failed to create SSE client: {}", e)))?
+                    .map_err(|e| {
+                        ClientError::Network(format!("Failed to create SSE client: {}", e))
+                    })?
                     .method(method)
                     .body(payload_json)
                     .header("Authorization", &auth_header)
-                    .map_err(|e| ClientError::Network(format!("Failed to set authorization header: {}", e)))?
+                    .map_err(|e| {
+                        ClientError::Network(format!("Failed to set authorization header: {}", e))
+                    })?
                     .header("Content-Type", "application/json")
-                    .map_err(|e| ClientError::Network(format!("Failed to set content-type header: {}", e)))?
+                    .map_err(|e| {
+                        ClientError::Network(format!("Failed to set content-type header: {}", e))
+                    })?
                     .build_with_http_client((*http_client).clone());
 
                 // Start streaming
@@ -141,9 +151,15 @@ impl SSEClient {
                         Err(e) => {
                             // Convert eventsource error to ClientError
                             let client_error = match e {
-                                eventsource_client::Error::TimedOut => ClientError::Timeout("SSE stream timed out".to_string()),
-                                eventsource_client::Error::Eof => ClientError::Network("SSE stream ended unexpectedly".to_string()),
-                                eventsource_client::Error::StreamClosed => ClientError::Network("SSE stream was closed".to_string()),
+                                eventsource_client::Error::TimedOut => {
+                                    ClientError::Timeout("SSE stream timed out".to_string())
+                                }
+                                eventsource_client::Error::Eof => ClientError::Network(
+                                    "SSE stream ended unexpectedly".to_string(),
+                                ),
+                                eventsource_client::Error::StreamClosed => {
+                                    ClientError::Network("SSE stream was closed".to_string())
+                                }
                                 _ => ClientError::Network(format!("SSE stream error: {}", e)),
                             };
 
@@ -156,7 +172,8 @@ impl SSEClient {
                 }
 
                 Ok::<(), ClientError>(())
-            }.await;
+            }
+            .await;
 
             // Handle the final result
             if let Err(err) = result {

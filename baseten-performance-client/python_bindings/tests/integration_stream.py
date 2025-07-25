@@ -184,7 +184,7 @@ if __name__ == "__main__":
     # print(f"Sync: {t1}, Async: {t2}, Requests: {t3}")
 
     # run each 10 times in parallel
-    number = 200
+    number = 10
     print(f"Running sync in parallel {number} times...")
     sync_results = make_function_pool(number, test_streaming)
     print(f"Sync results: {sync_results}")
