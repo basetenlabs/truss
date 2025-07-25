@@ -17,12 +17,13 @@ payload = {
     "temperature": 0.0,
 }
 
+
 def is_deployment_reachable(base_url, route="/v1/chat/completions", timeout=10):
     try:
         response = requests.post(
             f"{base_url}{route}",
             headers={"Authorization": f"Bearer {api_key}"},
-            json= payload,
+            json=payload,
             timeout=timeout,
         )
         return response.status_code == 200
@@ -48,11 +49,11 @@ def test_streaming():
 
     # Start streaming
     t = time.time()
-    stream = client.stream_events(endpoint, payload)
+    stream = client.stream(endpoint, payload)
 
     # Collect events
     events = []
-    
+
     for event in stream:
         if event is None:
             break
@@ -65,32 +66,34 @@ def test_streaming():
     print(f"Received {len(events)} events in {times[-1]:.2f} seconds")
     return times
 
+
 @pytest.mark.skipif(
     not is_deployment_reachable(base_url_stream), reason="Deployment not reachable"
 )
 async def test_streaming_async():
     client = PerformanceClient(base_url_stream, api_key=api_key)
-    
+
     # Define the endpoint and payload
     endpoint = "/v1/chat/completions"
     # Start streaming
     t = time.time()
-    stream = await client.async_stream_events(endpoint, payload)
-    
+    stream = await client.async_stream(endpoint, payload)
+
     # Collect events
     events = []
-    
+
     async for event in stream:
         if event is None:
             break
 
-        events.append((event, time.time() - t)) 
-    
+        events.append((event, time.time() - t))
+
     # Check if we received the expected number of events
     assert len(events) > 0, "No events received from the stream"
     times = [event[1] for event in events]
     print(f"Received {len(events)} events in {times[-1]:.2f} seconds")
     return times
+
 
 @pytest.mark.skipif(
     not is_deployment_reachable(base_url_stream), reason="Deployment not reachable"
@@ -109,7 +112,7 @@ def test_streaming_requests_python():
     response.raise_for_status()
 
     events = []
-    
+
     for line in response.iter_lines():
         if not line:
             continue
@@ -128,12 +131,12 @@ def test_streaming_requests_python():
     times = [event[1] for event in events]
     print(f"Received {len(events)} events in {times[-1]:.2f} seconds")
     return times
-    
 
 
 if __name__ == "__main__":
     t1 = test_streaming()
     import asyncio
+
     t2 = asyncio.run(test_streaming_async())
     t3 = test_streaming_requests_python()
     print(f"Sync: {t1}, Async: {t2}, Requests: {t3}")

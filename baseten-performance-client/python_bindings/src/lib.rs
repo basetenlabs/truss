@@ -364,21 +364,20 @@ impl EventStreamIter {
                 Some(StreamEvent::Json(value)) => {
                     // Convert JSON (serde_json::Value) to a Python object (dict/list/etc)
                     Python::with_gil(|py| {
-                        let py_obj = pythonize::pythonize(py, &value).map_err(|e| {
-                            PyValueError::new_err(format!("JSON parse error: {}", e))
-                        })?;
+                        let py_obj = pythonize::pythonize(py, &value)
+                            .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
                         Ok(py_obj.into_py(py))
                     })
                 }
                 Some(StreamEvent::Text(text)) => {
                     // Return plain text as Python str
-                    Python::with_gil(|py| Ok(PyString::new(py, &text).into_py(py)))
+                    Python::with_gil(|py| {
+                        Ok(PyString::new(py, &text).into_py(py))
+                    })
                 }
                 Some(StreamEvent::End) => {
                     // Signal end of iteration by raising StopAsyncIteration
-                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err(
-                        "Stream ended",
-                    ))
+                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err("Stream ended"))
                 }
                 Some(StreamEvent::Error(err)) => {
                     // Convert our ClientError into a Python exception
@@ -386,9 +385,7 @@ impl EventStreamIter {
                 }
                 None => {
                     // Channel closed unexpectedly. End iteration.
-                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err(
-                        "Stream closed",
-                    ))
+                    Err(pyo3::exceptions::PyStopAsyncIteration::new_err("Stream closed"))
                 }
             }
         };
@@ -396,6 +393,8 @@ impl EventStreamIter {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 }
+
+
 
 #[pyclass]
 struct PerformanceClient {
@@ -977,7 +976,7 @@ impl PerformanceClient {
 
     /// Start streaming SSE events from the given endpoint
     #[pyo3(signature = (endpoint, payload, method = None))]
-    fn stream_events(
+    fn stream(
         &self,
         py: Python,
         endpoint: String,
@@ -991,10 +990,10 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
 
-        // Since stream_events is sync but needs a runtime, we use block_on inside allow_threads.
+        // Since stream is sync but needs a runtime, we use block_on inside allow_threads.
         let (rx, handle) = py
             .allow_threads(move || {
-                rt.block_on(async { core_client.stream_events(&endpoint, payload_json, method) })
+                rt.block_on(async { core_client.stream(&endpoint, payload_json, method) })
             })
             .map_err(Self::convert_core_error_to_py_err)?;
 
@@ -1010,8 +1009,8 @@ impl PerformanceClient {
     }
 
     /// Start streaming SSE events from the given endpoint (async version)
-    #[pyo3(name = "async_stream_events", signature = (endpoint, payload, method = None))]
-    fn async_stream_events<'py>(
+    #[pyo3(name = "async_stream", signature = (endpoint, payload, method = None))]
+    fn async_stream<'py>(
         &self,
         py: Python<'py>,
         endpoint: String,
@@ -1026,7 +1025,7 @@ impl PerformanceClient {
 
         let future = async move {
             let (rx, handle) = core_client
-                .stream_events(&endpoint, payload_json, method)
+                .stream(&endpoint, payload_json, method)
                 .map_err(PerformanceClient::convert_core_error_to_py_err)?;
 
             // Return a new AsyncEventStreamIter instance with the receiver side of the channel
