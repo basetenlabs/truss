@@ -38,6 +38,11 @@ struct PythonizeManager {
 impl PythonizeManager {
     fn new() -> Self {
         Self {
+            // NOTE: We need this Tokio lock to prevent starving the Tokio threads
+            // when using async pythonize/depythonize methods, they contest each other
+            // for the GIL, so we use a lock to ensure that only one async operation
+            // can run at a time (which the GIL does anyways due to a inner sync lock).
+
             lock: TokioMutex::new(()),
         }
     }
