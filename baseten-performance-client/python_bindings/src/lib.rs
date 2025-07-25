@@ -366,12 +366,14 @@ impl EventStreamIter {
                     Python::with_gil(|py| {
                         let py_obj = pythonize::pythonize(py, &value)
                             .map_err(|e| PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+                        #[allow(deprecated)]
                         Ok(py_obj.into_py(py))
                     })
                 }
                 Some(StreamEvent::Text(text)) => {
                     // Return plain text as Python str
                     Python::with_gil(|py| {
+                        #[allow(deprecated)]
                         Ok(PyString::new(py, &text).into_py(py))
                     })
                 }

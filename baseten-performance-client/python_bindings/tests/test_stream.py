@@ -47,6 +47,10 @@ def test_streaming():
         "stream_options": {"include_usage": True},
     }
 
+    stream = client.stream(endpoint, payload)
+    for event in stream:
+        pass
+
     # Start streaming
     t = time.time()
     stream = client.stream(endpoint, payload)
@@ -75,6 +79,11 @@ async def test_streaming_async():
 
     # Define the endpoint and payload
     endpoint = "/v1/chat/completions"
+    stream = await client.async_stream(endpoint, payload)
+    async for event in stream:
+        if event is None:
+            break
+        pass
     # Start streaming
     t = time.time()
     stream = await client.async_stream(endpoint, payload)
@@ -105,8 +114,17 @@ def test_streaming_requests_python():
         "Accept": "text/event-stream",
     }
     endpoint = "/v1/chat/completions"
+    session = requests.Session()
+    response = session.post(
+        f"{base_url_stream}{endpoint}", headers=headers, json=payload, stream=True
+    )
+    response.raise_for_status()
+    for line in response.iter_lines():
+        pass
+
     t = time.time()
-    response = requests.post(
+
+    response = session.post(
         f"{base_url_stream}{endpoint}", headers=headers, json=payload, stream=True
     )
     response.raise_for_status()
