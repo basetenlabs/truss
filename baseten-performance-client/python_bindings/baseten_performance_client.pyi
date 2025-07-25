@@ -223,6 +223,29 @@ class BatchPostResponse:
     individual_request_times: builtins.list[builtins.float]
     response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
+class EventStreamIter:
+    """
+    An iterator for handling Server-Sent Events (SSE) from a streaming endpoint.
+
+    This object is returned by `PerformanceClient.stream` and `PerformanceClient.async_stream`.
+    It can be used in both synchronous (`for event in stream:`) and asynchronous
+    (`async for event in stream:`) loops.
+
+    The iterator yields either a dictionary (for JSON data) or a string (for plain text).
+    """
+
+    def abort(self) -> None:
+        """
+        Immediately aborts the background network task fetching the stream.
+        The iterator will yield no further items after this is called.
+        """
+        ...
+
+    def __iter__(self) -> "EventStreamIter": ...
+    def __next__(self) -> typing.Union[typing.Dict[str, typing.Any], str]: ...
+    def __aiter__(self) -> "EventStreamIter": ...
+    async def __anext__(self) -> typing.Union[typing.Dict[str, typing.Any], str]: ...
+
 class PerformanceClient:
     """
     Baseten.co API client for embedding, reranking, and classification, and custom workloads.
@@ -601,6 +624,85 @@ class PerformanceClient:
             >>> for resp_data in response_obj.data:
             ...     print(resp_data)
             >>> print(f"Total time: {response_obj.total_time}")
+        """
+        ...
+
+    def stream(
+        self,
+        endpoint: builtins.str,
+        payload: typing.Dict[str, typing.Any],
+        method: typing.Optional[builtins.str] = None,
+    ) -> EventStreamIter:
+        """
+        Starts a synchronous stream of Server-Sent Events (SSE) from a given endpoint.
+
+        This method sends a request and returns an iterator that yields events as they
+        are received from the server.
+
+        Args:
+            endpoint: The API endpoint to stream from (e.g., "/v1/chat/completions").
+            payload: The JSON payload to send with the request.
+            method: The HTTP method to use (e.g., "POST"). Defaults to the client's default.
+
+        Returns:
+            An EventStreamIter object that can be used in a `for` loop.
+
+        Raises:
+            ValueError: If the payload is not a valid JSON object.
+            requests.exceptions.HTTPError: If the initial request fails or an error occurs during the stream.
+
+        Example:
+            >>> stream_payload = {
+            ...     "model": "mistral-7b",
+            ...     "messages": [{"role": "user", "content": "Tell me a story."}],
+            ...     "stream": True
+            ... }
+            >>> event_stream = client.stream("/v1/chat/completions", stream_payload)
+            >>> try:
+            ...     for event in event_stream:
+            ...         print(event)
+            ... except requests.exceptions.HTTPError as e:
+            ...     print(f"An error occurred during streaming: {e}")
+        """
+        ...
+
+    async def async_stream(
+        self,
+        endpoint: builtins.str,
+        payload: typing.Dict[str, typing.Any],
+        method: typing.Optional[builtins.str] = None,
+    ) -> EventStreamIter:
+        """
+        Starts an asynchronous stream of Server-Sent Events (SSE) from a given endpoint.
+
+        This method sends a request and returns an async iterator that yields events as they
+        are received from the server.
+
+        Args:
+            endpoint: The API endpoint to stream from (e.g., "/v1/chat/completions").
+            payload: The JSON payload to send with the request.
+            method: The HTTP method to use (e.g., "POST"). Defaults to the client's default.
+
+        Returns:
+            An awaitable EventStreamIter object that can be used in an `async for` loop.
+
+        Raises:
+            ValueError: If the payload is not a valid JSON object.
+            requests.exceptions.HTTPError: If the initial request fails or an error occurs during the stream.
+
+        Example:
+            >>> async def main():
+            ...     stream_payload = {
+            ...         "model": "mistral-7b",
+            ...         "messages": [{"role": "user", "content": "Tell me a story."}],
+            ...         "stream": True
+            ...     }
+            ...     event_stream = await client.async_stream("/v1/chat/completions", stream_payload)
+            ...     try:
+            ...         async for event in event_stream:
+            ...             print(event)
+            ...     except requests.exceptions.HTTPError as e:
+            ...         print(f"An error occurred during streaming: {e}")
         """
         ...
 

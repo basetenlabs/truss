@@ -1,13 +1,16 @@
+use baseten_performance_client_core::sse_specifics::StreamEvent;
 use baseten_performance_client_core::*;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyString;
 use pyo3_async_runtimes;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
 
 // --- Global Tokio Runtime (Python-specific) ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -23,6 +26,70 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     });
     runtime
 });
+
+// --- Global Pythonize/Depythonize Manager ---
+use tokio::sync::Mutex as TokioMutex;
+
+#[derive(Debug)]
+struct PythonizeManager {
+    lock: TokioMutex<()>,
+}
+
+impl PythonizeManager {
+    fn new() -> Self {
+        Self {
+            // NOTE: We need this Tokio lock to prevent starving the Tokio threads
+            // when using async pythonize/depythonize methods, they contest each other
+            // for the GIL, so we use a lock to ensure that only one async operation
+            // can run at a time (which the GIL does anyways due to a inner sync lock).
+
+            lock: TokioMutex::new(()),
+        }
+    }
+
+    fn pythonize(&self, json_value: serde_json::Value) -> PyResult<PyObject> {
+        // Synchronous method - acquires GIL and uses pythonize
+        Python::with_gil(|py| {
+            let py_obj = pythonize::pythonize(py, &json_value)
+                .map_err(|e| PyValueError::new_err(format!("Pythonize error: {}", e)))?;
+            Ok(py_obj.unbind())
+        })
+    }
+
+    async fn async_pythonize(&self, json_value: serde_json::Value) -> PyResult<PyObject> {
+        // Async method - uses tokio lock to prevent starving tokio threads
+        let _lock = self.lock.lock().await;
+
+        Python::with_gil(|py| {
+            let py_obj = pythonize::pythonize(py, &json_value)
+                .map_err(|e| PyValueError::new_err(format!("Async pythonize error: {}", e)))?;
+            Ok(py_obj.unbind())
+        })
+    }
+
+    fn depythonize(&self, py_obj: PyObject) -> PyResult<serde_json::Value> {
+        // Synchronous method - acquires GIL and uses depythonize
+        Python::with_gil(|py| {
+            let bound_obj = py_obj.bind(py);
+            pythonize::depythonize(bound_obj)
+                .map_err(|e| PyValueError::new_err(format!("Depythonize error: {}", e)))
+        })
+    }
+
+    async fn async_depythonize(&self, py_obj: PyObject) -> PyResult<serde_json::Value> {
+        // Async method - uses tokio lock to prevent starving tokio threads
+        let _lock = self.lock.lock().await;
+
+        Python::with_gil(|py| {
+            let bound_obj = py_obj.bind(py);
+            pythonize::depythonize(bound_obj)
+                .map_err(|e| PyValueError::new_err(format!("Async depythonize error: {}", e)))
+        })
+    }
+}
+
+static GLOBAL_PYTHONIZE_MANAGER: Lazy<Arc<PythonizeManager>> =
+    Lazy::new(|| Arc::new(PythonizeManager::new()));
 
 // Import Python exceptions
 pyo3::import_exception!(requests, HTTPError);
@@ -286,10 +353,125 @@ struct BatchPostResponse {
     response_headers: Vec<PyObject>,
 }
 
+// --- Streaming Types ---
+#[pyclass]
+struct EventStreamIter {
+    receiver: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<StreamEvent>>>,
+    task_handle: JoinHandle<()>,
+    runtime: Arc<Runtime>,
+}
+impl Drop for EventStreamIter {
+    fn drop(&mut self) {
+        // When the iterator is garbage collected, ensure the background task is aborted.
+        self.task_handle.abort();
+    }
+}
+
+#[pymethods]
+impl EventStreamIter {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn abort(&self) {
+        // Abort the background task if it is still running
+        self.task_handle.abort();
+    }
+
+    fn __next__(&self, py: Python) -> PyResult<Option<PyObject>> {
+        py.allow_threads(|| {
+            let receiver = self.receiver.clone();
+            let rt = Arc::clone(&self.runtime);
+            let msg = rt.block_on(async {
+                let mut receiver_guard = receiver.lock().await;
+                receiver_guard.recv().await
+            });
+
+            match msg {
+                Some(StreamEvent::Json(value)) => {
+                    // Re-acquire GIL for pythonize
+                    let py_obj = GLOBAL_PYTHONIZE_MANAGER.pythonize(value)?;
+                    Ok(Some(py_obj))
+                }
+                Some(StreamEvent::Text(text)) => Python::with_gil(|py| {
+                    #[allow(deprecated)]
+                    Ok(Some(PyString::new(py, &text).to_object(py)))
+                }),
+                Some(StreamEvent::End) => {
+                    // Signal end of iteration by returning None
+                    Ok(None) // returning None -> StopIteration
+                }
+                Some(StreamEvent::Error(err)) => {
+                    // Convert our ClientError into a Python exception
+                    Err(PerformanceClient::convert_core_error_to_py_err(err))
+                }
+                None => {
+                    // Channel closed unexpectedly.
+                    Ok(None)
+                }
+            }
+        })
+    }
+
+    /// Async iterator protocol - implement __aiter__
+    fn __aiter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Async iterator protocol - implement __anext__
+    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let future = py.allow_threads(|| {
+            // Use a future to handle the async nature of the stream
+            let receiver = self.receiver.clone();
+
+            async move {
+                let msg = {
+                    let mut receiver_guard = receiver.lock().await;
+                    receiver_guard.recv().await
+                };
+
+                match msg {
+                    Some(StreamEvent::Json(value)) => {
+                        // Convert JSON (serde_json::Value) to a Python object (dict/list/etc)
+                        let py_obj = GLOBAL_PYTHONIZE_MANAGER.async_pythonize(value).await?;
+                        Ok(py_obj)
+                    }
+                    Some(StreamEvent::Text(text)) => {
+                        // Return plain text as Python str
+                        Python::with_gil(|py| {
+                            #[allow(deprecated)]
+                            Ok(PyString::new(py, &text).into_py(py))
+                        })
+                    }
+                    Some(StreamEvent::End) => {
+                        // Signal end of iteration by raising StopAsyncIteration
+                        Err(pyo3::exceptions::PyStopAsyncIteration::new_err(
+                            "Stream ended",
+                        ))
+                    }
+                    Some(StreamEvent::Error(err)) => {
+                        // Convert our ClientError into a Python exception
+                        Err(PerformanceClient::convert_core_error_to_py_err(err))
+                    }
+                    None => {
+                        // Channel closed unexpectedly. End iteration.
+                        Err(pyo3::exceptions::PyStopAsyncIteration::new_err(
+                            "Stream closed",
+                        ))
+                    }
+                }
+            }
+        });
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
+}
+
 #[pyclass]
 struct PerformanceClient {
     core_client: PerformanceClientCore,
     runtime: Arc<Runtime>,
+    pythonize_manager: Arc<PythonizeManager>,
 }
 
 impl PerformanceClient {
@@ -317,6 +499,7 @@ impl PerformanceClient {
         Ok(PerformanceClient {
             core_client,
             runtime: Arc::clone(&GLOBAL_RUNTIME),
+            pythonize_manager: Arc::clone(&GLOBAL_PYTHONIZE_MANAGER),
         })
     }
 
@@ -347,7 +530,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
 
-        let result_from_async_task = py.allow_threads(move || {
+        let api_response = py.allow_threads(move || {
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
@@ -368,24 +551,26 @@ impl PerformanceClient {
                 let _ = tx.send(res);
             });
 
-            match rx.recv() {
+            let result = match rx.recv() {
                 Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
                 Err(e) => Err(PyValueError::new_err(format!(
                     "Failed to receive result from async task (channel error): {}",
                     e
                 ))),
-            }
+            }?;
+
+            let (core_response, batch_durations, total_time_val) = result;
+            let individual_times_val: Vec<f64> = batch_durations
+                .into_iter()
+                .map(|d| d.as_secs_f64())
+                .collect();
+
+            let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
+            api_response.total_time = total_time_val.as_secs_f64();
+            api_response.individual_request_times = individual_times_val;
+
+            Ok::<OpenAIEmbeddingsResponse, PyErr>(api_response)
         })?;
-
-        let (core_response, batch_durations, total_time_val) = result_from_async_task;
-        let individual_times_val: Vec<f64> = batch_durations
-            .into_iter()
-            .map(|d| d.as_secs_f64())
-            .collect();
-
-        let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
-        api_response.total_time = total_time_val.as_secs_f64();
-        api_response.individual_request_times = individual_times_val;
 
         Ok(api_response)
     }
@@ -411,7 +596,7 @@ impl PerformanceClient {
 
         let core_client = self.core_client.clone();
 
-        let future = async move {
+        let future = py.allow_threads(|| async move {
             let (core_response, batch_durations, core_total_time) = core_client
                 .process_embeddings_requests(
                     input,
@@ -438,7 +623,7 @@ impl PerformanceClient {
             api_response.individual_request_times = individual_times_val;
 
             Ok(api_response)
-        };
+        });
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
@@ -467,7 +652,7 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
         let truncation_direction_owned = truncation_direction.to_string();
 
-        let result_from_async_task = py.allow_threads(move || {
+        let api_response = py.allow_threads(move || {
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
@@ -489,24 +674,26 @@ impl PerformanceClient {
                 let _ = tx.send(res);
             });
 
-            match rx.recv() {
+            let result = match rx.recv() {
                 Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
                 Err(e) => Err(PyValueError::new_err(format!(
                     "Failed to receive rerank result (channel error): {}",
                     e
                 ))),
-            }
+            }?;
+
+            let (core_response, batch_durations, total_time_val) = result;
+            let individual_times_val: Vec<f64> = batch_durations
+                .into_iter()
+                .map(|d| d.as_secs_f64())
+                .collect();
+
+            let mut api_response = RerankResponse::from(core_response);
+            api_response.total_time = total_time_val.as_secs_f64();
+            api_response.individual_request_times = individual_times_val;
+
+            Ok::<RerankResponse, PyErr>(api_response)
         })?;
-
-        let (core_response, batch_durations, total_time_val) = result_from_async_task;
-        let individual_times_val: Vec<f64> = batch_durations
-            .into_iter()
-            .map(|d| d.as_secs_f64())
-            .collect();
-
-        let mut api_response = RerankResponse::from(core_response);
-        api_response.total_time = total_time_val.as_secs_f64();
-        api_response.individual_request_times = individual_times_val;
 
         Ok(api_response)
     }
@@ -534,7 +721,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
         let truncation_direction_owned = truncation_direction.to_string();
 
-        let future = async move {
+        let future = py.allow_threads(|| async move {
             let (core_response, batch_durations, core_total_time) = core_client
                 .process_rerank_requests(
                     query,
@@ -562,7 +749,7 @@ impl PerformanceClient {
             api_response.individual_request_times = individual_times_val;
 
             Ok(api_response)
-        };
+        });
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
@@ -589,7 +776,7 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
         let truncation_direction_owned = truncation_direction.to_string();
 
-        let result_from_async_task = py.allow_threads(move || {
+        let api_response = py.allow_threads(move || {
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
@@ -609,24 +796,26 @@ impl PerformanceClient {
                 let _ = tx.send(res);
             });
 
-            match rx.recv() {
+            let result = match rx.recv() {
                 Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
                 Err(e) => Err(PyValueError::new_err(format!(
                     "Failed to receive classify result (channel error): {}",
                     e
                 ))),
-            }
+            }?;
+
+            let (core_response, batch_durations, core_total_time) = result;
+            let individual_times_val: Vec<f64> = batch_durations
+                .into_iter()
+                .map(|d| d.as_secs_f64())
+                .collect();
+
+            let mut api_response = ClassificationResponse::from(core_response);
+            api_response.total_time = core_total_time.as_secs_f64();
+            api_response.individual_request_times = individual_times_val;
+
+            Ok::<ClassificationResponse, PyErr>(api_response)
         })?;
-
-        let (core_response, batch_durations, core_total_time) = result_from_async_task;
-        let individual_times_val: Vec<f64> = batch_durations
-            .into_iter()
-            .map(|d| d.as_secs_f64())
-            .collect();
-
-        let mut api_response = ClassificationResponse::from(core_response);
-        api_response.total_time = core_total_time.as_secs_f64();
-        api_response.individual_request_times = individual_times_val;
 
         Ok(api_response)
     }
@@ -652,7 +841,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
         let truncation_direction_owned = truncation_direction.to_string();
 
-        let future = async move {
+        let future = py.allow_threads(|| async move {
             let (core_response, batch_durations, core_total_time) = core_client
                 .process_classify_requests(
                     inputs,
@@ -678,7 +867,7 @@ impl PerformanceClient {
             api_response.individual_request_times = individual_times_val;
 
             Ok(api_response)
-        };
+        });
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
@@ -697,22 +886,22 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
-        for (idx, py_obj) in payloads.into_iter().enumerate() {
-            let bound_obj = py_obj.bind(py);
-            let json_val = pythonize::depythonize(bound_obj).map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to depythonize payload at index {}: {}",
-                    idx, e
-                ))
-            })?;
-            payloads_json.push(json_val);
-        }
-
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
+        let pythonize_manager = Arc::clone(&self.pythonize_manager);
 
-        let result_from_async_task = py.allow_threads(move || {
+        let batch_response = py.allow_threads(move || {
+            let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
+            for (idx, py_obj) in payloads.into_iter().enumerate() {
+                let json_val = pythonize_manager.depythonize(py_obj).map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to depythonize payload at index {}: {}",
+                        idx, e
+                    ))
+                })?;
+                payloads_json.push(json_val);
+            }
+
             let (tx, rx) = std::sync::mpsc::channel();
 
             rt.spawn(async move {
@@ -728,55 +917,62 @@ impl PerformanceClient {
                 let _ = tx.send(res);
             });
 
-            match rx.recv() {
+            let result = match rx.recv() {
                 Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
                 Err(e) => Err(PyValueError::new_err(format!(
                     "Failed to receive batch_post result (channel error): {}",
                     e
                 ))),
+            }?;
+
+            let (response_data_with_times_and_headers, total_time) = result;
+
+            // Convert responses to Python objects without GIL
+            let mut results_py: Vec<PyObject> =
+                Vec::with_capacity(response_data_with_times_and_headers.len());
+            let mut individual_request_times_collected: Vec<f64> =
+                Vec::with_capacity(response_data_with_times_and_headers.len());
+            let mut collected_headers_py: Vec<PyObject> =
+                Vec::with_capacity(response_data_with_times_and_headers.len());
+
+            for (idx, (json_val, headers_map, duration)) in
+                response_data_with_times_and_headers.into_iter().enumerate()
+            {
+                let py_obj = pythonize_manager.pythonize(json_val).map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to pythonize response data at index {}: {}",
+                        idx, e
+                    ))
+                })?;
+                results_py.push(py_obj);
+
+                let headers_json = serde_json::to_value(&headers_map).map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to serialize headers at index {}: {}",
+                        idx, e
+                    ))
+                })?;
+                let headers_py_obj = pythonize_manager.pythonize(headers_json).map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to pythonize headers at index {}: {}",
+                        idx, e
+                    ))
+                })?;
+                collected_headers_py.push(headers_py_obj);
+
+                individual_request_times_collected.push(duration.as_secs_f64());
             }
+            let total_time = total_time.as_secs_f64();
+
+            Ok::<BatchPostResponse, PyErr>(BatchPostResponse {
+                data: results_py,
+                total_time,
+                individual_request_times: individual_request_times_collected,
+                response_headers: collected_headers_py,
+            })
         })?;
 
-        let (response_data_with_times_and_headers, total_time) = result_from_async_task;
-
-        let mut results_py: Vec<PyObject> =
-            Vec::with_capacity(response_data_with_times_and_headers.len());
-        let mut individual_request_times_collected: Vec<f64> =
-            Vec::with_capacity(response_data_with_times_and_headers.len());
-        let mut collected_headers_py: Vec<PyObject> =
-            Vec::with_capacity(response_data_with_times_and_headers.len());
-
-        for (idx, (json_val, headers_map, duration)) in
-            response_data_with_times_and_headers.into_iter().enumerate()
-        {
-            let py_obj_bound = pythonize::pythonize(py, &json_val).map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to pythonize response data at index {}: {}",
-                    idx, e
-                ))
-            })?;
-            #[allow(deprecated)]
-            results_py.push(py_obj_bound.to_object(py));
-
-            let headers_py_obj = pythonize::pythonize(py, &headers_map).map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to pythonize headers at index {}: {}",
-                    idx, e
-                ))
-            })?;
-            #[allow(deprecated)]
-            collected_headers_py.push(headers_py_obj.to_object(py));
-
-            individual_request_times_collected.push(duration.as_secs_f64());
-        }
-        let total_time = total_time.as_secs_f64();
-
-        Ok(BatchPostResponse {
-            data: results_py,
-            total_time,
-            individual_request_times: individual_request_times_collected,
-            response_headers: collected_headers_py,
-        })
+        Ok(batch_response)
     }
 
     #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None))]
@@ -793,21 +989,25 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
         }
 
-        let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
-        for (idx, py_obj) in payloads.into_iter().enumerate() {
-            let bound_obj = py_obj.bind(py);
-            let json_val = pythonize::depythonize(bound_obj).map_err(|e| {
-                PyValueError::new_err(format!(
-                    "Failed to depythonize payload at index {}: {}",
-                    idx, e
-                ))
-            })?;
-            payloads_json.push(json_val);
-        }
-
         let core_client = self.core_client.clone();
+        let pythonize_manager = Arc::clone(&self.pythonize_manager);
 
         let future = async move {
+            // Async depythonize payloads, freeing GIL during processing
+            let mut payloads_json: Vec<serde_json::Value> = Vec::with_capacity(payloads.len());
+            for (idx, py_obj) in payloads.into_iter().enumerate() {
+                let json_val = pythonize_manager
+                    .async_depythonize(py_obj)
+                    .await
+                    .map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to depythonize payload at index {}: {}",
+                            idx, e
+                        ))
+                    })?;
+                payloads_json.push(json_val);
+            }
+
             let (response_data_with_times_and_headers, total_time) = core_client
                 .process_batch_post_requests(
                     url_path,
@@ -819,47 +1019,130 @@ impl PerformanceClient {
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
 
-            Python::with_gil(|py_gil| {
-                let mut results_py: Vec<PyObject> =
-                    Vec::with_capacity(response_data_with_times_and_headers.len());
-                let mut individual_request_times_collected: Vec<f64> =
-                    Vec::with_capacity(response_data_with_times_and_headers.len());
-                let mut collected_headers_py: Vec<PyObject> =
-                    Vec::with_capacity(response_data_with_times_and_headers.len());
+            // Process responses using async pythonize to free GIL during processing
+            let mut results_py: Vec<PyObject> =
+                Vec::with_capacity(response_data_with_times_and_headers.len());
+            let mut individual_request_times_collected: Vec<f64> =
+                Vec::with_capacity(response_data_with_times_and_headers.len());
+            let mut collected_headers_py: Vec<PyObject> =
+                Vec::with_capacity(response_data_with_times_and_headers.len());
 
-                for (idx, (json_val, headers_map, duration)) in
-                    response_data_with_times_and_headers.into_iter().enumerate()
-                {
-                    let py_obj_bound = pythonize::pythonize(py_gil, &json_val).map_err(|e| {
+            for (idx, (json_val, headers_map, duration)) in
+                response_data_with_times_and_headers.into_iter().enumerate()
+            {
+                let py_obj = pythonize_manager
+                    .async_pythonize(json_val)
+                    .await
+                    .map_err(|e| {
                         PyValueError::new_err(format!(
                             "Failed to pythonize response data at index {}: {}",
                             idx, e
                         ))
                     })?;
-                    #[allow(deprecated)]
-                    results_py.push(py_obj_bound.into_py(py_gil));
+                results_py.push(py_obj);
 
-                    let headers_py_obj =
-                        pythonize::pythonize(py_gil, &headers_map).map_err(|e| {
-                            PyValueError::new_err(format!(
-                                "Failed to pythonize headers at index {}: {}",
-                                idx, e
-                            ))
-                        })?;
-                    #[allow(deprecated)]
-                    collected_headers_py.push(headers_py_obj.to_object(py_gil));
+                let headers_json = serde_json::to_value(&headers_map).map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Failed to serialize headers at index {}: {}",
+                        idx, e
+                    ))
+                })?;
+                let headers_py_obj = pythonize_manager
+                    .async_pythonize(headers_json)
+                    .await
+                    .map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to pythonize headers at index {}: {}",
+                            idx, e
+                        ))
+                    })?;
+                collected_headers_py.push(headers_py_obj);
 
-                    individual_request_times_collected.push(duration.as_secs_f64());
-                }
+                individual_request_times_collected.push(duration.as_secs_f64());
+            }
 
-                Ok(BatchPostResponse {
-                    data: results_py,
-                    total_time: total_time.as_secs_f64(),
-                    individual_request_times: individual_request_times_collected,
-                    response_headers: collected_headers_py,
-                })
+            Ok(BatchPostResponse {
+                data: results_py,
+                total_time: total_time.as_secs_f64(),
+                individual_request_times: individual_request_times_collected,
+                response_headers: collected_headers_py,
             })
         };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
+
+    /// Start streaming SSE events from the given endpoint
+    #[pyo3(signature = (endpoint, payload, method = None))]
+    fn stream(
+        &self,
+        py: Python,
+        endpoint: String,
+        payload: PyObject,
+        method: Option<String>,
+    ) -> PyResult<Py<EventStreamIter>> {
+        let core_client = self.core_client.clone();
+        let rt = Arc::clone(&self.runtime);
+        let pythonize_manager = Arc::clone(&self.pythonize_manager);
+
+        // Release GIL immediately and do all processing without it
+        let (rx, handle) = py.allow_threads(move || {
+            // Convert PyObject payload (Python dict) to serde_json::Value
+            let payload_json: serde_json::Value = pythonize_manager
+                .depythonize(payload)
+                .map_err(|e| PyValueError::new_err(format!("Invalid payload: {}", e)))?;
+
+            // Since stream is sync but needs a runtime, we use block_on inside allow_threads.
+            rt.block_on(async { core_client.stream(&endpoint, payload_json, method) })
+                .map_err(Self::convert_core_error_to_py_err)
+        })?;
+
+        // Return a new EventStreamIter instance with the receiver side of the channel
+        Py::new(
+            py,
+            EventStreamIter {
+                receiver: Arc::new(tokio::sync::Mutex::new(rx)),
+                task_handle: handle,
+                runtime: Arc::clone(&GLOBAL_RUNTIME),
+            },
+        )
+    }
+
+    /// Start streaming SSE events from the given endpoint (async version)
+    #[pyo3(name = "async_stream", signature = (endpoint, payload, method = None))]
+    fn async_stream<'py>(
+        &self,
+        py: Python<'py>,
+        endpoint: String,
+        payload: PyObject,
+        method: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let core_client = self.core_client.clone();
+        let pythonize_manager = Arc::clone(&self.pythonize_manager);
+
+        let future = py.allow_threads(|| async move {
+            // Convert PyObject payload (Python dict) to serde_json::Value
+            let payload_json: serde_json::Value = pythonize_manager
+                .async_depythonize(payload)
+                .await
+                .map_err(|e| PyValueError::new_err(format!("Invalid payload: {}", e)))?;
+
+            let (rx, handle) = core_client
+                .stream(&endpoint, payload_json, method)
+                .map_err(PerformanceClient::convert_core_error_to_py_err)?;
+
+            // Return a new AsyncEventStreamIter instance with the receiver side of the channel
+            Python::with_gil(|py| {
+                Py::new(
+                    py,
+                    EventStreamIter {
+                        receiver: Arc::new(tokio::sync::Mutex::new(rx)),
+                        task_handle: handle,
+                        runtime: Arc::clone(&GLOBAL_RUNTIME),
+                    },
+                )
+            })
+        });
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
@@ -876,6 +1159,7 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<ClassificationResult>()?;
     m.add_class::<ClassificationResponse>()?;
     m.add_class::<BatchPostResponse>()?;
+    m.add_class::<EventStreamIter>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
