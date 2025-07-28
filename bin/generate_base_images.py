@@ -74,17 +74,19 @@ def _build(
         shutil.copytree(
             str(templates_path / "control"), str(build_ctx_path / "control")
         )
+
+        output_params = f"type=image,name={image_with_tag},compression=estargz,force-compression=true,oci-mediatypes=true"
+        if push:
+            output_params += ",push=true"
         cmd = [
             "docker",
             "buildx",
             "build",
             "--platform=linux/arm64,linux/amd64",
             ".",
-            "-t",
-            image_with_tag,
+            "--output",
+            output_params,
         ]
-        if push:
-            cmd.append("--push")
 
         # Needed to support multi-arch build.
         subprocess.run(
