@@ -11,7 +11,7 @@ RUN /usr/local/bin/python3 -c "import sys; \
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.13"; exit 1; }
 RUN if ! command -v uv >/dev/null 2>&1; then \
     command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
-    curl -LsSf https://astral.sh/uv/0.7.19/install.sh | sh >/dev/null 2>&1; \
+    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.7.19/install.sh | sh; \
 fi
 ENV PATH="/root/.local/bin:$PATH"
 ENV PYTHONUNBUFFERED="True"
