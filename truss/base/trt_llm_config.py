@@ -139,6 +139,7 @@ class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
 class TrussSpecDecMode(str, Enum):
     DRAFT_EXTERNAL = "DRAFT_TOKENS_EXTERNAL"
     LOOKAHEAD_DECODING = "LOOKAHEAD_DECODING"
+    BASETEN_LOOKAHEAD = "BASETEN_LOOKAHEAD"
 
 
 class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
@@ -361,8 +362,17 @@ class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
+        self._resolve_baseten_lookahead()
         self._validate_checkpoint()
         self._validate_spec_dec_mode()
+ 
+    def _resolve_baseten_lookahead(self):
+        if self.speculative_decoding_mode == TrussSpecDecMode.BASETEN_LOOKAHEAD:
+            self.speculative_decoding_mode = TrussSpecDecMode.LOOKAHEAD_DECODING
+            self.enable_b10_lookahead = True
+            self.lookahead_ngram_size = self.lookahead_ngram_size or 32
+            self.lookahead_windows_size = self.lookahead_windows_size or 1
+            self.lookahead_verification_set_size = self.lookahead_verification_set_size or 1
 
     def _assert_draft_tokens(self):
         if self.num_draft_tokens > 2048 or self.num_draft_tokens < 0:
@@ -388,6 +398,8 @@ class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
         ) * (ngram_size - 1)
 
     def _validate_spec_dec_mode(self):
+        self._resolve_baseten_lookahead()
+
         if self.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL:
             if not self.num_draft_tokens:
                 raise ValueError(
