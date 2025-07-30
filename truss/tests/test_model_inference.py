@@ -1945,7 +1945,7 @@ def test_is_healthy_when_model_load_fails():
 
 
 @pytest.mar.integration
-def test_is_healthy_returns_none_when_model_is_loading():
+def test_is_healthy_returns_503_when_model_is_loading():
     model = """
     import time
     class Model:
