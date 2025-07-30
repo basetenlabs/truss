@@ -103,22 +103,18 @@ class BasetenEndpoints:
 
         if not self._model.ready:
             raise errors.ModelNotReady(self._model.name)
-        print("rcano_debug: model is ready!")
 
     async def model_ready(self, model_name: str) -> dict:
         is_healthy = await self._model.is_healthy()
-        print("rcano_debug: is_healthy is", is_healthy)
         if is_healthy is None:
             self.check_healthy()
         elif not is_healthy:
             raise errors.ModelNotReady(self._model.name)
 
-        print("rcano_debug: returning empty dict in model_ready")
         return {}
 
     async def model_loaded(self, model_name: str) -> dict:
         self.check_healthy()
-        print("rcano_debug: returning empty dict in model_loaded")
         return {}
 
     async def invocations_ready(self) -> Dict[str, Union[str, bool]]:
