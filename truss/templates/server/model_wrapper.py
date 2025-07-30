@@ -626,8 +626,13 @@ class ModelWrapper:
     async def is_healthy(self) -> Optional[bool]:
         descriptor = self.model_descriptor.is_healthy
         is_healthy: Optional[bool] = None
-        if not descriptor or self.load_failed:
+        if (
+            not descriptor
+            or self.load_failed
+            or self._status == ModelWrapper.Status.LOADING
+        ):
             # return early with None if model does not have is_healthy method or load failed
+            # if we are loading, we know the model is not healthy.
             return None
         try:
             if descriptor.is_async:
@@ -651,9 +656,9 @@ class ModelWrapper:
         self, inputs: InputType, request: starlette.requests.Request
     ) -> Any:
         descriptor = self.model_descriptor.preprocess
-        assert descriptor, (
-            f"`{MethodName.PREPROCESS}` must only be called if model has it."
-        )
+        assert (
+            descriptor
+        ), f"`{MethodName.PREPROCESS}` must only be called if model has it."
         return await self._execute_user_model_fn(inputs, request, descriptor)
 
     async def _predict(
@@ -663,9 +668,9 @@ class ModelWrapper:
         # or, if `postprocessing` is used, anything. In the last case postprocessing
         # must convert the result to something serializable.
         descriptor = self.model_descriptor.predict
-        assert descriptor, (
-            f"`{MethodName.PREDICT}` must only be called if model has it."
-        )
+        assert (
+            descriptor
+        ), f"`{MethodName.PREDICT}` must only be called if model has it."
         return await self._execute_user_model_fn(inputs, request, descriptor)
 
     async def postprocess(
@@ -676,9 +681,9 @@ class ModelWrapper:
         # and postprocess is skipped.
         # The result type can be the same as for predict.
         descriptor = self.model_descriptor.postprocess
-        assert descriptor, (
-            f"`{MethodName.POSTPROCESS}` must only be called if model has it."
-        )
+        assert (
+            descriptor
+        ), f"`{MethodName.POSTPROCESS}` must only be called if model has it."
         return await self._execute_user_model_fn(result, request, descriptor)
 
     async def _write_response_to_queue(

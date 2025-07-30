@@ -390,7 +390,7 @@ class TrussServer:
             on_startup=[self.on_startup],
             routes=[
                 # liveness endpoint
-                FastAPIRoute(r"/", self._endpoints.model_ready),
+                FastAPIRoute(r"/", lambda: True),
                 # readiness endpoint
                 FastAPIRoute(
                     r"/v1/models/{model_name}", self._endpoints.model_ready, tags=["V1"]
