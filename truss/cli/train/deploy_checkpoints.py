@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import rich_click as click
-import yaml
 from InquirerPy import inquirer
 from jinja2 import Template
 
@@ -48,16 +47,18 @@ ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
 
 def create_build_time_config(context_path_str: Path) -> None:
     """Create a build time config for the truss, excludes run-time only attributes."""
-    # read the truss config from /build/context/config.yaml
-    with open(context_path_str / "config.yaml", "r") as f:
-        truss_config = yaml.safe_load(f)
+    truss_config_obj = truss_config.TrussConfig.from_yaml(
+        context_path_str / "config.yaml"
+    )
+
     # we will set the start command at runtime, so we don't need to include it in the build hash
-    del truss_config["docker_server"]["start_command"]
+    if truss_config_obj.docker_server:
+        truss_config_obj.docker_server.start_command = ""
     # we will set the checkpoints at runtime, so we don't need to include them in the build hash
-    del truss_config["training_checkpoints"]
-    # write the truss config back to /build/context/build_hash/config.yaml
-    with open(context_path_str / "config_build_time.yaml", "w") as f:
-        yaml.dump(truss_config, f)
+    truss_config_obj.training_checkpoints = None
+
+    # write the truss config back to a file (used for build hash calculation)
+    truss_config_obj.write_to_yaml_file(context_path_str / "config_build_time.yaml")
 
 
 def prepare_checkpoint_deploy(
