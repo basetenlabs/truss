@@ -963,6 +963,188 @@ def test_health_check_configuration():
 
 
 @pytest.mark.integration
+def test_is_healthy_returns_503_on_load_failure():
+    model = """
+    class Model:
+        def load(self):
+            raise Exception("not loaded")
+
+        def is_healthy(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        for _ in range(5):
+            time.sleep(1)
+            healthy = requests.get(f"{urls.base_url}/v1/models/model")
+            if healthy.status_code == 503:
+                break
+            assert healthy.status_code == 200
+        assert healthy.status_code == 503
+        diff = container.diff()
+        assert "/root/inference_server_crashed.txt" in diff
+        assert diff["/root/inference_server_crashed.txt"] == "A"
+
+
+@pytest.mark.integration
+def test_container_logs_contain_error_when_is_healthy_has_wrong_signature():
+    model = """
+    class Model:
+        def is_healthy(self, argument) -> bool:
+            pass
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        time.sleep(1)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="`is_healthy` must have only one argument: `self`",
+        )
+
+
+@pytest.mark.integration
+def test_container_logs_contain_error_when_is_healthy_raises_exception():
+    model = """
+    class Model:
+        def is_healthy(self) -> bool:
+            raise Exception("not healthy")
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 503
+        assert (
+            "Exception while checking if model is healthy: not healthy"
+            in container.logs()
+        )
+        assert "Health check failed." in container.logs()
+
+
+@pytest.mark.integration
+def test_health_check_returns_503_when_not_healthy():
+    model = """
+    import time
+
+    class Model:
+        def load(self):
+            time.sleep(10)
+
+        def is_healthy(self) -> bool:
+            return False
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        time.sleep(5)
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 503
+        # Ensure we only log after model.load is complete
+        assert "Health check failed." not in container.logs()
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 1
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 2
+
+
+@pytest.mark.integration
+def test_health_check_returns_200_when_healthy():
+    model = """
+    import time
+
+    class Model:
+        def __init__(self, **kwargs):
+            self._healthy = False
+
+        def load(self):
+            time.sleep(10)
+            self._healthy = True
+
+        def is_healthy(self):
+            return self._healthy
+
+        def predict(self, model_input):
+            self._healthy = model_input["healthy"]
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        time.sleep(5)
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 503
+        time.sleep(10)
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 200
+
+        healthy_responses = [True, "yessss", 34, {"woo": "hoo"}]
+        for response in healthy_responses:
+            predict_response = requests.post(
+                urls.predict_url, json={"healthy": response}
+            )
+            assert predict_response.status_code == 200
+            healthy = requests.get(f"{urls.base_url}/v1/models/model")
+            assert healthy.status_code == 200
+
+        not_healthy_responses = [False, "", 0, {}]
+        for response in not_healthy_responses:
+            predict_response = requests.post(
+                urls.predict_url, json={"healthy": response}
+            )
+            assert predict_response.status_code == 200
+            healthy = requests.get(f"{urls.base_url}/v1/models/model")
+            assert healthy.status_code == 503
+
+
+@pytest.mark.integration
+def test_is_healthy_returns_503_during_model_load():
+    """Test that health checks don't run until model.load() completes.
+
+    This test verifies that health checks are not performed while the model
+    is still loading, ensuring that the loading process isn't interrupted
+    by premature health check failures.
+    """
+    model = """
+    import time
+
+    class Model:
+        def load(self):
+            time.sleep(10)
+
+        def is_healthy(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
+        time.sleep(5)
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 503
+        assert "Health check failed." not in container.logs()
+
+
+@pytest.mark.integration
 def test_instrument_metrics():
     model = """
     from prometheus_client import Counter
@@ -1910,225 +2092,3 @@ async def test_websocket_ping_timeout_behavior(caplog):
 
         # We wait 3 seconds, so there should be ~3 PING/PONGS
         assert 2 <= caplog.text.count("PING") <= 4
-
-
-@pytest.mark.integration
-def test_is_healthy_when_model_load_fails():
-    """Test that health check returns 503 when model.load() raises an exception.
-
-    This test verifies that when a model's load method fails, the server correctly
-    reports unhealthy status (503) and creates a crash indicator file.
-    """
-    model = """
-    class Model:
-        def load(self):
-            raise Exception("not loaded")
-
-        def is_healthy(self) -> bool:
-            return True
-
-        def predict(self, model_input):
-            return model_input
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        for _ in range(5):
-            time.sleep(1)
-            healthy = requests.get(f"{urls.base_url}/v1/models/model")
-            if healthy.status_code == 503:
-                break
-            assert healthy.status_code == 200
-        assert healthy.status_code == 503
-        diff = container.diff()
-        assert "/root/inference_server_crashed.txt" in diff
-        assert diff["/root/inference_server_crashed.txt"] == "A"
-
-
-@pytest.mar.integration
-def test_is_healthy_returns_503_when_model_is_loading():
-    model = """
-    import time
-    class Model:
-        def load(self):
-            time.sleep(60)
-
-        def is_healthy(self) -> bool:
-            return True
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1)
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 503
-        assert "Health check failed." in container.logs()
-
-
-@pytest.mark.integration
-def test_is_healthy_invalid_signature():
-    """Test that health check validation fails when is_healthy has wrong signature.
-
-    This test verifies that the server correctly validates the is_healthy method
-    signature and reports an error when it has more than just the 'self' parameter.
-    """
-    model = """
-    class Model:
-        def is_healthy(self, argument) -> bool:
-            pass
-
-        def predict(self, model_input):
-            return model_input
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(1)
-        _assert_logs_contain_error(
-            container.logs(),
-            message="Exception while loading model",
-            error="`is_healthy` must have only one argument: `self`",
-        )
-
-
-@pytest.mark.integration
-def test_is_healthy_raises_exception():
-    """Test that health check returns 503 when is_healthy method raises an exception.
-
-    This test verifies that when the is_healthy method itself raises an exception,
-    the server correctly reports unhealthy status (503) and logs the error.
-    """
-    model = """
-    class Model:
-        def is_healthy(self) -> bool:
-            raise Exception("not healthy")
-
-        def predict(self, model_input):
-            return model_input
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-
-        # Sleep a few seconds to get the server some time to wake up
-        time.sleep(10)
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 503
-        assert (
-            "Exception while checking if model is healthy: not healthy"
-            in container.logs()
-        )
-        assert "Health check failed." in container.logs()
-
-
-@pytest.mark.integration
-def test_is_healthy_during_model_load():
-    """Test that health checks don't run until model.load() completes.
-
-    This test verifies that health checks are not performed while the model
-    is still loading, ensuring that the loading process isn't interrupted
-    by premature health check failures.
-    """
-    model = """
-    import time
-
-    class Model:
-        def load(self):
-            time.sleep(10)
-
-        def is_healthy(self) -> bool:
-            return False
-
-        def predict(self, model_input):
-            return model_input
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(5)
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 503
-        # Ensure we only log after model.load is complete
-        assert "Health check failed." not in container.logs()
-
-        # Sleep a few seconds to get the server some time to wake up
-        time.sleep(10)
-
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 503
-        assert container.logs().count("Health check failed.") == 1
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 503
-        assert container.logs().count("Health check failed.") == 2
-
-
-@pytest.mark.integration
-def test_is_healthy_dynamic_state():
-    """Test that health check reflects dynamic changes in model health state.
-
-    This test verifies that the is_healthy method can return different values
-    based on the model's internal state, and that the server correctly responds
-    to these changes. It tests both truthy and falsy return values.
-    """
-    model = """
-    import time
-
-    class Model:
-        def __init__(self, **kwargs):
-            self._healthy = False
-
-        def load(self):
-            time.sleep(10)
-            self._healthy = True
-
-        def is_healthy(self):
-            return self._healthy
-
-        def predict(self, model_input):
-            self._healthy = model_input["healthy"]
-            return model_input
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        time.sleep(5)
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 503
-        time.sleep(10)
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 200
-
-        # Test various truthy values that should make the model healthy
-        healthy_responses = [True, "yessss", 34, {"woo": "hoo"}]
-        for response in healthy_responses:
-            predict_response = requests.post(
-                urls.predict_url, json={"healthy": response}
-            )
-            assert predict_response.status_code == 200
-            healthy = requests.get(f"{urls.base_url}/v1/models/model")
-            assert healthy.status_code == 200
-
-        # Test various falsy values that should make the model unhealthy
-        not_healthy_responses = [False, "", 0, {}]
-        for response in not_healthy_responses:
-            predict_response = requests.post(
-                urls.predict_url, json={"healthy": response}
-            )
-            assert predict_response.status_code == 200
-            healthy = requests.get(f"{urls.base_url}/v1/models/model")
-            assert healthy.status_code == 503
-
-
-@pytest.mark.integration
-def test_is_healthy_returns_true():
-    """Test that health check returns 200 when is_healthy returns True.
-
-    This test verifies the basic happy path where the is_healthy method
-    returns True and the server correctly reports healthy status (200).
-    """
-    model = """
-    class Model:
-        def is_healthy(self) -> bool:
-            return True
-
-        def predict(self, model_input):
-            return model_input
-    """
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        container, urls = tr.docker_run_for_test()
-        healthy = requests.get(f"{urls.base_url}/v1/models/model")
-        assert healthy.status_code == 200
