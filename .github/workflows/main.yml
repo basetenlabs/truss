@@ -85,7 +85,7 @@ jobs:
       - uses: ./.github/actions/setup-python/
 
       - name: Install poetry packages
-        run: poetry install --extras=all
+        run: poetry install --only=main
 
       - name: Build
         run: poetry build

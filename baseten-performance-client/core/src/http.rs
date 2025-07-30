@@ -1,5 +1,18 @@
 use serde::{Deserialize, Serialize};
 
+// Default functions for serde
+fn default_total_time() -> f64 {
+    -1.0
+}
+
+fn default_individual_request_times() -> Vec<f64> {
+    Vec::new()
+}
+
+fn default_response_headers() -> Vec<std::collections::HashMap<String, String>> {
+    Vec::new()
+}
+
 // --- Core OpenAI Compatible Structures ---
 #[derive(Serialize, Debug, Clone)]
 pub struct CoreOpenAIEmbeddingsRequest {
@@ -40,8 +53,12 @@ pub struct CoreOpenAIEmbeddingsResponse {
     pub data: Vec<CoreOpenAIEmbeddingData>,
     pub model: String,
     pub usage: CoreOpenAIUsage,
-    pub total_time: Option<f64>,
-    pub individual_request_times: Option<Vec<f64>>,
+    #[serde(default = "default_total_time")]
+    pub total_time: f64,
+    #[serde(default = "default_individual_request_times")]
+    pub individual_request_times: Vec<f64>,
+    #[serde(default = "default_response_headers")]
+    pub response_headers: Vec<std::collections::HashMap<String, String>>,
 }
 
 // --- Core Rerank Structures ---
@@ -62,12 +79,16 @@ pub struct CoreRerankResult {
     pub text: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct CoreRerankResponse {
     pub object: String,
     pub data: Vec<CoreRerankResult>,
-    pub total_time: Option<f64>,
-    pub individual_request_times: Option<Vec<f64>>,
+    #[serde(default = "default_total_time")]
+    pub total_time: f64,
+    #[serde(default = "default_individual_request_times")]
+    pub individual_request_times: Vec<f64>,
+    #[serde(default = "default_response_headers")]
+    pub response_headers: Vec<std::collections::HashMap<String, String>>,
 }
 
 impl CoreRerankResponse {
@@ -79,8 +100,9 @@ impl CoreRerankResponse {
         CoreRerankResponse {
             object: "list".to_string(),
             data,
-            total_time,
-            individual_request_times,
+            total_time: total_time.unwrap_or(-1.0),
+            individual_request_times: individual_request_times.unwrap_or_default(),
+            response_headers: Vec::new(),
         }
     }
 }
@@ -100,12 +122,16 @@ pub struct CoreClassificationResult {
     pub score: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct CoreClassificationResponse {
     pub object: String,
     pub data: Vec<Vec<CoreClassificationResult>>,
-    pub total_time: Option<f64>,
-    pub individual_request_times: Option<Vec<f64>>,
+    #[serde(default = "default_total_time")]
+    pub total_time: f64,
+    #[serde(default = "default_individual_request_times")]
+    pub individual_request_times: Vec<f64>,
+    #[serde(default = "default_response_headers")]
+    pub response_headers: Vec<std::collections::HashMap<String, String>>,
 }
 
 impl CoreClassificationResponse {
@@ -117,8 +143,9 @@ impl CoreClassificationResponse {
         CoreClassificationResponse {
             object: "list".to_string(),
             data,
-            total_time,
-            individual_request_times,
+            total_time: total_time.unwrap_or(-1.0),
+            individual_request_times: individual_request_times.unwrap_or_default(),
+            response_headers: Vec::new(),
         }
     }
 }

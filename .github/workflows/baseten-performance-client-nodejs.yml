@@ -542,6 +542,6 @@ jobs:
             echo "Not a release, skipping publish"
           fi
           echo "publishing release anyways with --next for debugging. "
-          npm publish --access public --tag next || echo "publishing failed."
+          npm publish --access public || echo "publishing failed."
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,24 +1,19 @@
-use crate::constants::RETRY_TIMEOUT_BUDGET_PERCENTAGE;
 use crate::constants::{CANCELLATION_ERROR_MESSAGE_DETAIL, CTRL_C_ERROR_MESSAGE_DETAIL};
+use crate::constants::{HEDGE_BUDGET_PERCENTAGE, RETRY_TIMEOUT_BUDGET_PERCENTAGE};
 use crate::errors::ClientError;
-use once_cell::sync::Lazy;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-// Global state for staging addresses
-pub static STAGING_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
-    option_env!("PERF_CLIENT_STAGING_ADDRESS")
-        .unwrap_or(std::str::from_utf8(crate::constants::DEFAULT_STAGING_ADDRESS).unwrap())
-        .split(',')
-        .map(String::from)
-        .collect()
-});
-
 /// Calculate retry timeout budget based on total requests
 pub fn calculate_retry_timeout_budget(total_requests: usize) -> usize {
     (total_requests as f64 * RETRY_TIMEOUT_BUDGET_PERCENTAGE).ceil() as usize
+}
+
+pub fn calculate_hedge_budget(total_requests: usize) -> usize {
+    (total_requests as f64 * HEDGE_BUDGET_PERCENTAGE).ceil() as usize
 }
 
 /// Helper function to acquire permit and check for cancellation
@@ -32,14 +27,14 @@ pub async fn acquire_permit_or_cancel(
         biased;
 
         // Check for global cancellation (e.g., Ctrl+C) if provided
-        _ = tokio::time::sleep(Duration::from_millis(1)), if global_cancel_token.as_ref().map_or(false, |token| token.load(Ordering::SeqCst)) => {
+        _ = tokio::time::sleep(Duration::from_millis(5)), if global_cancel_token.as_ref().is_some_and(|token| token.load(Ordering::SeqCst)) => {
             local_cancel_token.store(true, Ordering::SeqCst);
-            return Err(ClientError::Cancellation(CTRL_C_ERROR_MESSAGE_DETAIL.to_string()));
+            Err(ClientError::Cancellation(CTRL_C_ERROR_MESSAGE_DETAIL.to_string()))?
         }
 
         // Check for local cancellation token
-        _ = tokio::time::sleep(Duration::from_millis(1)), if local_cancel_token.load(Ordering::SeqCst) => {
-            return Err(ClientError::Cancellation(CANCELLATION_ERROR_MESSAGE_DETAIL.to_string()));
+        _ = tokio::time::sleep(Duration::from_millis(5)), if local_cancel_token.load(Ordering::SeqCst) => {
+            Err(ClientError::Cancellation(CANCELLATION_ERROR_MESSAGE_DETAIL.to_string()))?
         }
 
         // Try to acquire the permit
@@ -49,7 +44,7 @@ pub async fn acquire_permit_or_cancel(
             })?;
 
             // Re-check cancellation signals after acquiring the permit
-            if global_cancel_token.as_ref().map_or(false, |token| token.load(Ordering::SeqCst)) {
+            if global_cancel_token.as_ref().is_some_and(|token| token.load(Ordering::SeqCst)) {
                 local_cancel_token.store(true, Ordering::SeqCst);
                 return Err(ClientError::Cancellation(CTRL_C_ERROR_MESSAGE_DETAIL.to_string()));
             }
@@ -61,51 +56,32 @@ pub async fn acquire_permit_or_cancel(
     }
 }
 
-/// Process task outcome and manage errors
-pub fn process_task_outcome<D>(
-    task_join_result: Result<Result<D, ClientError>, tokio::task::JoinError>,
-    first_error: &mut Option<ClientError>,
+/// Process JoinSet task outcome with improved error handling
+pub fn process_joinset_outcome<T>(
+    task_result: Result<Result<T, ClientError>, tokio::task::JoinError>,
     cancel_token: &Arc<AtomicBool>,
-) -> Option<D> {
-    match task_join_result {
-        Ok(Ok(data)) => {
-            if first_error.is_none() {
-                Some(data)
-            } else {
-                None
-            }
-        }
-        Ok(Err(current_err)) => {
-            let is_current_err_cancellation = current_err
-                .to_string()
-                .ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
-
-            if let Some(ref existing_err) = first_error {
-                let is_existing_err_cancellation = existing_err
-                    .to_string()
-                    .ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
-                if is_existing_err_cancellation && !is_current_err_cancellation {
-                    *first_error = Some(current_err);
-                }
-            } else {
-                *first_error = Some(current_err);
-            }
-            None
-        }
-        Err(join_err) => {
-            let panic_err = ClientError::Network(format!("Tokio task panicked: {}", join_err));
-            if let Some(ref existing_err) = first_error {
-                let is_existing_err_cancellation = existing_err
-                    .to_string()
-                    .ends_with(CANCELLATION_ERROR_MESSAGE_DETAIL);
-                if is_existing_err_cancellation {
-                    *first_error = Some(panic_err);
-                }
-            } else {
-                *first_error = Some(panic_err);
-            }
+) -> Result<T, ClientError> {
+    match task_result {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(client_error)) => {
             cancel_token.store(true, Ordering::SeqCst);
-            None
+            Err(client_error)
+        }
+        Err(join_error) => {
+            cancel_token.store(true, Ordering::SeqCst);
+            if join_error.is_cancelled() {
+                Err(ClientError::Cancellation("Task was cancelled".to_string()))
+            } else if join_error.is_panic() {
+                Err(ClientError::Network(format!(
+                    "Task panicked: {}",
+                    join_error
+                )))
+            } else {
+                Err(ClientError::Network(format!(
+                    "Task join error: {}",
+                    join_error
+                )))
+            }
         }
     }
 }

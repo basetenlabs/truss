@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client-darwin-universal",
-  "version": "0.0.1",
+  "version": "0.0.8",
   "os": [
     "darwin"
   ],
