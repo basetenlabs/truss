@@ -980,10 +980,7 @@ def test_is_healthy_returns_503_on_load_failure():
         for _ in range(5):
             time.sleep(1)
             healthy = requests.get(f"{urls.base_url}/v1/models/model")
-            if healthy.status_code == 503:
-                break
-            assert healthy.status_code == 200
-        assert healthy.status_code == 503
+            assert healthy.status_code == 503
         diff = container.diff()
         assert "/root/inference_server_crashed.txt" in diff
         assert diff["/root/inference_server_crashed.txt"] == "A"
