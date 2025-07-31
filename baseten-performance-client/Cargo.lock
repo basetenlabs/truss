@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client_core"
-version = "0.0.7"
+version = "0.0.9"
 dependencies = [
  "futures",
  "once_cell",

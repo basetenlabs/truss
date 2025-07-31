@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client-linux-arm-musleabihf",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "os": [
     "linux"
   ],
