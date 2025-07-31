@@ -309,6 +309,10 @@ class TrussHandle:
                 envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
             if disable_json_logging:
                 envs["DISABLE_JSON_LOGGING"] = "true"
+            if self.spec.config.docker_server:
+                envs["BT_DOCKER_SERVER_START_CMD"] = (
+                    self.spec.config.docker_server.start_command
+                )
 
             if container_name_prefix:
                 suffix = str(uuid.uuid4()).split("-")[0]
