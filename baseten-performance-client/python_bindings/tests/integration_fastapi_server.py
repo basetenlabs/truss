@@ -295,6 +295,56 @@ def run_client():
     scenario_regular_embedding(12, add_429_seconds=0.5)
     scenario_regular_embedding(200, add_429_seconds=2)
 
+    def scenario_using_batch_post(number_of_requests: int):
+        """
+        Run a scenario using the batch_post method.
+        """
+        hijack_payloads = prepare_hijack_payloads(
+            number_of_requests=number_of_requests,
+            max_batch_size=1,
+            max_chars_per_request=None,
+            send_429_until_time=None,
+        )
+        response = client.batch_post(
+            "/v1/embeddings",
+            [
+                OpenAIEmbeddingRequest(
+                    model="text-embedding-ada-002", input=[hp.to_string()]
+                ).model_dump()
+                for hp in hijack_payloads
+            ],
+            max_concurrent_requests=64,
+        )
+        assert response is not None, "Response should not be None"
+        assert len(response.data) == number_of_requests, (
+            "Response should contain `number_of_requests` embeddings"
+        )
+
+        global_object = OpenAIEmbeddingResponse(
+            model=response.data[0]["model"],
+            object=response.data[0]["object"],
+            data=[EmbeddingData(**embedding["data"][0]) for embedding in response.data],
+            usage=response.data[0]["usage"],
+        )
+        indexes = [embedding.index for embedding in global_object.data]
+        assert indexes == [0] * number_of_requests, (
+            "Indexes should match the range of number_of_requests"
+        )
+        # UUID match
+        for i, embedding in enumerate(global_object.data):
+            assert embedding.embedding[0] == hijack_payloads[i].uuid_int, (
+                f"Embedding {i} should match UUID {hijack_payloads[i].uuid_int}"
+            )
+
+        reset_message = client.batch_post("/reset", [{}]).data[0]
+        assert reset_message["successful_requests"] == number_of_requests, (
+            "Successful requests should match the number of requests divided by batch size"
+        )
+        print(f"Scenario using batch_post with {number_of_requests} requests passed.")
+
+    scenario_using_batch_post(12)
+    scenario_using_batch_post(1000)
+
     def scenario_stalled(
         number_of_requests: int,
         stall_x_many_requests: int,

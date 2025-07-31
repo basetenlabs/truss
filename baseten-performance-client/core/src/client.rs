@@ -3,6 +3,7 @@ use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
 use crate::split_policy::*;
+use crate::sse_specifics::{SSEClient, StreamEvent};
 use crate::utils::{
     acquire_permit_or_cancel, calculate_hedge_budget, calculate_retry_timeout_budget,
     process_joinset_outcome,
@@ -14,8 +15,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
-
+use tokio::task::{JoinHandle, JoinSet};
 
 #[derive(Clone)]
 pub enum HttpClientWrapper {
@@ -81,6 +81,7 @@ pub struct PerformanceClientCore {
     pub api_key: String,
     pub base_url: Arc<str>,
     pub client_wrapper: HttpClientWrapper,
+    pub sse_client: Arc<SSEClient>,
 }
 
 impl PerformanceClientCore {
@@ -204,10 +205,17 @@ impl PerformanceClientCore {
             );
         }
 
+        let sse_client = Arc::new(SSEClient::new(
+            api_key.clone(),
+            base_url.clone(),
+            http_version,
+        ));
+
         Ok(PerformanceClientCore {
             api_key,
             base_url: base_url.into(),
             client_wrapper,
+            sse_client,
         })
     }
 }
@@ -681,5 +689,17 @@ impl PerformanceClientCore {
 
         let total_time = start_time.elapsed();
         Ok((final_results, total_time))
+    }
+
+    /// Start streaming SSE events from the given endpoint
+    /// Returns a receiver for StreamEvents and a handle to the background task
+    pub fn stream(
+        &self,
+        endpoint: &str,
+        payload: serde_json::Value,
+        method: Option<String>,
+    ) -> Result<(tokio::sync::mpsc::Receiver<StreamEvent>, JoinHandle<()>), ClientError> {
+        self.sse_client
+            .stream(endpoint, payload, method.unwrap_or("POST".to_string()))
     }
 }
