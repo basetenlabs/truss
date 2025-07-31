@@ -983,11 +983,10 @@ def test_is_healthy_returns_503_on_load_failure():
         for _ in range(max_wait):
             logs = container.logs()
             if "Exception while loading model" in logs and "Exception: not loaded" in logs:
-                print("DEBUG: Model loading failure detected in logs")
                 break
             time.sleep(1)
         else:
-            print("DEBUG: Model loading failure not detected in logs within timeout, test likely to fail")
+            print("WARNING: Model loading failure not detected in logs within timeout, test likely to fail")
         
         for _ in range(5):
             time.sleep(1)
