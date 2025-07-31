@@ -594,8 +594,15 @@ class TrainingArtifactReference(custom_types.ConfigModel):
 
 
 class CheckpointList(custom_types.ConfigModel):
-    download_folder: str = DEFAULT_TRAINING_CHECKPOINT_FOLDER
-    checkpoints: list[Checkpoint] = pydantic.Field(default_factory=list)
+    download_folder: str = pydantic.Field(
+        default=DEFAULT_TRAINING_CHECKPOINT_FOLDER,
+        description="The folder to download the checkpoints to.",
+        examples=["/tmp/training_checkpoints"],
+    )
+    # TODO: Remove this field once deploy_checkpoints uses artifact_references instead.
+    checkpoints: list[Checkpoint] = pydantic.Field(
+        default_factory=list, deprecated="Prefer artifact_references instead."
+    )
     artifact_references: list[TrainingArtifactReference] = pydantic.Field(
         default_factory=list
     )
