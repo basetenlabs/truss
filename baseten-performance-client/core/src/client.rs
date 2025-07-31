@@ -16,7 +16,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-
 #[derive(Clone)]
 pub enum HttpClientWrapper {
     Http1(Arc<Client>),
