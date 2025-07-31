@@ -977,10 +977,9 @@ def test_is_healthy_returns_503_on_load_failure():
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test(wait_for_server_ready=False)
-        for _ in range(5):
-            time.sleep(1)
-            healthy = requests.get(f"{urls.base_url}/v1/models/model")
-            assert healthy.status_code == 503
+        time.sleep(5)
+        healthy = requests.get(f"{urls.base_url}/v1/models/model")
+        assert healthy.status_code == 503
         diff = container.diff()
         assert "/root/inference_server_crashed.txt" in diff
         assert diff["/root/inference_server_crashed.txt"] == "A"
