@@ -172,3 +172,4 @@ class DeployCheckpointsConfig(custom_types.SafeModelNoExtra):
     deployment_name: Optional[str] = None
     runtime: Optional[DeployCheckpointsRuntime] = None
     compute: Optional[Compute] = None
+    model_weight_format: Optional[truss_config.ModelWeightsFormat] = None

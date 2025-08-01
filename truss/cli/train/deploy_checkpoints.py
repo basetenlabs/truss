@@ -98,6 +98,8 @@ def _hydrate_deploy_config(
             "Unable to infer base model id. Reach out to Baseten for support."
         )
     compute = _ensure_compute_spec(deploy_config.compute)
+    model_weight_format = _ensure_model_weight_format(deploy_config.model_weight_format)
+
     model_name = (
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
     )
@@ -112,6 +114,7 @@ def _hydrate_deploy_config(
         deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
+        model_weight_format=model_weight_format,
     )
 
 
@@ -333,6 +336,19 @@ def _get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
     if isinstance(user_input, SecretReference):
         return user_input.name
     return user_input
+
+
+def _ensure_model_weight_format(
+    model_weight_format: Optional[truss_config.ModelWeightsFormat],
+) -> truss_config.ModelWeightsFormat:
+    if not model_weight_format:
+        model_weight_format_str = inquirer.select(
+            message="Select the model weight format to use for deployment.",
+            choices=[x.value for x in truss_config.ModelWeightsFormat],
+            default=truss_config.ModelWeightsFormat.LORA.value,
+        ).execute()
+        return truss_config.ModelWeightsFormat(model_weight_format_str)
+    return model_weight_format
 
 
 def _ensure_compute_spec(compute: Optional[Compute]) -> Compute:
