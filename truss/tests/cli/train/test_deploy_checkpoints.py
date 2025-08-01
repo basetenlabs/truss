@@ -110,12 +110,12 @@ def test_render_vllm_lora_truss_config():
     )
     assert test_truss.model_name == rendered_truss.model_name
     assert (
-        test_truss.training_checkpoints.checkpoints[0].id
-        == rendered_truss.training_checkpoints.checkpoints[0].id
+        test_truss.training_checkpoints.artifact_references[0].id
+        == rendered_truss.training_checkpoints.artifact_references[0].id
     )
     assert (
-        test_truss.training_checkpoints.checkpoints[0].name
-        == rendered_truss.training_checkpoints.checkpoints[0].name
+        test_truss.training_checkpoints.artifact_references[0].name
+        == rendered_truss.training_checkpoints.artifact_references[0].name
     )
     assert (
         test_truss.docker_server.start_command

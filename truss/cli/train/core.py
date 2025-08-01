@@ -245,20 +245,23 @@ def prepare_checkpoint_deploy(
 def print_deploy_checkpoints_success_message(
     prepare_checkpoint_result: PrepareCheckpointResult,
 ):
+    name = (
+        prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints[
+            0
+        ]
+        .path_details[0]
+        .path_reference.strip("/")
+        .split("/")[-1]
+    )
     console.print(
         Text("\nTo run the model with the LoRA adapter,"),
         Text("ensure your `model` parameter is set to one of"),
-        Text(
-            f"{[x.name for x in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints]}",
-            style="magenta",
-        ),
+        # Text(
+        #     f"{[x.name for x in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints]}",
+        #     style="magenta",
+        # ),
         Text("in your request. An example request body might look like this:"),
-        Text(
-            "\n{"
-            + f'"model": {prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints[0].name}, "messages": [...]'
-            + "}",
-            style="green",
-        ),
+        Text("\n{" + f'"model": {name}, "messages": [...]' + "}", style="green"),
     )
 
 

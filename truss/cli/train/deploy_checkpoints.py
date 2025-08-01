@@ -25,7 +25,9 @@ from truss_train.definitions import (
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
+    ModelWeightsFormat,
     SecretReference,
+    TrainingArtifactReferencePathDetails,
 )
 
 VLLM_LORA_START_COMMAND = Template(
@@ -126,20 +128,41 @@ def _ensure_deployment_name(
 
     default_deployment_name = "checkpoint"
 
-    first_checkpoint_name = checkpoints[0].name.replace("/", "--")
-    if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
-        # We allow for autoincrementing when the checkpoint matches the regex pattern.
-        # In cases where the autoincrementing deployment name is not supported,
-        # ask the user for a deployment name
-        if CHECKPOINT_PATTERN.match(first_checkpoint_name) and len(checkpoints) == 1:
-            return first_checkpoint_name
-    # prompt the user for the deployment name
-    deployment_name = inquirer.text(
-        message="Enter the deployment name.", default=default_deployment_name
-    ).execute()
-    if not deployment_name:
-        raise click.UsageError("Deployment name is required.")
-    return deployment_name
+    try:
+        first_checkpoint_name = checkpoints[0].name.replace("/", "--")
+        if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
+            # We allow for autoincrementing when the checkpoint matches the regex pattern.
+            # In cases where the autoincrementing deployment name is not supported,
+            # ask the user for a deployment name
+            if (
+                CHECKPOINT_PATTERN.match(first_checkpoint_name)
+                and len(checkpoints) == 1
+            ):
+                return first_checkpoint_name
+    except:
+        # prompt the user for the deployment name
+        deployment_name = inquirer.text(
+            message="Enter the deployment name.", default=default_deployment_name
+        ).execute()
+        if not deployment_name:
+            raise click.UsageError("Deployment name is required.")
+        return deployment_name
+
+
+def hydrate_lora_checkpoint(
+    job_id: str, checkpoint_id: str, checkpoint: dict
+) -> Checkpoint:
+    path_details = [
+        TrainingArtifactReferencePathDetails(
+            path_reference=f"{job_id}/rank-0/{checkpoint_id}/", recursive=True
+        )
+    ]
+    return Checkpoint(
+        training_job_id=job_id,
+        path_details=path_details,
+        model_weight_format=ModelWeightsFormat.LORA,
+        lora_rank=_get_lora_rank(checkpoint),
+    )
 
 
 def _render_vllm_lora_truss_config(
@@ -166,22 +189,23 @@ def _render_vllm_lora_truss_config(
 
     start_command_envvars = ""
     for key, value in checkpoint_deploy.runtime.environment_variables.items():
-        # this is a quirk of serving vllm with secrets - we need to export the secret by cat-ing it
         if isinstance(value, SecretReference):
             truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
             start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
 
     checkpoint_parts = []
-    for truss_checkpoint in truss_deploy_config.training_checkpoints.checkpoints:  # type: ignore
+    for (
+        truss_checkpoint
+    ) in truss_deploy_config.training_checkpoints.artifact_references:  # type: ignore
         ckpt_path = Path(
             truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
-            truss_checkpoint.id,
+            truss_checkpoint.path_details[0].path_reference,
         )
-        checkpoint_parts.append(f"{truss_checkpoint.name}={ckpt_path}")
+        checkpoint_parts.append(f"{truss_checkpoint.training_job_id}:{ckpt_path}")
     checkpoint_str = " ".join(checkpoint_parts)
     max_lora_rank = max(
         [
-            checkpoint.lora_rank or DEFAULT_LORA_RANK
+            getattr(checkpoint, "lora_rank", DEFAULT_LORA_RANK) or DEFAULT_LORA_RANK
             for checkpoint in checkpoint_deploy.checkpoint_details.checkpoints
         ]
     )
@@ -239,6 +263,7 @@ def _prompt_user_for_checkpoint_details(
     checkpoint_details.base_model_id = _get_base_model_id(
         checkpoint_details.base_model_id, response_checkpoints[checkpoint_ids[0]]
     )
+
     return checkpoint_details
 
 
@@ -266,10 +291,11 @@ def _process_user_provided_checkpoints(
                 checkpoint_response
             )
         checkpoint_response = checkpoints_by_training_job_id[checkpoint.training_job_id]
-        if checkpoint.id not in checkpoint_response:
-            raise click.UsageError(f"Checkpoint {checkpoint.id} not found.")
-        if not checkpoint.name:
-            checkpoint.name = checkpoint.id
+        # if checkpoint.id not in checkpoint_response:
+        #     raise click.UsageError(f"Checkpoint {checkpoint.id} not found.")
+        # TODO: aghilan fix this
+        # if not checkpoint.name:
+        #     checkpoint.name = checkpoint.id
         if not checkpoint.lora_rank:
             checkpoint.lora_rank = _get_lora_rank(checkpoint_response[checkpoint.id])
     return checkpoint_details
@@ -288,20 +314,6 @@ def _get_checkpoint_ids_to_deploy(checkpoint_id_options: List[str]) -> str:
     else:
         checkpoint_ids = [checkpoint_id_options[0]]
     return checkpoint_ids
-
-
-def _hydrate_checkpoints(
-    job_id: str, checkpoint_id: str, response_checkpoints: OrderedDict[str, dict]
-) -> Checkpoint:
-    if checkpoint_id == "latest":
-        checkpoint_id = list(response_checkpoints.keys())[-1]
-    checkpoint = response_checkpoints[checkpoint_id]
-    return Checkpoint(
-        training_job_id=job_id,
-        id=checkpoint_id,
-        name=checkpoint_id,
-        lora_rank=_get_lora_rank(checkpoint),
-    )
 
 
 def _get_lora_rank(checkpoint_resp: dict) -> int:
@@ -424,3 +436,16 @@ def _fetch_checkpoints(
         for checkpoint in response["checkpoints"]
     )
     return response_checkpoints
+
+
+def _hydrate_checkpoints(
+    job_id: str, checkpoint_id: str, response_checkpoints: OrderedDict[str, dict]
+) -> Checkpoint:
+    if checkpoint_id == "latest":
+        checkpoint_id = list(response_checkpoints.keys())[-1]
+    checkpoint = response_checkpoints[checkpoint_id]
+    checkpoint_type = checkpoint.get("checkpoint_type")
+    if checkpoint_type == ModelWeightsFormat.LORA.value:
+        return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
+    else:
+        raise ValueError("Contact Baseten to auto deploy other checkpoint types")

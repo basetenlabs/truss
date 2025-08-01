@@ -1,7 +1,8 @@
+import enum
 from typing import Dict, List, Optional, Union
 
 import pydantic
-from pydantic import field_validator, model_validator
+from pydantic import model_validator
 
 from truss.base import custom_types, truss_config
 
@@ -127,27 +128,66 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     job: TrainingJob = pydantic.Field(exclude=True)
 
 
-class Checkpoint(custom_types.SafeModelNoExtra):
-    training_job_id: str
-    id: str
-    name: str
-    lora_rank: Optional[int] = (
-        None  # lora rank will be fetched through the API if available.
-    )
+class ModelWeightsFormat(str, enum.Enum):
+    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
-    @field_validator("lora_rank")
-    @classmethod
-    def validate_lora_rank(cls, v):
-        if v is not None and v not in ALLOWED_LORA_RANKS:
-            raise ValueError(
-                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}"
-            )
-        return v
+    LORA = "lora"
 
-    def to_truss_config(self) -> truss_config.Checkpoint:
-        return truss_config.Checkpoint(
-            id=f"{self.training_job_id}/{self.id}", name=self.id
+    def to_truss_config(self) -> truss_config.ModelWeightsFormat:
+        return truss_config.ModelWeightsFormat[self.name]
+
+
+class TrainingArtifactReferencePathDetails(custom_types.ConfigModel):
+    path_reference: str
+    recursive: bool
+
+    def to_truss_config(self) -> truss_config.TrainingArtifactReferencePathDetails:
+        return truss_config.TrainingArtifactReferencePathDetails(
+            path_reference=self.path_reference, recursive=self.recursive
         )
+
+
+class Checkpoint(custom_types.ConfigModel):
+    training_job_id: str
+    path_details: List[TrainingArtifactReferencePathDetails]
+    model_weight_format: ModelWeightsFormat
+    lora_rank: Optional[int]
+
+    def to_truss_config(self) -> truss_config.TrainingArtifactReference:
+        path_details: List[truss_config.TrainingArtifactReferencePathDetails] = [
+            path_detail.to_truss_config() for path_detail in self.path_details
+        ]
+        model_weight_format = (
+            self.model_weight_format.to_truss_config()
+            if self.model_weight_format
+            else None
+        )
+        return truss_config.TrainingArtifactReference(
+            training_job_id=self.training_job_id,
+            model_weight_format=model_weight_format,
+            path_details=path_details,
+        )
+
+
+# class Checkpoint(custom_types.SafeModelNoExtra):
+#     training_job_id: str
+#     id: str
+#     name: str
+#     lora_rank: Optional[int] = None  # lora rank will be fetched through the API if available.
+
+#     @field_validator("lora_rank")
+#     @classmethod
+#     def validate_lora_rank(cls, v):
+#         if v is not None and v not in ALLOWED_LORA_RANKS:
+#             raise ValueError(
+#                 f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}"
+#             )
+#         return v
+
+# def to_truss_config(self) -> truss_config.Checkpoint:
+#     return truss_config.Checkpoint(
+#         id=f"{self.training_job_id}/{self.id}", name=self.id
+#     )
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):
@@ -156,9 +196,12 @@ class CheckpointList(custom_types.SafeModelNoExtra):
     checkpoints: List[Checkpoint] = []
 
     def to_truss_config(self) -> truss_config.CheckpointList:
-        checkpoints = [checkpoint.to_truss_config() for checkpoint in self.checkpoints]
+        artifact_references: List[truss_config.TrainingArtifactReference] = [
+            checkpoint.to_truss_config() for checkpoint in self.checkpoints
+        ]
         return truss_config.CheckpointList(
-            checkpoints=checkpoints, download_folder=self.download_folder
+            download_folder=self.download_folder,
+            artifact_references=artifact_references,
         )
 
 
