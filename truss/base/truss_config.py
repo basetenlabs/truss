@@ -139,8 +139,8 @@ class ModelRepoSourceKind(str, enum.Enum):
     AZURE = "azure"
 
 
-class DeployCheckpointsSupportedArchitectures(str, enum.Enum):
-    """Predefined supported architectures for deploying model from checkpoints via `truss train deploy_checkpoints`."""
+class ModelWeightsFormat(str, enum.Enum):
+    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
     LORA = "LoRA"
 
@@ -586,10 +586,10 @@ class TrainingArtifactReference(custom_types.ConfigModel):
     path_details: list[TrainingArtifactReferencePathDetails] = pydantic.Field(
         default_factory=list, description="The path details of the artifact reference."
     )
-    model: Optional[DeployCheckpointsSupportedArchitectures] = pydantic.Field(
+    model_weight_format: Optional[ModelWeightsFormat] = pydantic.Field(
         default=None,
-        description="Predefined architecture of the model we can use for deploy_checkpoints",
-        examples=[DeployCheckpointsSupportedArchitectures.LORA],
+        description="Predefined model weight format to use for deploy_checkpoints",
+        examples=[ModelWeightsFormat.LORA],
     )
 
 
