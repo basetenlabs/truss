@@ -142,7 +142,7 @@ class ModelRepoSourceKind(str, enum.Enum):
 class ModelWeightsFormat(str, enum.Enum):
     """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
-    LORA = "LoRA"
+    LORA = "lora"
 
 
 class ModelRepo(custom_types.ConfigModel):
@@ -598,10 +598,6 @@ class CheckpointList(custom_types.ConfigModel):
         default=DEFAULT_TRAINING_CHECKPOINT_FOLDER,
         description="The folder to download the checkpoints to.",
         examples=["/tmp/training_checkpoints"],
-    )
-    # TODO: Remove this field once deploy_checkpoints uses artifact_references instead.
-    checkpoints: list[Checkpoint] = pydantic.Field(
-        default_factory=list, deprecated="Prefer artifact_references instead."
     )
     artifact_references: list[TrainingArtifactReference] = pydantic.Field(
         default_factory=list
