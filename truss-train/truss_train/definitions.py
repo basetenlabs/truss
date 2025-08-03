@@ -131,7 +131,7 @@ class TrainingProject(custom_types.SafeModelNoExtra):
 class ModelWeightsFormat(str, enum.Enum):
     """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
-    LORA = "lora"
+    LORA = "LoRA"
 
     def to_truss_config(self) -> truss_config.ModelWeightsFormat:
         return truss_config.ModelWeightsFormat[self.name]
@@ -151,7 +151,6 @@ class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
     path_details: List[TrainingArtifactReferencePathDetails]
     model_weight_format: ModelWeightsFormat
-    lora_rank: Optional[int]
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         path_details: List[truss_config.TrainingArtifactReferencePathDetails] = [
@@ -169,25 +168,17 @@ class Checkpoint(custom_types.ConfigModel):
         )
 
 
-# class Checkpoint(custom_types.SafeModelNoExtra):
-#     training_job_id: str
-#     id: str
-#     name: str
-#     lora_rank: Optional[int] = None  # lora rank will be fetched through the API if available.
+class LoRACheckpoint(Checkpoint):
+    lora_rank: int
 
-#     @field_validator("lora_rank")
-#     @classmethod
-#     def validate_lora_rank(cls, v):
-#         if v is not None and v not in ALLOWED_LORA_RANKS:
-#             raise ValueError(
-#                 f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}"
-#             )
-#         return v
-
-# def to_truss_config(self) -> truss_config.Checkpoint:
-#     return truss_config.Checkpoint(
-#         id=f"{self.training_job_id}/{self.id}", name=self.id
-#     )
+    @model_validator(mode="after")
+    def validate_lora_rank(self):
+        if self.lora_rank not in ALLOWED_LORA_RANKS:
+            raise ValueError(
+                f"lora_rank ({self.lora_rank}) must be one of {sorted(ALLOWED_LORA_RANKS)}. "
+                f"Got {self.lora_rank}."
+            )
+        return self
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):
