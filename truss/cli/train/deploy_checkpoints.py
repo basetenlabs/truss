@@ -112,7 +112,6 @@ def _hydrate_deploy_config(
     deployment_name = _ensure_deployment_name(
         deploy_config.deployment_name, checkpoint_details.checkpoints
     )
-
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
@@ -131,27 +130,28 @@ def _ensure_deployment_name(
 
     default_deployment_name = "checkpoint"
 
-    try:
+    if checkpoints and checkpoints[0].path_details[0]:
         first_checkpoint_name = (
             checkpoints[0].path_details[0].path_reference.strip("/").split("/")[-1]
         )
+
         if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
-            # We allow for autoincrementing when the checkpoint matches the regex pattern.
-            # In cases where the autoincrementing deployment name is not supported,
-            # ask the user for a deployment name
+            # Allow autoincrementing if the checkpoint matches both regexes
             if (
                 CHECKPOINT_PATTERN.match(first_checkpoint_name)
                 and len(checkpoints) == 1
             ):
                 return first_checkpoint_name
-    except Exception:
-        # prompt the user for the deployment name
-        deployment_name = inquirer.text(
-            message="Enter the deployment name.", default=default_deployment_name
-        ).execute()
-        if not deployment_name:
-            raise click.UsageError("Deployment name is required.")
-        return deployment_name
+
+    # If no valid autoincrementing checkpoint name is found, prompt the user
+    deployment_name = inquirer.text(
+        message="Enter the deployment name.", default=default_deployment_name
+    ).execute()
+
+    if not deployment_name:
+        raise click.UsageError("Deployment name is required.")
+
+    return deployment_name
 
 
 def hydrate_checkpoint(
@@ -240,7 +240,7 @@ def _render_vllm_lora_truss_config(
             truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
             truss_checkpoint.path_details[0].path_reference,
         )
-        checkpoint_parts.append(f"{truss_checkpoint.training_job_id}:{ckpt_path}")
+        checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
     checkpoint_str = " ".join(checkpoint_parts)
     max_lora_rank = max(
         [
@@ -330,8 +330,6 @@ def _process_user_provided_checkpoints(
                 checkpoint_response
             )
         checkpoint_response = checkpoints_by_training_job_id[checkpoint.training_job_id]
-        if checkpoint.id not in checkpoint_response:
-            raise click.UsageError(f"Checkpoint {checkpoint.id} not found.")
         if isinstance(checkpoint, LoRACheckpoint) and not checkpoint.lora_rank:
             checkpoint.lora_rank = _get_lora_rank(checkpoint_response[checkpoint.id])
     return checkpoint_details
