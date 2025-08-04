@@ -1,4 +1,4 @@
 #! /bin/bash
-poetry install --with=dev,dev-server --extras=all
-poetry run pre-commit install
+uv sync --all-extras --group dev --group dev-server
+uv run pre-commit install
 git lfs install

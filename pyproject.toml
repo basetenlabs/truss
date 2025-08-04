@@ -1,12 +1,14 @@
-[tool.poetry]
+[project]
 name = "truss"
-version = "0.9.119"
+version = "0.9.120rc02"
 description = "A seamless bridge from model development to model delivery"
-license = "MIT"
+authors = [
+    { name = "Pankaj Gupta", email = "pankaj@baseten.co" },
+    { name = "Phil Howes", email = "phil@baseten.co" },
+]
+requires-python = ">=3.9,<3.14"
 readme = "README.md"
-authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
-include = ["*.txt", "*.Dockerfile", "*.md"]
-repository = "https://github.com/basetenlabs/truss"
+license = "MIT"
 keywords = [
     "MLOps",
     "AI",
@@ -14,164 +16,116 @@ keywords = [
     "Model Deployment",
     "Machine Learning",
 ]
-
-packages = [
-    { include = "truss", from = "." },
-    { include = "truss_chains", from = "./truss-chains" },
-    { include = "truss_train", from = "./truss-train" },
+dependencies = [
+    "huggingface_hub>=0.25.0",
+    "pydantic>=2.10.0",
+    "PyYAML>=6.0",
+    "tomlkit>=0.13.2",
+    "Jinja2>=3.1.2,<4",
+    "aiofiles>=24.1.0,<25",
+    "blake3>=1.0.4,<2",
+    "boto3>=1.34.85,<2",
+    "click>=8.0.3,<9",
+    "google-cloud-storage>=2.10.0",
+    "httpx>=0.24.1",
+    "httpx-ws>=0.7.1,<0.8",
+    "inquirerpy>=0.3.4,<0.4",
+    "libcst>=1.1.2",
+    "loguru>=0.7.2",
+    "packaging>=20.9",
+    "pathspec>=0.9.0",
+    "psutil>=5.9.4",
+    "python-json-logger>=2.0.2",
+    "python-on-whales>=0.68.0",
+    "requests>=2.31",
+    "rich>=13.4.2,<14",
+    "rich-click>=1.6.1,<2",
+    "ruff>=0.4.8",
+    "tenacity>=8.0.1",
+    "watchfiles>=0.19.0,<0.20",
+    "truss_transfer==0.0.17",
 ]
 
-requires-poetry = ">=2.0"
+[project.urls]
+Repository = "https://github.com/basetenlabs/truss"
+Homepage = "https://truss.baseten.co"
+"Bug Reports" = "https://github.com/basetenlabs/truss/issues"
+Documentation = "https://truss.baseten.co"
+Baseten = "https://baseten.co"
 
-[tool.poetry.scripts]
+[project.scripts]
 truss = "truss.cli.cli:truss_cli"
 truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup"
 
-[tool.poetry.urls]
-"Homepage" = "https://truss.baseten.co"
-"Bug Reports" = "https://github.com/basetenlabs/truss/issues"
-"Documentation" = "https://truss.baseten.co"
-"Baseten" = "https://baseten.co"
+[dependency-groups]
+dev = [
+    "ruff>=0.9.0,<0.10",
+    "coverage>=6.4.1,<7",
+    "httpx[cli]",
+    "ipdb>=0.13.9,<0.14",
+    "ipykernel>=6.16.0,<7",
+    "ipython~=7.16",
+    "mypy>=1.0.0,<2",
+    "nbconvert>=7.2.1,<8",
+    "pre-commit>=2.18.1,<3",
+    "pytest==7.2.0",
+    "pytest-asyncio>=0.23.6,<0.24",
+    "pytest-check>=2.4.1,<3",
+    "pytest-cov>=3.0.0,<4",
+    "pytest-split>=0.10.0",
+    "requests-mock>=1.11.0",
+    "types-PyYAML>=6.0.12.12,<7",
+    "types-aiofiles>=24.1.0",
+    "types-requests==2.31.0.2",
+    "types-setuptools>=69.0.0.0,<70",
+]
+dev-server = [
+    "aiohttp>3.11.13",
+    "fastapi>0.114",
+    "flask>=2.3.3,<3",
+    "msgpack>=1.0.2",
+    "msgpack-numpy>=0.4.8",
+    "numpy>=1.23.5",
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-exporter-otlp>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "prometheus-client>=0.21.1,<0.22",
+    "uvicorn>=0.24.0",
+    "uvloop>=0.17.0",
+    "websockets>=14.0",
+]
 
-# Note: *why* are dependencies and defined like this?
-# The goal is to factorize the overall truss package into a light-weight `base` part that includes
-# e.g. the Truss config and has no heavy dependencies. Other functionalities are organzied into
-# components (or "extras") sub-packages, that can be selectively installed (and heavy dependencies
-# are only installed as needed).
-#
-# These sub-packages should have clear separation of concerns, and it should be carefully designed
-# how they depend on and import each other (e.g. `base` must not depend on anything else, the
-# server does not need local CLI tools).
-#
-# We want components to be selectable via pip installs (e.g. `pip install truss[server]`).
-# Unfortunately poetry dependency groups don't integrate natively with the "extras" concept:
-# Specifically, dependencies listed in groups (other than the implicit main group) cannot be used
-# for extras.
-#
-# This leaves us with the following process:
-#
-# * Use poetry groups only for dev dependencies. These are never included in pip. For dev envs
-#   use the following installation command `poetry install --with=dev,dev-server --extras=all`.
-# * All other dependencies are in the main group `tool.poetry.dependencies`. Base dependencies are
-#   at the top and non-optional.
-# * Dependencies from other compoents are listed after, and marked with `optional = false`. If a
-#   dependency is needed by mutlipe extras, only add it once, but see next step. This also ensures
-#   that poetry resolves *all* dependencies from all extras to be globally consistent.
-# * Since poetry groups don't work with extras, we need to make the association between a dependency
-#   and the componnent(s) in which it is used in a different way. Because it's cumbersome to fill
-#   in `tool.poetry.extras` manually, we automate this process and only define
-#   `tool.dependency_metadata` where we map for each extra dependency to one or multiple components
-#   that need it.
-# * As a pre-commit step `pyproject_toml_linter.py` populates `tool.poetry.extras` groups and also
-#   creates an "all"-extras.
-#
-# TODO: The full factorization is WIP, so far only `base` has been cleanly factored out.
-#  All other dependencies are lumped together in "other". Customers should install truss
-#  as `pip install truss[local]`, so we temporarily fill local with all deps, until it is properly
-#  isolated.
-[tool.poetry.dependencies]
-# "base" dependencies.
-python = ">=3.9,<3.14"
-huggingface_hub = ">=0.25.0"
-pydantic = ">=2.10.0"
-PyYAML = ">=6.0"
-tomlkit = ">=0.13.2"
-# "non-base" dependencies.
-# TODO: until we have resolved the question on how users can install the local tools frictionless
-#  (extras cannot be marked to be included by default), all below packages are non-optional.
-#  This also means that so far extras defined in `[tool.poetry.extras]` don't have any meaning,
-#  since everything is globally included anyway.
-Jinja2 = { version = "^3.1.2", optional = false }
-aiofiles = { version = "^24.1.0", optional = false }
-blake3 = { version = "^1.0.4", optional = false }
-boto3 = { version = "^1.34.85", optional = false }
-click = { version = "^8.0.3", optional = false }
-google-cloud-storage = { version = ">=2.10.0", optional = false }
-httpx = { version = ">=0.24.1", optional = false }
-httpx-ws = { version = "^0.7.1", optional = false }
-inquirerpy = { version = "^0.3.4", optional = false }
-libcst = { version = ">=1.1.2", optional = false }
-loguru = { version = ">=0.7.2", optional = false }
-packaging = { version = ">=20.9", optional = false }
-pathspec = { version = ">=0.9.0", optional = false }
-psutil = { version = ">=5.9.4", optional = false }
-python-json-logger = { version = ">=2.0.2", optional = false }
-python-on-whales = { version = ">=0.68.0", optional = false }
-requests = { version = ">=2.31", optional = false }
-rich = { version = "^13.4.2", optional = false }
-rich-click = { version = "^1.6.1", optional = false }
-ruff = { version = ">=0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
-tenacity = { version = ">=8.0.1", optional = false }
-watchfiles = { version = "^0.19.0", optional = false }
-truss_transfer= { version = "0.0.17", optional = false }
+[tool.uv]
+default-groups = [
+    "dev",
+    "dev-server",
+]
 
-[tool.dependency_metadata]
-# `base` / `main` deps which are non-optional are always included and don't need to be added here.
-Jinja2 = { components = "other" }
-aiofiles = { components = "other" }
-blake3 = { components = "other" }
-boto3 = { components = "other" }
-click = { components = "other" }
-google-cloud-storage = { components = "other" }
-httpx = { components = "other" }
-inquirerpy = { components = "other" }
-libcst = { components = "other" }
-loguru = { components = "other" }
-packaging = { components = "other" }
-pathspec = { components = "other" }
-psutil = { components = "other" }
-python-json-logger = { components = "other" }
-python-on-whales = { components = "other" }
-requests = { components = "other" }
-rich = { components = "other" }
-rich-click = { components = "other" }
-ruff = { components = "other" }
-tenacity = { components = "other" }
-watchfiles = { components = "other" }
+# Simplified Hatchling configuration - let it auto-discover truss, manually include others
+[tool.hatch.build.targets.sdist]
+include = [
+    "truss/",
+    "truss-chains/truss_chains/",
+    "truss-train/truss_train/",
+    "*.txt",
+    "*.Dockerfile",
+    "*.md"
+]
 
-[tool.poetry.group.dev.dependencies]
-# These packages are needed as the dev/testing tooling
-ruff = "^0.9.0"  # pinning ruff to a higher version for development
-coverage = "^6.4.1"
-httpx = { extras = ["cli"], version = "*" }
-ipdb = "^0.13.9"
-ipykernel = "^6.16.0"
-ipython = "^7.16"
-mypy = "^1.0.0"
-nbconvert = "^7.2.1"
-pre-commit = "^2.18.1"
-pytest = "7.2.0"
-pytest-asyncio = "^0.23.6"
-pytest-check = "^2.4.1"
-pytest-cov = "^3.0.0"
-pytest-split = ">=0.10.0"
-requests-mock = ">=1.11.0"
-types-PyYAML = "^6.0.12.12"
-types-aiofiles = ">=24.1.0"
-types-requests = "==2.31.0.2"
-types-setuptools = "^69.0.0.0"
+[tool.hatch.build.targets.wheel]
+only-include = [
+    "truss/",
+    "truss-chains/truss_chains/",
+    "truss-train/truss_train/"
+]
 
-[tool.poetry.group.dev-server.dependencies]
-# These packages are needed to run local tests of server components. Note that the actual
-# server deps for building the docker image are (so far) defined in `requirements.txt`-files.
-aiohttp = ">3.11.13"
-fastapi =">0.114"
-flask = "^2.3.3"
-msgpack = ">=1.0.2"
-msgpack-numpy = ">=0.4.8"
-numpy = ">=1.23.5"
-opentelemetry-api = ">=1.25.0"
-opentelemetry-exporter-otlp = ">=1.25.0"
-opentelemetry-sdk = ">=1.25.0"
-prometheus-client = "^0.21.1"
-uvicorn = ">=0.24.0"
-uvloop = ">=0.17.0"
-websockets = ">=14.0"
-
+[tool.hatch.build.targets.wheel.sources]
+"truss-chains/truss_chains" = "truss_chains"
+"truss-train/truss_train" = "truss_train"
 
 [build-system]
-build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core>=1.2.1"]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.mypy]
 ignore_missing_imports = true
@@ -185,6 +139,7 @@ markers = [
 ]
 # specify basetemp because the default `/private/var/...` interferes with truss_ignore, which also has a var/ pattern
 addopts = "--ignore=smoketests --ignore=baseten-performance-client --basetemp=/tmp/pytest-temp"
+pythonpath = [".", "truss-chains", "truss-train"]
 
 [tool.ruff]
 src = [".", "truss-chains", "truss-train"]
@@ -226,7 +181,3 @@ split-on-trailing-comma = false
 [tool.ruff.lint.pycodestyle]
 # The formatter can go sometimes go over the 88-character limit, so we want to provide some buffer.
 max-line-length = 120
-
-# Note: `tool.poetry.extras` was autogenerated by `pyproject_toml_linter.py`, do not edit manually.
-[tool.poetry.extras]
-all = []
