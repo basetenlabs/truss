@@ -33,7 +33,7 @@ jobs:
 
     - name: Bump version in pyproject.toml
       id: bump-version
-      run: ./bin/bump_truss_version.sh ${{ steps.get-version.outputs.curr_version }} ${{ github.event.inputs.release_type }}
+      run: ./bin/bump_truss_version.sh 0.9.116 ${{ github.event.inputs.release_type }}
 
     - name: Commit changes
       run: |
