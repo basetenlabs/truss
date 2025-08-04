@@ -183,8 +183,20 @@ pub async fn send_request_with_retry(
                         println!("client timeout error: {}", client_error);
                         config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                     }
+                    // connect can happen if e.g. number of tcp streams in linux is exhausted.
                     ClientError::Connect(_) => retries_done <= 1,
-                    _ => false,
+                    ClientError::Network(_) => {
+                        println!("client network error: {}", client_error);
+                        config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
+                    }
+                    _ => {
+                        // For other errors, we do not retry.
+                        eprintln!(
+                            "unexpected client error, no retry: this should not happen: {}",
+                            client_error
+                        );
+                        false
+                    }
                 }
             }
         };
