@@ -16,10 +16,13 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
         base_model_id="unsloth/gemma-3-1b-it",
         checkpoints=[
             definitions.Checkpoint(
-                id="checkpoint-24", name="checkpoint-24", training_job_id="lqz4pw4"
-            ),
-            definitions.Checkpoint(
-                id="checkpoint-42", name="checkpoint-42", training_job_id="lqz4pw4"
+                training_job_id="lqz4pw4",
+                path_details=[
+                    definitions.TrainingArtifactReferencePathDetails(
+                        path_reference="lqz4pw4/rank-0/checkpoint-24/", recursive=True
+                    )
+                ],
+                model_weight_format=definitions.ModelWeightsFormat.LORA,
             ),
         ],
     ),
