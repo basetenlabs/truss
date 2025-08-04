@@ -25,6 +25,7 @@ from truss_train.definitions import (
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
+    LoRACheckpoint,
     ModelWeightsFormat,
     SecretReference,
     TrainingArtifactReferencePathDetails,
@@ -72,7 +73,9 @@ def prepare_checkpoint_deploy(
     checkpoint_deploy_config = _hydrate_deploy_config(
         checkpoint_deploy_config, remote_provider, project_id, job_id
     )
-    rendered_truss = _render_vllm_lora_truss_config(checkpoint_deploy_config)
+    rendered_truss = _render_truss_config_for_checkpoint_deployment(
+        checkpoint_deploy_config
+    )
     truss_directory = Path(tempfile.mkdtemp())
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
@@ -149,15 +152,32 @@ def _ensure_deployment_name(
         return deployment_name
 
 
-def hydrate_lora_checkpoint(
-    job_id: str, checkpoint_id: str, checkpoint: dict
+def hydrate_checkpoint(
+    job_id: str, checkpoint_id: str, checkpoint: dict, checkpoint_type: str
 ) -> Checkpoint:
+    """
+    Generic function to create a Checkpoint object for different model weight formats.
+    This function can be extended to support additional checkpoint types beyond LoRA.
+    """
+
+    if checkpoint_type.lower() == ModelWeightsFormat.LORA.value.lower():
+        return _hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
+    else:
+        raise ValueError(
+            f"Unsupported checkpoint type: {checkpoint_type}. Contact Baseten for support with other checkpoint types."
+        )
+
+
+def _hydrate_lora_checkpoint(
+    job_id: str, checkpoint_id: str, checkpoint: dict
+) -> LoRACheckpoint:
+    """Create a LoRA-specific Checkpoint object."""
     path_details = [
         TrainingArtifactReferencePathDetails(
             path_reference=f"{job_id}/rank-0/{checkpoint_id}/", recursive=True
         )
     ]
-    return Checkpoint(
+    return LoRACheckpoint(
         training_job_id=job_id,
         path_details=path_details,
         model_weight_format=ModelWeightsFormat.LORA,
@@ -165,9 +185,26 @@ def hydrate_lora_checkpoint(
     )
 
 
+def _render_truss_config_for_checkpoint_deployment(
+    checkpoint_deploy: DeployCheckpointsConfigComplete,
+) -> truss_config.TrussConfig:
+    """
+    Render truss config for checkpoint deployment.
+    Currently supports LoRA checkpoints via vLLM, but can be extended for other formats.
+    """
+    # Delegate to specific rendering function based on model weight format
+    if checkpoint_deploy.model_weight_format == truss_config.ModelWeightsFormat.LORA:
+        return _render_vllm_lora_truss_config(checkpoint_deploy)
+    else:
+        raise ValueError(
+            f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Contact Baseten for support."
+        )
+
+
 def _render_vllm_lora_truss_config(
     checkpoint_deploy: DeployCheckpointsConfigComplete,
 ) -> truss_config.TrussConfig:
+    """Render truss config specifically for LoRA checkpoints using vLLM."""
     truss_deploy_config = truss_config.TrussConfig.from_yaml(
         Path(os.path.dirname(__file__), "deploy_from_checkpoint_config.yml")
     )
@@ -291,12 +328,9 @@ def _process_user_provided_checkpoints(
                 checkpoint_response
             )
         checkpoint_response = checkpoints_by_training_job_id[checkpoint.training_job_id]
-        # if checkpoint.id not in checkpoint_response:
-        #     raise click.UsageError(f"Checkpoint {checkpoint.id} not found.")
-        # TODO: aghilan fix this
-        # if not checkpoint.name:
-        #     checkpoint.name = checkpoint.id
-        if not checkpoint.lora_rank:
+        if checkpoint.id not in checkpoint_response:
+            raise click.UsageError(f"Checkpoint {checkpoint.id} not found.")
+        if isinstance(checkpoint, LoRACheckpoint) and not checkpoint.lora_rank:
             checkpoint.lora_rank = _get_lora_rank(checkpoint_response[checkpoint.id])
     return checkpoint_details
 
@@ -445,7 +479,4 @@ def _hydrate_checkpoints(
         checkpoint_id = list(response_checkpoints.keys())[-1]
     checkpoint = response_checkpoints[checkpoint_id]
     checkpoint_type = checkpoint.get("checkpoint_type")
-    if checkpoint_type == ModelWeightsFormat.LORA.value:
-        return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
-    else:
-        raise ValueError("Contact Baseten to auto deploy other checkpoint types")
+    return hydrate_checkpoint(job_id, checkpoint_id, checkpoint, checkpoint_type)

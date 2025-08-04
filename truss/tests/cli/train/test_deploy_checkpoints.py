@@ -8,7 +8,7 @@ import pytest
 import truss_train.definitions as definitions
 from truss.base import truss_config
 from truss.cli.train.deploy_checkpoints import (
-    _render_vllm_lora_truss_config,
+    _render_truss_config_for_checkpoint_deployment,
     create_build_time_config,
     prepare_checkpoint_deploy,
 )
@@ -77,15 +77,20 @@ def deploy_checkpoints_mock_checkbox(create_mock_prompt):
         yield mock
 
 
-def test_render_vllm_lora_truss_config():
+def test_render_truss_config_for_checkpoint_deployment():
     deploy_config = DeployCheckpointsConfigComplete(
         checkpoint_details=definitions.CheckpointList(
             checkpoints=[
-                definitions.Checkpoint(
-                    id="checkpoint-1",
-                    name="checkpoint-1",
-                    lora_rank=16,
+                definitions.LoRACheckpoint(
                     training_job_id="kowpeqj",
+                    path_details=[
+                        definitions.TrainingArtifactReferencePathDetails(
+                            path_reference="kowpeqj/rank-0/checkpoint-1/",
+                            recursive=True,
+                        )
+                    ],
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    lora_rank=16,
                 )
             ],
             base_model_id="google/gemma-3-27b-it",
@@ -100,8 +105,9 @@ def test_render_vllm_lora_truss_config():
             }
         ),
         deployment_name="gemma-3-27b-it-vLLM-LORA",
+        model_weight_format=truss_config.ModelWeightsFormat.LORA,
     )
-    rendered_truss = _render_vllm_lora_truss_config(deploy_config)
+    rendered_truss = _render_truss_config_for_checkpoint_deployment(deploy_config)
     test_truss = truss_config.TrussConfig.from_yaml(
         Path(
             os.path.dirname(__file__),
@@ -150,14 +156,10 @@ def test_prepare_checkpoint_deploy_empty_config(
         == "google/gemma-3-27b-it"
     )
     assert len(result.checkpoint_deploy_config.checkpoint_details.checkpoints) == 1
-    assert (
-        result.checkpoint_deploy_config.checkpoint_details.checkpoints[0].id
-        == "checkpoint-1"
-    )
-    assert (
-        result.checkpoint_deploy_config.checkpoint_details.checkpoints[0].lora_rank
-        == 16
-    )
+    checkpoint = result.checkpoint_deploy_config.checkpoint_details.checkpoints[0]
+    assert checkpoint.training_job_id == "kowpeqj"
+    assert isinstance(checkpoint, definitions.LoRACheckpoint)
+    assert checkpoint.lora_rank == 16
     assert result.checkpoint_deploy_config.compute.accelerator.accelerator == "H100"
     assert result.checkpoint_deploy_config.compute.accelerator.count == 4
     assert (
@@ -176,11 +178,15 @@ def test_prepare_checkpoint_deploy_complete_config(
     complete_config = definitions.DeployCheckpointsConfig(
         checkpoint_details=definitions.CheckpointList(
             checkpoints=[
-                definitions.Checkpoint(
-                    id="checkpoint-1",
-                    name="my-checkpoint",
-                    lora_rank=32,
+                definitions.LoRACheckpoint(
                     training_job_id="job123",
+                    path_details=[
+                        definitions.TrainingArtifactReferencePathDetails(
+                            path_reference="job123/rank-0/checkpoint-1/", recursive=True
+                        )
+                    ],
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    lora_rank=32,
                 )
             ],
             base_model_id="google/gemma-3-27b-it",
@@ -223,10 +229,10 @@ def test_prepare_checkpoint_deploy_complete_config(
     assert config.checkpoint_details.base_model_id == "google/gemma-3-27b-it"
     assert len(config.checkpoint_details.checkpoints) == 1
     checkpoint = config.checkpoint_details.checkpoints[0]
-    assert checkpoint.id == "checkpoint-1"
-    assert checkpoint.name == "my-checkpoint"
-    assert checkpoint.lora_rank == 32
     assert checkpoint.training_job_id == "job123"
+    assert checkpoint.model_weight_format == definitions.ModelWeightsFormat.LORA
+    assert isinstance(checkpoint, definitions.LoRACheckpoint)
+    assert checkpoint.lora_rank == 32
 
     # Verify compute config
     assert config.compute.accelerator.accelerator == "A100"
@@ -246,14 +252,18 @@ def test_prepare_checkpoint_deploy_complete_config(
 
 
 def test_checkpoint_lora_rank_validation():
-    """Test that Checkpoint accepts valid LoRA rank values."""
+    """Test that LoRACheckpoint accepts valid LoRA rank values."""
     valid_ranks = [8, 16, 32, 64, 128, 256, 320, 512]
 
     for rank in valid_ranks:
-        checkpoint = definitions.Checkpoint(
+        checkpoint = definitions.LoRACheckpoint(
             training_job_id="job123",
-            id="checkpoint-1",
-            name="test-checkpoint",
+            path_details=[
+                definitions.TrainingArtifactReferencePathDetails(
+                    path_reference="job123/rank-0/checkpoint-1/", recursive=True
+                )
+            ],
+            model_weight_format=definitions.ModelWeightsFormat.LORA,
             lora_rank=rank,
         )
         assert checkpoint.lora_rank == rank
@@ -282,17 +292,25 @@ def test_checkpoint_lora_rank_validation():
     ]
     for rank in invalid_ranks:
         with pytest.raises(ValueError, match=f"lora_rank \\({rank}\\) must be one of"):
-            definitions.Checkpoint(
+            definitions.LoRACheckpoint(
                 training_job_id="job123",
-                id="checkpoint-1",
-                name="test-checkpoint",
+                path_details=[
+                    definitions.TrainingArtifactReferencePathDetails(
+                        path_reference="job123/rank-0/checkpoint-1/", recursive=True
+                    )
+                ],
+                model_weight_format=definitions.ModelWeightsFormat.LORA,
                 lora_rank=rank,
             )
 
-    checkpoint = definitions.Checkpoint(
+    checkpoint = definitions.LoRACheckpoint(
         training_job_id="job123",
-        id="checkpoint-1",
-        name="test-checkpoint",
+        path_details=[
+            definitions.TrainingArtifactReferencePathDetails(
+                path_reference="job123/rank-0/checkpoint-1/", recursive=True
+            )
+        ],
+        model_weight_format=definitions.ModelWeightsFormat.LORA,
         lora_rank=None,
     )
     assert checkpoint.lora_rank is None

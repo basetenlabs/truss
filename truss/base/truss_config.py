@@ -142,7 +142,7 @@ class ModelRepoSourceKind(str, enum.Enum):
 class ModelWeightsFormat(str, enum.Enum):
     """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
-    LORA = "lora"
+    LORA = "LoRA"
 
 
 class ModelRepo(custom_types.ConfigModel):
