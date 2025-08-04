@@ -41,10 +41,10 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: poetry install --with=dev,dev-server --extras=all
+      - run: uv sync --all-extras --group dev --group dev-server
       - shell: bash
         run: |
-          poetry run bin/generate_base_images.py \
+          uv run bin/generate_base_images.py \
             --use-gpu ${{ matrix.use_gpu }}  \
             --python-version ${{ matrix.python_version }} \
             --version-tag ${{ inputs.new_base_image_version }} \

@@ -15,15 +15,15 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
-      - run: poetry install --with=dev,dev-server --extras=all
+      - run: uv sync --all-extras --group dev --group dev-server
       - name: pre-commit
-        run: poetry run pre-commit run --all-files
+        run: uv run pre-commit run --all-files
         env:
           SKIP: ruff,ruff-format # In CI run ruff separately to only check, not fix.
       - name: ruff check
         run: |
-          poetry run ruff check .
-          poetry run ruff format . --check
+          uv run ruff check .
+          uv run ruff format . --check
 
   test:
     timeout-minutes: 30
@@ -37,9 +37,9 @@ jobs:
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /static-bptr && sudo chown $(whoami):$(whoami) /static-bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
-      - run: poetry install --with=dev,dev-server --extras=all
+      - run: uv sync --all-extras --group dev --group dev-server
       - name: run tests
-        run: poetry run pytest --durations=0  -m 'not integration' --junitxml=report.xml
+        run: uv run pytest --durations=0  -m 'not integration' --junitxml=report.xml
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
         if: always()

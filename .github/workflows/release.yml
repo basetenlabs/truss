@@ -69,11 +69,11 @@ jobs:
 
       - uses: ./.github/actions/setup-python/
 
-      - name: Install poetry packages
-        run: poetry install --only=main
+      - name: Install packages
+        run: uv sync
 
       - name: Build
-        run: poetry build
+        run: uv build
 
       - name: Create Release
         uses: ncipollo/release-action@v1
