@@ -182,7 +182,6 @@ def _hydrate_lora_checkpoint(
     return LoRACheckpoint(
         training_job_id=job_id,
         path_details=path_details,
-        model_weight_format=ModelWeightsFormat.LORA,
         lora_rank=_get_lora_rank(checkpoint),
     )
 
@@ -478,5 +477,5 @@ def _hydrate_checkpoints(
     if checkpoint_id == "latest":
         checkpoint_id = list(response_checkpoints.keys())[-1]
     checkpoint = response_checkpoints[checkpoint_id]
-    checkpoint_type = checkpoint.get("checkpoint_type")
+    checkpoint_type = str(checkpoint["checkpoint_type"])
     return hydrate_checkpoint(job_id, checkpoint_id, checkpoint, checkpoint_type)

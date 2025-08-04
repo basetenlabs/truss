@@ -15,14 +15,11 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
     checkpoint_details=definitions.CheckpointList(
         base_model_id="unsloth/gemma-3-1b-it",
         checkpoints=[
-            definitions.Checkpoint(
-                training_job_id="waqeqweq", path_details=[], model_weight_format=definitions.ModelWeightsFormat.LORA
+            definitions.LoRACheckpoint(
+                training_job_id="waqeqweq", path_details=[], lora_rank=16
             ),
             definitions.LoRACheckpoint(
-                training_job_id="waqeqweqs",
-                path_details=[],
-                model_weight_format=definitions.ModelWeightsFormat.LORA,
-                lora_rank=8,
+                training_job_id="waqeqweqs", path_details=[], lora_rank=8
             ),
         ],
     ),

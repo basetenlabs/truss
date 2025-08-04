@@ -554,15 +554,6 @@ class DockerServer(custom_types.ConfigModel):
     liveness_endpoint: str
 
 
-class Checkpoint(custom_types.ConfigModel):
-    # NB(rcano): The id here is a formatted string of the form <training_job_id>/<checkpoint_id>
-    # We do this because the vLLM command requires knowledge of where the checkpoint
-    # is downloaded. By using a formatted string instead of an additional "training_job_id"
-    # field, we provide a more transparent truss config.
-    id: str
-    name: str
-
-
 class TrainingArtifactReferencePathDetails(custom_types.ConfigModel):
     path_reference: str = pydantic.Field(
         ...,
