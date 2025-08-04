@@ -132,7 +132,9 @@ def _ensure_deployment_name(
     default_deployment_name = "checkpoint"
 
     try:
-        first_checkpoint_name = checkpoints[0].name.replace("/", "--")
+        first_checkpoint_name = (
+            checkpoints[0].path_details[0].path_reference.strip("/").split("/")[-1]
+        )
         if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
             # We allow for autoincrementing when the checkpoint matches the regex pattern.
             # In cases where the autoincrementing deployment name is not supported,
@@ -142,7 +144,7 @@ def _ensure_deployment_name(
                 and len(checkpoints) == 1
             ):
                 return first_checkpoint_name
-    except:
+    except Exception:
         # prompt the user for the deployment name
         deployment_name = inquirer.text(
             message="Enter the deployment name.", default=default_deployment_name

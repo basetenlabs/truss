@@ -2,7 +2,7 @@ import enum
 from typing import Dict, List, Optional, Union
 
 import pydantic
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 
 from truss.base import custom_types, truss_config
 
@@ -171,14 +171,14 @@ class Checkpoint(custom_types.ConfigModel):
 class LoRACheckpoint(Checkpoint):
     lora_rank: int
 
-    @model_validator(mode="after")
-    def validate_lora_rank(self):
-        if self.lora_rank not in ALLOWED_LORA_RANKS:
+    @field_validator("lora_rank")
+    @classmethod
+    def validate_lora_rank(cls, v):
+        if v not in ALLOWED_LORA_RANKS:
             raise ValueError(
-                f"lora_rank ({self.lora_rank}) must be one of {sorted(ALLOWED_LORA_RANKS)}. "
-                f"Got {self.lora_rank}."
+                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}."
             )
-        return self
+        return v
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):
