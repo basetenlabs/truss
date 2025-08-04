@@ -24,14 +24,35 @@ def _run_upgrade(command: str) -> bool:
         return False
 
 
-def _is_poetry_venv() -> bool:
-    # Typical pattern: poetry puts a `pyvenv.cfg` file inside the venv root
+def _is_uv_project() -> bool:
+    """Check if we're in a uv project (has uv.lock or pyproject.toml with uv config)"""
+    current_dir = pathlib.Path.cwd()
+
+    # Check for uv.lock in current directory or parents
+    for path in [current_dir] + list(current_dir.parents):
+        if (path / "uv.lock").exists():
+            return True
+        pyproject_path = path / "pyproject.toml"
+        if pyproject_path.exists():
+            try:
+                import tomlkit
+
+                content = tomlkit.parse(pyproject_path.read_text()).unwrap()
+                if "tool" in content and "uv" in content["tool"]:
+                    return True
+            except Exception:
+                pass
+    return False
+
+
+def _is_uv_venv() -> bool:
+    """Check if current venv was created by uv"""
     venv_cfg_path = pathlib.Path(sys.prefix) / "pyvenv.cfg"
     if not venv_cfg_path.exists():
         return False
 
     text = venv_cfg_path.read_text().lower()
-    return "poetry" in text or "virtualenv" in text
+    return "uv" in text
 
 
 def _make_upgrade_command_candidates(latest_version: str) -> list[tuple[str, str]]:
@@ -40,8 +61,17 @@ def _make_upgrade_command_candidates(latest_version: str) -> list[tuple[str, str
         candidates.append(("conda", f"conda install truss={latest_version}"))
     if shutil.which("pipx"):
         candidates.append(("pipx", "pipx upgrade truss"))
-    if _is_poetry_venv():
-        candidates.append(("poetry", f"poetry add truss>={latest_version}"))
+    if shutil.which("uv"):
+        if _is_uv_project():
+            candidates.append(("uv", f"uv add truss@{latest_version}"))
+        elif _is_uv_venv():
+            candidates.append(
+                ("uv", f"uv pip install --upgrade truss=={latest_version}")
+            )
+        else:
+            candidates.append(
+                ("uv", f"uv pip install --upgrade truss=={latest_version}")
+            )
     # Pip fallback.
     candidates.append(
         ("pip", f"python -m pip install --upgrade truss=={latest_version}")
@@ -52,8 +82,6 @@ def _make_upgrade_command_candidates(latest_version: str) -> list[tuple[str, str
         candidates.append(("pdm", f"pdm add truss=={latest_version}"))
     if shutil.which("hatch"):
         candidates.append(("hatch", f"hatch dep add truss@{latest_version}"))
-    if shutil.which("uv"):
-        candidates.append(("uv", f"uv pip install --upgrade truss=={latest_version}"))
     if shutil.which("rye"):
         candidates.append(("rye", f"rye add truss@{latest_version}"))
     return candidates

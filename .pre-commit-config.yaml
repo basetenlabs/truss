@@ -18,23 +18,18 @@ repos:
     hooks:
       - id: ruff
         name: ruff analyze and fix
-        entry: poetry run ruff check --force-exclude --fix --exit-non-zero-on-fix
-        language: python
+        entry: uv run ruff check --force-exclude --fix --exit-non-zero-on-fix
+        language: system
         files: \.(py|pyi)$
       - id: ruff-format
         name: ruff format
-        entry: poetry run ruff format --force-exclude
-        language: python
+        entry: uv run ruff format --force-exclude
+        language: system
         files: \.(py|pyi)$
-      - id: pyproject.toml
-        name: pyproject.toml
-        entry: poetry run python bin/pyproject_toml_linter.py
-        language: python
-        additional_dependencies: [tomlkit]
       - id: mypy
         name: mypy-local
-        entry: poetry run mypy
-        language: python
+        entry: uv run mypy
+        language: system
         types: [python]
         exclude: ^examples/|^truss/test.+/|model.py$
         pass_filenames: true

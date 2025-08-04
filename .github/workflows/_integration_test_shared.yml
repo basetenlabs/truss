@@ -36,10 +36,10 @@ jobs:
       - uses: ./.github/actions/setup-python/
         with:
           python-version: ${{ needs.determine-python-versions.outputs.max_supported_python_version }}
-      - run: poetry install --with=dev,dev-server --extras=all
+      - run: uv sync --all-extras --group dev --group dev-server
       - name: Run all tests serially and store durations
         run: |
-          poetry run pytest truss/tests -m integration --store-durations --durations-path=test_durations.json
+          uv run pytest truss/tests -m integration --store-durations --durations-path=test_durations.json
       - name: Save test durations to cache
         uses: actions/cache/save@v4
         with:
@@ -73,7 +73,7 @@ jobs:
       - run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
-      - run: poetry install --with=dev,dev-server --extras=all
+      - run: uv sync --all-extras --group dev --group dev-server
       - name: Run Pytest
         run: |
           if [[ "${{ inputs.run_only_integration }}" == "true" ]]; then
@@ -82,7 +82,7 @@ jobs:
             test_marker=""
           fi
 
-          poetry run pytest truss/tests $test_marker \
+          uv run pytest truss/tests $test_marker \
             --durations=20 \
             --junitxml=report-${{ matrix.python_version }}-${{ matrix.split_group }}.xml \
             --splits 5 \
@@ -113,7 +113,7 @@ jobs:
         with:
           python-version: ${{ matrix.python_version }}
       - run: sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
-      - run: poetry install --with=dev,dev-server --extras=all
+      - run: uv sync --all-extras --group dev --group dev-server
       - name: Run Chains Tests
         run: |
           if [[ "${{ inputs.run_only_integration }}" == "true" ]]; then
@@ -122,7 +122,7 @@ jobs:
             test_marker=""
           fi
 
-          poetry run pytest truss-chains/tests \
+          uv run pytest truss-chains/tests \
             --durations=20 $test_marker \
             --junitxml=report-${{ matrix.python_version }}.xml \
             -s --log-cli-level=INFO

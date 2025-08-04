@@ -1,5 +1,5 @@
 name: "Setup Python"
-description: "setups python, poetry and associated cache"
+description: "setups python, uv and associated cache"
 inputs:
   python-version:
     description: Python version to setup
@@ -15,10 +15,8 @@ runs:
         if [[ -n "${{ inputs.python-version }}" ]]; then
           echo "version=${{ inputs.python-version }}" >> "$GITHUB_OUTPUT"
         else
-          fallback_version=$(grep '^python ' .tool-versions | cut -d' ' -f2)
-          if [[ -z "$fallback_version" ]]; then
-            echo "Failed to extract python version from .tool-versions" >&2
-            exit 1
+          if [[ -f ".python-version" ]]; then
+            fallback_version=$(cat .python-version | tr -d '\n')
           fi
           echo "version=$fallback_version" >> "$GITHUB_OUTPUT"
         fi
@@ -30,24 +28,14 @@ runs:
 
     - name: Show Python version
       shell: bash
-      run: echo "version=$(python -c 'import sys; print(\"-\".join(str(v) for v in sys.version_info))')" >> $GITHUB_ENV
+      run: |
+        VERSION=$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
+        echo "version=$VERSION" >> $GITHUB_ENV
 
-    - name: Install Poetry
-      run: curl -sSL https://install.python-poetry.org | python3 -
-      shell: bash
-
-    - name: Configure poetry
-      run: poetry config virtualenvs.in-project true
-      shell: bash
-
-    - name: Set up cache
-      uses: actions/cache@v4
-      id: cache
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
       with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ inputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
-
-    - name: Ensure cache is healthy
-      if: steps.cache.outputs.cache-hit == 'true'
-      run: timeout 10s poetry run pip --version || rm -rf .venv
-      shell: bash
+        version: "0.7.12"
+        enable-cache: true
+        # NB(nikhil): Only search for top level `uv.lock` file.
+        cache-dependency-glob: "uv.lock"
