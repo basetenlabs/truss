@@ -385,10 +385,17 @@ def generate_docker_server_nginx_config(build_dir, config):
 
 
 def generate_docker_server_supervisord_config(build_dir, config):
-    # Copy the template file over, because we don't have any template variables to render
-    copy_tree_or_file(
-        DOCKER_SERVER_TEMPLATES_DIR / "supervisord.conf", build_dir / "supervisord.conf"
+    supervisord_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
     )
+    assert config.docker_server.start_command is not None, (
+        "docker_server.start_command is required to use custom server"
+    )
+    supervisord_contents = supervisord_template.render(
+        start_command=config.docker_server.start_command
+    )
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
 
 
 class ServingImageBuilderContext(TrussContext):
