@@ -14,6 +14,7 @@ from botocore.client import Config
 from botocore.exceptions import ClientError, NoCredentialsError
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
+
 from truss.base import constants
 
 B10CP_PATH_TRUSS_ENV_VAR_NAME = "B10CP_PATH_TRUSS"
