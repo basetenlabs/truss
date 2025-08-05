@@ -36,7 +36,7 @@ def hydrate_lora_checkpoint(
     return LoRACheckpoint(
         training_job_id=job_id,
         path_details=path_details,
-        lora_rank=get_lora_rank(checkpoint),
+        lora_rank=_get_lora_rank(checkpoint),
     )
 
 
@@ -105,7 +105,7 @@ def render_vllm_lora_truss_config(
     return truss_deploy_config
 
 
-def get_lora_rank(checkpoint_resp: dict) -> int:
+def _get_lora_rank(checkpoint_resp: dict) -> int:
     """Extract and validate LoRA rank from checkpoint response."""
     lora_adapter_config = checkpoint_resp.get("lora_adapter_config") or {}
     lora_rank = lora_adapter_config.get("r") or DEFAULT_LORA_RANK

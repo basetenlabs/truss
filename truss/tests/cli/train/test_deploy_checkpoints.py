@@ -16,7 +16,7 @@ from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     hydrate_checkpoint,
 )
 from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
-    get_lora_rank,
+    _get_lora_rank,
     hydrate_lora_checkpoint,
     render_vllm_lora_truss_config,
 )
@@ -336,27 +336,27 @@ def test_get_lora_rank():
     """Test that get_lora_rank returns valid values from checkpoint response."""
     # Test with valid rank from API
     checkpoint_resp = {"lora_adapter_config": {"r": 64}}
-    assert get_lora_rank(checkpoint_resp) == 64
+    assert _get_lora_rank(checkpoint_resp) == 64
     # Test with missing lora_adapter_config (should use DEFAULT_LORA_RANK)
     checkpoint_resp = {}
-    assert get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
+    assert _get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
     # Test with missing 'r' field (should use DEFAULT_LORA_RANK)
     checkpoint_resp = {"lora_adapter_config": {}}
-    assert get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
+    assert _get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
     # Test with invalid rank from API
     checkpoint_resp = {"lora_adapter_config": {"r": 1}}
     with pytest.raises(
         ValueError,
         match=re.escape("LoRA rank 1 from checkpoint is not in allowed values"),
     ):
-        get_lora_rank(checkpoint_resp)
+        _get_lora_rank(checkpoint_resp)
     # Test with another invalid rank
     checkpoint_resp = {"lora_adapter_config": {"r": 1000}}
     with pytest.raises(
         ValueError,
         match=re.escape("LoRA rank 1000 from checkpoint is not in allowed values"),
     ):
-        get_lora_rank(checkpoint_resp)
+        _get_lora_rank(checkpoint_resp)
 
 
 def test_create_build_time_config(tmp_path):

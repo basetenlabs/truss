@@ -242,9 +242,9 @@ def _process_user_provided_checkpoints(
         from truss_train.definitions import LoRACheckpoint
 
         if isinstance(checkpoint, LoRACheckpoint) and not checkpoint.lora_rank:
-            from .deploy_lora_checkpoints import get_lora_rank
+            from .deploy_lora_checkpoints import _get_lora_rank
 
-            checkpoint.lora_rank = get_lora_rank(checkpoint_response[checkpoint.id])
+            checkpoint.lora_rank = _get_lora_rank(checkpoint_response[checkpoint.id])
     return checkpoint_details
 
 
