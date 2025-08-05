@@ -391,15 +391,7 @@ def generate_docker_server_supervisord_config(build_dir, config):
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
-    if config.training_checkpoints is not None:
-        # With training checkpoints, we want to keep a static supervisord.conf file
-        # that doesn't have any template variables to render.
-        # This keeps the build hash stable, and allows us to use the same
-        # container when only the training checkpoints change.
-        # The start command is set at runtime instead through an environment variable.
-        start_command = "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
-    else:
-        start_command = config.docker_server.start_command
+    start_command = config.docker_server.start_command
     supervisord_contents = supervisord_template.render(start_command=start_command)
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)
