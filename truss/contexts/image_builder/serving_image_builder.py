@@ -429,8 +429,8 @@ class ServingImageBuilder(ImageBuilder):
             server_port=8000,
             # mount the following predict endpoint location
             predict_endpoint="/v1/chat/completions",
-            readiness_endpoint="/v1/models",
-            liveness_endpoint="/v1/models",
+            readiness_endpoint="/health_file",
+            liveness_endpoint="/health_file",
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
         # TODO: copy truss config into build dir, by dumping truss config
