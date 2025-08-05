@@ -256,7 +256,7 @@ def print_deploy_checkpoints_success_message(
 ):
     checkpoint_names = _get_checkpoint_names(prepare_checkpoint_result)
     console.print(
-        Text("\nTo run the model "),
+        Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),
         Text(
             f"{[checkpoint_name for checkpoint_name in checkpoint_names]}",

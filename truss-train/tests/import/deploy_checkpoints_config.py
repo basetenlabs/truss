@@ -23,7 +23,16 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
                     )
                 ],
                 lora_rank=16,
-            )
+            ),
+            definitions.LoRACheckpoint(
+                training_job_id="lqz4pw5",
+                path_details=[
+                    definitions.TrainingArtifactReferencePathDetails(
+                        path_reference="lqz4pw5/rank-0/checkpoint-42/", recursive=True
+                    )
+                ],
+                lora_rank=8,
+            ),
         ],
     ),
 )

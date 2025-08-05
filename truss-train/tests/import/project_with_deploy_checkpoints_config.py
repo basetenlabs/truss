@@ -16,10 +16,22 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
         base_model_id="unsloth/gemma-3-1b-it",
         checkpoints=[
             definitions.LoRACheckpoint(
-                training_job_id="waqeqweq", path_details=[], lora_rank=16
+                training_job_id="lqz4pw4",
+                path_details=[
+                    definitions.TrainingArtifactReferencePathDetails(
+                        path_reference="lqz4pw4/rank-0/checkpoint-24/", recursive=True
+                    )
+                ],
+                lora_rank=16,
             ),
             definitions.LoRACheckpoint(
-                training_job_id="waqeqweqs", path_details=[], lora_rank=8
+                training_job_id="lqz4pw4",
+                path_details=[
+                    definitions.TrainingArtifactReferencePathDetails(
+                        path_reference="lqz4pw4/rank-0/checkpoint-42/", recursive=True
+                    )
+                ],
+                lora_rank=8,
             ),
         ],
     ),
