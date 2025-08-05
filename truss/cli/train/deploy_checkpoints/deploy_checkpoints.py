@@ -226,7 +226,7 @@ def _process_user_provided_checkpoints(
             )
             if len(details) == 0:
                 raise click.UsageError(
-                    f"Training job {checkpoint.training_job_id} specified by checkpoint {checkpoint.id} not found."
+                    f"Training job {checkpoint.training_job_id} not found."
                 )
             job_response = details[0]
             project_id = job_response["training_project"]["id"]
