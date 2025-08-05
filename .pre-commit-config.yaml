@@ -19,6 +19,7 @@ repos:
       - id: ruff
         name: ruff analyze and fix
         entry: uv run ruff check --force-exclude --fix --exit-non-zero-on-fix
+        # NB(nikhil): `uv` requires system over python (here and below) due to assumptions pre-commit makes about venvs.
         language: system
         files: \.(py|pyi)$
       - id: ruff-format

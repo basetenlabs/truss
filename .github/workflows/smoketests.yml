@@ -22,7 +22,7 @@ jobs:
       - name: Setup Python
         uses: ./.github/actions/setup-python/
       - name: Install
-        run: uv sync --all-extras --group dev --group dev-server
+        run: uv sync
       - name: Install Truss
         run: |
           python -m venv truss_env
