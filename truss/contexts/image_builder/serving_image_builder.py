@@ -385,10 +385,24 @@ def generate_docker_server_nginx_config(build_dir, config):
 
 
 def generate_docker_server_supervisord_config(build_dir, config):
-    # Copy the template file over, because we don't have any template variables to render
-    copy_tree_or_file(
-        DOCKER_SERVER_TEMPLATES_DIR / "supervisord.conf", build_dir / "supervisord.conf"
+    supervisord_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
     )
+    assert config.docker_server.start_command is not None, (
+        "docker_server.start_command is required to use custom server"
+    )
+    if config.training_checkpoints is not None:
+        # With training checkpoints, we want to keep a static supervisord.conf file
+        # that doesn't have any template variables to render.
+        # This keeps the build hash stable, and allows us to use the same
+        # container when only the training checkpoints change.
+        # The start command is set at runtime instead through an environment variable.
+        start_command = "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
+    else:
+        start_command = config.docker_server.start_command
+    supervisord_contents = supervisord_template.render(start_command=start_command)
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -422,8 +436,8 @@ class ServingImageBuilder(ImageBuilder):
             server_port=8000,
             # mount the following predict endpoint location
             predict_endpoint="/v1/chat/completions",
-            readiness_endpoint="/v1/models",
-            liveness_endpoint="/v1/models",
+            readiness_endpoint="/health_file",
+            liveness_endpoint="/health_file",
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
         # TODO: copy truss config into build dir, by dumping truss config
