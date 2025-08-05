@@ -176,7 +176,7 @@ def _hydrate_lora_checkpoint(
     """Create a LoRA-specific Checkpoint object."""
     path_details = [
         TrainingArtifactReferencePathDetails(
-            path_reference=f"{job_id}/rank-0/{checkpoint_id}/", recursive=True
+            path_reference=f"rank-0/{checkpoint_id}/", recursive=True
         )
     ]
     return LoRACheckpoint(
@@ -237,6 +237,7 @@ def _render_vllm_lora_truss_config(
     ) in truss_deploy_config.training_checkpoints.artifact_references:  # type: ignore
         ckpt_path = Path(
             truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
+            truss_checkpoint.training_job_id,
             truss_checkpoint.path_details[0].path_reference,
         )
         checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
