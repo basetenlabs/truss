@@ -13,7 +13,6 @@ from truss.cli.train.deploy_checkpoints import (
 )
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     _render_truss_config_for_checkpoint_deployment,
-    get_hf_secret_name,
     hydrate_checkpoint,
 )
 from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
@@ -58,12 +57,10 @@ def create_mock_prompt():
 
 @pytest.fixture
 def deploy_checkpoints_mock_select(create_mock_prompt):
-    # Patch both modules since select is used in both
+    # Only patch the module that actually imports inquirer
     with patch(
         "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
-    ) as generic_mock, patch(
-        "truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints.inquirer.select"
-    ) as lora_mock:
+    ) as generic_mock:
 
         def mock_select_side_effect(message, **kwargs):
             return create_mock_prompt(
@@ -77,7 +74,6 @@ def deploy_checkpoints_mock_select(create_mock_prompt):
             )
 
         generic_mock.side_effect = mock_select_side_effect
-        lora_mock.side_effect = mock_select_side_effect
         yield generic_mock
 
 
@@ -140,14 +136,20 @@ def test_render_truss_config_for_checkpoint_deployment():
         )
     )
     assert test_truss.model_name == rendered_truss.model_name
-    # assert (
-    #     test_truss.training_checkpoints.artifact_references[0].path_details[0].path_reference
-    #     == rendered_truss.training_checkpoints.artifact_references[0].path_details[0].path_reference
-    # )
-    # assert (
-    #     test_truss.training_checkpoints.artifact_references[0].path_details[0].recursive
-    #     == rendered_truss.training_checkpoints.artifact_references[0].path_details[0].recursive
-    # )
+    assert (
+        test_truss.training_checkpoints.artifact_references[0]
+        .path_details[0]
+        .path_reference
+        == rendered_truss.training_checkpoints.artifact_references[0]
+        .path_details[0]
+        .path_reference
+    )
+    assert (
+        test_truss.training_checkpoints.artifact_references[0].path_details[0].recursive
+        == rendered_truss.training_checkpoints.artifact_references[0]
+        .path_details[0]
+        .recursive
+    )
     assert (
         test_truss.docker_server.start_command
         == rendered_truss.docker_server.start_command
@@ -460,18 +462,6 @@ def test_hydrate_checkpoint_dispatcher():
     # Test unsupported checkpoint type
     with pytest.raises(ValueError, match="Unsupported checkpoint type: unsupported"):
         hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "unsupported")
-
-
-def test_get_hf_secret_name():
-    """Test get_hf_secret_name function handles different input types correctly."""
-    # Test with string input
-    result = get_hf_secret_name("my_custom_token")
-    assert result == "my_custom_token"
-
-    # Test with SecretReference input
-    secret_ref = definitions.SecretReference(name="secret_token_name")
-    result = get_hf_secret_name(secret_ref)
-    assert result == "secret_token_name"
 
 
 def test_render_vllm_lora_truss_config():
