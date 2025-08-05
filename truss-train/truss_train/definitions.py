@@ -1,4 +1,3 @@
-import abc
 import enum
 from typing import Dict, List, Optional, Union
 
@@ -148,15 +147,10 @@ class TrainingArtifactReferencePathDetails(custom_types.ConfigModel):
         )
 
 
-class Checkpoint(custom_types.ConfigModel, abc.ABC):
+class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
     path_details: List[TrainingArtifactReferencePathDetails]
     model_weight_format: ModelWeightsFormat
-
-    @abc.abstractmethod
-    def get_checkpoint_type(self) -> str:
-        """Return the type of checkpoint."""
-        pass
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         path_details: List[truss_config.TrainingArtifactReferencePathDetails] = [
@@ -177,10 +171,6 @@ class Checkpoint(custom_types.ConfigModel, abc.ABC):
 class LoRACheckpoint(Checkpoint):
     lora_rank: int
     model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
-
-    def get_checkpoint_type(self) -> str:
-        """Return the type of checkpoint."""
-        return self.model_weight_format.value
 
     @field_validator("lora_rank")
     @classmethod
