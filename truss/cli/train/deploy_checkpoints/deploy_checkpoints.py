@@ -238,13 +238,6 @@ def _process_user_provided_checkpoints(
                 checkpoint_response
             )
         checkpoint_response = checkpoints_by_training_job_id[checkpoint.training_job_id]
-        # For LoRA checkpoints, fill in missing lora_rank
-        from truss_train.definitions import LoRACheckpoint
-
-        if isinstance(checkpoint, LoRACheckpoint) and not checkpoint.lora_rank:
-            from .deploy_lora_checkpoints import _get_lora_rank
-
-            checkpoint.lora_rank = _get_lora_rank(checkpoint_response[checkpoint.id])
     return checkpoint_details
 
 
