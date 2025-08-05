@@ -8,9 +8,18 @@ import pytest
 import truss_train.definitions as definitions
 from truss.base import truss_config
 from truss.cli.train.deploy_checkpoints import (
-    _render_truss_config_for_checkpoint_deployment,
     create_build_time_config,
     prepare_checkpoint_deploy,
+)
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+    _render_truss_config_for_checkpoint_deployment,
+    get_hf_secret_name,
+    hydrate_checkpoint,
+)
+from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
+    get_lora_rank,
+    hydrate_lora_checkpoint,
+    render_vllm_lora_truss_config,
 )
 from truss.cli.train.types import (
     DeployCheckpointsConfigComplete,
@@ -49,22 +58,34 @@ def create_mock_prompt():
 
 @pytest.fixture
 def deploy_checkpoints_mock_select(create_mock_prompt):
-    with patch("truss.cli.train.deploy_checkpoints.inquirer.select") as mock:
-        mock.side_effect = lambda message, **kwargs: create_mock_prompt(
-            "LoRA"
-            if "model weight format" in message
-            else "H100"
-            if "GPU type" in message
-            else "hf_access_token"
-            if "huggingface secret name" in message
-            else None
-        )
-        yield mock
+    # Patch both modules since select is used in both
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
+    ) as generic_mock, patch(
+        "truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints.inquirer.select"
+    ) as lora_mock:
+
+        def mock_select_side_effect(message, **kwargs):
+            return create_mock_prompt(
+                "LoRA"
+                if "model weight format" in message
+                else "H100"
+                if "GPU type" in message
+                else "hf_access_token"
+                if "huggingface secret name" in message
+                else None
+            )
+
+        generic_mock.side_effect = mock_select_side_effect
+        lora_mock.side_effect = mock_select_side_effect
+        yield generic_mock
 
 
 @pytest.fixture
 def deploy_checkpoints_mock_text(create_mock_prompt):
-    with patch("truss.cli.train.deploy_checkpoints.inquirer.text") as mock:
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.text"
+    ) as mock:
         mock.side_effect = lambda message, **kwargs: create_mock_prompt(
             "4" if "number of accelerators" in message else None
         )
@@ -73,7 +94,9 @@ def deploy_checkpoints_mock_text(create_mock_prompt):
 
 @pytest.fixture
 def deploy_checkpoints_mock_checkbox(create_mock_prompt):
-    with patch("truss.cli.train.deploy_checkpoints.inquirer.checkbox") as mock:
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock:
         mock.side_effect = lambda message, **kwargs: create_mock_prompt(
             ["checkpoint-1"] if "Select the checkpoint" in message else None
         )
@@ -88,7 +111,7 @@ def test_render_truss_config_for_checkpoint_deployment():
                     training_job_id="job123",
                     path_details=[
                         definitions.TrainingArtifactReferencePathDetails(
-                            path_reference="job123/rank-0/checkpoint-1/", recursive=True
+                            path_reference="rank-0/checkpoint-1/", recursive=True
                         )
                     ],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
@@ -308,32 +331,30 @@ def test_checkpoint_lora_rank_validation():
 
 
 def test_get_lora_rank():
-    """Test that _get_lora_rank returns valid values from checkpoint response."""
-    from truss.cli.train.deploy_checkpoints import _get_lora_rank
-
+    """Test that get_lora_rank returns valid values from checkpoint response."""
     # Test with valid rank from API
     checkpoint_resp = {"lora_adapter_config": {"r": 64}}
-    assert _get_lora_rank(checkpoint_resp) == 64
+    assert get_lora_rank(checkpoint_resp) == 64
     # Test with missing lora_adapter_config (should use DEFAULT_LORA_RANK)
     checkpoint_resp = {}
-    assert _get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
+    assert get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
     # Test with missing 'r' field (should use DEFAULT_LORA_RANK)
     checkpoint_resp = {"lora_adapter_config": {}}
-    assert _get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
+    assert get_lora_rank(checkpoint_resp) == 16  # DEFAULT_LORA_RANK
     # Test with invalid rank from API
     checkpoint_resp = {"lora_adapter_config": {"r": 1}}
     with pytest.raises(
         ValueError,
         match=re.escape("LoRA rank 1 from checkpoint is not in allowed values"),
     ):
-        _get_lora_rank(checkpoint_resp)
+        get_lora_rank(checkpoint_resp)
     # Test with another invalid rank
     checkpoint_resp = {"lora_adapter_config": {"r": 1000}}
     with pytest.raises(
         ValueError,
         match=re.escape("LoRA rank 1000 from checkpoint is not in allowed values"),
     ):
-        _get_lora_rank(checkpoint_resp)
+        get_lora_rank(checkpoint_resp)
 
 
 def test_create_build_time_config(tmp_path):
@@ -394,3 +415,136 @@ def test_create_build_time_config(tmp_path):
     assert (
         build_time_config.docker_server.start_command == ""
     )  # Should be set to empty string
+
+
+def test_hydrate_lora_checkpoint():
+    """Test that hydrate_lora_checkpoint creates proper LoRACheckpoint objects."""
+    job_id = "test_job_123"
+    checkpoint_id = "checkpoint-456"
+    checkpoint_data = {
+        "lora_adapter_config": {"r": 64},
+        "base_model": "google/gemma-3-27b-it",
+        "checkpoint_type": "lora",
+    }
+
+    result = hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint_data)
+
+    assert isinstance(result, definitions.LoRACheckpoint)
+    assert result.training_job_id == job_id
+    assert result.lora_rank == 64
+    assert len(result.path_details) == 1
+    assert result.path_details[0].path_reference == f"rank-0/{checkpoint_id}/"
+    assert result.path_details[0].recursive is True
+
+
+def test_hydrate_checkpoint_dispatcher():
+    """Test that hydrate_checkpoint properly dispatches to the right function based on checkpoint type."""
+    job_id = "test_job_123"
+    checkpoint_id = "checkpoint-456"
+    checkpoint_data = {
+        "lora_adapter_config": {"r": 32},
+        "base_model": "google/gemma-3-27b-it",
+        "checkpoint_type": "lora",
+    }
+
+    # Test LoRA checkpoint type
+    result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "lora")
+    assert isinstance(result, definitions.LoRACheckpoint)
+    assert result.lora_rank == 32
+
+    # Test uppercase LoRA checkpoint type
+    result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "LORA")
+    assert isinstance(result, definitions.LoRACheckpoint)
+    assert result.lora_rank == 32
+
+    # Test unsupported checkpoint type
+    with pytest.raises(ValueError, match="Unsupported checkpoint type: unsupported"):
+        hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "unsupported")
+
+
+def test_get_hf_secret_name():
+    """Test get_hf_secret_name function handles different input types correctly."""
+    # Test with string input
+    result = get_hf_secret_name("my_custom_token")
+    assert result == "my_custom_token"
+
+    # Test with SecretReference input
+    secret_ref = definitions.SecretReference(name="secret_token_name")
+    result = get_hf_secret_name(secret_ref)
+    assert result == "secret_token_name"
+
+
+def test_render_vllm_lora_truss_config():
+    """Test that render_vllm_lora_truss_config creates proper TrussConfig for LoRA deployments."""
+    deploy_config = DeployCheckpointsConfigComplete(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.LoRACheckpoint(
+                    training_job_id="job123",
+                    path_details=[
+                        definitions.TrainingArtifactReferencePathDetails(
+                            path_reference="rank-0/checkpoint-1/", recursive=True
+                        )
+                    ],
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    lora_rank=64,
+                )
+            ],
+            base_model_id="google/gemma-3-27b-it",
+        ),
+        model_name="test-lora-model",
+        compute=definitions.Compute(
+            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=2)
+        ),
+        runtime=definitions.DeployCheckpointsRuntime(
+            environment_variables={
+                "HF_TOKEN": definitions.SecretReference(name="hf_token")
+            }
+        ),
+        deployment_name="test-deployment",
+        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+    )
+
+    result = render_vllm_lora_truss_config(deploy_config)
+
+    assert isinstance(result, truss_config.TrussConfig)
+    assert result.model_name == "test-lora-model"
+    assert result.docker_server is not None
+    assert "vllm serve" in result.docker_server.start_command
+    assert "--enable-lora" in result.docker_server.start_command
+    assert "--max-lora-rank 64" in result.docker_server.start_command
+    assert "--tensor-parallel-size 2" in result.docker_server.start_command
+    assert "google/gemma-3-27b-it" in result.docker_server.start_command
+
+
+def test_render_truss_config_delegation():
+    """Test that _render_truss_config_for_checkpoint_deployment delegates correctly based on model weight format."""
+    deploy_config = DeployCheckpointsConfigComplete(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.LoRACheckpoint(
+                    training_job_id="job123",
+                    path_details=[
+                        definitions.TrainingArtifactReferencePathDetails(
+                            path_reference="rank-0/checkpoint-1/", recursive=True
+                        )
+                    ],
+                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    lora_rank=16,
+                )
+            ],
+            base_model_id="google/gemma-3-27b-it",
+        ),
+        model_name="test-model",
+        compute=definitions.Compute(
+            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=1)
+        ),
+        runtime=definitions.DeployCheckpointsRuntime(environment_variables={}),
+        deployment_name="test-deployment",
+        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+    )
+
+    # Test that it works for LoRA format
+    result = _render_truss_config_for_checkpoint_deployment(deploy_config)
+    assert isinstance(result, truss_config.TrussConfig)
+    assert "vllm serve" in result.docker_server.start_command
