@@ -36,7 +36,7 @@ jobs:
       - uses: ./.github/actions/setup-python/
         with:
           python-version: ${{ needs.determine-python-versions.outputs.max_supported_python_version }}
-      - run: uv sync --all-extras --group dev --group dev-server
+      - run: uv sync
       - name: Run all tests serially and store durations
         run: |
           uv run pytest truss/tests -m integration --store-durations --durations-path=test_durations.json
@@ -74,7 +74,7 @@ jobs:
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /static-bptr && sudo chown $(whoami):$(whoami) /static-bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
-      - run: uv sync --all-extras --group dev --group dev-server
+      - run: uv sync
       - name: Run Pytest
         run: |
           if [[ "${{ inputs.run_only_integration }}" == "true" ]]; then
@@ -114,7 +114,7 @@ jobs:
         with:
           python-version: ${{ matrix.python_version }}
       - run: sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
-      - run: uv sync --all-extras --group dev --group dev-server
+      - run: uv sync
       - name: Run Chains Tests
         run: |
           if [[ "${{ inputs.run_only_integration }}" == "true" ]]; then

@@ -15,7 +15,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
-      - run: uv sync --all-extras --group dev --group dev-server
+      - run: uv sync
       - name: pre-commit
         run: uv run pre-commit run --all-files
         env:
@@ -37,7 +37,7 @@ jobs:
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /static-bptr && sudo chown $(whoami):$(whoami) /static-bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
-      - run: uv sync --all-extras --group dev --group dev-server
+      - run: uv sync
       - name: run tests
         run: uv run pytest --durations=0  -m 'not integration' --junitxml=report.xml
       - name: Publish Test Report

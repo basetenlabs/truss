@@ -10,7 +10,7 @@ RUN apt-get update \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* /tmp/library-scripts/
 
-RUN curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.7.12/install.sh | sh
+RUN curl -sSLf --retry 5 --retry-delay 5 https://astral.sh/uv/0.7.12/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
 # Chains/train source code is not actually needed (and deps from chains group won't be
@@ -24,7 +24,7 @@ COPY ./pyproject.toml ./pyproject.toml
 COPY ./uv.lock ./uv.lock
 COPY ./README.md ./README.md
 
-RUN uv sync --all-extras
+RUN uv sync
 
 FROM python:3.9-slim
 

@@ -30,7 +30,7 @@ asdf plugin add uv
 asdf install
 
 # Install uv dependencies
-uv sync --all-extras --group dev --group dev-server
+uv sync
 
 # And finally precommit
 uv run pre-commit install

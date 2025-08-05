@@ -41,7 +41,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: uv sync --all-extras --group dev --group dev-server
+      - run: uv sync
       - shell: bash
         run: |
           uv run bin/generate_base_images.py \

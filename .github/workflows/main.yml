@@ -85,7 +85,7 @@ jobs:
       - uses: ./.github/actions/setup-python/
 
       - name: Install packages
-        run: uv sync
+        run: uv sync --no-dev # NB(nikhil): Skip installing any dependency-groups
 
       - name: Build
         run: uv build

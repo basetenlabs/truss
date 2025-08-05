@@ -1,5 +1,5 @@
 name: "Setup Python"
-description: "setups python, uv and associated cache"
+description: "sets up python, uv and associated cache"
 inputs:
   python-version:
     description: Python version to setup
