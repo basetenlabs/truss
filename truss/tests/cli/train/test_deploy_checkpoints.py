@@ -497,14 +497,12 @@ def test_render_vllm_lora_truss_config():
 
     result = render_vllm_lora_truss_config(deploy_config)
 
+    expected_vllm_command = 'sh -c "HF_TOKEN=$(cat /secrets/hf_token) vllm serve google/gemma-3-27b-it --port 8000 --tensor-parallel-size 2 --enable-lora --max-lora-rank 64 --dtype bfloat16 --lora-modules job123=/tmp/training_checkpoints/job123/rank-0/checkpoint-1"'
+
     assert isinstance(result, truss_config.TrussConfig)
     assert result.model_name == "test-lora-model"
     assert result.docker_server is not None
-    assert "vllm serve" in result.docker_server.start_command
-    assert "--enable-lora" in result.docker_server.start_command
-    assert "--max-lora-rank 64" in result.docker_server.start_command
-    assert "--tensor-parallel-size 2" in result.docker_server.start_command
-    assert "google/gemma-3-27b-it" in result.docker_server.start_command
+    assert result.docker_server.start_command == expected_vllm_command
 
 
 def test_render_truss_config_delegation():

@@ -62,8 +62,7 @@ spec_version: '2.0'
 system_packages: []
 training_checkpoints:
   artifact_references:
-  - model_weight_format: LoRA
-    path_details:
+  - path_details:
     - path_reference: rank-0/checkpoint-1/
       recursive: true
     training_job_id: job123
