@@ -474,12 +474,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: bindings-x86_64-apple-darwin
-          path: artifacts
+          path: baseten-performance-client/node_bindings
       - name: Download macOS arm64 artifact
         uses: actions/download-artifact@v4
         with:
           name: bindings-aarch64-apple-darwin
-          path: artifacts
+          path: baseten-performance-client/node_bindings
       - name: Combine binaries
         run: yarn universal
       - name: List build output
