@@ -480,6 +480,8 @@ jobs:
         with:
           name: bindings-aarch64-apple-darwin
           path: baseten-performance-client/node_bindings
+      - name: List .node files before combine
+        run: ls -l *.node
       - name: Combine binaries
         run: yarn universal
       - name: List build output
