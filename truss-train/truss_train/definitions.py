@@ -150,29 +150,22 @@ class TrainingArtifactReferencePathDetails(custom_types.ConfigModel):
 class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
     path_details: List[TrainingArtifactReferencePathDetails]
-    model_weight_format: ModelWeightsFormat
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         path_details: List[truss_config.TrainingArtifactReferencePathDetails] = [
             path_detail.to_truss_config() for path_detail in self.path_details
         ]
-        model_weight_format = (
-            self.model_weight_format.to_truss_config()
-            if self.model_weight_format
-            else None
-        )
         return truss_config.TrainingArtifactReference(
-            training_job_id=self.training_job_id,
-            model_weight_format=model_weight_format,
-            path_details=path_details,
+            training_job_id=self.training_job_id, path_details=path_details
         )
 
 
-class LoRACheckpoint(Checkpoint):
-    lora_rank: int
-    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
+class LoRADetails(custom_types.ConfigModel):
+    """Configuration details specific to LoRA (Low-Rank Adaptation) models."""
 
-    @field_validator("lora_rank")
+    rank: int
+
+    @field_validator("rank")
     @classmethod
     def validate_lora_rank(cls, v):
         if v not in ALLOWED_LORA_RANKS:
@@ -180,6 +173,11 @@ class LoRACheckpoint(Checkpoint):
                 f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}."
             )
         return v
+
+
+class LoRACheckpoint(Checkpoint):
+    lora_details: LoRADetails
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):

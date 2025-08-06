@@ -111,7 +111,7 @@ def test_render_truss_config_for_checkpoint_deployment():
                         )
                     ],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
-                    lora_rank=16,
+                    lora_details=definitions.LoRADetails(rank=16),
                 )
             ],
             base_model_id="google/gemma-3-27b-it",
@@ -186,7 +186,7 @@ def test_prepare_checkpoint_deploy_empty_config(
     checkpoint = result.checkpoint_deploy_config.checkpoint_details.checkpoints[0]
     assert checkpoint.training_job_id == "job123"
     assert isinstance(checkpoint, definitions.LoRACheckpoint)
-    assert checkpoint.lora_rank == 16
+    assert checkpoint.lora_details.rank == 16
     assert result.checkpoint_deploy_config.compute.accelerator.accelerator == "H100"
     assert result.checkpoint_deploy_config.compute.accelerator.count == 4
     assert (
@@ -214,7 +214,7 @@ def test_prepare_checkpoint_deploy_complete_config(
                         )
                     ],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
-                    lora_rank=32,
+                    lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
             base_model_id="google/gemma-3-27b-it",
@@ -260,7 +260,7 @@ def test_prepare_checkpoint_deploy_complete_config(
     assert checkpoint.training_job_id == "job123"
     assert checkpoint.model_weight_format == definitions.ModelWeightsFormat.LORA
     assert isinstance(checkpoint, definitions.LoRACheckpoint)
-    assert checkpoint.lora_rank == 32
+    assert checkpoint.lora_details.rank == 32
 
     # Verify compute config
     assert config.compute.accelerator.accelerator == "A100"
@@ -292,9 +292,9 @@ def test_checkpoint_lora_rank_validation():
                 )
             ],
             model_weight_format=definitions.ModelWeightsFormat.LORA,
-            lora_rank=rank,
+            lora_details=definitions.LoRADetails(rank=rank),
         )
-        assert checkpoint.lora_rank == rank
+        assert checkpoint.lora_details.rank == rank
 
     invalid_ranks = [
         1,
@@ -328,7 +328,7 @@ def test_checkpoint_lora_rank_validation():
                     )
                 ],
                 model_weight_format=definitions.ModelWeightsFormat.LORA,
-                lora_rank=rank,
+                lora_details=definitions.LoRADetails(rank=rank),
             )
 
 
@@ -433,7 +433,7 @@ def test_hydrate_lora_checkpoint():
 
     assert isinstance(result, definitions.LoRACheckpoint)
     assert result.training_job_id == job_id
-    assert result.lora_rank == 64
+    assert result.lora_details.rank == 64
     assert len(result.path_details) == 1
     assert result.path_details[0].path_reference == f"rank-0/{checkpoint_id}/"
     assert result.path_details[0].recursive is True
@@ -452,12 +452,12 @@ def test_hydrate_checkpoint_dispatcher():
     # Test LoRA checkpoint type
     result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "lora")
     assert isinstance(result, definitions.LoRACheckpoint)
-    assert result.lora_rank == 32
+    assert result.lora_details.rank == 32
 
     # Test uppercase LoRA checkpoint type
     result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "LORA")
     assert isinstance(result, definitions.LoRACheckpoint)
-    assert result.lora_rank == 32
+    assert result.lora_details.rank == 32
 
     # Test unsupported checkpoint type
     with pytest.raises(ValueError, match="Unsupported checkpoint type: unsupported"):
@@ -477,7 +477,7 @@ def test_render_vllm_lora_truss_config():
                         )
                     ],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
-                    lora_rank=64,
+                    lora_details=definitions.LoRADetails(rank=64),
                 )
             ],
             base_model_id="google/gemma-3-27b-it",
@@ -520,7 +520,7 @@ def test_render_truss_config_delegation():
                         )
                     ],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
-                    lora_rank=16,
+                    lora_details=definitions.LoRADetails(rank=16),
                 )
             ],
             base_model_id="google/gemma-3-27b-it",

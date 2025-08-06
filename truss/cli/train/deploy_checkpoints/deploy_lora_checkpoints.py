@@ -9,6 +9,7 @@ from truss_train.definitions import (
     ALLOWED_LORA_RANKS,
     DEFAULT_LORA_RANK,
     LoRACheckpoint,
+    LoRADetails,
     SecretReference,
     TrainingArtifactReferencePathDetails,
 )
@@ -36,7 +37,7 @@ def hydrate_lora_checkpoint(
     return LoRACheckpoint(
         training_job_id=job_id,
         path_details=path_details,
-        lora_rank=_get_lora_rank(checkpoint),
+        lora_details=LoRADetails(rank=_get_lora_rank(checkpoint)),
     )
 
 
@@ -82,7 +83,7 @@ def render_vllm_lora_truss_config(
     checkpoint_str = " ".join(checkpoint_parts)
     max_lora_rank = max(
         [
-            getattr(checkpoint, "lora_rank", DEFAULT_LORA_RANK) or DEFAULT_LORA_RANK
+            checkpoint.lora_details.rank or DEFAULT_LORA_RANK
             for checkpoint in checkpoint_deploy.checkpoint_details.checkpoints
         ]
     )

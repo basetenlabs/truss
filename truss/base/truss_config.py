@@ -577,11 +577,6 @@ class TrainingArtifactReference(custom_types.ConfigModel):
     path_details: list[TrainingArtifactReferencePathDetails] = pydantic.Field(
         default_factory=list, description="The path details of the artifact reference."
     )
-    model_weight_format: Optional[ModelWeightsFormat] = pydantic.Field(
-        default=None,
-        description="Predefined model weight format to use for deploy_checkpoints",
-        examples=[ModelWeightsFormat.LORA],
-    )
 
 
 class CheckpointList(custom_types.ConfigModel):
