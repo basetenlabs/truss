@@ -474,12 +474,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: bindings-x86_64-apple-darwin
-          path: baseten-performance-client/node_bindings
+          path: baseten-performance-client/node_bindings/artifacts
       - name: Download macOS arm64 artifact
         uses: actions/download-artifact@v4
         with:
           name: bindings-aarch64-apple-darwin
-          path: baseten-performance-client/node_bindings
+          path: baseten-performance-client/node_bindings/artifacts
       - name: 'Debug: Show current location and list all files'
         run: |
           pwd
