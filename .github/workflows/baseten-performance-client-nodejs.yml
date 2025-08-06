@@ -487,7 +487,8 @@ jobs:
         shell: bash
       - name: Combine binaries
         run: |
-          mv baseten-performance-client/node_bindings/*.node .
+          cp baseten-performance-client/node_bindings/*.node .
+          cp baseten-performance-client/node_bindings/*.node ./artifacts
           yarn universal
       - name: List build output
         run: |
