@@ -455,7 +455,7 @@ jobs:
             yarn test
             ls -la
   universal-macOS:
-    if: false # we currently do not compile this
+    if: true # we currently do not compile this
     name: Build universal macOS binary
     needs:
       - build
