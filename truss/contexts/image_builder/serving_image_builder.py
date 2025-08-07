@@ -391,9 +391,8 @@ def generate_docker_server_supervisord_config(build_dir, config):
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
-    supervisord_contents = supervisord_template.render(
-        start_command=config.docker_server.start_command
-    )
+    start_command = config.docker_server.start_command
+    supervisord_contents = supervisord_template.render(start_command=start_command)
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)
 
@@ -429,8 +428,8 @@ class ServingImageBuilder(ImageBuilder):
             server_port=8000,
             # mount the following predict endpoint location
             predict_endpoint="/v1/chat/completions",
-            readiness_endpoint="/v1/models",
-            liveness_endpoint="/v1/models",
+            readiness_endpoint="/health_file",
+            liveness_endpoint="/health_file",
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
         # TODO: copy truss config into build dir, by dumping truss config
