@@ -513,7 +513,7 @@ jobs:
       # - test-linux-aarch64-gnu-binding
       # - test-linux-aarch64-musl-binding
       # - test-linux-arm-gnueabihf-binding
-      # - universal-macOS
+      - universal-macOS
     steps:
       - uses: actions/checkout@v4
       - name: Setup node
