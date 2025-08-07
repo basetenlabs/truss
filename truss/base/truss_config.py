@@ -554,6 +554,7 @@ class DockerServer(custom_types.ConfigModel):
     liveness_endpoint: str
 
 
+# TODO: aghilann: remove this once we have LoRA checkpoints
 class Checkpoint(custom_types.ConfigModel):
     # NB(rcano): The id here is a formatted string of the form <training_job_id>/<checkpoint_id>
     # We do this because the vLLM command requires knowledge of where the checkpoint
@@ -563,33 +564,13 @@ class Checkpoint(custom_types.ConfigModel):
     name: str
 
 
-class TrainingArtifactReferencePathDetails(custom_types.ConfigModel):
-    path_reference: str = pydantic.Field(
-        ...,
-        description="Relative path to the artifact",
-        examples=[
-            "rank-0/checkpoint-10/adapter_model.safetensors",
-            "rank-0/checkpoint-10/",
-        ],
-    )
-    recursive: bool = pydantic.Field(
-        ...,
-        description="Whether to recursively download the artifact. Do not set true when path_reference is a file.",
-        examples=[True, False],
-    )
-
-
 class TrainingArtifactReference(custom_types.ConfigModel):
     training_job_id: str = pydantic.Field(
         ..., description="The training job id that the artifact reference belongs to."
     )
-    path_details: list[TrainingArtifactReferencePathDetails] = pydantic.Field(
-        default_factory=list, description="The path details of the artifact reference."
-    )
-    model_weight_format: Optional[ModelWeightsFormat] = pydantic.Field(
-        default=None,
-        description="Predefined model weight format to use for deploy_checkpoints",
-        examples=[ModelWeightsFormat.LORA],
+    paths: list[str] = pydantic.Field(
+        default_factory=list,
+        description="The paths of the files to download which can contain * or ?.",
     )
 
 
@@ -598,10 +579,6 @@ class CheckpointList(custom_types.ConfigModel):
         default=DEFAULT_TRAINING_CHECKPOINT_FOLDER,
         description="The folder to download the checkpoints to.",
         examples=["/tmp/training_checkpoints"],
-    )
-    # TODO: Remove this field once deploy_checkpoints uses artifact_references instead.
-    checkpoints: list[Checkpoint] = pydantic.Field(
-        default_factory=list, deprecated="Prefer artifact_references instead."
     )
     artifact_references: list[TrainingArtifactReference] = pydantic.Field(
         default_factory=list
