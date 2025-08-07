@@ -488,7 +488,9 @@ jobs:
       - name: Combine binaries
         run: |
           cp baseten-performance-client/node_bindings/*.node .
+          mkdir -p artifacts
           cp baseten-performance-client/node_bindings/*.node ./artifacts
+          find . -name "*.node" -type f -exec cp {} ./artifacts \;
           yarn universal
       - name: List build output
         run: |
