@@ -498,8 +498,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-universal-apple-darwin
-          path: |
-            *.node
+          path: '**/*darwin-universal.node'
           if-no-files-found: error
   publish:
     name: Publish
