@@ -487,10 +487,8 @@ jobs:
         shell: bash
       - name: Combine binaries
         run: |
-          cp baseten-performance-client/node_bindings/*.node .
           mkdir -p artifacts
           cp baseten-performance-client/node_bindings/*.node ./artifacts
-          find . -name "*.node" -type f -exec cp {} ./artifacts \;
           yarn universal
       - name: List build output
         run: |
@@ -502,8 +500,6 @@ jobs:
           name: bindings-universal-apple-darwin
           path: |
             ${{ env.APP_NAME }}.*.node
-            baseten-performance-client/node_bindings/${{ env.APP_NAME }}.*.node
-            baseten-performance-client/node_bindings/*.node
           if-no-files-found: error
   publish:
     name: Publish
