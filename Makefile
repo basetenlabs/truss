@@ -5,3 +5,7 @@ docker_build_context_builder:
 docker_build_push_context_builder: docker_build_context_builder
 	VERSION=$(shell grep "^version " pyproject.toml | awk '{ print $$NF }' | sed 's/^"\(.*\)"$$/\1/') \
 	&& docker push baseten/truss-context-builder:v$$VERSION
+
+format:
+	poetry run ruff check . --fix
+	poetry run ruff format .
