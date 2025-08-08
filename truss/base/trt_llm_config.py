@@ -225,6 +225,7 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
         ]
     ] = None
     lora_configuration: Optional[TrussTRTLLMLoraConfiguration] = None
+    skip_build_result: bool = False
 
     class Config:
         extra = "forbid"
@@ -770,21 +771,3 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
         )
 
     return config
-
-
-TRTLLMConfigurationV2(
-    build=TrussTRTLLMBuildConfiguration(
-        checkpoint_repository=CheckpointRepository(
-            source=CheckpointSource.HF, repo="michael/any", revision=None
-        ),
-        quantization_type=TrussTRTLLMQuantizationType.NO_QUANT,
-    ),
-    runtime=TRTLLMRuntimeConfigurationV2(
-        max_seq_len=2048,
-        max_batch_size=256,
-        max_num_tokens=8192,
-        tensor_parallel_size=1,
-        enable_chunked_prefill=True,
-        config_kwargs={},
-    ),
-)
