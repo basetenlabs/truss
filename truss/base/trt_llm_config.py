@@ -167,7 +167,9 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     tensor_parallel_size: Annotated[int, Field(strict=True, ge=1)] = 1
     enable_chunked_prefill: bool = True
     served_model_name: Optional[str] = None
-    patch_kwargs: Dict[str, Union[str, int, float, dict]] = Field(default_factory=dict)
+    patch_kwargs: Dict[str, Union[str, int, float, dict, None]] = Field(
+        default_factory=dict
+    )
 
     @field_validator("patch_kwargs", mode="after")
     @classmethod
