@@ -146,7 +146,7 @@ class Checkpoint(custom_types.SafeModelNoExtra):
 
     def to_truss_config(self) -> truss_config.Checkpoint:
         return truss_config.Checkpoint(
-            id=f"{self.training_job_id}/{self.id}", name=self.id
+            id=f"{self.training_job_id}/{self.id}", name=self.name
         )
 
 
