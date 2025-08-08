@@ -1,6 +1,6 @@
 #!/bin/bash
 # This script bumps the project version based on an input version number.
-# It takes an existing version number as an argument instead of extracting it via Poetry
+# It takes an existing version number as an argument instead of extracting it via `uv`
 # and increments the major, minor, or patch version as specified.
 #
 # Usage:
@@ -67,8 +67,8 @@ done
 new_version="${major}.${minor}.${patch}"
 echo "Using version: $new_version"
 
-# Set the new version using Poetry
-poetry version "$new_version"
+# Set the new version using uv
+uv version "$new_version"
 
 # If GITHUB_OUTPUT is set (GitHub Actions context), write the output there.
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

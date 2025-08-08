@@ -24,11 +24,10 @@ jobs:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
           fetch-depth: 2
-      - run: curl -sSL https://install.python-poetry.org | python3 -
-        shell: bash
+      - uses: ./.github/actions/setup-python/
       - id: versions
         run: |
-          VERSION=$(poetry version | awk '{print $2}')
+          VERSION=$(uv version | awk '{print $2}')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
   build-n-push-context-builder-image:
