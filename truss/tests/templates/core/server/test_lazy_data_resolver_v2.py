@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(
     reason="BPTR tests require a specific directory and will fail on macOS",
 )
 
-LAZY_DATA_RESOLVER_PATH = Path("/bptr/static-bptr-manifest.json")
+BPTR_PATH = Path("/static-bptr/static-bptr-manifest.json")
 TARGET_FILE = Path("nested/config.json")
 
 
@@ -40,14 +40,14 @@ def write_bptr_manifest_to_file(
             for i in range(num_files)
         ]
     }
-    # write to LAZY_DATA_RESOLVER_PATH
-    with open(LAZY_DATA_RESOLVER_PATH, "w") as f:
+    # write to BPTR_PATH
+    with open(BPTR_PATH, "w") as f:
         json.dump(bptr_manifest, f)
         print(bptr_manifest)
 
 
 def write_bptr_manifest_to_file_invalid_json():
-    with open(LAZY_DATA_RESOLVER_PATH, "w") as f:
+    with open(BPTR_PATH, "w") as f:
         json.dump({"invalid": True}, f)
 
 
@@ -55,8 +55,8 @@ def write_bptr_manifest_to_file_invalid_json():
 def setup_v2_bptr():
     """Context manager that sets up and tears down the BPTR environment."""
     # Clean up any existing file
-    if LAZY_DATA_RESOLVER_PATH.exists():
-        LAZY_DATA_RESOLVER_PATH.unlink()
+    if BPTR_PATH.exists():
+        BPTR_PATH.unlink()
 
     try:
         # Verify that accessing non-existent file leads to """
@@ -64,11 +64,9 @@ def setup_v2_bptr():
 
         # Create parent directory
         try:
-            LAZY_DATA_RESOLVER_PATH.parent.mkdir(parents=True, exist_ok=True)
+            BPTR_PATH.parent.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            print(
-                f"Unable to create {LAZY_DATA_RESOLVER_PATH} due to missing os permissions: {e}"
-            )
+            print(f"Unable to create {BPTR_PATH} due to missing os permissions: {e}")
             if sys.platform.startswith("win"):
                 pytest.mark.skip(reason="Windows does not designed for running bptr")
             else:
@@ -78,8 +76,8 @@ def setup_v2_bptr():
 
     finally:
         # Clean up after tests
-        if LAZY_DATA_RESOLVER_PATH.exists():
-            LAZY_DATA_RESOLVER_PATH.unlink()
+        if BPTR_PATH.exists():
+            BPTR_PATH.unlink()
 
 
 def test_lazy_data_resolver_v2_invalid():
@@ -98,7 +96,7 @@ def test_lazy_data_resolver_v2_invalid():
 
 def test_lazy_data_resolver_v2_regular():
     with setup_v2_bptr():
-        # with LAZY_DATA_RESOLVER_PATH -> fetches data
+        # with BPTR_PATH -> fetches data
         with tempfile.TemporaryDirectory() as tempdir:
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file()
@@ -111,7 +109,7 @@ def test_lazy_data_resolver_v2_regular():
 
 def test_lazy_data_resolver_v2_threaded():
     with setup_v2_bptr():
-        # with LAZY_DATA_RESOLVER_PATH -> fetches data
+        # with BPTR_PATH -> fetches data
         with tempfile.TemporaryDirectory() as tempdir:
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file()
@@ -121,7 +119,7 @@ def test_lazy_data_resolver_v2_threaded():
 
 def test_lazy_data_resolver_error_if_not_collected():
     with setup_v2_bptr():
-        # with LAZY_DATA_RESOLVER_PATH -> fetches data
+        # with BPTR_PATH -> fetches data
         with tempfile.TemporaryDirectory() as tempdir:
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file()
@@ -133,7 +131,7 @@ def test_lazy_data_resolver_error_if_not_collected():
 def test_lazy_data_resolver_v2_regular_baseten_fs():
     with setup_v2_bptr():
         old_os_setting = os.environ.get("BASETEN_FS_ENABLED")
-        # with LAZY_DATA_RESOLVER_PATH -> fetches data
+        # with BPTR_PATH -> fetches data
         try:
             os.environ["BASETEN_FS_ENABLED"] = "True"
             with tempfile.TemporaryDirectory() as tempdir:
@@ -164,7 +162,7 @@ def test_lazy_data_resolver_v2_multiple_files():
 
 def test_lazy_data_resolver_v2_expired():
     with setup_v2_bptr():
-        # with expired LAZY_DATA_RESOLVER_PATH -> raises exception
+        # with expired BPTR_PATH -> raises exception
         with tempfile.TemporaryDirectory() as tempdir:
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file(expiration_timestamp=int(time.time()) - 1)

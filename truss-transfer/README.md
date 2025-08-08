@@ -187,8 +187,8 @@ def create_and_resolve_bptr():
     bptr_manifest = truss_transfer.create_basetenpointer_from_models(models)
 
     # 2. Save manifest
-    os.makedirs("/bptr", exist_ok=True)
-    with open("/bptr/static-bptr-manifest.json", "w") as f:
+    os.makedirs("/static-bptr", exist_ok=True)
+    with open("/static-bptr/static-bptr-manifest.json", "w") as f:
         f.write(bptr_manifest)
 
     # 3. Resolve bptr
