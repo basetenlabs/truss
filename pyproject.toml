@@ -103,7 +103,7 @@ rich-click = { version = "^1.6.1", optional = false }
 ruff = { version = ">=0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
 tenacity = { version = ">=8.0.1", optional = false }
 watchfiles = { version = "^0.19.0", optional = false }
-truss_transfer= { version = "0.0.17", optional = false }
+truss_transfer= { version = "0.0.18", optional = false }
 
 [tool.dependency_metadata]
 # `base` / `main` deps which are non-optional are always included and don't need to be added here.
