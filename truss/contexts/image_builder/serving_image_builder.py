@@ -622,12 +622,6 @@ class ServingImageBuilder(ImageBuilder):
             )
 
         if config.model_cache.is_v2:
-            if config.trt_llm:
-                raise RuntimeError(
-                    "TensorRTLLM models is already occupying and using `model_cache` by default. "
-                    "Additional huggingface weights are not allowed. "
-                    "Feel free to reach out to us if you need this feature."
-                )
             logging.info(
                 f"`model_cache` with `use_volume=True` is enabled. Creating {config.model_cache}"
             )
