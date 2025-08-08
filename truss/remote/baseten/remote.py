@@ -197,7 +197,7 @@ class BasetenRemote(TrussRemote):
         tc = TrussConfig.from_yaml(context_path_str / "config.yaml")
         if tc.docker_server:
             truss_config.environment_variables["BT_DOCKER_SERVER_START_CMD"] = (
-                truss_config.docker_server.start_command
+                tc.docker_server.start_command
             )
             # we will set the start command at runtime, so we don't need to include it in the build hash
             tc.docker_server.start_command = ""
@@ -226,7 +226,7 @@ class BasetenRemote(TrussRemote):
         preserve_env_instance_type: bool = True,
         dump_final_config: bool = False,
         dry_run: bool = False,
-    ) -> BasetenService:
+    ) -> Optional[BasetenService]:
         # Save a subset of truss config relevant for building the image separately
         # Only this subset is used to determine if the image needs to be rebuilt
         self.create_build_time_config(working_dir, truss_handle.spec._config)
