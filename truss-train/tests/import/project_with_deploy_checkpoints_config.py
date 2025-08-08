@@ -15,15 +15,28 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
     checkpoint_details=definitions.CheckpointList(
         base_model_id="unsloth/gemma-3-1b-it",
         checkpoints=[
-            definitions.Checkpoint(
-                id="checkpoint-24", name="checkpoint-24", training_job_id="lqz4pw4"
+            definitions.LoRACheckpoint(
+                training_job_id="lqz4pw4",
+                path_details=[
+                    definitions.TrainingArtifactReferencePathDetails(
+                        path_reference="lqz4pw4/rank-0/checkpoint-24/", recursive=True
+                    )
+                ],
+                lora_details=definitions.LoRADetails(rank=16),
             ),
-            definitions.Checkpoint(
-                id="checkpoint-42", name="checkpoint-42", training_job_id="lqz4pw4"
+            definitions.LoRACheckpoint(
+                training_job_id="lqz4pw4",
+                path_details=[
+                    definitions.TrainingArtifactReferencePathDetails(
+                        path_reference="lqz4pw4/rank-0/checkpoint-42/", recursive=True
+                    )
+                ],
+                lora_details=definitions.LoRADetails(rank=8),
             ),
         ],
     ),
 )
+
 runtime_config = definitions.Runtime(
     start_commands=["/bin/bash ./my-entrypoint.sh"],
     environment_variables={

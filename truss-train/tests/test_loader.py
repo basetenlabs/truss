@@ -60,12 +60,16 @@ def test_import_deploy_checkpoints_config():
             == "unsloth/gemma-3-1b-it"
         )
         assert (
-            deploy_checkpoints_config.checkpoint_details.checkpoints[0].id
-            == "checkpoint-24"
+            deploy_checkpoints_config.checkpoint_details.checkpoints[0]
+            .path_details[0]
+            .path_reference
+            == "lqz4pw4/rank-0/checkpoint-24/"
         )
         assert (
-            deploy_checkpoints_config.checkpoint_details.checkpoints[1].id
-            == "checkpoint-42"
+            deploy_checkpoints_config.checkpoint_details.checkpoints[1]
+            .path_details[0]
+            .path_reference
+            == "lqz4pw5/rank-0/checkpoint-42/"
         )
 
 
@@ -81,10 +85,14 @@ def test_import_handles_training_project_with_deploy_checkpoints_config():
             == "unsloth/gemma-3-1b-it"
         )
         assert (
-            deploy_checkpoints_config.checkpoint_details.checkpoints[0].id
-            == "checkpoint-24"
+            deploy_checkpoints_config.checkpoint_details.checkpoints[0]
+            .path_details[0]
+            .path_reference
+            == "lqz4pw4/rank-0/checkpoint-24/"
         )
         assert (
-            deploy_checkpoints_config.checkpoint_details.checkpoints[1].id
-            == "checkpoint-42"
+            deploy_checkpoints_config.checkpoint_details.checkpoints[1]
+            .path_details[0]
+            .path_reference
+            == "lqz4pw4/rank-0/checkpoint-42/"
         )
