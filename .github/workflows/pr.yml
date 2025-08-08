@@ -35,6 +35,7 @@ jobs:
       - uses: ./.github/actions/setup-python/
       - run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
+          sudo mkdir -p /static-bptr && sudo chown $(whoami):$(whoami) /static-bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
       - run: poetry install --with=dev,dev-server --extras=all
       - name: run tests
