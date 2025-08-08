@@ -75,8 +75,7 @@ def prepare_checkpoint_deploy(
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
     create_build_time_config(truss_directory)
-    console.print(rendered_truss, style="green")
-    console.print(f"Writing truss config to {truss_config_path}", style="yellow")
+
     return PrepareCheckpointResult(
         truss_directory=truss_directory,
         checkpoint_deploy_config=checkpoint_deploy_config,

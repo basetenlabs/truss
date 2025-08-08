@@ -1,3 +1,4 @@
+import tempfile
 import enum
 import logging
 import re
@@ -204,7 +205,21 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
+        dump_final_config: bool = False,
+        dry_run: bool = False,
     ) -> BasetenService:
+
+        # Dump the truss config to a temporary directory
+        if dump_final_config:
+            truss_directory = Path(tempfile.mkdtemp())
+            truss_config_path = truss_directory / "config.yaml"
+            print(f"Dumping truss config to {truss_config_path}")
+            truss_handle.spec._config.write_to_yaml_file(truss_config_path)
+
+        # If dry run is enabled, we don't want to actually deploy the model.
+        if dry_run:
+            return None
+
         push_data = self._prepare_push(
             truss_handle=truss_handle,
             model_name=model_name,
