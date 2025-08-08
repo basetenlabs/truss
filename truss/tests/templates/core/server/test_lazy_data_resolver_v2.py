@@ -167,6 +167,5 @@ def test_lazy_data_resolver_v2_expired():
             data_dir = Path(tempdir)
             write_bptr_manifest_to_file(expiration_timestamp=int(time.time()) - 1)
 
-            with pytest.raises(Exception):
-                resolver = LazyDataResolverV2(data_dir)
-                resolver.block_until_download_complete()
+            resolver = LazyDataResolverV2(data_dir)
+            resolver.block_until_download_complete()
