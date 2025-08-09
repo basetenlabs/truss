@@ -339,12 +339,11 @@ def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: 
         ]
         # create BasetenPointer from models
         basetenpointer_json = create_basetenpointer_from_models(models=py_models)
-        pointers = json.loads(basetenpointer_json)
-        basetenpointer_list = json.dumps({"pointers": pointers}, indent=2)
-        logging.info(f"debug: created {len(pointers)} number of BasetenPointers")
-        logging.info(f"pointers json: {basetenpointer_list}")
+        bptr_py = json.loads(basetenpointer_json)["pointers"]
+        logging.info(f"created ({len(bptr_py)}) Basetenpointer")
+        logging.info(f"pointers json: {basetenpointer_json}")
         with open(build_dir / "bptr-manifest", "w") as f:
-            f.write(basetenpointer_list)
+            f.write(basetenpointer_json)
     except Exception as e:
         logging.warning(f"debug: failed to create BasetenPointer: {e}")
         # TODO: remove below section + remove logging lines above.
