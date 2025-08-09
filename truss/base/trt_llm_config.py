@@ -229,9 +229,6 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     lora_configuration: Optional[TrussTRTLLMLoraConfiguration] = None
     skip_build_result: bool = False
 
-    class Config:
-        extra = "forbid"
-
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_kv_cache_flags()
