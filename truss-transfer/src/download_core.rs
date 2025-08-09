@@ -1,12 +1,15 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
-use log::{debug, info};
+use log::{debug, info, warn};
 use reqwest::Client;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::time::{interval, Duration};
 
 use crate::secrets::get_hf_secret_from_file;
 
@@ -75,26 +78,56 @@ pub async fn download_http_to_path(
         .context(format!("Failed to create file: {:?}", path))?;
 
     let mut stream = resp.bytes_stream();
-    let mut downloaded: u64 = 0;
+    let downloaded = Arc::new(AtomicU64::new(0));
 
-    while let Some(chunk_result) = stream.next().await {
-        let chunk: Bytes = chunk_result.context("Failed to read chunk from HTTP stream")?;
-        downloaded += chunk.len() as u64;
-        file.write_all(&chunk)
-            .await
-            .context("Failed to write chunk to file")?;
+    // Start of monitoring logic
+    let monitor_path = path.to_path_buf();
+    let monitor_downloaded = downloaded.clone();
+    let monitor_handle = tokio::spawn(async move {
+        let mut start_time = Instant::now();
+        // sleep for 30s before starting.
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        let mut ticker = interval(Duration::from_secs(30));
+        loop {
+            ticker.tick().await;
+            let current_size = monitor_downloaded.load(Ordering::Relaxed);
+            info!(
+                "Download for {:?} Progress ({} bytes downloaded, {} MB/s)",
+                monitor_path, current_size, current_size / (start_time.elapsed().as_secs() * 1024 * 1024)
+            );
+        }
+    });
+    // End of monitoring logic
+
+    let download_result: Result<()> = async {
+        while let Some(chunk_result) = stream.next().await {
+            let chunk: Bytes = chunk_result.context("Failed to read chunk from HTTP stream")?;
+            downloaded.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+            file.write_all(&chunk)
+                .await
+                .context("Failed to write chunk to file")?;
+        }
+        Ok(())
     }
+    .await;
+
+    // Stop the monitor task now that the download is complete or has failed.
+    monitor_handle.abort();
+
+    // Now handle the result of the download
+    download_result?;
 
     // Ensure all data is written to disk
     file.flush().await?;
     file.sync_all().await?;
 
-    if downloaded != size {
+    let final_downloaded = downloaded.load(Ordering::Relaxed);
+    if final_downloaded != size {
         return Err(anyhow!(
             "Downloaded file size mismatch for {:?} (expected {}, got {})",
             path,
             size,
-            downloaded
+            final_downloaded
         ));
     }
 
