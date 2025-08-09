@@ -8,6 +8,7 @@ use serde_json;
 /// Refactored to use the provider pattern for better extensibility
 pub async fn create_basetenpointer(
     cache: Vec<ModelRepo>,
+    model_path: String,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut all_pointers = Vec::new();
 
@@ -18,14 +19,19 @@ pub async fn create_basetenpointer(
         let provider = get_provider_for_repo(&model)?;
         info!("Processing {} model: {}", provider.name(), model.repo_id);
 
-        let pointers = provider.create_pointers(&model).await?;
+        let pointers = provider.create_pointers(&model, &model_path).await?;
         all_pointers.extend(pointers);
     }
 
     info!("Created {} total basetenpointers", all_pointers.len());
 
+    // package all_pointers in a {"pointers": [...]}
+    let output = serde_json::json!({
+        "pointers": all_pointers
+    });
+
     // Convert to JSON
-    let json_output = serde_json::to_string_pretty(&all_pointers)?;
+    let json_output = serde_json::to_string_pretty(&output)?;
     Ok(json_output)
 }
 

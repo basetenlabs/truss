@@ -9,8 +9,8 @@ use log::{debug, info};
 use reqwest::Client;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tokio::time::{interval, Duration};
 use tokio::time::Instant;
+use tokio::time::{interval, Duration};
 
 use crate::secrets::get_hf_secret_from_file;
 
@@ -94,7 +94,9 @@ pub async fn download_http_to_path(
             let current_size = monitor_downloaded.load(Ordering::Relaxed);
             info!(
                 "Download for {:?} Progress ({} bytes downloaded, {} MB/s)",
-                monitor_path, current_size, current_size / (start_time.elapsed().as_secs() * 1024 * 1024)
+                monitor_path,
+                current_size,
+                current_size / (start_time.elapsed().as_secs() * 1024 * 1024)
             );
         }
     });

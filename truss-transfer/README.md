@@ -174,28 +174,40 @@ import json
 import os
 
 def create_and_resolve_bptr():
+    # runtime_secret_name: best to be created with `-` in baseten.
     # 1. Create bptr manifest
     models = [
         truss_transfer.PyModelRepo(
             repo_id="microsoft/DialoGPT-medium",
             revision="main",
+            # write to folder named
             volume_folder="dialogpt",
-            runtime_secret_name="hf_access_token"
+            # read secret from /secrets/hf-access-token
+            runtime_secret_name="hf-access-token"
+        ),
+        # requires a gcs service account json
+        truss_transfer.PyModelRepo(
+            repo_id="gs://llama-3-2-1b-instruct/",
+            revision="",
+            volume_folder="llama",
+            # requires json in /secrets/gcs-service-account-jsn
+            runtime_secret_name="gcs-service-account-jsn",
+            kind="gcs"
         )
     ]
-
-    bptr_manifest = truss_transfer.create_basetenpointer_from_models(models)
+    root = "/tmp/my-models"
+    bptr_manifest = truss_transfer.create_basetenpointer_from_models(models, root)
 
     # 2. Save manifest
     os.makedirs("/static-bptr", exist_ok=True)
     with open("/static-bptr/static-bptr-manifest.json", "w") as f:
         f.write(bptr_manifest)
 
-    # 3. Resolve bptr
-    resolved_dir = truss_transfer.lazy_data_resolve("/tmp/my-models")
+    # 3. Resolve bptr. If we would set `root` above to "", we could define the base dir here.
+    truss_transfer.lazy_data_resolve(root)
 
     # 4. Verify files were downloaded
-    dialogpt_path = os.path.join(resolved_dir, "dialogpt")
+    dialogpt_path = os.path.join(root, "dialogpt")
     if os.path.exists(dialogpt_path):
         files = os.listdir(dialogpt_path)
         print(f"Successfully downloaded {len(files)} files to {dialogpt_path}")

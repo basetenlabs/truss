@@ -101,33 +101,13 @@ pub fn azure_storage(
                 builder = builder.with_use_emulator(true);
             }
         } else {
-            // Fallback: try to parse as simple key=value format
-            for line in credentials_content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-
-                if let Some((key, value)) = line.split_once('=') {
-                    match key.trim().to_lowercase().as_str() {
-                        "account_key" | "azure_storage_account_key" => {
-                            builder = builder.with_access_key(value.trim());
-                        }
-                        "sas_token" | "azure_storage_sas_token" => {
-                            // Note: SAS token support would require proper URL parsing
-                            // For now, skip SAS token in key=value format
-                            // builder = builder.with_sas_token(value.trim());
-                        }
-                        "use_emulator" => {
-                            if value.trim().to_lowercase() == "true" {
-                                builder = builder.with_use_emulator(true);
-                            }
-                        }
-                        _ => {} // Ignore unknown keys
-                    }
-                }
-            }
+            return Err(anyhow!("Failed to parse Azure credentials from JSON. The json needs to be in the format: {{\"account_key\": \"...\"}}"));
         }
+    } else {
+        return Err(anyhow!(
+            "Failed to read Azure credentials from not existing file: {}",
+            runtime_secret_name
+        ));
     }
 
     let azure: MicrosoftAzure = builder

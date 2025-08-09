@@ -34,7 +34,7 @@ pub use types::{
 };
 
 // Re-export HuggingFace functionality
-pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
+pub use create::{metadata_hf_repo, HfError};
 
 // Re-export BasetenPointer API
 pub use create::create_basetenpointer;

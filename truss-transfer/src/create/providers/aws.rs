@@ -66,11 +66,15 @@ impl StorageProvider for AwsProvider {
         repo.repo_id.starts_with("s3://") || matches!(repo.kind, ResolutionType::S3)
     }
 
-    async fn create_pointers(&self, repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
+    async fn create_pointers(
+        &self,
+        repo: &ModelRepo,
+        model_path: &String,
+    ) -> Result<Vec<BasetenPointer>> {
         debug!("Creating AWS S3 pointers for repo: {}", repo.repo_id);
         if !self.can_handle(repo) {
             warn!("AWS S3 provider cannot handle repo: {}", repo.repo_id);
         }
-        create_single_cloud_basetenpointers(self, repo).await
+        create_single_cloud_basetenpointers(self, repo, model_path).await
     }
 }
