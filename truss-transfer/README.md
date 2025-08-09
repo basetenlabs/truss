@@ -193,6 +193,14 @@ def create_and_resolve_bptr():
             # requires json in /secrets/gcs-service-account-jsn
             runtime_secret_name="gcs-service-account-jsn",
             kind="gcs"
+        ),
+        truss_transfer.PyModelRepo(
+            repo_id="s3://bt-training-dev-org-b68c04fe47d34c85bfa91515bc9d5e2d/training_projects",
+            revision="",
+            volume_folder="training",
+            # requires json in /secrets/aws
+            runtime_secret_name="aws-secret-json",
+            kind="s3"
         )
     ]
     root = "/tmp/my-models"
@@ -219,6 +227,37 @@ def create_and_resolve_bptr():
 model_path = create_and_resolve_bptr()
 ```
 
+### Secrets
+Preferably, use a `-` to and lowercase characters to add credentials in baseten.
+
+#### AWS
+```json
+{
+  "access_key_id": "XXXXX",
+  "secret_access_key": "adada/adsdad",
+  "region": "us-west-2"
+}
+```
+
+#### Google GCS
+```json
+{
+      "private_key_id": "b717a4db1dd5a5d1f980aef7ea50616584b6ebc8",
+      "private_key": "-----BEGIN PRIVATE KEY-----\nMI",
+      "client_email": "b10-some@xxx-example.iam.gserviceaccount.com"
+}
+```
+
+#### Huggingface
+The Huggingface token.
+
+#### Azure
+(Untested)
+```json
+{
+    "account_key": "key",
+}
+```
 ## Environment Variables and Settings
 
 The following environment variables can be used to configure truss-transfer behavior:

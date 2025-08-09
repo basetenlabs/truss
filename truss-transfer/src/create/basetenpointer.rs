@@ -55,7 +55,7 @@ mod tests {
 
         // This will fail in test environment without network access
         // but shows the structure
-        let result = create_basetenpointer(cache).await;
+        let result = create_basetenpointer(cache, "/app".to_string()).await;
         // In a real test environment, we would mock the network calls
         // For now, we just check that the function exists and compiles
         assert!(result.is_ok() || result.is_err());
@@ -86,7 +86,7 @@ mod tests {
 
         // This will fail in test environment without network access and credentials
         // but shows the structure for mixed HF + GCS models
-        let result = create_basetenpointer(cache).await;
+        let result = create_basetenpointer(cache, "/app".to_string()).await;
         // In a real test environment, we would mock the network calls
         // For now, we just check that the function exists and compiles
         assert!(result.is_ok() || result.is_err());
@@ -112,18 +112,25 @@ mod tests {
         }];
 
         println!("Testing create_basetenpointer...");
-        let result = create_basetenpointer(model_repos).await;
+        let result = create_basetenpointer(model_repos, "/app/model_cache".to_string()).await;
 
         match result {
             Ok(manifest_json) => {
                 println!("Success! Generated BasetenPointer manifest:");
-
-                // Parse and pretty print the JSON
-                let manifest: Vec<Value> =
+                let output: Value =
                     serde_json::from_str(&manifest_json).expect("Failed to parse manifest JSON");
 
+                let manifest = output
+                    .get("pointers")
+                    .and_then(|v| v.as_array())
+                    .expect("Manifest should have a 'pointers' array");
+                // TODO: refactor this test to access the .pointers attribute
                 let pretty_json =
                     serde_json::to_string_pretty(&manifest).expect("Failed to pretty print JSON");
+                println!("{}", pretty_json);
+
+                // Test that the structure is correct
+                assert!(!manifest.is_empty(), "Manifest should not be empty");
                 println!("{}", pretty_json);
 
                 // Test that the structure is correct
@@ -141,7 +148,7 @@ mod tests {
                 ];
                 let resolution_fields = ["url", "resolution_type", "expiration_timestamp"];
 
-                for pointer in &manifest {
+                for pointer in manifest {
                     // Check required fields exist
                     for field in &required_fields {
                         assert!(pointer.get(field).is_some(), "Missing field: {}", field);
@@ -205,6 +212,16 @@ mod tests {
                         "File name should start with correct path: {}",
                         file_name
                     );
+
+                    // if name contains pytorch_model.bin, check if size is 65100 byte
+                    if file_name.contains("pytorch_model.bin") {
+                        let size = pointer
+                            .get("size")
+                            .and_then(|v| v.as_u64())
+                            .expect("Size should be a number");
+                        assert_eq!(size, 65074, "Size should be 65100 bytes for pytorch_model.bin");
+                    }
+
                 }
 
                 println!("✓ BasetenPointer structure validation passed");
@@ -276,7 +293,7 @@ mod tests {
         }];
 
         println!("Testing Azure support...");
-        let result = create_basetenpointer(model_repos).await;
+        let result = create_basetenpointer(model_repos, "/app".to_string()).await;
 
         match result {
             Ok(manifest_json) => {
