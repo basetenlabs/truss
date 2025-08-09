@@ -5,11 +5,12 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
-use log::{debug, info, warn};
+use log::{debug, info};
 use reqwest::Client;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{interval, Duration};
+use tokio::time::Instant;
 
 use crate::secrets::get_hf_secret_from_file;
 
@@ -84,7 +85,7 @@ pub async fn download_http_to_path(
     let monitor_path = path.to_path_buf();
     let monitor_downloaded = downloaded.clone();
     let monitor_handle = tokio::spawn(async move {
-        let mut start_time = Instant::now();
+        let start_time = Instant::now();
         // sleep for 30s before starting.
         tokio::time::sleep(Duration::from_secs(30)).await;
         let mut ticker = interval(Duration::from_secs(30));
