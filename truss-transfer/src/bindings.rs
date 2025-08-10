@@ -16,6 +16,19 @@ use crate::core::lazy_data_resolve_entrypoint;
 use crate::create::create_basetenpointer;
 use crate::types::{ModelRepo, ResolutionType};
 static INIT_LOGGER: Once = Once::new();
+use once_cell::sync::Lazy;
+use std::sync::Arc;
+use tokio::runtime::Runtime;
+
+// --- Global Tokio Runtime ---
+static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
+    Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create global multi-threaded Tokio runtime"),
+    )
+});
 
 /// Initialize the logger with a default level of `info`
 pub fn init_logger_once() {
@@ -158,11 +171,10 @@ pub fn create_basetenpointer_from_models(
     models: Vec<Bound<'_, PyModelRepo>>,
     model_path: String,
 ) -> PyResult<String> {
-    // Use async runtime to call the async function
-    let rt = tokio::runtime::Runtime::new().map_err(|e| PyException::new_err(e.to_string()))?;
     // convert PyModelRepo to ModelRepo
     let models: PyResult<Vec<ModelRepo>> = models.into_iter().map(TryInto::try_into).collect();
-    rt.block_on(async move { create_basetenpointer(models?, model_path).await })
+    GLOBAL_RUNTIME
+        .block_on(async move { create_basetenpointer(models?, model_path).await })
         .map_err(|e| PyException::new_err(e.to_string()))
 }
 
