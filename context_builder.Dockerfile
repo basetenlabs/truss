@@ -10,30 +10,28 @@ RUN apt-get update \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* /tmp/library-scripts/
 
-RUN curl -sSL https://install.python-poetry.org | python -
-ENV PATH="/root/.local/bin:${PATH}"
+RUN curl -sSLf --retry 5 --retry-delay 5 https://astral.sh/uv/0.7.12/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
 
 # Chains/train source code is not actually needed (and deps from chains group won't be
-# installed when using `--only builder`). But nonetheless poetry fails the install
+# installed when using `--only builder`). But nonetheless `uv` fails the install
 # if this directory is not present/empty - so we copy it.
 WORKDIR /app
 COPY ./truss ./truss
 COPY ./truss-chains ./truss-chains
 COPY ./truss-train ./truss-train
 COPY ./pyproject.toml ./pyproject.toml
-COPY ./poetry.lock ./poetry.lock
+COPY ./uv.lock ./uv.lock
 COPY ./README.md ./README.md
 
-# https://python-poetry.org/docs/configuration/#virtualenvsin-project
-# to write to project root .venv file to be used for context builder test
-RUN poetry config virtualenvs.in-project true && poetry install --extras=all
+RUN uv sync
 
 FROM python:3.9-slim
 
 WORKDIR /app
 COPY --from=builder /app /app
 
-# Copy `poetry` and required files
+# Copy `uv` and required files
 COPY --from=builder /root/.local /root/.local
 
 ENV PATH="/root/.local/bin:${PATH}"
