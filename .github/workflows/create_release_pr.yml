@@ -20,11 +20,7 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Install poetry
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-
+    - uses: ./.github/actions/setup-python/
     - name: Get current Truss version
       id: get-version
       run: |

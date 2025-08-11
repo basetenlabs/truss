@@ -163,8 +163,8 @@ impl PerformanceClientCore {
         }
 
         client_builder
-            .pool_max_idle_per_host(32_768)
-            .pool_idle_timeout(Duration::from_secs(240))
+            .pool_max_idle_per_host(8192)
+            .pool_idle_timeout(Duration::from_secs(30))
             .tcp_nodelay(true)
             .user_agent(concat!(
                 "baseten-performance-client/",

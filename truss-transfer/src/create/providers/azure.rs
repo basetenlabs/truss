@@ -83,7 +83,11 @@ impl StorageProvider for AzureProvider {
             || matches!(repo.kind, ResolutionType::Azure)
     }
 
-    async fn create_pointers(&self, repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
+    async fn create_pointers(
+        &self,
+        repo: &ModelRepo,
+        model_path: &String,
+    ) -> Result<Vec<BasetenPointer>> {
         debug!(
             "Creating Azure Blob Storage pointers for repo: {}",
             repo.repo_id
@@ -94,6 +98,6 @@ impl StorageProvider for AzureProvider {
                 repo.repo_id
             );
         }
-        create_single_cloud_basetenpointers(self, repo).await
+        create_single_cloud_basetenpointers(self, repo, model_path).await
     }
 }

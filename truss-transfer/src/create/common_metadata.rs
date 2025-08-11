@@ -4,7 +4,6 @@ use log::{debug, info};
 use object_store::ObjectStore;
 
 use super::filter::{normalize_hash, should_ignore_file};
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::types::{BasetenPointer, ModelRepo, Resolution};
 
 /// Common metadata extraction interface for cloud storage providers
@@ -37,6 +36,7 @@ pub trait CloudMetadataProvider {
 pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
     provider: &T,
     models: Vec<&ModelRepo>,
+    model_path: String,
 ) -> Result<Vec<BasetenPointer>> {
     let mut basetenpointers = Vec::new();
 
@@ -95,7 +95,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
 
             let file_name = format!(
                 "{}/{}/{}",
-                RUNTIME_MODEL_CACHE_PATH,
+                model_path,
                 model.volume_folder,
                 relative_path.split('/').last().unwrap_or(&relative_path)
             );
@@ -122,6 +122,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
 pub async fn create_single_cloud_basetenpointers<T: CloudMetadataProvider>(
     provider: &T,
     repo: &ModelRepo,
+    model_path: &String,
 ) -> Result<Vec<BasetenPointer>> {
-    extract_cloud_metadata(provider, vec![repo]).await
+    extract_cloud_metadata(provider, vec![repo], model_path.clone()).await
 }

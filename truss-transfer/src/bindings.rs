@@ -10,11 +10,11 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::{pyclass, pymethods, wrap_pyfunction};
 
+use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::constants::*;
 use crate::core::lazy_data_resolve_entrypoint;
 use crate::create::create_basetenpointer;
 use crate::types::{ModelRepo, ResolutionType};
-
 static INIT_LOGGER: Once = Once::new();
 
 /// Initialize the logger with a default level of `info`
@@ -120,33 +120,13 @@ impl PyModelRepo {
     }
 }
 
-// impl into ModelRepo for PyModelRepo
-impl From<PyModelRepo> for ModelRepo {
-    fn from(py_model_repo: PyModelRepo) -> Self {
-        ModelRepo {
-            repo_id: py_model_repo.repo_id,
-            revision: py_model_repo.revision,
-            allow_patterns: py_model_repo.allow_patterns,
-            ignore_patterns: py_model_repo.ignore_patterns,
-            volume_folder: py_model_repo.volume_folder,
-            runtime_secret_name: py_model_repo.runtime_secret_name,
-            kind: match py_model_repo.kind.as_str() {
-                "http" | "hf" => ResolutionType::Http,
-                "gcs" => ResolutionType::Gcs,
-                _ => {
-                    warn!("Unknown kind: {}. Defaulting to Http.", py_model_repo.kind);
-                    ResolutionType::Http
-                }
-            },
-        }
-    }
-}
-
 // impl into ModelRepo for Bound<'_, PyModelRepo>
-impl From<Bound<'_, PyModelRepo>> for ModelRepo {
-    fn from(py_model_repo: Bound<'_, PyModelRepo>) -> Self {
+impl TryFrom<Bound<'_, PyModelRepo>> for ModelRepo {
+    type Error = PyErr;
+
+    fn try_from(py_model_repo: Bound<'_, PyModelRepo>) -> Result<Self, Self::Error> {
         let py_model_repo = py_model_repo.borrow();
-        ModelRepo {
+        Ok(ModelRepo {
             repo_id: py_model_repo.repo_id.clone(),
             revision: py_model_repo.revision.clone(),
             allow_patterns: py_model_repo.allow_patterns.clone(),
@@ -156,12 +136,16 @@ impl From<Bound<'_, PyModelRepo>> for ModelRepo {
             kind: match py_model_repo.kind.as_str() {
                 "http" | "hf" => ResolutionType::Http,
                 "gcs" => ResolutionType::Gcs,
+                "s3" => ResolutionType::S3,
+                "azure" => ResolutionType::Azure,
                 _ => {
-                    warn!("Unknown kind: {}. Defaulting to Http.", py_model_repo.kind);
-                    ResolutionType::Http
+                    return Err(PyException::new_err(format!(
+                        "Unknown kind: {}",
+                        py_model_repo.kind
+                    )));
                 }
             },
-        }
+        })
     }
 }
 
@@ -169,12 +153,16 @@ impl From<Bound<'_, PyModelRepo>> for ModelRepo {
 /// This creates BasetenPointer objects from HuggingFace model repositories
 /// signature is create_basetenpointer_from_models(models: Vec<ModelRepo>) -> PyResult<String> {
 #[pyfunction]
-pub fn create_basetenpointer_from_models(models: Vec<Bound<'_, PyModelRepo>>) -> PyResult<String> {
+#[pyo3(signature = (models, model_path=RUNTIME_MODEL_CACHE_PATH.to_string()))]
+pub fn create_basetenpointer_from_models(
+    models: Vec<Bound<'_, PyModelRepo>>,
+    model_path: String,
+) -> PyResult<String> {
     // Use async runtime to call the async function
     let rt = tokio::runtime::Runtime::new().map_err(|e| PyException::new_err(e.to_string()))?;
     // convert PyModelRepo to ModelRepo
-    let models: Vec<ModelRepo> = models.into_iter().map(Into::into).collect();
-    rt.block_on(async move { create_basetenpointer(models).await })
+    let models: PyResult<Vec<ModelRepo>> = models.into_iter().map(TryInto::try_into).collect();
+    rt.block_on(async move { create_basetenpointer(models?, model_path).await })
         .map_err(|e| PyException::new_err(e.to_string()))
 }
 

@@ -8,7 +8,7 @@ from packaging.version import Version
 with open("pyproject.toml", "r") as f:
     doc = tomlkit.load(f)
 
-constraint = doc["tool"]["poetry"]["dependencies"]["python"]  # type: ignore[index]
+constraint = doc["project"]["requires-python"]  # type: ignore[index]
 specifier = SpecifierSet(str(constraint))
 
 candidates = [Version(f"3.{i}") for i in range(0, 20)]

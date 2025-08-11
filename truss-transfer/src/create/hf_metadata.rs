@@ -1,5 +1,4 @@
 use super::{filter_repo_files, normalize_hash};
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::secrets::get_hf_secret_from_file;
 use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
@@ -159,83 +158,72 @@ pub async fn metadata_hf_repo(
     Ok(metadata_map)
 }
 
-/// Convert ModelCache to BasetenPointer format
-/// Single repo wrapper for the main HF function
 pub async fn create_hf_basetenpointers(
-    repo: &ModelRepo,
-) -> Result<Vec<BasetenPointer>, anyhow::Error> {
-    model_cache_hf_to_b10ptr(vec![repo.clone()])
-        .await
-        .map_err(Into::into)
-}
-
-pub async fn model_cache_hf_to_b10ptr(
-    cache: Vec<ModelRepo>,
+    model: &ModelRepo,
+    model_path: &String,
 ) -> Result<Vec<BasetenPointer>, HfError> {
     let mut basetenpointers = Vec::new();
 
-    for model in &cache {
-        // skip if its not a hf repo
-        if model.kind != ResolutionType::Http {
-            continue;
-        }
-        let mut exception: Option<HfError> = None;
-        let mut metadata_result = None;
+    // skip if its not a hf repo
+    if model.kind != ResolutionType::Http {
+        return Ok(basetenpointers);
+    }
+    let mut exception: Option<HfError> = None;
+    let mut metadata_result = None;
 
-        // Get token for this model
-        let token = get_hf_token(&model.runtime_secret_name);
+    // Get token for this model
+    let token = get_hf_token(&model.runtime_secret_name);
 
-        // Retry mechanism (up to 3 times)
-        for attempt in 0..3 {
-            match metadata_hf_repo(
-                &model.repo_id,
-                &model.revision,
-                model.allow_patterns.as_deref(),
-                model.ignore_patterns.as_deref(),
-                token.clone(),
-            )
-            .await
-            {
-                Ok(metadata) => {
-                    metadata_result = Some(metadata);
-                    break;
-                }
-                Err(e) => {
-                    eprintln!("Attempt {} failed: {:?}", attempt + 1, e);
-                    exception = Some(e);
-                    if attempt < 2 {
-                        sleep(Duration::from_secs(5)).await;
-                    }
+    // Retry mechanism (up to 3 times)
+    for attempt in 0..3 {
+        match metadata_hf_repo(
+            &model.repo_id,
+            &model.revision,
+            model.allow_patterns.as_deref(),
+            model.ignore_patterns.as_deref(),
+            token.clone(),
+        )
+        .await
+        {
+            Ok(metadata) => {
+                metadata_result = Some(metadata);
+                break;
+            }
+            Err(e) => {
+                eprintln!("Attempt {} failed: {:?}", attempt + 1, e);
+                exception = Some(e);
+                if attempt < 2 {
+                    sleep(Duration::from_secs(5)).await;
                 }
             }
         }
+    }
 
-        let metadata_hf_repo_list = match metadata_result {
-            Some(metadata) => metadata,
-            None => return Err(exception.unwrap_or(HfError::Timeout)),
+    let metadata_hf_repo_list = match metadata_result {
+        Some(metadata) => metadata,
+        None => return Err(exception.unwrap_or(HfError::Timeout)),
+    };
+
+    // Convert metadata to BasetenPointer format
+    for (filename, metadata) in metadata_hf_repo_list {
+        let uid = format!("{}:{}:{}", model.repo_id, model.revision, filename);
+        let runtime_path = format!("{}/{}", model_path, model.volume_folder);
+        let file_path = Path::new(&runtime_path).join(&filename);
+
+        let pointer = BasetenPointer {
+            resolution: Resolution::Http(HttpResolution::new(
+                metadata.url,
+                4044816725, // 90 years in the future
+            )),
+            uid,
+            file_name: file_path.to_string_lossy().to_string(),
+            hashtype: "etag".to_string(),
+            hash: normalize_hash(&metadata.etag),
+            size: metadata.size,
+            runtime_secret_name: model.runtime_secret_name.clone(),
         };
 
-        // Convert metadata to BasetenPointer format
-        for (filename, metadata) in metadata_hf_repo_list {
-            let uid = format!("{}:{}:{}", model.repo_id, model.revision, filename);
-            let runtime_path = format!("{}/{}", RUNTIME_MODEL_CACHE_PATH, model.volume_folder);
-            let file_path = Path::new(&runtime_path).join(&filename);
-
-            let pointer = BasetenPointer {
-                resolution: Resolution::Http(HttpResolution::new(
-                    metadata.url,
-                    4044816725, // 90 years in the future
-                )),
-                uid,
-                file_name: file_path.to_string_lossy().to_string(),
-                hashtype: "etag".to_string(),
-                hash: normalize_hash(&metadata.etag),
-                size: metadata.size,
-                runtime_secret_name: model.runtime_secret_name.clone(),
-            };
-
-            basetenpointers.push(pointer);
-        }
+        basetenpointers.push(pointer);
     }
 
     Ok(basetenpointers)

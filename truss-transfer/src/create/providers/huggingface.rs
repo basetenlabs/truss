@@ -28,11 +28,17 @@ impl StorageProvider for HuggingFaceProvider {
             && matches!(repo.kind, ResolutionType::Http)
     }
 
-    async fn create_pointers(&self, repo: &ModelRepo) -> Result<Vec<BasetenPointer>> {
+    async fn create_pointers(
+        &self,
+        repo: &ModelRepo,
+        model_path: &String,
+    ) -> Result<Vec<BasetenPointer>> {
         debug!("Creating HuggingFace pointers for repo: {}", repo.repo_id);
         if !self.can_handle(repo) {
             warn!("HuggingFace provider cannot handle repo: {}", repo.repo_id);
         }
-        create_hf_basetenpointers(repo).await
+        create_hf_basetenpointers(repo, model_path)
+            .await
+            .map_err(|e| anyhow::Error::from(e))
     }
 }

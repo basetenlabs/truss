@@ -16,7 +16,7 @@ To get started contributing to the library, all you have to do is clone this rep
 
 **PLEASE NOTE:** the ML ecosystem in general is still not well supported on M1 Macs, and as such, we do not recommend or support local development on M1 for Truss. Truss is well-optimized for use with GitHub Codespaces and other container-based development environments.
 
-We use `asdf` to manage Python binaries and `poetry` to manage Python dependencies.
+We use `asdf` to manage Python binaries and `uv` to manage Python dependencies.
 
 For development in a macOS environment, we use `brew` to manage system packages.
 
@@ -24,28 +24,28 @@ For development in a macOS environment, we use `brew` to manage system packages.
 # Install asdf (or use another method https://asdf-vm.com/)
 brew install asdf
 
-# Install `asdf` managed python and poetry
-asdf plugin add python
-asdf plugin add poetry
+# Install `asdf` managed python and uv
+asdf plugin add uv
+asdf plugin add uv
 asdf install
 
-# Install poetry dependencies
-poetry install --with=dev,dev-server --extras=all
+# Install uv dependencies
+uv sync
 
 # And finally precommit
-poetry run pre-commit install
+uv run pre-commit install
 ```
 
 Then to run the entire test suite
 
 ```bash
-poetry run pytest truss/tests
+uv run pytest truss/tests
 ```
 
-**NOTE:** When you are ready to commit changes, use poetry to run `git commit`, because the pre-commit hook is installed within the poetry environment:
+**NOTE:** When you are ready to commit changes, use uv to run `git commit`, because the pre-commit hook is installed within the uv environment:
 
 ```bash
-poetry run git commit
+uv run git commit
 ```
 
 ## Documentation

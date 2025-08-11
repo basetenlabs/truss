@@ -34,7 +34,7 @@ pub use types::{
 };
 
 // Re-export HuggingFace functionality
-pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
+pub use create::{metadata_hf_repo, HfError};
 
 // Re-export BasetenPointer API
 pub use create::create_basetenpointer;
@@ -381,10 +381,11 @@ mod tests {
         assert_eq!(SECRETS_BASE_PATH, "/secrets");
 
         // Test manifest paths
-        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 3);
+        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 4);
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest.json"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/static-bptr-manifest.json"));
+        assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/static-bptr/static-bptr-manifest.json"));
     }
 
     #[test]

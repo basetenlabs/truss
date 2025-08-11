@@ -5,6 +5,7 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
     "/bptr/bptr-manifest",
     "/bptr/bptr-manifest.json",
     "/bptr/static-bptr-manifest.json",
+    "/static-bptr/static-bptr-manifest.json",
 ];
 
 /// Cache directory for b10fs

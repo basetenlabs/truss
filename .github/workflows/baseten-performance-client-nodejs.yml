@@ -455,7 +455,7 @@ jobs:
             yarn test
             ls -la
   universal-macOS:
-    if: false # we currently do not compile this
+    if: true # we currently do not compile this
     name: Build universal macOS binary
     needs:
       - build
@@ -474,14 +474,22 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: bindings-x86_64-apple-darwin
-          path: artifacts
+          path: baseten-performance-client/node_bindings
       - name: Download macOS arm64 artifact
         uses: actions/download-artifact@v4
         with:
           name: bindings-aarch64-apple-darwin
-          path: artifacts
+          path: baseten-performance-client/node_bindings
+      - name: 'Debug: Show current location and list all files'
+        run: |
+          pwd
+          ls -R
+        shell: bash
       - name: Combine binaries
-        run: yarn universal
+        run: |
+          mkdir -p artifacts
+          cp baseten-performance-client/node_bindings/*.node ./artifacts
+          yarn universal
       - name: List build output
         run: |
           find . -name "*.node" -type f
@@ -490,10 +498,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-universal-apple-darwin
-          path: |
-            ${{ env.APP_NAME }}.*.node
-            baseten-performance-client/node_bindings/${{ env.APP_NAME }}.*.node
-            baseten-performance-client/node_bindings/*.node
+          path: '**/*darwin-universal.node'
           if-no-files-found: error
   publish:
     name: Publish
@@ -508,7 +513,7 @@ jobs:
       # - test-linux-aarch64-gnu-binding
       # - test-linux-aarch64-musl-binding
       # - test-linux-arm-gnueabihf-binding
-      # - universal-macOS
+      - universal-macOS
     steps:
       - uses: actions/checkout@v4
       - name: Setup node
