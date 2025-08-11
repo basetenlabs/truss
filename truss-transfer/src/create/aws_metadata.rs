@@ -61,29 +61,13 @@ pub fn s3_storage(
                 builder = builder.with_region(region);
             }
         } else {
-            // Fallback: try to parse as simple key=value format
-            for line in credentials_content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-
-                if let Some((key, value)) = line.split_once('=') {
-                    match key.trim().to_lowercase().as_str() {
-                        "access_key_id" | "aws_access_key_id" => {
-                            builder = builder.with_access_key_id(value.trim());
-                        }
-                        "secret_access_key" | "aws_secret_access_key" => {
-                            builder = builder.with_secret_access_key(value.trim());
-                        }
-                        "region" | "aws_default_region" => {
-                            builder = builder.with_region(value.trim());
-                        }
-                        _ => {} // Ignore unknown keys
-                    }
-                }
-            }
+            return Err(anyhow!("Failed to parse AWS credentials from JSON. The json needs to be in the format: {{\"access_key_id\": \"...\", \"secret_access_key\": \"...\", \"region\": null | \"...\"}}"));
         }
+    } else {
+        return Err(anyhow!(
+            "Failed to read AWS credentials from not existing file: {}",
+            runtime_secret_name
+        ));
     }
 
     let s3: AmazonS3 = builder

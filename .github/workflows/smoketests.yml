@@ -21,8 +21,8 @@ jobs:
           lfs: true
       - name: Setup Python
         uses: ./.github/actions/setup-python/
-      - name: Poetry Install
-        run: poetry install --with=dev,dev-server --extras=all
+      - name: Install
+        run: uv sync
       - name: Install Truss
         run: |
           python -m venv truss_env
@@ -40,7 +40,7 @@ jobs:
         run: |
           BASETEN_API_KEY_STAGING="${{ secrets.BASETEN_API_KEY_STAGING }}" \
           LEAVE_DEPLOYMENTS="${{ github.event.inputs.leave_deployments }}" \
-          poetry run pytest smoketests \
+          uv run pytest smoketests \
           --durations=0 \
           --junitxml=report.xml \
           -s --log-cli-level=INFO

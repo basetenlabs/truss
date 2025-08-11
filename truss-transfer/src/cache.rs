@@ -12,6 +12,7 @@ use fs2;
 use log::{debug, info, warn};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
+use tokio::time::{interval, Duration};
 
 use crate::constants::*;
 use crate::download_core::check_metadata_size;
@@ -195,15 +196,57 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     }
 
     if should_copy {
-        // Copy the local file to the incomplete cache file.
+        // Copy the local file to the incomplete cache file with progress monitoring
         info!(
             "Copying local file {:?} to temporary incomplete cache file {:?}",
             download_path, incomplete_cache_path
         );
-        match fs::copy(download_path, &incomplete_cache_path).await {
+
+        // Setup progress monitoring with atomics
+        let monitor_path = incomplete_cache_path.to_path_buf();
+        let monitor_handle = tokio::spawn({
+            async move {
+                let mut ticker = interval(Duration::from_secs(10));
+                let mut last_size = 0;
+                loop {
+                    ticker.tick().await;
+                    let current_size = match fs::metadata(&monitor_path).await {
+                        Ok(metadata) => metadata.len() as u64,
+                        Err(e) => {
+                            warn!("Failed to read metadata for {:?}: {}", monitor_path, e);
+                            continue;
+                        }
+                    };
+
+                    if current_size == last_size {
+                        warn!(
+                            "No progress for {:?}: {} bytes written so far.",
+                            monitor_path, current_size
+                        );
+                    } else {
+                        let progress_mb = current_size as f64 / (1024.0 * 1024.0);
+                        info!(
+                            "Copy progress for {:?}: {:.2} MB written so far.",
+                            monitor_path, progress_mb
+                        );
+                    }
+                    last_size = current_size;
+                }
+            }
+        });
+
+        let copy_result = fs::copy(download_path, &incomplete_cache_path).await;
+
+        // Stop monitoring regardless of copy result
+        monitor_handle.abort();
+
+        match copy_result {
             Ok(_) => info!("Successfully copied to incomplete cache file."),
             Err(e) => {
-                warn!("Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage.", e);
+                warn!(
+                    "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
+                    e
+                );
                 return Ok(());
             }
         }
@@ -212,7 +255,10 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     let incomplete_metadata = match fs::metadata(&incomplete_cache_path).await {
         Ok(metadata) => metadata,
         Err(e) => {
-            warn!("Failed to get metadata for incomplete cache file: {}. Maybe b10cache has no storage or concurrency issue.", e);
+            warn!(
+                "Failed to get metadata for incomplete cache file: {}. Maybe b10cache has no storage or concurrency issue.",
+                e
+            );
             return Ok(());
         }
     };

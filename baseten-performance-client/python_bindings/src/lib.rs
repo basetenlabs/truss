@@ -13,7 +13,12 @@ use tokio::runtime::Runtime;
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false);
 
 static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
-    let runtime = Arc::new(Runtime::new().expect("Failed to create global Tokio runtime"));
+    let runtime = Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create global multi-threaded Tokio runtime"),
+    );
     let runtime_clone_for_signal: Arc<Runtime> = Arc::clone(&runtime);
     // Spawn a task to listen for Ctrl+C
     runtime_clone_for_signal.spawn(async {

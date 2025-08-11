@@ -167,7 +167,9 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     tensor_parallel_size: Annotated[int, Field(strict=True, ge=1)] = 1
     enable_chunked_prefill: bool = True
     served_model_name: Optional[str] = None
-    patch_kwargs: Dict[str, Union[str, int, float, dict]] = Field(default_factory=dict)
+    patch_kwargs: Dict[str, Union[str, int, float, dict, None]] = Field(
+        default_factory=dict
+    )
 
     @field_validator("patch_kwargs", mode="after")
     @classmethod
@@ -225,9 +227,7 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
         ]
     ] = None
     lora_configuration: Optional[TrussTRTLLMLoraConfiguration] = None
-
-    class Config:
-        extra = "forbid"
+    skip_build_result: bool = False
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -770,21 +770,3 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
         )
 
     return config
-
-
-TRTLLMConfigurationV2(
-    build=TrussTRTLLMBuildConfiguration(
-        checkpoint_repository=CheckpointRepository(
-            source=CheckpointSource.HF, repo="michael/any", revision=None
-        ),
-        quantization_type=TrussTRTLLMQuantizationType.NO_QUANT,
-    ),
-    runtime=TRTLLMRuntimeConfigurationV2(
-        max_seq_len=2048,
-        max_batch_size=256,
-        max_num_tokens=8192,
-        tensor_parallel_size=1,
-        enable_chunked_prefill=True,
-        config_kwargs={},
-    ),
-)
