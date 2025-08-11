@@ -103,7 +103,10 @@ pub fn azure_storage(
             return Err(anyhow!("Failed to parse Azure credentials from JSON. The json needs to be in the format: {{\"account_key\": \"...\"}}"));
         }
     } else {
-        return Err(anyhow!("Failed to read Azure credentials from not existing file: {}", runtime_secret_name));
+        return Err(anyhow!(
+            "Failed to read Azure credentials from not existing file: {}",
+            runtime_secret_name
+        ));
     }
 
     let azure: MicrosoftAzure = builder

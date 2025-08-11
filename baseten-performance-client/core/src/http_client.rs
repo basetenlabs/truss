@@ -189,7 +189,10 @@ pub async fn send_request_with_retry(
                         if retries_done == 0 {
                             true
                         } else {
-                            println!("client network error (likely re-use expired http connection): {}", client_error);
+                            println!(
+                                "client network error (likely re-use expired http connection): {}",
+                                client_error
+                            );
                             config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                         }
                     }

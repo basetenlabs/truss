@@ -219,9 +219,11 @@ mod tests {
                             .get("size")
                             .and_then(|v| v.as_u64())
                             .expect("Size should be a number");
-                        assert_eq!(size, 65074, "Size should be 65100 bytes for pytorch_model.bin");
+                        assert_eq!(
+                            size, 65074,
+                            "Size should be 65100 bytes for pytorch_model.bin"
+                        );
                     }
-
                 }
 
                 println!("✓ BasetenPointer structure validation passed");
