@@ -5,7 +5,7 @@ import string
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
+from typing import Iterable, Iterator, List, Optional, Set, Union
 
 import pathspec
 
@@ -36,11 +36,11 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
             shutil.copy2(str(sub_path), str(dest_fp))
 
 
-def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
+def copy_file_path(src: Path, dest: Path) -> str:
     return shutil.copy2(str(src), str(dest))
 
 
-def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]]:
+def copy_tree_or_file(src: Path, dest: Path) -> str:
     if src.is_file():
         return copy_file_path(src, dest)
 
