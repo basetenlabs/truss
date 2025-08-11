@@ -1,7 +1,6 @@
 import enum
 import logging
 import re
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
@@ -10,7 +9,7 @@ from requests import ReadTimeout
 from watchfiles import watch
 
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.base.truss_config import ModelServer, TrussConfig
+from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
@@ -190,25 +189,6 @@ class BasetenRemote(TrussRemote):
             allow_truss_download=not disable_truss_download,
         )
 
-    def create_build_time_config(
-        self, context_path_str: Path, truss_config: TrussConfig
-    ) -> None:
-        """Create a build time config for the truss, excludes run-time only attributes."""
-        tc = TrussConfig.from_yaml(context_path_str / "config.yaml")
-        if tc.docker_server:
-            truss_config.environment_variables["BT_DOCKER_SERVER_START_CMD"] = (
-                tc.docker_server.start_command
-            )
-            # we will set the start command at runtime, so we don't need to include it in the build hash
-            tc.docker_server.start_command = ""
-        # we will set the checkpoints at runtime, so we don't need to include them in the build hash
-        if tc.training_checkpoints:
-            tc.training_checkpoints = None
-        if tc.environment_variables:
-            tc.environment_variables = {}
-        # write the truss config back to a file (used for build hash calculation)
-        tc.write_to_yaml_file(context_path_str / "config_build_time.yaml")
-
     def push(  # type: ignore
         self,
         truss_handle: TrussHandle,
@@ -224,24 +204,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
-        dump_final_config: bool = False,
-        dry_run: bool = False,
-    ) -> Optional[BasetenService]:
-        # Save a subset of truss config relevant for building the image separately
-        # Only this subset is used to determine if the image needs to be rebuilt
-        self.create_build_time_config(working_dir, truss_handle.spec._config)
-
-        # Dump the truss config to a temporary directory
-        if dump_final_config:
-            truss_directory = Path(tempfile.mkdtemp())
-            truss_config_path = truss_directory / "config.yaml"
-            print(f"Dumping truss config to {truss_config_path}")
-            truss_handle.spec._config.write_to_yaml_file(truss_config_path)
-
-        # If dry run is enabled, we don't want to actually deploy the model.
-        if dry_run:
-            return None
-
+    ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
             model_name=model_name,

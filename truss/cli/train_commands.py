@@ -260,11 +260,12 @@ def deploy_checkpoints(
         "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
         "publish": True,
         "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
-        "dry_run": dry_run,
-        "dump_final_config": True,
     }
     ctx = _prepare_click_context(push, params)
-    push.invoke(ctx)
+    if dry_run:
+        console.print("--dry-run flag provided, not deploying", style="yellow")
+    else:
+        push.invoke(ctx)
     train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
 
 

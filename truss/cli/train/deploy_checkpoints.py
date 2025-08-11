@@ -45,6 +45,22 @@ CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
 ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
 
 
+def create_build_time_config(context_path_str: Path) -> None:
+    """Create a build time config for the truss, excludes run-time only attributes."""
+    truss_config_obj = truss_config.TrussConfig.from_yaml(
+        context_path_str / "config.yaml"
+    )
+
+    # we will set the start command at runtime, so we don't need to include it in the build hash
+    if truss_config_obj.docker_server:
+        truss_config_obj.docker_server.start_command = ""
+    # we will set the checkpoints at runtime, so we don't need to include them in the build hash
+    truss_config_obj.training_checkpoints = None
+
+    # write the truss config back to a file (used for build hash calculation)
+    truss_config_obj.write_to_yaml_file(context_path_str / "config_build_time.yaml")
+
+
 def prepare_checkpoint_deploy(
     remote_provider: BasetenRemote,
     checkpoint_deploy_config: DeployCheckpointsConfig,
@@ -58,7 +74,9 @@ def prepare_checkpoint_deploy(
     truss_directory = Path(tempfile.mkdtemp())
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
-
+    create_build_time_config(truss_directory)
+    console.print(rendered_truss, style="green")
+    console.print(f"Writing truss config to {truss_config_path}", style="yellow")
     return PrepareCheckpointResult(
         truss_directory=truss_directory,
         checkpoint_deploy_config=checkpoint_deploy_config,
@@ -177,8 +195,12 @@ def _render_vllm_lora_truss_config(
         "max_lora_rank": max_lora_rank,
         "specify_tensor_parallelism": specify_tensor_parallelism,
     }
-    truss_deploy_config.docker_server.start_command = VLLM_LORA_START_COMMAND.render(
-        **start_command_args
+    start_command = VLLM_LORA_START_COMMAND.render(**start_command_args)
+    start_command_envvar_name = "BT_DOCKER_SERVER_START_CMD"
+    truss_deploy_config.environment_variables[start_command_envvar_name] = start_command
+    # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
+    truss_deploy_config.docker_server.start_command = (
+        f"%(ENV_{start_command_envvar_name})s"
     )
     return truss_deploy_config
 

@@ -391,7 +391,7 @@ def generate_docker_server_supervisord_config(build_dir, config):
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
-    start_command = "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
+    start_command = config.docker_server.start_command
     supervisord_contents = supervisord_template.render(start_command=start_command)
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)

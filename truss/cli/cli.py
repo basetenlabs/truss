@@ -501,20 +501,6 @@ def run_python(script, target_directory):
         "Default is --preserve-env-instance-type."
     ),
 )
-@click.option(
-    "--dry-run",
-    is_flag=True,
-    required=False,
-    default=False,
-    help="Perform a dry run - validate and prepare the push without actually deploying.",
-)
-@click.option(
-    "--dump-final-config",
-    is_flag=True,
-    required=False,
-    default=False,
-    help="Dump the final truss config to a temporary directory.",
-)
 @common.common_options()
 def push(
     target_directory: str,
@@ -532,8 +518,6 @@ def push(
     include_git_info: bool = False,
     tail: bool = False,
     preserve_env_instance_type: bool = True,
-    dry_run: bool = False,
-    dump_final_config: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -641,13 +625,7 @@ def push(
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
-        dry_run=dry_run,
-        dump_final_config=dump_final_config,
     )  # type: ignore
-
-    if dry_run:
-        console.print("👍 Dry run completed successfully - no deployment was made", style="yellow")
-        return
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 
