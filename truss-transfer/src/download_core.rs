@@ -183,8 +183,8 @@ async fn download_from_object_store(
 
     let download_result: Result<()> = async {
         while let Some(chunk_result) = stream.next().await {
-            let chunk =
-                chunk_result.map_err(|e| anyhow!("Error reading chunk from {}: {}", source_description, e))?;
+            let chunk = chunk_result
+                .map_err(|e| anyhow!("Error reading chunk from {}: {}", source_description, e))?;
             file.write_all(&chunk)
                 .await
                 .context("Failed to write chunk to file")?;
