@@ -94,10 +94,5 @@ COPY ./{{ config.bundled_packages_dir }} /packages
 {%- endif %}
 {% endblock %}
 
-# Deprecated: will be removed in the future
-{% for env_var_name, env_var_value in config.environment_variables.items() %}
-ENV {{ env_var_name }}="{{ env_var_value }}"
-{% endfor %}
-
 {% block run %}
 {% endblock %}
