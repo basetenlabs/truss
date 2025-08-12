@@ -56,6 +56,8 @@ def create_build_time_config(context_path_str: Path) -> None:
         truss_config_obj.docker_server.start_command = ""
     # we will set the checkpoints at runtime, so we don't need to include them in the build hash
     truss_config_obj.training_checkpoints = None
+    # we will set the environment variables at runtime, so we don't need to include them in the build hash
+    truss_config_obj.environment_variables = {}
 
     # write the truss config back to a file (used for build hash calculation)
     truss_config_obj.write_to_yaml_file(context_path_str / "config_build_time.yaml")
