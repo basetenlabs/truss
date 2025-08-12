@@ -11,6 +11,7 @@ LAZY_DATA_RESOLVER_PATH = [
     Path("/bptr/bptr-manifest"),
     Path("/bptr/bptr-manifest.json"),
     Path("/bptr/static-bptr-manifest.json"),
+    Path("/static-bptr/static-bptr-manifest.json"),
 ]
 
 MISSING_COLLECTION_MESSAGE = """model_cache: Data was not collected. Missing lazy_data_resolver.block_until_download_complete().

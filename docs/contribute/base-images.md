@@ -23,14 +23,14 @@ bin/generate_base_images.py --help
 This example generates a base image for a model serving Truss with live reload and GPU support. The Truss uses Python 3.9 and has a version tag of `v0.2.2`. The generated image is named `baseten/truss-server-base:3.9-gpu-reload-v0.2.2`:
 
 ```sh
-poetry run bin/generate_base_images.py --live-reload y --use-gpu y --python-version 3.9 --version-tag v0.2.2 --job-type server
+uv run bin/generate_base_images.py --live-reload y --use-gpu y --python-version 3.9 --version-tag v0.2.2 --job-type server
 
 ```
 
 This example generates and pushes to Docker Hub all images with the version tag `v0.2.2`. This requires access to a specific Docker Hub account, which is not available publicly.
 
 ```sh
-poetry run bin/generate_base_images.py  --version-tag v0.2.2 --push
+uv run bin/generate_base_images.py  --version-tag v0.2.2 --push
 ```
 
 ## Working with base images in Truss

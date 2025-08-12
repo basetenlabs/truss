@@ -1,6 +1,7 @@
 use crate::types::GcsError;
 use object_store::gcp::GoogleCloudStorageBuilder;
-use std::fs;
+
+use crate::secrets::get_secret_path;
 
 /// Parse GCS URI (gs://bucket/path) into bucket and prefix
 pub fn parse_gcs_uri(uri: &str) -> Result<(String, String), GcsError> {
@@ -28,11 +29,10 @@ pub fn gcs_storage(
     bucket: &str,
     runtime_secret_name: &str,
 ) -> Result<object_store::gcp::GoogleCloudStorage, GcsError> {
-    let secret_path = format!("/secrets/{}", runtime_secret_name);
-    let credentials_json = fs::read_to_string(&secret_path).map_err(|e| GcsError::Io(e))?;
+    let path = get_secret_path(runtime_secret_name);
 
     GoogleCloudStorageBuilder::new()
-        .with_service_account_key(&credentials_json)
+        .with_service_account_path(&path)
         .with_bucket_name(bucket)
         .build()
         .map_err(GcsError::ObjectStore)
