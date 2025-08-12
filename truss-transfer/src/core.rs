@@ -216,6 +216,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         .tcp_keepalive(std::time::Duration::from_secs(15))
         .http2_keep_alive_interval(Some(std::time::Duration::from_secs(15)))
         .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
+        .http1_only()
         .build()?;
 
     // resolve the gcs / s3 and pre-sign the urls
