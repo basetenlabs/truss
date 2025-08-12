@@ -40,7 +40,6 @@ fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
         //
         ticker.tick().await;
         let mut last_tick_time = Instant::now();
-
         loop {
             ticker.tick().await;
             let current_size = match fs::metadata(&path).await {
