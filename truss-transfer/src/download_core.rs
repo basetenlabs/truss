@@ -37,6 +37,8 @@ fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
         // sleep for 30s before starting.
         tokio::time::sleep(Duration::from_secs(30)).await;
         let mut ticker = interval(Duration::from_secs(30));
+        let mut last_size = 0;
+        let mut last_tick_time = Instant::now();
         loop {
             ticker.tick().await;
             let current_size = match fs::metadata(&path).await {
@@ -44,17 +46,31 @@ fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
                 Err(_) => 0, // If metadata cannot be accessed, assume 0
             };
             let elapsed_secs = start_time.elapsed().as_secs_f64();
+            let elapsed_since_last_tick = last_tick_time.elapsed().as_secs_f64();
+            last_tick_time = Instant::now();
 
             if elapsed_secs > 0.0 {
-                let speed_mbps = (current_size as f64 / (1024.0 * 1024.0)) / elapsed_secs;
+                let avg_speed_mbps = (current_size as f64 / (1024.0 * 1024.0)) / elapsed_secs;
+                let current_speed_mbps = if elapsed_since_last_tick > 0.0 {
+                    ((current_size - last_size) as f64 / (1024.0 * 1024.0))
+                        / elapsed_since_last_tick
+                } else {
+                    0.0
+                };
+                last_size = current_size;
                 let progress_percent = if total_size > 0 {
                     (current_size as f64 / total_size as f64) * 100.0
                 } else {
                     0.0
                 };
                 info!(
-                    "Download for {:?} Progress: {:.2}% ({} / {} bytes, {:.2} MB/s)",
-                    path, progress_percent, current_size, total_size, speed_mbps
+                    "Download for {:?} {:.2}% ({} / {} bytes, avg: {:.2} MB/s, curr: {:.2} MB/s)",
+                    path,
+                    progress_percent,
+                    current_size,
+                    total_size,
+                    avg_speed_mbps,
+                    current_speed_mbps
                 );
             }
         }
