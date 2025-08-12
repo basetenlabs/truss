@@ -34,7 +34,7 @@ fn get_global_lock() -> &'static Arc<Mutex<()>> {
 /// Shared entrypoint for both Python and CLI
 pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> {
     init_logger_once();
-    let num_workers = TRUSS_TRANSFER_NUM_WORKERS_DEFAULT;
+    let num_workers = *TRUSS_TRANSFER_NUM_WORKERS as usize;
     let download_dir = resolve_truss_transfer_download_dir(download_dir);
 
     // Ensure the global lock is initialized
