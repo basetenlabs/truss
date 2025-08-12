@@ -178,7 +178,7 @@ def create_and_resolve_bptr():
     # 1. Create bptr manifest
     models = [
         truss_transfer.PyModelRepo(
-            repo_id="NVFP4/Qwen3-235B-A22B-Instruct-2507-FP4",
+            repo_id="NVFP4/Qwen3-30B-A3B-Thinking-2507-FP4",
             revision="main",
             # write to folder named
             volume_folder="dialogpt",
@@ -186,22 +186,22 @@ def create_and_resolve_bptr():
             runtime_secret_name="hf-access-token"
         ),
         # requires a gcs service account json
-        # truss_transfer.PyModelRepo(
-        #     repo_id="gs://llama-3-2-1b-instruct/",
-        #     revision="",
-        #     volume_folder="llama",
-        #     # requires json in /secrets/gcs-service-account-jsn
-        #     runtime_secret_name="gcs-service-account-jsn",
-        #     kind="gcs"
-        # ),
-        # truss_transfer.PyModelRepo(
-        #     repo_id="s3://bt-training-dev-org-b68c04fe47d34c85bfa91515bc9d5e2d/training_projects",
-        #     revision="",
-        #     volume_folder="training",
-        #     # requires json in /secrets/aws
-        #     runtime_secret_name="aws-secret-json",
-        #     kind="s3"
-        # )
+        truss_transfer.PyModelRepo(
+            repo_id="gs://llama-3-2-1b-instruct/",
+            revision="",
+            volume_folder="llama",
+            # requires json in /secrets/gcs-service-account-jsn
+            runtime_secret_name="gcs-service-account-jsn",
+            kind="gcs"
+        ),
+        truss_transfer.PyModelRepo(
+            repo_id="s3://bt-training-dev-org-b68c04fe47d34c85bfa91515bc9d5e2d/training_projects",
+            revision="",
+            volume_folder="training",
+            # requires json in /secrets/aws
+            runtime_secret_name="aws-secret-json",
+            kind="s3"
+        )
     ]
     root = "/tmp/my-models"
     bptr_manifest = truss_transfer.create_basetenpointer_from_models(models, root)
