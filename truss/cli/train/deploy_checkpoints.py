@@ -39,6 +39,7 @@ VLLM_LORA_START_COMMAND = Template(
 )
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
+START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
 
 # If we change this, make sure to update the logic in backend codebase
 CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
@@ -198,11 +199,13 @@ def _render_vllm_lora_truss_config(
         "specify_tensor_parallelism": specify_tensor_parallelism,
     }
     start_command = VLLM_LORA_START_COMMAND.render(**start_command_args)
-    start_command_envvar_name = "BT_DOCKER_SERVER_START_CMD"
-    truss_deploy_config.environment_variables[start_command_envvar_name] = start_command
+    # Note: we set the start command as an environment variable in supervisord config.
+    # This is so that we don't have to change the supervisord config when the start command changes.
+    # Our goal is to reduce the number of times we need to rebuild the image, and allow us to deploy faster.
+    truss_deploy_config.environment_variables[START_COMMAND_ENVVAR_NAME] = start_command
     # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
     truss_deploy_config.docker_server.start_command = (
-        f"%(ENV_{start_command_envvar_name})s"
+        f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
     )
     return truss_deploy_config
 
