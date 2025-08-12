@@ -178,7 +178,7 @@ def create_and_resolve_bptr():
     # 1. Create bptr manifest
     models = [
         truss_transfer.PyModelRepo(
-            repo_id="microsoft/DialoGPT-medium",
+            repo_id="NVFP4/Qwen3-30B-A3B-Thinking-2507-FP4",
             revision="main",
             # write to folder named
             volume_folder="dialogpt",
