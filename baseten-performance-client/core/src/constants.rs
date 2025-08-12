@@ -9,7 +9,7 @@ pub const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
 pub const MAX_CONCURRENCY_LOW_BATCH: usize = 512;
 pub const CONCURRENCY_HIGH_BATCH_SWITCH: usize = 16;
-pub const DEFAULT_CONCURRENCY: usize = 32;
+pub const DEFAULT_CONCURRENCY: usize = 128;
 pub const MIN_CHARACTERS_PER_REQUEST: usize = 50;
 pub const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
 
