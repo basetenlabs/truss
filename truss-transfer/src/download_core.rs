@@ -34,11 +34,13 @@ fn sanitize_url(url: &str) -> String {
 fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
     tokio::spawn(async move {
         let start_time = Instant::now();
-        // sleep for 30s before starting.
-        tokio::time::sleep(Duration::from_secs(30)).await;
         let mut ticker = interval(Duration::from_secs(30));
         let mut last_size = 0;
+
+        //
+        ticker.tick().await;
         let mut last_tick_time = Instant::now();
+
         loop {
             ticker.tick().await;
             let current_size = match fs::metadata(&path).await {
