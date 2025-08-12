@@ -17,10 +17,9 @@ docker_server:
   predict_endpoint: /v1/chat/completions
   readiness_endpoint: /health
   server_port: 8000
-  start_command: sh -c "HF_TOKEN=$(cat /secrets/hf_access_token) vllm serve google/gemma-3-27b-it
-    --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 16 --dtype
-    bfloat16 --lora-modules checkpoint-1=/tmp/training_checkpoints/kowpeqj/checkpoint-1"
+  start_command: "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
 environment_variables:
+  BT_DOCKER_SERVER_START_CMD: sh -c "HF_TOKEN=$(cat /secrets/hf_access_token) vllm serve google/gemma-3-27b-it --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 16 --dtype bfloat16 --lora-modules checkpoint-1=/tmp/training_checkpoints/kowpeqj/checkpoint-1"
   HF_HUB_ENABLE_HF_TRANSFER: '1'
   VLLM_LOGGING_LEVEL: WARNING
   VLLM_USE_V1: '0'

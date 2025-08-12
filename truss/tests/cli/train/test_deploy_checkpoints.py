@@ -242,7 +242,13 @@ def test_prepare_checkpoint_deploy_complete_config(
     truss_cfg = truss_config.TrussConfig.from_yaml(
         Path(result.truss_directory, "config.yaml")
     )
-    assert "--tensor-parallel-size 2" in truss_cfg.docker_server.start_command
+    # Check that the start command is now the environment variable reference
+    assert truss_cfg.docker_server.start_command == "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
+    # Check that the actual start command with tensor parallel size is in the environment variable
+    assert (
+        "--tensor-parallel-size 2"
+        in truss_cfg.environment_variables["BT_DOCKER_SERVER_START_CMD"]
+    )
 
 
 def test_checkpoint_lora_rank_validation():
@@ -376,9 +382,9 @@ def test_create_build_time_config(tmp_path):
     assert build_time_config.model_name == "test-model"  # Should be preserved
     assert build_time_config.resources.cpu == "1000m"  # Should be preserved
     assert build_time_config.resources.memory == "2Gi"  # Should be preserved
-    assert (
-        build_time_config.environment_variables["HF_TOKEN"] == "secret_token"
-    )  # Should be preserved
+
+    # Environment variables are cleared in build-time config
+    assert build_time_config.environment_variables == {}
 
     # Verify that runtime-only attributes are excluded
     assert build_time_config.training_checkpoints is None  # Should be set to None
