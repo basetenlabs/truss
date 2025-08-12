@@ -32,7 +32,7 @@ def _print_training_job_success_message(
     console.print("✨ Training job successfully created!", style="green")
     console.print(
         f"🪵 View logs for your job via "
-        f"[cyan]'truss train logs --job-id {job_id} [--tail]'[/cyan]\n"
+        f"[cyan]'truss train logs --job-id {job_id} --tail'[/cyan]\n"
         f"🔍 View metrics for your job via "
         f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
         f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
