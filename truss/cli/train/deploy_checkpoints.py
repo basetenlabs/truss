@@ -175,6 +175,7 @@ def _render_vllm_lora_truss_config(
     for truss_checkpoint in truss_deploy_config.training_checkpoints.checkpoints:  # type: ignore
         ckpt_path = Path(
             truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
+            "rank-0",
             truss_checkpoint.id,
         )
         checkpoint_parts.append(f"{truss_checkpoint.name}={ckpt_path}")
