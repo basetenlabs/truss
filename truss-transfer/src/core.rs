@@ -11,7 +11,9 @@ use rand;
 use serde_json;
 use serde_yaml;
 use tokio::fs;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
@@ -209,20 +211,21 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     // 6. Build concurrency limit
     info!("Using {} concurrent workers.", num_workers);
 
-    let semaphore = Arc::new(Semaphore::new(num_workers));
+    let semaphore_download = Arc::new(Semaphore::new(num_workers));
+    let semaphore_pre_page = Arc::new(Semaphore::new(1));
     // resolve the gcs / s3 and pre-sign the urls
     // 6.1 TODO: create features for this to pre-sign url at runtime.
 
     // 7. Spawn download tasks
     info!("Spawning download tasks...");
-    let mut tasks: FuturesUnordered<
-        tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>,
-    > = FuturesUnordered::new();
+    let mut download_tasks = JoinSet::new();
+    let mut page_tasks = JoinSet::new();
+
     for (file_name, pointer) in resolution_map {
         let download_dir = download_dir.clone();
-        let sem_clone = semaphore.clone();
-        tasks.push(tokio::spawn(async move {
-            let _permit = sem_clone.acquire_owned().await;
+        let sem_clone = semaphore_download.clone();
+        download_tasks.spawn(async move {
+            let _permit = sem_clone.acquire_owned().await?;
             log::debug!("Handling file: {}", file_name);
             download_file_with_cache(
                 &pointer,
@@ -232,19 +235,40 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                 write_to_b10cache,
             )
             .await
-        }));
+        });
     }
 
-    // 8. Await all tasks
+    // 8. Await all tasks, and cancel remaining on first failure.
     info!("Awaiting completion of all download tasks...");
-    while let Some(join_result) = tasks.next().await {
+    while let Some(join_result) = download_tasks.join_next().await {
         match join_result {
-            Ok(Ok(())) => {} // task succeeded
+            Ok(Ok(file_name)) => {
+                // Task succeeded. If PAGE after download is active, load the file into memory.
+                if *TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD {
+                    let sem_clone = semaphore_pre_page.clone();
+                    let file_path = download_dir.join(&file_name);
+                    page_tasks.spawn(async move {
+                        info!("Paging {} into memory", file_path.display());
+                        if let Err(e) = page_file_into_memory(&file_path, sem_clone).await {
+                            warn!(
+                                "Failed to page file {} into memory: {}",
+                                file_path.display(),
+                                e
+                            );
+                        }
+                        Ok(())
+                    });
+                }
+            }
             Ok(Err(e)) => {
+                // A download task returned an error.
+                // The JoinSet will be dropped, cancelling all other tasks.
                 error!("A download task failed: {}", e);
                 return Err(anyhow!("Download failure: {}", e));
             }
             Err(e) => {
+                // A Tokio task panicked.
+                // The JoinSet will be dropped, cancelling all other tasks.
                 error!("A Tokio task panicked: {}", e);
                 return Err(anyhow!("Tokio task panicked: {}", e));
             }
@@ -252,6 +276,41 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     }
 
     info!("All downloads completed successfully!");
+
+    // Wait for at most 2s to complete.
+    let complete_page = async { move
+        info!("Awaiting completion of all paging tasks...");
+        while let Some(join_result) = page_tasks.join_next().await {
+            if let Err(e) = join_result {
+                warn!("A paging task failed: {}", e);
+            }
+        }
+        info!("All paging tasks completed.");
+    }
+    // wait for 2s to collect, else cancel the page tasks.
+    tokio::time::timeout(Duration::from_secs(2), complete_page).await;
+
+    Ok(())
+}
+
+/// Reads a file to load it into the OS page cache.
+// reads the first 1MB at first,
+// then waits for global lock and reads the full file.
+async fn page_file_into_memory(path: &Path, semaphore: Arc<Semaphore>) -> Result<()> {
+    let mut file = fs::File::open(path)
+        .await
+        .with_context(|| format!("Failed to open file for paging: {}", path.display()))?;
+    let mut buffer = vec![0; 1024 * 1024]; // 1MB buffer
+    // Read the first 1MB of the file to quickly get it into the page cache for other processes.
+    file.read(&mut buffer[..]).await?;
+
+    // Then, acquire a permit to read the rest of the file without competing for disk I/O.
+    let _permit = semaphore.acquire_owned().await?;
+    // This will resume reading from where it left off.
+    while file.read(&mut buffer[..]).await? > 0 {
+        // Yield to allow other tasks to run.
+        tokio::task::yield_now().await;
+    }
     Ok(())
 }
 

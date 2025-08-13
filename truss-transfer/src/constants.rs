@@ -37,6 +37,13 @@ pub static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS: Lazy<u64> = Lazy::new(|| {
         .unwrap_or(4 * 24)
 });
 
+pub static TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(false)
+});
+
 /// Fallback download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 

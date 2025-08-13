@@ -17,7 +17,7 @@ pub async fn download_file_with_cache(
     file_name: &str,
     read_from_b10cache: bool,
     write_to_b10cache: bool,
-) -> Result<()> {
+) -> Result<(&create::types::BasetenPointer)>:
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(&pointer.hash);
 

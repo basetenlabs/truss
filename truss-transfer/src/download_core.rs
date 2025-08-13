@@ -9,6 +9,7 @@ use object_store::ObjectStore;
 use reqwest::Client;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use tokio::time::{interval, Duration};
@@ -146,25 +147,41 @@ pub async fn download_http_to_path(
     // The monitor will be automatically aborted when `_monitor_guard` goes out of scope.
     let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(path.to_path_buf(), size));
 
-    let download_result: Result<()> = async {
-        while let Some(chunk_result) = stream.next().await {
-            let chunk: Bytes = chunk_result.context("Failed to read chunk from HTTP stream")?;
+    // Create a channel to act as a buffer between network and disk.
+    let (tx, mut rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(16);
+
+    // Writer task: receives chunks from the channel and writes them to disk.
+    let writer_handle = tokio::spawn(async move {
+        while let Some(chunk_result) = rx.recv().await {
+            let chunk = chunk_result.context("Failed to read chunk from HTTP stream")?;
             file.write_all(&chunk)
                 .await
                 .context("Failed to write chunk to file")?;
         }
-        Ok(())
-    }
-    .await;
+        // Ensure all data is written to disk before the task finishes.
+        file.flush().await?;
+        file.sync_all().await?;
+        Ok::<_, anyhow::Error>(())
+    });
 
-    // Stop the monitor task now that the download is complete or has failed.
+    // Downloader task: fetches chunks from the network and sends them to the writer.
+    let downloader_handle = tokio::spawn(async move {
+        while let Some(chunk_result) = stream.next().await {
+            if tx.send(chunk_result).await.is_err() {
+                // Receiver was dropped, meaning the writer task has terminated.
+                // This could be due to an error or successful completion.
+                // We break here to avoid trying to send to a closed channel.
+                break;
+            }
+        }
+        // The stream is exhausted, the sender is dropped here, closing the channel.
+        Ok::<_, anyhow::Error>(())
+    });
 
-    // Now handle the result of the download
-    download_result?;
-
-    // Ensure all data is written to disk
-    file.flush().await?;
-    file.sync_all().await?;
+    // Wait for both tasks to complete.
+    let (downloader_result, writer_result) = tokio::try_join!(downloader_handle, writer_handle)?;
+    downloader_result?;
+    writer_result?;
 
     let final_size = fs::metadata(path).await?.len();
     if final_size != size {
@@ -213,22 +230,38 @@ async fn download_from_object_store(
     let _monitor_guard =
         DownloadMonitorGuard(spawn_download_monitor(local_path.to_path_buf(), size));
 
-    let download_result: Result<()> = async {
-        while let Some(chunk_result) = stream.next().await {
+    // Create a channel to act as a buffer between network and disk.
+    let (tx, mut rx) = mpsc::channel::<Result<Bytes, object_store::Error>>(512);
+
+    // Writer task: receives chunks from the channel and writes them to disk.
+    let writer_handle = tokio::spawn(async move {
+        while let Some(chunk_result) = rx.recv().await {
             let chunk = chunk_result
                 .map_err(|e| anyhow!("Error reading chunk from {}: {}", source_description, e))?;
             file.write_all(&chunk)
                 .await
                 .context("Failed to write chunk to file")?;
         }
-        Ok(())
-    }
-    .await;
+        // Ensure all data is written to disk before the task finishes.
+        file.flush().await?;
+        file.sync_all().await?;
+        Ok::<_, anyhow::Error>(())
+    });
 
-    download_result?;
+    // Downloader task: fetches chunks from the store and sends them to the writer.
+    let downloader_handle = tokio::spawn(async move {
+        while let Some(chunk_result) = stream.next().await {
+            if tx.send(chunk_result).await.is_err() {
+                break; // Writer task terminated.
+            }
+        }
+        Ok::<_, anyhow::Error>(())
+    });
 
-    file.flush().await?;
-    file.sync_all().await?;
+    // Wait for both tasks to complete.
+    let (downloader_result, writer_result) = tokio::try_join!(downloader_handle, writer_handle)?;
+    downloader_result?;
+    writer_result?;
 
     let metadata = fs::metadata(local_path).await?;
     let written = metadata.len();
