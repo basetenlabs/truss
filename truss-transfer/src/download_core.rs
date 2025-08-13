@@ -150,6 +150,8 @@ pub async fn download_http_to_path(
     let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(path.to_path_buf(), size));
 
     // Create a channel to act as a buffer between network and disk.
+    // disk is typically a large sequential store
+    // there is a proxy which buffers the request for us and intercepts the request.
     let (tx, mut rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(256);
 
     // Writer task: receives chunks from the channel and writes them to disk.
@@ -162,7 +164,6 @@ pub async fn download_http_to_path(
         }
         // Ensure all data is written to disk before the task finishes.
         file.flush().await?;
-        file.sync_all().await?;
         Ok::<_, anyhow::Error>(())
     });
 
