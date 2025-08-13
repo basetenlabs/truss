@@ -385,7 +385,7 @@ def download_checkpoint_artifacts(
         "checkpoint_artifacts": checkpoint_artifacts,
     }
 
-    urls_file = output_dir / f"{project_name}_{job_id}_checkpoints.json"
+    urls_file = output_dir / f"{project_name.replace(' ', '-')}_{job_id}_checkpoints.json"
     with open(urls_file, "w") as f:
         json.dump(output, f, indent=2)
 
