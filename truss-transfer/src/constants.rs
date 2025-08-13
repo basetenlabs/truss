@@ -13,9 +13,6 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
 /// Cache directory for b10fs
 pub static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
 
-/// Timeout for blob downloads in seconds (6 hours)
-pub static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600;
-
 /// Environment variable to enable Baseten FS
 pub static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 
@@ -25,7 +22,7 @@ pub static TRUSS_TRANSFER_NUM_WORKERS: Lazy<u8> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_NUM_WORKERS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(32)
+        .unwrap_or(6)
 });
 
 /// Environment variable for download directory
