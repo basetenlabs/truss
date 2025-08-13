@@ -234,10 +234,16 @@ async fn download_from_object_store(
     let (tx, mut rx) = mpsc::channel::<Result<Bytes, object_store::Error>>(512);
 
     // Writer task: receives chunks from the channel and writes them to disk.
+    let source_description_clone = source_description.to_string();
     let writer_handle = tokio::spawn(async move {
         while let Some(chunk_result) = rx.recv().await {
-            let chunk = chunk_result
-                .map_err(|e| anyhow!("Error reading chunk from {}: {}", source_description, e))?;
+            let chunk = chunk_result.map_err(|e| {
+                anyhow!(
+                    "Error reading chunk from {}: {}",
+                    source_description_clone,
+                    e
+                )
+            })?;
             file.write_all(&chunk)
                 .await
                 .context("Failed to write chunk to file")?;

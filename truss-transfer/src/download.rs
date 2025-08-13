@@ -17,7 +17,7 @@ pub async fn download_file_with_cache(
     file_name: &str,
     read_from_b10cache: bool,
     write_to_b10cache: bool,
-) -> Result<(&create::types::BasetenPointer)>:
+) -> Result<String> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(&pointer.hash);
 
@@ -27,7 +27,7 @@ pub async fn download_file_with_cache(
             "File {} already exists with correct size. Skipping download.",
             file_name
         );
-        return Ok(());
+        return Ok(file_name.to_string());
     } else if destination.exists() {
         warn!(
             "File {} exists but size mismatch. Redownloading.",
@@ -55,7 +55,7 @@ pub async fn download_file_with_cache(
                     "Symlink created successfully. Skipping download for {}.",
                     file_name
                 );
-                return Ok(());
+                return Ok(file_name.to_string());
             }
         } else {
             warn!(
@@ -120,5 +120,5 @@ pub async fn download_file_with_cache(
         }
     }
 
-    Ok(())
+    Ok(file_name.to_string())
 }

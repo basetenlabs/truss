@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use chrono;
-use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::{error, info, warn};
 use rand;
 use serde_json;
@@ -14,6 +13,7 @@ use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
+use tokio::time::Duration;
 
 use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
@@ -219,7 +219,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     // 7. Spawn download tasks
     info!("Spawning download tasks...");
     let mut download_tasks = JoinSet::new();
-    let mut page_tasks = JoinSet::new();
+    let mut page_tasks: JoinSet<Result<(), anyhow::Error>> = JoinSet::new();
 
     for (file_name, pointer) in resolution_map {
         let download_dir = download_dir.clone();
@@ -278,7 +278,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("All downloads completed successfully!");
 
     // Wait for at most 2s to complete.
-    let complete_page = async { move
+    let complete_page = async move {
         info!("Awaiting completion of all paging tasks...");
         while let Some(join_result) = page_tasks.join_next().await {
             if let Err(e) = join_result {
@@ -286,9 +286,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             }
         }
         info!("All paging tasks completed.");
-    }
-    // wait for 2s to collect, else cancel the page tasks.
-    tokio::time::timeout(Duration::from_secs(2), complete_page).await;
+    };
+    // wait for 1s to collect, else cancel the page tasks.
+    let _ = tokio::time::timeout(Duration::from_secs(1), complete_page).await;
 
     Ok(())
 }
