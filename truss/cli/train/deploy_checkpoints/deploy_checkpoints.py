@@ -169,7 +169,7 @@ def _render_truss_config_for_checkpoint_deployment(
         return render_vllm_lora_truss_config(checkpoint_deploy)
     else:
         raise ValueError(
-            f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Contact Baseten for support."
+            f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Please upgrade to the latest Truss version to access the latest supported formats. Contact Baseten if you would like us to support additional formats."
         )
 
 
