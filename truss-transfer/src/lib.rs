@@ -34,7 +34,7 @@ pub use types::{
 };
 
 // Re-export HuggingFace functionality
-pub use create::{metadata_hf_repo, model_cache_hf_to_b10ptr, HfError};
+pub use create::{metadata_hf_repo, HfError};
 
 // Re-export BasetenPointer API
 pub use create::create_basetenpointer;
@@ -358,8 +358,8 @@ mod tests {
         assert_eq!(TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK, "/tmp/bptr-resolved");
         assert_eq!(CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
         assert_eq!(BLOB_DOWNLOAD_TIMEOUT_SECS, 21600);
-        assert_eq!(TRUSS_TRANSFER_NUM_WORKERS_DEFAULT, 64);
-        assert_eq!(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS, 4 * 24);
+        assert_eq!(*TRUSS_TRANSFER_NUM_WORKERS, 32);
+        assert_eq!(*TRUSS_TRANSFER_B10FS_CLEANUP_HOURS, 4 * 24);
         assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 350.0);
         assert_eq!(TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB, 100);
         assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
@@ -371,20 +371,18 @@ mod tests {
             "TRUSS_TRANSFER_DOWNLOAD_DIR"
         );
         assert_eq!(
-            TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR,
-            "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS"
-        );
-        assert_eq!(
             TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR,
             "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS"
         );
+
         assert_eq!(SECRETS_BASE_PATH, "/secrets");
 
         // Test manifest paths
-        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 3);
+        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 4);
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest.json"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/static-bptr-manifest.json"));
+        assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/static-bptr/static-bptr-manifest.json"));
     }
 
     #[test]

@@ -12,9 +12,9 @@ def _get_version() -> str:
     if toml_file.exists():
         try:
             pyproject = tomlkit.parse(toml_file.read_text())
-            poetry_section = pyproject["tool"]["poetry"]  # type: ignore[index]
-            if poetry_section["name"] == __name__:  # type: ignore[index]
-                return str(poetry_section["version"]).strip()  # type: ignore[index]
+            project_section = pyproject["project"]  # type: ignore[index]
+            if project_section["name"] == __name__:  # type: ignore[index]
+                return str(project_section["version"]).strip()  # type: ignore[index]
         except Exception:
             pass
     # Either there is no pyproject file or it's from a different package.

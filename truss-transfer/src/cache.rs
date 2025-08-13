@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::env;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -12,17 +11,10 @@ use fs2;
 use log::{debug, info, warn};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
+use tokio::time::{interval, Duration};
 
 use crate::constants::*;
 use crate::download_core::check_metadata_size;
-
-/// Get the cleanup threshold hours from environment variable
-fn get_b10fs_cleanup_threshold_hours() -> u64 {
-    env::var(TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS)
-}
 
 /// Helper function to get the file's last access time as a Unix timestamp.
 /// On Unix, it uses `metadata.atime()`. On Windows, it uses `metadata.accessed()`.
@@ -48,7 +40,7 @@ pub async fn cleanup_b10cache_and_get_space_stats(
     manifest_hash_to_size_map: &HashMap<String, u64>,
 ) -> Result<(u64, u64)> {
     // Returns (available_volume_bytes, manifest_files_in_cache_bytes)
-    let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
+    let cleanup_threshold_hours = *TRUSS_TRANSFER_B10FS_CLEANUP_HOURS;
     let cache_dir_path = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
@@ -195,15 +187,57 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     }
 
     if should_copy {
-        // Copy the local file to the incomplete cache file.
+        // Copy the local file to the incomplete cache file with progress monitoring
         info!(
             "Copying local file {:?} to temporary incomplete cache file {:?}",
             download_path, incomplete_cache_path
         );
-        match fs::copy(download_path, &incomplete_cache_path).await {
+
+        // Setup progress monitoring with atomics
+        let monitor_path = incomplete_cache_path.to_path_buf();
+        let monitor_handle = tokio::spawn({
+            async move {
+                let mut ticker = interval(Duration::from_secs(10));
+                let mut last_size = 0;
+                loop {
+                    ticker.tick().await;
+                    let current_size = match fs::metadata(&monitor_path).await {
+                        Ok(metadata) => metadata.len() as u64,
+                        Err(e) => {
+                            warn!("Failed to read metadata for {:?}: {}", monitor_path, e);
+                            continue;
+                        }
+                    };
+
+                    if current_size == last_size {
+                        warn!(
+                            "No progress for {:?}: {} bytes written so far.",
+                            monitor_path, current_size
+                        );
+                    } else {
+                        let progress_mb = current_size as f64 / (1024.0 * 1024.0);
+                        info!(
+                            "Copy progress for {:?}: {:.2} MB written so far.",
+                            monitor_path, progress_mb
+                        );
+                    }
+                    last_size = current_size;
+                }
+            }
+        });
+
+        let copy_result = fs::copy(download_path, &incomplete_cache_path).await;
+
+        // Stop monitoring regardless of copy result
+        monitor_handle.abort();
+
+        match copy_result {
             Ok(_) => info!("Successfully copied to incomplete cache file."),
             Err(e) => {
-                warn!("Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage.", e);
+                warn!(
+                    "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
+                    e
+                );
                 return Ok(());
             }
         }
@@ -212,7 +246,10 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     let incomplete_metadata = match fs::metadata(&incomplete_cache_path).await {
         Ok(metadata) => metadata,
         Err(e) => {
-            warn!("Failed to get metadata for incomplete cache file: {}. Maybe b10cache has no storage or concurrency issue.", e);
+            warn!(
+                "Failed to get metadata for incomplete cache file: {}. Maybe b10cache has no storage or concurrency issue.",
+                e
+            );
             return Ok(());
         }
     };

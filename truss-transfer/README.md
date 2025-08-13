@@ -174,28 +174,48 @@ import json
 import os
 
 def create_and_resolve_bptr():
+    # runtime_secret_name: best to be created with `-` in baseten.
     # 1. Create bptr manifest
     models = [
         truss_transfer.PyModelRepo(
-            repo_id="microsoft/DialoGPT-medium",
+            repo_id="NVFP4/Qwen3-30B-A3B-Thinking-2507-FP4",
             revision="main",
+            # write to folder named
             volume_folder="dialogpt",
-            runtime_secret_name="hf_access_token"
+            # read secret from /secrets/hf-access-token
+            runtime_secret_name="hf-access-token"
+        ),
+        # requires a gcs service account json
+        truss_transfer.PyModelRepo(
+            repo_id="gs://llama-3-2-1b-instruct/",
+            revision="",
+            volume_folder="llama",
+            # requires json in /secrets/gcs-service-account-jsn
+            runtime_secret_name="gcs-service-account-jsn",
+            kind="gcs"
+        ),
+        truss_transfer.PyModelRepo(
+            repo_id="s3://bt-training-dev-org-b68c04fe47d34c85bfa91515bc9d5e2d/training_projects",
+            revision="",
+            volume_folder="training",
+            # requires json in /secrets/aws
+            runtime_secret_name="aws-secret-json",
+            kind="s3"
         )
     ]
-
-    bptr_manifest = truss_transfer.create_basetenpointer_from_models(models)
+    root = "/tmp/my-models"
+    bptr_manifest = truss_transfer.create_basetenpointer_from_models(models, root)
 
     # 2. Save manifest
-    os.makedirs("/bptr", exist_ok=True)
-    with open("/bptr/static-bptr-manifest.json", "w") as f:
+    os.makedirs("/static-bptr", exist_ok=True)
+    with open("/static-bptr/static-bptr-manifest.json", "w") as f:
         f.write(bptr_manifest)
 
-    # 3. Resolve bptr
-    resolved_dir = truss_transfer.lazy_data_resolve("/tmp/my-models")
+    # 3. Resolve bptr. If we would set `root` above to "", we could define the base dir here.
+    truss_transfer.lazy_data_resolve(root)
 
     # 4. Verify files were downloaded
-    dialogpt_path = os.path.join(resolved_dir, "dialogpt")
+    dialogpt_path = os.path.join(root, "dialogpt")
     if os.path.exists(dialogpt_path):
         files = os.listdir(dialogpt_path)
         print(f"Successfully downloaded {len(files)} files to {dialogpt_path}")
@@ -207,6 +227,37 @@ def create_and_resolve_bptr():
 model_path = create_and_resolve_bptr()
 ```
 
+### Secrets
+Preferably, use a `-` to and lowercase characters to add credentials in baseten.
+
+#### AWS
+```json
+{
+  "access_key_id": "XXXXX",
+  "secret_access_key": "adada/adsdad",
+  "region": "us-west-2"
+}
+```
+
+#### Google GCS
+```json
+{
+      "private_key_id": "b717a4db1dd5a5d1f980aef7ea50616584b6ebc8",
+      "private_key": "-----BEGIN PRIVATE KEY-----\nMI",
+      "client_email": "b10-some@xxx-example.iam.gserviceaccount.com"
+}
+```
+
+#### Huggingface
+The Huggingface token.
+
+#### Azure
+(Untested)
+```json
+{
+    "account_key": "key",
+}
+```
 ## Environment Variables and Settings
 
 The following environment variables can be used to configure truss-transfer behavior:

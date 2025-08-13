@@ -15,7 +15,11 @@ pub trait StorageProvider {
     fn can_handle(&self, repo: &ModelRepo) -> bool;
 
     /// Create basetenpointers for files in the repository
-    async fn create_pointers(&self, repo: &ModelRepo) -> Result<Vec<BasetenPointer>>;
+    async fn create_pointers(
+        &self,
+        repo: &ModelRepo,
+        model_path: &String,
+    ) -> Result<Vec<BasetenPointer>>;
 }
 
 /// Factory function to get the appropriate provider for a repository
