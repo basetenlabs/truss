@@ -301,7 +301,7 @@ async fn page_file_into_memory(path: &Path, semaphore: Arc<Semaphore>) -> Result
         .await
         .with_context(|| format!("Failed to open file for paging: {}", path.display()))?;
     let mut buffer = vec![0; 1024 * 1024]; // 1MB buffer
-    // Read the first 1MB of the file to quickly get it into the page cache for other processes.
+                                           // Read the first 1MB of the file to quickly get it into the page cache for other processes.
     file.read(&mut buffer[..]).await?;
 
     // Then, acquire a permit to read the rest of the file without competing for disk I/O.

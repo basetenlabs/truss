@@ -110,6 +110,8 @@ pub async fn download_http_to_path(
     );
 
     let mut client_builder = Client::builder();
+    client_builder = client_builder.http1_only();
+
     if *TRUSS_TRANSFER_NUM_WORKERS >= 32 {
         debug!("Disabling proxy for reqwest client as TRUSS_TRANSFER_NUM_WORKERS >= 32");
         client_builder = client_builder.no_proxy();
