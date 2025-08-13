@@ -204,7 +204,8 @@ async fn download_from_object_store(
         .await
         .context(format!("Failed to create file: {:?}", local_path))?;
 
-    let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(local_path.to_path_buf(), size));
+    let _monitor_guard =
+        DownloadMonitorGuard(spawn_download_monitor(local_path.to_path_buf(), size));
 
     let download_result: Result<()> = async {
         while let Some(chunk_result) = stream.next().await {
