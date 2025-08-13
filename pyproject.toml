@@ -1,6 +1,6 @@
 [project]
 name = "truss"
-version = "0.10.3rc001"
+version = "0.10.3rc002"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
