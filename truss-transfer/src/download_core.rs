@@ -150,7 +150,7 @@ pub async fn download_http_to_path(
     let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(path.to_path_buf(), size));
 
     // Create a channel to act as a buffer between network and disk.
-    let (tx, mut rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(16);
+    let (tx, mut rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(256);
 
     // Writer task: receives chunks from the channel and writes them to disk.
     let writer_handle = tokio::spawn(async move {
