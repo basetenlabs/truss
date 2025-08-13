@@ -43,7 +43,7 @@ dependencies = [
     "ruff>=0.4.8",
     "tenacity>=8.0.1",
     "watchfiles>=0.19.0,<0.20",
-    "truss_transfer==0.0.23rc3",
+    "truss_transfer==0.0.23",
 ]
 
 [project.urls]
