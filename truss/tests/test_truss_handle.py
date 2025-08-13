@@ -129,7 +129,7 @@ def _generate_base_image_variations(
         ("python:3.8-bookworm", "/usr/local/bin/python3", False),
         ("python:3.10-bookworm", "/usr/local/bin/python3", False),
         ("python:3.11-bookworm", "/usr/local/bin/python3", False),
-        ("python:3.13-bookworm", "/usr/local/bin/python3", False),
+        ("python:3.13-trixie", "/usr/local/bin/python3", False),
         ("python:alpine", "/usr/local/bin/python3", True),
         ("python:2.7-slim", "/usr/local/bin/python", True),
         ("python:3.7-slim", "/usr/local/bin/python3", True),
