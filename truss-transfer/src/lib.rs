@@ -357,9 +357,8 @@ mod tests {
         // Test that constants have expected values
         assert_eq!(TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK, "/tmp/bptr-resolved");
         assert_eq!(CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
-        assert_eq!(BLOB_DOWNLOAD_TIMEOUT_SECS, 21600);
-        assert_eq!(TRUSS_TRANSFER_NUM_WORKERS_DEFAULT, 64);
-        assert_eq!(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS, 4 * 24);
+        assert_eq!(*TRUSS_TRANSFER_NUM_WORKERS, 6);
+        assert_eq!(*TRUSS_TRANSFER_B10FS_CLEANUP_HOURS, 4 * 24);
         assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 350.0);
         assert_eq!(TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB, 100);
         assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
@@ -371,13 +370,10 @@ mod tests {
             "TRUSS_TRANSFER_DOWNLOAD_DIR"
         );
         assert_eq!(
-            TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR,
-            "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS"
-        );
-        assert_eq!(
             TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR,
             "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS"
         );
+
         assert_eq!(SECRETS_BASE_PATH, "/secrets");
 
         // Test manifest paths

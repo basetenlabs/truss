@@ -8,7 +8,6 @@ use chrono;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::{error, info, warn};
 use rand;
-use reqwest::Client;
 use serde_json;
 use serde_yaml;
 use tokio::fs;
@@ -34,13 +33,13 @@ fn get_global_lock() -> &'static Arc<Mutex<()>> {
 /// Shared entrypoint for both Python and CLI
 pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> {
     init_logger_once();
-    let num_workers = TRUSS_TRANSFER_NUM_WORKERS_DEFAULT;
+    let num_workers = *TRUSS_TRANSFER_NUM_WORKERS as usize;
     let download_dir = resolve_truss_transfer_download_dir(download_dir);
 
     // Ensure the global lock is initialized
     let lock = get_global_lock();
 
-    info!("Acquiring global download lock...");
+    info!("truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
     let _guard = lock
         .lock()
         .map_err(|_| anyhow!("Global lock was poisoned"))?;
@@ -195,9 +194,9 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             }
         }
 
-        // only use at max 3 workers for b10cache, to avoid conflicts on parallel writes
+        // only use at max 2 workers for b10cache, to avoid conflicts on parallel writes
         if write_to_b10cache {
-            num_workers = num_workers.min(3);
+            num_workers = num_workers.min(2);
         }
         info!(
             "b10cache use: Read: {}, Write: {}",
@@ -211,13 +210,6 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("Using {} concurrent workers.", num_workers);
 
     let semaphore = Arc::new(Semaphore::new(num_workers));
-    let client = Client::builder()
-        // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
-        .tcp_keepalive(std::time::Duration::from_secs(15))
-        .http2_keep_alive_interval(Some(std::time::Duration::from_secs(15)))
-        .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
-        .build()?;
-
     // resolve the gcs / s3 and pre-sign the urls
     // 6.1 TODO: create features for this to pre-sign url at runtime.
 
@@ -228,13 +220,11 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     > = FuturesUnordered::new();
     for (file_name, pointer) in resolution_map {
         let download_dir = download_dir.clone();
-        let client = client.clone();
         let sem_clone = semaphore.clone();
         tasks.push(tokio::spawn(async move {
             let _permit = sem_clone.acquire_owned().await;
             log::debug!("Handling file: {}", file_name);
             download_file_with_cache(
-                &client,
                 &pointer,
                 &download_dir,
                 &file_name,

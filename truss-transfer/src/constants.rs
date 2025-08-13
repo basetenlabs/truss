@@ -1,4 +1,6 @@
 // Constants used throughout the truss_transfer crate
+use once_cell::sync::Lazy;
+use std::env;
 
 /// Alternative manifest paths to check
 pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
@@ -11,23 +13,29 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
 /// Cache directory for b10fs
 pub static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
 
-/// Timeout for blob downloads in seconds (6 hours)
-pub static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600;
-
 /// Environment variable to enable Baseten FS
 pub static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 
-/// Default number of download workers
-pub static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
+/// Number of download workers, initialized from the `TRUSS_TRANSFER_NUM_WORKERS`
+/// environment variable, with a default of 64.
+pub static TRUSS_TRANSFER_NUM_WORKERS: Lazy<u8> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_NUM_WORKERS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(6)
+});
 
 /// Environment variable for download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 
-/// Environment variable for b10fs cleanup hours
-pub static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR: &str = "TRUSS_TRANSFER_B10FS_CLEANUP_HOURS";
-
-/// Default cleanup hours for b10fs (4 days)
-pub static TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS: u64 = 4 * 24;
+/// Cleanup hours for b10fs, initialized from the `TRUSS_TRANSFER_B10FS_CLEANUP_HOURS`
+/// environment variable, with a default of 96 hours (4 days).
+pub static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS: Lazy<u64> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_B10FS_CLEANUP_HOURS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4 * 24)
+});
 
 /// Fallback download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
