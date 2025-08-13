@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::constants::TRUSS_TRANSFER_NUM_WORKERS;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -107,7 +108,12 @@ pub async fn download_http_to_path(
         path, sanitized_url
     );
 
-    let client = Client::builder().build()?;
+    let mut client_builder = Client::builder();
+    if *TRUSS_TRANSFER_NUM_WORKERS >= 32 {
+        debug!("Disabling proxy for reqwest client as TRUSS_TRANSFER_NUM_WORKERS >= 32");
+        client_builder = client_builder.no_proxy();
+    }
+    let client = client_builder.build()?;
 
     let mut request_builder = client.get(url);
 
