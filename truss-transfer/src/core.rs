@@ -8,7 +8,6 @@ use chrono;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::{error, info, warn};
 use rand;
-use reqwest::Client;
 use serde_json;
 use serde_yaml;
 use tokio::fs;

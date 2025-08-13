@@ -2,7 +2,6 @@ use std::path::Path;
 
 use anyhow::Result;
 use log::{debug, info, warn};
-use reqwest::Client;
 
 use crate::constants::*;
 use crate::download_core::{
