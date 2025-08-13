@@ -211,14 +211,6 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("Using {} concurrent workers.", num_workers);
 
     let semaphore = Arc::new(Semaphore::new(num_workers));
-    let client = Client::builder()
-        // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
-        .tcp_keepalive(std::time::Duration::from_secs(15))
-        .http2_keep_alive_interval(Some(std::time::Duration::from_secs(15)))
-        .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
-        .http1_only()
-        .build()?;
-
     // resolve the gcs / s3 and pre-sign the urls
     // 6.1 TODO: create features for this to pre-sign url at runtime.
 
@@ -229,13 +221,11 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     > = FuturesUnordered::new();
     for (file_name, pointer) in resolution_map {
         let download_dir = download_dir.clone();
-        let client = client.clone();
         let sem_clone = semaphore.clone();
         tasks.push(tokio::spawn(async move {
             let _permit = sem_clone.acquire_owned().await;
             log::debug!("Handling file: {}", file_name);
             download_file_with_cache(
-                &client,
                 &pointer,
                 &download_dir,
                 &file_name,

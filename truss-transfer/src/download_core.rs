@@ -80,7 +80,6 @@ fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
 
 /// Pure download function for HTTP URLs with authentication support
 pub async fn download_http_to_path(
-    client: &Client,
     url: &str,
     path: &Path,
     size: u64,
@@ -98,6 +97,8 @@ pub async fn download_http_to_path(
         "Starting HTTP download to {:?} from {}",
         path, sanitized_url
     );
+
+    let client = Client::builder().build()?;
 
     let mut request_builder = client.get(url);
 

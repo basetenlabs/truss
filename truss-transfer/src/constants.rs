@@ -13,9 +13,6 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
 /// Cache directory for b10fs
 pub static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
 
-/// Timeout for blob downloads in seconds (6 hours)
-pub static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 21600;
-
 /// Environment variable to enable Baseten FS
 pub static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 

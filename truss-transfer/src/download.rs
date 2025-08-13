@@ -13,7 +13,6 @@ use crate::download_core::{
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 /// Now handles both HTTP and GCS downloads with unified caching logic.
 pub async fn download_file_with_cache(
-    client: &Client,
     pointer: &crate::types::BasetenPointer,
     download_dir: &Path,
     file_name: &str,
@@ -71,7 +70,6 @@ pub async fn download_file_with_cache(
     match &pointer.resolution {
         crate::types::Resolution::Http(http_resolution) => {
             download_http_to_path(
-                client,
                 &http_resolution.url,
                 &destination,
                 pointer.size,

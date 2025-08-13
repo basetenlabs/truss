@@ -60,7 +60,6 @@ pub fn get_hf_secret_from_file(hf_token_name: &str) -> Option<String> {
         Some(token.trim().to_string())
     } else {
         warn!(
-            "No secret found in {}, using unauthenticated access.",
             hf_token_name
         );
         None
