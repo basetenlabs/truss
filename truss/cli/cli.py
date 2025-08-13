@@ -33,6 +33,7 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
+    empty_checkpoint_repo_trt_llm_builder,
     has_no_tags_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
@@ -596,6 +597,10 @@ def push(
             if raised_message_oai:
                 console.print(message_oai, style="red")
                 sys.exit(1)
+
+        message_empty_repo = empty_checkpoint_repo_trt_llm_builder(tr)
+        if message_empty_repo:
+            console.print(message_empty_repo, style="yellow")
 
         trt_llm_build_config = tr.spec.config.trt_llm.build
         if (
