@@ -78,6 +78,15 @@ fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
     })
 }
 
+// RAII guard to ensure the download monitor is aborted when the guard is dropped.
+struct DownloadMonitorGuard(JoinHandle<()>);
+
+impl Drop for DownloadMonitorGuard {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Pure download function for HTTP URLs with authentication support
 pub async fn download_http_to_path(
     url: &str,
@@ -128,9 +137,8 @@ pub async fn download_http_to_path(
 
     let mut stream = resp.bytes_stream();
 
-    // Start of monitoring logic
-    let monitor_handle = spawn_download_monitor(path.to_path_buf(), size);
-    // End of monitoring logic
+    // The monitor will be automatically aborted when `_monitor_guard` goes out of scope.
+    let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(path.to_path_buf(), size));
 
     let download_result: Result<()> = async {
         while let Some(chunk_result) = stream.next().await {
@@ -144,7 +152,6 @@ pub async fn download_http_to_path(
     .await;
 
     // Stop the monitor task now that the download is complete or has failed.
-    monitor_handle.abort();
 
     // Now handle the result of the download
     download_result?;
@@ -197,7 +204,7 @@ async fn download_from_object_store(
         .await
         .context(format!("Failed to create file: {:?}", local_path))?;
 
-    let monitor_handle = spawn_download_monitor(local_path.to_path_buf(), size);
+    let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(local_path.to_path_buf(), size));
 
     let download_result: Result<()> = async {
         while let Some(chunk_result) = stream.next().await {
@@ -211,7 +218,6 @@ async fn download_from_object_store(
     }
     .await;
 
-    monitor_handle.abort();
     download_result?;
 
     file.flush().await?;
