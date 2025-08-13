@@ -111,6 +111,22 @@ models = [
         revision="main",
         volume_folder="dialogpt",
         runtime_secret_name="hf_access_token"
+    ),
+    truss_transfer.PyModelRepo(
+        repo_id="gs://llama-3-2-1b-instruct/",
+        revision="",
+        volume_folder="llama",
+        # requires json in /secrets/gcs-service-account-jsn
+        runtime_secret_name="gcs-service-account-jsn",
+        kind="gcs"
+    ),
+    truss_transfer.PyModelRepo(
+        repo_id="s3://bt-training-dev-org-b68c04fe47d34c85bfa91515bc9d5e2d/training_projects",
+        revision="",
+        volume_folder="training",
+        # requires json in /secrets/aws
+        runtime_secret_name="aws-secret-json",
+        kind="s3"
     )
 ]
 
