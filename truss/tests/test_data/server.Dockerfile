@@ -17,12 +17,7 @@ ENV PATH="/root/.local/bin:$PATH"
 ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
 RUN apt update && \
-    apt install -y bash \
-                build-essential \
-                git \
-                curl \
-                ca-certificates \
-                software-properties-common \
+    apt install -y bash build-essential git curl ca-certificates \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
