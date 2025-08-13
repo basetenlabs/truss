@@ -417,7 +417,7 @@ def test_hydrate_lora_checkpoint():
     assert result.training_job_id == job_id
     assert result.lora_details.rank == 64
     assert len(result.paths) == 1
-    assert result.paths[0] == f"rank-0/{checkpoint_id}/*"
+    assert result.paths[0] == f"rank-0/{checkpoint_id}"
 
 
 def test_hydrate_checkpoint_dispatcher():
