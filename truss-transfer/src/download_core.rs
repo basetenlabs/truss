@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::constants::TRUSS_TRANSFER_NUM_WORKERS;
@@ -8,9 +9,8 @@ use log::{debug, info};
 use object_store::ObjectStore;
 use reqwest::Client;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use tokio::task::{self, JoinHandle};
 use tokio::time::Instant;
 use tokio::time::{interval, Duration};
 
@@ -140,8 +140,9 @@ pub async fn download_http_to_path(
         ));
     }
 
-    let mut file = fs::File::create(path)
-        .await
+    let path_clone = path.to_path_buf();
+    let mut file = task::spawn_blocking(move || std::fs::File::create(path_clone))
+        .await?
         .context(format!("Failed to create file: {:?}", path))?;
 
     let mut stream = resp.bytes_stream();
@@ -155,15 +156,14 @@ pub async fn download_http_to_path(
     let (tx, mut rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(256);
 
     // Writer task: receives chunks from the channel and writes them to disk.
-    let writer_handle = tokio::spawn(async move {
-        while let Some(chunk_result) = rx.recv().await {
+    let writer_handle = task::spawn_blocking(move || {
+        while let Some(chunk_result) = rx.blocking_recv() {
             let chunk = chunk_result.context("Failed to read chunk from HTTP stream")?;
-            file.write_all(&chunk)
-                .await
+            file.write(&chunk)
                 .context("Failed to write chunk to file")?;
         }
         // Ensure all data is written to disk before the task finishes.
-        file.flush().await?;
+        file.flush()?;
         Ok::<_, anyhow::Error>(())
     });
 
@@ -226,8 +226,9 @@ async fn download_from_object_store(
 
     let mut stream = get_result.into_stream();
 
-    let mut file = fs::File::create(local_path)
-        .await
+    let local_path_clone = local_path.to_path_buf();
+    let mut file = task::spawn_blocking(move || std::fs::File::create(local_path_clone))
+        .await?
         .context(format!("Failed to create file: {:?}", local_path))?;
 
     let _monitor_guard =
@@ -238,8 +239,8 @@ async fn download_from_object_store(
 
     // Writer task: receives chunks from the channel and writes them to disk.
     let source_description_clone = source_description.to_string();
-    let writer_handle = tokio::spawn(async move {
-        while let Some(chunk_result) = rx.recv().await {
+    let writer_handle = task::spawn_blocking(move || {
+        while let Some(chunk_result) = rx.blocking_recv() {
             let chunk = chunk_result.map_err(|e| {
                 anyhow!(
                     "Error reading chunk from {}: {}",
@@ -248,12 +249,10 @@ async fn download_from_object_store(
                 )
             })?;
             file.write_all(&chunk)
-                .await
                 .context("Failed to write chunk to file")?;
         }
         // Ensure all data is written to disk before the task finishes.
-        file.flush().await?;
-        file.sync_all().await?;
+        file.flush()?;
         Ok::<_, anyhow::Error>(())
     });
 
