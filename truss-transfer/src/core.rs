@@ -39,7 +39,7 @@ pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<Stri
     // Ensure the global lock is initialized
     let lock = get_global_lock();
 
-    info!("Acquiring global download lock...");
+    info!("truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
     let _guard = lock
         .lock()
         .map_err(|_| anyhow!("Global lock was poisoned"))?;

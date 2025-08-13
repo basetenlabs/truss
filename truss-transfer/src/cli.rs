@@ -5,7 +5,6 @@ use log::{error, info};
 /// Running the CLI directly.
 pub fn main() -> anyhow::Result<()> {
     init_logger_once();
-    info!("truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
 
     // Pass the first CLI argument as the download directory, if provided.
     let download_dir = std::env::args().nth(1);
