@@ -83,7 +83,11 @@ def deploy_checkpoints_mock_text(create_mock_prompt):
         "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.text"
     ) as mock:
         mock.side_effect = lambda message, **kwargs: create_mock_prompt(
-            "4" if "number of accelerators" in message else None
+            "4"
+            if "number of accelerators" in message
+            else "test-deployment"
+            if "deployment name" in message
+            else None
         )
         yield mock
 
@@ -487,14 +491,14 @@ def test_render_truss_config_delegation():
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
-                    lora_details=definitions.LoRADetails(rank=16),
+                    lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
             base_model_id="google/gemma-3-27b-it",
         ),
         model_name="test-model",
         compute=definitions.Compute(
-            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=1)
+            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=4)
         ),
         runtime=definitions.DeployCheckpointsRuntime(environment_variables={}),
         deployment_name="test-deployment",
@@ -504,4 +508,5 @@ def test_render_truss_config_delegation():
     # Test that it works for LoRA format
     result = _render_truss_config_for_checkpoint_deployment(deploy_config)
     assert isinstance(result, truss_config.TrussConfig)
-    assert "vllm serve" in result.docker_server.start_command
+    expected_vllm_command = "vllm serve google/gemma-3-27b-it --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 32 --dtype bfloat16 --lora-modules job123=/tmp/training_checkpoints/job123/rank-0/checkpoint-1"
+    assert expected_vllm_command in result.docker_server.start_command

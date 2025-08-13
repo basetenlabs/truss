@@ -75,11 +75,13 @@ def render_vllm_lora_truss_config(
             truss_checkpoint.paths[0],
         )
         checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
+
     checkpoint_str = " ".join(checkpoint_parts)
     max_lora_rank = max(
         [
             checkpoint.lora_details.rank or DEFAULT_LORA_RANK
             for checkpoint in checkpoint_deploy.checkpoint_details.checkpoints
+            if hasattr(checkpoint, "lora_details") and checkpoint.lora_details
         ]
     )
     accelerator = checkpoint_deploy.compute.accelerator
