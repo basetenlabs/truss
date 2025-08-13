@@ -17,20 +17,12 @@ deploy_checkpoint = definitions.DeployCheckpointsConfig(
         checkpoints=[
             definitions.LoRACheckpoint(
                 training_job_id="lqz4pw4",
-                path_details=[
-                    definitions.TrainingArtifactReferencePathDetails(
-                        path_reference="lqz4pw4/rank-0/checkpoint-24/", recursive=True
-                    )
-                ],
+                paths=["lqz4pw4/rank-0/checkpoint-24/"],
                 lora_details=definitions.LoRADetails(rank=16),
             ),
             definitions.LoRACheckpoint(
                 training_job_id="lqz4pw5",
-                path_details=[
-                    definitions.TrainingArtifactReferencePathDetails(
-                        path_reference="lqz4pw5/rank-0/checkpoint-42/", recursive=True
-                    )
-                ],
+                paths=["lqz4pw5/rank-0/checkpoint-42/"],
                 lora_details=definitions.LoRADetails(rank=8),
             ),
         ],

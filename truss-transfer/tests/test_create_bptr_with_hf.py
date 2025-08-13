@@ -137,7 +137,7 @@ def test_dolly():
     print("Success! Generated BasetenPointer manifest:")
 
     # Parse and pretty print the JSON
-    manifest = json.loads(result)
+    manifest = json.loads(result)["pointers"]
     print(json.dumps(manifest, indent=2))
 
     # Test that the structure is correct

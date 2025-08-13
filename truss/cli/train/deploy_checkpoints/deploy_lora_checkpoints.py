@@ -11,7 +11,6 @@ from truss_train.definitions import (
     LoRACheckpoint,
     LoRADetails,
     SecretReference,
-    TrainingArtifactReferencePathDetails,
 )
 
 VLLM_LORA_START_COMMAND = Template(
@@ -29,14 +28,10 @@ def hydrate_lora_checkpoint(
     job_id: str, checkpoint_id: str, checkpoint: dict
 ) -> LoRACheckpoint:
     """Create a LoRA-specific Checkpoint object."""
-    path_details = [
-        TrainingArtifactReferencePathDetails(
-            path_reference=f"rank-0/{checkpoint_id}/", recursive=True
-        )
-    ]
+    paths = [f"rank-0/{checkpoint_id}/*"]
     return LoRACheckpoint(
         training_job_id=job_id,
-        path_details=path_details,
+        paths=paths,
         lora_details=LoRADetails(rank=_get_lora_rank(checkpoint)),
     )
 
@@ -77,7 +72,7 @@ def render_vllm_lora_truss_config(
         ckpt_path = Path(
             truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
             truss_checkpoint.training_job_id,
-            truss_checkpoint.path_details[0].path_reference,
+            truss_checkpoint.paths[0],
         )
         checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
     checkpoint_str = " ".join(checkpoint_parts)

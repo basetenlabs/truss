@@ -119,10 +119,8 @@ def _ensure_deployment_name(
 
     default_deployment_name = "checkpoint"
 
-    if checkpoints and checkpoints[0].path_details[0]:
-        first_checkpoint_name = (
-            checkpoints[0].path_details[0].path_reference.strip("/").split("/")[-1]
-        )
+    if checkpoints and checkpoints[0].paths:
+        first_checkpoint_name = checkpoints[0].paths[0].strip("/").split("/")[-1]
 
         if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
             # Allow autoincrementing if the checkpoint matches both regexes

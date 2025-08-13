@@ -32,6 +32,13 @@ pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
     }
 }
 
+pub fn get_secret_path(runtime_secret_name: &str) -> String {
+    Path::new(SECRETS_BASE_PATH)
+        .join(runtime_secret_name)
+        .display()
+        .to_string()
+}
+
 /// Get HuggingFace token from multiple sources
 /// 1. Check file system at /secrets/{runtime_secret_name}
 /// 2. Check environment variables: HF_TOKEN or HUGGING_FACE_HUB_TOKEN

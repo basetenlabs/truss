@@ -186,8 +186,15 @@ pub async fn send_request_with_retry(
                     // connect can happen if e.g. number of tcp streams in linux is exhausted.
                     ClientError::Connect(_) => retries_done <= 1,
                     ClientError::Network(_) => {
-                        println!("client network error: {}", client_error);
-                        config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
+                        if retries_done == 0 {
+                            true
+                        } else {
+                            println!(
+                                "client network error (likely re-use expired http connection): {}",
+                                client_error
+                            );
+                            config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
+                        }
                     }
                     _ => {
                         // For other errors, we do not retry.

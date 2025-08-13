@@ -105,11 +105,7 @@ def test_render_truss_config_for_checkpoint_deployment():
             checkpoints=[
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
-                    path_details=[
-                        definitions.TrainingArtifactReferencePathDetails(
-                            path_reference="rank-0/checkpoint-1/", recursive=True
-                        )
-                    ],
+                    paths=["rank-0/checkpoint-1/"],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=16),
                 )
@@ -137,18 +133,12 @@ def test_render_truss_config_for_checkpoint_deployment():
     )
     assert test_truss.model_name == rendered_truss.model_name
     assert (
-        test_truss.training_checkpoints.artifact_references[0]
-        .path_details[0]
-        .path_reference
-        == rendered_truss.training_checkpoints.artifact_references[0]
-        .path_details[0]
-        .path_reference
+        test_truss.training_checkpoints.artifact_references[0].paths[0]
+        == rendered_truss.training_checkpoints.artifact_references[0].paths[0]
     )
     assert (
-        test_truss.training_checkpoints.artifact_references[0].path_details[0].recursive
-        == rendered_truss.training_checkpoints.artifact_references[0]
-        .path_details[0]
-        .recursive
+        test_truss.training_checkpoints.artifact_references[0].paths
+        == rendered_truss.training_checkpoints.artifact_references[0].paths
     )
     assert (
         test_truss.docker_server.start_command
@@ -208,11 +198,7 @@ def test_prepare_checkpoint_deploy_complete_config(
             checkpoints=[
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
-                    path_details=[
-                        definitions.TrainingArtifactReferencePathDetails(
-                            path_reference="job123/rank-0/checkpoint-1/", recursive=True
-                        )
-                    ],
+                    paths=["job123/rank-0/checkpoint-1/"],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=32),
                 )
@@ -286,11 +272,7 @@ def test_checkpoint_lora_rank_validation():
     for rank in valid_ranks:
         checkpoint = definitions.LoRACheckpoint(
             training_job_id="job123",
-            path_details=[
-                definitions.TrainingArtifactReferencePathDetails(
-                    path_reference="job123/rank-0/checkpoint-1/", recursive=True
-                )
-            ],
+            paths=["job123/rank-0/checkpoint-1/"],
             model_weight_format=definitions.ModelWeightsFormat.LORA,
             lora_details=definitions.LoRADetails(rank=rank),
         )
@@ -322,11 +304,7 @@ def test_checkpoint_lora_rank_validation():
         with pytest.raises(ValueError, match=f"lora_rank \\({rank}\\) must be one of"):
             definitions.LoRACheckpoint(
                 training_job_id="job123",
-                path_details=[
-                    definitions.TrainingArtifactReferencePathDetails(
-                        path_reference="job123/rank-0/checkpoint-1/", recursive=True
-                    )
-                ],
+                paths=["job123/rank-0/checkpoint-1/"],
                 model_weight_format=definitions.ModelWeightsFormat.LORA,
                 lora_details=definitions.LoRADetails(rank=rank),
             )
@@ -434,9 +412,8 @@ def test_hydrate_lora_checkpoint():
     assert isinstance(result, definitions.LoRACheckpoint)
     assert result.training_job_id == job_id
     assert result.lora_details.rank == 64
-    assert len(result.path_details) == 1
-    assert result.path_details[0].path_reference == f"rank-0/{checkpoint_id}/"
-    assert result.path_details[0].recursive is True
+    assert len(result.paths) == 1
+    assert result.paths[0] == f"rank-0/{checkpoint_id}/*"
 
 
 def test_hydrate_checkpoint_dispatcher():
@@ -471,11 +448,7 @@ def test_render_vllm_lora_truss_config():
             checkpoints=[
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
-                    path_details=[
-                        definitions.TrainingArtifactReferencePathDetails(
-                            path_reference="rank-0/checkpoint-1/", recursive=True
-                        )
-                    ],
+                    paths=["rank-0/checkpoint-1/"],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=64),
                 )
@@ -512,11 +485,7 @@ def test_render_truss_config_delegation():
             checkpoints=[
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
-                    path_details=[
-                        definitions.TrainingArtifactReferencePathDetails(
-                            path_reference="rank-0/checkpoint-1/", recursive=True
-                        )
-                    ],
+                    paths=["rank-0/checkpoint-1/"],
                     model_weight_format=definitions.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=16),
                 )

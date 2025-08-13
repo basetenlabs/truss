@@ -246,7 +246,7 @@ def _get_checkpoint_names(
     prepare_checkpoint_result: PrepareCheckpointResult,
 ) -> list[str]:
     return [
-        checkpoint.path_details[0].path_reference.strip("/").split("/")[-1]
+        checkpoint.paths[0].strip("/").split("/")[-1]
         for checkpoint in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints
     ]
 

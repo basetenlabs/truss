@@ -137,26 +137,13 @@ class ModelWeightsFormat(str, enum.Enum):
         return truss_config.ModelWeightsFormat[self.name]
 
 
-class TrainingArtifactReferencePathDetails(custom_types.ConfigModel):
-    path_reference: str
-    recursive: bool
-
-    def to_truss_config(self) -> truss_config.TrainingArtifactReferencePathDetails:
-        return truss_config.TrainingArtifactReferencePathDetails(
-            path_reference=self.path_reference, recursive=self.recursive
-        )
-
-
 class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
-    path_details: List[TrainingArtifactReferencePathDetails]
+    paths: List[str]
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
-        path_details: List[truss_config.TrainingArtifactReferencePathDetails] = [
-            path_detail.to_truss_config() for path_detail in self.path_details
-        ]
         return truss_config.TrainingArtifactReference(
-            training_job_id=self.training_job_id, path_details=path_details
+            training_job_id=self.training_job_id, paths=self.paths
         )
 
 

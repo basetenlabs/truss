@@ -339,12 +339,11 @@ def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: 
         ]
         # create BasetenPointer from models
         basetenpointer_json = create_basetenpointer_from_models(models=py_models)
-        pointers = json.loads(basetenpointer_json)
-        basetenpointer_list = json.dumps({"pointers": pointers}, indent=2)
-        logging.info(f"debug: created {len(pointers)} number of BasetenPointers")
-        logging.info(f"pointers json: {basetenpointer_list}")
+        bptr_py = json.loads(basetenpointer_json)["pointers"]
+        logging.info(f"created ({len(bptr_py)}) Basetenpointer")
+        logging.info(f"pointers json: {basetenpointer_json}")
         with open(build_dir / "bptr-manifest", "w") as f:
-            f.write(basetenpointer_list)
+            f.write(basetenpointer_json)
     except Exception as e:
         logging.warning(f"debug: failed to create BasetenPointer: {e}")
         # TODO: remove below section + remove logging lines above.
@@ -391,15 +390,7 @@ def generate_docker_server_supervisord_config(build_dir, config):
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
-    if config.training_checkpoints is not None:
-        # With training checkpoints, we want to keep a static supervisord.conf file
-        # that doesn't have any template variables to render.
-        # This keeps the build hash stable, and allows us to use the same
-        # container when only the training checkpoints change.
-        # The start command is set at runtime instead through an environment variable.
-        start_command = "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
-    else:
-        start_command = config.docker_server.start_command
+    start_command = config.docker_server.start_command
     supervisord_contents = supervisord_template.render(start_command=start_command)
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)
@@ -630,12 +621,6 @@ class ServingImageBuilder(ImageBuilder):
             )
 
         if config.model_cache.is_v2:
-            if config.trt_llm:
-                raise RuntimeError(
-                    "TensorRTLLM models is already occupying and using `model_cache` by default. "
-                    "Additional huggingface weights are not allowed. "
-                    "Feel free to reach out to us if you need this feature."
-                )
             logging.info(
                 f"`model_cache` with `use_volume=True` is enabled. Creating {config.model_cache}"
             )

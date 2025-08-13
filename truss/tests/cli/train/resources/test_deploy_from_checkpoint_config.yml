@@ -62,9 +62,8 @@ spec_version: '2.0'
 system_packages: []
 training_checkpoints:
   artifact_references:
-  - path_details:
-    - path_reference: rank-0/checkpoint-1/
-      recursive: true
+  - paths:
+    - rank-0/checkpoint-1/
     training_job_id: job123
   download_folder: /tmp/training_checkpoints
 trt_llm: null

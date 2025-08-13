@@ -593,18 +593,7 @@ def truss_control_container_fs(tmp_path, test_data_path):
 def patch_ping_test_server(test_data_path):
     port = "5001"
     proc = subprocess.Popen(
-        [
-            "poetry",
-            "run",
-            "flask",
-            "--app",
-            "app",
-            "run",
-            "-p",
-            port,
-            "--host",
-            "0.0.0.0",
-        ],
+        ["uv", "run", "flask", "--app", "app", "run", "-p", port, "--host", "0.0.0.0"],
         cwd=str(test_data_path / "patch_ping_test_server"),
     )
     base_url = f"http://127.0.0.1:{port}"

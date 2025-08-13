@@ -554,28 +554,13 @@ class DockerServer(custom_types.ConfigModel):
     liveness_endpoint: str
 
 
-class TrainingArtifactReferencePathDetails(custom_types.ConfigModel):
-    path_reference: str = pydantic.Field(
-        ...,
-        description="Relative path to the artifact",
-        examples=[
-            "rank-0/checkpoint-10/adapter_model.safetensors",
-            "rank-0/checkpoint-10/",
-        ],
-    )
-    recursive: bool = pydantic.Field(
-        ...,
-        description="Whether to recursively download the artifact. Do not set true when path_reference is a file.",
-        examples=[True, False],
-    )
-
-
 class TrainingArtifactReference(custom_types.ConfigModel):
     training_job_id: str = pydantic.Field(
         ..., description="The training job id that the artifact reference belongs to."
     )
-    path_details: list[TrainingArtifactReferencePathDetails] = pydantic.Field(
-        default_factory=list, description="The path details of the artifact reference."
+    paths: list[str] = pydantic.Field(
+        default_factory=list,
+        description="The paths of the files to download which can contain * or ?.",
     )
 
 
