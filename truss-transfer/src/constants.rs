@@ -22,7 +22,7 @@ pub static TRUSS_TRANSFER_NUM_WORKERS: Lazy<u8> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_NUM_WORKERS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(8)
+        .unwrap_or(6)
 });
 
 /// Environment variable for download directory
