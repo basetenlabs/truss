@@ -115,11 +115,8 @@ def _generate_base_image_variations(
             (base_template.format(version, version_tag), base_py3_path, False)
         )
 
-        # NB(nikhil): Python 3.8 base images currently don't have support for development models
-        # on GPUs.
-        fail = False if version != "3.8" else True
         variations.append(
-            (base_template.format(f"{version}-gpu", version_tag), gpu_py3_path, fail)
+            (base_template.format(f"{version}-gpu", version_tag), gpu_py3_path, False)
         )
     return variations
 
@@ -129,15 +126,15 @@ def _generate_base_image_variations(
     "base_image, path, expected_fail",
     _generate_base_image_variations()
     + [
-        ("python:3.8", "/usr/local/bin/python3", False),
-        ("python:3.10", "/usr/local/bin/python3", False),
-        ("python:3.11", "/usr/local/bin/python3", False),
-        ("python:3.13", "/usr/local/bin/python3", False),
+        ("python:3.8-bookworm", "/usr/local/bin/python3", False),
+        ("python:3.10-bookworm", "/usr/local/bin/python3", False),
+        ("python:3.11-bookworm", "/usr/local/bin/python3", False),
+        ("python:3.13-bookworm", "/usr/local/bin/python3", False),
         ("python:alpine", "/usr/local/bin/python3", True),
         ("python:2.7-slim", "/usr/local/bin/python", True),
         ("python:3.7-slim", "/usr/local/bin/python3", True),
         # Base image with `uv` already included.
-        ("ghcr.io/astral-sh/uv:python3.11-bookworm", "/usr/local/bin/python3", True),
+        ("ghcr.io/astral-sh/uv:python3.11-bookworm", "/usr/local/bin/python3", False),
     ],
 )
 def test_build_serving_docker_image_from_user_base_image_live_reload(
@@ -148,8 +145,9 @@ def test_build_serving_docker_image_from_user_base_image_live_reload(
     th.live_reload()
     try:
         th.build_serving_docker_image(cache=False)
+        assert not expected_fail
     except DockerException as exc:
-        assert expected_fail is True
+        assert expected_fail
         assert "It returned with code 1" in str(exc)
 
 
