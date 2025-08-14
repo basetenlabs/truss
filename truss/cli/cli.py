@@ -598,7 +598,6 @@ def push(
                 console.print(message_oai, style="red")
                 sys.exit(1)
 
-        console.print("Potentially emptying checkpoint repo", style="red")
         message_empty_repo = empty_checkpoint_repo_trt_llm_builder(tr)
         if message_empty_repo:
             console.print(message_empty_repo, style="yellow")
