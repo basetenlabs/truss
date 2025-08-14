@@ -1,4 +1,3 @@
-import os
 import re
 import tempfile
 from collections import OrderedDict
@@ -7,7 +6,6 @@ from typing import List, Optional, Union
 
 import rich_click as click
 from InquirerPy import inquirer
-from jinja2 import Template
 
 from truss.base import truss_config
 from truss.cli.train import common
@@ -18,29 +16,21 @@ from truss.cli.train.types import (
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
-    ALLOWED_LORA_RANKS,
-    DEFAULT_LORA_RANK,
     Checkpoint,
     CheckpointList,
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
+    ModelWeightsFormat,
     SecretReference,
 )
 
-VLLM_LORA_START_COMMAND = Template(
-    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'
-    + " --port 8000"
-    + "{{ specify_tensor_parallelism }}"
-    + " --enable-lora"
-    + " --max-lora-rank {{ max_lora_rank }}"
-    + " --dtype bfloat16"
-    + ' --lora-modules {{ lora_modules }}"'
+from .deploy_lora_checkpoints import (
+    hydrate_lora_checkpoint,
+    render_vllm_lora_truss_config,
 )
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
-START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
-
 # If we change this, make sure to update the logic in backend codebase
 CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
 ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
@@ -73,7 +63,9 @@ def prepare_checkpoint_deploy(
     checkpoint_deploy_config = _hydrate_deploy_config(
         checkpoint_deploy_config, remote_provider, project_id, job_id
     )
-    rendered_truss = _render_vllm_lora_truss_config(checkpoint_deploy_config)
+    rendered_truss = _render_truss_config_for_checkpoint_deployment(
+        checkpoint_deploy_config
+    )
     truss_directory = Path(tempfile.mkdtemp())
     truss_config_path = truss_directory / "config.yaml"
     rendered_truss.write_to_yaml_file(truss_config_path)
@@ -101,6 +93,13 @@ def _hydrate_deploy_config(
             "Unable to infer base model id. Reach out to Baseten for support."
         )
     compute = _ensure_compute_spec(deploy_config.compute)
+    _validate_checkpoint_model_weight_formats(checkpoint_details.checkpoints)
+    model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+    if not model_weight_format:
+        raise ValueError(
+            "Unable to infer model weight format. Reach out to Baseten for support."
+        )
+
     model_name = (
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
     )
@@ -108,13 +107,13 @@ def _hydrate_deploy_config(
     deployment_name = _ensure_deployment_name(
         deploy_config.deployment_name, checkpoint_details.checkpoints
     )
-
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
         deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
+        model_weight_format=model_weight_format.to_truss_config(),
     )
 
 
@@ -126,89 +125,58 @@ def _ensure_deployment_name(
 
     default_deployment_name = "checkpoint"
 
-    first_checkpoint_name = checkpoints[0].name.replace("/", "--")
-    if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
-        # We allow for autoincrementing when the checkpoint matches the regex pattern.
-        # In cases where the autoincrementing deployment name is not supported,
-        # ask the user for a deployment name
-        if CHECKPOINT_PATTERN.match(first_checkpoint_name) and len(checkpoints) == 1:
-            return first_checkpoint_name
-    # prompt the user for the deployment name
+    if checkpoints and checkpoints[0].paths:
+        first_checkpoint_name = checkpoints[0].paths[0].strip("/").split("/")[-1]
+
+        if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
+            # Allow autoincrementing if the checkpoint matches both regexes
+            if (
+                CHECKPOINT_PATTERN.match(first_checkpoint_name)
+                and len(checkpoints) == 1
+            ):
+                return first_checkpoint_name
+
+    # If no valid autoincrementing checkpoint name is found, prompt the user
     deployment_name = inquirer.text(
         message="Enter the deployment name.", default=default_deployment_name
     ).execute()
+
     if not deployment_name:
         raise click.UsageError("Deployment name is required.")
+
     return deployment_name
 
 
-def _render_vllm_lora_truss_config(
+def hydrate_checkpoint(
+    job_id: str, checkpoint_id: str, checkpoint: dict, checkpoint_type: str
+) -> Checkpoint:
+    """
+    Generic function to create a Checkpoint object for different model weight formats.
+    This function can be extended to support additional checkpoint types beyond LoRA.
+    """
+
+    if checkpoint_type.lower() == ModelWeightsFormat.LORA.value.lower():
+        return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
+    else:
+        raise ValueError(
+            f"Unsupported checkpoint type: {checkpoint_type}. Contact Baseten for support with other checkpoint types."
+        )
+
+
+def _render_truss_config_for_checkpoint_deployment(
     checkpoint_deploy: DeployCheckpointsConfigComplete,
 ) -> truss_config.TrussConfig:
-    truss_deploy_config = truss_config.TrussConfig.from_yaml(
-        Path(os.path.dirname(__file__), "deploy_from_checkpoint_config.yml")
-    )
-    if not truss_deploy_config.docker_server:
-        raise ValueError(
-            "Unexpected checkpoint deployment config: missing docker_server"
-        )
-
-    truss_deploy_config.model_name = checkpoint_deploy.model_name
-    truss_deploy_config.training_checkpoints = (
-        checkpoint_deploy.checkpoint_details.to_truss_config()
-    )
-    truss_deploy_config.resources = checkpoint_deploy.compute.to_truss_config()
-    for key, value in checkpoint_deploy.runtime.environment_variables.items():
-        if isinstance(value, SecretReference):
-            truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
-        else:
-            truss_deploy_config.environment_variables[key] = value
-
-    start_command_envvars = ""
-    for key, value in checkpoint_deploy.runtime.environment_variables.items():
-        # this is a quirk of serving vllm with secrets - we need to export the secret by cat-ing it
-        if isinstance(value, SecretReference):
-            truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
-            start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
-
-    checkpoint_parts = []
-    for truss_checkpoint in truss_deploy_config.training_checkpoints.checkpoints:  # type: ignore
-        ckpt_path = Path(
-            truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
-            "rank-0",
-            truss_checkpoint.id,
-        )
-        checkpoint_parts.append(f"{truss_checkpoint.name}={ckpt_path}")
-    checkpoint_str = " ".join(checkpoint_parts)
-    max_lora_rank = max(
-        [
-            checkpoint.lora_rank or DEFAULT_LORA_RANK
-            for checkpoint in checkpoint_deploy.checkpoint_details.checkpoints
-        ]
-    )
-    accelerator = checkpoint_deploy.compute.accelerator
-    if accelerator:
-        specify_tensor_parallelism = f" --tensor-parallel-size {accelerator.count}"
+    """
+    Render truss config for checkpoint deployment.
+    Currently supports LoRA checkpoints via vLLM, but can be extended for other formats.
+    """
+    # Delegate to specific rendering function based on model weight format
+    if checkpoint_deploy.model_weight_format == truss_config.ModelWeightsFormat.LORA:
+        return render_vllm_lora_truss_config(checkpoint_deploy)
     else:
-        specify_tensor_parallelism = ""
-
-    start_command_args = {
-        "base_model_id": checkpoint_deploy.checkpoint_details.base_model_id,
-        "lora_modules": checkpoint_str,
-        "envvars": start_command_envvars,
-        "max_lora_rank": max_lora_rank,
-        "specify_tensor_parallelism": specify_tensor_parallelism,
-    }
-    start_command = VLLM_LORA_START_COMMAND.render(**start_command_args)
-    # Note: we set the start command as an environment variable in supervisord config.
-    # This is so that we don't have to change the supervisord config when the start command changes.
-    # Our goal is to reduce the number of times we need to rebuild the image, and allow us to deploy faster.
-    truss_deploy_config.environment_variables[START_COMMAND_ENVVAR_NAME] = start_command
-    # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
-    truss_deploy_config.docker_server.start_command = (
-        f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
-    )
-    return truss_deploy_config
+        raise ValueError(
+            f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Please upgrade to the latest Truss version to access the latest supported formats. Contact Baseten if you would like us to support additional formats."
+        )
 
 
 def _ensure_checkpoint_details(
@@ -246,6 +214,7 @@ def _prompt_user_for_checkpoint_details(
     checkpoint_details.base_model_id = _get_base_model_id(
         checkpoint_details.base_model_id, response_checkpoints[checkpoint_ids[0]]
     )
+
     return checkpoint_details
 
 
@@ -261,7 +230,7 @@ def _process_user_provided_checkpoints(
             )
             if len(details) == 0:
                 raise click.UsageError(
-                    f"Training job {checkpoint.training_job_id} specified by checkpoint {checkpoint.id} not found."
+                    f"Training job {checkpoint.training_job_id} not found."
                 )
             job_response = details[0]
             project_id = job_response["training_project"]["id"]
@@ -273,12 +242,6 @@ def _process_user_provided_checkpoints(
                 checkpoint_response
             )
         checkpoint_response = checkpoints_by_training_job_id[checkpoint.training_job_id]
-        if checkpoint.id not in checkpoint_response:
-            raise click.UsageError(f"Checkpoint {checkpoint.id} not found.")
-        if not checkpoint.name:
-            checkpoint.name = checkpoint.id
-        if not checkpoint.lora_rank:
-            checkpoint.lora_rank = _get_lora_rank(checkpoint_response[checkpoint.id])
     return checkpoint_details
 
 
@@ -295,54 +258,6 @@ def _get_checkpoint_ids_to_deploy(checkpoint_id_options: List[str]) -> str:
     else:
         checkpoint_ids = [checkpoint_id_options[0]]
     return checkpoint_ids
-
-
-def _hydrate_checkpoints(
-    job_id: str, checkpoint_id: str, response_checkpoints: OrderedDict[str, dict]
-) -> Checkpoint:
-    if checkpoint_id == "latest":
-        checkpoint_id = list(response_checkpoints.keys())[-1]
-    checkpoint = response_checkpoints[checkpoint_id]
-    return Checkpoint(
-        training_job_id=job_id,
-        id=checkpoint_id,
-        name=checkpoint_id,
-        lora_rank=_get_lora_rank(checkpoint),
-    )
-
-
-def _get_lora_rank(checkpoint_resp: dict) -> int:
-    lora_adapter_config = checkpoint_resp.get("lora_adapter_config") or {}
-    lora_rank = lora_adapter_config.get("r") or DEFAULT_LORA_RANK
-
-    # If the API returns an invalid value, raise an error
-    if lora_rank not in ALLOWED_LORA_RANKS:
-        raise ValueError(
-            f"LoRA rank {lora_rank} from checkpoint is not in allowed values {sorted(ALLOWED_LORA_RANKS)}. "
-            f"Please use a valid LoRA rank."
-        )
-
-    return lora_rank
-
-
-def _get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
-    if not user_input:
-        # prompt user for hf secret name
-        hf_secret_name = inquirer.select(
-            message="Enter the huggingface secret name.",
-            choices=["hf_access_token", None, "custom"],
-            default="hf_access_token",
-        ).execute()
-        if hf_secret_name == "custom":
-            hf_secret_name = inquirer.text(
-                message="Enter the huggingface secret name."
-            ).execute()
-        if not hf_secret_name:
-            console.print("No hf secret name.", style="yellow")
-        return hf_secret_name
-    if isinstance(user_input, SecretReference):
-        return user_input.name
-    return user_input
 
 
 def _ensure_compute_spec(compute: Optional[Compute]) -> Compute:
@@ -398,7 +313,7 @@ def _ensure_runtime_config(
     if not runtime.environment_variables:
         # Prompt the user for the huggingface secret name as a default. There's much more we could
         # do here, but we're keeping it simple for now.
-        hf_secret_name = _get_hf_secret_name(
+        hf_secret_name = get_hf_secret_name(
             runtime.environment_variables.get(HF_TOKEN_ENVVAR_NAME)
         )
         if hf_secret_name:
@@ -418,3 +333,49 @@ def _fetch_checkpoints(
         for checkpoint in response["checkpoints"]
     )
     return response_checkpoints
+
+
+def _hydrate_checkpoints(
+    job_id: str, checkpoint_id: str, response_checkpoints: OrderedDict[str, dict]
+) -> Checkpoint:
+    if checkpoint_id == "latest":
+        checkpoint_id = list(response_checkpoints.keys())[-1]
+    checkpoint = response_checkpoints[checkpoint_id]
+    checkpoint_type = str(checkpoint["checkpoint_type"])
+    return hydrate_checkpoint(job_id, checkpoint_id, checkpoint, checkpoint_type)
+
+
+def _validate_checkpoint_model_weight_formats(checkpoints: List[Checkpoint]) -> None:
+    """
+    Validates that all checkpoints have the same model weight format.
+    """
+    if not checkpoints:
+        return
+
+    model_weight_format = checkpoints[0].model_weight_format
+    for checkpoint in checkpoints:
+        if checkpoint.model_weight_format != model_weight_format:
+            raise ValueError(
+                "All checkpoints must have the same model weight format. Please select checkpoints with the same model weight format each time you run this command."
+            )
+
+
+def get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
+    """Get HuggingFace secret name from user input or prompt for it."""
+    if not user_input:
+        # prompt user for hf secret name
+        hf_secret_name = inquirer.select(
+            message="Enter the huggingface secret name.",
+            choices=["hf_access_token", None, "custom"],
+            default="hf_access_token",
+        ).execute()
+        if hf_secret_name == "custom":
+            hf_secret_name = inquirer.text(
+                message="Enter the huggingface secret name."
+            ).execute()
+        if not hf_secret_name:
+            console.print("No hf secret name.", style="yellow")
+        return hf_secret_name
+    if isinstance(user_input, SecretReference):
+        return user_input.name
+    return user_input
