@@ -9,7 +9,6 @@ use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
-use tokio::time::Duration;
 
 use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
@@ -260,32 +259,23 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                 // A download task returned an error.
                 // The JoinSet will be dropped, cancelling all other tasks.
                 error!("A download task failed: {}", e);
+                page_tasks.abort_all(); // Abort all paging tasks
+                download_tasks.abort_all(); // Abort all download tasks
                 return Err(anyhow!("Download failure: {}", e));
             }
             Err(e) => {
                 // A Tokio task panicked.
                 // The JoinSet will be dropped, cancelling all other tasks.
                 error!("A Tokio task panicked: {}", e);
+                page_tasks.abort_all(); // Abort all paging tasks
+                download_tasks.abort_all(); // Abort all download tasks
                 return Err(anyhow!("Tokio task panicked: {}", e));
             }
         }
     }
 
     info!("All downloads completed successfully!");
-
-    // Wait for at most 2s to complete.
-    let complete_page = async move {
-        info!("Awaiting completion of all paging tasks...");
-        while let Some(join_result) = page_tasks.join_next().await {
-            if let Err(e) = join_result {
-                warn!("A paging task failed: {}", e);
-            }
-        }
-        info!("All paging tasks completed.");
-    };
-    // wait for 1s to collect, else cancel the page tasks.
-    let _ = tokio::time::timeout(Duration::from_secs(1), complete_page).await;
-
+    page_tasks.abort_all(); // Abort all paging tasks
     Ok(())
 }
 
@@ -296,6 +286,7 @@ async fn page_file_into_memory(path: &Path, semaphore: Arc<Semaphore>) -> Result
     let mut file = fs::File::open(path)
         .await
         .with_context(|| format!("Failed to open file for paging: {}", path.display()))?;
+    debug!("Reading file {} into memory", path.display());
     let mut buffer = vec![0; 1024 * 1024]; // 1MB buffer
                                            // Read the first 1MB of the file to quickly get it into the page cache for other processes.
     file.read(&mut buffer[..]).await?;
@@ -307,6 +298,7 @@ async fn page_file_into_memory(path: &Path, semaphore: Arc<Semaphore>) -> Result
         // Yield to allow other tasks to run.
         tokio::task::yield_now().await;
     }
+    info!("Finished reading file {} into memory", path.display());
     Ok(())
 }
 
