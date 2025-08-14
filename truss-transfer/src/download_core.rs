@@ -116,39 +116,29 @@ pub async fn download_http_to_path_fast(
 
     if url.starts_with("https://huggingface.co") {
         let auth_token = get_hf_secret_from_file(runtime_secret_name);
-        let concurrency = if *TRUSS_TRANSFER_NUM_WORKERS >= 16 { 16 } else { 64 };
+        let concurrency = if *TRUSS_TRANSFER_NUM_WORKERS >= 16 {
+            16
+        } else {
+            64
+        };
         let _ = crate::hf_transfer::download_async(
             url.to_string(),
             path.to_string_lossy().to_string(),
             concurrency, // max_files
-            3,  // parallel_failures
-            5,  // max_retries
+            3,           // parallel_failures
+            5,           // max_retries
             auth_token,
             None, // callback
+            size,
         )
         .await;
         // assure that the file got flushed, without asking each file to flush it
-        for i in 100..0 {
+        for i in 500..0 {
             let final_size = fs::metadata(path).await?.len();
             if final_size == size {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
-            if i == 0 {
-                warn!(
-                    "File {:?} did not flush after download, size mismatch: expected {}, got {}",
-                    path,
-                    size,
-                    final_size
-                );
-                // call sync all
-                let file = fs::File::open(path)
-                    .await
-                    .context(format!("Failed to open file after download: {:?}", path))?;
-                file.sync_all()
-                    .await
-                    .context(format!("Failed to sync file after download: {:?}", path))?;
-            }
         }
     } else {
         let mut client_builder = Client::builder();
@@ -189,16 +179,15 @@ pub async fn download_http_to_path_fast(
         }
 
         file.flush().await.context("Failed to flush file")?;
-    }
-
-    let final_size = fs::metadata(path).await?.len();
-    if final_size != size {
-        return Err(anyhow!(
-            "Downloaded file size mismatch for {:?} (expected {}, got {})",
-            path,
-            size,
-            final_size
-        ));
+        let final_size = fs::metadata(path).await?.len();
+        if final_size != size {
+            return Err(anyhow!(
+                "Downloaded file size mismatch for {:?} (expected {}, got {})",
+                path,
+                size,
+                final_size
+            ));
+        }
     }
 
     info!("Completed fast HTTP download to {:?}", path);

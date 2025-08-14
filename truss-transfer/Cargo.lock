@@ -1900,7 +1900,7 @@ dependencies = [
 
 [[package]]
 name = "truss_transfer"
-version = "0.0.24-rc3"
+version = "0.0.24-rc5"
 dependencies = [
  "anyhow",
  "async-trait",

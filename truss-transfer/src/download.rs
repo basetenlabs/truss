@@ -109,8 +109,10 @@ pub async fn download_file_with_cache(
         }
     }
 
+    actual_size = fs::metadata(&destination).await?.len();
+
     // After the file is locally downloaded, optionally move it to b10cache.
-    if write_to_b10cache {
+    if write_to_b10cache && actual_size == pointer.size {
         match crate::cache::handle_write_b10cache(&destination, &cache_path).await {
             Ok(_) => debug!("b10cache handled successfully."),
             Err(e) => {

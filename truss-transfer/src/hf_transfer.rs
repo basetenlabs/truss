@@ -39,6 +39,7 @@ pub async fn download_async(
     max_retries: usize,
     auth_token: Option<String>,
     callback: Option<Box<dyn Fn(usize) + Send + Sync>>,
+    check_file_size: u64,
 ) -> Result<()> {
     let client = reqwest::Client::builder()
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
@@ -84,6 +85,14 @@ pub async fn download_async(
         .map_err(|err| anyhow!("Error while downloading: {err}"))?;
 
     let size: Vec<&str> = content_range.split('/').collect();
+    if check_file_size != size[1].parse::<u64>()? {
+        return Err(anyhow!(
+            "File size mismatch according to blib range: expected {}, got {}",
+            check_file_size,
+            size[1]
+        ));
+    }
+
     // Content-Range: bytes 0-0/702517648
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
     let length: usize = size
