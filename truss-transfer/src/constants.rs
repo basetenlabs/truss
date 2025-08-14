@@ -2,6 +2,11 @@
 use once_cell::sync::Lazy;
 use std::env;
 
+fn is_truthy(value: &str) -> bool {
+    let lower = value.to_lowercase();
+    lower == "true" || lower == "1" || lower == "yes" || lower == "y"
+}
+
 /// Alternative manifest paths to check
 pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
     "/bptr/bptr-manifest",
@@ -40,20 +45,14 @@ pub static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS: Lazy<u64> = Lazy::new(|| {
 pub static TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD")
         .ok()
-        .map(|s| {
-            let lower = s.to_lowercase();
-            lower == "true" || lower == "1"
-        })
+        .map(|s| is_truthy(&s))
         .unwrap_or(false)
 });
 
 pub static TRUSS_TRANSFER_USE_RANGE_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_USE_RANGE_DOWNLOAD")
         .ok()
-        .map(|s| {
-            let lower = s.to_lowercase();
-            lower == "true" || lower == "1"
-        })
+        .map(|s| is_truthy(&s))
         .unwrap_or(true)
 });
 

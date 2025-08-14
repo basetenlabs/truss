@@ -1,12 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
 use tokio::fs;
-use tokio::io::AsyncReadExt;
+use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -207,7 +208,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("Using {} concurrent workers.", num_workers);
 
     let semaphore_download = Arc::new(Semaphore::new(num_workers));
-    let semaphore_pre_page = Arc::new(Semaphore::new(1));
+    let lock_pre_page = Arc::new(TokioMutex::new(()));
     // resolve the gcs / s3 and pre-sign the urls
     // 6.1 TODO: create features for this to pre-sign url at runtime.
 
@@ -241,35 +242,28 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             Ok(Ok(file_name)) => {
                 // Task succeeded. If PAGE after download is active, load the file into memory.
                 if *TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD {
-                    let sem_clone = semaphore_pre_page.clone();
+                    let lock_clone = lock_pre_page.clone();
                     let file_path = download_dir.join(&file_name);
+
                     page_tasks.spawn(async move {
-                        info!("Paging {} into memory", file_path.display());
-                        if let Err(e) = page_file_into_memory(&file_path, sem_clone).await {
-                            warn!(
-                                "Failed to page file {} into memory: {}",
-                                file_path.display(),
-                                e
-                            );
-                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        page_file_into_memory(&file_path, lock_clone).await;
                         Ok(())
                     });
                 }
             }
             Ok(Err(e)) => {
-                // A download task returned an error.
-                // The JoinSet will be dropped, cancelling all other tasks.
+                // A download task returned an error. Abort all other tasks.
                 error!("A download task failed: {}", e);
-                page_tasks.abort_all(); // Abort all paging tasks
-                download_tasks.abort_all(); // Abort all download tasks
+                download_tasks.abort_all();
+                page_tasks.abort_all();
                 return Err(anyhow!("Download failure: {}", e));
             }
             Err(e) => {
-                // A Tokio task panicked.
-                // The JoinSet will be dropped, cancelling all other tasks.
+                // A Tokio task panicked. Abort all other tasks.
                 error!("A Tokio task panicked: {}", e);
-                page_tasks.abort_all(); // Abort all paging tasks
-                download_tasks.abort_all(); // Abort all download tasks
+                download_tasks.abort_all();
+                page_tasks.abort_all();
                 return Err(anyhow!("Tokio task panicked: {}", e));
             }
         }
@@ -279,31 +273,122 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         "All downloads completed successfully after {:?}",
         timer.elapsed()
     );
-    page_tasks.abort_all(); // Abort all paging tasks
+
+    if !page_tasks.is_empty() {
+        debug!(
+            "Waiting for up to 1 seconds for {} remaining paging tasks to complete...",
+            page_tasks.len()
+        );
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        while let Ok(Some(join_result)) =
+            tokio::time::timeout_at(deadline, page_tasks.join_next()).await
+        {
+            if let Err(e) = join_result {
+                warn!("A paging task panicked: {}", e);
+            }
+        }
+    }
+
+    // If any paging tasks are still running after the timeout, abort them.
+    if !page_tasks.is_empty() {
+        debug!(
+            "Timeout reached. Aborting {} remaining paging tasks.",
+            page_tasks.len()
+        );
+        page_tasks.abort_all();
+    }
+
     Ok(())
 }
 
-/// Reads a file to load it into the OS page cache.
-// reads the first 1MB at first,
-// then waits for global lock and reads the full file.
-async fn page_file_into_memory(path: &Path, semaphore: Arc<Semaphore>) -> Result<()> {
-    let mut file = fs::File::open(path)
-        .await
-        .with_context(|| format!("Failed to open file for paging: {}", path.display()))?;
-    debug!("Pageing beginning of file {} into memory", path.display());
-    let mut buffer = vec![0; 1024 * 1024]; // 1MB buffer
-                                           // Read the first 1MB of the file to quickly get it into the page cache for other processes.
-    file.read(&mut buffer[..]).await?;
+/// A helper struct that calls a function when it's dropped.
+struct DropGuard<F: FnOnce()> {
+    func: Option<F>,
+}
 
-    // Then, acquire a permit to read the rest of the file without competing for disk I/O.
-    let _permit = semaphore.acquire_owned().await?;
-    // This will resume reading from where it left off.
-    while file.read(&mut buffer[..]).await? > 0 {
-        // Yield to allow other tasks to run.
-        tokio::task::yield_now().await;
+impl<F: FnOnce()> DropGuard<F> {
+    fn new(func: F) -> Self {
+        Self { func: Some(func) }
     }
-    info!("Finished pageing file {} into memory", path.display());
-    Ok(())
+}
+
+impl<F: FnOnce()> Drop for DropGuard<F> {
+    fn drop(&mut self) {
+        if let Some(func) = self.func.take() {
+            func();
+        }
+    }
+}
+
+/// Reads a file to load it into the OS page cache.
+/// This version uses a large buffer and runs the I/O operations in a blocking thread
+/// to avoid stalling the async runtime.
+async fn page_file_into_memory(path: &Path, lock: Arc<TokioMutex<()>>) {
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+
+    // This guard ensures the flag is set if this async function is dropped (e.g., by task abortion).
+    let _guard = DropGuard::new({
+        let flag_clone = cancel_flag.clone();
+        move || {
+            flag_clone.store(true, Ordering::Relaxed);
+        }
+    });
+
+    // Acquire the lock to ensure only one paging operation happens at a time.
+    let _guard = lock.lock().await;
+    debug!("Paging {} into memory", path.display());
+    let path_owned = path.to_path_buf();
+
+    let result = tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
+        use std::fs::File;
+        use std::io::Read;
+
+        let mut file = File::open(&path_owned)
+            .with_context(|| format!("Failed to open file for paging: {}", path_owned.display()))?;
+
+        // Use a large buffer for more efficient disk reads, capped to avoid excessive memory use.
+        // 256 MB is a good starting point.
+        const BUFFER_SIZE: u64 = 256 * 1024 * 1024;
+        // check buffer size or file_size metadata
+        let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        let buffer_size = file_len.min(BUFFER_SIZE) as usize;
+
+        let mut buffer = vec![0; buffer_size];
+
+        // Read the file chunk by chunk to load it into the OS page cache.
+        while file.read(&mut buffer)? > 0 {
+            if cancel_flag.load(Ordering::Relaxed) {
+                info!("Paging for file {} cancelled.", path_owned.display());
+                return Err(anyhow!("Paging operation was cancelled."));
+            }
+        }
+        if file_len > BUFFER_SIZE {
+            debug!("Finished paging file {} into memory", path_owned.display());
+        } else {
+            info!("Finished paging file {} into memory", path_owned.display());
+        }
+
+        Ok(())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(_)) => { /* Paging completed successfully */ }
+        Ok(Err(e)) => {
+            // Log errors that are not cancellation-related.
+            if !e.to_string().contains("Paging operation was cancelled.") {
+                error!("Failed to page file {} into memory: {}", path.display(), e);
+            }
+        }
+        Err(e) => {
+            // The spawn_blocking task itself panicked or was cancelled.
+            if e.is_cancelled() {
+                warn!("Paging task for {} was cancelled.", path.display());
+            } else {
+                error!("Paging task for {} panicked: {}", path.display(), e);
+            }
+        }
+    }
 }
 
 /// Validate expiration and build a vector of (file_name, (URL, hash, size)).
