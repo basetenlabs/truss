@@ -31,11 +31,14 @@ jobs:
       id: bump-version
       run: ./bin/bump_truss_version.sh ${{ steps.get-version.outputs.curr_version }} ${{ github.event.inputs.release_type }}
 
+    - name: Update lock file
+      run: uv lock
+
     - name: Commit changes
       run: |
         git config --local user.email "96544894+basetenbot@users.noreply.github.com"
         git config --local user.name "basetenbot"
-        git add pyproject.toml
+        git add pyproject.toml uv.lock
         git commit -m "Bump version to $TARGET_VERSION"
       env:
         TARGET_VERSION: ${{ steps.bump-version.outputs.version }}

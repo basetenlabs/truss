@@ -19,7 +19,7 @@ docker_server:
   server_port: 8000
   start_command: sh -c "HF_TOKEN=$(cat /secrets/hf_access_token) vllm serve google/gemma-3-27b-it
     --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 16 --dtype
-    bfloat16 --lora-modules checkpoint-1=/tmp/training_checkpoints/kowpeqj/checkpoint-1"
+    bfloat16 --lora-modules job123=/tmp/training_checkpoints/job123/rank-0/checkpoint-1"
 environment_variables:
   HF_HUB_ENABLE_HF_TRANSFER: '1'
   VLLM_LOGGING_LEVEL: WARNING
@@ -61,9 +61,10 @@ secrets:
 spec_version: '2.0'
 system_packages: []
 training_checkpoints:
-  checkpoints:
-  - id: kowpeqj/checkpoint-1
-    name: checkpoint-1
+  artifact_references:
+  - paths:
+    - rank-0/checkpoint-1/
+    training_job_id: job123
   download_folder: /tmp/training_checkpoints
 trt_llm: null
 use_local_src: false
