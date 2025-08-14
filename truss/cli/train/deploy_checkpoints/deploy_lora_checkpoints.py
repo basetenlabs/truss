@@ -28,6 +28,7 @@ def hydrate_lora_checkpoint(
     job_id: str, checkpoint_id: str, checkpoint: dict
 ) -> LoRACheckpoint:
     """Create a LoRA-specific Checkpoint object."""
+    # NOTE: Slash at the end is important since it means the checkpoint is a directory
     paths = [f"rank-0/{checkpoint_id}/"]
     return LoRACheckpoint(
         training_job_id=job_id,
