@@ -56,6 +56,13 @@ pub static TRUSS_TRANSFER_USE_RANGE_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
         .unwrap_or(false)
 });
 
+pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS: Lazy<usize> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(192)
+});
+
 /// Fallback download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 

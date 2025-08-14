@@ -208,7 +208,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("Using {} concurrent workers.", num_workers);
 
     let semaphore_download = Arc::new(Semaphore::new(num_workers));
-    let semaphore_range_dw = Arc::new(Semaphore::new(192));
+    let semaphore_range_dw = Arc::new(Semaphore::new(*TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS));
     let lock_pre_page = Arc::new(TokioMutex::new(()));
     // resolve the gcs / s3 and pre-sign the urls
     // 6.1 TODO: create features for this to pre-sign url at runtime.

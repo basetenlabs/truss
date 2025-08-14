@@ -124,7 +124,7 @@ pub async fn download_http_to_path_fast(
     };
     if *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD {
         // global concurrency
-        let concurrency = 64;
+        let concurrency = 84;
         let _ = crate::hf_transfer::download_async(
             url.to_string(),
             path.to_string_lossy().to_string(),
