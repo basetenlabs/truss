@@ -117,7 +117,7 @@ pub async fn download_http_to_path_fast(
     if url.starts_with("https://huggingface.co") {
         let auth_token = get_hf_secret_from_file(runtime_secret_name);
         let concurrency = if *TRUSS_TRANSFER_NUM_WORKERS >= 16 {
-            16
+            12
         } else {
             64
         };
@@ -133,12 +133,12 @@ pub async fn download_http_to_path_fast(
         )
         .await;
         // assure that the file got flushed, without asking each file to flush it
-        for i in 500..0 {
+        for i in 250..0 {
             let final_size = fs::metadata(path).await?.len();
             if final_size == size {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
             if i == 0 {
                 warn!(
                     "Metadata of {} not synced to os. Skipping b10cache",

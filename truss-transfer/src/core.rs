@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
@@ -56,7 +56,7 @@ pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<Stri
 
 /// Asynchronous implementation of the lazy data resolver logic.
 async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> Result<()> {
-    info!("Checking for manifest files in multiple locations...");
+    debug!("Checking for manifest files in multiple locations...");
 
     let mut num_workers = num_workers;
 
@@ -113,7 +113,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
 
     // 4. Validate expiration and build the resolution map
     let mut resolution_map = build_resolution_map(&merged_manifest)?;
-    info!("All pointers validated successfully.");
+    debug!("All pointers validated successfully.");
 
     // 5. Check if b10cache is enabled
     let allowed_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
@@ -213,7 +213,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     // 6.1 TODO: create features for this to pre-sign url at runtime.
 
     // 7. Spawn download tasks
-    info!("Spawning download tasks...");
+    debug!("Spawning download tasks...");
     let mut download_tasks = JoinSet::new();
     let mut page_tasks: JoinSet<Result<(), anyhow::Error>> = JoinSet::new();
 
