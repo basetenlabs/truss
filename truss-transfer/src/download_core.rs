@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
-use crate::constants::TRUSS_TRANSFER_NUM_WORKERS;
+use crate::constants::{TRUSS_TRANSFER_NUM_WORKERS, TRUSS_TRANSFER_USE_RANGE_DOWNLOAD};
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -113,13 +113,12 @@ pub async fn download_http_to_path_fast(
 
     // The monitor will be automatically aborted when `_monitor_guard` goes out of scope.
     let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(path.to_path_buf(), size));
-
-    if true {
-        let auth_token = if url.starts_with("https://huggingface.co") {
-            get_hf_secret_from_file(runtime_secret_name)
-        } else {
-            None
-        };
+    let auth_token = if url.starts_with("https://huggingface.co") {
+        get_hf_secret_from_file(runtime_secret_name)
+    } else {
+        None
+    };
+    if *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD {
         let concurrency = if *TRUSS_TRANSFER_NUM_WORKERS >= 16 {
             12
         } else {
@@ -150,6 +149,7 @@ pub async fn download_http_to_path_fast(
                 );
             }
         }
+        info!("Completed range HTTP download to {:?}", path);
     } else {
         let mut client_builder = Client::builder();
         client_builder = client_builder.http1_only();
@@ -160,7 +160,10 @@ pub async fn download_http_to_path_fast(
         }
         let client = client_builder.build()?;
 
-        let request_builder = client.get(url);
+        let mut request_builder = client.get(url);
+        if let Some(token) = auth_token {
+            request_builder = request_builder.header("Authorization", format!("Bearer {token}"));
+        }
 
         let resp = request_builder
             .send()
@@ -198,9 +201,9 @@ pub async fn download_http_to_path_fast(
                 final_size
             ));
         }
+        info!("Completed HTTP download to {:?}", path);
     }
 
-    info!("Completed fast HTTP download to {:?}", path);
     Ok(())
 }
 

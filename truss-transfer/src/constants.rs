@@ -47,6 +47,16 @@ pub static TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
         .unwrap_or(false)
 });
 
+pub static TRUSS_TRANSFER_USE_RANGE_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_USE_RANGE_DOWNLOAD")
+        .ok()
+        .map(|s| {
+            let lower = s.to_lowercase();
+            lower == "true" || lower == "1"
+        })
+        .unwrap_or(true)
+});
+
 /// Fallback download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 
