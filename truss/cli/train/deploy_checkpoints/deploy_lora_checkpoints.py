@@ -100,9 +100,7 @@ def render_vllm_lora_truss_config(
         "max_lora_rank": max_lora_rank,
         "specify_tensor_parallelism": specify_tensor_parallelism,
     }
-    start_command = VLLM_LORA_START_COMMAND.render(
-        **start_command_args
-    )
+    start_command = VLLM_LORA_START_COMMAND.render(**start_command_args)
     # Note: we set the start command as an environment variable in supervisord config.
     # This is so that we don't have to change the supervisord config when the start command changes.
     # Our goal is to reduce the number of times we need to rebuild the image, and allow us to deploy faster.
