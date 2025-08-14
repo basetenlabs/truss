@@ -4,11 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
-use chrono;
 use log::{error, info, warn};
-use rand;
-use serde_json;
-use serde_yaml;
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
@@ -77,17 +73,17 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             // 2. Parse YAML/JSON asynchronously
             let file_data = fs::read_to_string(manifest_path)
                 .await
-                .with_context(|| format!("Unable to read manifest from {}", manifest_path_str))?;
+                .with_context(|| format!("Unable to read manifest from {manifest_path_str}"))?;
 
             // todo: try both JSON and YAML parsing
             // If it fails, we will try the other format
             let bptr_manifest: BasetenPointerManifest = if manifest_path_str.ends_with(".json") {
                 serde_json::from_str(&file_data).with_context(|| {
-                    format!("Failed to parse JSON manifest from {}", manifest_path_str)
+                    format!("Failed to parse JSON manifest from {manifest_path_str}")
                 })?
             } else {
                 serde_yaml::from_str(&file_data).with_context(|| {
-                    format!("Failed to parse YAML manifest from {}", manifest_path_str)
+                    format!("Failed to parse YAML manifest from {manifest_path_str}")
                 })?
             };
 

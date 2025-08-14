@@ -5,7 +5,7 @@ use log::{debug, info, warn};
 
 use crate::constants::*;
 use crate::download_core::{
-    check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path,
+    check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path_fast,
     download_s3_to_path,
 };
 
@@ -68,7 +68,7 @@ pub async fn download_file_with_cache(
     // Download the file to the local path based on resolution type
     match &pointer.resolution {
         crate::types::Resolution::Http(http_resolution) => {
-            download_http_to_path(
+            download_http_to_path_fast(
                 &http_resolution.url,
                 &destination,
                 pointer.size,

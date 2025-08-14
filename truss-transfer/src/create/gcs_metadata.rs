@@ -7,8 +7,7 @@ use crate::secrets::get_secret_path;
 pub fn parse_gcs_uri(uri: &str) -> Result<(String, String), GcsError> {
     if !uri.starts_with("gs://") {
         return Err(GcsError::InvalidUri(format!(
-            "URI must start with gs://: {}",
-            uri
+            "URI must start with gs://: {uri}"
         )));
     }
 

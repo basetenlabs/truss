@@ -3,8 +3,6 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use log::{info, warn};
-use num_cpus;
-use rand;
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 
@@ -45,10 +43,10 @@ pub async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Re
         if bptr.size > (2 * B10FS_BENCHMARK_SIZE as u64) && cache_path.exists() {
             let metadata = fs::metadata(&cache_path).await?;
             let file_size = metadata.len();
-            if file_size == bptr.size as u64 {
+            if file_size == bptr.size {
                 let mut file = fs::File::open(&cache_path)
                     .await
-                    .with_context(|| format!("Failed to open file {:?}", cache_path))?;
+                    .with_context(|| format!("Failed to open file {cache_path:?}"))?;
                 // benchmark, read 100MB
                 let mut buffer = vec![0u8; B10FS_BENCHMARK_SIZE]; // 100MB buffer
                 let start_time = std::time::Instant::now();
@@ -79,5 +77,5 @@ pub async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Re
     }
     info!("Skipping b10cache speed check.");
     // no file > 512MB found in cache
-    return Ok(true);
+    Ok(true)
 }

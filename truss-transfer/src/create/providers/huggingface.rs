@@ -39,6 +39,6 @@ impl StorageProvider for HuggingFaceProvider {
         }
         create_hf_basetenpointers(repo, model_path)
             .await
-            .map_err(|e| anyhow::Error::from(e))
+            .map_err(anyhow::Error::from)
     }
 }

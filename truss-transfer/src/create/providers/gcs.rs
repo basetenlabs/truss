@@ -60,7 +60,7 @@ impl CloudMetadataProvider for GcsProvider {
     }
 
     fn generate_uid(&self, _bucket: &str, _object_path: &str, hash: &str) -> String {
-        format!("gcs-{}", hash)
+        format!("gcs-{hash}")
     }
 }
 
