@@ -122,7 +122,10 @@ def _hydrate_deploy_config(
     model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
 
     base_model_id = checkpoint_details.base_model_id
-    model_name = _get_model_name(model_weight_format, base_model_id)
+    if deploy_config.model_name:
+        model_name = deploy_config.model_name
+    else:
+        model_name = _get_model_name(model_weight_format, base_model_id)
 
     compute = _ensure_compute_spec(deploy_config.compute)
 
