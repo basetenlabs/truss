@@ -56,7 +56,7 @@ pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<Stri
 /// Asynchronous implementation of the lazy data resolver logic.
 async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> Result<()> {
     debug!("Checking for manifest files in multiple locations...");
-
+    let timer = tokio::time::Instant::now();
     let mut num_workers = num_workers;
 
     // 1. Check multiple manifest locations and collect all available manifests
@@ -275,7 +275,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         }
     }
 
-    info!("All downloads completed successfully!");
+    info!("All downloads completed successfully after {:?}", timer.elapsed());
     page_tasks.abort_all(); // Abort all paging tasks
     Ok(())
 }
