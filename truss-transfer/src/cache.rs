@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::env;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -16,14 +15,6 @@ use tokio::time::{interval, Duration};
 
 use crate::constants::*;
 use crate::download_core::check_metadata_size;
-
-/// Get the cleanup threshold hours from environment variable
-fn get_b10fs_cleanup_threshold_hours() -> u64 {
-    env::var(TRUSS_TRANSFER_B10FS_CLEANUP_HOURS_ENV_VAR)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(TRUSS_TRANSFER_B10FS_DEFAULT_CLEANUP_HOURS)
-}
 
 /// Helper function to get the file's last access time as a Unix timestamp.
 /// On Unix, it uses `metadata.atime()`. On Windows, it uses `metadata.accessed()`.
@@ -49,7 +40,7 @@ pub async fn cleanup_b10cache_and_get_space_stats(
     manifest_hash_to_size_map: &HashMap<String, u64>,
 ) -> Result<(u64, u64)> {
     // Returns (available_volume_bytes, manifest_files_in_cache_bytes)
-    let cleanup_threshold_hours = get_b10fs_cleanup_threshold_hours();
+    let cleanup_threshold_hours = *TRUSS_TRANSFER_B10FS_CLEANUP_HOURS;
     let cache_dir_path = Path::new(CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
