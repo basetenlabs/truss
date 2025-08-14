@@ -127,11 +127,11 @@ mod tests {
                 // TODO: refactor this test to access the .pointers attribute
                 let pretty_json =
                     serde_json::to_string_pretty(&manifest).expect("Failed to pretty print JSON");
-                println!("{}", pretty_json);
+                println!("{pretty_json}");
 
                 // Test that the structure is correct
                 assert!(!manifest.is_empty(), "Manifest should not be empty");
-                println!("{}", pretty_json);
+                println!("{pretty_json}");
 
                 // Test that the structure is correct
                 assert!(!manifest.is_empty(), "Manifest should not be empty");
@@ -151,7 +151,7 @@ mod tests {
                 for pointer in manifest {
                     // Check required fields exist
                     for field in &required_fields {
-                        assert!(pointer.get(field).is_some(), "Missing field: {}", field);
+                        assert!(pointer.get(field).is_some(), "Missing field: {field}");
                     }
 
                     // Check resolution fields
@@ -162,8 +162,7 @@ mod tests {
                     for field in &resolution_fields {
                         assert!(
                             resolution.get(field).is_some(),
-                            "Missing resolution field: {}",
-                            field
+                            "Missing resolution field: {field}"
                         );
                     }
 
@@ -174,8 +173,7 @@ mod tests {
                         .expect("URL should be a string");
                     assert!(
                         url.contains(HF_REVISION),
-                        "URL should contain revision: {}",
-                        url
+                        "URL should contain revision: {url}"
                     );
 
                     // Verify that it's an HTTP resolution
@@ -209,8 +207,7 @@ mod tests {
                         .expect("File name should be a string");
                     assert!(
                         file_name.starts_with("/app/model_cache/julien_dummy/"),
-                        "File name should start with correct path: {}",
-                        file_name
+                        "File name should start with correct path: {file_name}"
                     );
 
                     // if name contains pytorch_model.bin, check if size is 65100 byte
@@ -245,20 +242,13 @@ mod tests {
                 let expected_files = ["config.json", "README.md"];
                 for expected_file in &expected_files {
                     let found = file_names.iter().any(|name| name.contains(expected_file));
-                    assert!(
-                        found,
-                        "Expected file {} not found in manifest",
-                        expected_file
-                    );
+                    assert!(found, "Expected file {expected_file} not found in manifest");
                 }
             }
             Err(e) => {
                 // This test might fail if we don't have network access or if the HuggingFace API is down
                 // In that case, we'll print the error but not fail the test
-                println!(
-                    "Warning: HuggingFace test failed (this might be expected in CI): {}",
-                    e
-                );
+                println!("Warning: HuggingFace test failed (this might be expected in CI): {e}");
 
                 // Only fail if it's clearly a code issue, not a network issue
                 if e.to_string()
@@ -274,7 +264,7 @@ mod tests {
                 }
 
                 // If it's not a network issue, then it's a real failure
-                panic!("Test failed with non-network error: {}", e);
+                panic!("Test failed with non-network error: {e}");
             }
         }
     }
@@ -300,7 +290,7 @@ mod tests {
         match result {
             Ok(manifest_json) => {
                 println!("Azure support working! Generated manifest:");
-                println!("{}", manifest_json);
+                println!("{manifest_json}");
 
                 // Basic validation
                 let manifest: Vec<serde_json::Value> =
@@ -321,7 +311,7 @@ mod tests {
                 println!("✓ Azure provider test passed");
             }
             Err(e) => {
-                println!("Azure test failed (expected without credentials): {}", e);
+                println!("Azure test failed (expected without credentials): {e}");
                 // This is expected since we don't have real Azure credentials
                 // The important thing is that the provider pattern works
             }

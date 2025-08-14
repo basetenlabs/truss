@@ -2,7 +2,6 @@ use std::env;
 use std::io::Write;
 use std::sync::Once;
 
-use chrono;
 use env_logger::Builder;
 use log::{warn, LevelFilter};
 

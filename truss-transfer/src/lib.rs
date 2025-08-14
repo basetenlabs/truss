@@ -10,6 +10,7 @@ mod core;
 mod create;
 mod download;
 mod download_core;
+mod hf_transfer;
 mod secrets;
 mod speed_checks;
 mod types;
@@ -364,7 +365,6 @@ mod tests {
         assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
 
         // Test environment variable names
-        assert_eq!(BASETEN_FS_ENABLED_ENV_VAR, "BASETEN_FS_ENABLED");
         assert_eq!(
             TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR,
             "TRUSS_TRANSFER_DOWNLOAD_DIR"
@@ -377,10 +377,9 @@ mod tests {
         assert_eq!(SECRETS_BASE_PATH, "/secrets");
 
         // Test manifest paths
-        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 4);
+        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 3);
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest.json"));
-        assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/static-bptr-manifest.json"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/static-bptr/static-bptr-manifest.json"));
     }
 

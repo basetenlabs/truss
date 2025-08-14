@@ -5,9 +5,12 @@ use log::{debug, info, warn};
 
 use crate::constants::*;
 use crate::download_core::{
-    check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path,
+    check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path_fast,
     download_s3_to_path,
 };
+use std::sync::Arc;
+use tokio::fs;
+use tokio::sync::Semaphore;
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 /// Now handles both HTTP and GCS downloads with unified caching logic.
@@ -17,7 +20,9 @@ pub async fn download_file_with_cache(
     file_name: &str,
     read_from_b10cache: bool,
     write_to_b10cache: bool,
-) -> Result<()> {
+    num_workers: usize,
+    semaphore_range_dw: Arc<Semaphore>,
+) -> Result<String> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(&pointer.hash);
 
@@ -27,7 +32,7 @@ pub async fn download_file_with_cache(
             "File {} already exists with correct size. Skipping download.",
             file_name
         );
-        return Ok(());
+        return Ok(file_name.to_string());
     } else if destination.exists() {
         warn!(
             "File {} exists but size mismatch. Redownloading.",
@@ -55,7 +60,7 @@ pub async fn download_file_with_cache(
                     "Symlink created successfully. Skipping download for {}.",
                     file_name
                 );
-                return Ok(());
+                return Ok(file_name.to_string());
             }
         } else {
             warn!(
@@ -68,11 +73,13 @@ pub async fn download_file_with_cache(
     // Download the file to the local path based on resolution type
     match &pointer.resolution {
         crate::types::Resolution::Http(http_resolution) => {
-            download_http_to_path(
+            download_http_to_path_fast(
                 &http_resolution.url,
                 &destination,
                 pointer.size,
                 &pointer.runtime_secret_name,
+                num_workers,
+                semaphore_range_dw,
             )
             .await?;
         }
@@ -109,8 +116,10 @@ pub async fn download_file_with_cache(
         }
     }
 
+    let actual_size = fs::metadata(&destination).await?.len();
+
     // After the file is locally downloaded, optionally move it to b10cache.
-    if write_to_b10cache {
+    if write_to_b10cache && actual_size == pointer.size {
         match crate::cache::handle_write_b10cache(&destination, &cache_path).await {
             Ok(_) => debug!("b10cache handled successfully."),
             Err(e) => {
@@ -120,5 +129,5 @@ pub async fn download_file_with_cache(
         }
     }
 
-    Ok(())
+    Ok(file_name.to_string())
 }

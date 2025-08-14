@@ -1,6 +1,6 @@
 use crate::bindings::init_logger_once;
 use crate::core::lazy_data_resolve_entrypoint;
-use log::{error, info};
+use log::error;
 
 /// Running the CLI directly.
 pub fn main() -> anyhow::Result<()> {

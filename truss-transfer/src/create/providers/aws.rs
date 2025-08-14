@@ -52,7 +52,7 @@ impl CloudMetadataProvider for AwsProvider {
     }
 
     fn generate_uid(&self, bucket: &str, object_path: &str, _hash: &str) -> String {
-        format!("s3:{}:{}", bucket, object_path)
+        format!("s3:{bucket}:{object_path}")
     }
 }
 
