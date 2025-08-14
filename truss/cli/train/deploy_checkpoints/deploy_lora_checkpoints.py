@@ -1,6 +1,3 @@
-import os
-from pathlib import Path
-
 from jinja2 import Template
 
 from truss.base import truss_config
@@ -10,7 +7,12 @@ from truss_train.definitions import (
     DEFAULT_LORA_RANK,
     LoRACheckpoint,
     LoRADetails,
-    SecretReference,
+)
+
+from .deploy_checkpoints_helpers import (
+    build_checkpoint_string,
+    setup_base_truss_config,
+    setup_environment_variables_and_secrets,
 )
 
 VLLM_LORA_START_COMMAND = Template(
@@ -41,43 +43,13 @@ def render_vllm_lora_truss_config(
     checkpoint_deploy: DeployCheckpointsConfigComplete,
 ) -> truss_config.TrussConfig:
     """Render truss config specifically for LoRA checkpoints using vLLM."""
-    truss_deploy_config = truss_config.TrussConfig.from_yaml(
-        Path(os.path.dirname(__file__), "..", "deploy_from_checkpoint_config.yml")
+    truss_deploy_config = setup_base_truss_config(checkpoint_deploy)
+
+    start_command_envvars = setup_environment_variables_and_secrets(
+        truss_deploy_config, checkpoint_deploy
     )
-    if not truss_deploy_config.docker_server:
-        raise ValueError(
-            "Unexpected checkpoint deployment config: missing docker_server"
-        )
 
-    truss_deploy_config.model_name = checkpoint_deploy.model_name
-    truss_deploy_config.training_checkpoints = (
-        checkpoint_deploy.checkpoint_details.to_truss_config()
-    )
-    truss_deploy_config.resources = checkpoint_deploy.compute.to_truss_config()
-    for key, value in checkpoint_deploy.runtime.environment_variables.items():
-        if isinstance(value, SecretReference):
-            truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
-        else:
-            truss_deploy_config.environment_variables[key] = value
-
-    start_command_envvars = ""
-    for key, value in checkpoint_deploy.runtime.environment_variables.items():
-        if isinstance(value, SecretReference):
-            truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
-            start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
-
-    checkpoint_parts = []
-    for (
-        truss_checkpoint
-    ) in truss_deploy_config.training_checkpoints.artifact_references:  # type: ignore
-        ckpt_path = Path(
-            truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
-            truss_checkpoint.training_job_id,
-            truss_checkpoint.paths[0],
-        )
-        checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
-
-    checkpoint_str = " ".join(checkpoint_parts)
+    checkpoint_str = build_checkpoint_string(truss_deploy_config)
     max_lora_rank = max(
         [
             checkpoint.lora_details.rank or DEFAULT_LORA_RANK
@@ -98,7 +70,7 @@ def render_vllm_lora_truss_config(
         "max_lora_rank": max_lora_rank,
         "specify_tensor_parallelism": specify_tensor_parallelism,
     }
-    truss_deploy_config.docker_server.start_command = VLLM_LORA_START_COMMAND.render(
+    truss_deploy_config.docker_server.start_command = VLLM_LORA_START_COMMAND.render(  # type: ignore[union-attr]
         **start_command_args
     )
     return truss_deploy_config

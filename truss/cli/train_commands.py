@@ -238,7 +238,7 @@ def deploy_checkpoints(
     dry_run: bool,
 ):
     """
-    Deploy a LoRA checkpoint via vLLM.
+    Deploy a checkpoint via vLLM.
     """
 
     if not remote:

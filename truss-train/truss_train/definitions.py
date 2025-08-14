@@ -132,6 +132,7 @@ class ModelWeightsFormat(str, enum.Enum):
     """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
     LORA = "LoRA"
+    FULL = "Full"
 
     def to_truss_config(self) -> truss_config.ModelWeightsFormat:
         return truss_config.ModelWeightsFormat[self.name]
@@ -165,6 +166,10 @@ class LoRADetails(custom_types.ConfigModel):
 class LoRACheckpoint(Checkpoint):
     lora_details: LoRADetails
     model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
+
+
+class FullCheckpoint(Checkpoint):
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):
