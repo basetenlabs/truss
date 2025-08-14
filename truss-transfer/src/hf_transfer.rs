@@ -40,6 +40,7 @@ pub async fn download_async(
     auth_token: Option<String>,
     callback: Option<Box<dyn Fn(usize) + Send + Sync>>,
     check_file_size: u64,
+    semaphore_global: Arc<Semaphore>,
 ) -> Result<()> {
     let client = reqwest::Client::builder()
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
@@ -116,11 +117,15 @@ pub async fn download_async(
         let stop = std::cmp::min(start + chunk_size - 1, length);
         let semaphore = semaphore.clone();
         let parallel_failures_semaphore = parallel_failures_semaphore.clone();
+        let semaphore_global = semaphore_global.clone();
         handles.push(tokio::spawn(async move {
             let permit = semaphore
                 .acquire_owned()
                 .await
                 .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+            let permit_global = semaphore_global.acquire_owned().await.map_err(|err| {
+                anyhow!("Failed to acquire global semaphore: {err}")
+            })?;
             let mut chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone()).await;
             let mut i = 0;
             if parallel_failures > 0 {
@@ -145,6 +150,7 @@ pub async fn download_async(
                 }
             }
             drop(permit);
+            drop(permit_global);
             chunk.map_err(|e| anyhow!("Downloading error {e}")).and(Ok(stop - start))
         }));
     }

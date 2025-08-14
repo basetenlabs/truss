@@ -9,12 +9,13 @@ use futures_util::StreamExt;
 use log::{debug, info, warn};
 use object_store::ObjectStore;
 use reqwest::Client;
-use std::cmp::max;
 use tokio::fs;
 use tokio::sync::mpsc;
 use tokio::task::{self, JoinHandle};
 use tokio::time::Instant;
 use tokio::time::{interval, Duration};
+use tokio::sync::Semaphore;
+use std::sync::Arc;
 
 use crate::secrets::get_hf_secret_from_file;
 
@@ -99,6 +100,7 @@ pub async fn download_http_to_path_fast(
     size: u64,
     runtime_secret_name: &str,
     num_workers: usize,
+    semaphore_range_dw: Arc<Semaphore>,
 ) -> Result<()> {
     // Use hf_transfer for HuggingFace downloads
     if let Some(parent) = path.parent() {
@@ -122,8 +124,7 @@ pub async fn download_http_to_path_fast(
     };
     if *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD {
         // global concurrency
-
-        let concurrency = max(8, 384 / num_workers);
+        let concurrency = 64;
         let _ = crate::hf_transfer::download_async(
             url.to_string(),
             path.to_string_lossy().to_string(),
@@ -133,6 +134,7 @@ pub async fn download_http_to_path_fast(
             auth_token,
             None, // callback
             size,
+            semaphore_range_dw,
         )
         .await;
         // assure that the file got flushed, without asking each file to flush it

@@ -208,6 +208,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("Using {} concurrent workers.", num_workers);
 
     let semaphore_download = Arc::new(Semaphore::new(num_workers));
+    let semaphore_range_dw = Arc::new(Semaphore::new(192));
     let lock_pre_page = Arc::new(TokioMutex::new(()));
     // resolve the gcs / s3 and pre-sign the urls
     // 6.1 TODO: create features for this to pre-sign url at runtime.
@@ -220,6 +221,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     for (file_name, pointer) in resolution_map {
         let download_dir = download_dir.clone();
         let sem_clone = semaphore_download.clone();
+        let semaphore_range_dw_clone = semaphore_range_dw.clone();
         download_tasks.spawn(async move {
             let _permit = sem_clone.acquire_owned().await?;
             log::debug!("Handling file: {}", file_name);
@@ -230,6 +232,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                 read_from_b10cache,
                 write_to_b10cache,
                 num_workers,
+                semaphore_range_dw_clone,
             )
             .await
         });

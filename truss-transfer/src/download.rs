@@ -9,6 +9,8 @@ use crate::download_core::{
     download_s3_to_path,
 };
 use tokio::fs;
+use tokio::sync::Semaphore;
+use std::sync::Arc;
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 /// Now handles both HTTP and GCS downloads with unified caching logic.
@@ -19,6 +21,7 @@ pub async fn download_file_with_cache(
     read_from_b10cache: bool,
     write_to_b10cache: bool,
     num_workers: usize,
+    semaphore_range_dw: Arc<Semaphore>,
 ) -> Result<String> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_path = Path::new(CACHE_DIR).join(&pointer.hash);
@@ -76,6 +79,7 @@ pub async fn download_file_with_cache(
                 pointer.size,
                 &pointer.runtime_secret_name,
                 num_workers,
+                semaphore_range_dw,
             )
             .await?;
         }
