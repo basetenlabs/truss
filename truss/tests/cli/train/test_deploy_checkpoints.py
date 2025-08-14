@@ -15,6 +15,10 @@ from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     _render_truss_config_for_checkpoint_deployment,
     hydrate_checkpoint,
 )
+from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
+    hydrate_full_checkpoint,
+    render_vllm_full_truss_config,
+)
 from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
     _get_lora_rank,
     hydrate_lora_checkpoint,
@@ -110,7 +114,7 @@ def test_render_truss_config_for_checkpoint_deployment():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=16),
                 )
             ],
@@ -202,7 +206,7 @@ def test_prepare_checkpoint_deploy_complete_config(
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["job123/rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
@@ -247,7 +251,7 @@ def test_prepare_checkpoint_deploy_complete_config(
     assert len(config.checkpoint_details.checkpoints) == 1
     checkpoint = config.checkpoint_details.checkpoints[0]
     assert checkpoint.training_job_id == "job123"
-    assert checkpoint.model_weight_format == definitions.ModelWeightsFormat.LORA
+    assert checkpoint.model_weight_format == truss_config.ModelWeightsFormat.LORA
     assert isinstance(checkpoint, definitions.LoRACheckpoint)
     assert checkpoint.lora_details.rank == 32
 
@@ -276,7 +280,7 @@ def test_checkpoint_lora_rank_validation():
         checkpoint = definitions.LoRACheckpoint(
             training_job_id="job123",
             paths=["job123/rank-0/checkpoint-1/"],
-            model_weight_format=definitions.ModelWeightsFormat.LORA,
+            model_weight_format=truss_config.ModelWeightsFormat.LORA,
             lora_details=definitions.LoRADetails(rank=rank),
         )
         assert checkpoint.lora_details.rank == rank
@@ -308,7 +312,7 @@ def test_checkpoint_lora_rank_validation():
             definitions.LoRACheckpoint(
                 training_job_id="job123",
                 paths=["job123/rank-0/checkpoint-1/"],
-                model_weight_format=definitions.ModelWeightsFormat.LORA,
+                model_weight_format=truss_config.ModelWeightsFormat.LORA,
                 lora_details=definitions.LoRADetails(rank=rank),
             )
 
@@ -452,7 +456,7 @@ def test_render_vllm_lora_truss_config():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=64),
                 )
             ],
@@ -489,7 +493,7 @@ def test_render_truss_config_delegation():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
@@ -509,3 +513,65 @@ def test_render_truss_config_delegation():
     assert isinstance(result, truss_config.TrussConfig)
     expected_vllm_command = "vllm serve google/gemma-3-27b-it --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 32 --dtype bfloat16 --lora-modules job123=/tmp/training_checkpoints/job123/rank-0/checkpoint-1"
     assert expected_vllm_command in result.docker_server.start_command
+
+
+def test_render_vllm_full_truss_config():
+    """Test that render_vllm_full_truss_config creates proper TrussConfig for full fine-tune deployments."""
+    deploy_config = DeployCheckpointsConfigComplete(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.FullCheckpoint(
+                    training_job_id="job123",
+                    paths=["rank-0/checkpoint-1/"],
+                    model_weight_format=truss_config.ModelWeightsFormat.FULL,
+                )
+            ],
+            base_model_id=None,  # Not needed for full fine-tune
+        ),
+        model_name="test-full-model",
+        compute=definitions.Compute(
+            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=2)
+        ),
+        runtime=definitions.DeployCheckpointsRuntime(
+            environment_variables={
+                "HF_TOKEN": definitions.SecretReference(name="hf_token")
+            }
+        ),
+        deployment_name="test-deployment",
+        model_weight_format=truss_config.ModelWeightsFormat.FULL,
+    )
+
+    result = render_vllm_full_truss_config(deploy_config)
+
+    expected_vllm_command = 'sh -c "HF_TOKEN=$(cat /secrets/hf_token) vllm serve /tmp/training_checkpoints/job123/rank-0/checkpoint-1 --port 8000 --tensor-parallel-size 2 --dtype bfloat16"'
+
+    assert isinstance(result, truss_config.TrussConfig)
+    assert result.model_name == "test-full-model"
+    assert result.docker_server is not None
+    assert result.docker_server.start_command == expected_vllm_command
+
+
+def test_hydrate_full_checkpoint():
+    """Test that hydrate_full_checkpoint creates proper FullCheckpoint objects."""
+    job_id = "test_job_123"
+    checkpoint_id = "checkpoint-456"
+    checkpoint_data = {"base_model": "google/gemma-3-27b-it", "checkpoint_type": "full"}
+
+    result = hydrate_full_checkpoint(job_id, checkpoint_id, checkpoint_data)
+
+    assert isinstance(result, definitions.FullCheckpoint)
+    assert result.training_job_id == job_id
+    assert result.model_weight_format == truss_config.ModelWeightsFormat.FULL
+    assert len(result.paths) == 1
+    assert result.paths[0] == f"rank-0/{checkpoint_id}/"
+
+
+def test_hydrate_checkpoint_dispatcher_full():
+    """Test that hydrate_checkpoint properly dispatches to full checkpoint function."""
+    job_id = "test_job_123"
+    checkpoint_id = "checkpoint-456"
+    checkpoint_data = {"base_model": "google/gemma-3-27b-it", "checkpoint_type": "full"}
+
+    result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "full")
+    assert isinstance(result, definitions.FullCheckpoint)
+    assert result.model_weight_format == truss_config.ModelWeightsFormat.FULL
