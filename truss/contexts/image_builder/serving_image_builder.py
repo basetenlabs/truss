@@ -721,16 +721,13 @@ class ServingImageBuilder(ImageBuilder):
         if build_hash_path.exists():
             shutil.rmtree(build_hash_path)
         shutil.copytree(build_dir, build_hash_path)
-        # remove the config.yaml file from the build_hash directory
-        # we will use only config_build_time.yaml to compute the hash
+
+        # Sanitize the TrussConfig in the hash directory, remove all runtime attributes.
         config_file_path = build_hash_path / "config.yaml"
         if config_file_path.exists():
-            config_file_path.unlink()
-        # similarly, remove the build-time config from the context directory
-        # else it will clobber prior hashes
-        config_build_time_file_path = build_dir / "config_build_time.yaml"
-        if config_build_time_file_path.exists():
-            config_build_time_file_path.unlink()
+            truss_config = TrussConfig.from_yaml(config_file_path)
+            truss_config.sanitize_runtime_fields()
+            truss_config.write_to_yaml_file(config_file_path)
 
     def _render_dockerfile(
         self,
