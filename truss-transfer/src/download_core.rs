@@ -114,8 +114,12 @@ pub async fn download_http_to_path_fast(
     // The monitor will be automatically aborted when `_monitor_guard` goes out of scope.
     let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(path.to_path_buf(), size));
 
-    if url.starts_with("https://huggingface.co") {
-        let auth_token = get_hf_secret_from_file(runtime_secret_name);
+    if true {
+        let auth_token = if url.starts_with("https://huggingface.co") {
+            get_hf_secret_from_file(runtime_secret_name)
+        } else {
+            None
+        };
         let concurrency = if *TRUSS_TRANSFER_NUM_WORKERS >= 16 {
             12
         } else {
