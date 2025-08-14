@@ -365,7 +365,6 @@ mod tests {
         assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
 
         // Test environment variable names
-        assert_eq!(BASETEN_FS_ENABLED_ENV_VAR, "BASETEN_FS_ENABLED");
         assert_eq!(
             TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR,
             "TRUSS_TRANSFER_DOWNLOAD_DIR"

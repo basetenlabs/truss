@@ -2,20 +2,22 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
-use crate::constants::{TRUSS_TRANSFER_USE_RANGE_DOWNLOAD, TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE};
+use crate::constants::{
+    TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE, TRUSS_TRANSFER_USE_RANGE_DOWNLOAD,
+};
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use log::{debug, info, warn};
 use object_store::ObjectStore;
 use reqwest::Client;
+use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::mpsc;
+use tokio::sync::Semaphore;
 use tokio::task::{self, JoinHandle};
 use tokio::time::Instant;
 use tokio::time::{interval, Duration};
-use tokio::sync::Semaphore;
-use std::sync::Arc;
 
 use crate::secrets::get_hf_secret_from_file;
 

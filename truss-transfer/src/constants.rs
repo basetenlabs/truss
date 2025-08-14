@@ -11,7 +11,6 @@ fn is_truthy(value: &str) -> bool {
 pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
     "/bptr/bptr-manifest",
     "/bptr/bptr-manifest.json",
-    "/bptr/static-bptr-manifest.json",
     "/static-bptr/static-bptr-manifest.json",
 ];
 
@@ -19,7 +18,12 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
 pub static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
 
 /// Environment variable to enable Baseten FS
-pub static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
+pub static BASETEN_FS_ENABLED: Lazy<bool> = Lazy::new(|| {
+    env::var("BASETEN_FS_ENABLED")
+        .ok()
+        .map(|s| is_truthy(&s))
+        .unwrap_or(false)
+});
 
 /// Number of download workers, initialized from the `TRUSS_TRANSFER_NUM_WORKERS`
 /// environment variable, with a default of 64.
@@ -69,7 +73,6 @@ pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE: Lazy<usize> = Lazy::n
         .and_then(|s| s.parse().ok())
         .unwrap_or(64)
 });
-
 
 /// Fallback download directory
 pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";

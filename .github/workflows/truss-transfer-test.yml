@@ -50,15 +50,21 @@ jobs:
           cp ./example-bptr-manifest.json /static-bptr/static-bptr-manifest.json
 
           source .venv/bin/activate
+          export BASETEN_FS_ENABLED=0
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_no_cache/test')"
           if [ ! -d "./tmp_no_cache/test" ]; then
             echo "❌ Test failed: output directory not created."
             exit 1
           fi
-
-          export BASETEN_FS_ENABLED=True
+          sleep 1
+          export BASETEN_FS_ENABLED=1
+          export TRUSS_TRANSFER_USE_RANGE_DOWNLOAD=0
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_fs_enabled/test')"
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_fs_enabled/test')"
+          sleep 1
+          export BASETEN_FS_ENABLED=0
+          export TRUSS_TRANSFER_USE_RANGE_DOWNLOAD=1
+          python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_range_enabled/test')"
           # test files are created in example_bptr_resolved
 
           if [ ! -d "./tmp_fs_enabled/test" ]; then
