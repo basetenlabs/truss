@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
-use log::{error, info, warn, debug};
+use log::{debug, error, info, warn};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
