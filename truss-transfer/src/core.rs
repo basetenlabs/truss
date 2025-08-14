@@ -228,6 +228,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                 &file_name,
                 read_from_b10cache,
                 write_to_b10cache,
+                num_workers,
             )
             .await
         });

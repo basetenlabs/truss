@@ -2,13 +2,14 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
-use crate::constants::{TRUSS_TRANSFER_NUM_WORKERS, TRUSS_TRANSFER_USE_RANGE_DOWNLOAD};
+use crate::constants::TRUSS_TRANSFER_USE_RANGE_DOWNLOAD;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use log::{debug, info, warn};
 use object_store::ObjectStore;
 use reqwest::Client;
+use std::cmp::max;
 use tokio::fs;
 use tokio::sync::mpsc;
 use tokio::task::{self, JoinHandle};
@@ -97,6 +98,7 @@ pub async fn download_http_to_path_fast(
     path: &Path,
     size: u64,
     runtime_secret_name: &str,
+    num_workers: usize,
 ) -> Result<()> {
     // Use hf_transfer for HuggingFace downloads
     if let Some(parent) = path.parent() {
@@ -119,11 +121,9 @@ pub async fn download_http_to_path_fast(
         None
     };
     if *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD {
-        let concurrency = if *TRUSS_TRANSFER_NUM_WORKERS >= 16 {
-            12
-        } else {
-            64
-        };
+        // global concurrency
+
+        let concurrency = max(8, 384 / num_workers);
         let _ = crate::hf_transfer::download_async(
             url.to_string(),
             path.to_string_lossy().to_string(),
@@ -154,8 +154,8 @@ pub async fn download_http_to_path_fast(
         let mut client_builder = Client::builder();
         client_builder = client_builder.http1_only();
 
-        if *TRUSS_TRANSFER_NUM_WORKERS >= 32 {
-            debug!("Disabling proxy for reqwest client as TRUSS_TRANSFER_NUM_WORKERS >= 32");
+        if num_workers >= 32 {
+            debug!("Disabling proxy for reqwest client as num_workers >= 32");
             client_builder = client_builder.no_proxy();
         }
         let client = client_builder.build()?;
