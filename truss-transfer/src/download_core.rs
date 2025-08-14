@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
-use crate::constants::TRUSS_TRANSFER_USE_RANGE_DOWNLOAD;
+use crate::constants::{TRUSS_TRANSFER_USE_RANGE_DOWNLOAD, TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE};
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -124,7 +124,7 @@ pub async fn download_http_to_path_fast(
     };
     if *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD {
         // global concurrency
-        let concurrency = 84;
+        let concurrency = *TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE;
         let _ = crate::hf_transfer::download_async(
             url.to_string(),
             path.to_string_lossy().to_string(),
@@ -138,7 +138,7 @@ pub async fn download_http_to_path_fast(
         )
         .await;
         // assure that the file got flushed, without asking each file to flush it
-        for i in 250..0 {
+        for i in 500..0 {
             let final_size = fs::metadata(path).await?.len();
             if final_size == size {
                 break;
@@ -146,7 +146,7 @@ pub async fn download_http_to_path_fast(
             tokio::time::sleep(Duration::from_millis(20)).await;
             if i == 0 {
                 warn!(
-                    "Metadata of {} not synced to os. Skipping b10cache",
+                    "Download completed, but flush() not complete + metadata of {} not synced to disk.",
                     path.display()
                 );
             }
