@@ -342,9 +342,9 @@ async fn page_file_into_memory(path: &Path, lock: Arc<TokioMutex<()>>) {
         let mut file = File::open(&path_owned)
             .with_context(|| format!("Failed to open file for paging: {}", path_owned.display()))?;
 
-        // Use a large buffer for more efficient disk reads, capped to avoid excessive memory use.
-        // 256 MB is a good starting point.
-        const BUFFER_SIZE: u64 = 256 * 1024 * 1024;
+        // Use a large buffer for more efficient disk reads
+        // 128 MB is a good starting point.
+        const BUFFER_SIZE: u64 = 128 * 1024 * 1024;
         // check buffer size or file_size metadata
         let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
         let buffer_size = file_len.min(BUFFER_SIZE) as usize;
@@ -358,7 +358,7 @@ async fn page_file_into_memory(path: &Path, lock: Arc<TokioMutex<()>>) {
                 return Err(anyhow!("Paging operation was cancelled."));
             }
             // throttle: Lower contention on disk and give priority to more important tasks.
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(std::time::Duration::from_millis(25));
         }
         if file_len < BUFFER_SIZE {
             debug!("Finished paging file {} into memory", path_owned.display());
