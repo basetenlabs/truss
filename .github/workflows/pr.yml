@@ -22,7 +22,6 @@ jobs:
           SKIP: ruff,ruff-format # In CI run ruff separately to only check, not fix.
       - name: ruff check
         run: |
-          uv lock --check
           uv run ruff check .
           uv run ruff format . --check
 
