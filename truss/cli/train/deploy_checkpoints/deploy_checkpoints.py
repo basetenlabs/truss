@@ -92,7 +92,8 @@ def _hydrate_deploy_config(
             "Unable to infer base model id. Reach out to Baseten for support."
         )
     compute = _ensure_compute_spec(deploy_config.compute)
-    model_weight_format = _ensure_model_weight_format(deploy_config.model_weight_format)
+    _validate_checkpoint_model_weight_formats(checkpoint_details.checkpoints)
+    model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
 
     model_name = (
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
@@ -107,7 +108,7 @@ def _hydrate_deploy_config(
         deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
-        model_weight_format=model_weight_format,
+        model_weight_format=model_weight_format.to_truss_config(),
     )
 
 
@@ -350,6 +351,21 @@ def _hydrate_checkpoints(
     checkpoint = response_checkpoints[checkpoint_id]
     checkpoint_type = str(checkpoint["checkpoint_type"])
     return hydrate_checkpoint(job_id, checkpoint_id, checkpoint, checkpoint_type)
+
+
+def _validate_checkpoint_model_weight_formats(checkpoints: List[Checkpoint]) -> None:
+    """
+    Validates that all checkpoints have the same model weight format.
+    """
+    if not checkpoints:
+        return
+
+    model_weight_format = checkpoints[0].model_weight_format
+    for checkpoint in checkpoints:
+        if checkpoint.model_weight_format != model_weight_format:
+            raise ValueError(
+                "All checkpoints must have the same model weight format. Please select checkpoints with the same model weight format each time you run this command."
+            )
 
 
 def get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
