@@ -53,7 +53,7 @@ pub static TRUSS_TRANSFER_USE_RANGE_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_USE_RANGE_DOWNLOAD")
         .ok()
         .map(|s| is_truthy(&s))
-        .unwrap_or(true)
+        .unwrap_or(false)
 });
 
 /// Fallback download directory
