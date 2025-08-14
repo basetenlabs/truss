@@ -286,7 +286,7 @@ async fn page_file_into_memory(path: &Path, semaphore: Arc<Semaphore>) -> Result
     let mut file = fs::File::open(path)
         .await
         .with_context(|| format!("Failed to open file for paging: {}", path.display()))?;
-    debug!("Reading file {} into memory", path.display());
+    debug!("Pageing beginning of file {} into memory", path.display());
     let mut buffer = vec![0; 1024 * 1024]; // 1MB buffer
                                            // Read the first 1MB of the file to quickly get it into the page cache for other processes.
     file.read(&mut buffer[..]).await?;
@@ -298,7 +298,7 @@ async fn page_file_into_memory(path: &Path, semaphore: Arc<Semaphore>) -> Result
         // Yield to allow other tasks to run.
         tokio::task::yield_now().await;
     }
-    info!("Finished reading file {} into memory", path.display());
+    info!("Finished pageing file {} into memory", path.display());
     Ok(())
 }
 
