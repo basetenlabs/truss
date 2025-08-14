@@ -314,6 +314,9 @@ class TrussHandle:
                     self.spec.config.docker_server.start_command
                 )
 
+            # Add environment variables from config
+            envs.update(self.spec.config.environment_variables)
+
             if container_name_prefix:
                 suffix = str(uuid.uuid4()).split("-")[0]
                 name = f"{container_name_prefix}-{suffix}"

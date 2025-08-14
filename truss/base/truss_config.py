@@ -554,16 +554,6 @@ class DockerServer(custom_types.ConfigModel):
     liveness_endpoint: str
 
 
-# TODO: aghilann: remove this once we have LoRA checkpoints
-class Checkpoint(custom_types.ConfigModel):
-    # NB(rcano): The id here is a formatted string of the form <training_job_id>/<checkpoint_id>
-    # We do this because the vLLM command requires knowledge of where the checkpoint
-    # is downloaded. By using a formatted string instead of an additional "training_job_id"
-    # field, we provide a more transparent truss config.
-    id: str
-    name: str
-
-
 class TrainingArtifactReference(custom_types.ConfigModel):
     training_job_id: str = pydantic.Field(
         ..., description="The training job id that the artifact reference belongs to."
@@ -579,10 +569,6 @@ class CheckpointList(custom_types.ConfigModel):
         default=DEFAULT_TRAINING_CHECKPOINT_FOLDER,
         description="The folder to download the checkpoints to.",
         examples=["/tmp/training_checkpoints"],
-    )
-    # TODO: Remove this field once deploy_checkpoints uses artifact_references instead.
-    checkpoints: list[Checkpoint] = pydantic.Field(
-        default_factory=list, deprecated="Prefer artifact_references instead."
     )
     artifact_references: list[TrainingArtifactReference] = pydantic.Field(
         default_factory=list

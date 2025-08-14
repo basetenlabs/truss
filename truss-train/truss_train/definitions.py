@@ -1,3 +1,4 @@
+import enum
 from typing import Dict, List, Optional, Union
 
 import pydantic
@@ -127,27 +128,44 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     job: TrainingJob = pydantic.Field(exclude=True)
 
 
-class Checkpoint(custom_types.SafeModelNoExtra):
-    training_job_id: str
-    id: str
-    name: str
-    lora_rank: Optional[int] = (
-        None  # lora rank will be fetched through the API if available.
-    )
+class ModelWeightsFormat(str, enum.Enum):
+    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
-    @field_validator("lora_rank")
+    LORA = "LoRA"
+
+    def to_truss_config(self) -> truss_config.ModelWeightsFormat:
+        return truss_config.ModelWeightsFormat[self.name]
+
+
+class Checkpoint(custom_types.ConfigModel):
+    training_job_id: str
+    paths: List[str]
+    model_weight_format: Optional[ModelWeightsFormat] = None
+
+    def to_truss_config(self) -> truss_config.TrainingArtifactReference:
+        return truss_config.TrainingArtifactReference(
+            training_job_id=self.training_job_id, paths=self.paths
+        )
+
+
+class LoRADetails(custom_types.ConfigModel):
+    """Configuration details specific to LoRA (Low-Rank Adaptation) models."""
+
+    rank: int
+
+    @field_validator("rank")
     @classmethod
     def validate_lora_rank(cls, v):
-        if v is not None and v not in ALLOWED_LORA_RANKS:
+        if v not in ALLOWED_LORA_RANKS:
             raise ValueError(
-                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}"
+                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}."
             )
         return v
 
-    def to_truss_config(self) -> truss_config.Checkpoint:
-        return truss_config.Checkpoint(
-            id=f"{self.training_job_id}/{self.id}", name=self.id
-        )
+
+class LoRACheckpoint(Checkpoint):
+    lora_details: LoRADetails
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):
@@ -156,9 +174,12 @@ class CheckpointList(custom_types.SafeModelNoExtra):
     checkpoints: List[Checkpoint] = []
 
     def to_truss_config(self) -> truss_config.CheckpointList:
-        checkpoints = [checkpoint.to_truss_config() for checkpoint in self.checkpoints]
+        artifact_references: List[truss_config.TrainingArtifactReference] = [
+            checkpoint.to_truss_config() for checkpoint in self.checkpoints
+        ]
         return truss_config.CheckpointList(
-            checkpoints=checkpoints, download_folder=self.download_folder
+            download_folder=self.download_folder,
+            artifact_references=artifact_references,
         )
 
 
