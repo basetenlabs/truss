@@ -45,6 +45,8 @@ pub async fn download_async(
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
         .http2_keep_alive_timeout(Duration::from_secs(15))
         .no_proxy()
+        .http2_initial_stream_window_size(CHUNK_SIZE as u32)
+        .http2_initial_connection_window_size(CHUNK_SIZE as u32)
         .build()
         .unwrap();
 
