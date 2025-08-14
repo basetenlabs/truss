@@ -1,4 +1,3 @@
-import enum
 from typing import Dict, List, Optional, Union
 
 import pydantic
@@ -128,23 +127,10 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     job: TrainingJob = pydantic.Field(exclude=True)
 
 
-class ModelWeightsFormat(str, enum.Enum):
-    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
-
-    LORA = "lora"
-    FULL = "full"
-
-    def to_truss_config(self) -> truss_config.ModelWeightsFormat:
-        return truss_config.ModelWeightsFormat[self.name]
-
-    def is_base_model_id_required(self) -> bool:
-        return self == ModelWeightsFormat.LORA
-
-
 class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
     paths: List[str]
-    model_weight_format: ModelWeightsFormat
+    model_weight_format: truss_config.ModelWeightsFormat
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
@@ -168,12 +154,16 @@ class LoRADetails(custom_types.ConfigModel):
 
 
 class FullCheckpoint(Checkpoint):
-    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
+    model_weight_format: truss_config.ModelWeightsFormat = (
+        truss_config.ModelWeightsFormat.FULL
+    )
 
 
 class LoRACheckpoint(Checkpoint):
     lora_details: LoRADetails
-    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
+    model_weight_format: truss_config.ModelWeightsFormat = (
+        truss_config.ModelWeightsFormat.LORA
+    )
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):

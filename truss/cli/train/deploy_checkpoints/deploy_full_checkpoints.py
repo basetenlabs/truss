@@ -37,7 +37,7 @@ def render_vllm_full_truss_config(
     start_command_args = {
         "model_path": checkpoint_str,
         "envvars": start_command_envvars,
-        "specify_tensor_parallelism": accelerator.count,
+        "specify_tensor_parallelism": accelerator.count if accelerator else 1,
     }
     truss_deploy_config.docker_server.start_command = VLLM_FULL_START_COMMAND.render(  # type: ignore[union-attr]
         **start_command_args
@@ -49,7 +49,7 @@ def render_vllm_full_truss_config(
 def hydrate_full_checkpoint(
     job_id: str, checkpoint_id: str, checkpoint: dict
 ) -> FullCheckpoint:
-    """Create a LoRA-specific Checkpoint object."""
+    """Create a Checkpoint object for full model weights."""
     # NOTE: Slash at the end is important since it means the checkpoint is a directory
     paths = [f"rank-0/{checkpoint_id}/"]
     return FullCheckpoint(training_job_id=job_id, paths=paths)

@@ -21,7 +21,6 @@ from truss_train.definitions import (
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
-    ModelWeightsFormat,
     SecretReference,
 )
 
@@ -82,7 +81,7 @@ def prepare_checkpoint_deploy(
 
 
 def _validate_base_model_id(
-    base_model_id: Optional[str], model_weight_format: ModelWeightsFormat
+    base_model_id: Optional[str], model_weight_format: truss_config.ModelWeightsFormat
 ) -> None:
     """
     Validate that base model ID is present when required by the model weight format.
@@ -94,16 +93,17 @@ def _validate_base_model_id(
 
 
 def _get_model_name(
-    model_weight_format: ModelWeightsFormat, base_model_id: Optional[str]
+    model_weight_format: truss_config.ModelWeightsFormat, base_model_id: Optional[str]
 ) -> str:
     """
     Generate a model name based on the model weight format and base model ID.
     NOTE: Note all checkpoints have a base model id nor need one
     """
+    _validate_base_model_id(base_model_id, model_weight_format)
     if model_weight_format == truss_config.ModelWeightsFormat.FULL:
         return "Full Fine Tune"
     elif model_weight_format == truss_config.ModelWeightsFormat.LORA:
-        return f"{base_model_id.split('/')[-1]}-vLLM-LORA"
+        return f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # type: ignore[union-attr]
     raise ValueError(
         f"Unsupported model weight format: {model_weight_format}. Reach out to Baseten for support."
     )
@@ -122,11 +122,9 @@ def _hydrate_deploy_config(
     model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
 
     base_model_id = checkpoint_details.base_model_id
-    _validate_base_model_id(base_model_id, model_weight_format)
+    model_name = _get_model_name(model_weight_format, base_model_id)
 
     compute = _ensure_compute_spec(deploy_config.compute)
-
-    model_name = _get_model_name(model_weight_format, base_model_id)
 
     runtime = _ensure_runtime_config(deploy_config.runtime)
     deployment_name = _ensure_deployment_name(
@@ -390,11 +388,14 @@ def _validate_checkpoint_model_weight_formats(checkpoints: List[Checkpoint]) -> 
         )
 
     model_weight_format = checkpoints[0].model_weight_format
-    for checkpoint in checkpoints:
-        if checkpoint.model_weight_format != model_weight_format:
-            raise ValueError(
-                "All checkpoints must have the same model weight format. Please select checkpoints with the same model weight format each time you run this command."
-            )
+    if (
+        model_weight_format == truss_config.ModelWeightsFormat.FULL
+        and len(checkpoints) > 1
+    ):
+        # vLLM does not support multiple checkpoints for full model weights, you can only do this for lora adapters
+        raise ValueError(
+            "Full checkpoints are not supported for multiple checkpoints. Please select a single checkpoint."
+        )
 
 
 def get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
