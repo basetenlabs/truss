@@ -1,6 +1,7 @@
 name: PR - pre-commit
 
 on:
+  workflow_dispatch: # Allows running from actions tab
   pull_request:
 
 concurrency:
