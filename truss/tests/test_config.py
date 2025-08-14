@@ -18,8 +18,10 @@ from truss.base.truss_config import (
     BaseImage,
     Build,
     CacheInternal,
+    CheckpointList,
     DockerAuthSettings,
     DockerAuthType,
+    DockerServer,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -977,3 +979,26 @@ def test_supported_versions_are_sorted():
     assert semvers == semvers_sorted, (
         f"{constants.SUPPORTED_PYTHON_VERSIONS} must be sorted ascendingly"
     )
+
+
+def test_sanitize_runtime_fields():
+    config = TrussConfig(
+        python_version="py39",
+        docker_server=DockerServer(
+            start_command="./foo",
+            server_port=10,
+            predict_endpoint="/predict",
+            readiness_endpoint="/ready",
+            liveness_endpoint="/live",
+        ),
+        training_checkpoints=CheckpointList(
+            download_folder="/tmp", checkpoints=[], artifact_references=[]
+        ),
+        environment_variables={"FOO": "BAR"},
+    )
+
+    config.sanitize_runtime_fields()
+    assert config.python_version == "py39"
+    assert config.docker_server is None
+    assert config.training_checkpoints is None
+    assert config.environment_variables == {}
