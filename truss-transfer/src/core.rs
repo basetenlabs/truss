@@ -236,7 +236,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     }
 
     // 8. Await all tasks, and cancel remaining on first failure.
-    info!("Awaiting completion of all download tasks...");
+    debug!("Awaiting completion of all download tasks...");
     while let Some(join_result) = download_tasks.join_next().await {
         match join_result {
             Ok(Ok(file_name)) => {
@@ -462,7 +462,7 @@ pub fn merge_manifests(manifests: Vec<BasetenPointerManifest>) -> Result<Baseten
         }
     }
 
-    info!(
+    debug!(
         "Merged {} pointers from {} manifests",
         merged_pointers.len(),
         manifests_count
