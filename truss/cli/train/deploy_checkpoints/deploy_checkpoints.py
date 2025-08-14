@@ -94,6 +94,10 @@ def _hydrate_deploy_config(
     compute = _ensure_compute_spec(deploy_config.compute)
     _validate_checkpoint_model_weight_formats(checkpoint_details.checkpoints)
     model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
+    if not model_weight_format:
+        raise ValueError(
+            "Unable to infer model weight format. Reach out to Baseten for support."
+        )
 
     model_name = (
         deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
@@ -253,19 +257,6 @@ def _get_checkpoint_ids_to_deploy(checkpoint_id_options: List[str]) -> str:
     else:
         checkpoint_ids = [checkpoint_id_options[0]]
     return checkpoint_ids
-
-
-def _ensure_model_weight_format(
-    model_weight_format: Optional[truss_config.ModelWeightsFormat],
-) -> truss_config.ModelWeightsFormat:
-    if not model_weight_format:
-        model_weight_format_str = inquirer.select(
-            message="Select the model weight format to use for deployment.",
-            choices=[x.value for x in truss_config.ModelWeightsFormat],
-            default=truss_config.ModelWeightsFormat.LORA.value,
-        ).execute()
-        return truss_config.ModelWeightsFormat(model_weight_format_str)
-    return model_weight_format
 
 
 def _ensure_compute_spec(compute: Optional[Compute]) -> Compute:

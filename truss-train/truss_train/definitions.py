@@ -140,6 +140,7 @@ class ModelWeightsFormat(str, enum.Enum):
 class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
     paths: List[str]
+    model_weight_format: Optional[ModelWeightsFormat] = None
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
