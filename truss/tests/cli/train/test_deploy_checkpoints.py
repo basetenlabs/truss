@@ -197,7 +197,6 @@ def test_prepare_checkpoint_deploy_complete_config(
 ):
     # Create complete config with all fields specified
     complete_config = definitions.DeployCheckpointsConfig(
-        model_weight_format=truss_config.ModelWeightsFormat.LORA,
         checkpoint_details=definitions.CheckpointList(
             checkpoints=[
                 definitions.LoRACheckpoint(
