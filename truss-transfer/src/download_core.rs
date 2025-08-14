@@ -139,6 +139,9 @@ pub async fn download_http_to_path_fast(
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
+            if i == 0 {
+                warn!("Metadata of {} not synced to os. Skipping b10cache", path.display());
+            }
         }
     } else {
         let mut client_builder = Client::builder();

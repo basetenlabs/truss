@@ -8,6 +8,7 @@ use crate::download_core::{
     check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path_fast,
     download_s3_to_path,
 };
+use tokio::fs;
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 /// Now handles both HTTP and GCS downloads with unified caching logic.
@@ -109,7 +110,7 @@ pub async fn download_file_with_cache(
         }
     }
 
-    actual_size = fs::metadata(&destination).await?.len();
+   let actual_size = fs::metadata(&destination).await?.len();
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache && actual_size == pointer.size {
