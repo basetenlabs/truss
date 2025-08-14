@@ -110,7 +110,7 @@ pub async fn download_file_with_cache(
         }
     }
 
-   let actual_size = fs::metadata(&destination).await?.len();
+    let actual_size = fs::metadata(&destination).await?.len();
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache && actual_size == pointer.size {
