@@ -34,3 +34,9 @@ repos:
         types: [python]
         exclude: ^examples/|^truss/test.+/|model.py$
         pass_filenames: true
+      - id: uv-lock
+        name: uv lock
+        entry: uv lock
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
