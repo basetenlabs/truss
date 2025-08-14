@@ -114,7 +114,7 @@ pub async fn download_async(
         let client = client.clone();
         let headers = headers.clone();
 
-        let stop = std::cmp::min(start + chunk_size - 1, length);
+        let stop = std::cmp::min(start + chunk_size - 1, length - 1);
         let semaphore = semaphore.clone();
         let parallel_failures_semaphore = parallel_failures_semaphore.clone();
         let semaphore_global = semaphore_global.clone();
