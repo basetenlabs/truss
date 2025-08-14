@@ -131,16 +131,20 @@ class TrainingProject(custom_types.SafeModelNoExtra):
 class ModelWeightsFormat(str, enum.Enum):
     """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
 
-    LORA = "LoRA"
+    LORA = "lora"
+    FULL = "full"
 
     def to_truss_config(self) -> truss_config.ModelWeightsFormat:
         return truss_config.ModelWeightsFormat[self.name]
+
+    def is_base_model_id_required(self) -> bool:
+        return self == ModelWeightsFormat.LORA
 
 
 class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
     paths: List[str]
-    model_weight_format: Optional[ModelWeightsFormat] = None
+    model_weight_format: ModelWeightsFormat
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
@@ -161,6 +165,10 @@ class LoRADetails(custom_types.ConfigModel):
                 f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}."
             )
         return v
+
+
+class FullCheckpoint(Checkpoint):
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
 
 
 class LoRACheckpoint(Checkpoint):

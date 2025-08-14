@@ -25,6 +25,10 @@ from truss_train.definitions import (
     SecretReference,
 )
 
+from .deploy_full_checkpoints import (
+    hydrate_full_checkpoint,
+    render_vllm_full_truss_config,
+)
 from .deploy_lora_checkpoints import (
     hydrate_lora_checkpoint,
     render_vllm_lora_truss_config,
@@ -77,6 +81,34 @@ def prepare_checkpoint_deploy(
     )
 
 
+def _validate_base_model_id(
+    base_model_id: Optional[str], model_weight_format: ModelWeightsFormat
+) -> None:
+    """
+    Validate that base model ID is present when required by the model weight format.
+    """
+    if not base_model_id and model_weight_format.is_base_model_id_required():
+        raise ValueError(
+            "Unable to infer base model id. Reach out to Baseten for support."
+        )
+
+
+def _get_model_name(
+    model_weight_format: ModelWeightsFormat, base_model_id: Optional[str]
+) -> str:
+    """
+    Generate a model name based on the model weight format and base model ID.
+    NOTE: Note all checkpoints have a base model id nor need one
+    """
+    if model_weight_format == truss_config.ModelWeightsFormat.FULL:
+        return "Full Fine Tune"
+    elif model_weight_format == truss_config.ModelWeightsFormat.LORA:
+        return f"{base_model_id.split('/')[-1]}-vLLM-LORA"
+    raise ValueError(
+        f"Unsupported model weight format: {model_weight_format}. Reach out to Baseten for support."
+    )
+
+
 def _hydrate_deploy_config(
     deploy_config: DeployCheckpointsConfig,
     remote_provider: BasetenRemote,
@@ -86,26 +118,21 @@ def _hydrate_deploy_config(
     checkpoint_details = _ensure_checkpoint_details(
         remote_provider, deploy_config.checkpoint_details, project_id, job_id
     )
-    base_model_id = checkpoint_details.base_model_id
-    if not base_model_id:
-        raise ValueError(
-            "Unable to infer base model id. Reach out to Baseten for support."
-        )
-    compute = _ensure_compute_spec(deploy_config.compute)
     _validate_checkpoint_model_weight_formats(checkpoint_details.checkpoints)
     model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
-    if not model_weight_format:
-        raise ValueError(
-            "Unable to infer model weight format. Reach out to Baseten for support."
-        )
 
-    model_name = (
-        deploy_config.model_name or f"{base_model_id.split('/')[-1]}-vLLM-LORA"  #
-    )
+    base_model_id = checkpoint_details.base_model_id
+    _validate_base_model_id(base_model_id, model_weight_format)
+
+    compute = _ensure_compute_spec(deploy_config.compute)
+
+    model_name = _get_model_name(model_weight_format, base_model_id)
+
     runtime = _ensure_runtime_config(deploy_config.runtime)
     deployment_name = _ensure_deployment_name(
         deploy_config.deployment_name, checkpoint_details.checkpoints
     )
+
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
@@ -154,8 +181,10 @@ def hydrate_checkpoint(
     This function can be extended to support additional checkpoint types beyond LoRA.
     """
 
-    if checkpoint_type.lower() == ModelWeightsFormat.LORA.value.lower():
+    if checkpoint_type.lower() == truss_config.ModelWeightsFormat.LORA.value:
         return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
+    elif checkpoint_type.lower() == truss_config.ModelWeightsFormat.FULL.value:
+        return hydrate_full_checkpoint(job_id, checkpoint_id, checkpoint)
     else:
         raise ValueError(
             f"Unsupported checkpoint type: {checkpoint_type}. Contact Baseten for support with other checkpoint types."
@@ -172,6 +201,8 @@ def _render_truss_config_for_checkpoint_deployment(
     # Delegate to specific rendering function based on model weight format
     if checkpoint_deploy.model_weight_format == truss_config.ModelWeightsFormat.LORA:
         return render_vllm_lora_truss_config(checkpoint_deploy)
+    elif checkpoint_deploy.model_weight_format == truss_config.ModelWeightsFormat.FULL:
+        return render_vllm_full_truss_config(checkpoint_deploy)
     else:
         raise ValueError(
             f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Please upgrade to the latest Truss version to access the latest supported formats. Contact Baseten if you would like us to support additional formats."
@@ -286,7 +317,7 @@ def _get_accelerator_if_specified(
     return truss_config.AcceleratorSpec(accelerator=gpu_type, count=int(count))
 
 
-def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
+def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> Optional[str]:
     if user_input:
         return user_input
         # prompt user for base model id
@@ -295,6 +326,11 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> str:
         console.print(
             f"Inferring base model from checkpoint: {base_model_id}", style="yellow"
         )
+    elif (
+        checkpoint.get("checkpoint_type")
+        == truss_config.ModelWeightsFormat.FULL.value.lower()
+    ):
+        return None
     else:
         base_model_id = inquirer.text(message="Enter the base model id.").execute()
     if not base_model_id:
@@ -348,8 +384,10 @@ def _validate_checkpoint_model_weight_formats(checkpoints: List[Checkpoint]) -> 
     """
     Validates that all checkpoints have the same model weight format.
     """
-    if not checkpoints:
-        return
+    if not checkpoints or checkpoints[0].model_weight_format is None:
+        raise ValueError(
+            "Unable to infer model weight format. Reach out to Baseten for support."
+        )
 
     model_weight_format = checkpoints[0].model_weight_format
     for checkpoint in checkpoints:
