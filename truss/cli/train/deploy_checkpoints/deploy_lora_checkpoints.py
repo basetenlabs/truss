@@ -13,6 +13,8 @@ from truss_train.definitions import (
     SecretReference,
 )
 
+START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
+
 VLLM_LORA_START_COMMAND = Template(
     'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'
     + " --port 8000"
@@ -98,8 +100,14 @@ def render_vllm_lora_truss_config(
         "max_lora_rank": max_lora_rank,
         "specify_tensor_parallelism": specify_tensor_parallelism,
     }
-    truss_deploy_config.docker_server.start_command = VLLM_LORA_START_COMMAND.render(
-        **start_command_args
+    start_command = VLLM_LORA_START_COMMAND.render(**start_command_args)
+    # Note: we set the start command as an environment variable in supervisord config.
+    # This is so that we don't have to change the supervisord config when the start command changes.
+    # Our goal is to reduce the number of times we need to rebuild the image, and allow us to deploy faster.
+    truss_deploy_config.environment_variables[START_COMMAND_ENVVAR_NAME] = start_command
+    # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
+    truss_deploy_config.docker_server.start_command = (
+        f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
     )
     return truss_deploy_config
 
