@@ -275,7 +275,10 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         }
     }
 
-    info!("All downloads completed successfully after {:?}", timer.elapsed());
+    info!(
+        "All downloads completed successfully after {:?}",
+        timer.elapsed()
+    );
     page_tasks.abort_all(); // Abort all paging tasks
     Ok(())
 }

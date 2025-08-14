@@ -46,7 +46,7 @@ pub async fn download_async(
         .http2_keep_alive_timeout(Duration::from_secs(15))
         .no_proxy()
         .http2_initial_stream_window_size(CHUNK_SIZE as u32)
-        .http2_initial_connection_window_size(2*CHUNK_SIZE as u32)
+        .http2_initial_connection_window_size(2 * CHUNK_SIZE as u32)
         .build()
         .unwrap();
 
