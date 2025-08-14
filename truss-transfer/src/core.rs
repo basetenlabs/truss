@@ -362,7 +362,7 @@ async fn page_file_into_memory(path: &Path, lock: Arc<TokioMutex<()>>) {
                 return Err(anyhow!("Paging operation was cancelled."));
             }
         }
-        if file_len > BUFFER_SIZE {
+        if file_len < BUFFER_SIZE {
             debug!("Finished paging file {} into memory", path_owned.display());
         } else {
             info!("Finished paging file {} into memory", path_owned.display());
