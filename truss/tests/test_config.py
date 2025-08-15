@@ -21,7 +21,6 @@ from truss.base.truss_config import (
     CheckpointList,
     DockerAuthSettings,
     DockerAuthType,
-    DockerServer,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -984,13 +983,6 @@ def test_supported_versions_are_sorted():
 def test_clear_runtime_fields():
     config = TrussConfig(
         python_version="py39",
-        docker_server=DockerServer(
-            start_command="./foo",
-            server_port=10,
-            predict_endpoint="/predict",
-            readiness_endpoint="/ready",
-            liveness_endpoint="/live",
-        ),
         training_checkpoints=CheckpointList(
             download_folder="/tmp", checkpoints=[], artifact_references=[]
         ),
@@ -999,6 +991,5 @@ def test_clear_runtime_fields():
 
     config.clear_runtime_fields()
     assert config.python_version == "py39"
-    assert config.docker_server is None
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
