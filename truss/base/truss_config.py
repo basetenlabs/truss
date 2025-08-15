@@ -599,19 +599,19 @@ class TrussConfig(custom_types.ConfigModel):
     requirements_file: Optional[str] = None
     requirements: list[str] = pydantic.Field(default_factory=list)
     system_packages: list[str] = pydantic.Field(default_factory=list)
-    environment_variables: dict[str, str] = pydantic.Field(default_factory=dict)
+    environment_variables: Annotated[dict[str, str], pydantic.Field(default_factory=dict, runtime_only=True)]
     secrets: MutableMapping[str, Optional[str]] = pydantic.Field(default_factory=dict)
 
     resources: Resources = pydantic.Field(default_factory=Resources)
     runtime: Runtime = pydantic.Field(default_factory=Runtime)
     build: Build = pydantic.Field(default_factory=Build)
     build_commands: list[str] = pydantic.Field(default_factory=list)
-    docker_server: Optional[DockerServer] = None
+    docker_server: Annotated[Optional[DockerServer], pydantic.Field(runtime_only=True)] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
 
     # deploying from checkpoint
-    training_checkpoints: Optional[CheckpointList] = None
+    training_checkpoints: Annotated[Optional[CheckpointList], pydantic.Field(runtime_only=True)] = None
 
     # Internal / Legacy.
     input_type: str = "Any"
@@ -736,9 +736,14 @@ class TrussConfig(custom_types.ConfigModel):
     # NB(nikhil): sanitize_runtime_fields will remove all runtime specific fields from the config so
     # we can more optimally detect whether a new image build is needed.
     def sanitize_runtime_fields(self) -> None:
-        self.docker_server = None
-        self.training_checkpoints = None
-        self.environment_variables = {}
+        """Remove all runtime-specific fields from the config."""
+        for field_name, field_info in self.__class__.model_fields.items():
+            if field_info.json_schema_extra and field_info.json_schema_extra.get('runtime_only'):
+                current_value = getattr(self, field_name)
+                if isinstance(current_value, dict):
+                    setattr(self, field_name, {})
+                else:
+                    setattr(self, field_name, None)
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

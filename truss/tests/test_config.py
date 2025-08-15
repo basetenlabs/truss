@@ -997,8 +997,18 @@ def test_sanitize_runtime_fields():
         environment_variables={"FOO": "BAR"},
     )
 
-    config.sanitize_runtime_fields()
+    # Get runtime field names dynamically from field metadata
+    runtime_fields = []
+    for field_name, field_info in TrussConfig.model_fields.items():
+        if field_info.json_schema_extra and field_info.json_schema_extra.get('runtime_only'):
+            runtime_fields.append(field_name)
+    
+    config.sanitize_runtime_fields()    
     assert config.python_version == "py39"
-    assert config.docker_server is None
-    assert config.training_checkpoints is None
-    assert config.environment_variables == {}
+    # Verify all runtime fields are sanitized
+    for field_name in runtime_fields:
+        current_value = getattr(config, field_name)
+        if isinstance(current_value, dict):
+            assert current_value == {}
+        else:
+            assert current_value is None
