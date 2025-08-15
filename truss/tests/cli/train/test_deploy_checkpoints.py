@@ -575,3 +575,151 @@ def test_hydrate_checkpoint_dispatcher_full():
     result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "full")
     assert isinstance(result, definitions.FullCheckpoint)
     assert result.model_weight_format == truss_config.ModelWeightsFormat.FULL
+
+
+def test_get_checkpoint_ids_to_deploy_full_checkpoints():
+    """Test that _get_checkpoint_ids_to_deploy uses single selection for FULL checkpoints."""
+    from collections import OrderedDict
+
+    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+        _get_checkpoint_ids_to_deploy,
+    )
+
+    # Mock FULL checkpoints
+    response_checkpoints = OrderedDict(
+        [
+            ("checkpoint-1", {"checkpoint_type": "full", "base_model": "test/model"}),
+            ("checkpoint-2", {"checkpoint_type": "full", "base_model": "test/model"}),
+            ("checkpoint-3", {"checkpoint_type": "full", "base_model": "test/model"}),
+        ]
+    )
+
+    checkpoint_options = ["checkpoint-1", "checkpoint-2", "checkpoint-3"]
+
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
+    ) as mock_select:
+        mock_select.return_value.execute.return_value = "checkpoint-2"
+
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should use select (single selection) for FULL checkpoints
+        mock_select.assert_called_once()
+        assert mock_select.call_args[1]["message"] == "Select the checkpoint to deploy:"
+        assert mock_select.call_args[1]["choices"] == checkpoint_options
+
+        # Should return a list with single selected checkpoint
+        assert result == ["checkpoint-2"]
+
+
+def test_get_checkpoint_ids_to_deploy_lora_checkpoints():
+    """Test that _get_checkpoint_ids_to_deploy uses multiple selection for LoRA checkpoints."""
+    from collections import OrderedDict
+
+    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+        _get_checkpoint_ids_to_deploy,
+    )
+
+    # Mock LoRA checkpoints
+    response_checkpoints = OrderedDict(
+        [
+            ("checkpoint-1", {"checkpoint_type": "lora", "base_model": "test/model"}),
+            ("checkpoint-2", {"checkpoint_type": "lora", "base_model": "test/model"}),
+            ("checkpoint-3", {"checkpoint_type": "lora", "base_model": "test/model"}),
+        ]
+    )
+
+    checkpoint_options = ["checkpoint-1", "checkpoint-2", "checkpoint-3"]
+
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        mock_checkbox.return_value.execute.return_value = [
+            "checkpoint-1",
+            "checkpoint-3",
+        ]
+
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should use checkbox (multiple selection) for LoRA checkpoints
+        mock_checkbox.assert_called_once()
+        assert (
+            mock_checkbox.call_args[1]["message"]
+            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+        )
+        assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
+
+        # Should return a list with multiple selected checkpoints
+        assert result == ["checkpoint-1", "checkpoint-3"]
+
+
+def test_get_checkpoint_ids_to_deploy_mixed_checkpoints():
+    """Test that _get_checkpoint_ids_to_deploy uses multiple selection for mixed checkpoint types."""
+    from collections import OrderedDict
+
+    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+        _get_checkpoint_ids_to_deploy,
+    )
+
+    # Mock mixed checkpoints (FULL and LoRA)
+    response_checkpoints = OrderedDict(
+        [
+            ("checkpoint-1", {"checkpoint_type": "full", "base_model": "test/model"}),
+            ("checkpoint-2", {"checkpoint_type": "lora", "base_model": "test/model"}),
+            ("checkpoint-3", {"checkpoint_type": "full", "base_model": "test/model"}),
+        ]
+    )
+
+    checkpoint_options = ["checkpoint-1", "checkpoint-2", "checkpoint-3"]
+
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        mock_checkbox.return_value.execute.return_value = [
+            "checkpoint-1",
+            "checkpoint-2",
+        ]
+
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should use checkbox (multiple selection) for mixed checkpoint types
+        mock_checkbox.assert_called_once()
+        assert (
+            mock_checkbox.call_args[1]["message"]
+            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+        )
+        assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
+
+        # Should return a list with multiple selected checkpoints
+        assert result == ["checkpoint-1", "checkpoint-2"]
+
+
+def test_get_checkpoint_ids_to_deploy_single_checkpoint():
+    """Test that _get_checkpoint_ids_to_deploy returns single checkpoint without prompting."""
+    from collections import OrderedDict
+
+    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+        _get_checkpoint_ids_to_deploy,
+    )
+
+    # Mock single checkpoint
+    response_checkpoints = OrderedDict(
+        [("checkpoint-1", {"checkpoint_type": "full", "base_model": "test/model"})]
+    )
+
+    checkpoint_options = ["checkpoint-1"]
+
+    # Should not call any inquirer functions for single checkpoint
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
+    ) as mock_select, patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should not call any inquirer functions
+        mock_select.assert_not_called()
+        mock_checkbox.assert_not_called()
+
+        # Should return the single checkpoint directly
+        assert result == ["checkpoint-1"]

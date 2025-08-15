@@ -148,9 +148,6 @@ class ModelWeightsFormat(str, enum.Enum):
     def to_truss_config(self) -> "ModelWeightsFormat":
         return ModelWeightsFormat[self.name]
 
-    def is_base_model_id_required(self) -> bool:
-        return self == ModelWeightsFormat.LORA
-
 
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]

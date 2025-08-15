@@ -86,7 +86,10 @@ def _validate_base_model_id(
     """
     Validate that base model ID is present when required by the model weight format.
     """
-    if not base_model_id and model_weight_format.is_base_model_id_required():
+    if (
+        not base_model_id
+        and model_weight_format == truss_config.ModelWeightsFormat.LORA
+    ):
         raise ValueError(
             "Unable to infer base model id. Reach out to Baseten for support."
         )
@@ -101,7 +104,17 @@ def _get_model_name(
     """
     _validate_base_model_id(base_model_id, model_weight_format)
     if model_weight_format == truss_config.ModelWeightsFormat.FULL:
-        return "Full Fine Tune"
+        # Prompt user for model name instead of returning hardcoded value
+        model_name = inquirer.text(
+            message="Enter the model name for your full weight model."
+        ).execute()
+
+        model_name = f"{model_name}-vLLM"
+
+        if not model_name:
+            raise click.UsageError("Model name is required.")
+
+        return model_name
     elif model_weight_format == truss_config.ModelWeightsFormat.LORA:
         return f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # type: ignore[union-attr]
     raise ValueError(
@@ -118,7 +131,6 @@ def _hydrate_deploy_config(
     checkpoint_details = _ensure_checkpoint_details(
         remote_provider, deploy_config.checkpoint_details, project_id, job_id
     )
-    _validate_checkpoint_model_weight_formats(checkpoint_details.checkpoints)
     model_weight_format = checkpoint_details.checkpoints[0].model_weight_format
 
     base_model_id = checkpoint_details.base_model_id
@@ -140,7 +152,7 @@ def _hydrate_deploy_config(
         deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
-        model_weight_format=model_weight_format.to_truss_config(),
+        model_weight_format=model_weight_format.to_truss_config(),  # type: ignore[attr-defined]
     )
 
 
@@ -237,7 +249,9 @@ def _prompt_user_for_checkpoint_details(
 
     # first, gather all checkpoint ids the user wants to deploy
     # allow the user to select a checkpoint
-    checkpoint_ids = _get_checkpoint_ids_to_deploy(list(response_checkpoints.keys()))
+    checkpoint_ids = _get_checkpoint_ids_to_deploy(
+        list(response_checkpoints.keys()), response_checkpoints
+    )
     checkpoint_details.checkpoints = [
         _hydrate_checkpoints(job_id, checkpoint_id, response_checkpoints)
         for checkpoint_id in checkpoint_ids
@@ -276,18 +290,46 @@ def _process_user_provided_checkpoints(
     return checkpoint_details
 
 
-def _get_checkpoint_ids_to_deploy(checkpoint_id_options: List[str]) -> str:
-    if len(checkpoint_id_options) == 0:
+def _get_checkpoint_ids_to_deploy(
+    checkpoint_id_options: List[str], response_checkpoints: OrderedDict[str, dict]
+) -> List[str]:
+    """Get checkpoint IDs to deploy based on user selection
+    and validate the selected checkpoints.
+    """
+    if not checkpoint_id_options:
         raise click.UsageError("No checkpoints found for the training job.")
-    if len(checkpoint_id_options) > 1:
-        checkpoint_ids = inquirer.checkbox(
-            message="Select the checkpoint to deploy. Use spacebar to select/deselect.",
-            choices=checkpoint_id_options,
-        ).execute()
-        if not checkpoint_ids:
-            raise click.UsageError("At least one checkpoint must be selected.")
-    else:
-        checkpoint_ids = [checkpoint_id_options[0]]
+
+    # If only one checkpoint, return it directly
+    if len(checkpoint_id_options) == 1:
+        return [checkpoint_id_options[0]]
+
+    checkpoint_ids = _select_multiple_checkpoints(checkpoint_id_options)
+    _validate_selected_checkpoints(checkpoint_ids, response_checkpoints)
+    return checkpoint_ids
+
+
+def _select_single_checkpoint(checkpoint_id_options: List[str]) -> List[str]:
+    """Select a single checkpoint using interactive prompt."""
+    checkpoint_id = inquirer.select(
+        message="Select the checkpoint to deploy:", choices=checkpoint_id_options
+    ).execute()
+
+    if not checkpoint_id:
+        raise click.UsageError("A checkpoint must be selected.")
+
+    return [checkpoint_id]
+
+
+def _select_multiple_checkpoints(checkpoint_id_options: List[str]) -> List[str]:
+    """Select multiple checkpoints using interactive checkbox."""
+    checkpoint_ids = inquirer.checkbox(
+        message="Select the checkpoint to deploy. Use spacebar to select/deselect.",
+        choices=checkpoint_id_options,
+    ).execute()
+
+    if not checkpoint_ids:
+        raise click.UsageError("At least one checkpoint must be selected.")
+
     return checkpoint_ids
 
 
@@ -381,21 +423,30 @@ def _hydrate_checkpoints(
     return hydrate_checkpoint(job_id, checkpoint_id, checkpoint, checkpoint_type)
 
 
-def _validate_checkpoint_model_weight_formats(checkpoints: List[Checkpoint]) -> None:
+def _validate_selected_checkpoints(
+    checkpoint_ids: List[str], response_checkpoints: OrderedDict[str, dict]
+) -> None:
     """
-    Validates that all checkpoints have the same model weight format.
+    Validates checkpoint model weight formats.
+    - If the list contains any FULL checkpoint, only a single checkpoint is allowed.
+    - If the list contains only LORA checkpoints, allow multiple checkpoints.
     """
-    if not checkpoints or checkpoints[0].model_weight_format is None:
+    if (
+        not checkpoint_ids
+        or response_checkpoints[checkpoint_ids[0]].get("checkpoint_type") is None
+    ):
         raise ValueError(
             "Unable to infer model weight format. Reach out to Baseten for support."
         )
 
-    model_weight_format = checkpoints[0].model_weight_format
-    if (
-        model_weight_format == truss_config.ModelWeightsFormat.FULL
-        and len(checkpoints) > 1
-    ):
-        # vLLM does not support multiple checkpoints for full model weights, you can only do this for lora adapters
+    has_full_checkpoint = any(
+        response_checkpoints[checkpoint_id].get("checkpoint_type")
+        == truss_config.ModelWeightsFormat.FULL.value
+        for checkpoint_id in checkpoint_ids
+    )
+
+    if has_full_checkpoint and len(checkpoint_ids) > 1:
+        # vLLM does not support multiple checkpoints when any checkpoint is full model weights.
         raise ValueError(
             "Full checkpoints are not supported for multiple checkpoints. Please select a single checkpoint."
         )

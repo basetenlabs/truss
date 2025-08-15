@@ -148,7 +148,7 @@ class LoRADetails(custom_types.ConfigModel):
     def validate_lora_rank(cls, v):
         if v not in ALLOWED_LORA_RANKS:
             raise ValueError(
-                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}."
+                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}.model_weight_format = checkpoints[0].model_weight_format"
             )
         return v
 
