@@ -7,10 +7,7 @@ import pytest
 
 import truss_train.definitions as definitions
 from truss.base import truss_config
-from truss.cli.train.deploy_checkpoints import (
-    create_build_time_config,
-    prepare_checkpoint_deploy,
-)
+from truss.cli.train.deploy_checkpoints import prepare_checkpoint_deploy
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     _render_truss_config_for_checkpoint_deployment,
     hydrate_checkpoint,
@@ -345,66 +342,6 @@ def test_get_lora_rank():
         match=re.escape("LoRA rank 1000 from checkpoint is not in allowed values"),
     ):
         _get_lora_rank(checkpoint_resp)
-
-
-def test_create_build_time_config(tmp_path):
-    """Test that create_build_time_config properly creates a build-time config file."""
-    # Create a temporary directory structure
-    context_path = tmp_path / "context"
-    context_path.mkdir()
-
-    # Create a sample config.yaml file with runtime-only attributes
-    config_data = {
-        "model_name": "test-model",
-        "docker_server": {
-            "start_command": "python server.py --port 8000",
-            "server_port": 8000,
-            "predict_endpoint": "/predict",
-            "readiness_endpoint": "/health",
-            "liveness_endpoint": "/health",
-        },
-        "training_checkpoints": {
-            "download_folder": "/tmp/checkpoints",
-            "checkpoints": [{"id": "checkpoint-1", "name": "checkpoint-1"}],
-        },
-        "resources": {
-            "cpu": "1000m",
-            "memory": "2Gi",
-            "accelerator": {"accelerator": "H100", "count": 1},
-        },
-        "environment_variables": {"HF_TOKEN": "secret_token"},
-    }
-
-    # Write the config file
-    config_path = context_path / "config.yaml"
-    import yaml
-
-    with open(config_path, "w") as f:
-        yaml.dump(config_data, f)
-
-    # Call the function under test
-    create_build_time_config(context_path)
-
-    # Verify the build-time config file was created
-    build_time_config_path = context_path / "config_build_time.yaml"
-    assert build_time_config_path.exists()
-
-    # Load and verify the build-time config
-    build_time_config = truss_config.TrussConfig.from_yaml(build_time_config_path)
-
-    # Verify that some runtime-only attributes are preserved (not yet supported for buildless)
-    assert build_time_config.model_name == "test-model"  # Should be preserved
-    assert build_time_config.resources.cpu == "1000m"  # Should be preserved
-    assert build_time_config.resources.memory == "2Gi"  # Should be preserved
-
-    # Environment variables are cleared in build-time config
-    assert build_time_config.environment_variables == {}
-
-    # Verify that runtime-only attributes are excluded
-    assert build_time_config.training_checkpoints is None  # Should be set to None
-    assert (
-        build_time_config.docker_server.start_command == ""
-    )  # Should be set to empty string
 
 
 def test_hydrate_lora_checkpoint():
