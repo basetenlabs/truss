@@ -117,9 +117,11 @@ pub static TRUSS_TRANSFER_B10FS_DESIRED_SPEED_MBPS: Lazy<f64> = Lazy::new(|| {
 });
 
 /// Default download speed for b10fs (MB/s)
+/// Typical disk write: 1.3GB/s, followed by read of 2GB/s
 pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 400.0;
 
 /// Download speed for instances with few cores (MB/s)
+/// Typical disk write: 250MB/s, followed by read of 350MB/s
 pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 90.0;
 
 /// Minimum required available space in GB for b10fs
