@@ -187,7 +187,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     if should_copy {
         // Copy the local file to the incomplete cache file with progress monitoring
         info!(
-            "Copying local file {:?} to temporary incomplete cache file {:?}",
+            "Copying local file {:?} to cache file {:?}",
             download_path, incomplete_cache_path
         );
 
@@ -230,7 +230,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         monitor_handle.abort();
 
         match copy_result {
-            Ok(_) => info!("Successfully copied to incomplete cache file."),
+            Ok(_) => debug!("Successfully copied to incomplete cache file."),
             Err(e) => {
                 warn!(
                     "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
@@ -266,7 +266,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     }
 
     // Atomically rename the incomplete file to the final cache file.
-    info!(
+    debug!(
         "Atomic rename: renaming incomplete cache file {:?} to final cache file {:?}",
         incomplete_cache_path, cache_path
     );

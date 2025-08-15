@@ -49,7 +49,8 @@ pub async fn download_file_with_cache(
                 pointer.hash
             );
             if let Err(e) =
-                crate::cache::create_symlink_or_skip(&cache_filepath, &destination, pointer.size).await
+                crate::cache::create_symlink_or_skip(&cache_filepath, &destination, pointer.size)
+                    .await
             {
                 warn!(
                     "Symlink creation failed: {}.  Proceeding with direct download.",
@@ -63,7 +64,10 @@ pub async fn download_file_with_cache(
                 return Ok(file_name.to_string());
             }
         } else if !cache_filepath.exists() {
-            debug!("{} not found in b10cache. Proceeding to download.", pointer.hash);
+            debug!(
+                "{} not found in b10cache. Proceeding to download.",
+                pointer.hash
+            );
         } else {
             warn!(
                 "Found {} in b10cache but size mismatch. b10cache is inconsistent. Proceeding to download.",
