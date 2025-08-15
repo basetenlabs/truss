@@ -71,7 +71,7 @@ pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE: Lazy<usize> = Lazy::n
     env::var("TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(64)
+        .unwrap_or(84)
 });
 
 /// Fallback download directory
