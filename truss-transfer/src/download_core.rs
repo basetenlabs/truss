@@ -140,9 +140,8 @@ pub async fn download_http_to_path_fast(
         )
         .await;
         // assure that the file got flushed, without asking each file to flush it
-        for i in 500..0 {
-            let final_size = fs::metadata(path).await?.len();
-            if final_size == size {
+        for i in (0..250).rev() {
+            if check_metadata_size(&path, size).await {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;

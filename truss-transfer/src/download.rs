@@ -122,10 +122,10 @@ pub async fn download_file_with_cache(
         }
     }
 
-    let actual_size = fs::metadata(&destination).await?.len();
+    let is_correct_size = check_metadata_size(&destination, pointer.size).await;
 
     // After the file is locally downloaded, optionally move it to b10cache.
-    if write_to_b10cache && actual_size == pointer.size {
+    if write_to_b10cache && is_correct_size {
         match crate::cache::handle_write_b10cache(&destination, &cache_filepath).await {
             Ok(_) => debug!("b10cache handled successfully."),
             Err(e) => {
@@ -133,6 +133,10 @@ pub async fn download_file_with_cache(
                 warn!("Failed to handle b10cache: {}", e);
             }
         }
+    } else if !is_correct_size {
+        warn!("Downloaded file {} has incorrect size. Expected {}, got {}.",
+            destination.display(), pointer.size, fs::metadata(&destination).await?.len()
+        );
     }
 
     Ok(file_name.to_string())
