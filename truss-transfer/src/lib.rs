@@ -345,7 +345,6 @@ mod tests {
         assert_eq!(TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB, 100);
         assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
 
-
         assert_eq!(SECRETS_BASE_PATH, "/secrets");
 
         // Test manifest paths
