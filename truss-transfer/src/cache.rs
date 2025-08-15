@@ -195,7 +195,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         let monitor_path = incomplete_cache_path.to_path_buf();
         let monitor_handle = tokio::spawn({
             async move {
-                let mut ticker = interval(Duration::from_secs(10));
+                let mut ticker = interval(Duration::from_secs(30));
                 let mut last_size = 0;
                 loop {
                     ticker.tick().await;
