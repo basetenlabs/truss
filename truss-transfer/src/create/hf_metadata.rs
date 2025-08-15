@@ -134,9 +134,9 @@ pub async fn metadata_hf_repo(
 
     if revision != real_revision {
         eprintln!(
-            "Warning: revision {} is moving, using {} instead. \
-            Please update your code to use `revision={}` instead otherwise you will keep moving.",
-            revision, real_revision, real_revision
+            "Warning: Huggingface revision {revision} is not fixed, using {real_revision} instead. \
+            Please update your code to use `revision={real_revision}` instead otherwise its unclear which files you want to download + \
+            and will update in future deployments."
         );
     }
 

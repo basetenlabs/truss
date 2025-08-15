@@ -1,6 +1,5 @@
 use pyo3::pyclass;
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum ResolutionType {
@@ -142,9 +141,9 @@ impl From<MaybeTaggedResolution> for Resolution {
     }
 }
 
-impl Into<TaggedResolution> for Resolution {
-    fn into(self) -> TaggedResolution {
-        match self {
+impl From<Resolution> for TaggedResolution {
+    fn from(val: Resolution) -> Self {
+        match val {
             Resolution::Http(http) => TaggedResolution::Http(http),
             Resolution::Gcs(gcs) => TaggedResolution::Gcs(gcs),
             Resolution::S3(s3) => TaggedResolution::S3(s3),
@@ -205,7 +204,6 @@ pub enum GcsError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
 
     #[test]
     fn test_http_resolution_from_json() {

@@ -5,9 +5,12 @@ use log::{debug, info, warn};
 
 use crate::constants::*;
 use crate::download_core::{
-    check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path,
+    check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path_fast,
     download_s3_to_path,
 };
+use std::sync::Arc;
+use tokio::fs;
+use tokio::sync::Semaphore;
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 /// Now handles both HTTP and GCS downloads with unified caching logic.
@@ -17,9 +20,11 @@ pub async fn download_file_with_cache(
     file_name: &str,
     read_from_b10cache: bool,
     write_to_b10cache: bool,
-) -> Result<()> {
+    num_workers: usize,
+    semaphore_range_dw: Arc<Semaphore>,
+) -> Result<String> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
-    let cache_path = Path::new(CACHE_DIR).join(&pointer.hash);
+    let cache_filepath = Path::new(&*CACHE_DIR).join(&pointer.hash);
 
     // Skip download if file exists with the expected size.
     if check_metadata_size(&destination, pointer.size).await {
@@ -27,7 +32,7 @@ pub async fn download_file_with_cache(
             "File {} already exists with correct size. Skipping download.",
             file_name
         );
-        return Ok(());
+        return Ok(file_name.to_string());
     } else if destination.exists() {
         warn!(
             "File {} exists but size mismatch. Redownloading.",
@@ -38,13 +43,14 @@ pub async fn download_file_with_cache(
     // If b10cache is enabled, try symlinking from the cache
     if read_from_b10cache {
         // Check metadata and size first
-        if check_metadata_size(&cache_path, pointer.size).await {
+        if check_metadata_size(&cache_filepath, pointer.size).await {
             debug!(
                 "Found {} in b10cache. Attempting to create symlink...",
                 pointer.hash
             );
             if let Err(e) =
-                crate::cache::create_symlink_or_skip(&cache_path, &destination, pointer.size).await
+                crate::cache::create_symlink_or_skip(&cache_filepath, &destination, pointer.size)
+                    .await
             {
                 warn!(
                     "Symlink creation failed: {}.  Proceeding with direct download.",
@@ -55,8 +61,13 @@ pub async fn download_file_with_cache(
                     "Symlink created successfully. Skipping download for {}.",
                     file_name
                 );
-                return Ok(());
+                return Ok(file_name.to_string());
             }
+        } else if !cache_filepath.exists() {
+            debug!(
+                "{} not found in b10cache. Proceeding to download.",
+                pointer.hash
+            );
         } else {
             warn!(
                 "Found {} in b10cache but size mismatch. b10cache is inconsistent. Proceeding to download.",
@@ -68,11 +79,13 @@ pub async fn download_file_with_cache(
     // Download the file to the local path based on resolution type
     match &pointer.resolution {
         crate::types::Resolution::Http(http_resolution) => {
-            download_http_to_path(
+            download_http_to_path_fast(
                 &http_resolution.url,
                 &destination,
                 pointer.size,
                 &pointer.runtime_secret_name,
+                num_workers,
+                semaphore_range_dw,
             )
             .await?;
         }
@@ -109,16 +122,22 @@ pub async fn download_file_with_cache(
         }
     }
 
+    let is_correct_size = check_metadata_size(&destination, pointer.size).await;
+
     // After the file is locally downloaded, optionally move it to b10cache.
-    if write_to_b10cache {
-        match crate::cache::handle_write_b10cache(&destination, &cache_path).await {
+    if write_to_b10cache && is_correct_size {
+        match crate::cache::handle_write_b10cache(&destination, &cache_filepath).await {
             Ok(_) => debug!("b10cache handled successfully."),
             Err(e) => {
                 // even if the handle_write_b10cache fails, we still continue.
                 warn!("Failed to handle b10cache: {}", e);
             }
         }
+    } else if !is_correct_size {
+        warn!("Downloaded file {} has incorrect size. Expected {}, got {}.",
+            destination.display(), pointer.size, fs::metadata(&destination).await?.len()
+        );
     }
 
-    Ok(())
+    Ok(file_name.to_string())
 }

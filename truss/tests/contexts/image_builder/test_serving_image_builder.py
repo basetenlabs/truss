@@ -533,3 +533,15 @@ def _assert_copied(src_path: str, dest_path: str):
             assert filecmp.cmp(src_file, dest_file, shallow=False), (
                 f"{src_file} and {dest_file} are not the same"
             )
+
+
+def test_hash_dir_sanitization(custom_model_truss_dir):
+    th = TrussHandle(custom_model_truss_dir)
+    th.add_environment_variable("foo", "bar")
+    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        truss_config = TrussConfig.from_yaml(tmp_path / "build_hash" / "config.yaml")
+        assert truss_config.environment_variables == {}
