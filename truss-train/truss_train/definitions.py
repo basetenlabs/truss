@@ -1,4 +1,5 @@
 import enum
+from abc import ABC
 from typing import Dict, List, Optional, Union
 
 import pydantic
@@ -138,15 +139,10 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     job: TrainingJob = pydantic.Field(exclude=True)
 
 
-class Checkpoint(custom_types.ConfigModel):
+class Checkpoint(custom_types.ConfigModel, ABC):
     training_job_id: str
     paths: List[str]
     model_weight_format: ModelWeightsFormat
-
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            "Checkpoint is an abstract class. Use LoRACheckpoint or FullCheckpoint instead."
-        )
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
