@@ -548,10 +548,10 @@ class BaseImage(custom_types.ConfigModel):
 
 class DockerServer(custom_types.ConfigModel):
     start_command: str
-    server_port: int
-    predict_endpoint: str
-    readiness_endpoint: str
-    liveness_endpoint: str
+    server_port: Optional[int] = None
+    predict_endpoint: Optional[str] = None
+    readiness_endpoint: Optional[str] = None
+    liveness_endpoint: Optional[str] = None
 
 
 class TrainingArtifactReference(custom_types.ConfigModel):
@@ -628,6 +628,13 @@ class TrussConfig(custom_types.ConfigModel):
     live_reload: bool = False
     apply_library_patches: bool = True
     spec_version: str = "2.0"
+
+    DOCKER_SERVER_OPTIONAL_FIELDS: ClassVar[list[str]] = [
+        "server_port",
+        "predict_endpoint",
+        "readiness_endpoint",
+        "liveness_endpoint",
+    ]
 
     class Config:
         protected_namespaces = ()  # Silence warnings about fields starting with `model_`.
@@ -732,6 +739,34 @@ class TrussConfig(custom_types.ConfigModel):
             return None
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
+
+    @pydantic.model_validator(mode="after")
+    def _validate_docker_server(self) -> "TrussConfig":
+        is_grpc = self.runtime.transport.kind == TransportKind.GRPC
+        has_docker_server = self.docker_server is not None
+
+        if is_grpc:
+            if not has_docker_server:
+                raise ValueError(
+                    "docker_server is required when transport kind is gRPC"
+                )
+            if any(
+                getattr(self.docker_server, field) is not None
+                for field in TrussConfig.DOCKER_SERVER_OPTIONAL_FIELDS
+            ):
+                raise ValueError(
+                    "When transport kind is gRPC, docker_server should only have start_command defined"
+                )
+        elif has_docker_server:
+            if any(
+                getattr(self.docker_server, field) is None
+                for field in TrussConfig.DOCKER_SERVER_OPTIONAL_FIELDS
+            ):
+                raise ValueError(
+                    "Please define server_port, predict_endpoint, readiness_endpoint, and liveness_endpoint for docker_server"
+                )
+
+        return self
 
 
 def _map_to_supported_python_version(python_version: str) -> str:
