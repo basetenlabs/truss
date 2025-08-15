@@ -1000,10 +1000,12 @@ def test_sanitize_runtime_fields():
     # Get runtime field names dynamically from field metadata
     runtime_fields = []
     for field_name, field_info in TrussConfig.model_fields.items():
-        if field_info.json_schema_extra and field_info.json_schema_extra.get('runtime_only'):
+        if field_info.json_schema_extra and field_info.json_schema_extra.get(
+            "runtime_only"
+        ):
             runtime_fields.append(field_name)
-    
-    config.sanitize_runtime_fields()    
+
+    config.sanitize_runtime_fields()
     assert config.python_version == "py39"
     # Verify all runtime fields are sanitized
     for field_name in runtime_fields:

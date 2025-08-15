@@ -599,19 +599,25 @@ class TrussConfig(custom_types.ConfigModel):
     requirements_file: Optional[str] = None
     requirements: list[str] = pydantic.Field(default_factory=list)
     system_packages: list[str] = pydantic.Field(default_factory=list)
-    environment_variables: Annotated[dict[str, str], pydantic.Field(default_factory=dict, runtime_only=True)]
+    environment_variables: Annotated[
+        dict[str, str], pydantic.Field(default_factory=dict, runtime_only=True)
+    ]
     secrets: MutableMapping[str, Optional[str]] = pydantic.Field(default_factory=dict)
 
     resources: Resources = pydantic.Field(default_factory=Resources)
     runtime: Runtime = pydantic.Field(default_factory=Runtime)
     build: Build = pydantic.Field(default_factory=Build)
     build_commands: list[str] = pydantic.Field(default_factory=list)
-    docker_server: Annotated[Optional[DockerServer], pydantic.Field(runtime_only=True)] = None
+    docker_server: Annotated[
+        Optional[DockerServer], pydantic.Field(runtime_only=True)
+    ] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
 
     # deploying from checkpoint
-    training_checkpoints: Annotated[Optional[CheckpointList], pydantic.Field(runtime_only=True)] = None
+    training_checkpoints: Annotated[
+        Optional[CheckpointList], pydantic.Field(runtime_only=True)
+    ] = None
 
     # Internal / Legacy.
     input_type: str = "Any"
@@ -738,7 +744,9 @@ class TrussConfig(custom_types.ConfigModel):
     def sanitize_runtime_fields(self) -> None:
         """Remove all runtime-specific fields from the config."""
         for field_name, field_info in self.__class__.model_fields.items():
-            if field_info.json_schema_extra and field_info.json_schema_extra.get('runtime_only'):
+            if field_info.json_schema_extra and field_info.json_schema_extra.get(
+                "runtime_only"
+            ):
                 current_value = getattr(self, field_name)
                 if isinstance(current_value, dict):
                     setattr(self, field_name, {})
