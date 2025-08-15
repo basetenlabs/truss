@@ -8,7 +8,7 @@ use crate::constants::{
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use futures_util::StreamExt;
-use log::{debug, info, warn};
+use log::{debug, info, warn, error};
 use object_store::ObjectStore;
 use reqwest::Client;
 use std::sync::Arc;
@@ -140,7 +140,7 @@ pub async fn download_http_to_path_fast(
         )
         .await;
         // assure that the file got flushed, without asking each file to flush it
-        for i in (0..250).rev() {
+        for i in (0..100).rev() {
             if check_metadata_size(&path, size).await {
                 break;
             }
@@ -150,6 +150,21 @@ pub async fn download_http_to_path_fast(
                     "Download completed, but flush() not complete + metadata of {} not synced to disk.",
                     path.display()
                 );
+                // force sync
+                fs::File::open(path)
+                    .await
+                    .context(format!("Failed to open file: {:?}", path))?
+                    .sync_all()
+                    .await
+                    .context(format!("Failed to sync file: {:?}", path))?;
+                if !check_metadata_size(&path, size).await {
+                    error!(
+                        "File {} size mismatch after sync. Expected {}, got {}",
+                        path.display(),
+                        size,
+                        fs::metadata(&path).await?.len()
+                    );
+                }
             }
         }
         info!("Completed range HTTP download to {:?}", path);
