@@ -38,7 +38,7 @@ pub async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Re
     let desired_speed: f64 = get_desired_speed();
 
     for bptr in &manifest.pointers {
-        let cache_path = Path::new(CACHE_DIR).join(&bptr.hash);
+        let cache_path = Path::new(&*CACHE_DIR).join(&bptr.hash);
 
         if bptr.size > (2 * B10FS_BENCHMARK_SIZE as u64) && cache_path.exists() {
             let metadata = fs::metadata(&cache_path).await?;

@@ -39,7 +39,7 @@ pub async fn cleanup_b10cache_and_get_space_stats(
 ) -> Result<(u64, u64)> {
     // Returns (available_volume_bytes, manifest_files_in_cache_bytes)
     let cleanup_threshold_hours = *TRUSS_TRANSFER_B10FS_CLEANUP_HOURS;
-    let cache_dir_path = Path::new(CACHE_DIR);
+    let cache_dir_path = Path::new(&*CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
@@ -53,7 +53,7 @@ pub async fn cleanup_b10cache_and_get_space_stats(
 
     info!(
         "Analyzing b10cache at {} with a cleanup threshold of {} hours ({} days)",
-        CACHE_DIR,
+        &*CACHE_DIR,
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
@@ -126,7 +126,7 @@ pub async fn cleanup_b10cache_and_get_space_stats(
 
     info!(
         "Total available space on volume for {}: {:.2} GB ({} bytes)",
-        CACHE_DIR,
+        &*CACHE_DIR,
         available_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
         available_bytes
     );

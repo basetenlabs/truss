@@ -15,7 +15,11 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
 ];
 
 /// Cache directory for b10fs
-pub static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
+
+pub static CACHE_DIR: Lazy<String> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_CACHE_DIR")
+        .unwrap_or_else(|_| "/cache/org/artifacts/truss_transfer_managed_v1".to_string())
+});
 
 /// Environment variable to enable Baseten FS
 pub static BASETEN_FS_ENABLED: Lazy<bool> = Lazy::new(|| {

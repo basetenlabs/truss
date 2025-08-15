@@ -24,7 +24,7 @@ pub async fn download_file_with_cache(
     semaphore_range_dw: Arc<Semaphore>,
 ) -> Result<String> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
-    let cache_path = Path::new(CACHE_DIR).join(&pointer.hash);
+    let cache_path = Path::new(&*CACHE_DIR).join(&pointer.hash);
 
     // Skip download if file exists with the expected size.
     if check_metadata_size(&destination, pointer.size).await {

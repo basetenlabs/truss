@@ -357,7 +357,7 @@ mod tests {
     fn test_constants_values() {
         // Test that constants have expected values
         assert_eq!(TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK, "/tmp/bptr-resolved");
-        assert_eq!(CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
+        assert_eq!(*CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
         assert_eq!(*TRUSS_TRANSFER_NUM_WORKERS, 6);
         assert_eq!(*TRUSS_TRANSFER_B10FS_CLEANUP_HOURS, 4 * 24);
         assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 350.0);
