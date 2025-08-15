@@ -310,7 +310,8 @@ class TrussHandle:
             if disable_json_logging:
                 envs["DISABLE_JSON_LOGGING"] = "true"
 
-            # Add environment variables from config
+            # For traditional model deploys, env variables are provided in the k8s spec,
+            # so we have to manually add them here.
             envs.update(self.spec.config.environment_variables)
 
             if container_name_prefix:
