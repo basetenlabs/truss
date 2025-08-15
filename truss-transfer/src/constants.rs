@@ -15,7 +15,16 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
 ];
 
 /// Cache directory for b10fs
-pub static CACHE_DIR: &str = "/cache/org/artifacts/truss_transfer_managed_v1";
+
+pub static CACHE_DIR: Lazy<String> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_CACHE_DIR")
+        .unwrap_or_else(|_| "/cache/org/artifacts/truss_transfer_managed_v1".to_string())
+});
+pub static TRUSS_TRANSFER_LOG: Lazy<String> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_LOG")
+        .or_else(|_| env::var("RUST_LOG"))
+        .unwrap_or_else(|_| "info".to_string())
+});
 
 /// Environment variable to enable Baseten FS
 pub static BASETEN_FS_ENABLED: Lazy<bool> = Lazy::new(|| {
@@ -23,6 +32,12 @@ pub static BASETEN_FS_ENABLED: Lazy<bool> = Lazy::new(|| {
         .ok()
         .map(|s| is_truthy(&s))
         .unwrap_or(false)
+});
+
+pub static HF_TOKEN: Lazy<Option<String>> = Lazy::new(|| {
+    env::var("HF_TOKEN")
+        .or_else(|_| env::var("HUGGING_FACE_HUB_TOKEN"))
+        .ok()
 });
 
 /// Number of download workers, initialized from the `TRUSS_TRANSFER_NUM_WORKERS`
@@ -35,7 +50,6 @@ pub static TRUSS_TRANSFER_NUM_WORKERS: Lazy<u8> = Lazy::new(|| {
 });
 
 /// Environment variable for download directory
-pub static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 
 /// Cleanup hours for b10fs, initialized from the `TRUSS_TRANSFER_B10FS_CLEANUP_HOURS`
 /// environment variable, with a default of 96 hours (4 days).
@@ -71,25 +85,43 @@ pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE: Lazy<usize> = Lazy::n
     env::var("TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(64)
+        .unwrap_or(84)
 });
 
-/// Fallback download directory
-pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
+pub static TRUSS_TRANSFER_DOWNLOAD_DIR: Lazy<String> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_DOWNLOAD_DIR").unwrap_or_else(|_| "/tmp/truss_transfer".to_string())
+});
 
 /// Base path for secrets
 pub static SECRETS_BASE_PATH: &str = "/secrets";
 
 pub static RUNTIME_MODEL_CACHE_PATH: &str = "/app/model_cache";
 
-/// Environment variable for b10fs download speed
-pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
-    "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
+/// Desired download speed for b10fs (MB/s), determined by environment variable or heuristic.
+pub static TRUSS_TRANSFER_B10FS_DESIRED_SPEED_MBPS: Lazy<f64> = Lazy::new(|| {
+    if let Ok(speed) = env::var("TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS") {
+        if let Ok(speed) = speed.parse::<f64>() {
+            return speed;
+        }
+    }
+
+    // if we have 16 or fewer cpu cores, use a lower speed
+    let speed_threshold = if num_cpus::get() <= 16 {
+        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES
+    } else {
+        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS
+    };
+
+    // fallback to a random number between 10 MB/s and speed_threshold
+    10.0 + rand::random::<f64>() * (speed_threshold - 10.0)
+});
 
 /// Default download speed for b10fs (MB/s)
-pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 350.0;
+/// Typical disk write: 1.3GB/s, followed by read of 2GB/s
+pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 400.0;
 
 /// Download speed for instances with few cores (MB/s)
+/// Typical disk write: 250MB/s, followed by read of 350MB/s
 pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 90.0;
 
 /// Minimum required available space in GB for b10fs

@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::constants::SECRETS_BASE_PATH;
+use crate::constants::{HF_TOKEN, SECRETS_BASE_PATH};
 
 static WARNED_SECRETS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
@@ -54,19 +54,7 @@ pub fn get_secret_path(runtime_secret_name: &str) -> String {
 pub fn get_hf_secret_from_file(hf_token_name: &str) -> Option<String> {
     if let Some(token) = get_secret_from_file(hf_token_name) {
         Some(token)
-    } else if let Ok(token) = std::env::var("HF_TOKEN") {
-        warn!(
-            "No secret found in {}, using HF_TOKEN environment variable",
-            hf_token_name
-        );
-        Some(token.trim().to_string())
-    } else if let Ok(token) = std::env::var("HUGGING_FACE_HUB_TOKEN") {
-        warn!(
-            "No secret found in {}, using HUGGING_FACE_HUB_TOKEN environment variable",
-            hf_token_name
-        );
-        Some(token.trim().to_string())
     } else {
-        None
+        (*HF_TOKEN).clone().map(|token| token)
     }
 }

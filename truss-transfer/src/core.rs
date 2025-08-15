@@ -123,7 +123,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     if allowed_b10_cache {
         info!("b10cache is enabled.");
         // create cache directory if it doesn't exist
-        fs::create_dir_all(CACHE_DIR)
+        fs::create_dir_all(&*CACHE_DIR)
             .await
             .context("Failed to create b10cache directory")?;
         // shuffle the resolution map to randomize the order of downloads
