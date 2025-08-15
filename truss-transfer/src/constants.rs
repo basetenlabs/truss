@@ -20,6 +20,11 @@ pub static CACHE_DIR: Lazy<String> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_CACHE_DIR")
         .unwrap_or_else(|_| "/cache/org/artifacts/truss_transfer_managed_v1".to_string())
 });
+pub static TRUSS_TRANSFER_LOG: Lazy<String> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_LOG")
+        .or_else(|_| env::var("RUST_LOG"))
+        .unwrap_or_else(|_| "info".to_string())
+});
 
 /// Environment variable to enable Baseten FS
 pub static BASETEN_FS_ENABLED: Lazy<bool> = Lazy::new(|| {
@@ -27,6 +32,12 @@ pub static BASETEN_FS_ENABLED: Lazy<bool> = Lazy::new(|| {
         .ok()
         .map(|s| is_truthy(&s))
         .unwrap_or(false)
+});
+
+pub static HF_TOKEN: Lazy<Option<String>> = Lazy::new(|| {
+    env::var("HF_TOKEN")
+        .or_else(|_| env::var("HUGGING_FACE_HUB_TOKEN"))
+        .ok()
 });
 
 /// Number of download workers, initialized from the `TRUSS_TRANSFER_NUM_WORKERS`
@@ -39,7 +50,6 @@ pub static TRUSS_TRANSFER_NUM_WORKERS: Lazy<u8> = Lazy::new(|| {
 });
 
 /// Environment variable for download directory
-pub static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 
 /// Cleanup hours for b10fs, initialized from the `TRUSS_TRANSFER_B10FS_CLEANUP_HOURS`
 /// environment variable, with a default of 96 hours (4 days).
@@ -78,8 +88,9 @@ pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE: Lazy<usize> = Lazy::n
         .unwrap_or(84)
 });
 
-/// Fallback download directory
-pub static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
+pub static TRUSS_TRANSFER_DOWNLOAD_DIR: Lazy<String> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_DOWNLOAD_DIR").unwrap_or_else(|_| "/tmp/truss_transfer".to_string())
+});
 
 /// Base path for secrets
 pub static SECRETS_BASE_PATH: &str = "/secrets";
