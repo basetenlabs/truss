@@ -21,6 +21,7 @@ from truss_train.definitions import (
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
+    ModelWeightsFormat,
     SecretReference,
 )
 
@@ -81,32 +82,29 @@ def prepare_checkpoint_deploy(
 
 
 def _validate_base_model_id(
-    base_model_id: Optional[str], model_weight_format: truss_config.ModelWeightsFormat
+    base_model_id: Optional[str], model_weight_format: ModelWeightsFormat
 ) -> None:
     """
     Validate that base model ID is present when required by the model weight format.
     """
-    if (
-        not base_model_id
-        and model_weight_format == truss_config.ModelWeightsFormat.LORA
-    ):
+    if not base_model_id and model_weight_format == ModelWeightsFormat.LORA:
         raise ValueError(
             "Unable to infer base model id. Reach out to Baseten for support."
         )
 
 
 def _get_model_name(
-    model_weight_format: truss_config.ModelWeightsFormat, base_model_id: Optional[str]
+    model_weight_format: ModelWeightsFormat, base_model_id: Optional[str]
 ) -> str:
     """
     Generate a model name based on the model weight format and base model ID.
     NOTE: Note all checkpoints have a base model id nor need one
     """
     _validate_base_model_id(base_model_id, model_weight_format)
-    if model_weight_format == truss_config.ModelWeightsFormat.FULL:
-        # Prompt user for model name instead of returning hardcoded value
+    if model_weight_format == ModelWeightsFormat.FULL:
         model_name = inquirer.text(
-            message="Enter the model name for your full weight model."
+            message="Enter the model name for your full fine-tuned model.",
+            validate=lambda s: s and s.strip(),
         ).execute()
 
         model_name = f"{model_name}-vLLM"
@@ -115,7 +113,7 @@ def _get_model_name(
             raise click.UsageError("Model name is required.")
 
         return model_name
-    elif model_weight_format == truss_config.ModelWeightsFormat.LORA:
+    elif model_weight_format == ModelWeightsFormat.LORA:
         return f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # type: ignore[union-attr]
     raise ValueError(
         f"Unsupported model weight format: {model_weight_format}. Reach out to Baseten for support."
@@ -194,9 +192,9 @@ def hydrate_checkpoint(
     This function can be extended to support additional checkpoint types beyond LoRA.
     """
 
-    if checkpoint_type.lower() == truss_config.ModelWeightsFormat.LORA.value:
+    if checkpoint_type.lower() == ModelWeightsFormat.LORA.value:
         return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
-    elif checkpoint_type.lower() == truss_config.ModelWeightsFormat.FULL.value:
+    elif checkpoint_type.lower() == ModelWeightsFormat.FULL.value:
         return hydrate_full_checkpoint(job_id, checkpoint_id, checkpoint)
     else:
         raise ValueError(
@@ -212,9 +210,9 @@ def _render_truss_config_for_checkpoint_deployment(
     Currently supports LoRA checkpoints via vLLM, but can be extended for other formats.
     """
     # Delegate to specific rendering function based on model weight format
-    if checkpoint_deploy.model_weight_format == truss_config.ModelWeightsFormat.LORA:
+    if checkpoint_deploy.model_weight_format == ModelWeightsFormat.LORA:
         return render_vllm_lora_truss_config(checkpoint_deploy)
-    elif checkpoint_deploy.model_weight_format == truss_config.ModelWeightsFormat.FULL:
+    elif checkpoint_deploy.model_weight_format == ModelWeightsFormat.FULL:
         return render_vllm_full_truss_config(checkpoint_deploy)
     else:
         raise ValueError(
@@ -369,10 +367,7 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> Optional[
         console.print(
             f"Inferring base model from checkpoint: {base_model_id}", style="yellow"
         )
-    elif (
-        checkpoint.get("checkpoint_type")
-        == truss_config.ModelWeightsFormat.FULL.value.lower()
-    ):
+    elif checkpoint.get("checkpoint_type") == ModelWeightsFormat.FULL.value.lower():
         return None
     else:
         base_model_id = inquirer.text(message="Enter the base model id.").execute()
@@ -441,7 +436,7 @@ def _validate_selected_checkpoints(
 
     has_full_checkpoint = any(
         response_checkpoints[checkpoint_id].get("checkpoint_type")
-        == truss_config.ModelWeightsFormat.FULL.value
+        == ModelWeightsFormat.FULL.value
         for checkpoint_id in checkpoint_ids
     )
 

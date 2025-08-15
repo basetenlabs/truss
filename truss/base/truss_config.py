@@ -139,16 +139,6 @@ class ModelRepoSourceKind(str, enum.Enum):
     AZURE = "azure"
 
 
-class ModelWeightsFormat(str, enum.Enum):
-    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
-
-    LORA = "lora"
-    FULL = "full"
-
-    def to_truss_config(self) -> "ModelWeightsFormat":
-        return ModelWeightsFormat[self.name]
-
-
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
     revision: Optional[Annotated[str, pydantic.StringConstraints(min_length=1)]] = None

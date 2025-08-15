@@ -1,3 +1,4 @@
+import enum
 from typing import Dict, List, Optional, Union
 
 import pydantic
@@ -9,6 +10,16 @@ DEFAULT_LORA_RANK = 16
 
 # Allowed LoRA rank values for vLLM
 ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
+
+
+class ModelWeightsFormat(str, enum.Enum):
+    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
+
+    LORA = "lora"
+    FULL = "full"
+
+    def to_truss_config(self) -> "ModelWeightsFormat":
+        return ModelWeightsFormat[self.name]
 
 
 class SecretReference(custom_types.SafeModelNoExtra):
@@ -130,7 +141,12 @@ class TrainingProject(custom_types.SafeModelNoExtra):
 class Checkpoint(custom_types.ConfigModel):
     training_job_id: str
     paths: List[str]
-    model_weight_format: Optional[truss_config.ModelWeightsFormat]
+    model_weight_format: ModelWeightsFormat
+
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError(
+            "Checkpoint is an abstract class. Use LoRACheckpoint or FullCheckpoint instead."
+        )
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
@@ -141,7 +157,7 @@ class Checkpoint(custom_types.ConfigModel):
 class LoRADetails(custom_types.ConfigModel):
     """Configuration details specific to LoRA (Low-Rank Adaptation) models."""
 
-    rank: int
+    rank: int = DEFAULT_LORA_RANK
 
     @field_validator("rank")
     @classmethod
@@ -154,16 +170,12 @@ class LoRADetails(custom_types.ConfigModel):
 
 
 class FullCheckpoint(Checkpoint):
-    model_weight_format: truss_config.ModelWeightsFormat = (
-        truss_config.ModelWeightsFormat.FULL
-    )
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
 
 
 class LoRACheckpoint(Checkpoint):
-    lora_details: LoRADetails
-    model_weight_format: truss_config.ModelWeightsFormat = (
-        truss_config.ModelWeightsFormat.LORA
-    )
+    lora_details: LoRADetails = LoRADetails()
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
 
 
 class CheckpointList(custom_types.SafeModelNoExtra):

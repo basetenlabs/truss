@@ -28,6 +28,7 @@ from truss.cli.train.types import (
     DeployCheckpointsConfigComplete,
     PrepareCheckpointResult,
 )
+from truss_train.definitions import ModelWeightsFormat
 
 
 @pytest.fixture
@@ -114,7 +115,7 @@ def test_render_truss_config_for_checkpoint_deployment():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=16),
                 )
             ],
@@ -130,7 +131,7 @@ def test_render_truss_config_for_checkpoint_deployment():
             }
         ),
         deployment_name="gemma-3-27b-it-vLLM-LORA",
-        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+        model_weight_format=ModelWeightsFormat.LORA,
     )
     rendered_truss = _render_truss_config_for_checkpoint_deployment(deploy_config)
     test_truss = truss_config.TrussConfig.from_yaml(
@@ -206,7 +207,7 @@ def test_prepare_checkpoint_deploy_complete_config(
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["job123/rank-0/checkpoint-1/"],
-                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
@@ -251,7 +252,7 @@ def test_prepare_checkpoint_deploy_complete_config(
     assert len(config.checkpoint_details.checkpoints) == 1
     checkpoint = config.checkpoint_details.checkpoints[0]
     assert checkpoint.training_job_id == "job123"
-    assert checkpoint.model_weight_format == truss_config.ModelWeightsFormat.LORA
+    assert checkpoint.model_weight_format == ModelWeightsFormat.LORA
     assert isinstance(checkpoint, definitions.LoRACheckpoint)
     assert checkpoint.lora_details.rank == 32
 
@@ -280,7 +281,7 @@ def test_checkpoint_lora_rank_validation():
         checkpoint = definitions.LoRACheckpoint(
             training_job_id="job123",
             paths=["job123/rank-0/checkpoint-1/"],
-            model_weight_format=truss_config.ModelWeightsFormat.LORA,
+            model_weight_format=ModelWeightsFormat.LORA,
             lora_details=definitions.LoRADetails(rank=rank),
         )
         assert checkpoint.lora_details.rank == rank
@@ -312,7 +313,7 @@ def test_checkpoint_lora_rank_validation():
             definitions.LoRACheckpoint(
                 training_job_id="job123",
                 paths=["job123/rank-0/checkpoint-1/"],
-                model_weight_format=truss_config.ModelWeightsFormat.LORA,
+                model_weight_format=ModelWeightsFormat.LORA,
                 lora_details=definitions.LoRADetails(rank=rank),
             )
 
@@ -456,7 +457,7 @@ def test_render_vllm_lora_truss_config():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=64),
                 )
             ],
@@ -472,7 +473,7 @@ def test_render_vllm_lora_truss_config():
             }
         ),
         deployment_name="test-deployment",
-        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+        model_weight_format=ModelWeightsFormat.LORA,
     )
 
     result = render_vllm_lora_truss_config(deploy_config)
@@ -493,7 +494,7 @@ def test_render_truss_config_delegation():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=truss_config.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
@@ -505,7 +506,7 @@ def test_render_truss_config_delegation():
         ),
         runtime=definitions.DeployCheckpointsRuntime(environment_variables={}),
         deployment_name="test-deployment",
-        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+        model_weight_format=ModelWeightsFormat.LORA,
     )
 
     # Test that it works for LoRA format
@@ -523,7 +524,7 @@ def test_render_vllm_full_truss_config():
                 definitions.FullCheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=truss_config.ModelWeightsFormat.FULL,
+                    model_weight_format=ModelWeightsFormat.FULL,
                 )
             ],
             base_model_id=None,  # Not needed for full fine-tune
@@ -538,7 +539,7 @@ def test_render_vllm_full_truss_config():
             }
         ),
         deployment_name="test-deployment",
-        model_weight_format=truss_config.ModelWeightsFormat.FULL,
+        model_weight_format=ModelWeightsFormat.FULL,
     )
 
     result = render_vllm_full_truss_config(deploy_config)
@@ -561,7 +562,7 @@ def test_hydrate_full_checkpoint():
 
     assert isinstance(result, definitions.FullCheckpoint)
     assert result.training_job_id == job_id
-    assert result.model_weight_format == truss_config.ModelWeightsFormat.FULL
+    assert result.model_weight_format == ModelWeightsFormat.FULL
     assert len(result.paths) == 1
     assert result.paths[0] == f"rank-0/{checkpoint_id}/"
 
@@ -574,7 +575,7 @@ def test_hydrate_checkpoint_dispatcher_full():
 
     result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "full")
     assert isinstance(result, definitions.FullCheckpoint)
-    assert result.model_weight_format == truss_config.ModelWeightsFormat.FULL
+    assert result.model_weight_format == ModelWeightsFormat.FULL
 
 
 def test_get_checkpoint_ids_to_deploy_full_checkpoints():
