@@ -1,4 +1,3 @@
-use std::env;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -9,33 +8,12 @@ use tokio::io::AsyncReadExt;
 use crate::constants::*;
 use crate::types::BasetenPointerManifest;
 
-/// Get the desired download speed from the environment variable or use a heuristic.
-/// Heuristically, if the number of CPU cores is 64 or fewer, use a lower speed.
-/// If the environment variable is not set, use a random number between 25 and 300 MB/s.
-fn get_desired_speed() -> f64 {
-    if let Ok(speed) = env::var(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR) {
-        if let Ok(speed) = speed.parse::<f64>() {
-            return speed;
-        }
-    }
-
-    // if we have 16 or fewer cpu cores, use a lower speed
-    let speed_threshold = if num_cpus::get() <= 16 {
-        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES
-    } else {
-        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS
-    };
-
-    // fallback to a random number between 10 MB/s and speed_threshold
-    10.0 + rand::random::<f64>() * (speed_threshold - 10.0)
-}
-
 /// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
 /// If the read speed is greater than e.g. 114MB/s, it returns true.
 /// If no file in the cache is larger than 128MB, it returns true.
 /// Otherwise, it returns false.
 pub async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
-    let desired_speed: f64 = get_desired_speed();
+    let desired_speed: f64 = *TRUSS_TRANSFER_B10FS_DESIRED_SPEED_MBPS;
 
     for bptr in &manifest.pointers {
         let cache_path = Path::new(&*CACHE_DIR).join(&bptr.hash);

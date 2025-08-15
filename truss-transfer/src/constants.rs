@@ -86,9 +86,24 @@ pub static SECRETS_BASE_PATH: &str = "/secrets";
 
 pub static RUNTIME_MODEL_CACHE_PATH: &str = "/app/model_cache";
 
-/// Environment variable for b10fs download speed
-pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR: &str =
-    "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS";
+/// Desired download speed for b10fs (MB/s), determined by environment variable or heuristic.
+pub static TRUSS_TRANSFER_B10FS_DESIRED_SPEED_MBPS: Lazy<f64> = Lazy::new(|| {
+    if let Ok(speed) = env::var("TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS") {
+        if let Ok(speed) = speed.parse::<f64>() {
+            return speed;
+        }
+    }
+
+    // if we have 16 or fewer cpu cores, use a lower speed
+    let speed_threshold = if num_cpus::get() <= 16 {
+        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES
+    } else {
+        TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS
+    };
+
+    // fallback to a random number between 10 MB/s and speed_threshold
+    10.0 + rand::random::<f64>() * (speed_threshold - 10.0)
+});
 
 /// Default download speed for b10fs (MB/s)
 pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS: f64 = 350.0;
