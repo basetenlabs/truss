@@ -981,7 +981,7 @@ def test_supported_versions_are_sorted():
     )
 
 
-def test_sanitize_runtime_fields():
+def test_clear_runtime_fields():
     config = TrussConfig(
         python_version="py39",
         docker_server=DockerServer(
@@ -997,7 +997,7 @@ def test_sanitize_runtime_fields():
         environment_variables={"FOO": "BAR"},
     )
 
-    config.sanitize_runtime_fields()
+    config.clear_runtime_fields()
     assert config.python_version == "py39"
     assert config.docker_server is None
     assert config.training_checkpoints is None

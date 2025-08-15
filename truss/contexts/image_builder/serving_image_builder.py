@@ -722,11 +722,12 @@ class ServingImageBuilder(ImageBuilder):
             shutil.rmtree(build_hash_path)
         shutil.copytree(build_dir, build_hash_path)
 
-        # Sanitize the TrussConfig in the hash directory, remove all runtime attributes.
+        # Clear runtime attributes, which will produce a sanitized copy of the original TrussConfig,
+        # used to determine if we need to rebuild the image or not.
         config_file_path = build_hash_path / "config.yaml"
         if config_file_path.exists():
             truss_config = TrussConfig.from_yaml(config_file_path)
-            truss_config.sanitize_runtime_fields()
+            truss_config.clear_runtime_fields()
             truss_config.write_to_yaml_file(config_file_path)
 
     def _render_dockerfile(
