@@ -67,9 +67,10 @@ def test_import_deploy_checkpoints_config():
             deploy_checkpoints_config.checkpoint_details.checkpoints[1].paths[0]
             == "lqz4pw5/rank-0/checkpoint-42/"
         )
-        assert deploy_checkpoints_config.checkpoint_details.checkpoints[2].paths[0] == [
-            "lqz4pw6/checkpoint-123/"
-        ]
+        assert (
+            deploy_checkpoints_config.checkpoint_details.checkpoints[2].paths[0]
+            == "lqz4pw6/checkpoint-123/"
+        )
 
 
 def test_import_handles_training_project_with_deploy_checkpoints_config():
