@@ -734,15 +734,19 @@ class ServingImageBuilder(ImageBuilder):
             truss_config.clear_runtime_fields()
             truss_config.write_to_yaml_file(config_file_path)
 
-    def _sanitize_environment_variables(self, config: TrussConfig) -> Dict[str, str]:
-        sanitized_environment_variables = {}
+    def _filter_reserved_environment_variables(
+        self, config: TrussConfig
+    ) -> Dict[str, str]:
+        # Some environment variables are reserved by the k8s runtime.
+        # Pass them through to be baked into the container image.
+        passthrough_environment_variables = {}
         if config.environment_variables:
-            sanitized_environment_variables = {
+            passthrough_environment_variables = {
                 k: v
                 for k, v in config.environment_variables.items()
                 if k in K8S_RESERVED_ENVIRONMENT_VARIABLES
             }
-        return sanitized_environment_variables
+        return passthrough_environment_variables
 
     def _render_dockerfile(
         self,
@@ -785,7 +789,9 @@ class ServingImageBuilder(ImageBuilder):
         max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
         hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
-        sanitized_environment_variables = self._sanitize_environment_variables(config)
+        passthrough_environment_variables = self._filter_reserved_environment_variables(
+            config
+        )
 
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
@@ -819,7 +825,7 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files=external_data_files,
             build_commands=build_commands,
             use_local_src=config.use_local_src,
-            sanitized_environment_variables=sanitized_environment_variables,
+            passthrough_environment_variables=passthrough_environment_variables,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.

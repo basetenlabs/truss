@@ -95,7 +95,7 @@ COPY ./{{ config.bundled_packages_dir }} /packages
 {% endblock %}
 
 
-{% for env_var_name, env_var_value in sanitized_environment_variables.items() %}
+{% for env_var_name, env_var_value in passthrough_environment_variables.items() %}
 ENV {{ env_var_name }}="{{ env_var_value }}"
 {% endfor %}
 
