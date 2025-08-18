@@ -13,7 +13,7 @@ from truss_train.definitions import (
     SecretReference,
 )
 
-START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
+START_COMMAND_VAR_NAME = "BT_DOCKER_SERVER_START_CMD"
 
 VLLM_LORA_START_COMMAND = Template(
     'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'
@@ -100,16 +100,23 @@ def render_vllm_lora_truss_config(
         "max_lora_rank": max_lora_rank,
         "specify_tensor_parallelism": specify_tensor_parallelism,
     }
-    start_command = VLLM_LORA_START_COMMAND.render(**start_command_args)
-    # Note: we set the start command as an environment variable in supervisord config.
-    # This is so that we don't have to change the supervisord config when the start command changes.
-    # Our goal is to reduce the number of times we need to rebuild the image, and allow us to deploy faster.
-    truss_deploy_config.environment_variables[START_COMMAND_ENVVAR_NAME] = start_command
-    # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
-    truss_deploy_config.docker_server.start_command = (
-        f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
-    )
-    return truss_deploy_config
+
+    return _config_with_start_command(truss_deploy_config, start_command_args)
+
+
+def _config_with_start_command(
+    truss_config: truss_config.TrussConfig, start_command_args: dict[str, str]
+) -> truss_config.TrussConfig:
+    rendered_command = VLLM_LORA_START_COMMAND.render(**start_command_args)
+    # NB(nikhil): We ensure the command is a single line and strip whitespace for compatibility with K8s
+    # environment variables.
+    sanitized_command = rendered_command.replace("\n", " ").strip()
+
+    truss_config.environment_variables[START_COMMAND_VAR_NAME] = sanitized_command
+    if truss_config.docker_server:
+        # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
+        truss_config.docker_server.start_command = f"%(ENV_{START_COMMAND_VAR_NAME})s"
+    return truss_config
 
 
 def _get_lora_rank(checkpoint_resp: dict) -> int:

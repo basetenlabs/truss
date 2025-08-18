@@ -13,7 +13,7 @@ from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     hydrate_checkpoint,
 )
 from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
-    START_COMMAND_ENVVAR_NAME,
+    START_COMMAND_VAR_NAME,
     _get_lora_rank,
     hydrate_lora_checkpoint,
     render_vllm_lora_truss_config,
@@ -422,10 +422,8 @@ def test_render_vllm_lora_truss_config():
     assert isinstance(result, truss_config.TrussConfig)
     assert result.model_name == "test-lora-model"
     assert result.docker_server is not None
-    assert result.docker_server.start_command == f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
-    assert (
-        result.environment_variables[START_COMMAND_ENVVAR_NAME] == expected_vllm_command
-    )
+    assert result.docker_server.start_command == f"%(ENV_{START_COMMAND_VAR_NAME})s"
+    assert result.environment_variables[START_COMMAND_VAR_NAME] == expected_vllm_command
 
 
 def test_render_truss_config_delegation():
@@ -455,6 +453,4 @@ def test_render_truss_config_delegation():
     result = _render_truss_config_for_checkpoint_deployment(deploy_config)
     assert isinstance(result, truss_config.TrussConfig)
     expected_vllm_command = "vllm serve google/gemma-3-27b-it --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 32 --dtype bfloat16 --lora-modules job123=/tmp/training_checkpoints/job123/rank-0/checkpoint-1"
-    assert (
-        expected_vllm_command in result.environment_variables[START_COMMAND_ENVVAR_NAME]
-    )
+    assert expected_vllm_command in result.environment_variables[START_COMMAND_VAR_NAME]
