@@ -1,0 +1,23 @@
+base_image:
+  image: baseten/fastapi-test:0.1.2
+docker_server:
+  start_command: python main.py
+  predict_endpoint: /predict
+  server_port: 8000
+  readiness_endpoint: /
+  liveness_endpoint: /
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+model_name: Test Docker Server Truss
+secrets:
+  hf_access_token: null
+environment_variables:
+  HF_TOKEN: 123456
+  REMOVED_ENV_VAR: 'removed'  # should be removed from the config (set at runtime)
+  PORT: '8000'  # should be baked into the image
+  HOSTNAME: 'my-host'  # should be baked into the image
+runtime:
+  predict_concurrency: 1
