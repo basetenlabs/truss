@@ -82,6 +82,15 @@ def deploy_checkpoints_mock_select(create_mock_prompt):
 
 
 @pytest.fixture
+def deploy_checkpoints_mock_input(create_mock_prompt):
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.input"
+    ) as mock:
+        mock.side_effect = lambda message, **kwargs: create_mock_prompt(None)
+        yield mock
+
+
+@pytest.fixture
 def deploy_checkpoints_mock_text(create_mock_prompt):
     with patch(
         "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.text"
@@ -91,6 +100,8 @@ def deploy_checkpoints_mock_text(create_mock_prompt):
             if "number of accelerators" in message
             else "test-deployment"
             if "deployment name" in message
+            else "gemma-3-27b-it"
+            if "model name" in message
             else None
         )
         yield mock
@@ -160,6 +171,7 @@ def test_render_truss_config_for_checkpoint_deployment():
 def test_prepare_checkpoint_deploy_empty_config(
     mock_remote,
     deploy_checkpoints_mock_select,
+    deploy_checkpoints_mock_input,
     deploy_checkpoints_mock_text,
     deploy_checkpoints_mock_checkbox,
 ):
@@ -499,7 +511,10 @@ def test_render_vllm_full_truss_config():
     assert isinstance(result, truss_config.TrussConfig)
     assert result.model_name == "test-full-model"
     assert result.docker_server is not None
-    assert result.docker_server.start_command == expected_vllm_command
+    assert result.docker_server.start_command == f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
+    assert (
+        result.environment_variables[START_COMMAND_ENVVAR_NAME] == expected_vllm_command
+    )
 
 
 def test_hydrate_full_checkpoint():
