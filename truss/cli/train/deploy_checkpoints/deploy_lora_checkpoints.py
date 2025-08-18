@@ -3,6 +3,9 @@ from pathlib import Path
 from jinja2 import Template
 
 from truss.base import truss_config
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints_helpers import (
+    START_COMMAND_ENVVAR_NAME,
+)
 from truss.cli.train.types import DeployCheckpointsConfigComplete
 from truss_train.definitions import (
     ALLOWED_LORA_RANKS,
@@ -15,8 +18,6 @@ from .deploy_checkpoints_helpers import (
     setup_base_truss_config,
     setup_environment_variables_and_secrets,
 )
-
-START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
 
 VLLM_LORA_START_COMMAND = Template(
     'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'

@@ -80,26 +80,26 @@ def _get_model_name(
 ) -> str:
     """
     Generate a model name based on the model weight format and base model ID.
-    NOTE: Note all checkpoints have a base model id nor need one
+    NOTE: Note not all checkpoints have a base model id nor need one
     """
     _validate_base_model_id(base_model_id, model_weight_format)
-    if model_weight_format == ModelWeightsFormat.FULL:
-        model_name = inquirer.text(
-            message="Enter the model name for your full fine-tuned model.",
-            validate=lambda s: s and s.strip(),
-        ).execute()
-
-        model_name = f"{model_name}-vLLM"
-
-        if not model_name:
-            raise click.UsageError("Model name is required.")
-
-        return model_name
-    elif model_weight_format == ModelWeightsFormat.LORA:
-        return f"{base_model_id.split('/')[-1]}-vLLM-LORA"  # type: ignore[union-attr]
-    raise ValueError(
-        f"Unsupported model weight format: {model_weight_format}. Reach out to Baseten for support."
+    default = (
+        f"{base_model_id.split('/')[-1]}"  # type: ignore[union-attr]
+        if model_weight_format == ModelWeightsFormat.LORA
+        else ""
     )
+
+    model_name = inquirer.text(
+        message=f"Enter the model name for your {model_weight_format.value} model.",
+        validate=lambda s: s and s.strip(),
+        default=default,
+    ).execute()
+
+    if model_weight_format == ModelWeightsFormat.FULL:
+        model_name += "-vLLM-Full"
+    elif model_weight_format == ModelWeightsFormat.LORA:
+        model_name += "-vLLM-LORA"
+    return model_name
 
 
 def _hydrate_deploy_config(

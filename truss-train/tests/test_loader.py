@@ -75,7 +75,7 @@ def test_import_handles_training_project_with_deploy_checkpoints_config():
         assert training_project.name == "first-project"
         assert training_project.job.compute.cpu_count == 4
     with loader.import_deploy_checkpoints_config(job_src) as deploy_checkpoints_config:
-        assert len(deploy_checkpoints_config.checkpoint_details.checkpoints) == 2
+        assert len(deploy_checkpoints_config.checkpoint_details.checkpoints) == 3
         assert (
             deploy_checkpoints_config.checkpoint_details.base_model_id
             == "unsloth/gemma-3-1b-it"

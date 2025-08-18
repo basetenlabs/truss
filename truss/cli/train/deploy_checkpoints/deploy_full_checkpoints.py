@@ -3,6 +3,9 @@ from pathlib import Path
 from jinja2 import Template
 
 from truss.base import truss_config
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints_helpers import (
+    START_COMMAND_ENVVAR_NAME,
+)
 from truss.cli.train.types import DeployCheckpointsConfigComplete
 from truss_train.definitions import FullCheckpoint
 
@@ -39,8 +42,14 @@ def render_vllm_full_truss_config(
         "envvars": start_command_envvars,
         "specify_tensor_parallelism": accelerator.count if accelerator else 1,
     }
-    truss_deploy_config.docker_server.start_command = VLLM_FULL_START_COMMAND.render(  # type: ignore[union-attr]
-        **start_command_args
+    # Note: we set the start command as an environment variable in supervisord config.
+    # This is so that we don't have to change the supervisord config when the start command changes.
+    # Our goal is to reduce the number of times we need to rebuild the image, and allow us to deploy faster.
+    start_command = VLLM_FULL_START_COMMAND.render(**start_command_args)
+    truss_deploy_config.environment_variables[START_COMMAND_ENVVAR_NAME] = start_command
+    # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
+    truss_deploy_config.docker_server.start_command = (  # type: ignore[union-attr]
+        f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
     )
 
     return truss_deploy_config

@@ -5,6 +5,8 @@ from truss.base import truss_config
 from truss.cli.train.types import DeployCheckpointsConfigComplete
 from truss_train.definitions import SecretReference
 
+START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
+
 
 def setup_base_truss_config(
     checkpoint_deploy: DeployCheckpointsConfigComplete,
