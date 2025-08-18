@@ -100,6 +100,10 @@ CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
+# PORT: knative reserved
+# HOSTNAME: set to the pod name by k8s
+K8S_RESERVED_ENVIRONMENT_VARIABLES = ["PORT", "HOSTNAME"]
+
 
 class RemoteCache(ABC):
     def __init__(self, repo_name, data_dir, revision=None):
@@ -771,6 +775,14 @@ class ServingImageBuilder(ImageBuilder):
         max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
         hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
+        baked_environment_variables = {}
+        if config.environment_variables:
+            baked_environment_variables = {
+                k: v
+                for k, v in config.environment_variables.items()
+                if k in K8S_RESERVED_ENVIRONMENT_VARIABLES
+            }
+
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -803,6 +815,7 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files=external_data_files,
             build_commands=build_commands,
             use_local_src=config.use_local_src,
+            reserved_environment_variables=baked_environment_variables,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
@@ -810,4 +823,5 @@ class ServingImageBuilder(ImageBuilder):
             r"(\r?\n){3,}", r"\n\n", dockerfile_contents
         ).strip()
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
+        print(dockerfile_contents)
         docker_file_path.write_text(dockerfile_contents)
