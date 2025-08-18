@@ -102,7 +102,7 @@ HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
 # PORT: knative reserved
 # HOSTNAME: set to the pod name by k8s
-K8S_RESERVED_ENVIRONMENT_VARIABLES = ["PORT", "HOSTNAME"]
+K8S_RESERVED_ENVIRONMENT_VARIABLES = set(["PORT", "HOSTNAME"])
 
 
 class RemoteCache(ABC):
@@ -734,6 +734,16 @@ class ServingImageBuilder(ImageBuilder):
             truss_config.clear_runtime_fields()
             truss_config.write_to_yaml_file(config_file_path)
 
+    def _sanitize_environment_variables(self, config: TrussConfig) -> Dict[str, str]:
+        sanitized_environment_variables = {}
+        if config.environment_variables:
+            sanitized_environment_variables = {
+                k: v
+                for k, v in config.environment_variables.items()
+                if k in K8S_RESERVED_ENVIRONMENT_VARIABLES
+            }
+        return sanitized_environment_variables
+
     def _render_dockerfile(
         self,
         build_dir: Path,
@@ -775,13 +785,7 @@ class ServingImageBuilder(ImageBuilder):
         max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
         hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
-        baked_environment_variables = {}
-        if config.environment_variables:
-            baked_environment_variables = {
-                k: v
-                for k, v in config.environment_variables.items()
-                if k in K8S_RESERVED_ENVIRONMENT_VARIABLES
-            }
+        sanitized_environment_variables = self._sanitize_environment_variables(config)
 
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
@@ -815,7 +819,7 @@ class ServingImageBuilder(ImageBuilder):
             external_data_files=external_data_files,
             build_commands=build_commands,
             use_local_src=config.use_local_src,
-            reserved_environment_variables=baked_environment_variables,
+            sanitized_environment_variables=sanitized_environment_variables,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
@@ -823,5 +827,4 @@ class ServingImageBuilder(ImageBuilder):
             r"(\r?\n){3,}", r"\n\n", dockerfile_contents
         ).strip()
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
-        print(dockerfile_contents)
         docker_file_path.write_text(dockerfile_contents)
