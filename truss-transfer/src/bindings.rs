@@ -2,16 +2,15 @@ use std::env;
 use std::io::Write;
 use std::sync::Once;
 
-use chrono;
 use env_logger::Builder;
-use log::{warn, LevelFilter};
+use log::LevelFilter;
 
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::{pyclass, pymethods, wrap_pyfunction};
 
-use crate::constants::RUNTIME_MODEL_CACHE_PATH;
 use crate::constants::*;
+use crate::constants::{RUNTIME_MODEL_CACHE_PATH, TRUSS_TRANSFER_LOG};
 use crate::core::lazy_data_resolve_entrypoint;
 use crate::create::create_basetenpointer;
 use crate::types::{ModelRepo, ResolutionType};
@@ -35,7 +34,7 @@ pub fn init_logger_once() {
     INIT_LOGGER.call_once(|| {
         // Check if the environment variable "RUST_LOG" is set.
         // If not, default to "info".
-        let rust_log = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+        let rust_log = (*TRUSS_TRANSFER_LOG).clone();
         let level = rust_log.parse::<LevelFilter>().unwrap_or(LevelFilter::Info);
 
         let _ = Builder::new()
@@ -58,17 +57,8 @@ pub fn init_logger_once() {
 pub fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>) -> String {
     // Order:
     // 1. optional_download_dir, if provided
-    // 2. TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR environment variable
-    // 3. TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK (with a warning)
-    optional_download_dir
-        .or_else(|| env::var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR).ok())
-        .unwrap_or_else(|| {
-            warn!(
-                "No download directory provided. Please set `export {}=/path/to/dir` or pass it as an argument. Using fallback: {}",
-                TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR, TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK
-            );
-            TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK.into()
-        })
+    // 2. TRUSS_TRANSFER_DOWNLOAD_DIR environment variable
+    optional_download_dir.unwrap_or_else(|| (*TRUSS_TRANSFER_DOWNLOAD_DIR).clone())
 }
 
 /// Python-callable function to read the manifest and download data.

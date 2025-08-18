@@ -6,8 +6,6 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result};
-use chrono;
-use fs2;
 use log::{debug, info, warn};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
@@ -41,13 +39,13 @@ pub async fn cleanup_b10cache_and_get_space_stats(
 ) -> Result<(u64, u64)> {
     // Returns (available_volume_bytes, manifest_files_in_cache_bytes)
     let cleanup_threshold_hours = *TRUSS_TRANSFER_B10FS_CLEANUP_HOURS;
-    let cache_dir_path = Path::new(CACHE_DIR);
+    let cache_dir_path = Path::new(&*CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
 
     let mut dir = fs::read_dir(cache_dir_path)
         .await
-        .with_context(|| format!("Failed to read cache directory: {:?}", cache_dir_path))?;
+        .with_context(|| format!("Failed to read cache directory: {cache_dir_path:?}"))?;
 
     let mut total_bytes_managed_in_cache = 0u64; // All files kept in cache (manifest or not old enough)
     let mut total_files_managed_in_cache = 0usize;
@@ -55,7 +53,7 @@ pub async fn cleanup_b10cache_and_get_space_stats(
 
     info!(
         "Analyzing b10cache at {} with a cleanup threshold of {} hours ({} days)",
-        CACHE_DIR,
+        &*CACHE_DIR,
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
@@ -123,12 +121,12 @@ pub async fn cleanup_b10cache_and_get_space_stats(
 
     // Get available disk space for CACHE_DIR's volume
     let stats = fs2::statvfs(cache_dir_path)
-        .with_context(|| format!("Failed to get volume stats for {:?}", cache_dir_path))?;
+        .with_context(|| format!("Failed to get volume stats for {cache_dir_path:?}"))?;
     let available_bytes = stats.available_space(); // f_bavail * f_frsize (available to non-root)
 
     info!(
         "Total available space on volume for {}: {:.2} GB ({} bytes)",
-        CACHE_DIR,
+        &*CACHE_DIR,
         available_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
         available_bytes
     );
@@ -189,7 +187,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     if should_copy {
         // Copy the local file to the incomplete cache file with progress monitoring
         info!(
-            "Copying local file {:?} to temporary incomplete cache file {:?}",
+            "Copying local file {:?} to cache file {:?}",
             download_path, incomplete_cache_path
         );
 
@@ -197,12 +195,12 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         let monitor_path = incomplete_cache_path.to_path_buf();
         let monitor_handle = tokio::spawn({
             async move {
-                let mut ticker = interval(Duration::from_secs(10));
+                let mut ticker = interval(Duration::from_secs(30));
                 let mut last_size = 0;
                 loop {
                     ticker.tick().await;
                     let current_size = match fs::metadata(&monitor_path).await {
-                        Ok(metadata) => metadata.len() as u64,
+                        Ok(metadata) => metadata.len(),
                         Err(e) => {
                             warn!("Failed to read metadata for {:?}: {}", monitor_path, e);
                             continue;
@@ -232,7 +230,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         monitor_handle.abort();
 
         match copy_result {
-            Ok(_) => info!("Successfully copied to incomplete cache file."),
+            Ok(_) => debug!("Successfully copied to incomplete cache file."),
             Err(e) => {
                 warn!(
                     "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
@@ -268,7 +266,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     }
 
     // Atomically rename the incomplete file to the final cache file.
-    info!(
+    debug!(
         "Atomic rename: renaming incomplete cache file {:?} to final cache file {:?}",
         incomplete_cache_path, cache_path
     );
@@ -276,8 +274,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         .await
         .with_context(|| {
             format!(
-                "Failed to atomically rename incomplete cache file {:?} to final cache file {:?}",
-                incomplete_cache_path, cache_path
+                "Failed to atomically rename incomplete cache file {incomplete_cache_path:?} to final cache file {cache_path:?}"
             )
         })?;
 
@@ -285,7 +282,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
     info!("Deleting local file at {:?}", download_path);
     fs::remove_file(download_path)
         .await
-        .with_context(|| format!("Failed to delete local file {:?}", download_path))?;
+        .with_context(|| format!("Failed to delete local file {download_path:?}"))?;
 
     // Create a symlink from the cache file to the original download location.
     info!(
@@ -296,8 +293,7 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         .await
         .with_context(|| {
             format!(
-                "Failed to create symlink from cache file {:?} to local file path {:?}",
-                cache_path, download_path
+                "Failed to create symlink from cache file {cache_path:?} to local file path {download_path:?}"
             )
         })?;
 
@@ -313,7 +309,7 @@ pub async fn update_atime_by_reading(path: &Path) -> Result<()> {
     // Open the file in read-only mode.
     let mut file = fs::File::open(path)
         .await
-        .with_context(|| format!("Failed to open file {:?} for updating atime", path))?;
+        .with_context(|| format!("Failed to open file {path:?} for updating atime"))?;
     let mut buffer = [0u8; 1];
     let _ = file.read(&mut buffer).await?;
     Ok(())

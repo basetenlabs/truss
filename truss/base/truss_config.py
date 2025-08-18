@@ -727,6 +727,13 @@ class TrussConfig(custom_types.ConfigModel):
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
 
+    # NB(nikhil): clear_runtime_fields will remove all runtime specific fields from the config so
+    # we can more optimally detect whether a new image build is needed.
+    def clear_runtime_fields(self) -> None:
+        self.docker_server = None
+        self.training_checkpoints = None
+        self.environment_variables = {}
+
 
 def _map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.

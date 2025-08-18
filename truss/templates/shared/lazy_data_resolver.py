@@ -10,7 +10,6 @@ LAZY_DATA_RESOLVER_PATH = [
     # synced with pub static LAZY_DATA_RESOLVER_PATHS: &[&str]
     Path("/bptr/bptr-manifest"),
     Path("/bptr/bptr-manifest.json"),
-    Path("/bptr/static-bptr-manifest.json"),
     Path("/static-bptr/static-bptr-manifest.json"),
 ]
 

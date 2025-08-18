@@ -309,10 +309,10 @@ class TrussHandle:
                 envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
             if disable_json_logging:
                 envs["DISABLE_JSON_LOGGING"] = "true"
-            if self.spec.config.docker_server and self.spec.config.training_checkpoints:
-                envs["BT_DOCKER_SERVER_START_CMD"] = (
-                    self.spec.config.docker_server.start_command
-                )
+
+            # For traditional model deploys, env variables are provided in the k8s spec,
+            # so we have to manually add them here.
+            envs.update(self.spec.config.environment_variables)
 
             if container_name_prefix:
                 suffix = str(uuid.uuid4()).split("-")[0]

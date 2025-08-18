@@ -10,6 +10,7 @@ mod core;
 mod create;
 mod download;
 mod download_core;
+mod hf_transfer;
 mod secrets;
 mod speed_checks;
 mod types;
@@ -45,7 +46,6 @@ mod tests {
     use crate::bindings::resolve_truss_transfer_download_dir;
     use crate::constants::*;
     use crate::types::*;
-    use std::env;
 
     #[test]
     fn test_resolve_truss_transfer_download_dir_with_arg() {
@@ -53,24 +53,6 @@ mod tests {
         let dir = "my/download/dir".to_string();
         let result = resolve_truss_transfer_download_dir(Some(dir.clone()));
         assert_eq!(result, dir);
-    }
-
-    #[test]
-    fn test_resolve_truss_transfer_download_dir_from_env() {
-        // Set the environment variable and ensure it is used.
-        let test_dir = "env_download_dir".to_string();
-        env::set_var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR, test_dir.clone());
-        let result = resolve_truss_transfer_download_dir(None);
-        assert_eq!(result, test_dir);
-        env::remove_var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR);
-    }
-
-    #[test]
-    fn test_resolve_truss_transfer_download_dir_fallback() {
-        // Ensure that when no arg and no env var are provided, the fallback is returned.
-        env::remove_var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR);
-        let result = resolve_truss_transfer_download_dir(None);
-        assert_eq!(result, TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK.to_string());
     }
 
     #[test]
@@ -355,32 +337,20 @@ mod tests {
     #[test]
     fn test_constants_values() {
         // Test that constants have expected values
-        assert_eq!(TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK, "/tmp/bptr-resolved");
-        assert_eq!(CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
+        assert_eq!(*TRUSS_TRANSFER_DOWNLOAD_DIR, "/tmp/truss_transfer");
+        assert_eq!(*CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
         assert_eq!(*TRUSS_TRANSFER_NUM_WORKERS, 6);
         assert_eq!(*TRUSS_TRANSFER_B10FS_CLEANUP_HOURS, 4 * 24);
-        assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 350.0);
+        assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 400.0);
         assert_eq!(TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB, 100);
         assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
-
-        // Test environment variable names
-        assert_eq!(BASETEN_FS_ENABLED_ENV_VAR, "BASETEN_FS_ENABLED");
-        assert_eq!(
-            TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR,
-            "TRUSS_TRANSFER_DOWNLOAD_DIR"
-        );
-        assert_eq!(
-            TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_ENV_VAR,
-            "TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS"
-        );
 
         assert_eq!(SECRETS_BASE_PATH, "/secrets");
 
         // Test manifest paths
-        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 4);
+        assert_eq!(LAZY_DATA_RESOLVER_PATHS.len(), 3);
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/bptr-manifest.json"));
-        assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/bptr/static-bptr-manifest.json"));
         assert!(LAZY_DATA_RESOLVER_PATHS.contains(&"/static-bptr/static-bptr-manifest.json"));
     }
 

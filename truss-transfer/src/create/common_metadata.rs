@@ -74,7 +74,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
                 object_path.clone()
             } else {
                 object_path
-                    .strip_prefix(&format!("{}/", prefix))
+                    .strip_prefix(&format!("{prefix}/"))
                     .unwrap_or(&object_path)
                     .to_string()
             };
@@ -97,7 +97,10 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
                 "{}/{}/{}",
                 model_path,
                 model.volume_folder,
-                relative_path.split('/').last().unwrap_or(&relative_path)
+                relative_path
+                    .split('/')
+                    .next_back()
+                    .unwrap_or(&relative_path)
             );
 
             let pointer = BasetenPointer {

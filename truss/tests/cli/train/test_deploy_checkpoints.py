@@ -7,11 +7,9 @@ import pytest
 
 import truss_train.definitions as definitions
 from truss.base import truss_config
-from truss.cli.train.deploy_checkpoints import (
-    create_build_time_config,
-    prepare_checkpoint_deploy,
-)
+from truss.cli.train.deploy_checkpoints import prepare_checkpoint_deploy
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+    _get_checkpoint_ids_to_deploy,
     _render_truss_config_for_checkpoint_deployment,
     hydrate_checkpoint,
 )
@@ -20,6 +18,7 @@ from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
     render_vllm_full_truss_config,
 )
 from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
+    START_COMMAND_ENVVAR_NAME,
     _get_lora_rank,
     hydrate_lora_checkpoint,
     render_vllm_lora_truss_config,
@@ -270,7 +269,13 @@ def test_prepare_checkpoint_deploy_complete_config(
     truss_cfg = truss_config.TrussConfig.from_yaml(
         Path(result.truss_directory, "config.yaml")
     )
-    assert "--tensor-parallel-size 2" in truss_cfg.docker_server.start_command
+    # Check that the start command is now the environment variable reference
+    assert truss_cfg.docker_server.start_command == "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
+    # Check that the actual start command with tensor parallel size is in the environment variable
+    assert (
+        "--tensor-parallel-size 2"
+        in truss_cfg.environment_variables["BT_DOCKER_SERVER_START_CMD"]
+    )
 
 
 def test_checkpoint_lora_rank_validation():
@@ -343,66 +348,6 @@ def test_get_lora_rank():
         match=re.escape("LoRA rank 1000 from checkpoint is not in allowed values"),
     ):
         _get_lora_rank(checkpoint_resp)
-
-
-def test_create_build_time_config(tmp_path):
-    """Test that create_build_time_config properly creates a build-time config file."""
-    # Create a temporary directory structure
-    context_path = tmp_path / "context"
-    context_path.mkdir()
-
-    # Create a sample config.yaml file with runtime-only attributes
-    config_data = {
-        "model_name": "test-model",
-        "docker_server": {
-            "start_command": "python server.py --port 8000",
-            "server_port": 8000,
-            "predict_endpoint": "/predict",
-            "readiness_endpoint": "/health",
-            "liveness_endpoint": "/health",
-        },
-        "training_checkpoints": {
-            "download_folder": "/tmp/checkpoints",
-            "checkpoints": [{"id": "checkpoint-1", "name": "checkpoint-1"}],
-        },
-        "resources": {
-            "cpu": "1000m",
-            "memory": "2Gi",
-            "accelerator": {"accelerator": "H100", "count": 1},
-        },
-        "environment_variables": {"HF_TOKEN": "secret_token"},
-    }
-
-    # Write the config file
-    config_path = context_path / "config.yaml"
-    import yaml
-
-    with open(config_path, "w") as f:
-        yaml.dump(config_data, f)
-
-    # Call the function under test
-    create_build_time_config(context_path)
-
-    # Verify the build-time config file was created
-    build_time_config_path = context_path / "config_build_time.yaml"
-    assert build_time_config_path.exists()
-
-    # Load and verify the build-time config
-    build_time_config = truss_config.TrussConfig.from_yaml(build_time_config_path)
-
-    # Verify that some runtime-only attributes are preserved (not yet supported for buildless)
-    assert build_time_config.model_name == "test-model"  # Should be preserved
-    assert build_time_config.resources.cpu == "1000m"  # Should be preserved
-    assert build_time_config.resources.memory == "2Gi"  # Should be preserved
-    assert (
-        build_time_config.environment_variables["HF_TOKEN"] == "secret_token"
-    )  # Should be preserved
-
-    # Verify that runtime-only attributes are excluded
-    assert build_time_config.training_checkpoints is None  # Should be set to None
-    assert (
-        build_time_config.docker_server.start_command == ""
-    )  # Should be set to empty string
 
 
 def test_hydrate_lora_checkpoint():
@@ -483,7 +428,10 @@ def test_render_vllm_lora_truss_config():
     assert isinstance(result, truss_config.TrussConfig)
     assert result.model_name == "test-lora-model"
     assert result.docker_server is not None
-    assert result.docker_server.start_command == expected_vllm_command
+    assert result.docker_server.start_command == f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
+    assert (
+        result.environment_variables[START_COMMAND_ENVVAR_NAME] == expected_vllm_command
+    )
 
 
 def test_render_truss_config_delegation():
@@ -513,7 +461,9 @@ def test_render_truss_config_delegation():
     result = _render_truss_config_for_checkpoint_deployment(deploy_config)
     assert isinstance(result, truss_config.TrussConfig)
     expected_vllm_command = "vllm serve google/gemma-3-27b-it --port 8000 --tensor-parallel-size 4 --enable-lora --max-lora-rank 32 --dtype bfloat16 --lora-modules job123=/tmp/training_checkpoints/job123/rank-0/checkpoint-1"
-    assert expected_vllm_command in result.docker_server.start_command
+    assert (
+        expected_vllm_command in result.environment_variables[START_COMMAND_ENVVAR_NAME]
+    )
 
 
 def test_render_vllm_full_truss_config():
@@ -582,10 +532,6 @@ def test_get_checkpoint_ids_to_deploy_full_checkpoints():
     """Test that _get_checkpoint_ids_to_deploy uses single selection for FULL checkpoints."""
     from collections import OrderedDict
 
-    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
-        _get_checkpoint_ids_to_deploy,
-    )
-
     # Mock FULL checkpoints
     response_checkpoints = OrderedDict(
         [
@@ -598,16 +544,19 @@ def test_get_checkpoint_ids_to_deploy_full_checkpoints():
     checkpoint_options = ["checkpoint-1", "checkpoint-2", "checkpoint-3"]
 
     with patch(
-        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
-    ) as mock_select:
-        mock_select.return_value.execute.return_value = "checkpoint-2"
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        mock_checkbox.return_value.execute.return_value = ["checkpoint-2"]
 
         result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
 
-        # Should use select (single selection) for FULL checkpoints
-        mock_select.assert_called_once()
-        assert mock_select.call_args[1]["message"] == "Select the checkpoint to deploy:"
-        assert mock_select.call_args[1]["choices"] == checkpoint_options
+        # Should use checkbox (single selection) for FULL checkpoints
+        mock_checkbox.assert_called_once()
+        assert (
+            mock_checkbox.call_args[1]["message"]
+            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+        )
+        assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
 
         # Should return a list with single selected checkpoint
         assert result == ["checkpoint-2"]
@@ -616,10 +565,6 @@ def test_get_checkpoint_ids_to_deploy_full_checkpoints():
 def test_get_checkpoint_ids_to_deploy_lora_checkpoints():
     """Test that _get_checkpoint_ids_to_deploy uses multiple selection for LoRA checkpoints."""
     from collections import OrderedDict
-
-    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
-        _get_checkpoint_ids_to_deploy,
-    )
 
     # Mock LoRA checkpoints
     response_checkpoints = OrderedDict(
@@ -658,10 +603,6 @@ def test_get_checkpoint_ids_to_deploy_mixed_checkpoints():
     """Test that _get_checkpoint_ids_to_deploy uses multiple selection for mixed checkpoint types."""
     from collections import OrderedDict
 
-    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
-        _get_checkpoint_ids_to_deploy,
-    )
-
     # Mock mixed checkpoints (FULL and LoRA)
     response_checkpoints = OrderedDict(
         [
@@ -676,10 +617,8 @@ def test_get_checkpoint_ids_to_deploy_mixed_checkpoints():
     with patch(
         "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
     ) as mock_checkbox:
-        mock_checkbox.return_value.execute.return_value = [
-            "checkpoint-1",
-            "checkpoint-2",
-        ]
+        # For mixed checkpoints with FULL, we can only select one
+        mock_checkbox.return_value.execute.return_value = ["checkpoint-1"]
 
         result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
 
@@ -691,17 +630,13 @@ def test_get_checkpoint_ids_to_deploy_mixed_checkpoints():
         )
         assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
 
-        # Should return a list with multiple selected checkpoints
-        assert result == ["checkpoint-1", "checkpoint-2"]
+        # Should return a list with single selected checkpoint (due to FULL checkpoint)
+        assert result == ["checkpoint-1"]
 
 
 def test_get_checkpoint_ids_to_deploy_single_checkpoint():
     """Test that _get_checkpoint_ids_to_deploy returns single checkpoint without prompting."""
     from collections import OrderedDict
-
-    from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
-        _get_checkpoint_ids_to_deploy,
-    )
 
     # Mock single checkpoint
     response_checkpoints = OrderedDict(

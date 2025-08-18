@@ -23,7 +23,7 @@ impl CloudMetadataProvider for AzureProvider {
     fn parse_uri(&self, uri: &str) -> Result<(String, String)> {
         let (account, container, blob_prefix) = parse_azure_uri(uri)?;
         // Combine account and container as "bucket" for consistency
-        let bucket = format!("{}/{}", account, container);
+        let bucket = format!("{account}/{container}");
         Ok((bucket, blob_prefix))
     }
 
@@ -41,7 +41,7 @@ impl CloudMetadataProvider for AzureProvider {
     fn create_resolution(&self, bucket: &str, object_path: &str) -> Resolution {
         // Extract account and container from bucket
         let parts: Vec<&str> = bucket.split('/').collect();
-        let account = parts.get(0).unwrap_or(&"").to_string();
+        let account = parts.first().unwrap_or(&"").to_string();
         let container = parts.get(1).unwrap_or(&"").to_string();
 
         Resolution::Azure(AzureResolution::new(
@@ -64,10 +64,10 @@ impl CloudMetadataProvider for AzureProvider {
     fn generate_uid(&self, bucket: &str, object_path: &str, _hash: &str) -> String {
         // Extract account and container for UID
         let parts: Vec<&str> = bucket.split('/').collect();
-        let account = parts.get(0).unwrap_or(&"");
+        let account = parts.first().unwrap_or(&"");
         let container = parts.get(1).unwrap_or(&"");
 
-        format!("azure:{}:{}:{}", account, container, object_path)
+        format!("azure:{account}:{container}:{object_path}")
     }
 }
 

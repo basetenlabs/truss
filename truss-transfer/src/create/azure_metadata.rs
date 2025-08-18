@@ -6,8 +6,8 @@ use crate::secrets::get_secret_from_file;
 /// Expected format: azure://accountname/containername/path/to/blob
 /// or https://accountname.blob.core.windows.net/containername/path/to/blob
 pub fn parse_azure_uri(uri: &str) -> Result<(String, String, String)> {
-    if uri.starts_with("azure://") {
-        let without_prefix = &uri[8..]; // Remove "azure://"
+    if let Some(without_prefix) = uri.strip_prefix("azure://") {
+        // Remove "azure://"
         let parts: Vec<&str> = without_prefix.splitn(3, '/').collect();
 
         if parts.len() != 3 {
