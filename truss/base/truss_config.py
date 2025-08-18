@@ -730,7 +730,6 @@ class TrussConfig(custom_types.ConfigModel):
     # NB(nikhil): clear_runtime_fields will remove all runtime specific fields from the config so
     # we can more optimally detect whether a new image build is needed.
     def clear_runtime_fields(self) -> None:
-        self.docker_server = None
         self.training_checkpoints = None
         self.environment_variables = {}
 
