@@ -39,6 +39,7 @@ deploy_checkpoint = DeployCheckpointsConfig(
                 paths=["lqz4pw6/checkpoint-123/"],
                 model_weight_format=ModelWeightsFormat.FULL,  # Not required, have it purely to test the import
             ),
+            # This is bever actually allowed (both LoRA and Full but I am just testing the loeader)
         ],
     ),
 )

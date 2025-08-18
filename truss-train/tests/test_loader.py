@@ -54,7 +54,7 @@ def test_import_directory_fails():
 def test_import_deploy_checkpoints_config():
     job_src = TEST_ROOT / "import" / "deploy_checkpoints_config.py"
     with loader.import_deploy_checkpoints_config(job_src) as deploy_checkpoints_config:
-        assert len(deploy_checkpoints_config.checkpoint_details.checkpoints) == 2
+        assert len(deploy_checkpoints_config.checkpoint_details.checkpoints) == 3
         assert (
             deploy_checkpoints_config.checkpoint_details.base_model_id
             == "unsloth/gemma-3-1b-it"
@@ -67,6 +67,9 @@ def test_import_deploy_checkpoints_config():
             deploy_checkpoints_config.checkpoint_details.checkpoints[1].paths[0]
             == "lqz4pw5/rank-0/checkpoint-42/"
         )
+        assert deploy_checkpoints_config.checkpoint_details.checkpoints[2].paths[0] == [
+            "lqz4pw6/checkpoint-123/"
+        ]
 
 
 def test_import_handles_training_project_with_deploy_checkpoints_config():
@@ -87,4 +90,8 @@ def test_import_handles_training_project_with_deploy_checkpoints_config():
         assert (
             deploy_checkpoints_config.checkpoint_details.checkpoints[1].paths[0]
             == "lqz4pw5/rank-0/checkpoint-42/"
+        )
+        assert (
+            deploy_checkpoints_config.checkpoint_details.checkpoints[2].paths[0]
+            == "lqz4pw6/checkpoint-123/"
         )
