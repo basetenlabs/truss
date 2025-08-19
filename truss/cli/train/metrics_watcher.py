@@ -168,10 +168,27 @@ class MetricsWatcher(TrainingPollerMixin):
         per_node_metrics = metrics_data.get("per_node_metrics", [])
 
         if not per_node_metrics:
-            raise ValueError(
-                "Expected 'per_node_metrics' in training job metrics response. "
-                "The API has been updated to always provide per-node metrics."
+            # Job is likely just starting up - show waiting message
+            from rich.text import Text
+
+            waiting_table = Table(title="Training Job Status")
+            waiting_table.add_column("Status")
+            waiting_table.add_column("Message")
+
+            waiting_table.add_row(
+                "Status",
+                Text("⏳ Waiting for metrics to become available...", style="yellow"),
             )
+            waiting_table.add_row(
+                "Note",
+                Text(
+                    "Metrics will appear once the training job starts running.",
+                    style="dim",
+                ),
+            )
+
+            tables.append(waiting_table)
+            return tables
 
         # Process each node's metrics
         for node_metrics in per_node_metrics:
