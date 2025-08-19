@@ -110,17 +110,21 @@ class CheckpointSource(str, Enum):
     LOCAL = "LOCAL"
     # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
     REMOTE_URL = "REMOTE_URL"
+    DOWNLOAD_CMD = "DOWNLOAD_CMD"
 
 
 class CheckpointRepository(PydanticTrTBaseModel):
     source: CheckpointSource
     repo: str
     revision: Optional[str] = None
+    download_cmd: Optional[str] = None
 
     def __init__(self, **data):
         super().__init__(**data)
         if self.source == CheckpointSource.HF:
             self._validate_hf_repo_id()
+        elif self.source == CheckpointSource.DOWNLOAD_CMD:
+            self._validate_download_cmd()
 
     def _validate_hf_repo_id(self):
         try:
@@ -129,6 +133,12 @@ class CheckpointRepository(PydanticTrTBaseModel):
             raise ValueError(
                 f"HuggingFace repository validation failed: {str(e)}"
             ) from e
+
+    def _validate_download_cmd(self):
+        if not self.download_cmd:
+            raise ValueError("download_cmd is required when source is DOWNLOAD_CMD")
+        if not self.repo:
+            raise ValueError("repo is required when source is DOWNLOAD_CMD (used as download_location)")
 
 
 class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
