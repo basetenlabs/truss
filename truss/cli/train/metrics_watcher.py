@@ -4,6 +4,7 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from rich.columns import Columns
+from rich.layout import Layout
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
@@ -96,30 +97,76 @@ class MetricsWatcher(TrainingPollerMixin):
         )
         return True
 
-    def create_metrics_table(self, metrics_data: Dict) -> Columns:
+    def create_metrics_table(self, metrics_data: Dict) -> Layout:
         """Create a Rich table with the metrics"""
-        compute_table = self._create_compute_table(metrics_data)
+        tables = []
+
+        # Get timestamp for display at the top
+        timestamp = self._get_timestamp_from_metrics(metrics_data)
+
+        # Create per-node metrics tables if available
+        per_node_metrics = metrics_data.get("per_node_metrics", [])
+        if per_node_metrics:
+            node_tables = self._create_per_node_metrics_tables(per_node_metrics)
+            tables.extend(node_tables)
+        else:
+            # For single-node jobs, create a single table
+            single_node_table = self._create_single_node_metrics_table(metrics_data)
+            tables.append(single_node_table)
+
+        # Create storage table
         storage_table = self._maybe_create_storage_table(metrics_data)
-        tables = [compute_table]
         if storage_table:
             tables.append(storage_table)
-        return Columns(tables, title="Training Job Metrics")
 
-    def _create_compute_table(self, metrics_data: Dict) -> Table:
-        table = Table(title="Compute Metrics")
-        table.add_column("Metric")
-        table.add_column("Value")
+        # Create the main columns layout
+        columns = Columns(tables, title="Training Job Metrics")
 
-        # Add timestamp if available
+        # Always create a layout for consistent return type
+        layout = Layout()
+
+        if timestamp:
+            from rich.panel import Panel
+
+            # Create a layout with timestamp at top and metrics below
+            layout.split_column(
+                Layout(
+                    Panel(f"🕐 Last Updated: {timestamp}", style="bold cyan"), size=3
+                ),
+                Layout(columns),
+            )
+        else:
+            # Just the metrics without timestamp
+            layout.split_column(Layout(columns))
+
+        return layout
+
+    def _get_timestamp_from_metrics(self, metrics_data: Dict) -> Optional[str]:
+        """Extract timestamp from metrics data for display"""
+        # Try to get timestamp from per_node_metrics first
+        per_node_metrics = metrics_data.get("per_node_metrics", [])
+        if per_node_metrics and len(per_node_metrics) > 0:
+            first_node_metrics = per_node_metrics[0].get("metrics", {})
+            cpu_usage_data = first_node_metrics.get("cpu_usage", [])
+            if cpu_usage_data and len(cpu_usage_data) > 0:
+                timestamp = cpu_usage_data[-1].get("timestamp")
+                if timestamp:
+                    return common.format_localized_time(timestamp)
+
+        # Fall back to main metrics
         cpu_usage_data = metrics_data.get("cpu_usage", [])
         if cpu_usage_data and len(cpu_usage_data) > 0:
-            latest_timestamp = cpu_usage_data[-1].get("timestamp")
-            # TODO: API result has missing timezone info.
-            if latest_timestamp:
-                table.add_row(
-                    "Timestamp", common.format_localized_time(latest_timestamp)
-                )
-                table.add_section()
+            timestamp = cpu_usage_data[-1].get("timestamp")
+            if timestamp:
+                return common.format_localized_time(timestamp)
+
+        return None
+
+    def _create_single_node_metrics_table(self, metrics_data: Dict) -> Table:
+        """Create table for single node metrics (when no per_node_metrics)"""
+        table = Table(title="Node Metrics")
+        table.add_column("Metric")
+        table.add_column("Value")
 
         # CPU metrics
         cpu_usage = self._get_latest_metric(metrics_data.get("cpu_usage", []))
@@ -158,10 +205,66 @@ class MetricsWatcher(TrainingPollerMixin):
             if gpu_id != max(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
                 table.add_section()
 
-        # Add separator before storage metrics
-        if gpu_metrics or gpu_memory:
-            table.add_section()
         return table
+
+    def _create_per_node_metrics_tables(
+        self, per_node_metrics: List[Dict]
+    ) -> List[Table]:
+        """Create tables for each node's metrics"""
+        tables = []
+
+        for node_metrics in per_node_metrics:
+            node_id = node_metrics.get("node_id", "Unknown")
+            metrics = node_metrics.get("metrics", {})
+
+            if not metrics:
+                continue
+
+            table = Table(title=f"Node: {node_id}")
+            table.add_column("Metric")
+            table.add_column("Value")
+
+            # CPU metrics
+            cpu_usage = self._get_latest_metric(metrics.get("cpu_usage", []))
+            if cpu_usage is not None:
+                table.add_row("CPU Usage", f"{cpu_usage:.2f} cores")
+
+            cpu_memory = self._get_latest_metric(
+                metrics.get("cpu_memory_usage_bytes", [])
+            )
+            if cpu_memory is not None:
+                formatted_value, color = self._format_bytes(cpu_memory)
+                table.add_row("CPU Memory", Text(formatted_value, style=color))
+
+            # Add separator after CPU metrics
+            if cpu_usage is not None or cpu_memory is not None:
+                table.add_section()
+
+            # GPU metrics - grouped by GPU ID
+            gpu_metrics = metrics.get("gpu_utilization", {})
+            gpu_memory = metrics.get("gpu_memory_usage_bytes", {})
+
+            for gpu_id in sorted(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
+                # Add GPU utilization
+                latest_util = self._get_latest_metric(gpu_metrics.get(gpu_id, []))
+                if latest_util is not None:
+                    table.add_row(f"GPU {gpu_id} Usage", f"{latest_util * 100:.1f}%")
+
+                # Add GPU memory right after its utilization
+                latest_memory = self._get_latest_metric(gpu_memory.get(gpu_id, []))
+                if latest_memory is not None:
+                    formatted_value, color = self._format_bytes(latest_memory)
+                    table.add_row(
+                        f"GPU {gpu_id} Memory", Text(formatted_value, style=color)
+                    )
+
+                # Add separator after each GPU's metrics (except for the last one)
+                if gpu_id != max(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
+                    table.add_section()
+
+            tables.append(table)
+
+        return tables
 
     def _maybe_create_storage_table(self, metrics_data: Dict) -> Optional[Table]:
         ephemeral_storage_metrics = metrics_data.get("ephemeral_storage")

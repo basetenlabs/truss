@@ -51,6 +51,38 @@ def test_view_training_job_metrics(time_sleep, capfd):
                 "0": [{"timestamp": "", "value": 4321}],
                 "1": [{"timestamp": "", "value": 2222}],
             },
+            "per_node_metrics": [
+                {
+                    "node_id": "node-0",
+                    "metrics": {
+                        "cpu_usage": [{"timestamp": "", "value": 3.2}],
+                        "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1234}],
+                        "gpu_utilization": {
+                            "0": [{"timestamp": "", "value": 0.2}],
+                            "1": [{"timestamp": "", "value": 0.3}],
+                        },
+                        "gpu_memory_usage_bytes": {
+                            "0": [{"timestamp": "", "value": 4321}],
+                            "1": [{"timestamp": "", "value": 2222}],
+                        },
+                    },
+                },
+                {
+                    "node_id": "node-1",
+                    "metrics": {
+                        "cpu_usage": [{"timestamp": "", "value": 2.8}],
+                        "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1000}],
+                        "gpu_utilization": {
+                            "0": [{"timestamp": "", "value": 0.15}],
+                            "1": [{"timestamp": "", "value": 0.25}],
+                        },
+                        "gpu_memory_usage_bytes": {
+                            "0": [{"timestamp": "", "value": 4000}],
+                            "1": [{"timestamp": "", "value": 2000}],
+                        },
+                    },
+                },
+            ],
         },
         {
             "training_job": {
@@ -68,6 +100,38 @@ def test_view_training_job_metrics(time_sleep, capfd):
                 "0": [{"timestamp": "", "value": 4321}],
                 "1": [{"timestamp": "", "value": 2222}],
             },
+            "per_node_metrics": [
+                {
+                    "node_id": "node-0",
+                    "metrics": {
+                        "cpu_usage": [{"timestamp": "", "value": 3.2}],
+                        "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1234}],
+                        "gpu_utilization": {
+                            "0": [{"timestamp": "", "value": 0.2}],
+                            "1": [{"timestamp": "", "value": 0.3}],
+                        },
+                        "gpu_memory_usage_bytes": {
+                            "0": [{"timestamp": "", "value": 4321}],
+                            "1": [{"timestamp": "", "value": 2222}],
+                        },
+                    },
+                },
+                {
+                    "node_id": "node-1",
+                    "metrics": {
+                        "cpu_usage": [{"timestamp": "", "value": 2.8}],
+                        "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1000}],
+                        "gpu_utilization": {
+                            "0": [{"timestamp": "", "value": 0.15}],
+                            "1": [{"timestamp": "", "value": 0.25}],
+                        },
+                        "gpu_memory_usage_bytes": {
+                            "0": [{"timestamp": "", "value": 4000}],
+                            "1": [{"timestamp": "", "value": 2000}],
+                        },
+                    },
+                },
+            ],
         },
         {
             "training_job": {
@@ -85,6 +149,38 @@ def test_view_training_job_metrics(time_sleep, capfd):
                 "0": [{"timestamp": "", "value": 4321}],
                 "1": [{"timestamp": "", "value": 2222}],
             },
+            "per_node_metrics": [
+                {
+                    "node_id": "node-0",
+                    "metrics": {
+                        "cpu_usage": [{"timestamp": "", "value": 3.2}],
+                        "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1234}],
+                        "gpu_utilization": {
+                            "0": [{"timestamp": "", "value": 0.2}],
+                            "1": [{"timestamp": "", "value": 0.3}],
+                        },
+                        "gpu_memory_usage_bytes": {
+                            "0": [{"timestamp": "", "value": 4321}],
+                            "1": [{"timestamp": "", "value": 2222}],
+                        },
+                    },
+                },
+                {
+                    "node_id": "node-1",
+                    "metrics": {
+                        "cpu_usage": [{"timestamp": "", "value": 2.8}],
+                        "cpu_memory_usage_bytes": [{"timestamp": "", "value": 1000}],
+                        "gpu_utilization": {
+                            "0": [{"timestamp": "", "value": 0.15}],
+                            "1": [{"timestamp": "", "value": 0.25}],
+                        },
+                        "gpu_memory_usage_bytes": {
+                            "0": [{"timestamp": "", "value": 4000}],
+                            "1": [{"timestamp": "", "value": 2002}],
+                        },
+                    },
+                },
+            ],
         },
     ]
 
