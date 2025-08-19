@@ -1,11 +1,23 @@
 from truss_train.definitions import (
+    AWSIAMDockerAuth,
+    CacheConfig,
+    CheckpointingConfig,
+    CheckpointList,
     Compute,
+    DeployCheckpointsConfig,
+    DeployCheckpointsRuntime,
+    DockerAuth,
+    FullCheckpoint,
+    GCPServiceAccountJSONDockerAuth,
+    Image,
+    LoRACheckpoint,
+    LoRADetails,
+    ModelWeightsFormat,
     Runtime,
     SecretReference,
     TrainingJob,
     TrainingProject,
 )
-from truss_train.public_api import push
 
 __all__ = [
     "Compute",
@@ -13,5 +25,17 @@ __all__ = [
     "SecretReference",
     "TrainingJob",
     "TrainingProject",
-    "push",
+    "FullCheckpoint",
+    "LoRACheckpoint",
+    "ModelWeightsFormat",
+    "CheckpointList",
+    "DeployCheckpointsRuntime",
+    "DeployCheckpointsConfig",
+    "LoRADetails",
+    "CheckpointingConfig",
+    "CacheConfig",
+    "AWSIAMDockerAuth",
+    "GCPServiceAccountJSONDockerAuth",
+    "DockerAuth",
+    "Image",
 ]

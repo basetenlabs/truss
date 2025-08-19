@@ -1,4 +1,5 @@
 import enum
+from abc import ABC
 from typing import Dict, List, Optional, Union
 
 import pydantic
@@ -10,6 +11,16 @@ DEFAULT_LORA_RANK = 16
 
 # Allowed LoRA rank values for vLLM
 ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
+
+
+class ModelWeightsFormat(str, enum.Enum):
+    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
+
+    LORA = "lora"
+    FULL = "full"
+
+    def to_truss_config(self) -> "ModelWeightsFormat":
+        return ModelWeightsFormat[self.name]
 
 
 class SecretReference(custom_types.SafeModelNoExtra):
@@ -52,6 +63,7 @@ class CheckpointingConfig(custom_types.SafeModelNoExtra):
 class CacheConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     enable_legacy_hf_mount: bool = False
+    require_cache_affinity: bool = True
 
 
 class Runtime(custom_types.SafeModelNoExtra):
@@ -128,19 +140,10 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     job: TrainingJob = pydantic.Field(exclude=True)
 
 
-class ModelWeightsFormat(str, enum.Enum):
-    """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
-
-    LORA = "LoRA"
-
-    def to_truss_config(self) -> truss_config.ModelWeightsFormat:
-        return truss_config.ModelWeightsFormat[self.name]
-
-
-class Checkpoint(custom_types.ConfigModel):
+class Checkpoint(custom_types.ConfigModel, ABC):
     training_job_id: str
     paths: List[str]
-    model_weight_format: Optional[ModelWeightsFormat] = None
+    model_weight_format: ModelWeightsFormat
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
@@ -151,20 +154,24 @@ class Checkpoint(custom_types.ConfigModel):
 class LoRADetails(custom_types.ConfigModel):
     """Configuration details specific to LoRA (Low-Rank Adaptation) models."""
 
-    rank: int
+    rank: int = DEFAULT_LORA_RANK
 
     @field_validator("rank")
     @classmethod
     def validate_lora_rank(cls, v):
         if v not in ALLOWED_LORA_RANKS:
             raise ValueError(
-                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}."
+                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}.model_weight_format = checkpoints[0].model_weight_format"
             )
         return v
 
 
+class FullCheckpoint(Checkpoint):
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
+
+
 class LoRACheckpoint(Checkpoint):
-    lora_details: LoRADetails
+    lora_details: LoRADetails = LoRADetails()
     model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
 
 
