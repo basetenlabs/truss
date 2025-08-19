@@ -108,10 +108,9 @@ class MetricsWatcher(TrainingPollerMixin):
         node_tables = self._create_unified_node_metrics_tables(metrics_data)
         tables.extend(node_tables)
 
-        # Create storage table
-        storage_table = self._maybe_create_storage_table(metrics_data)
-        if storage_table:
-            tables.append(storage_table)
+        # Create storage tables - ephemeral per node, cache per job
+        storage_tables = self._create_storage_tables(metrics_data)
+        tables.extend(storage_tables)
 
         # Create the main columns layout
         columns = Columns(tables, title="Training Job Metrics")
@@ -245,24 +244,76 @@ class MetricsWatcher(TrainingPollerMixin):
             if gpu_id != max(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
                 table.add_section()
 
+        # Add ephemeral storage metrics to the node table
+        ephemeral_storage = metrics.get("ephemeral_storage")
+        if ephemeral_storage:
+            # Add separator before storage metrics
+            if gpu_metrics or gpu_memory:
+                table.add_section()
+
+            # Get ephemeral storage metrics
+            usage_bytes = self._get_latest_metric(
+                ephemeral_storage.get("usage_bytes", [])
+            )
+            utilization = self._get_latest_metric(
+                ephemeral_storage.get("utilization", [])
+            )
+
+            if usage_bytes is not None:
+                formatted_value, color = self._format_bytes(usage_bytes)
+                table.add_row("Ephemeral Storage", Text(formatted_value, style=color))
+
+            if utilization is not None:
+                # Show utilization as percentage
+                utilization_percent = utilization * 100
+                if utilization_percent > 90:
+                    color = "red"
+                elif utilization_percent > 70:
+                    color = "yellow"
+                else:
+                    color = "green"
+                table.add_row(
+                    "Storage Utilization",
+                    Text(f"{utilization_percent:.1f}%", style=color),
+                )
+
+        return table
+
+    def _create_storage_tables(self, metrics_data: Dict) -> List[Table]:
+        """Create storage tables - only cache per job (ephemeral is now in node tables)"""
+        tables = []
+
+        # Create cache storage table (job-level, shown once)
+        cache_storage = metrics_data.get("cache")
+        if cache_storage:
+            table = self._create_cache_storage_table(cache_storage)
+            if table:  # Only append if table was created
+                tables.append(table)
+
+        return tables
+
+    def _create_cache_storage_table(self, cache_storage: Dict) -> Optional[Table]:
+        """Create table for cache storage metrics (job-level)"""
+        # Check if there's actual cache data to display
+        usage_bytes = self._get_latest_metric(cache_storage.get("usage_bytes", []))
+        utilization = self._get_latest_metric(cache_storage.get("utilization", []))
+
+        # Only create table if there's meaningful cache data
+        if usage_bytes is None and utilization is None:
+            return None
+
+        table = Table(title="Cache Storage (Job-Level)")
+        table.add_column("Storage Type")
+        table.add_column("Usage")
+        table.add_column("Utilization")
+
+        self._maybe_format_storage_table_row(table, "Cache Storage", cache_storage)
+
         return table
 
     def _maybe_create_storage_table(self, metrics_data: Dict) -> Optional[Table]:
-        ephemeral_storage_metrics = metrics_data.get("ephemeral_storage")
-        cache_storage_metrics = metrics_data.get("cache")
-        if ephemeral_storage_metrics or cache_storage_metrics:
-            storage_table = Table(title="Storage Metrics")
-            storage_table.add_column("Storage Type")
-            storage_table.add_column("Usage")
-            storage_table.add_column("Utilization")
-            did_add_ephemeral = self._maybe_format_storage_table_row(
-                storage_table, "Ephemeral Storage", ephemeral_storage_metrics
-            )
-            did_add_cache = self._maybe_format_storage_table_row(
-                storage_table, "Cache Storage", cache_storage_metrics
-            )
-            if did_add_ephemeral or did_add_cache:
-                return storage_table
+        # This method is now deprecated - use _create_storage_tables instead
+        # Keeping for backward compatibility but it should not be called
         return None
 
     def watch(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
