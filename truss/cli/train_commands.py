@@ -2,7 +2,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, cast
+from typing import List, Optional, cast
 
 import rich_click as click
 
@@ -75,17 +75,12 @@ def _write_log_to_file(log, file_handle, format_type: str) -> None:
     if format_type == "json":
         file_handle.write(json.dumps(log.model_dump(), default=str) + "\n")
     else:
-        # Format the log similar to console output
-        epoch_nanos = int(log.timestamp)
-        dt = datetime.fromtimestamp(epoch_nanos / 1e9)
-        formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-
-        replica_info = f"({log.replica}) " if log.replica else ""
-        file_handle.write(f"[{formatted_time}]: {replica_info}{log.message.strip()}\n")
+        time_text, replica_text, message_text = cli_log_utils.format_log(log)
+        file_handle.write(f"{time_text}{replica_text}{message_text}\n")
 
 
 def _save_logs_to_file(
-    logs: list,
+    logs: List[cli_log_utils.ParsedLog],
     project_id: str,
     job_id: str,
     format_type: str,

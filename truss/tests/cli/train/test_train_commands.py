@@ -1,31 +1,76 @@
 import json
 import tempfile
+import unittest
+from dataclasses import dataclass
 from pathlib import Path
 
 from truss.cli.logs.utils import ParsedLog
 from truss.cli.train_commands import _get_log_format_type, _save_logs_to_file
 
 
-class TestTrainCommands:
+@dataclass
+class TestGetLogFormatType:
+    desc: str
+    download: bool
+    txt: bool
+    json: bool
+    expected: str | None
+
+
+class TestTrainCommands(unittest.TestCase):
     def test_get_log_format_type(self):
         """Test the log format type determination logic."""
-        # Test default behavior
-        assert _get_log_format_type(download=False, txt=False, json=False) is None
+        test_cases = [
+            TestGetLogFormatType(
+                desc="default behavior - no flags set",
+                download=False,
+                txt=False,
+                json=False,
+                expected=None,
+            ),
+            TestGetLogFormatType(
+                desc="explicit txt flag",
+                download=False,
+                txt=True,
+                json=False,
+                expected="txt",
+            ),
+            TestGetLogFormatType(
+                desc="explicit json flag",
+                download=False,
+                txt=False,
+                json=True,
+                expected="json",
+            ),
+            TestGetLogFormatType(
+                desc="download with txt - should default to txt",
+                download=True,
+                txt=True,
+                json=False,
+                expected="txt",
+            ),
+            TestGetLogFormatType(
+                desc="download with json - should prioritize json",
+                download=True,
+                txt=False,
+                json=True,
+                expected="json",
+            ),
+            TestGetLogFormatType(
+                desc="download alone - should default to txt",
+                download=True,
+                txt=False,
+                json=False,
+                expected="txt",
+            ),
+        ]
 
-        # Test explicit txt
-        assert _get_log_format_type(download=False, txt=True, json=False) == "txt"
-
-        # Test explicit json
-        assert _get_log_format_type(download=False, txt=False, json=True) == "json"
-
-        # Test download with txt (should default to txt)
-        assert _get_log_format_type(download=True, txt=True, json=False) == "txt"
-
-        # Test download with json (should prioritize json)
-        assert _get_log_format_type(download=True, txt=False, json=True) == "json"
-
-        # Test download alone (should default to txt)
-        assert _get_log_format_type(download=True, txt=False, json=False) == "txt"
+        for test_case in test_cases:
+            with self.subTest(test_case.desc):
+                result = _get_log_format_type(
+                    download=test_case.download, txt=test_case.txt, json=test_case.json
+                )
+                assert result == test_case.expected, f"Failed for {test_case.desc}"
 
     def test_save_logs_to_file_txt(self):
         """Test saving logs in text format."""
@@ -108,7 +153,12 @@ class TestTrainCommands:
             ]
 
             filename = _save_logs_to_file(
-                logs, "test-project", "test-job", "txt", tail=True, output_dir=temp_dir
+                logs,
+                "aghilan-anime-generator-project",
+                "generate-dogs-job",
+                "txt",
+                tail=True,
+                output_dir=temp_dir,
             )
 
             # Check filename contains tail suffix
