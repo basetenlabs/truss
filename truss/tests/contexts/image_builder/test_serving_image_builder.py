@@ -76,6 +76,23 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
         assert requirements_content == base_requirements_content + "numpy\n"
 
 
+def test_env_vars_baked_into_image(test_data_path):
+    truss_dir = test_data_path / "test_env_vars"
+    th = TrussHandle(truss_dir)
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(th.spec.truss_dir)
+
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        with open(tmp_path / "Dockerfile", "r") as f:
+            dockerfile_content = f.read()
+
+        assert "ENV REMOVED_ENV_VAR=removed" not in dockerfile_content
+        assert 'ENV PORT="8000"' in dockerfile_content
+        assert 'ENV HOSTNAME="my-host"' in dockerfile_content
+
+
 def flatten_cached_files(local_cache_files):
     return [file.source for file in local_cache_files]
 
