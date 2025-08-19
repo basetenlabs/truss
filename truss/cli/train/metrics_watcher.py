@@ -125,7 +125,11 @@ class MetricsWatcher(TrainingPollerMixin):
             # Create a layout with timestamp at top and metrics below
             layout.split_column(
                 Layout(
-                    Panel(f"🕐 Last Updated: {timestamp}", style="bold cyan"), size=3
+                    Panel(
+                        f"🕐 Last Updated: {timestamp}\n💡 Press Ctrl+C to exit",
+                        style="bold cyan",
+                    ),
+                    size=4,
                 ),
                 Layout(columns),
             )
@@ -160,24 +164,24 @@ class MetricsWatcher(TrainingPollerMixin):
         """Create tables for node metrics, handling both single and multi-node scenarios"""
         tables = []
 
-        # Check if we have per_node_metrics (multi-node or unified single-node)
+        # Check if we have per_node_metrics (required by updated API)
         per_node_metrics = metrics_data.get("per_node_metrics", [])
 
-        if per_node_metrics:
-            # Multi-node or unified single-node approach
-            for node_metrics in per_node_metrics:
-                node_id = node_metrics.get("node_id", "Unknown")
-                metrics = node_metrics.get("metrics", {})
+        if not per_node_metrics:
+            raise ValueError(
+                "Expected 'per_node_metrics' in training job metrics response. "
+                "The API has been updated to always provide per-node metrics."
+            )
 
-                if not metrics:
-                    continue
+        # Process each node's metrics
+        for node_metrics in per_node_metrics:
+            node_id = node_metrics.get("node_id", "Unknown")
+            metrics = node_metrics.get("metrics", {})
 
-                table = self._create_node_table(node_id, metrics)
-                tables.append(table)
-        else:
-            # Legacy single-node approach (fallback for backward compatibility)
-            # Create a single table with the main metrics
-            table = self._create_node_table("Node", metrics_data)
+            if not metrics:
+                continue
+
+            table = self._create_node_table(node_id, metrics)
             tables.append(table)
 
         return tables
