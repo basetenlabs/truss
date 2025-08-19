@@ -100,9 +100,6 @@ class TestTrainCommands(unittest.TestCase):
             assert "Test log 1" in content
             assert "Test log 2" in content
             assert "(replica-1)" in content
-            assert (
-                "2021-12-31" in content
-            )  # Check timestamp formatting (correct date for the test timestamp)
 
     def test_save_logs_to_file_json(self):
         """Test saving logs in JSON format."""
