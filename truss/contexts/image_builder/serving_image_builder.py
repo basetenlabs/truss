@@ -82,6 +82,7 @@ from truss.util.path import (
     load_trussignore_patterns,
 )
 
+APP_USER_ID = "60000"
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 BUILD_SERVER_EXTENSIONS_PATH = "extensions"
@@ -400,7 +401,9 @@ def generate_docker_server_supervisord_config(build_dir, config):
         start_command = "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
     else:
         start_command = config.docker_server.start_command
-    supervisord_contents = supervisord_template.render(start_command=start_command)
+    supervisord_contents = supervisord_template.render(
+        start_command=start_command, app_user_id=APP_USER_ID
+    )
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)
 

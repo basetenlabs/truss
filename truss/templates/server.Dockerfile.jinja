@@ -14,6 +14,7 @@ ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
 
 {# Install common dependencies #}
+USER root
 RUN apt update && \
     apt install -y bash \
                 build-essential \
@@ -24,6 +25,7 @@ RUN apt update && \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
+USER ${APP_USERNAME}
 
 COPY ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ base_server_requirements_filename }} --no-cache-dir
@@ -35,7 +37,9 @@ RUN {{ sys_pip_install_command }} -r {{ base_server_requirements_filename }} --n
     {# This is specific to the user-provided base image scenario. #}
 RUN readlink {{ config.base_image.python_executable_path }} &>/dev/null \
     && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
+USER root
 RUN ln -sf {{ config.base_image.python_executable_path }} /usr/local/bin/python
+USER ${APP_USERNAME}
     {%- endif %} {#- endif requires_live_reload #}
 {% endif %} {#- endif config.base_image #}
 
@@ -75,11 +79,13 @@ COPY ./{{ config.data_dir }} /app/data
 
 {%- if model_cache_v2 %}
 # v0.0.9, keep synced with server_requirements.txt
+USER root
 RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.9.115rc18/truss-transfer-cli-v0.9.115rc18-linux-x86_64-unknown-linux-musl
 RUN chmod +x /usr/local/bin/truss-transfer-cli
 RUN mkdir /bptr
 RUN echo "hash {{model_cache_hash}}"
 COPY ./bptr-manifest /bptr/static-bptr-manifest.json
+USER ${APP_USERNAME}
 {%- endif %} {#- endif model_cache_v2 #}
 
 {%- if not config.docker_server %}
@@ -107,12 +113,15 @@ COPY ./{{ config.model_module_dir }} /app/model
 {% endblock %} {#- endblock app_copy #}
 
 {% block run %}
+USER root
     {%- if config.docker_server %}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl nginx && rm -rf /var/lib/apt/lists/*
+USER ${APP_USERNAME}
 COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
 
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
+USER root
 RUN uv python install {{ control_python_version }}
 RUN uv venv /docker_server/.venv --python {{ control_python_version }}
 RUN uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt --no-cache-dir
@@ -127,12 +136,20 @@ ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
     {%- elif requires_live_reload %} {#- elif requires_live_reload #}
+# Run chown again to ensure all files are owned by the non-root user:
+# Docker's COPY directives from earlier would have used the root user.
+RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${HOME} ${APP_HOME} ${CONTROL_SERVER_DIR}
+USER ${APP_USERNAME}
 ENV HASH_TRUSS="{{ truss_hash }}"
 ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python /control/control/server.py"
 ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
     {%- else %} {#- else (default inference server) #}
+# Run chown again to ensure all files are owned by the non-root user:
+# Docker's COPY directives from earlier would have used the root user.
+RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${HOME} ${APP_HOME} ${CONTROL_SERVER_DIR}
+USER ${APP_USERNAME}
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{ python_executable }} /app/main.py"
 ENTRYPOINT ["{{ python_executable }}", "/app/main.py"]
