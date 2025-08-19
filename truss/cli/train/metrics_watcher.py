@@ -104,15 +104,9 @@ class MetricsWatcher(TrainingPollerMixin):
         # Get timestamp for display at the top
         timestamp = self._get_timestamp_from_metrics(metrics_data)
 
-        # Create per-node metrics tables if available
-        per_node_metrics = metrics_data.get("per_node_metrics", [])
-        if per_node_metrics:
-            node_tables = self._create_per_node_metrics_tables(per_node_metrics)
-            tables.extend(node_tables)
-        else:
-            # For single-node jobs, create a single table
-            single_node_table = self._create_single_node_metrics_table(metrics_data)
-            tables.append(single_node_table)
+        # Create unified node metrics tables
+        node_tables = self._create_unified_node_metrics_tables(metrics_data)
+        tables.extend(node_tables)
 
         # Create storage table
         storage_table = self._maybe_create_storage_table(metrics_data)
@@ -162,30 +156,55 @@ class MetricsWatcher(TrainingPollerMixin):
 
         return None
 
-    def _create_single_node_metrics_table(self, metrics_data: Dict) -> Table:
-        """Create table for single node metrics (when no per_node_metrics)"""
-        table = Table(title="Node Metrics")
+    def _create_unified_node_metrics_tables(self, metrics_data: Dict) -> List[Table]:
+        """Create tables for node metrics, handling both single and multi-node scenarios"""
+        tables = []
+
+        # Check if we have per_node_metrics (multi-node or unified single-node)
+        per_node_metrics = metrics_data.get("per_node_metrics", [])
+
+        if per_node_metrics:
+            # Multi-node or unified single-node approach
+            for node_metrics in per_node_metrics:
+                node_id = node_metrics.get("node_id", "Unknown")
+                metrics = node_metrics.get("metrics", {})
+
+                if not metrics:
+                    continue
+
+                table = self._create_node_table(node_id, metrics)
+                tables.append(table)
+        else:
+            # Legacy single-node approach (fallback for backward compatibility)
+            # Create a single table with the main metrics
+            table = self._create_node_table("Node", metrics_data)
+            tables.append(table)
+
+        return tables
+
+    def _create_node_table(self, node_id: str, metrics: Dict) -> Table:
+        """Create a table for a single node's metrics"""
+        table = Table(title=f"Node: {node_id}")
         table.add_column("Metric")
         table.add_column("Value")
 
         # CPU metrics
-        cpu_usage = self._get_latest_metric(metrics_data.get("cpu_usage", []))
+        cpu_usage = self._get_latest_metric(metrics.get("cpu_usage", []))
         if cpu_usage is not None:
             table.add_row("CPU Usage", f"{cpu_usage:.2f} cores")
 
-        cpu_memory = self._get_latest_metric(
-            metrics_data.get("cpu_memory_usage_bytes", [])
-        )
+        cpu_memory = self._get_latest_metric(metrics.get("cpu_memory_usage_bytes", []))
         if cpu_memory is not None:
             formatted_value, color = self._format_bytes(cpu_memory)
             table.add_row("CPU Memory", Text(formatted_value, style=color))
 
         # Add separator after CPU metrics
-        table.add_section()
+        if cpu_usage is not None or cpu_memory is not None:
+            table.add_section()
 
         # GPU metrics - grouped by GPU ID
-        gpu_metrics = metrics_data.get("gpu_utilization", {})
-        gpu_memory = metrics_data.get("gpu_memory_usage_bytes", {})
+        gpu_metrics = metrics.get("gpu_utilization", {})
+        gpu_memory = metrics.get("gpu_memory_usage_bytes", {})
 
         for gpu_id in sorted(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
             # Add GPU utilization
@@ -206,65 +225,6 @@ class MetricsWatcher(TrainingPollerMixin):
                 table.add_section()
 
         return table
-
-    def _create_per_node_metrics_tables(
-        self, per_node_metrics: List[Dict]
-    ) -> List[Table]:
-        """Create tables for each node's metrics"""
-        tables = []
-
-        for node_metrics in per_node_metrics:
-            node_id = node_metrics.get("node_id", "Unknown")
-            metrics = node_metrics.get("metrics", {})
-
-            if not metrics:
-                continue
-
-            table = Table(title=f"Node: {node_id}")
-            table.add_column("Metric")
-            table.add_column("Value")
-
-            # CPU metrics
-            cpu_usage = self._get_latest_metric(metrics.get("cpu_usage", []))
-            if cpu_usage is not None:
-                table.add_row("CPU Usage", f"{cpu_usage:.2f} cores")
-
-            cpu_memory = self._get_latest_metric(
-                metrics.get("cpu_memory_usage_bytes", [])
-            )
-            if cpu_memory is not None:
-                formatted_value, color = self._format_bytes(cpu_memory)
-                table.add_row("CPU Memory", Text(formatted_value, style=color))
-
-            # Add separator after CPU metrics
-            if cpu_usage is not None or cpu_memory is not None:
-                table.add_section()
-
-            # GPU metrics - grouped by GPU ID
-            gpu_metrics = metrics.get("gpu_utilization", {})
-            gpu_memory = metrics.get("gpu_memory_usage_bytes", {})
-
-            for gpu_id in sorted(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
-                # Add GPU utilization
-                latest_util = self._get_latest_metric(gpu_metrics.get(gpu_id, []))
-                if latest_util is not None:
-                    table.add_row(f"GPU {gpu_id} Usage", f"{latest_util * 100:.1f}%")
-
-                # Add GPU memory right after its utilization
-                latest_memory = self._get_latest_metric(gpu_memory.get(gpu_id, []))
-                if latest_memory is not None:
-                    formatted_value, color = self._format_bytes(latest_memory)
-                    table.add_row(
-                        f"GPU {gpu_id} Memory", Text(formatted_value, style=color)
-                    )
-
-                # Add separator after each GPU's metrics (except for the last one)
-                if gpu_id != max(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
-                    table.add_section()
-
-            tables.append(table)
-
-        return tables
 
     def _maybe_create_storage_table(self, metrics_data: Dict) -> Optional[Table]:
         ephemeral_storage_metrics = metrics_data.get("ephemeral_storage")
