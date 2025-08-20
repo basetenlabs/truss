@@ -107,6 +107,8 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
 class CheckpointSource(str, Enum):
     HF = "HF"
     GCS = "GCS"
+    S3 = "S3"
+    AZURE = "AZURE"
     LOCAL = "LOCAL"
     # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
     REMOTE_URL = "REMOTE_URL"
@@ -116,6 +118,8 @@ class CheckpointRepository(PydanticTrTBaseModel):
     source: CheckpointSource
     repo: str
     revision: Optional[str] = None
+    # secret from baseten secrets e.g. `hf_access_token`
+    runtime_secret_name: str = "hf_access_token"
 
     def __init__(self, **data):
         super().__init__(**data)
