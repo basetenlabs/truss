@@ -9,7 +9,7 @@ from truss.remote.baseten.api import BasetenApi
 
 POLL_INTERVAL_SEC = 2
 # NB(nikhil): This helps account for (1) log processing delays (2) clock skews
-CLOCK_SKEW_BUFFER_MS = 10000
+CLOCK_SKEW_BUFFER_MS = 60000
 
 
 class LogWatcher(ABC):
