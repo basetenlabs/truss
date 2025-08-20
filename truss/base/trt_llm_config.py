@@ -255,6 +255,29 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
             self.speculator.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL
         )
 
+    def validate_not_external_draft(self):
+        if self.uses_draft_external:
+            raise ValueError(
+                """
+external draft speculation is discontinued in favor of LOOKAHEAD_DECODING, which yields better performance.
+Alternatively, switch to `inference_stack: v2` and enabled more sophisticated speculation methods.
+As last resort, you may build with the following overrides:
+
+```
+trt_llm:
+  version_overrides:
+    briton_version: 0.20.0_v0.1.5rc1
+    engine_builder_version: 0.20.0.post8.dev1
+```
+
+and install this truss version:
+```
+pip install truss==0.10.8
+```
+
+"""
+            )
+
     @property
     def uses_lora(self) -> bool:
         return self.lora_adapters is not None and len(self.lora_adapters) > 0
@@ -331,17 +354,7 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
                     "KV cache block reuse must be enabled for speculative decoding target model."
                 )
 
-            if self.uses_draft_external and self.speculator.build:
-                logger.warning(
-                    "Draft external mode is a advanced feature. If you encounter issues, feel free to contact us. You may also try lookahead decoding mode instead."
-                )
-                if (
-                    self.tensor_parallel_count
-                    != self.speculator.build.tensor_parallel_count
-                ):
-                    raise ValueError(
-                        "Speculative decoding requires the same tensor parallelism for target and draft models."
-                    )
+            self.validate_not_external_draft()
 
     @property
     def max_draft_len(self) -> Optional[int]:
