@@ -1,19 +1,23 @@
-import os
 from pathlib import Path
 
 from jinja2 import Template
 
 from truss.base import truss_config
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints_helpers import (
+    START_COMMAND_ENVVAR_NAME,
+)
 from truss.cli.train.types import DeployCheckpointsConfigComplete
 from truss_train.definitions import (
     ALLOWED_LORA_RANKS,
     DEFAULT_LORA_RANK,
     LoRACheckpoint,
     LoRADetails,
-    SecretReference,
 )
 
-START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
+from .deploy_checkpoints_helpers import (
+    setup_base_truss_config,
+    setup_environment_variables_and_secrets,
+)
 
 VLLM_LORA_START_COMMAND = Template(
     'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ base_model_id }}'
@@ -43,43 +47,13 @@ def render_vllm_lora_truss_config(
     checkpoint_deploy: DeployCheckpointsConfigComplete,
 ) -> truss_config.TrussConfig:
     """Render truss config specifically for LoRA checkpoints using vLLM."""
-    truss_deploy_config = truss_config.TrussConfig.from_yaml(
-        Path(os.path.dirname(__file__), "..", "deploy_from_checkpoint_config.yml")
+    truss_deploy_config = setup_base_truss_config(checkpoint_deploy)
+    start_command_envvars = setup_environment_variables_and_secrets(
+        truss_deploy_config, checkpoint_deploy
     )
-    if not truss_deploy_config.docker_server:
-        raise ValueError(
-            "Unexpected checkpoint deployment config: missing docker_server"
-        )
 
-    truss_deploy_config.model_name = checkpoint_deploy.model_name
-    truss_deploy_config.training_checkpoints = (
-        checkpoint_deploy.checkpoint_details.to_truss_config()
-    )
-    truss_deploy_config.resources = checkpoint_deploy.compute.to_truss_config()
-    for key, value in checkpoint_deploy.runtime.environment_variables.items():
-        if isinstance(value, SecretReference):
-            truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
-        else:
-            truss_deploy_config.environment_variables[key] = value
+    checkpoint_str = _build_lora_checkpoint_string(truss_deploy_config)
 
-    start_command_envvars = ""
-    for key, value in checkpoint_deploy.runtime.environment_variables.items():
-        if isinstance(value, SecretReference):
-            truss_deploy_config.secrets[value.name] = "set token in baseten workspace"
-            start_command_envvars = f"{key}=$(cat /secrets/{value.name})"
-
-    checkpoint_parts = []
-    for (
-        truss_checkpoint
-    ) in truss_deploy_config.training_checkpoints.artifact_references:  # type: ignore
-        ckpt_path = Path(
-            truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
-            truss_checkpoint.training_job_id,
-            truss_checkpoint.paths[0],
-        )
-        checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
-
-    checkpoint_str = " ".join(checkpoint_parts)
     max_lora_rank = max(
         [
             checkpoint.lora_details.rank or DEFAULT_LORA_RANK
@@ -106,7 +80,7 @@ def render_vllm_lora_truss_config(
     # Our goal is to reduce the number of times we need to rebuild the image, and allow us to deploy faster.
     truss_deploy_config.environment_variables[START_COMMAND_ENVVAR_NAME] = start_command
     # Note: supervisord uses the convention %(ENV_VAR_NAME)s to access environment variable VAR_NAME
-    truss_deploy_config.docker_server.start_command = (
+    truss_deploy_config.docker_server.start_command = (  # type: ignore[union-attr]
         f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
     )
     return truss_deploy_config
@@ -125,3 +99,19 @@ def _get_lora_rank(checkpoint_resp: dict) -> int:
         )
 
     return lora_rank
+
+
+def _build_lora_checkpoint_string(truss_deploy_config) -> str:
+    """Build the checkpoint string for LoRA modules from truss deploy config."""
+    checkpoint_parts = []
+    for (
+        truss_checkpoint
+    ) in truss_deploy_config.training_checkpoints.artifact_references:  # type: ignore
+        ckpt_path = Path(
+            truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
+            truss_checkpoint.training_job_id,
+            truss_checkpoint.paths[0],
+        )
+        checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
+
+    return " ".join(checkpoint_parts)

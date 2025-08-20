@@ -9,8 +9,13 @@ import truss_train.definitions as definitions
 from truss.base import truss_config
 from truss.cli.train.deploy_checkpoints import prepare_checkpoint_deploy
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
+    _get_checkpoint_ids_to_deploy,
     _render_truss_config_for_checkpoint_deployment,
     hydrate_checkpoint,
+)
+from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
+    hydrate_full_checkpoint,
+    render_vllm_full_truss_config,
 )
 from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
     START_COMMAND_ENVVAR_NAME,
@@ -22,6 +27,7 @@ from truss.cli.train.types import (
     DeployCheckpointsConfigComplete,
     PrepareCheckpointResult,
 )
+from truss_train.definitions import ModelWeightsFormat
 
 
 @pytest.fixture
@@ -76,6 +82,15 @@ def deploy_checkpoints_mock_select(create_mock_prompt):
 
 
 @pytest.fixture
+def deploy_checkpoints_mock_input(create_mock_prompt):
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.input"
+    ) as mock:
+        mock.side_effect = lambda message, **kwargs: create_mock_prompt(None)
+        yield mock
+
+
+@pytest.fixture
 def deploy_checkpoints_mock_text(create_mock_prompt):
     with patch(
         "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.text"
@@ -85,6 +100,8 @@ def deploy_checkpoints_mock_text(create_mock_prompt):
             if "number of accelerators" in message
             else "test-deployment"
             if "deployment name" in message
+            else "gemma-3-27b-it"
+            if "model name" in message
             else None
         )
         yield mock
@@ -108,7 +125,7 @@ def test_render_truss_config_for_checkpoint_deployment():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=16),
                 )
             ],
@@ -124,7 +141,7 @@ def test_render_truss_config_for_checkpoint_deployment():
             }
         ),
         deployment_name="gemma-3-27b-it-vLLM-LORA",
-        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+        model_weight_format=ModelWeightsFormat.LORA,
     )
     rendered_truss = _render_truss_config_for_checkpoint_deployment(deploy_config)
     test_truss = truss_config.TrussConfig.from_yaml(
@@ -154,6 +171,7 @@ def test_render_truss_config_for_checkpoint_deployment():
 def test_prepare_checkpoint_deploy_empty_config(
     mock_remote,
     deploy_checkpoints_mock_select,
+    deploy_checkpoints_mock_input,
     deploy_checkpoints_mock_text,
     deploy_checkpoints_mock_checkbox,
 ):
@@ -200,7 +218,7 @@ def test_prepare_checkpoint_deploy_complete_config(
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["job123/rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
@@ -245,7 +263,7 @@ def test_prepare_checkpoint_deploy_complete_config(
     assert len(config.checkpoint_details.checkpoints) == 1
     checkpoint = config.checkpoint_details.checkpoints[0]
     assert checkpoint.training_job_id == "job123"
-    assert checkpoint.model_weight_format == definitions.ModelWeightsFormat.LORA
+    assert checkpoint.model_weight_format == ModelWeightsFormat.LORA
     assert isinstance(checkpoint, definitions.LoRACheckpoint)
     assert checkpoint.lora_details.rank == 32
 
@@ -280,7 +298,7 @@ def test_checkpoint_lora_rank_validation():
         checkpoint = definitions.LoRACheckpoint(
             training_job_id="job123",
             paths=["job123/rank-0/checkpoint-1/"],
-            model_weight_format=definitions.ModelWeightsFormat.LORA,
+            model_weight_format=ModelWeightsFormat.LORA,
             lora_details=definitions.LoRADetails(rank=rank),
         )
         assert checkpoint.lora_details.rank == rank
@@ -312,7 +330,7 @@ def test_checkpoint_lora_rank_validation():
             definitions.LoRACheckpoint(
                 training_job_id="job123",
                 paths=["job123/rank-0/checkpoint-1/"],
-                model_weight_format=definitions.ModelWeightsFormat.LORA,
+                model_weight_format=ModelWeightsFormat.LORA,
                 lora_details=definitions.LoRADetails(rank=rank),
             )
 
@@ -396,7 +414,7 @@ def test_render_vllm_lora_truss_config():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=64),
                 )
             ],
@@ -412,7 +430,7 @@ def test_render_vllm_lora_truss_config():
             }
         ),
         deployment_name="test-deployment",
-        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+        model_weight_format=ModelWeightsFormat.LORA,
     )
 
     result = render_vllm_lora_truss_config(deploy_config)
@@ -436,7 +454,7 @@ def test_render_truss_config_delegation():
                 definitions.LoRACheckpoint(
                     training_job_id="job123",
                     paths=["rank-0/checkpoint-1/"],
-                    model_weight_format=definitions.ModelWeightsFormat.LORA,
+                    model_weight_format=ModelWeightsFormat.LORA,
                     lora_details=definitions.LoRADetails(rank=32),
                 )
             ],
@@ -448,7 +466,7 @@ def test_render_truss_config_delegation():
         ),
         runtime=definitions.DeployCheckpointsRuntime(environment_variables={}),
         deployment_name="test-deployment",
-        model_weight_format=truss_config.ModelWeightsFormat.LORA,
+        model_weight_format=ModelWeightsFormat.LORA,
     )
 
     # Test that it works for LoRA format
@@ -458,3 +476,201 @@ def test_render_truss_config_delegation():
     assert (
         expected_vllm_command in result.environment_variables[START_COMMAND_ENVVAR_NAME]
     )
+
+
+def test_render_vllm_full_truss_config():
+    """Test that render_vllm_full_truss_config creates proper TrussConfig for full fine-tune deployments."""
+    deploy_config = DeployCheckpointsConfigComplete(
+        checkpoint_details=definitions.CheckpointList(
+            checkpoints=[
+                definitions.FullCheckpoint(
+                    training_job_id="job123",
+                    paths=["rank-0/checkpoint-1/"],
+                    model_weight_format=ModelWeightsFormat.FULL,
+                )
+            ],
+            base_model_id=None,  # Not needed for full fine-tune
+        ),
+        model_name="test-full-model",
+        compute=definitions.Compute(
+            accelerator=truss_config.AcceleratorSpec(accelerator="H100", count=2)
+        ),
+        runtime=definitions.DeployCheckpointsRuntime(
+            environment_variables={
+                "HF_TOKEN": definitions.SecretReference(name="hf_token")
+            }
+        ),
+        deployment_name="test-deployment",
+        model_weight_format=ModelWeightsFormat.FULL,
+    )
+
+    result = render_vllm_full_truss_config(deploy_config)
+
+    expected_vllm_command = 'sh -c "HF_TOKEN=$(cat /secrets/hf_token) vllm serve /tmp/training_checkpoints/job123/rank-0/checkpoint-1 --port 8000 --tensor-parallel-size 2 --dtype bfloat16"'
+
+    assert isinstance(result, truss_config.TrussConfig)
+    assert result.model_name == "test-full-model"
+    assert result.docker_server is not None
+    assert result.docker_server.start_command == f"%(ENV_{START_COMMAND_ENVVAR_NAME})s"
+    assert (
+        result.environment_variables[START_COMMAND_ENVVAR_NAME] == expected_vllm_command
+    )
+
+
+def test_hydrate_full_checkpoint():
+    """Test that hydrate_full_checkpoint creates proper FullCheckpoint objects."""
+    job_id = "test_job_123"
+    checkpoint_id = "checkpoint-456"
+    checkpoint_data = {"base_model": "google/gemma-3-27b-it", "checkpoint_type": "full"}
+
+    result = hydrate_full_checkpoint(job_id, checkpoint_id, checkpoint_data)
+
+    assert isinstance(result, definitions.FullCheckpoint)
+    assert result.training_job_id == job_id
+    assert result.model_weight_format == ModelWeightsFormat.FULL
+    assert len(result.paths) == 1
+    assert result.paths[0] == f"rank-0/{checkpoint_id}/"
+
+
+def test_hydrate_checkpoint_dispatcher_full():
+    """Test that hydrate_checkpoint properly dispatches to full checkpoint function."""
+    job_id = "test_job_123"
+    checkpoint_id = "checkpoint-456"
+    checkpoint_data = {"base_model": "google/gemma-3-27b-it", "checkpoint_type": "full"}
+
+    result = hydrate_checkpoint(job_id, checkpoint_id, checkpoint_data, "full")
+    assert isinstance(result, definitions.FullCheckpoint)
+    assert result.model_weight_format == ModelWeightsFormat.FULL
+
+
+def test_get_checkpoint_ids_to_deploy_full_checkpoints():
+    """Test that _get_checkpoint_ids_to_deploy uses single selection for FULL checkpoints."""
+    from collections import OrderedDict
+
+    # Mock FULL checkpoints
+    response_checkpoints = OrderedDict(
+        [
+            ("checkpoint-1", {"checkpoint_type": "full", "base_model": "test/model"}),
+            ("checkpoint-2", {"checkpoint_type": "full", "base_model": "test/model"}),
+            ("checkpoint-3", {"checkpoint_type": "full", "base_model": "test/model"}),
+        ]
+    )
+
+    checkpoint_options = ["checkpoint-1", "checkpoint-2", "checkpoint-3"]
+
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        mock_checkbox.return_value.execute.return_value = ["checkpoint-2"]
+
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should use checkbox (single selection) for FULL checkpoints
+        mock_checkbox.assert_called_once()
+        assert (
+            mock_checkbox.call_args[1]["message"]
+            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+        )
+        assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
+
+        # Should return a list with single selected checkpoint
+        assert result == ["checkpoint-2"]
+
+
+def test_get_checkpoint_ids_to_deploy_lora_checkpoints():
+    """Test that _get_checkpoint_ids_to_deploy uses multiple selection for LoRA checkpoints."""
+    from collections import OrderedDict
+
+    # Mock LoRA checkpoints
+    response_checkpoints = OrderedDict(
+        [
+            ("checkpoint-1", {"checkpoint_type": "lora", "base_model": "test/model"}),
+            ("checkpoint-2", {"checkpoint_type": "lora", "base_model": "test/model"}),
+            ("checkpoint-3", {"checkpoint_type": "lora", "base_model": "test/model"}),
+        ]
+    )
+
+    checkpoint_options = ["checkpoint-1", "checkpoint-2", "checkpoint-3"]
+
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        mock_checkbox.return_value.execute.return_value = [
+            "checkpoint-1",
+            "checkpoint-3",
+        ]
+
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should use checkbox (multiple selection) for LoRA checkpoints
+        mock_checkbox.assert_called_once()
+        assert (
+            mock_checkbox.call_args[1]["message"]
+            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+        )
+        assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
+
+        # Should return a list with multiple selected checkpoints
+        assert result == ["checkpoint-1", "checkpoint-3"]
+
+
+def test_get_checkpoint_ids_to_deploy_mixed_checkpoints():
+    """Test that _get_checkpoint_ids_to_deploy uses multiple selection for mixed checkpoint types."""
+    from collections import OrderedDict
+
+    # Mock mixed checkpoints (FULL and LoRA)
+    response_checkpoints = OrderedDict(
+        [
+            ("checkpoint-1", {"checkpoint_type": "full", "base_model": "test/model"}),
+            ("checkpoint-2", {"checkpoint_type": "lora", "base_model": "test/model"}),
+            ("checkpoint-3", {"checkpoint_type": "full", "base_model": "test/model"}),
+        ]
+    )
+
+    checkpoint_options = ["checkpoint-1", "checkpoint-2", "checkpoint-3"]
+
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        # For mixed checkpoints with FULL, we can only select one
+        mock_checkbox.return_value.execute.return_value = ["checkpoint-1"]
+
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should use checkbox (multiple selection) for mixed checkpoint types
+        mock_checkbox.assert_called_once()
+        assert (
+            mock_checkbox.call_args[1]["message"]
+            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+        )
+        assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
+
+        # Should return a list with single selected checkpoint (due to FULL checkpoint)
+        assert result == ["checkpoint-1"]
+
+
+def test_get_checkpoint_ids_to_deploy_single_checkpoint():
+    """Test that _get_checkpoint_ids_to_deploy returns single checkpoint without prompting."""
+    from collections import OrderedDict
+
+    # Mock single checkpoint
+    response_checkpoints = OrderedDict(
+        [("checkpoint-1", {"checkpoint_type": "full", "base_model": "test/model"})]
+    )
+
+    checkpoint_options = ["checkpoint-1"]
+
+    # Should not call any inquirer functions for single checkpoint
+    with patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
+    ) as mock_select, patch(
+        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+    ) as mock_checkbox:
+        result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
+
+        # Should not call any inquirer functions
+        mock_select.assert_not_called()
+        mock_checkbox.assert_not_called()
+
+        # Should return the single checkpoint directly
+        assert result == ["checkpoint-1"]

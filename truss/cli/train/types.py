@@ -2,12 +2,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from truss.base import truss_config
 from truss_train.definitions import (
     CheckpointList,
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
+    ModelWeightsFormat,
 )
 
 
@@ -29,7 +29,7 @@ class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
     deployment_name: str
     runtime: DeployCheckpointsRuntime
     compute: Compute
-    model_weight_format: truss_config.ModelWeightsFormat
+    model_weight_format: ModelWeightsFormat
 
 
 @dataclass
