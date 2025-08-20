@@ -19,6 +19,7 @@ VLLM_FULL_START_COMMAND = Template(
     + " --port 8000"
     + " --tensor-parallel-size {{ specify_tensor_parallelism }}"
     + " --dtype bfloat16"
+    + " --chat-template {{ model_path }}/chat_template.jinja"
     + '"'
 )
 
