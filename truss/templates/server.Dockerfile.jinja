@@ -120,16 +120,22 @@ RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
+RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${HOME} ${APP_HOME}
+USER ${APP_USERNAME}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
     {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
 ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python /control/control/server.py"
+RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${HOME} ${APP_HOME}
+USER ${APP_USERNAME}
 ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
     {%- else %} {#- else (default inference server) #}
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{ python_executable }} /app/main.py"
+RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${HOME} ${APP_HOME}
+USER ${APP_USERNAME}
 ENTRYPOINT ["{{ python_executable }}", "/app/main.py"]
     {%- endif %} {#- endif config.docker_server / live_reload #}
 {% endblock %} {#- endblock run #}
