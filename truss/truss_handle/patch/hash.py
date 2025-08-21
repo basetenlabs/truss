@@ -1,3 +1,4 @@
+import traceback
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -19,6 +20,15 @@ def directory_content_hash(
     underneath. The (root) Directory will have the same hash, even if renamed.
     """
     hasher = blake3()
+    print(f"Calculating hash for {root}, ignore_patterns: {ignore_patterns}")
+
+    # Print caller chain
+    caller_chain = traceback.extract_stack()
+    if len(caller_chain) > 1:
+        print("Caller chain:")
+        for i, frame in enumerate(caller_chain[:-1]):  # Skip the current function
+            print(f"  {i + 1}. {frame.filename}:{frame.lineno} in {frame.name}")
+
     paths = list(get_unignored_relative_paths_from_root(root, ignore_patterns))
     paths.sort()
     for path in paths:
@@ -26,7 +36,9 @@ def directory_content_hash(
         absolute_path = root / path
         if absolute_path.is_file():
             hasher.update(file_content_hash(absolute_path))
-    return hasher.hexdigest()
+    hash_str = hasher.hexdigest()
+    print(f"Hash for {root}: {hash_str}")
+    return hash_str
 
 
 def file_content_hash(file: Path) -> bytes:

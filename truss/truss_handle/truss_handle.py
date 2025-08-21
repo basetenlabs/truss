@@ -938,6 +938,9 @@ class TrussHandle:
 
     def _update_config(self, **fields_to_update):
         config = self._spec.config.model_copy(update=fields_to_update)
+        print(
+            f"Updating config: {fields_to_update}, writing to {self._spec.config_path}"
+        )
         config.write_to_yaml_file(self._spec.config_path)
         self._spec = TrussSpec(self._truss_dir)  # Reload.
 
