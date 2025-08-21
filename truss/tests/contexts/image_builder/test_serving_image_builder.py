@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from truss.base.constants import (
+    HF_ACCESS_TOKEN_FILE_NAME,
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
@@ -17,7 +18,6 @@ from truss.base.constants import (
 )
 from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
-    HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_model_cache_v1,
 )

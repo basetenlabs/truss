@@ -15,6 +15,8 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
 
+from truss.base import constants
+
 B10CP_PATH_TRUSS_ENV_VAR_NAME = "B10CP_PATH_TRUSS"
 
 GCS_CREDENTIALS = "/app/data/service_account.json"
@@ -108,7 +110,7 @@ class RepositoryFile(ABC):
 
 class HuggingFaceFile(RepositoryFile):
     def download_to_cache(self):
-        secret_path = Path("/etc/secrets/hf-access-token")
+        secret_path = Path(f"/etc/secrets/{constants.HF_ACCESS_TOKEN_FILE_NAME}")
         secret = secret_path.read_text().strip() if secret_path.exists() else None
         try:
             hf_hub_download(
