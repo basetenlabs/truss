@@ -505,8 +505,16 @@ def test_render_vllm_full_truss_config():
     )
 
     result = render_vllm_full_truss_config(deploy_config)
-
-    expected_vllm_command = 'sh -c "HF_TOKEN=$(cat /secrets/hf_token) vllm serve /tmp/training_checkpoints/job123/rank-0/checkpoint-1 --port 8000 --tensor-parallel-size 2 --dtype bfloat16"'
+    expected_vllm_command = (
+        "sh -c 'HF_TOKEN=$(cat /secrets/hf_token) "
+        'HF_TOKEN="$$(cat /secrets/hf_access_token)" && export HF_TOKEN && '
+        "if [ -f /tmp/training_checkpoints/job123/rank-0/checkpoint-1/chat_template.jinja ]; then   "
+        "vllm serve /tmp/training_checkpoints/job123/rank-0/checkpoint-1 "
+        "--chat-template /tmp/training_checkpoints/job123/rank-0/checkpoint-1/chat_template.jinja   "
+        "--port 8000 --tensor-parallel-size 2 --dtype bfloat16; else   "
+        "vllm serve /tmp/training_checkpoints/job123/rank-0/checkpoint-1 "
+        "--port 8000 --tensor-parallel-size 2 --dtype bfloat16; fi'"
+    )
 
     assert isinstance(result, truss_config.TrussConfig)
     assert result.model_name == "test-full-model"

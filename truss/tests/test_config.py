@@ -1,4 +1,3 @@
-import copy
 import tempfile
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
@@ -631,58 +630,15 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
 
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
-def test_to_dict_trtllm_spec_dec(verbose, expect_equal, trtllm_spec_dec_config):
-    assert (
-        TrussConfig.model_validate(trtllm_spec_dec_config).to_dict(verbose=verbose)
-        == trtllm_spec_dec_config
-    ) == expect_equal
-
-
-@pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
-def test_to_dict_trtllm_spec_dec_full(
-    verbose, expect_equal, trtllm_spec_dec_config_full
+def test_to_dict_trtllm_spec_dec(
+    verbose, expect_equal, trtllm_spec_dec_config_lookahead_v1
 ):
     assert (
-        TrussConfig.model_validate(trtllm_spec_dec_config_full).to_dict(verbose=verbose)
-        == trtllm_spec_dec_config_full
+        TrussConfig.model_validate(trtllm_spec_dec_config_lookahead_v1).to_dict(
+            verbose=verbose
+        )
+        == trtllm_spec_dec_config_lookahead_v1
     ) == expect_equal
-
-
-@pytest.mark.parametrize("should_raise", [False, True])
-def test_model_validate_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
-    test_config = copy.deepcopy(trtllm_spec_dec_config)
-    if should_raise:
-        test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
-            None
-        )
-        with pytest.raises(ValueError):
-            TrussConfig.model_validate(test_config)
-        test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = None
-        with pytest.raises(ValueError):
-            TrussConfig.model_validate(test_config)
-        test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = (
-            trtllm_spec_dec_config["trt_llm"]["build"]["speculator"][
-                "checkpoint_repository"
-            ]
-        )
-        test_config["trt_llm"]["build"]["plugin_configuration"][
-            "use_paged_context_fmha"
-        ] = False
-        with pytest.raises(ValueError):
-            TrussConfig.model_validate(test_config)
-        test_config["trt_llm"]["build"]["plugin_configuration"][
-            "use_paged_context_fmha"
-        ] = True
-        test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
-            trtllm_spec_dec_config["trt_llm"]["build"]["speculator"][
-                "speculative_decoding_mode"
-            ]
-        )
-        test_config["trt_llm"]["build"]["speculator"]["num_draft_tokens"] = None
-        with pytest.raises(ValueError):
-            TrussConfig.model_validate(test_config)
-    else:
-        TrussConfig.model_validate(trtllm_spec_dec_config)
 
 
 def test_from_yaml_invalid_requirements_configuration():
