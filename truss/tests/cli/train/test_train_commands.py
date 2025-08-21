@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from truss.cli.logs.utils import ParsedLog
-from truss.cli.train_commands import _get_log_format_type, _save_logs_to_file
+from truss.cli.train_commands import _save_logs_to_file
 
 
 @dataclass
@@ -18,60 +18,6 @@ class TestGetLogFormatType:
 
 
 class TestTrainCommands(unittest.TestCase):
-    def test_get_log_format_type(self):
-        """Test the log format type determination logic."""
-        test_cases = [
-            TestGetLogFormatType(
-                desc="default behavior - no flags set",
-                download=False,
-                txt=False,
-                json=False,
-                expected=None,
-            ),
-            TestGetLogFormatType(
-                desc="explicit txt flag",
-                download=False,
-                txt=True,
-                json=False,
-                expected="txt",
-            ),
-            TestGetLogFormatType(
-                desc="explicit json flag",
-                download=False,
-                txt=False,
-                json=True,
-                expected="json",
-            ),
-            TestGetLogFormatType(
-                desc="download with txt - should default to txt",
-                download=True,
-                txt=True,
-                json=False,
-                expected="txt",
-            ),
-            TestGetLogFormatType(
-                desc="download with json - should prioritize json",
-                download=True,
-                txt=False,
-                json=True,
-                expected="json",
-            ),
-            TestGetLogFormatType(
-                desc="download alone - should default to txt",
-                download=True,
-                txt=False,
-                json=False,
-                expected="txt",
-            ),
-        ]
-
-        for test_case in test_cases:
-            with self.subTest(test_case.desc):
-                result = _get_log_format_type(
-                    download=test_case.download, txt=test_case.txt, json=test_case.json
-                )
-                assert result == test_case.expected, f"Failed for {test_case.desc}"
-
     def test_save_logs_to_file_txt(self):
         """Test saving logs in text format."""
         with tempfile.TemporaryDirectory() as temp_dir:

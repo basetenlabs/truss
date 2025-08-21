@@ -112,16 +112,6 @@ def _save_logs_to_file(
     return filename
 
 
-def _get_log_format_type(download: bool, txt: bool, json: bool) -> Optional[str]:
-    """Determine the log format type based on command options."""
-    if json:
-        return "json"
-    elif txt or download:  # txt is default when download is used
-        return "txt"
-    else:
-        return None  # fallback default
-
-
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
@@ -175,22 +165,14 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
-@click.option("--download", is_flag=True, help="Download logs to disk as a file.")
-@click.option(
-    "--txt",
-    is_flag=True,
-    help="Save logs in plain text format (default when --download is used).",
-)
-@click.option("--json", is_flag=True, help="Save logs in JSON format.")
+@click.option("--format", type=str, required=False, help="Format to save logs in.")
 @common.common_options()
 def get_job_logs(
     remote: Optional[str],
     project_id: Optional[str],
     job_id: Optional[str],
     tail: bool,
-    download: bool,
-    txt: bool,
-    json: bool,
+    format: Optional[str],
 ):
     """Fetch logs for a training job
 
@@ -208,20 +190,18 @@ def get_job_logs(
         remote_provider, project_id, job_id
     )
 
-    # Determine format type
-    download_format_type = _get_log_format_type(download, txt, json)
+    if format and format not in ["json", "txt"]:
+        error_console.print(
+            "Invalid format. Please use --format json or --format txt if you want to save logs to disk."
+        )
+        sys.exit(1)
 
     # If downloading, we'll collect logs and save them
-    if download_format_type:
+    if format:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
         parsed_logs = cli_log_utils.parse_logs(logs)
         filename = _save_logs_to_file(
-            parsed_logs,
-            project_id,
-            job_id,
-            download_format_type,
-            tail=False,
-            output_dir=".",
+            parsed_logs, project_id, job_id, format, tail=False, output_dir="."
         )
         if not tail:
             console.print(f"✅ Logs saved to: {filename}", style="green")
@@ -233,7 +213,7 @@ def get_job_logs(
                 with open(filename, "a") as f:
                     for log in log_watcher.watch():
                         collected_logs.append(log)
-                        _write_log_to_file(log, f, download_format_type)
+                        _write_log_to_file(log, f, format)
             except KeyboardInterrupt:
                 console.print(f"\n✅ Logs saved to: {filename}", style="green")
                 console.print(
