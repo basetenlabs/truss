@@ -17,6 +17,7 @@ from .deploy_checkpoints_helpers import (
 # NB(aghilan): Transformers was recently changed to save a chat_template.jinja file instead of inside the tokenizer_config.json file.
 # Old Models will not have this file, so we check for it and use it if it exists.
 # vLLM will not automatically resolve the chat_template.jinja file, so we need to pass it to the start command.
+# This logic is needed for any models trained using Transformers v4.51.3 or later
 VLLM_FULL_START_COMMAND = Template(
     "sh -c '{% if envvars %}{{ envvars }} {% endif %}"
     'HF_TOKEN="$$(cat /secrets/hf_access_token)" && export HF_TOKEN && '
