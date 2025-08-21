@@ -14,13 +14,18 @@ from .deploy_checkpoints_helpers import (
     setup_environment_variables_and_secrets,
 )
 
+# NB(aghilan): Transformers was recently changed to save a chat_template.jinja file instead of inside the tokenizer_config.json file.
+# Old Models will not have this file, so we check for it and use it if it exists.
+# vLLM will not automatically resolve the chat_template.jinja file, so we need to pass it to the start command.
 VLLM_FULL_START_COMMAND = Template(
-    'sh -c "{%if envvars %}{{ envvars }} {% endif %}vllm serve {{ model_path }}'
-    + " --port 8000"
-    + " --tensor-parallel-size {{ specify_tensor_parallelism }}"
-    + " --dtype bfloat16"
-    + " --chat-template {{ model_path }}/chat_template.jinja"
-    + '"'
+    "sh -c '{% if envvars %}{{ envvars }} {% endif %}"
+    'HF_TOKEN="$$(cat /secrets/hf_access_token)" && export HF_TOKEN && '
+    "if [ -f {{ model_path }}/chat_template.jinja ]; then "
+    "  vllm serve {{ model_path }} --chat-template {{ model_path }}/chat_template.jinja "
+    "  --port 8000 --tensor-parallel-size {{ specify_tensor_parallelism }} --dtype bfloat16; "
+    "else "
+    "  vllm serve {{ model_path }} --port 8000 --tensor-parallel-size {{ specify_tensor_parallelism }} --dtype bfloat16; "
+    "fi'"
 )
 
 
