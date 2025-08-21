@@ -59,6 +59,7 @@ class MethodName(str, enum.Enum):
     CHAT_COMPLETIONS = enum.auto()
     COMPLETIONS = enum.auto()
     IS_HEALTHY = enum.auto()
+    MESSAGES = enum.auto()
     POSTPROCESS = enum.auto()
     PREDICT = enum.auto()
     PREPROCESS = enum.auto()
@@ -244,6 +245,7 @@ class ModelDescriptor:
     is_healthy: Optional[MethodDescriptor]
     completions: Optional[MethodDescriptor]
     chat_completions: Optional[MethodDescriptor]
+    messages: Optional[MethodDescriptor]
     websocket: Optional[MethodDescriptor]
 
     @cached_property
@@ -291,6 +293,7 @@ class ModelDescriptor:
         setup = cls._safe_extract_descriptor(model_cls, MethodName.SETUP_ENVIRONMENT)
         completions = cls._safe_extract_descriptor(model_cls, MethodName.COMPLETIONS)
         chats = cls._safe_extract_descriptor(model_cls, MethodName.CHAT_COMPLETIONS)
+        messages = cls._safe_extract_descriptor(model_cls, MethodName.MESSAGES)
         is_healthy = cls._safe_extract_descriptor(model_cls, MethodName.IS_HEALTHY)
         if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
             raise errors.ModelDefinitionError(
@@ -359,6 +362,7 @@ class ModelDescriptor:
             is_healthy=is_healthy,
             completions=completions,
             chat_completions=chats,
+            messages=messages,
             websocket=websocket,
         )
 
@@ -922,6 +926,14 @@ class ModelWrapper:
     ) -> OutputType:
         descriptor = self._get_descriptor_or_raise(
             self.model_descriptor.chat_completions, MethodName.CHAT_COMPLETIONS
+        )
+        return await self._execute_model_endpoint(inputs, request, descriptor)
+
+    async def messages(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self._get_descriptor_or_raise(
+            self.model_descriptor.messages, MethodName.MESSAGES
         )
         return await self._execute_model_endpoint(inputs, request, descriptor)
 

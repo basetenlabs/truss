@@ -106,6 +106,7 @@ class DockerURLs:
         self.predict_url = f"{base_url}/v1/models/model:predict"
         self.completions_url = f"{base_url}/v1/completions"
         self.chat_completions_url = f"{base_url}/v1/chat/completions"
+        self.messages_url = f"{base_url}/v1/messages"
 
         self.schema_url = f"{base_url}/v1/models/model/schema"
         self.metrics_url = f"{base_url}/metrics"
