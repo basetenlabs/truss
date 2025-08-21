@@ -101,27 +101,21 @@ class MetricsWatcher(TrainingPollerMixin):
         """Create a Rich table with the metrics"""
         tables = []
 
-        # Get timestamp for display at the top
         timestamp = self._get_timestamp_from_metrics(metrics_data)
 
-        # Create unified node metrics tables
         node_tables = self._create_unified_node_metrics_tables(metrics_data)
         tables.extend(node_tables)
 
-        # Create storage tables - ephemeral per node, cache per job
         storage_tables = self._create_storage_tables(metrics_data)
         tables.extend(storage_tables)
 
-        # Create the main columns layout
         columns = Columns(tables, title="Training Job Metrics")
 
-        # Always create a layout for consistent return type
         layout = Layout()
 
         if timestamp:
             from rich.panel import Panel
 
-            # Create a layout with timestamp at top and metrics below
             layout.split_column(
                 Layout(
                     Panel(
@@ -133,14 +127,13 @@ class MetricsWatcher(TrainingPollerMixin):
                 Layout(columns),
             )
         else:
-            # Just the metrics without timestamp
             layout.split_column(Layout(columns))
 
         return layout
 
     def _get_timestamp_from_metrics(self, metrics_data: Dict) -> Optional[str]:
         """Extract timestamp from metrics data for display"""
-        # Try to get timestamp from per_node_metrics first
+        # Try to get timestamp from per_node_metrics first. Fall back to main metrics if not there.
         per_node_metrics = metrics_data.get("per_node_metrics", [])
         if per_node_metrics and len(per_node_metrics) > 0:
             first_node_metrics = per_node_metrics[0].get("metrics", {})
@@ -150,7 +143,6 @@ class MetricsWatcher(TrainingPollerMixin):
                 if timestamp:
                     return common.format_localized_time(timestamp)
 
-        # Fall back to main metrics
         cpu_usage_data = metrics_data.get("cpu_usage", [])
         if cpu_usage_data and len(cpu_usage_data) > 0:
             timestamp = cpu_usage_data[-1].get("timestamp")
@@ -163,11 +155,11 @@ class MetricsWatcher(TrainingPollerMixin):
         """Create tables for node metrics, handling both single and multi-node scenarios"""
         tables = []
 
-        # Check if we have per_node_metrics (required by updated API)
         per_node_metrics = metrics_data.get("per_node_metrics", [])
 
         if not per_node_metrics:
-            # Job is likely just starting up - show waiting message
+            # Job is likely just starting up - it takes some type for the
+            # the metrics to become available after the job starts running.
             from rich.text import Text
 
             waiting_table = Table(title="Training Job Status")
@@ -189,7 +181,6 @@ class MetricsWatcher(TrainingPollerMixin):
             tables.append(waiting_table)
             return tables
 
-        # Process each node's metrics
         for node_metrics in per_node_metrics:
             node_id = node_metrics.get("node_id", "Unknown")
             metrics = node_metrics.get("metrics", {})
@@ -208,50 +199,43 @@ class MetricsWatcher(TrainingPollerMixin):
         table.add_column("Metric")
         table.add_column("Value")
 
-        # CPU metrics
         cpu_usage = self._get_latest_metric(metrics.get("cpu_usage", []))
         if cpu_usage is not None:
-            table.add_row("CPU Usage", f"{cpu_usage:.2f} cores")
+            table.add_row("CPU usage", f"{cpu_usage:.2f} cores")
 
         cpu_memory = self._get_latest_metric(metrics.get("cpu_memory_usage_bytes", []))
         if cpu_memory is not None:
             formatted_value, color = self._format_bytes(cpu_memory)
-            table.add_row("CPU Memory", Text(formatted_value, style=color))
+            table.add_row("CPU memory", Text(formatted_value, style=color))
 
-        # Add separator after CPU metrics
         if cpu_usage is not None or cpu_memory is not None:
             table.add_section()
 
-        # GPU metrics - grouped by GPU ID
-        gpu_metrics = metrics.get("gpu_utilization", {})
+        gpu_utilization = metrics.get("gpu_utilization", {})
         gpu_memory = metrics.get("gpu_memory_usage_bytes", {})
 
-        for gpu_id in sorted(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
-            # Add GPU utilization
-            latest_util = self._get_latest_metric(gpu_metrics.get(gpu_id, []))
+        # API should return same GPU IDs for utilization and memory
+        keys = gpu_utilization.keys()
+        for idx, gpu_id in enumerate(keys):
+            latest_util = self._get_latest_metric(gpu_utilization.get(gpu_id, []))
             if latest_util is not None:
-                table.add_row(f"GPU {gpu_id} Usage", f"{latest_util * 100:.1f}%")
+                table.add_row(f"GPU {gpu_id} utilization", f"{latest_util * 100:.1f}%")
 
-            # Add GPU memory right after its utilization
             latest_memory = self._get_latest_metric(gpu_memory.get(gpu_id, []))
             if latest_memory is not None:
                 formatted_value, color = self._format_bytes(latest_memory)
                 table.add_row(
-                    f"GPU {gpu_id} Memory", Text(formatted_value, style=color)
+                    f"GPU {gpu_id} memory", Text(formatted_value, style=color)
                 )
 
-            # Add separator after each GPU's metrics (except for the last one)
-            if gpu_id != max(set(gpu_metrics.keys()) | set(gpu_memory.keys())):
+            if idx != len(keys) - 1:
                 table.add_section()
 
-        # Add ephemeral storage metrics to the node table
         ephemeral_storage = metrics.get("ephemeral_storage")
         if ephemeral_storage:
-            # Add separator before storage metrics
-            if gpu_metrics or gpu_memory:
+            if gpu_utilization or gpu_memory:
                 table.add_section()
 
-            # Get ephemeral storage metrics
             usage_bytes = self._get_latest_metric(
                 ephemeral_storage.get("usage_bytes", [])
             )
@@ -261,10 +245,9 @@ class MetricsWatcher(TrainingPollerMixin):
 
             if usage_bytes is not None:
                 formatted_value, color = self._format_bytes(usage_bytes)
-                table.add_row("Ephemeral Storage", Text(formatted_value, style=color))
+                table.add_row("Eph. storage usage", Text(formatted_value, style=color))
 
             if utilization is not None:
-                # Show utilization as percentage
                 utilization_percent = utilization * 100
                 if utilization_percent > 90:
                     color = "red"
@@ -273,7 +256,7 @@ class MetricsWatcher(TrainingPollerMixin):
                 else:
                     color = "green"
                 table.add_row(
-                    "Storage Utilization",
+                    "Eph. storage utilization",
                     Text(f"{utilization_percent:.1f}%", style=color),
                 )
 
@@ -287,34 +270,27 @@ class MetricsWatcher(TrainingPollerMixin):
         cache_storage = metrics_data.get("cache")
         if cache_storage:
             table = self._create_cache_storage_table(cache_storage)
-            if table:  # Only append if table was created
+            if table:
                 tables.append(table)
 
         return tables
 
     def _create_cache_storage_table(self, cache_storage: Dict) -> Optional[Table]:
         """Create table for cache storage metrics (job-level)"""
-        # Check if there's actual cache data to display
         usage_bytes = self._get_latest_metric(cache_storage.get("usage_bytes", []))
         utilization = self._get_latest_metric(cache_storage.get("utilization", []))
 
-        # Only create table if there's meaningful cache data
         if usage_bytes is None and utilization is None:
             return None
 
-        table = Table(title="Cache Storage (Job-Level)")
+        table = Table(title="Cache storage")
         table.add_column("Storage Type")
         table.add_column("Usage")
         table.add_column("Utilization")
 
-        self._maybe_format_storage_table_row(table, "Cache Storage", cache_storage)
+        self._maybe_format_storage_table_row(table, "Cache storage", cache_storage)
 
         return table
-
-    def _maybe_create_storage_table(self, metrics_data: Dict) -> Optional[Table]:
-        # This method is now deprecated - use _create_storage_tables instead
-        # Keeping for backward compatibility but it should not be called
-        return None
 
     def watch(self, refresh_rate: int = METRICS_POLL_INTERVAL_SEC):
         """Display continuously updating metrics"""
