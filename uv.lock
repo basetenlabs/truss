@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.9, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -3312,7 +3312,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-version = "0.10.9rc1"
+version = "0.10.9"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -3458,6 +3458,7 @@ dev-server = [
 name = "truss-transfer"
 version = "0.0.27"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/bb/43341894239c19ef618b293c0a1af16ff92791b2384edade148fea7b1012/truss_transfer-0.0.27.tar.gz", hash = "sha256:aa7354adab1e1cc984c32f0cf4bee647e4c811a66d72a010da021b7529afe826", size = 65741, upload-time = "2025-08-20T00:34:58.425Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/66/0e997114ebde3d22108200b1978b19081f66bb2933bb68ab4db86153c686/truss_transfer-0.0.27-cp313-cp313t-macosx_10_12_x86_64.whl", hash = "sha256:513f9def4bbca76e6d958e7ca69ef8455b09df36ae3378a49b547398e7b8402d", size = 3827552, upload-time = "2025-08-20T00:34:43.66Z" },
     { url = "https://files.pythonhosted.org/packages/98/2b/0adee75c9e2304815cd10c1eb4699f6bc4267f5ba11d6d396d1286cf7e16/truss_transfer-0.0.27-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:9a36b153763c0d6c4282445d6de5af524f29bfae834a70f1013e76fccbdbd3eb", size = 3676693, upload-time = "2025-08-20T00:34:40.889Z" },
@@ -3478,6 +3479,9 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/d1/fc036bd93fc8f208a96f98944424e3fa6e9d2c319bd12c7975fe03f67d8a/truss_transfer-0.0.27-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:07ecddc02803fb776076a3b8952f54f96811713c0f65b332a62a65002aefb3c4", size = 4255110, upload-time = "2025-08-20T00:34:48.406Z" },
     { url = "https://files.pythonhosted.org/packages/78/c8/94c3c3b37a61223c802b232c71d0789d24d6772001690e3d1c0ce4971523/truss_transfer-0.0.27-cp38-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:01c243b813c776c57093d9dae25abe5846c2d77d7ef299d7138799c71c57eaa7", size = 4103786, upload-time = "2025-08-20T00:34:51.445Z" },
     { url = "https://files.pythonhosted.org/packages/01/59/759803a13270c7f396f59a94efa685755df9c997b53287cd1e961ddefe21/truss_transfer-0.0.27-cp38-abi3-musllinux_1_2_i686.whl", hash = "sha256:102f2c45c17428c24078eb0da1d612eed354d0ec8b7825806c4b08de42a2f64d", size = 4231294, upload-time = "2025-08-20T00:34:54.185Z" },
+    { url = "https://files.pythonhosted.org/packages/37/22/a934d6d5ee7493fea0f4d09c2eeda61721227e07c40905e23993b30a6da8/truss_transfer-0.0.27-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:9bf2ed8c40a601041a2f7cb40febe1b7fdd5f1d7d3a290050bda7f1d56753b7c", size = 4327732, upload-time = "2025-08-20T00:34:57.126Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/23/1c4540d9b2f737c1b9aeb654a33af408491663f42840f0f72e9b25c45c23/truss_transfer-0.0.27-cp38-abi3-win32.whl", hash = "sha256:1966e069bbdf6c37f15309df8cc5e6ca99667b0e75d8273750cd716183f230a8", size = 2951580, upload-time = "2025-08-20T00:35:01.595Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/45/d26633b0499682e655b384cc013f57ba038323d276ff36daaaf606041553/truss_transfer-0.0.27-cp38-abi3-win_amd64.whl", hash = "sha256:6299cb39d125253ce485d9ad604f57b17de2c7cd9ecbaf6af9f714f659997f9e", size = 3389868, upload-time = "2025-08-20T00:34:59.193Z" },
 ]
 
 [[package]]
