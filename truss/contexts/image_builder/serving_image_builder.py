@@ -835,21 +835,21 @@ class ServingImageBuilder(ImageBuilder):
     def _calculate_sanitized_truss_hash(self, build_dir: Path) -> str:
         """Calculate hash from a sanitized copy of the truss directory with runtime fields cleared."""
         sanitized_truss_dir = build_dir / "build_model_scaffold"
-        
+
         # Remove existing copy if it exists
         if sanitized_truss_dir.exists():
             shutil.rmtree(sanitized_truss_dir)
-        
+
         # Copy the entire truss directory
         shutil.copytree(self._truss_dir, sanitized_truss_dir)
-        
+
         # Clear runtime fields from the config
         config_file_path = sanitized_truss_dir / "config.yaml"
         if config_file_path.exists():
             truss_config = TrussConfig.from_yaml(config_file_path)
             truss_config.clear_runtime_fields()
             truss_config.write_to_yaml_file(config_file_path)
-        
+
         # Calculate hash from the sanitized directory
         return directory_content_hash(
             sanitized_truss_dir, self._spec.hash_ignore_patterns
