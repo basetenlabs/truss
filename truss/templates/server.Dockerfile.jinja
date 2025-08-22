@@ -120,11 +120,12 @@ RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
-RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${HOME} ${APP_HOME}
-{#- nginx writes to these directories #}
-{% set nginx_dirs = ["/var/lib/nginx", "/var/log/nginx", "/run"] %}
-RUN mkdir -p {{ nginx_dirs | join(" ") }} && \
-        chown -R ${APP_USERNAME}:${APP_USERNAME} {{ nginx_dirs | join(" ") }}
+{#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
+{% set user_dirs = [HOME, APP_HOME, "/var/lib/nginx", "/var/log/nginx", "/run"] %}
+RUN chown -R ${APP_USERNAME}:${APP_USERNAME} {{ user_dirs | join(" ") }}
+{#- default configuration uses port 80, which requires root privileges, so we remove it #}
+RUN rm -f /etc/nginx/sites-enabled/default
+
 USER ${APP_USERNAME}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
     {%- elif requires_live_reload %} {#- elif requires_live_reload #}

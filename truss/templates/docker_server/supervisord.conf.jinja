@@ -1,4 +1,5 @@
 [supervisord]
+pidfile=/tmp/supervisord.pid ; Set PID file location to /tmp to be writable by the non-root user
 nodaemon=true                ; Run supervisord in the foreground (useful for containers)
 logfile=/dev/null            ; Disable logging to file (send logs to /dev/null)
 logfile_maxbytes=0           ; No size limit on logfile (since logging is disabled)
