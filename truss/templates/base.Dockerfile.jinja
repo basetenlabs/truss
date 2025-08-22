@@ -9,28 +9,20 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
 # Non-root user for the app.
-ENV APP_USERNAME app
+ENV APP_USERNAME=app
 # We choose a high number for user ID to avoid conflicts with existing users.
-ENV APP_USER_UID 60000
+ENV APP_USER_UID=60000
 # Directories owned by the non-root user.
 # Directory containing inference server code.
-ENV APP_HOME /app
+ENV APP_HOME=/app
 # Directory containing control server code.
-ENV CONTROL_SERVER_DIR /control
+ENV CONTROL_SERVER_DIR=/control
 # The non-root user's home directory.
-ENV HOME /home/app
+ENV HOME=/home/app
+RUN mkdir -p ${APP_HOME} ${CONTROL_SERVER_DIR}
 # Create a non-root user to run model containers.
-RUN useradd -u ${APP_USER_UID} -ms /bin/bash ${APP_USERNAME} \
-    && mkdir ${APP_HOME} \
-    && mkdir ${CONTROL_SERVER_DIR} \
-    && chmod -R a=rwx ${APP_HOME} ${HOME} ${CONTROL_SERVER_DIR}
+RUN useradd -u ${APP_USER_UID} -ms /bin/bash ${APP_USERNAME}
 ENV PATH=${PATH}:${HOME}/.local/bin
-# CAUTION: COPY directives use the root user, so we need to chown the directories to the non-root user.
-# If we have COPY directives after this, we need to run chown again. (or use COPY --chown ...)
-# RUN chown -R ${APP_USERNAME}:${APP_USERNAME} ${HOME} ${APP_HOME} ${CONTROL_SERVER_DIR}
-# Now switch to the non-root user early, we will switch back to root where needed.
-# USER ${APP_USERNAME}
-ENV PATH="${HOME}/.local/bin:$PATH"
 
 {%- set UV_VERSION = "0.7.19" %}
 {#
