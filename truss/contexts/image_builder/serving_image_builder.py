@@ -93,6 +93,8 @@ USER_TRUSS_IGNORE_FILE = ".truss_ignore"
 GCS_CREDENTIALS = "service_account.json"
 S3_CREDENTIALS = "s3_credentials.json"
 
+HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
+
 CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
@@ -819,7 +821,7 @@ class ServingImageBuilder(ImageBuilder):
             model_cache_v1=config.model_cache.is_v1,
             model_cache_v2=config.model_cache.is_v2,
             hf_access_token=hf_access_token,
-            hf_access_token_file_name=constants.HF_ACCESS_TOKEN_FILE_NAME,
+            hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
             build_commands=build_commands,
             use_local_src=config.use_local_src,
