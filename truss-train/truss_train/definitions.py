@@ -55,9 +55,29 @@ class Compute(custom_types.SafeModelNoExtra):
         )
 
 
+class RestorePaths(custom_types.SafeModelNoExtra):
+    paths: List[str] = ["*"]
+
+
+class RestoreCheckpoint(custom_types.SafeModelNoExtra):
+    most_recent_checkpoint: bool = True
+    checkpoint_name: Optional[str] = None
+
+
+class RestoreFromCheckpointConfig(custom_types.SafeModelNoExtra):
+    enabled: bool = False
+    restore: Union[RestoreCheckpoint, RestorePaths] = RestorePaths()
+    job_id: Optional[str] = None  # defaults to latest job with checkpointing
+    project_name: Optional[str] = None  # defaults to current project
+    mount_subdir: str = (
+        ""  # where to store the checkpoints within the checkpointing directory
+    )
+
+
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
+    restore_config: Optional[RestoreFromCheckpointConfig] = None
 
 
 class CacheConfig(custom_types.SafeModelNoExtra):

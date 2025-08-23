@@ -13,6 +13,9 @@ from truss_train.definitions import (
     LoRACheckpoint,
     LoRADetails,
     ModelWeightsFormat,
+    RestoreCheckpoint,
+    RestoreFromCheckpointConfig,
+    RestorePaths,
     Runtime,
     SecretReference,
     TrainingJob,
@@ -38,4 +41,7 @@ __all__ = [
     "GCPServiceAccountJSONDockerAuth",
     "DockerAuth",
     "Image",
+    "RestoreFromCheckpointConfig",
+    "RestoreCheckpoint",
+    "RestorePaths",
 ]
