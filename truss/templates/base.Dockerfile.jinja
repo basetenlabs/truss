@@ -8,6 +8,8 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
+# Default owner when copying files, we will later chown selectively
+ENV DEFAULT_OWNER=0:0
 # Non-root user for the app.
 ENV APP_USERNAME=app
 # We choose a high number for user ID to avoid conflicts with existing users.
@@ -72,7 +74,7 @@ RUN {{ sys_pip_install_command }} install mkl
 
 {% block install_system_requirements %}
     {%- if should_install_system_requirements %}
-COPY ./{{ system_packages_filename }} {{ system_packages_filename }}
+COPY --chown=${DEFAULT_OWNER} ./{{ system_packages_filename }} {{ system_packages_filename }}
 RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ system_packages_filename }}) \
     && apt-get autoremove -y \
     && apt-get clean -y \
@@ -83,11 +85,11 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ sys
 
 {% block install_requirements %}
     {%- if should_install_user_requirements_file %}
-COPY ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
+COPY --chown=${DEFAULT_OWNER} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} --no-cache-dir
     {%- endif %}
     {%- if should_install_requirements %}
-COPY ./{{ config_requirements_filename }} {{ config_requirements_filename }}
+COPY --chown=${DEFAULT_OWNER} ./{{ config_requirements_filename }} {{ config_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} --no-cache-dir
 {%- endif %}
 {% endblock %}
@@ -105,7 +107,7 @@ WORKDIR $APP_HOME
 
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY ./{{ config.bundled_packages_dir }} /packages
+COPY --chown=${DEFAULT_OWNER} ./{{ config.bundled_packages_dir }} /packages
 {%- endif %}
 {% endblock %}
 

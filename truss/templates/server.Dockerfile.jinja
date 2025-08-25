@@ -20,7 +20,7 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
+COPY --chown=${DEFAULT_OWNER} ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ base_server_requirements_filename }} --no-cache-dir
     {%- endif %} {#- endif not config.docker_server #}
 
@@ -38,7 +38,7 @@ RUN ln -sf {{ config.base_image.python_executable_path }} /usr/local/bin/python
 
 {% block install_requirements %}
     {%- if should_install_server_requirements %}
-COPY ./{{ server_requirements_filename }} {{ server_requirements_filename }}
+COPY --chown=${DEFAULT_OWNER} ./{{ server_requirements_filename }} {{ server_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ server_requirements_filename }} --no-cache-dir
     {%- endif %} {#- endif should_install_server_requirements #}
 {{ super() }}
@@ -65,7 +65,7 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 
 {# Copy data before code for better caching #}
 {%- if data_dir_exists %}
-COPY ./{{ config.data_dir }} /app/data
+COPY --chown=${DEFAULT_OWNER} ./{{ config.data_dir }} /app/data
 {%- endif %} {#- endif data_dir_exists #}
 
 {%- if model_cache_v2 %}
@@ -74,30 +74,30 @@ RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-
 RUN chmod +x /usr/local/bin/truss-transfer-cli
 RUN mkdir /static-bptr
 RUN echo "hash {{model_cache_hash}}"
-COPY ./bptr-manifest /static-bptr/static-bptr-manifest.json
+COPY --chown=${DEFAULT_OWNER} ./bptr-manifest /static-bptr/static-bptr-manifest.json
 {%- endif %} {#- endif model_cache_v2 #}
 
 {%- if not config.docker_server %}
-COPY ./server /app
+COPY --chown=${DEFAULT_OWNER} ./server /app
 {%- endif %} {#- endif not config.docker_server #}
 
 {%- if use_local_src %}
 {# This path takes precedence over site-packages. #}
-COPY ./truss_chains /app/truss_chains
-COPY ./truss /app/truss
+COPY --chown=${DEFAULT_OWNER} ./truss_chains /app/truss_chains
+COPY --chown=${DEFAULT_OWNER} ./truss /app/truss
 {%- endif %} {#- endif use_local_src #}
 
-COPY ./config.yaml /app/config.yaml
+COPY --chown=${DEFAULT_OWNER} ./config.yaml /app/config.yaml
 {%- if requires_live_reload %}
 RUN uv python install {{ control_python_version }}
 RUN uv venv /control/.env --python {{ control_python_version }}
 
-COPY ./control /control
+COPY --chown=${DEFAULT_OWNER} ./control /control
 RUN uv pip install -r /control/requirements.txt --python /control/.env/bin/python --no-cache-dir
 {%- endif %} {#- endif requires_live_reload #}
 
 {%- if model_dir_exists %}
-COPY ./{{ config.model_module_dir }} /app/model
+COPY --chown=${DEFAULT_OWNER} ./{{ config.model_module_dir }} /app/model
 {%- endif %} {#- endif model_dir_exists #}
 {% endblock %} {#- endblock app_copy #}
 
@@ -105,7 +105,7 @@ COPY ./{{ config.model_module_dir }} /app/model
     {%- if config.docker_server %}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl nginx && rm -rf /var/lib/apt/lists/*
-COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
+COPY --chown=${DEFAULT_OWNER} ./docker_server_requirements.txt /app/docker_server_requirements.txt
 
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
 RUN uv python install {{ control_python_version }}
@@ -115,9 +115,9 @@ RUN uv pip install --python /docker_server/.venv/bin/python -r /app/docker_serve
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_log_dir = "/var/log/supervisor" %}
 {% set supervisor_server_url = "http://localhost:8080" %}
-COPY ./proxy.conf {{ proxy_config_path }}
+COPY --chown=${DEFAULT_OWNER} ./proxy.conf {{ proxy_config_path }}
 RUN mkdir -p {{ supervisor_log_dir }}
-COPY supervisord.conf {{ supervisor_config_path }}
+COPY --chown=${DEFAULT_OWNER} ./supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
 {#- default configuration uses port 80, which requires root privileges, so we remove it #}
