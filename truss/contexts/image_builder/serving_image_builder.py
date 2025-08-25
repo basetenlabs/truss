@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import json
 import logging
 import re
@@ -793,6 +794,8 @@ class ServingImageBuilder(ImageBuilder):
             config
         )
 
+        non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
+        print(f"truss: use_non_root_user: {non_root_user}")
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -826,6 +829,7 @@ class ServingImageBuilder(ImageBuilder):
             build_commands=build_commands,
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
+            non_root_user=non_root_user,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
