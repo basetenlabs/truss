@@ -138,7 +138,9 @@ def get_job_logs(
     )
 
     if not tail:
-        logs = remote_provider.api.get_training_job_logs(project_id, job_id)
+        logs = remote_provider.api.get_training_job_logs_with_pagination(
+            project_id, job_id
+        )
         for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log)
     else:

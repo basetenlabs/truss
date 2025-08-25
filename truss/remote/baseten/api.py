@@ -25,6 +25,9 @@ API_URL_MAPPING = {
 # using the production api routes
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
+# Maximum number of iterations to prevent infinite loops when paginating logs
+MAX_ITERATIONS = 1000
+
 
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     args = [
@@ -668,6 +671,100 @@ class BasetenApi:
 
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
+
+    def get_training_job_logs_with_pagination(
+        self, project_id: str, job_id: str, batch_size: int = 100
+    ) -> List[Any]:
+        """
+        Get all training job logs using time-based pagination starting from the earliest log.
+
+        This method implements forward time-based pagination by starting from the earliest
+        available log and working forward in time. It uses the timestamp of the newest log
+        in each batch as the start time for the next request.
+
+        Args:
+            project_id: The project ID
+            job_id: The job ID
+            start_epoch_millis: Optional start time in milliseconds since epoch
+            end_epoch_millis: Optional end time in milliseconds since epoch
+            max_iterations: Maximum number of pagination iterations to prevent infinite loops
+            batch_size: Number of logs to fetch per request (max 1000)
+
+        Returns:
+            List of all logs in chronological order (oldest first)
+        """
+        all_logs = []
+        iteration = 0
+        current_start_time = None
+        current_end_time = None
+        MILLISECOND_IN_NANOSECOND = 1_000_000
+
+        while iteration < MAX_ITERATIONS:
+            # Prepare query parameters for this iteration
+            query_body = {
+                "start_epoch_millis": current_start_time,
+                "end_epoch_millis": current_end_time,
+                "limit": batch_size,
+                "direction": "asc",  # Get logs in ascending order (oldest first)
+            }
+
+            # Remove None values from query body
+            query_body = {k: v for k, v in query_body.items() if v is not None}
+
+            try:
+                resp_json = self._rest_api_client.post(
+                    f"v1/training_projects/{project_id}/jobs/{job_id}/logs",
+                    body=query_body,
+                )
+
+                batch_logs = resp_json["logs"]
+
+                # If no logs returned, we're done
+                if not batch_logs:
+                    logging.info(
+                        f"No logs returned for job {job_id} at iteration {iteration}"
+                    )
+                    break
+
+                # Add logs to our collection
+                all_logs.extend(batch_logs)
+
+                # If we got fewer logs than the batch size, we've reached the end
+                if len(batch_logs) < batch_size:
+                    logging.info(
+                        f"Reached end of logs for job {job_id} at iteration {iteration}"
+                    )
+                    break
+
+                # Get the timestamp of the last log in this batch to use as start for next iteration
+                last_log_timestamp = (
+                    int(batch_logs[-1]["timestamp"]) // MILLISECOND_IN_NANOSECOND
+                )
+
+                # Update start time for next iteration
+                current_start_time = last_log_timestamp + 1  # Add 1ms to avoid overlap
+
+                iteration += 1
+
+            except Exception as e:
+                logging.error(
+                    f"Error fetching logs for job {job_id} at iteration {iteration}: {e}"
+                )
+                break
+
+        if iteration >= MAX_ITERATIONS:
+            logging.warning(
+                f"Reached maximum iteration limit ({MAX_ITERATIONS}) while paginating "
+                f"training job logs for project_id={project_id}, job_id={job_id}. "
+                f"Total logs collected: {len(all_logs)}"
+            )
+
+        logging.info(
+            f"Completed pagination for job {job_id}. Total logs: {len(all_logs)}"
+        )
+
+        # Return logs in chronological order (they should already be in order due to "asc" direction)
+        return all_logs
 
     def get_training_job_checkpoint_presigned_url(
         self, project_id: str, job_id: str, page_size: int = 100
