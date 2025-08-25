@@ -11,6 +11,15 @@ from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
 from truss.cli.train import core
+
+# Import sorting constants
+from truss.cli.train.core import (
+    SORT_BY_FILEPATH,
+    SORT_BY_MODIFIED,
+    SORT_BY_SIZE,
+    SORT_ORDER_ASC,
+    SORT_ORDER_DESC,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.remote import BasetenRemote
@@ -355,8 +364,20 @@ def cache():
     "--project-id", type=str, required=True, help="Project ID to view cache for."
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--sort",
+    type=click.Choice([SORT_BY_FILEPATH, SORT_BY_SIZE, SORT_BY_MODIFIED]),
+    default=SORT_BY_FILEPATH,
+    help="Sort files by filepath, size, or modified date.",
+)
+@click.option(
+    "--order",
+    type=click.Choice([SORT_ORDER_ASC, SORT_ORDER_DESC]),
+    default=SORT_ORDER_ASC,
+    help="Sort order: ascending or descending.",
+)
 @common.common_options()
-def view_cache_summary(project_id: str, remote: Optional[str]):
+def view_cache_summary(project_id: str, remote: Optional[str], sort: str, order: str):
     """View cache structure for a training project"""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -365,4 +386,4 @@ def view_cache_summary(project_id: str, remote: Optional[str]):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.view_cache_summary(remote_provider, project_id)
+    train_cli.view_cache_summary(remote_provider, project_id, sort, order)

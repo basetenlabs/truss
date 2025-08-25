@@ -20,6 +20,14 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
 
+# Constants for sorting options
+SORT_BY_FILEPATH = "filepath"
+SORT_BY_SIZE = "size"
+SORT_BY_MODIFIED = "modified"
+
+SORT_ORDER_ASC = "asc"
+SORT_ORDER_DESC = "desc"
+
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
     "TRAINING_JOB_CREATED",
@@ -403,7 +411,12 @@ def status_page_url(remote_url: str, training_job_id: str) -> str:
     return f"{remote_url}/training/jobs/{training_job_id}"
 
 
-def view_cache_summary(remote_provider: BasetenRemote, project_id: str):
+def view_cache_summary(
+    remote_provider: BasetenRemote,
+    project_id: str,
+    sort_by: str = SORT_BY_FILEPATH,
+    order: str = SORT_ORDER_ASC,
+):
     """View cache structure for a training project."""
     try:
         cache_data = remote_provider.api.get_cache_summary(project_id)
@@ -425,6 +438,16 @@ def view_cache_summary(remote_provider: BasetenRemote, project_id: str):
         if not files:
             console.print("No files found in cache.", style="yellow")
             return
+
+        # Sort files based on the provided criteria
+        reverse = order == SORT_ORDER_DESC
+
+        if sort_by == SORT_BY_FILEPATH:
+            files.sort(key=lambda x: x.get("path", ""), reverse=reverse)
+        elif sort_by == SORT_BY_SIZE:
+            files.sort(key=lambda x: x.get("size_bytes", 0), reverse=reverse)
+        elif sort_by == SORT_BY_MODIFIED:
+            files.sort(key=lambda x: x.get("modified", ""), reverse=reverse)
 
         # Calculate total size first
         total_size = 0
