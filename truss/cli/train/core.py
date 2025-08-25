@@ -401,3 +401,67 @@ def download_checkpoint_artifacts(
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:
     return f"{remote_url}/training/jobs/{training_job_id}"
+
+
+def view_cache_summary(remote_provider: BasetenRemote, project_id: str):
+    """View cache structure for a training project."""
+    try:
+        cache_data = remote_provider.api.get_cache_summary(project_id)
+
+        if not cache_data:
+            console.print("No cache structure found for this project.", style="yellow")
+            return
+
+        # Create a rich table to display the cache structure
+        from rich.table import Table
+
+        table = Table(title=f"Cache Structure for Project: {project_id}")
+        table.add_column("File Path", style="cyan")
+        table.add_column("Size", style="green")
+        table.add_column("Modified", style="yellow")
+
+        # Add files to table
+        files = cache_data.get("file_summaries", [])
+        if not files:
+            console.print("No files found in cache.", style="yellow")
+            return
+
+        # Calculate total size first
+        total_size = 0
+        for file_info in files:
+            total_size += file_info.get("size_bytes", 0)
+
+        # Format total size
+        total_size_str = common.format_bytes_to_human_readable(total_size)
+
+        console.print(
+            f"📅 Cache captured at: {cache_data.get('timestamp', 'Unknown')}",
+            style="bold blue",
+        )
+        console.print(
+            f"📁 Project ID: {cache_data.get('project_id', 'Unknown')}",
+            style="bold blue",
+        )
+        console.print()
+        console.print(f"📊 Total files: {len(files)}", style="bold green")
+        console.print(f"💾 Total size: {total_size_str}", style="bold green")
+        console.print()
+
+        # Add files to table
+        for file_info in files:
+            size_bytes = file_info.get("size_bytes", 0)
+
+            # Format size
+            size_str = cli_common.format_bytes_to_human_readable(size_bytes)
+
+            table.add_row(
+                file_info.get("path", "Unknown"),
+                size_str,
+                file_info.get("modified", "Unknown"),
+            )
+
+        console.print(table)
+
+    except Exception as e:
+        console.print(f"Error fetching cache structure: {str(e)}", style="red")
+        raise

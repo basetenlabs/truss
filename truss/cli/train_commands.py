@@ -343,3 +343,26 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
     except Exception as e:
         error_console.print(f"Failed to download checkpoint artifacts data: {str(e)}")
         sys.exit(1)
+
+
+@train.group(name="cache")
+def cache():
+    """Cache-related subcommands for truss train"""
+
+
+@cache.command(name="summarize")
+@click.option(
+    "--project-id", type=str, required=True, help="Project ID to view cache for."
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def view_cache_summary(project_id: str, remote: Optional[str]):
+    """View cache structure for a training project"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    train_cli.view_cache_summary(remote_provider, project_id)
