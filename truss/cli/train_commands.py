@@ -1,6 +1,8 @@
+import json
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, cast
+from typing import List, Optional, cast
 
 import rich_click as click
 
@@ -68,6 +70,48 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
+def _write_log_to_file(log, file_handle, format_type: str) -> None:
+    """Write a single log entry to a file handle in the specified format."""
+    if format_type == "json":
+        file_handle.write(json.dumps(log.model_dump(), default=str) + "\n")
+    else:
+        time_text, replica_text, message_text = cli_log_utils.format_log(log)
+        file_handle.write(f"{time_text}{replica_text}{message_text}\n")
+
+
+def _save_logs_to_file(
+    logs: List[cli_log_utils.ParsedLog],
+    project_id: str,
+    job_id: str,
+    format_type: str,
+    tail: bool = False,
+    output_dir: str = ".",
+) -> str:
+    """Save logs to a file and return the filename."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tail_suffix = "_tail" if tail else ""
+
+    if format_type == "json":
+        filename = f"training_logs_{job_id}{tail_suffix}_{timestamp}.json"
+        filepath = Path(output_dir) / filename
+        with open(filepath, "w") as f:
+            if tail:
+                # For tail mode, write each log as a separate JSON line
+                for log in logs:
+                    f.write(json.dumps(log.model_dump(), default=str) + "\n")
+            else:
+                # For non-tail mode, write as a proper JSON array
+                json.dump([log.model_dump() for log in logs], f, indent=2, default=str)
+    else:  # txt format
+        filename = f"training_logs_{job_id}{tail_suffix}_{timestamp}.txt"
+        filepath = Path(output_dir) / filename
+        with open(filepath, "w") as f:
+            for log in logs:
+                _write_log_to_file(log, f, format_type)
+
+    return filename
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
@@ -121,11 +165,20 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
+@click.option("--format", type=str, required=False, help="Format to save logs in.")
 @common.common_options()
 def get_job_logs(
-    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+    remote: Optional[str],
+    project_id: Optional[str],
+    job_id: Optional[str],
+    tail: bool,
+    format: Optional[str],
 ):
-    """Fetch logs for a training job"""
+    """Fetch logs for a training job
+
+    Use --download, --txt, or --json to save logs to disk.
+    Combine with --tail to stream logs and save them as they arrive.
+    """
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -137,14 +190,45 @@ def get_job_logs(
         remote_provider, project_id, job_id
     )
 
-    if not tail:
+    if format and format not in ["json", "txt"]:
+        error_console.print(
+            "Invalid format. Please use --format json or --format txt if you want to save logs to disk."
+        )
+        sys.exit(1)
+
+    # If downloading, we'll collect logs and save them
+    if format:
         logs = remote_provider.api.get_training_job_logs(project_id, job_id)
-        for log in cli_log_utils.parse_logs(logs):
-            cli_log_utils.output_log(log)
+        parsed_logs = cli_log_utils.parse_logs(logs)
+        filename = _save_logs_to_file(
+            parsed_logs, project_id, job_id, format, tail=False, output_dir="."
+        )
+        if not tail:
+            console.print(f"✅ Logs saved to: {filename}", style="green")
+        else:
+            log_watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
+            console.print("📝 Streaming logs and saving to file...", style="yellow")
+            collected_logs = []
+            try:
+                with open(filename, "a") as f:
+                    for log in log_watcher.watch():
+                        collected_logs.append(log)
+                        _write_log_to_file(log, f, format)
+            except KeyboardInterrupt:
+                console.print(f"\n✅ Logs saved to: {filename}", style="green")
+                console.print(
+                    f"📊 Total logs collected: {len(collected_logs)}", style="blue"
+                )
     else:
-        log_watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
-        for log in log_watcher.watch():
-            cli_log_utils.output_log(log)
+        # Original behavior - just display logs
+        if not tail:
+            logs = remote_provider.api.get_training_job_logs(project_id, job_id)
+            for log in cli_log_utils.parse_logs(logs):
+                cli_log_utils.output_log(log)
+        else:
+            log_watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
+            for log in log_watcher.watch():
+                cli_log_utils.output_log(log)
 
 
 @train.command(name="stop")

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, NamedTuple, Optional
 
 import pydantic
 from rich import text
@@ -17,20 +17,37 @@ class ParsedLog(pydantic.BaseModel):
         return ParsedLog(**raw_log)
 
 
-def output_log(log: ParsedLog):
+class LogComponents(NamedTuple):
+    time_text: str
+    replica_text: str
+    message_text: str
+
+
+def format_log(log: ParsedLog) -> LogComponents:
     epoch_nanos = int(log.timestamp)
     dt = datetime.fromtimestamp(epoch_nanos / 1e9)
     formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    time_text = text.Text(f"[{formatted_time}]: ", style="blue")
-    message_text = text.Text(f"{log.message.strip()}")
+    time_text = f"[{formatted_time}]: "
+    message_text = f"{log.message.strip()}"
     if log.replica:
-        replica_text = text.Text(f"({log.replica}) ", style="green")
+        replica_text = f"({log.replica}) "
     else:
-        replica_text = text.Text()
+        replica_text = ""
 
-    # Output the combined log line to the console
-    console.print(time_text, replica_text, message_text, sep="")
+    return LogComponents(time_text, replica_text, message_text)
+
+
+def output_log(log: ParsedLog):
+    time_text, replica_text, message_text = format_log(log)
+
+    styled_time = text.Text(time_text, style="blue")
+    styled_replica = (
+        text.Text(replica_text, style="green") if replica_text else text.Text()
+    )
+    styled_message = text.Text(message_text)
+
+    console.print(styled_time, styled_replica, styled_message, sep="")
 
 
 def parse_logs(api_logs: List[Any]) -> List[ParsedLog]:
