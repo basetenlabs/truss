@@ -189,7 +189,7 @@ def format_localized_time(iso_timestamp: str) -> str:
     return local_time.strftime("%Y-%m-%d %H:%M")
 
 
-def format_bytes_to_human_readable(bytes: float) -> str:
+def format_bytes_to_human_readable(bytes: int) -> str:
     if bytes > 1000 * 1000 * 1000 * 1000:
         return f"{bytes / (1000 * 1000 * 1000 * 1000):.2f} TB"
     if bytes > 1000 * 1000 * 1000:

@@ -452,7 +452,7 @@ def view_cache_summary(remote_provider: BasetenRemote, project_id: str):
             size_bytes = file_info.get("size_bytes", 0)
 
             # Format size
-            size_str = cli_common.format_bytes_to_human_readable(size_bytes)
+            size_str = cli_common.format_bytes_to_human_readable(int(size_bytes))
 
             table.add_row(
                 file_info.get("path", "Unknown"),

@@ -45,7 +45,7 @@ class MetricsWatcher(TrainingPollerMixin):
         elif bytes_val > 1000 * 1000:
             unit = "MB"
         color = color_map.get(unit, default_color)
-        return (common.format_bytes_to_human_readable(bytes_val), color)
+        return (common.format_bytes_to_human_readable(int(bytes_val)), color)
 
     def _format_storage_utilization(self, utilization: float) -> Tuple[str, str]:
         percent = round(utilization * 100, 4)
