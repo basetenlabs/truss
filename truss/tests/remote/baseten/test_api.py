@@ -11,6 +11,7 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
+from truss.remote.baseten.utils.time import iso_to_millis
 
 
 @pytest.fixture
@@ -472,16 +473,17 @@ def mock_training_job_logs_error_response():
 def test_get_training_job_logs_with_pagination_single_batch(baseten_api):
     """Test pagination when all logs fit in a single batch"""
     # Mock logs data
+    now_as_iso = "2022-01-01T00:00:00Z"
+    now_as_millis = iso_to_millis(now_as_iso)
     mock_logs = [
-        {"timestamp": "1640995200000000000", "message": "Log 1"},  # 2022-01-01 00:00:00
-        {"timestamp": "1640995260000000000", "message": "Log 2"},  # 2022-01-01 00:01:00
-        {"timestamp": "1640995320000000000", "message": "Log 3"},  # 2022-01-01 00:02:00
+        {"timestamp": now_as_millis, "message": "Log 1"},
+        {"timestamp": now_as_millis + 60000, "message": "Log 2"},
+        {"timestamp": now_as_millis + 120000, "message": "Log 3"},
     ]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.return_value = {"logs": mock_logs}
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method to return logs on first call, empty on second
+    mock_fetch = mock.Mock(side_effect=[mock_logs, []])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -489,28 +491,27 @@ def test_get_training_job_logs_with_pagination_single_batch(baseten_api):
     )
 
     result = get_training_job_logs_with_pagination(
-        baseten_api, "project-123", "job-456"
+        baseten_api, "project-123", "job-456", batch_size=5
     )
 
     # Verify the result
     assert result == mock_logs
     assert len(result) == 3
 
-    # Verify the API call
-    mock_rest_client.post.assert_called_once()
-    call_args = mock_rest_client.post.call_args
-    assert call_args[0][0] == "v1/training_projects/project-123/jobs/job-456/logs"
+    # Verify the mock was called twice (once for logs, once for empty batch)
+    assert mock_fetch.call_count == 2
 
-    # Verify the query body
-    query_body = call_args[1]["body"]
-    from truss.remote.baseten.core import MAX_BATCH_SIZE
+    # Verify the first call parameters
+    first_call_args = mock_fetch.call_args_list[0]
+    assert first_call_args[0][0] == "project-123"  # project_id
+    assert first_call_args[0][1] == "job-456"  # job_id
 
-    assert query_body["limit"] == MAX_BATCH_SIZE  # Default batch size
-    assert query_body["direction"] == "asc"
-    assert (
-        "start_epoch_millis" in query_body
-    )  # Should be set from training job creation time
-    assert "end_epoch_millis" in query_body  # Should be set to 2 hours later
+    # Verify the query body contains expected parameters
+    query_params = first_call_args[0][2]  # query_params
+    assert query_params["limit"] == 5  # batch_size
+    assert query_params["direction"] == "asc"
+    assert "start_epoch_millis" in query_params
+    assert "end_epoch_millis" in query_params
 
 
 def test_get_training_job_logs_with_pagination_multiple_batches(baseten_api):
@@ -717,6 +718,43 @@ def test_get_training_job_logs_with_pagination_custom_batch_size(baseten_api):
     assert query_body["limit"] == 50
 
 
+def test_get_training_job_logs_with_pagination_six_batches(baseten_api):
+    """Test pagination with six batches"""
+    iso_time = "2022-01-01T00:00:00Z"
+    now_as_millis = iso_to_millis(iso_time)
+    mock_logs_batch_1 = [
+        {"timestamp": now_as_millis + 1000, "message": "Log 1"},
+        {"timestamp": now_as_millis + 2000, "message": "Log 2"},
+    ]
+    mock_logs_batch_2 = [
+        {"timestamp": now_as_millis + 3000, "message": "Log 3"},
+        {"timestamp": now_as_millis + 4000, "message": "Log 4"},
+    ]
+    mock_logs_batch_3 = [{"timestamp": now_as_millis + 5000, "message": "Log 5"}]
+
+    # Mock the rest_api_client directly on the instance
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.side_effect = [
+        {"logs": mock_logs_batch_1},
+        {"logs": mock_logs_batch_2},
+        {"logs": mock_logs_batch_3},
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    # Mock get_training_job method
+    baseten_api.get_training_job = mock.Mock(
+        return_value={"training_job": {"created_at": "2022-01-01T00:00:00Z"}}
+    )
+
+    result = get_training_job_logs_with_pagination(
+        baseten_api, "project-123", "job-456", batch_size=2
+    )
+
+    # Verify the result
+    assert result == mock_logs_batch_1 + mock_logs_batch_2 + mock_logs_batch_3
+    assert mock_rest_client.post.call_count == 3 + 1
+
+
 def test_get_training_job_logs_with_pagination_timestamp_conversion(baseten_api):
     """Test that timestamp conversion from nanoseconds to milliseconds works correctly"""
     batch1_logs = [
@@ -807,7 +845,6 @@ def test_build_log_query_params(baseten_api):
 
 def test_fetch_log_batch(baseten_api):
     """Test _fetch_log_batch helper method"""
-    from truss.remote.baseten.core import _fetch_log_batch
 
     mock_logs = [
         {"timestamp": "1640995200000000000", "message": "Log 1"},
@@ -820,10 +857,10 @@ def test_fetch_log_batch(baseten_api):
     baseten_api._rest_api_client = mock_rest_client
 
     query_params = {"limit": 100, "direction": "asc"}
-    result = _fetch_log_batch(baseten_api, "project-123", "job-456", query_params)
+    result = baseten_api._fetch_log_batch("project-123", "job-456", query_params)
 
     assert result == mock_logs
-    mock_rest_client.post.assert_called_once_with(
+    mock_rest_client.post.assert_called_with(
         "v1/training_projects/project-123/jobs/job-456/logs", body=query_params
     )
 
@@ -892,8 +929,9 @@ def test_process_batch_logs_partial(baseten_api):
         batch_logs, "job-456", 1, 100
     )
 
-    assert should_continue is False
-    assert next_start_time is None
+    assert should_continue is True
+    assert next_start_time is not None
+    assert next_end_time is not None
 
 
 def test_get_training_job_logs_with_pagination_server_error_retry(baseten_api):
@@ -931,8 +969,7 @@ def test_get_training_job_logs_with_pagination_server_error_retry(baseten_api):
     assert result == batch_logs
 
     # Should have made 2 calls
-    assert mock_rest_client.post.call_count == 2
-
+    assert mock_rest_client.post.call_count == 3
     # Second call should use reduced batch size
     second_call = mock_rest_client.post.call_args_list[1]
     second_query_body = second_call[1]["body"]
