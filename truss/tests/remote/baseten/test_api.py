@@ -7,17 +7,8 @@ from requests import Response
 
 import truss_train.definitions as train_definitions
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
-
-
-@pytest.fixture
-def mock_auth_service():
-    auth_service = mock.Mock()
-    auth_token = mock.Mock(headers=lambda: {"Authorization": "Api-Key token"})
-    auth_service.authenticate.return_value = auth_token
-    return auth_service
 
 
 def mock_successful_response():
@@ -132,11 +123,6 @@ def mock_deploy_chain_deployment_response():
         }
     )
     return response
-
-
-@pytest.fixture
-def baseten_api(mock_auth_service):
-    return BasetenApi("https://app.test.com", mock_auth_service)
 
 
 @mock.patch("requests.post", return_value=mock_successful_response())
