@@ -1,10 +1,9 @@
 FROM python:3.11-slim AS cache_warmer
 
 # Default owner when copying files, we will later chown selectively
-ENV DEFAULT_OWNER=0:0
 
-RUN mkdir -p /app/model_cache
-WORKDIR /app
+RUN mkdir -p ${APP_HOME}/model_cache
+WORKDIR ${APP_HOME}
 
 {% if hf_access_token %}
 ENV HUGGING_FACE_HUB_TOKEN="{{hf_access_token}}"
@@ -12,12 +11,12 @@ ENV HUGGING_FACE_HUB_TOKEN="{{hf_access_token}}"
 
 RUN apt-get -y update; apt-get -y install curl; curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
 ENV B10CP_PATH_TRUSS="/app/b10cp"
-COPY --chown=${DEFAULT_OWNER} ./cache_requirements.txt /app/cache_requirements.txt
+COPY --chown={{ default_owner }} ./cache_requirements.txt ${APP_HOME}/cache_requirements.txt
 RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-COPY --chown=${DEFAULT_OWNER} ./cache_warmer.py /cache_warmer.py
+COPY --chown={{ default_owner }} ./cache_warmer.py /cache_warmer.py
 
 {% for credential in credentials_to_cache  %}
-COPY ./{{credential}} /app/{{credential}}
+COPY ./{{credential}} ${APP_HOME}/{{credential}}
 {% endfor %}
 
 {% for repo, hf_dir in models.items() %}

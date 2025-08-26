@@ -8,22 +8,15 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
-# Default owner when copying files, we will later chown selectively
-ENV DEFAULT_OWNER=0:0
-# Non-root user for the app.
-ENV APP_USERNAME=app
-# We choose a high number for user ID to avoid conflicts with existing users.
-ENV APP_USER_UID=60000
-# Directories owned by the non-root user.
-# Directory containing inference server code.
-ENV APP_HOME=/app
-# Directory containing control server code.
-ENV CONTROL_SERVER_DIR=/control
 # The non-root user's home directory.
-ENV HOME=/home/app
-RUN mkdir -p ${APP_HOME} ${CONTROL_SERVER_DIR}
+# uv will use $HOME to install packages.
+ENV HOME=/home/{{ app_username }}
+# Directory containing inference server code.
+ENV APP_HOME=/{{ app_username }}
+RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
 # Create a non-root user to run model containers.
-RUN useradd -u ${APP_USER_UID} -ms /bin/bash ${APP_USERNAME}
+RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
+# Add the user's local bin to the path, used by uv.
 ENV PATH=${PATH}:${HOME}/.local/bin
 
 {%- set UV_VERSION = "0.7.19" %}
@@ -74,7 +67,7 @@ RUN {{ sys_pip_install_command }} install mkl
 
 {% block install_system_requirements %}
     {%- if should_install_system_requirements %}
-COPY --chown=${DEFAULT_OWNER} ./{{ system_packages_filename }} {{ system_packages_filename }}
+COPY --chown={{ default_owner }} ./{{ system_packages_filename }} {{ system_packages_filename }}
 RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ system_packages_filename }}) \
     && apt-get autoremove -y \
     && apt-get clean -y \
@@ -85,11 +78,11 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ sys
 
 {% block install_requirements %}
     {%- if should_install_user_requirements_file %}
-COPY --chown=${DEFAULT_OWNER} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
+COPY --chown={{ default_owner }} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} --no-cache-dir
     {%- endif %}
     {%- if should_install_requirements %}
-COPY --chown=${DEFAULT_OWNER} ./{{ config_requirements_filename }} {{ config_requirements_filename }}
+COPY --chown={{ default_owner }} ./{{ config_requirements_filename }} {{ config_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} --no-cache-dir
 {%- endif %}
 {% endblock %}
@@ -97,7 +90,6 @@ RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} --no-cac
 
 
 {%- if not config.docker_server %}
-ENV APP_HOME="/app"
 WORKDIR $APP_HOME
 {%- endif %}
 
@@ -107,7 +99,7 @@ WORKDIR $APP_HOME
 
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY --chown=${DEFAULT_OWNER} ./{{ config.bundled_packages_dir }} /packages
+COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} /packages
 {%- endif %}
 {% endblock %}
 
