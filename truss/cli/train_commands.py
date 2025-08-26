@@ -13,6 +13,7 @@ from truss.cli.train import common as train_common
 from truss.cli.train import core
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
+from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 
@@ -138,8 +139,8 @@ def get_job_logs(
     )
 
     if not tail:
-        logs = remote_provider.api.get_training_job_logs_with_pagination(
-            project_id, job_id
+        logs = get_training_job_logs_with_pagination(
+            remote_provider.api, project_id, job_id
         )
         for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log)
