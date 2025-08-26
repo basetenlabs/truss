@@ -543,7 +543,7 @@ def _process_batch_logs(
         return False, None, None
 
     # If we got fewer logs than the batch size, we've reached the end
-    if len(batch_logs) < batch_size:
+    if len(batch_logs) == 0:
         logging.info(f"Reached end of logs for job {job_id} at iteration {iteration}")
         return False, None, None
 
@@ -558,6 +558,98 @@ def _process_batch_logs(
     next_end_time_ms = next_start_time_ms + 2 * MILLISECONDS_PER_HOUR
 
     return True, next_start_time_ms, next_end_time_ms
+
+
+class BatchedTrainingLogsIterator:
+    """
+    Iterator for fetching training job logs in batches using time-based pagination.
+
+    This iterator handles the complexity of paginating through training job logs,
+    including error handling, batch size adjustment, and time window management.
+    """
+
+    def __init__(
+        self,
+        api: BasetenApi,
+        project_id: str,
+        job_id: str,
+        batch_size: int = MAX_BATCH_SIZE,
+    ):
+        self.api = api
+        self.project_id = project_id
+        self.job_id = job_id
+        self.batch_size = batch_size
+        self.iteration = 0
+        self.current_start_time = None
+        self.current_end_time = None
+        self._initialize_time_window()
+
+    def _initialize_time_window(self):
+        training_job = self.api.get_training_job(self.project_id, self.job_id)
+        self.current_start_time = iso_to_millis(
+            training_job["training_job"]["created_at"]
+        )
+        self.current_end_time = self.current_start_time + 2 * MILLISECONDS_PER_HOUR
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> List[Any]:
+        if self.iteration >= MAX_ITERATIONS:
+            logging.warning(
+                f"Reached maximum iteration limit ({MAX_ITERATIONS}) while paginating "
+                f"training job logs for project_id={self.project_id}, job_id={self.job_id}."
+            )
+            raise StopIteration
+
+        query_params = _build_log_query_params(
+            self.current_start_time, self.current_end_time, self.batch_size
+        )
+
+        try:
+            batch_logs = self.api._fetch_log_batch(
+                self.project_id, self.job_id, query_params
+            )
+
+            should_continue, next_start_time, next_end_time = _process_batch_logs(
+                batch_logs, self.job_id, self.iteration, self.batch_size
+            )
+
+            if not should_continue:
+                logging.info(
+                    f"Completed pagination for job {self.job_id}. Total iterations: {self.iteration + 1}"
+                )
+                raise StopIteration
+
+            self.current_start_time = next_start_time  # type: ignore[assignment]
+            self.current_end_time = next_end_time  # type: ignore[assignment]
+            self.iteration += 1
+
+            return batch_logs
+
+        except requests.HTTPError as e:
+            if 500 <= e.response.status_code < 600:
+                if self.batch_size == MIN_BATCH_SIZE:
+                    logging.error(
+                        "Failed to fetch all training job logs due to persistent server errors. "
+                        "Please try again later or contact support if the issue persists."
+                    )
+                    raise StopIteration
+                self.batch_size = _handle_server_error_backoff(
+                    e, self.job_id, self.iteration, self.batch_size
+                )
+                # Retry the same iteration with reduced batch size
+                return self.__next__()
+            else:
+                logging.error(
+                    f"HTTP error fetching logs for job {self.job_id} at iteration {self.iteration}: {e}"
+                )
+                raise StopIteration
+        except Exception as e:
+            logging.error(
+                f"Error fetching logs for job {self.job_id} at iteration {self.iteration}: {e}"
+            )
+            raise StopIteration
 
 
 def get_training_job_logs_with_pagination(
@@ -580,66 +672,11 @@ def get_training_job_logs_with_pagination(
         List of all logs in chronological order (oldest first)
     """
     all_logs = []
-    current_start_time = None
-    current_end_time = None
 
-    # Get training job details
-    training_job = api.get_training_job(project_id, job_id)
-    current_start_time = iso_to_millis(training_job["training_job"]["created_at"])
-    current_end_time = current_start_time + 2 * 60 * 60 * 1000  # 2 hours
+    logs_iterator = BatchedTrainingLogsIterator(api, project_id, job_id, batch_size)
 
-    for iteration in range(MAX_ITERATIONS):
-        # Prepare query parameters for this iteration
-        query_params = _build_log_query_params(
-            current_start_time, current_end_time, batch_size
-        )
-
-        try:
-            batch_logs = api._fetch_log_batch(project_id, job_id, query_params)
-
-            # Add logs to our collection
-            all_logs.extend(batch_logs)
-
-            # Process batch and determine if we should continue
-            should_continue, next_start_time, next_end_time = _process_batch_logs(
-                batch_logs, job_id, iteration, batch_size
-            )
-
-            if not should_continue:
-                break
-
-            current_start_time = next_start_time
-            current_end_time = next_end_time
-
-        except requests.HTTPError as e:
-            if 500 <= e.response.status_code < 600:
-                if batch_size == MIN_BATCH_SIZE:
-                    logging.error(
-                        "Failed to fetch all training job logs due to persistent server errors. "
-                        "Please try again later or contact support if the issue persists."
-                    )
-                    break
-                batch_size = _handle_server_error_backoff(
-                    e, job_id, iteration, batch_size
-                )
-                continue
-            else:
-                logging.error(
-                    f"HTTP error fetching logs for job {job_id} at iteration {iteration}: {e}"
-                )
-                break
-        except Exception as e:
-            logging.error(
-                f"Error fetching logs for job {job_id} at iteration {iteration}: {e}"
-            )
-            break
-
-    if iteration == MAX_ITERATIONS - 1:
-        logging.warning(
-            f"Reached maximum iteration limit ({MAX_ITERATIONS}) while paginating "
-            f"training job logs for project_id={project_id}, job_id={job_id}. "
-            f"Total logs collected: {len(all_logs)}"
-        )
+    for batch_logs in logs_iterator:
+        all_logs.extend(batch_logs)
 
     logging.info(f"Completed pagination for job {job_id}. Total logs: {len(all_logs)}")
 
