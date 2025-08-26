@@ -795,7 +795,6 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
-        print(f"truss: use_non_root_user: {non_root_user}")
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,

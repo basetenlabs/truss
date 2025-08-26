@@ -1,7 +1,5 @@
 FROM python:3.11-slim AS cache_warmer
 
-# Default owner when copying files, we will later chown selectively
-
 RUN mkdir -p ${APP_HOME}/model_cache
 WORKDIR ${APP_HOME}
 
