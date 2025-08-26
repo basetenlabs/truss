@@ -1,7 +1,3 @@
-"""
-Utility functions for date and time operations.
-"""
-
 from dateutil import parser
 
 
