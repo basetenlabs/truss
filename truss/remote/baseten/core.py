@@ -560,7 +560,7 @@ def _process_batch_logs(
     return True, next_start_time_ms, next_end_time_ms
 
 
-class BatchedTrainingLogsIterator:
+class BatchedTrainingLogsFetcher:
     """
     Iterator for fetching training job logs in batches using time-based pagination.
 
@@ -673,7 +673,7 @@ def get_training_job_logs_with_pagination(
     """
     all_logs = []
 
-    logs_iterator = BatchedTrainingLogsIterator(api, project_id, job_id, batch_size)
+    logs_iterator = BatchedTrainingLogsFetcher(api, project_id, job_id, batch_size)
 
     for batch_logs in logs_iterator:
         all_logs.extend(batch_logs)
