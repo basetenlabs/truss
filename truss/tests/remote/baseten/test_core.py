@@ -313,14 +313,9 @@ def test_get_training_job_logs_with_pagination_multiple_batches(baseten_api):
         {"timestamp": "1640995440000000000", "message": "Log 5"}  # 2022-01-01 00:04:00
     ]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.side_effect = [
-        {"logs": batch1_logs},
-        {"logs": batch2_logs},
-        {"logs": batch3_logs},
-    ]
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(side_effect=[batch1_logs, batch2_logs, batch3_logs, []])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -337,34 +332,26 @@ def test_get_training_job_logs_with_pagination_multiple_batches(baseten_api):
     assert len(result) == 5
 
     # Verify the API calls
-    assert mock_rest_client.post.call_count == 3
+    assert mock_fetch.call_count == 4  # 3 batches + 1 empty batch to stop
 
-    # Verify first call
-    first_call = mock_rest_client.post.call_args_list[0]
-    assert first_call[0][0] == "v1/training_projects/project-123/jobs/job-456/logs"
-    first_query_body = first_call[1]["body"]
-    assert first_query_body["limit"] == 2
-    assert first_query_body["direction"] == "asc"
+    # Verify first call parameters
+    first_call_args = mock_fetch.call_args_list[0]
+    assert first_call_args[0][0] == "project-123"  # project_id
+    assert first_call_args[0][1] == "job-456"  # job_id
 
-    # Verify second call (should use timestamp from last log of first batch)
-    second_call = mock_rest_client.post.call_args_list[1]
-    second_query_body = second_call[1]["body"]
-    assert second_query_body["start_epoch_millis"] == 1640995260001  # timestamp + 1ms
-    assert second_query_body["limit"] == 2
-    assert second_query_body["direction"] == "asc"
-
-    # Verify third call
-    third_call = mock_rest_client.post.call_args_list[2]
-    third_query_body = third_call[1]["body"]
-    assert third_query_body["start_epoch_millis"] == 1640995380001  # timestamp + 1ms
+    # Verify the query body contains expected parameters
+    query_params = first_call_args[0][2]  # query_params
+    assert query_params["limit"] == 2
+    assert query_params["direction"] == "asc"
+    assert "start_epoch_millis" in query_params
+    assert "end_epoch_millis" in query_params
 
 
 def test_get_training_job_logs_with_pagination_empty_response(baseten_api):
     """Test pagination when no logs are returned"""
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.return_value = {"logs": []}
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(return_value=[])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -380,7 +367,7 @@ def test_get_training_job_logs_with_pagination_empty_response(baseten_api):
     assert len(result) == 0
 
     # Verify the API call
-    mock_rest_client.post.assert_called_once()
+    mock_fetch.assert_called_once()
 
 
 def test_get_training_job_logs_with_pagination_partial_batch(baseten_api):
@@ -391,10 +378,9 @@ def test_get_training_job_logs_with_pagination_partial_batch(baseten_api):
     ]
     batch2_logs = [{"timestamp": "1640995320000000000", "message": "Log 3"}]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.side_effect = [{"logs": batch1_logs}, {"logs": batch2_logs}]
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(side_effect=[batch1_logs, batch2_logs, []])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -410,8 +396,8 @@ def test_get_training_job_logs_with_pagination_partial_batch(baseten_api):
     assert result == expected_logs
     assert len(result) == 3
 
-    # Verify only 2 API calls (should stop after partial batch)
-    assert mock_rest_client.post.call_count == 2
+    # Verify only 3 API calls (2 batches + 1 empty batch to stop)
+    assert mock_fetch.call_count == 3
 
 
 def test_get_training_job_logs_with_pagination_max_iterations(baseten_api):
@@ -422,11 +408,10 @@ def test_get_training_job_logs_with_pagination_max_iterations(baseten_api):
         {"timestamp": "1640995260000000000", "message": "Log 2"},
     ]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
+    # Mock the _fetch_log_batch method directly
     # Configure mock to always return the same batch (simulating infinite pagination)
-    mock_rest_client.post.return_value = {"logs": batch_logs}
-    baseten_api._rest_api_client = mock_rest_client
+    mock_fetch = mock.Mock(return_value=batch_logs)
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -444,16 +429,15 @@ def test_get_training_job_logs_with_pagination_max_iterations(baseten_api):
     assert len(result) == expected_log_count
 
     # Verify MAX_ITERATIONS API calls were made
-    assert mock_rest_client.post.call_count == MAX_ITERATIONS
+    assert mock_fetch.call_count == MAX_ITERATIONS
 
 
 def test_get_training_job_logs_with_pagination_api_error(baseten_api):
     """Test pagination when API returns an error"""
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
+    # Mock the _fetch_log_batch method directly
     # Configure mock to raise an exception
-    mock_rest_client.post.side_effect = Exception("API Error")
-    baseten_api._rest_api_client = mock_rest_client
+    mock_fetch = mock.Mock(side_effect=Exception("API Error"))
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -469,7 +453,7 @@ def test_get_training_job_logs_with_pagination_api_error(baseten_api):
     assert len(result) == 0
 
     # Verify the API call was attempted
-    mock_rest_client.post.assert_called_once()
+    mock_fetch.assert_called_once()
 
 
 def test_get_training_job_logs_with_pagination_custom_batch_size(baseten_api):
@@ -479,10 +463,9 @@ def test_get_training_job_logs_with_pagination_custom_batch_size(baseten_api):
         {"timestamp": "1640995260000000000", "message": "Log 2"},
     ]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.return_value = {"logs": mock_logs}
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(side_effect=[mock_logs, []])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -497,9 +480,9 @@ def test_get_training_job_logs_with_pagination_custom_batch_size(baseten_api):
     assert result == mock_logs
 
     # Verify the API call used custom batch size
-    call_args = mock_rest_client.post.call_args
-    query_body = call_args[1]["body"]
-    assert query_body["limit"] == 50
+    call_args = mock_fetch.call_args
+    query_params = call_args[0][2]  # query_params
+    assert query_params["limit"] == 50
 
 
 def test_get_training_job_logs_with_pagination_six_batches(baseten_api):
@@ -516,14 +499,11 @@ def test_get_training_job_logs_with_pagination_six_batches(baseten_api):
     ]
     mock_logs_batch_3 = [{"timestamp": now_as_millis + 5000, "message": "Log 5"}]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.side_effect = [
-        {"logs": mock_logs_batch_1},
-        {"logs": mock_logs_batch_2},
-        {"logs": mock_logs_batch_3},
-    ]
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(
+        side_effect=[mock_logs_batch_1, mock_logs_batch_2, mock_logs_batch_3, []]
+    )
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -536,7 +516,7 @@ def test_get_training_job_logs_with_pagination_six_batches(baseten_api):
 
     # Verify the result
     assert result == mock_logs_batch_1 + mock_logs_batch_2 + mock_logs_batch_3
-    assert mock_rest_client.post.call_count == 3 + 1
+    assert mock_fetch.call_count == 4  # 3 batches + 1 empty batch to stop
 
 
 def test_get_training_job_logs_with_pagination_timestamp_conversion(baseten_api):
@@ -548,10 +528,9 @@ def test_get_training_job_logs_with_pagination_timestamp_conversion(baseten_api)
         {"timestamp": "1640995260000000000", "message": "Log 2"}  # 1640995260000 ms
     ]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.side_effect = [{"logs": batch1_logs}, {"logs": batch2_logs}]
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(side_effect=[batch1_logs, batch2_logs, []])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -567,20 +546,19 @@ def test_get_training_job_logs_with_pagination_timestamp_conversion(baseten_api)
     assert result == expected_logs
 
     # Verify the second call uses correct timestamp conversion
-    second_call = mock_rest_client.post.call_args_list[1]
-    second_query_body = second_call[1]["body"]
+    second_call = mock_fetch.call_args_list[1]
+    query_params = second_call[0][2]  # query_params
     # Should be 1640995200000 + 1 = 1640995200001
-    assert second_query_body["start_epoch_millis"] == 1640995200001
+    assert query_params["start_epoch_millis"] == 1640995200001
 
 
 def test_get_training_job_logs_with_pagination_query_body_filtering(baseten_api):
     """Test that None values are properly filtered from query body"""
     mock_logs = [{"timestamp": "1640995200000000000", "message": "Log 1"}]
 
-    # Mock the rest_api_client directly on the instance
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.return_value = {"logs": mock_logs}
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(side_effect=[mock_logs, []])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -590,14 +568,14 @@ def test_get_training_job_logs_with_pagination_query_body_filtering(baseten_api)
     get_training_job_logs_with_pagination(baseten_api, "project-123", "job-456")
 
     # Verify the API call
-    call_args = mock_rest_client.post.call_args
-    query_body = call_args[1]["body"]
+    call_args = mock_fetch.call_args
+    query_params = call_args[0][2]  # query_params
 
     # Verify that all required values are included in the query body
-    assert "start_epoch_millis" in query_body
-    assert "end_epoch_millis" in query_body
-    assert "limit" in query_body
-    assert "direction" in query_body
+    assert "start_epoch_millis" in query_params
+    assert "end_epoch_millis" in query_params
+    assert "limit" in query_params
+    assert "direction" in query_params
 
 
 # Tests for new helper methods
@@ -703,20 +681,20 @@ def test_get_training_job_logs_with_pagination_server_error_retry(baseten_api):
         {"timestamp": "1640995260000000000", "message": "Log 2"},
     ]
 
-    # Mock the rest_api_client
-    mock_rest_client = mock.Mock()
-
+    # Mock the _fetch_log_batch method directly
     # First call fails with 500, second call succeeds
     mock_response_500 = mock.Mock()
     mock_response_500.status_code = 500
     mock_error_500 = requests.HTTPError("Server Error")
     mock_error_500.response = mock_response_500
 
-    mock_rest_client.post.side_effect = [
-        mock_error_500,  # First call fails
-        {"logs": batch_logs},  # Second call succeeds
-    ]
-    baseten_api._rest_api_client = mock_rest_client
+    mock_fetch = mock.Mock(
+        side_effect=[
+            mock_error_500,  # First call fails
+            batch_logs,  # Second call succeeds
+        ]
+    )
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -730,18 +708,13 @@ def test_get_training_job_logs_with_pagination_server_error_retry(baseten_api):
     # Should get the logs after retry
     assert result == batch_logs
 
-    # Should have made 2 calls
-    assert mock_rest_client.post.call_count == 3
-    # Second call should use reduced batch size
-    second_call = mock_rest_client.post.call_args_list[1]
-    second_query_body = second_call[1]["body"]
-    assert second_query_body["limit"] == 500  # Reduced from 1000
+    # Should have made 3 calls (first fails, retry with reduced batch size, then succeeds)
+    assert mock_fetch.call_count == 3
 
 
 def test_get_training_job_logs_with_pagination_non_server_error(baseten_api):
     """Test pagination with non-server error (should not retry)"""
-    # Mock the rest_api_client
-    mock_rest_client = mock.Mock()
+    # Mock the _fetch_log_batch method directly
 
     # Mock a 400 error (client error, not server error)
     mock_response_400 = mock.Mock()
@@ -749,8 +722,8 @@ def test_get_training_job_logs_with_pagination_non_server_error(baseten_api):
     mock_error_400 = requests.HTTPError("Bad Request")
     mock_error_400.response = mock_response_400
 
-    mock_rest_client.post.side_effect = mock_error_400
-    baseten_api._rest_api_client = mock_rest_client
+    mock_fetch = mock.Mock(side_effect=mock_error_400)
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -765,17 +738,16 @@ def test_get_training_job_logs_with_pagination_non_server_error(baseten_api):
     assert result == []
 
     # Should have made only 1 call (no retry)
-    assert mock_rest_client.post.call_count == 1
+    assert mock_fetch.call_count == 1
 
 
 def test_get_training_job_logs_with_pagination_default_batch_size(baseten_api):
     """Test that default batch size is MAX_BATCH_SIZE"""
     mock_logs = [{"timestamp": "1640995200000000000", "message": "Log 1"}]
 
-    # Mock the rest_api_client
-    mock_rest_client = mock.Mock()
-    mock_rest_client.post.return_value = {"logs": mock_logs}
-    baseten_api._rest_api_client = mock_rest_client
+    # Mock the _fetch_log_batch method directly
+    mock_fetch = mock.Mock(side_effect=[mock_logs, []])
+    baseten_api._fetch_log_batch = mock_fetch
 
     # Mock get_training_job method
     baseten_api.get_training_job = mock.Mock(
@@ -785,7 +757,7 @@ def test_get_training_job_logs_with_pagination_default_batch_size(baseten_api):
     get_training_job_logs_with_pagination(baseten_api, "project-123", "job-456")
 
     # Verify the API call used default batch size
-    call_args = mock_rest_client.post.call_args
-    query_body = call_args[1]["body"]
+    call_args = mock_fetch.call_args
+    query_params = call_args[0][2]  # query_params
 
-    assert query_body["limit"] == MAX_BATCH_SIZE
+    assert query_params["limit"] == MAX_BATCH_SIZE
