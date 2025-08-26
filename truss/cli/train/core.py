@@ -20,7 +20,6 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
 
-# Constants for sorting options
 SORT_BY_FILEPATH = "filepath"
 SORT_BY_SIZE = "size"
 SORT_BY_MODIFIED = "modified"
