@@ -656,17 +656,9 @@ def get_training_job_logs_with_pagination(
     api: BasetenApi, project_id: str, job_id: str, batch_size: int = MAX_BATCH_SIZE
 ) -> List[Any]:
     """
-    Get all training job logs using time-based pagination starting from the earliest log.
-
     This method implements forward time-based pagination by starting from the earliest
-    available log and working forward in time. It uses the timestamp of the newest log
-    in each batch as the start time for the next request.
-
-    Args:
-        api: BasetenApi instance
-        project_id: The project ID
-        job_id: The job ID
-        batch_size: Number of logs to fetch per request (max MAX_BATCH_SIZE)
+    available log and working forward in time. It uses the timestamp of the newest log in
+    each batch as the start time for the next request.
 
     Returns:
         List of all logs in chronological order (oldest first)
