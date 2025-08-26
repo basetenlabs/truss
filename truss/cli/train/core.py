@@ -433,11 +433,11 @@ def fetch_project_by_name_or_id(
             return projects_by_id[project_identifier]
         if project_identifier in projects_by_name:
             return projects_by_name[project_identifier]
-        valid_project_ids_and_names = [
-            f"{project.get('id')} ({project.get('name')})" for project in projects
-        ]
+        valid_project_ids_and_names = ", ".join(
+            [f"{project.get('id')} ({project.get('name')})" for project in projects]
+        )
         raise click.ClickException(
-            f"Project '{project_identifier}' not found. Valid project IDs and names: {', '.join(valid_project_ids_and_names)}"
+            f"Project '{project_identifier}' not found. Valid project IDs and names: {valid_project_ids_and_names}"
         )
     except click.ClickException:
         raise
