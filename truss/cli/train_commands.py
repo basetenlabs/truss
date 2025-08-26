@@ -361,7 +361,7 @@ def cache():
 
 @cache.command(name="summarize")
 @click.option(
-    "--project-id", type=str, required=True, help="Project ID to view cache for."
+    "--project", type=str, required=True, help="Project ID or name to view cache for."
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
@@ -377,8 +377,8 @@ def cache():
     help="Sort order: ascending or descending.",
 )
 @common.common_options()
-def view_cache_summary(project_id: str, remote: Optional[str], sort: str, order: str):
-    """View cache structure for a training project"""
+def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+    """View cache summary for a training project"""
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -386,4 +386,4 @@ def view_cache_summary(project_id: str, remote: Optional[str], sort: str, order:
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.view_cache_summary(remote_provider, project_id, sort, order)
+    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)

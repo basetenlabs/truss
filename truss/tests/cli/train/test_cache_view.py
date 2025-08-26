@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+import click
 import pytest
 
 from truss.cli.train.core import (
@@ -9,12 +10,13 @@ from truss.cli.train.core import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
     view_cache_summary,
+    view_cache_summary_by_project,
 )
 from truss.remote.baseten.remote import BasetenRemote
 
 
 def test_view_cache_summary_success(capsys):
-    """Test successful cache structure viewing."""
+    """Test successful cache summary viewing."""
     mock_api = Mock()
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
@@ -35,13 +37,16 @@ def test_view_cache_summary_success(capsys):
             },
         ],
     }
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
 
     view_cache_summary(mock_remote, "proj123", SORT_BY_FILEPATH, SORT_ORDER_ASC)
 
     mock_api.get_cache_summary.assert_called_once_with("proj123")
 
     captured = capsys.readouterr()
-    assert "Cache Structure for Project: proj123" in captured.out
+    assert "Cache summary for project: proj123" in captured.out
     assert "model/weights.bin" in captured.out
     assert "config.json" in captured.out
     assert "104.86 MB" in captured.out
@@ -51,27 +56,34 @@ def test_view_cache_summary_success(capsys):
 
 
 def test_view_cache_summary_no_cache(capsys):
-    """Test when no cache structure is found."""
+    """Test when no cache summary is found."""
     mock_api = Mock()
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
     mock_api.get_cache_summary.return_value = {}
 
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
+
     view_cache_summary(mock_remote, "proj123", SORT_BY_FILEPATH, SORT_ORDER_ASC)
 
     mock_api.get_cache_summary.assert_called_once_with("proj123")
 
     captured = capsys.readouterr()
-    assert "No cache structure found for this project." in captured.out
+    assert "No cache summary found for this project." in captured.out
 
 
 def test_view_cache_summary_empty_files(capsys):
-    """Test when cache structure exists but has no files."""
+    """Test when cache summary exists but has no files."""
     mock_api = Mock()
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -92,6 +104,9 @@ def test_view_cache_summary_api_error(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
     mock_api.get_cache_summary.side_effect = Exception("API Error")
 
     with pytest.raises(Exception, match="API Error"):
@@ -100,7 +115,7 @@ def test_view_cache_summary_api_error(capsys):
     mock_api.get_cache_summary.assert_called_once_with("proj123")
 
     captured = capsys.readouterr()
-    assert "Error fetching cache structure: API Error" in captured.out
+    assert "Error fetching cache summary: API Error" in captured.out
 
 
 def test_view_cache_summary_sort_by_size_asc(capsys):
@@ -109,6 +124,9 @@ def test_view_cache_summary_sort_by_size_asc(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -173,6 +191,9 @@ def test_view_cache_summary_sort_by_size_desc(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -214,6 +235,9 @@ def test_view_cache_summary_sort_by_modified_asc(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -288,3 +312,137 @@ def test_view_cache_summary_sort_by_filepath_desc(capsys):
     z_pos = captured.out.find("z_file.txt")
 
     assert z_pos < m_pos < a_pos
+
+
+def test_view_cache_summary_by_project_name_success(capsys):
+    """Test successful cache summary viewing by project name."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    # Mock the get_cache_summary response for successful project ID lookup
+    mock_api.get_cache_summary.return_value = {
+        "timestamp": "2024-01-01T12:00:00Z",
+        "project_id": "proj123",
+        "file_summaries": [
+            {
+                "path": "model/weights.bin",
+                "size_bytes": 1024 * 1024 * 100,
+                "modified": "2024-01-01T10:00:00Z",
+            }
+        ],
+    }
+
+    # Mock the list_training_projects response
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"},
+        {"id": "proj456", "name": "another-project"},
+    ]
+
+    view_cache_summary_by_project(
+        mock_remote, "test-project", SORT_BY_FILEPATH, SORT_ORDER_ASC
+    )
+
+    assert mock_api.get_cache_summary.call_count == 1
+    assert mock_api.list_training_projects.call_count == 1
+
+    captured = capsys.readouterr()
+    assert "Cache summary for project: proj123" in captured.out
+    assert "model/weights.bin" in captured.out
+
+
+def test_view_cache_summary_by_project_name_not_found(capsys):
+    """Test when project name is not found."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"},
+        {"id": "proj456", "name": "another-project"},
+    ]
+
+    with pytest.raises(
+        click.ClickException, match="Project 'nonexistent-project' not found"
+    ):
+        view_cache_summary_by_project(
+            mock_remote, "nonexistent-project", SORT_BY_FILEPATH, SORT_ORDER_ASC
+        )
+
+    mock_api.list_training_projects.assert_called_once()
+
+
+def test_view_cache_summary_by_project_id_direct(capsys):
+    """Test that project ID is used directly."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    # Mock the get_cache_summary response
+    mock_api.get_cache_summary.return_value = {
+        "timestamp": "2024-01-01T12:00:00Z",
+        "project_id": "proj123",
+        "file_summaries": [
+            {
+                "path": "model/weights.bin",
+                "size_bytes": 1024 * 1024 * 100,
+                "modified": "2024-01-01T10:00:00Z",
+            }
+        ],
+    }
+
+    # Mock the list_training_projects response
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"},
+        {"id": "proj456", "name": "another-project"},
+    ]
+
+    # Use a short project ID
+    project_id = "proj123"
+    view_cache_summary_by_project(
+        mock_remote, project_id, SORT_BY_FILEPATH, SORT_ORDER_ASC
+    )
+
+    # Should call get_cache_summary twice: once in helper, once in view function
+    assert mock_api.get_cache_summary.call_count == 1
+    # Should call list_training_projects once: to get the project details
+    assert mock_api.list_training_projects.call_count == 1
+
+    captured = capsys.readouterr()
+    assert "Cache summary for project: proj123" in captured.out
+
+
+def test_view_cache_summary_by_project_other_error():
+    """Test that other errors (not 404) are re-raised."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "some-project"}
+    ]
+    mock_api.get_cache_summary.side_effect = Exception("Network error")
+
+    with pytest.raises(Exception, match="Network error"):
+        view_cache_summary_by_project(
+            mock_remote, "some-project", SORT_BY_FILEPATH, SORT_ORDER_ASC
+        )
+
+    mock_api.get_cache_summary.assert_called_once_with("proj123")
+
+
+def test_view_cache_summary_by_project_list_error(capsys):
+    """Test when listing projects fails after 404."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    # Mock the list_training_projects to fail
+    mock_api.list_training_projects.side_effect = Exception("API error")
+
+    with pytest.raises(click.ClickException, match="Error fetching project: API error"):
+        view_cache_summary_by_project(
+            mock_remote, "nonexistent-project", SORT_BY_FILEPATH, SORT_ORDER_ASC
+        )
+
+    mock_api.list_training_projects.assert_called_once()

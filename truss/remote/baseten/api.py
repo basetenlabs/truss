@@ -670,7 +670,7 @@ class BasetenApi:
         return resp_json["logs"][::-1]
 
     def get_cache_summary(self, project_id: str):
-        """Get cache structure for a training project."""
+        """Get cache summary for a training project."""
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/cache/summary"
         )

@@ -410,24 +410,59 @@ def status_page_url(remote_url: str, training_job_id: str) -> str:
     return f"{remote_url}/training/jobs/{training_job_id}"
 
 
+def fetch_project_by_name_or_id(
+    remote_provider: BasetenRemote, project_identifier: str
+) -> dict:
+    """Fetch a training project by name or ID.
+
+    Args:
+        remote_provider: The remote provider instance
+        project_identifier: Either a project ID or project name
+
+    Returns:
+        The project object as a dictionary
+
+    Raises:
+        click.ClickException: If the project is not found
+    """
+    try:
+        projects = remote_provider.api.list_training_projects()
+        projects_by_name = {project.get("name"): project for project in projects}
+        projects_by_id = {project.get("id"): project for project in projects}
+        if project_identifier in projects_by_id:
+            return projects_by_id[project_identifier]
+        if project_identifier in projects_by_name:
+            return projects_by_name[project_identifier]
+        valid_project_ids_and_names = [
+            f"{project.get('id')} ({project.get('name')})" for project in projects
+        ]
+        raise click.ClickException(
+            f"Project '{project_identifier}' not found. Valid project IDs and names: {', '.join(valid_project_ids_and_names)}"
+        )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Error fetching project: {str(e)}")
+
+
 def view_cache_summary(
     remote_provider: BasetenRemote,
     project_id: str,
     sort_by: str = SORT_BY_FILEPATH,
     order: str = SORT_ORDER_ASC,
 ):
-    """View cache structure for a training project."""
+    """View cache summary for a training project."""
     try:
         cache_data = remote_provider.api.get_cache_summary(project_id)
 
         if not cache_data:
-            console.print("No cache structure found for this project.", style="yellow")
+            console.print("No cache summary found for this project.", style="yellow")
             return
 
-        # Create a rich table to display the cache structure
+        # Create a rich table to display the cache summary
         from rich.table import Table
 
-        table = Table(title=f"Cache Structure for Project: {project_id}")
+        table = Table(title=f"Cache summary for project: {project_id}")
         table.add_column("File Path", style="cyan")
         table.add_column("Size", style="green")
         table.add_column("Modified", style="yellow")
@@ -485,5 +520,19 @@ def view_cache_summary(
         console.print(table)
 
     except Exception as e:
-        console.print(f"Error fetching cache structure: {str(e)}", style="red")
+        console.print(f"Error fetching cache summary: {str(e)}", style="red")
         raise
+
+
+def view_cache_summary_by_project(
+    remote_provider: BasetenRemote,
+    project_identifier: str,
+    sort_by: str = SORT_BY_FILEPATH,
+    order: str = SORT_ORDER_ASC,
+):
+    """View cache summary for a training project by ID or name."""
+    # Fetch the project by name or ID
+    project = fetch_project_by_name_or_id(remote_provider, project_identifier)
+
+    # Now call the original function with the resolved project ID
+    view_cache_summary(remote_provider, project["id"], sort_by, order)
