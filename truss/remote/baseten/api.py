@@ -676,6 +676,17 @@ class BasetenApi:
         )
         return resp_json
 
+    def _fetch_log_batch(
+        self, project_id: str, job_id: str, query_params: Dict[str, Any]
+    ) -> List[Any]:
+        """
+        Fetch a single batch of logs from the API.
+        """
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/logs", body=query_params
+        )
+        return resp_json["logs"]
+
     def get_training_job_checkpoint_presigned_url(
         self, project_id: str, job_id: str, page_size: int = 100
     ) -> List[Dict[str, str]]:

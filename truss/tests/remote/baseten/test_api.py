@@ -7,17 +7,8 @@ from requests import Response
 
 import truss_train.definitions as train_definitions
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
-
-
-@pytest.fixture
-def mock_auth_service():
-    auth_service = mock.Mock()
-    auth_token = mock.Mock(headers=lambda: {"Authorization": "Api-Key token"})
-    auth_service.authenticate.return_value = auth_token
-    return auth_service
 
 
 def mock_successful_response():
@@ -132,11 +123,6 @@ def mock_deploy_chain_deployment_response():
         }
     )
     return response
-
-
-@pytest.fixture
-def baseten_api(mock_auth_service):
-    return BasetenApi("https://app.test.com", mock_auth_service)
 
 
 @mock.patch("requests.post", return_value=mock_successful_response())
@@ -439,3 +425,52 @@ def test_upsert_training_project(mock_post, baseten_api):
     upsert_body = mock_post.call_args[1]["json"]["training_project"]
     assert "job" not in upsert_body
     assert "training-project" == upsert_body["name"]
+
+
+# Mock responses for training job logs pagination tests
+def mock_training_job_logs_response(logs, has_more=True):
+    """Helper function to create mock training job logs response"""
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(return_value={"logs": logs})
+    return response
+
+
+def mock_training_job_logs_empty_response():
+    """Helper function to create mock empty training job logs response"""
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(return_value={"logs": []})
+    return response
+
+
+def mock_training_job_logs_error_response():
+    """Helper function to create mock error response for training job logs"""
+    response = Response()
+    response.status_code = 500
+    response.raise_for_status = mock.Mock(
+        side_effect=requests.exceptions.HTTPError("Server Error")
+    )
+    return response
+
+
+def test_fetch_log_batch(baseten_api):
+    """Test _fetch_log_batch helper method"""
+
+    mock_logs = [
+        {"timestamp": "1640995200000000000", "message": "Log 1"},
+        {"timestamp": "1640995260000000000", "message": "Log 2"},
+    ]
+
+    # Mock the rest_api_client
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {"logs": mock_logs}
+    baseten_api._rest_api_client = mock_rest_client
+
+    query_params = {"limit": 100, "direction": "asc"}
+    result = baseten_api._fetch_log_batch("project-123", "job-456", query_params)
+
+    assert result == mock_logs
+    mock_rest_client.post.assert_called_with(
+        "v1/training_projects/project-123/jobs/job-456/logs", body=query_params
+    )
