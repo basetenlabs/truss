@@ -680,28 +680,6 @@ class BasetenApi:
         )
         return resp_json["logs"]
 
-    def get_training_job_logs_with_pagination(
-        self, project_id: str, job_id: str, batch_size: int = 1000
-    ) -> List[Any]:
-        """
-        Get all training job logs using time-based pagination starting from the earliest log.
-
-        This method is a wrapper around the core function for backward compatibility.
-
-        Args:
-            project_id: The project ID
-            job_id: The job ID
-            batch_size: Number of logs to fetch per request (max 1000)
-
-        Returns:
-            List of all logs in chronological order (oldest first)
-        """
-        from truss.remote.baseten.core import (
-            get_training_job_logs_with_pagination as core_get_logs,
-        )
-
-        return core_get_logs(self, project_id, job_id, batch_size)
-
     def get_training_job_checkpoint_presigned_url(
         self, project_id: str, job_id: str, page_size: int = 100
     ) -> List[Dict[str, str]]:
