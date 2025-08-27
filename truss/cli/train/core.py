@@ -459,10 +459,7 @@ def view_cache_summary(
             console.print("No cache summary found for this project.", style="yellow")
             return
 
-        # Create a rich table to display the cache summary
-        from rich.table import Table
-
-        table = Table(title=f"Cache summary for project: {project_id}")
+        table = rich.table.Table(title=f"Cache summary for project: {project_id}")
         table.add_column("File Path", style="cyan")
         table.add_column("Size", style="green")
         table.add_column("Modified", style="yellow")
