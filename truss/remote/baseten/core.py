@@ -3,7 +3,9 @@ import json
 import logging
 import pathlib
 import textwrap
-from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
+from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Type
+
+import requests
 
 from truss.base.errors import ValidationError
 
@@ -15,6 +17,7 @@ from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
+from truss.remote.baseten.utils.time import iso_to_millis
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.util.path import load_trussignore_patterns_from_truss_dir
 
@@ -26,6 +29,16 @@ ACTIVE_STATUS = "ACTIVE"
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
     "Model hasn't been deployed yet. No environments exist."
 )
+
+# Maximum number of iterations to prevent infinite loops when paginating logs
+MAX_ITERATIONS = 10_000
+MIN_BATCH_SIZE = 100
+
+# LIMIT for the number of logs to fetch per request defined by the server
+MAX_BATCH_SIZE = 1000
+
+NANOSECONDS_PER_MILLISECOND = 1_000_000
+MILLISECONDS_PER_HOUR = 60 * 60 * 1000
 
 
 class ModelIdentifier:
@@ -465,3 +478,198 @@ def validate_truss_config_against_backend(api: BasetenApi, config: str):
             raise ValidationError(
                 f"Validation failed with the following errors:\n{error_messages}"
             )
+
+
+def _build_log_query_params(
+    start_time: Optional[int], end_time: Optional[int], batch_size: int
+) -> Dict[str, Any]:
+    """
+    Build query parameters for log fetching request.
+
+    Args:
+        start_time: Start time in milliseconds since epoch
+        end_time: End time in milliseconds since epoch
+        batch_size: Number of logs to fetch per request
+
+    Returns:
+        Dictionary of query parameters with None values removed
+    """
+    query_body = {
+        "start_epoch_millis": start_time,
+        "end_epoch_millis": end_time,
+        "limit": batch_size,
+        "direction": "asc",
+    }
+
+    return {k: v for k, v in query_body.items() if v is not None}
+
+
+def _handle_server_error_backoff(
+    error: requests.HTTPError, job_id: str, iteration: int, batch_size: int
+) -> int:
+    """
+    Slash the batch size in half and return the new batch size
+    """
+    old_batch_size = batch_size
+    new_batch_size = max(batch_size // 2, MIN_BATCH_SIZE)
+
+    logging.warning(
+        f"Server error (HTTP {error.response.status_code}) for job {job_id} at iteration {iteration}. "
+        f"Reducing batch size from {old_batch_size} to {new_batch_size}. Retrying..."
+    )
+
+    return new_batch_size
+
+
+def _process_batch_logs(
+    batch_logs: List[Any], job_id: str, iteration: int, batch_size: int
+) -> Tuple[bool, Optional[int], Optional[int]]:
+    """
+    Process a batch of logs and determine if pagination should continue.
+
+    Args:
+        batch_logs: List of logs from the current batch
+        job_id: The job ID for logging
+        iteration: Current iteration number for logging
+        batch_size: Expected batch size
+
+    Returns:
+        Tuple of (should_continue, next_start_time, next_end_time)
+    """
+
+    # If no logs returned, we're done
+    if not batch_logs:
+        logging.info(f"No logs returned for job {job_id} at iteration {iteration}")
+        return False, None, None
+
+    # If we got fewer logs than the batch size, we've reached the end
+    if len(batch_logs) == 0:
+        logging.info(f"Reached end of logs for job {job_id} at iteration {iteration}")
+        return False, None, None
+
+    # Timestamp returned in nanoseconds for the last log in this batch converted
+    # to milliseconds to use as start for next iteration
+    last_log_timestamp = int(batch_logs[-1]["timestamp"]) // NANOSECONDS_PER_MILLISECOND
+
+    # Update start time for next iteration (add 1ms to avoid overlap)
+    next_start_time_ms = last_log_timestamp + 1
+
+    # Set end time to 2 hours from next start time, maximum time delta allowed by the API
+    next_end_time_ms = next_start_time_ms + 2 * MILLISECONDS_PER_HOUR
+
+    return True, next_start_time_ms, next_end_time_ms
+
+
+class BatchedTrainingLogsFetcher:
+    """
+    Iterator for fetching training job logs in batches using time-based pagination.
+
+    This iterator handles the complexity of paginating through training job logs,
+    including error handling, batch size adjustment, and time window management.
+    """
+
+    def __init__(
+        self,
+        api: BasetenApi,
+        project_id: str,
+        job_id: str,
+        batch_size: int = MAX_BATCH_SIZE,
+    ):
+        self.api = api
+        self.project_id = project_id
+        self.job_id = job_id
+        self.batch_size = batch_size
+        self.iteration = 0
+        self.current_start_time = None
+        self.current_end_time = None
+        self._initialize_time_window()
+
+    def _initialize_time_window(self):
+        training_job = self.api.get_training_job(self.project_id, self.job_id)
+        self.current_start_time = iso_to_millis(
+            training_job["training_job"]["created_at"]
+        )
+        self.current_end_time = self.current_start_time + 2 * MILLISECONDS_PER_HOUR
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> List[Any]:
+        if self.iteration >= MAX_ITERATIONS:
+            logging.warning(
+                f"Reached maximum iteration limit ({MAX_ITERATIONS}) while paginating "
+                f"training job logs for project_id={self.project_id}, job_id={self.job_id}."
+            )
+            raise StopIteration
+
+        query_params = _build_log_query_params(
+            self.current_start_time, self.current_end_time, self.batch_size
+        )
+
+        try:
+            batch_logs = self.api._fetch_log_batch(
+                self.project_id, self.job_id, query_params
+            )
+
+            should_continue, next_start_time, next_end_time = _process_batch_logs(
+                batch_logs, self.job_id, self.iteration, self.batch_size
+            )
+
+            if not should_continue:
+                logging.info(
+                    f"Completed pagination for job {self.job_id}. Total iterations: {self.iteration + 1}"
+                )
+                raise StopIteration
+
+            self.current_start_time = next_start_time  # type: ignore[assignment]
+            self.current_end_time = next_end_time  # type: ignore[assignment]
+            self.iteration += 1
+
+            return batch_logs
+
+        except requests.HTTPError as e:
+            if 500 <= e.response.status_code < 600:
+                if self.batch_size == MIN_BATCH_SIZE:
+                    logging.error(
+                        "Failed to fetch all training job logs due to persistent server errors. "
+                        "Please try again later or contact support if the issue persists."
+                    )
+                    raise StopIteration
+                self.batch_size = _handle_server_error_backoff(
+                    e, self.job_id, self.iteration, self.batch_size
+                )
+                # Retry the same iteration with reduced batch size
+                return self.__next__()
+            else:
+                logging.error(
+                    f"HTTP error fetching logs for job {self.job_id} at iteration {self.iteration}: {e}"
+                )
+                raise StopIteration
+        except Exception as e:
+            logging.error(
+                f"Error fetching logs for job {self.job_id} at iteration {self.iteration}: {e}"
+            )
+            raise StopIteration
+
+
+def get_training_job_logs_with_pagination(
+    api: BasetenApi, project_id: str, job_id: str, batch_size: int = MAX_BATCH_SIZE
+) -> List[Any]:
+    """
+    This method implements forward time-based pagination by starting from the earliest
+    available log and working forward in time. It uses the timestamp of the newest log in
+    each batch as the start time for the next request.
+
+    Returns:
+        List of all logs in chronological order (oldest first)
+    """
+    all_logs = []
+
+    logs_iterator = BatchedTrainingLogsFetcher(api, project_id, job_id, batch_size)
+
+    for batch_logs in logs_iterator:
+        all_logs.extend(batch_logs)
+
+    logging.info(f"Completed pagination for job {job_id}. Total logs: {len(all_logs)}")
+
+    return all_logs
