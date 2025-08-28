@@ -18,6 +18,7 @@ class ModelWeightsFormat(str, enum.Enum):
 
     LORA = "lora"
     FULL = "full"
+    WHISPER = "whisper"
 
     def to_truss_config(self) -> "ModelWeightsFormat":
         return ModelWeightsFormat[self.name]
@@ -168,6 +169,10 @@ class LoRADetails(custom_types.ConfigModel):
 
 class FullCheckpoint(Checkpoint):
     model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
+
+
+class WhisperCheckpoint(Checkpoint):
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.WHISPER
 
 
 class LoRACheckpoint(Checkpoint):

@@ -33,6 +33,10 @@ from .deploy_lora_checkpoints import (
     hydrate_lora_checkpoint,
     render_vllm_lora_truss_config,
 )
+from .deploy_whisper_checkpoints import (
+    hydrate_whisper_checkpoint,
+    render_vllm_whisper_truss_config,
+)
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 # If we change this, make sure to update the logic in backend codebase
@@ -178,6 +182,8 @@ def hydrate_checkpoint(
         return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
     elif checkpoint_type.lower() == ModelWeightsFormat.FULL.value:
         return hydrate_full_checkpoint(job_id, checkpoint_id, checkpoint)
+    elif checkpoint_type.lower() == ModelWeightsFormat.WHISPER.value:
+        return hydrate_whisper_checkpoint(job_id, checkpoint_id, checkpoint)
     else:
         raise ValueError(
             f"Unsupported checkpoint type: {checkpoint_type}. Contact Baseten for support with other checkpoint types."
@@ -196,6 +202,8 @@ def _render_truss_config_for_checkpoint_deployment(
         return render_vllm_lora_truss_config(checkpoint_deploy)
     elif checkpoint_deploy.model_weight_format == ModelWeightsFormat.FULL:
         return render_vllm_full_truss_config(checkpoint_deploy)
+    elif checkpoint_deploy.model_weight_format == ModelWeightsFormat.WHISPER:
+        return render_vllm_whisper_truss_config(checkpoint_deploy)
     else:
         raise ValueError(
             f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Please upgrade to the latest Truss version to access the latest supported formats. Contact Baseten if you would like us to support additional formats."
@@ -350,6 +358,8 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> Optional[
             f"Inferring base model from checkpoint: {base_model_id}", style="yellow"
         )
     elif checkpoint.get("checkpoint_type") == ModelWeightsFormat.FULL.value.lower():
+        return None
+    elif checkpoint.get("checkpoint_type") == ModelWeightsFormat.WHISPER.value.lower():
         return None
     else:
         base_model_id = inquirer.text(message="Enter the base model id.").execute()
