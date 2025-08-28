@@ -296,18 +296,6 @@ def _get_checkpoint_ids_to_deploy(
     return checkpoint_ids
 
 
-def _select_single_checkpoint(checkpoint_id_options: List[str]) -> List[str]:
-    """Select a single checkpoint using interactive prompt."""
-    checkpoint_id = inquirer.select(
-        message="Select the checkpoint to deploy:", choices=checkpoint_id_options
-    ).execute()
-
-    if not checkpoint_id:
-        raise click.UsageError("A checkpoint must be selected.")
-
-    return [checkpoint_id]
-
-
 def _select_multiple_checkpoints(checkpoint_id_options: List[str]) -> List[str]:
     """Select multiple checkpoints using interactive checkbox."""
     checkpoint_ids = inquirer.checkbox(
@@ -426,17 +414,27 @@ def _validate_selected_checkpoints(
             "Unable to infer model weight format. Reach out to Baseten for support."
         )
 
-    has_full_checkpoint = any(
-        response_checkpoints[checkpoint_id].get("checkpoint_type")
-        == ModelWeightsFormat.FULL.value
-        for checkpoint_id in checkpoint_ids
-    )
+    validation_rules = {
+        ModelWeightsFormat.FULL.value: {
+            "error_message": "Full checkpoints are not supported for multiple checkpoints. Please select a single checkpoint.",
+            "reason": "vLLM does not support multiple checkpoints when any checkpoint is full model weights.",
+        },
+        ModelWeightsFormat.WHISPER.value: {
+            "error_message": "Whisper checkpoints are not supported for multiple checkpoints. Please select a single checkpoint.",
+            "reason": "vLLM does not support multiple checkpoints when any checkpoint is whisper model weights.",
+        },
+    }
 
-    if has_full_checkpoint and len(checkpoint_ids) > 1:
-        # vLLM does not support multiple checkpoints when any checkpoint is full model weights.
-        raise ValueError(
-            "Full checkpoints are not supported for multiple checkpoints. Please select a single checkpoint."
+    # Check each checkpoint type that has restrictions
+    for checkpoint_type, rule in validation_rules.items():
+        has_restricted_checkpoint = any(
+            response_checkpoints[checkpoint_id].get("checkpoint_type")
+            == checkpoint_type
+            for checkpoint_id in checkpoint_ids
         )
+
+        if has_restricted_checkpoint and len(checkpoint_ids) > 1:
+            raise ValueError(rule["error_message"])
 
 
 def get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
