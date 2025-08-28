@@ -303,7 +303,7 @@ def _select_single_checkpoint(checkpoint_id_options: List[str]) -> List[str]:
 def _select_multiple_checkpoints(checkpoint_id_options: List[str]) -> List[str]:
     """Select multiple checkpoints using interactive checkbox."""
     checkpoint_ids = inquirer.checkbox(
-        message="Use spacebar to select/deselect checkpoints to deploy.",
+        message="Use spacebar to select/deselect checkpoints to deploy. Press enter when done.",
         choices=checkpoint_id_options,
     ).execute()
 

@@ -1,16 +1,8 @@
 import pytest
 import requests
-import base64
 import os
 from unittest.mock import Mock, patch, mock_open, call
-from typing import Optional, Dict
 
-import os
-
-os.environ["PYTHONIOENCODING"] = "utf-8"
-os.environ["CI"] = "true"  # Some libraries check for CI environment
-
-# Import the functions to test
 from truss.cli.train.core import (
     _get_train_init_example_options,
     _select_multiple_examples,

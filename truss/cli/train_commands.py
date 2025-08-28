@@ -363,10 +363,9 @@ def init_training_job(target_dir: str) -> None:
         if not selected_options:
             if target_dir is None:
                 target_dir = "truss-train-init"
-            target_dir = Path(target_dir)
             console.print(f"Initializing bare-metal training directory at {target_dir}")
             os.makedirs(target_dir)
-            copy_tree_path(TRAINING_TEMPLATE_DIR, target_dir)
+            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_dir))
             console.print(
                 f"✨ Baremetal training directory initialized at {target_dir}",
                 style="bold green",
