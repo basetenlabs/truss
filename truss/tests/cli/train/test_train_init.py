@@ -103,8 +103,10 @@ class TestGetTrainInitExampleOptions:
         result = _get_train_init_example_options()
 
         # Assert
-        mock_echo.assert_called_once_with("Error exploring directory: Network error")
-        assert result is None
+        mock_echo.assert_called_once_with(
+            "Error exploring directory: Network error. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
+        assert result == []
 
     @patch("requests.get")
     @patch("click.echo")
@@ -121,8 +123,10 @@ class TestGetTrainInitExampleOptions:
         result = _get_train_init_example_options()
 
         # Assert
-        mock_echo.assert_called_once_with("Error exploring directory: 404 Not Found")
-        assert result is None
+        mock_echo.assert_called_once_with(
+            "Error exploring directory: 404 Not Found. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
+        assert result == []
 
 
 class TestSelectMultipleExamples:

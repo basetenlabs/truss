@@ -431,7 +431,9 @@ def _get_train_init_example_options(
         return items
 
     except requests.exceptions.RequestException as e:
-        click.echo(f"Error exploring directory: {e}")
+        click.echo(
+            f"Error exploring directory: {e}. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
         return []
 
 

@@ -357,7 +357,10 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
 def init_training_job(target_dir: str) -> None:
     try:
         example_options = train_cli._get_train_init_example_options()
-        selected_options = train_cli._select_multiple_examples(example_options)
+        if example_options:
+            selected_options = train_cli._select_multiple_examples(example_options)
+        else:  # if some error in fetching examples, proceed with bare-metal init
+            selected_options = []
 
         # No examples selected, initialize bare-metal structure
         if not selected_options:
