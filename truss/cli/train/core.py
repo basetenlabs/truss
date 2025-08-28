@@ -1,6 +1,8 @@
+import os
 import json
 import tarfile
 import tempfile
+import requests
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -341,6 +343,7 @@ def download_training_job_data(
             temp_path.write_bytes(content)
 
             unzip_dir = output_dir / artifact_base_name
+            unzip_dir = Path(str(unzip_dir).replace(" ", "-"))
             if unzip_dir.exists():
                 raise click.ClickException(
                     f"Directory '{unzip_dir}' already exists. "
@@ -353,6 +356,7 @@ def download_training_job_data(
 
             return unzip_dir
     else:
+        target_path = Path(str(target_path).replace(" ", "-"))
         target_path.write_bytes(content)
         return target_path
 
@@ -401,3 +405,121 @@ def download_checkpoint_artifacts(
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:
     return f"{remote_url}/training/jobs/{training_job_id}"
+
+
+# Utils to initialize training dir
+def _get_train_init_example_options(
+    repo_id: str = "ml-cookbook",
+    examples_subdir: str = "examples",
+    token: Optional[str] = None,
+) -> list[Dict[str, str]]:
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    url = (
+        f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{examples_subdir}"
+    )
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        items = response.json()
+        if not isinstance(items, list):
+            items = [items]
+        return items
+
+    except requests.exceptions.RequestException as e:
+        click.echo(f"Error exploring directory: {e}")
+
+
+def _select_multiple_examples(example_options: list[dict]) -> list[dict]:
+    """Select multiple examples using interactive checkbox.
+    Input and output is a list of dicts with each dict having
+    name, path, sha, size, url, html_url, git_url etc, defined
+    by Github API.
+    """
+    examples = set(
+        inquirer.checkbox(
+            message="Use spacebar to select/deselect examples to initialize, or leave empty and press enter to initialize baremetal structure.",
+            choices=[example["name"] for example in example_options],
+        ).execute()
+    )
+
+    return [example for example in example_options if example["name"] in examples]
+
+
+def download_git_directory(
+    git_api_url: str, local_dir: str, token: Optional[str] = None
+):
+    """
+    Recursively download directory contents from git api url.
+    Special handling for 'training' directory: downloads its contents directly
+    to local_dir without creating a 'training' subdirectory.
+    Args:
+        git_api_url (str): Example format "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/llama-finetune-8b-lora?ref=main"
+        local_dir(str): Local directory to download this directory to
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+    try:
+        response = requests.get(git_api_url, headers=headers)
+        response.raise_for_status()
+        items = response.json()
+
+        # Handle single file case
+        if not isinstance(items, list):
+            items = [items]
+
+        # Create local directory
+        print(f"Creating directory {local_dir}")
+        os.makedirs(local_dir, exist_ok=True)
+
+        # Check if there's a 'training' directory in the items
+        training_dir = None
+        other_items = []
+
+        for item in items:
+            if item["name"] == "training" and item["type"] == "dir":
+                training_dir = item
+            else:
+                other_items.append(item)
+
+        # If training directory exists, download its contents directly to local_dir
+        if training_dir:
+            print(
+                f"📁 Found training directory, downloading its contents to {local_dir}"
+            )
+            return download_git_directory(training_dir["url"], local_dir)
+
+        # If no training directory, download all files normally
+        for item in other_items:
+            item_name = item["name"]
+            local_item_path = os.path.join(local_dir, item_name)
+
+            if item["type"] == "file":
+                print(f"📄 Downloading {item_name}")
+                if item.get("download_url"):
+                    # Download file directly
+                    file_response = requests.get(item["download_url"])
+                    file_response.raise_for_status()
+                    with open(local_item_path, "wb") as f:
+                        f.write(file_response.content)
+                elif item.get("content"):
+                    # Decode base64 content (for small files)
+                    try:
+                        content = base64.b64decode(item["content"])
+                        with open(local_item_path, "wb") as f:
+                            f.write(content)
+                    except Exception as e:
+                        print(f"⚠️ Could not decode {item_name}: {e}")
+            elif item["type"] == "dir":
+                print(f"📁 Entering directory {item_name}")
+                # Use the API URL from the response for subdirectories
+                download_git_directory(item["url"], local_item_path)
+        return True
+    except Exception as e:
+        print(f"Error processing response: {e}")
+        return False

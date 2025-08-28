@@ -291,7 +291,7 @@ def _get_checkpoint_ids_to_deploy(
 def _select_single_checkpoint(checkpoint_id_options: List[str]) -> List[str]:
     """Select a single checkpoint using interactive prompt."""
     checkpoint_id = inquirer.select(
-        message="Select the checkpoint to deploy:", choices=checkpoint_id_options
+        message="Select the checkpoints to deploy:", choices=checkpoint_id_options
     ).execute()
 
     if not checkpoint_id:
@@ -303,7 +303,7 @@ def _select_single_checkpoint(checkpoint_id_options: List[str]) -> List[str]:
 def _select_multiple_checkpoints(checkpoint_id_options: List[str]) -> List[str]:
     """Select multiple checkpoints using interactive checkbox."""
     checkpoint_ids = inquirer.checkbox(
-        message="Select the checkpoint to deploy. Use spacebar to select/deselect.",
+        message="Use spacebar to select/deselect checkpoints to deploy.",
         choices=checkpoint_id_options,
     ).execute()
 
