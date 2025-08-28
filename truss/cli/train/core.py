@@ -1,3 +1,4 @@
+import base64
 import os
 import json
 import tarfile
@@ -407,7 +408,6 @@ def status_page_url(remote_url: str, training_job_id: str) -> str:
     return f"{remote_url}/training/jobs/{training_job_id}"
 
 
-# Utils to initialize training dir
 def _get_train_init_example_options(
     repo_id: str = "ml-cookbook",
     examples_subdir: str = "examples",
