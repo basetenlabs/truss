@@ -413,6 +413,11 @@ def _get_train_init_example_options(
     examples_subdir: str = "examples",
     token: Optional[str] = None,
 ) -> list[Dict[str, str]]:
+    """
+    Retrieve a list of example options from the ml-cookbook repository to
+    copy locally for training initialization. This method generates a list
+    of examples and URL paths to show the user for selection.
+    """
     headers = {}
     if token:
         headers["Authorization"] = f"token {token}"
