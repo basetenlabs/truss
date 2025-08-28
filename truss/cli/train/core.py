@@ -432,6 +432,7 @@ def _get_train_init_example_options(
 
     except requests.exceptions.RequestException as e:
         click.echo(f"Error exploring directory: {e}")
+        return []
 
 
 def _select_multiple_examples(example_options: list[dict]) -> list[dict]:
