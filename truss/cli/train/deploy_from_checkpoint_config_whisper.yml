@@ -13,3 +13,5 @@ environment_variables:
   VLLM_LOGGING_LEVEL: WARNING
   VLLM_USE_V1: 0
   HF_HUB_ENABLE_HF_TRANSFER: 1
+requirements:
+  - vllm[audio]
