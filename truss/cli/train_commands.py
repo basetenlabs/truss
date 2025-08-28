@@ -5,8 +5,8 @@ from typing import Optional, cast
 
 import rich_click as click
 
-from truss.base.constants import TRAINING_TEMPLATE_DIR
 import truss.cli.train.core as train_cli
+from truss.base.constants import TRAINING_TEMPLATE_DIR
 from truss.cli import remote_cli
 from truss.cli.cli import push, truss_cli
 from truss.cli.logs import utils as cli_log_utils
@@ -387,10 +387,15 @@ def init_training_job(target_dir: str) -> None:
             success = train_cli.download_git_directory(
                 git_api_url=example_to_download["url"], local_dir=local_dir
             )
-            console.print(
-                f"✨ Training directory for {example_to_download['name']} initialized at {local_dir}",
-                style="bold green",
-            )
+            if success:
+                console.print(
+                    f"✨ Training directory for {example_to_download['name']} initialized at {local_dir}",
+                    style="bold green",
+                )
+            else:
+                error_console.print(
+                    f"Failed to initialize training artifacts to {local_dir}"
+                )
 
     except Exception as e:
         error_console.print(f"Failed to initialize training artifacts: {str(e)}")

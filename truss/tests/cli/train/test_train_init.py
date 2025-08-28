@@ -1,7 +1,7 @@
+from unittest.mock import Mock, call, mock_open, patch
+
 import pytest
 import requests
-import os
-from unittest.mock import Mock, patch, mock_open, call
 
 from truss.cli.train.core import (
     _get_train_init_example_options,
@@ -66,7 +66,7 @@ class TestGetTrainInitExampleOptions:
         mock_get.return_value = mock_response
 
         # Act
-        result = _get_train_init_example_options(
+        _ = _get_train_init_example_options(
             repo_id="custom-repo", examples_subdir="custom-examples"
         )
 
