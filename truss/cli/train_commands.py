@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from typing import Optional, cast
@@ -5,6 +6,7 @@ from typing import Optional, cast
 import rich_click as click
 
 import truss.cli.train.core as train_cli
+from truss.base.constants import TRAINING_TEMPLATE_DIR
 from truss.cli import remote_cli
 from truss.cli.cli import push, truss_cli
 from truss.cli.logs import utils as cli_log_utils
@@ -16,6 +18,7 @@ from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
+from truss.util.path import copy_tree_path
 
 
 @click.group()
@@ -345,4 +348,55 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
         )
     except Exception as e:
         error_console.print(f"Failed to download checkpoint artifacts data: {str(e)}")
+        sys.exit(1)
+
+
+@train.command(name="init")
+@click.argument("target_dir", required=False)
+@common.common_options()
+def init_training_job(target_dir: str) -> None:
+    try:
+        example_options = train_cli._get_train_init_example_options()
+        if example_options:
+            selected_options = train_cli._select_multiple_examples(example_options)
+        else:  # if some error in fetching examples, proceed with bare-metal init
+            selected_options = []
+
+        # No examples selected, initialize bare-metal structure
+        if not selected_options:
+            if target_dir is None:
+                target_dir = "truss-train-init"
+            console.print(f"Initializing bare-metal training directory at {target_dir}")
+            os.makedirs(target_dir)
+            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_dir))
+            console.print(
+                f"✨ Baremetal training directory initialized at {target_dir}",
+                style="bold green",
+            )
+            return
+
+        if target_dir is None:
+            target_dir = os.getcwd()
+        for example_to_download in selected_options:
+            if (
+                len(selected_options) > 1
+            ):  # if only 1 example is selected, no subdirs with example names
+                local_dir = os.path.join(target_dir, example_to_download["name"])
+            else:
+                local_dir = target_dir if target_dir else example_to_download["name"]
+            success = train_cli.download_git_directory(
+                git_api_url=example_to_download["url"], local_dir=local_dir
+            )
+            if success:
+                console.print(
+                    f"✨ Training directory for {example_to_download['name']} initialized at {local_dir}",
+                    style="bold green",
+                )
+            else:
+                error_console.print(
+                    f"Failed to initialize training artifacts to {local_dir}"
+                )
+
+    except Exception as e:
+        error_console.print(f"Failed to initialize training artifacts: {str(e)}")
         sys.exit(1)

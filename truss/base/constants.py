@@ -18,6 +18,7 @@ SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
 CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_chains"
 TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
+TRAINING_TEMPLATE_DIR = TEMPLATES_DIR / "train"
 # Must be sorted ascendingly.
 SUPPORTED_PYTHON_VERSIONS = ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
 
