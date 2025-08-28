@@ -33,6 +33,10 @@ from .deploy_lora_checkpoints import (
     hydrate_lora_checkpoint,
     render_vllm_lora_truss_config,
 )
+from .deploy_whisper_checkpoints import (
+    hydrate_whisper_checkpoint,
+    render_vllm_whisper_truss_config,
+)
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 # If we change this, make sure to update the logic in backend codebase
@@ -178,6 +182,8 @@ def hydrate_checkpoint(
         return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)
     elif checkpoint_type.lower() == ModelWeightsFormat.FULL.value:
         return hydrate_full_checkpoint(job_id, checkpoint_id, checkpoint)
+    elif checkpoint_type.lower() == ModelWeightsFormat.WHISPER.value:
+        return hydrate_whisper_checkpoint(job_id, checkpoint_id, checkpoint)
     else:
         raise ValueError(
             f"Unsupported checkpoint type: {checkpoint_type}. Contact Baseten for support with other checkpoint types."
@@ -196,6 +202,8 @@ def _render_truss_config_for_checkpoint_deployment(
         return render_vllm_lora_truss_config(checkpoint_deploy)
     elif checkpoint_deploy.model_weight_format == ModelWeightsFormat.FULL:
         return render_vllm_full_truss_config(checkpoint_deploy)
+    elif checkpoint_deploy.model_weight_format == ModelWeightsFormat.WHISPER:
+        return render_vllm_whisper_truss_config(checkpoint_deploy)
     else:
         raise ValueError(
             f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Please upgrade to the latest Truss version to access the latest supported formats. Contact Baseten if you would like us to support additional formats."
@@ -351,6 +359,8 @@ def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> Optional[
         )
     elif checkpoint.get("checkpoint_type") == ModelWeightsFormat.FULL.value.lower():
         return None
+    elif checkpoint.get("checkpoint_type") == ModelWeightsFormat.WHISPER.value.lower():
+        return None
     else:
         base_model_id = inquirer.text(message="Enter the base model id.").execute()
     if not base_model_id:
@@ -416,17 +426,27 @@ def _validate_selected_checkpoints(
             "Unable to infer model weight format. Reach out to Baseten for support."
         )
 
-    has_full_checkpoint = any(
-        response_checkpoints[checkpoint_id].get("checkpoint_type")
-        == ModelWeightsFormat.FULL.value
-        for checkpoint_id in checkpoint_ids
-    )
+    validation_rules = {
+        ModelWeightsFormat.FULL.value: {
+            "error_message": "Full checkpoints are not supported for multiple checkpoints. Please select a single checkpoint.",
+            "reason": "vLLM does not support multiple checkpoints when any checkpoint is full model weights.",
+        },
+        ModelWeightsFormat.WHISPER.value: {
+            "error_message": "Whisper checkpoints are not supported for multiple checkpoints. Please select a single checkpoint.",
+            "reason": "vLLM does not support multiple checkpoints when any checkpoint is whisper model weights.",
+        },
+    }
 
-    if has_full_checkpoint and len(checkpoint_ids) > 1:
-        # vLLM does not support multiple checkpoints when any checkpoint is full model weights.
-        raise ValueError(
-            "Full checkpoints are not supported for multiple checkpoints. Please select a single checkpoint."
+    # Check each checkpoint type that has restrictions
+    for checkpoint_type, rule in validation_rules.items():
+        has_restricted_checkpoint = any(
+            response_checkpoints[checkpoint_id].get("checkpoint_type")
+            == checkpoint_type
+            for checkpoint_id in checkpoint_ids
         )
+
+        if has_restricted_checkpoint and len(checkpoint_ids) > 1:
+            raise ValueError(rule["error_message"])
 
 
 def get_hf_secret_name(user_input: Union[str, SecretReference, None]) -> str:
