@@ -40,7 +40,7 @@ def render_vllm_full_truss_config(
         truss_deploy_config, checkpoint_deploy
     )
 
-    checkpoint_str = _build_full_checkpoint_string(truss_deploy_config)
+    checkpoint_str = build_full_checkpoint_string(truss_deploy_config)
 
     accelerator = checkpoint_deploy.compute.accelerator
 
@@ -71,7 +71,7 @@ def hydrate_full_checkpoint(
     return FullCheckpoint(training_job_id=job_id, paths=paths)
 
 
-def _build_full_checkpoint_string(truss_deploy_config) -> str:
+def build_full_checkpoint_string(truss_deploy_config) -> str:
     """Build checkpoint string from artifact references for full checkpoints.
 
     Args:
