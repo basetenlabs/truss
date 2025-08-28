@@ -25,6 +25,11 @@ from truss.cli.train.deploy_checkpoints.deploy_lora_checkpoints import (
     hydrate_lora_checkpoint,
     render_vllm_lora_truss_config,
 )
+from truss.cli.train.deploy_checkpoints.deploy_whisper_checkpoints import (
+    VLLM_WHISPER_START_COMMAND,
+    hydrate_whisper_checkpoint,
+    render_vllm_whisper_truss_config,
+)
 from truss.cli.train.types import (
     DeployCheckpointsConfigComplete,
     PrepareCheckpointResult,
@@ -684,13 +689,6 @@ def test_get_checkpoint_ids_to_deploy_single_checkpoint():
 
         # Should return the single checkpoint directly
         assert result == ["checkpoint-1"]
-
-
-from truss.cli.train.deploy_checkpoints.deploy_whisper_checkpoints import (
-    VLLM_WHISPER_START_COMMAND,
-    hydrate_whisper_checkpoint,
-    render_vllm_whisper_truss_config,
-)
 
 
 def test_vllm_whisper_start_command_template():
