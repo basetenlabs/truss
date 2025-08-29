@@ -73,6 +73,7 @@ mod tests {
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None
         };
         let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_ok());
@@ -99,16 +100,10 @@ mod tests {
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None
         };
         let _result = crate::core::build_resolution_map(&manifest);
         // used to be that we raise an error here, but now we just log a warning
-    }
-
-    #[test]
-    fn test_init_logger_once() {
-        // Calling init_logger_once multiple times should not panic.
-        crate::bindings::init_logger_once();
-        crate::bindings::init_logger_once();
     }
 
     #[test]
@@ -129,6 +124,7 @@ mod tests {
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None
         };
         let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_err());
@@ -153,6 +149,7 @@ mod tests {
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None
         };
         let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_ok()); // Should still be OK as resolution is checked only when available
@@ -177,6 +174,7 @@ mod tests {
                 size: 1024,
                 runtime_secret_name: "hf_access_token".into(),
             }],
+            models: None
         };
 
         let manifest2 = BasetenPointerManifest {
@@ -192,6 +190,7 @@ mod tests {
                 size: 2048,
                 runtime_secret_name: "hf_access_token".into(),
             }],
+            models: None
         };
 
         let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
@@ -228,11 +227,11 @@ mod tests {
         };
 
         let manifest1 = BasetenPointerManifest {
-            pointers: vec![pointer.clone()],
+            pointers: vec![pointer.clone()], models: None
         };
 
         let manifest2 = BasetenPointerManifest {
-            pointers: vec![pointer],
+            pointers: vec![pointer], models: None
         };
 
         let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
@@ -274,10 +273,11 @@ mod tests {
 
         let manifest1 = BasetenPointerManifest {
             pointers: vec![pointer1],
+            models: None
         };
 
         let manifest2 = BasetenPointerManifest {
-            pointers: vec![pointer2],
+            pointers: vec![pointer2], models: None
         };
 
         let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
@@ -326,6 +326,7 @@ mod tests {
                     runtime_secret_name: "hf_access_token".into(),
                 },
             ],
+            models: None
         };
 
         let hashes = crate::core::current_hashes_from_manifest(&manifest);

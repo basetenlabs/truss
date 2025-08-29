@@ -1,3 +1,4 @@
+use crate::create::object_storage_client::get_client_options;
 use crate::types::GcsError;
 use object_store::gcp::GoogleCloudStorageBuilder;
 
@@ -33,6 +34,7 @@ pub fn gcs_storage(
     GoogleCloudStorageBuilder::new()
         .with_service_account_path(&path)
         .with_bucket_name(bucket)
+        .with_client_options(get_client_options())
         .build()
         .map_err(GcsError::ObjectStore)
 }

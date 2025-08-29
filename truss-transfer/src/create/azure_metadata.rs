@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 
+use crate::create::object_storage_client::get_client_options;
 use crate::secrets::get_secret_from_file;
 
 /// Parse Azure Blob Storage URI into account, container, and blob components
@@ -82,7 +83,9 @@ pub fn azure_storage(
 ) -> Result<Box<dyn object_store::ObjectStore>, anyhow::Error> {
     use object_store::azure::{MicrosoftAzure, MicrosoftAzureBuilder};
 
-    let mut builder = MicrosoftAzureBuilder::new().with_account(account_name);
+    let mut builder = MicrosoftAzureBuilder::new()
+        .with_account(account_name)
+        .with_client_options(get_client_options());
 
     // Read Azure credentials from single file
     if let Some(credentials_content) = get_secret_from_file(runtime_secret_name) {
