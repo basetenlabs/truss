@@ -76,8 +76,8 @@ async fn lazy_data_resolve_async(
     let mut all_manifests = Vec::new();
     let mut found_paths = Vec::new();
     let mut jit_models = Vec::new();
-    if models.is_some() {
-        jit_models.extend(models.unwrap());
+    if let Some(m) = models {
+        jit_models.extend(m);
     }
 
     for manifest_path_str in LAZY_DATA_RESOLVER_PATHS {
