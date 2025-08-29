@@ -829,11 +829,7 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             non_root_user=non_root_user,
-            app_username="app",
-            app_user_uid=60000,
-            control_server_dir="/control",
-            default_owner="0:0",  # root user
-            **FILENAME_CONSTANTS_MAP,  # Add this line
+            **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
         dockerfile_contents = re.sub(

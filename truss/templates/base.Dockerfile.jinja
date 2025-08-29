@@ -8,6 +8,11 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
+{%- set app_username = "app" %}  {# needed later for USER directive#}
+{% block user_setup %}
+{%- set app_user_uid = 60000 %}
+{%- set control_server_dir = "/control" %}
+{%- set default_owner = "root:root" %}
 # The non-root user's home directory.
 # uv will use $HOME to install packages.
 ENV HOME=/home/{{ app_username }}
@@ -18,6 +23,7 @@ RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
 RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
 # Add the user's local bin to the path, used by uv.
 ENV PATH=${PATH}:${HOME}/.local/bin
+{% endblock %} {#- endblock user_setup #}
 
 {%- set UV_VERSION = "0.7.19" %}
 {#
