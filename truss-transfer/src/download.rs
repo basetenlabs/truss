@@ -134,8 +134,11 @@ pub async fn download_file_with_cache(
             }
         }
     } else if !is_correct_size {
-        warn!("Downloaded file {} has incorrect size. Expected {}, got {}.",
-            destination.display(), pointer.size, fs::metadata(&destination).await?.len()
+        warn!(
+            "Downloaded file {} has incorrect size. Expected {}, got {}.",
+            destination.display(),
+            pointer.size,
+            fs::metadata(&destination).await?.len()
         );
     }
 
