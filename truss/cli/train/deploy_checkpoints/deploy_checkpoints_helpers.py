@@ -3,7 +3,7 @@ from pathlib import Path
 
 from truss.base import truss_config
 from truss.cli.train.types import DeployCheckpointsConfigComplete
-from truss_train.definitions import SecretReference
+from truss_train.definitions import ModelWeightsFormat, SecretReference
 
 START_COMMAND_ENVVAR_NAME = "BT_DOCKER_SERVER_START_CMD"
 
@@ -12,8 +12,14 @@ def setup_base_truss_config(
     checkpoint_deploy: DeployCheckpointsConfigComplete,
 ) -> truss_config.TrussConfig:
     """Set up the base truss config with common properties."""
+    truss_deploy_config = None
+    truss_base_file = (
+        "deploy_from_checkpoint_config_whisper.yml"
+        if checkpoint_deploy.model_weight_format == ModelWeightsFormat.WHISPER
+        else "deploy_from_checkpoint_config.yml"
+    )
     truss_deploy_config = truss_config.TrussConfig.from_yaml(
-        Path(os.path.dirname(__file__), "..", "deploy_from_checkpoint_config.yml")
+        Path(os.path.dirname(__file__), "..", truss_base_file)
     )
     if not truss_deploy_config.docker_server:
         raise ValueError(

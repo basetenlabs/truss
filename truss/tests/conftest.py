@@ -834,7 +834,7 @@ def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
+def trtllm_spec_dec_config_lookahead_v1(trtllm_config) -> Dict[str, Any]:
     spec_dec_config = copy.deepcopy(trtllm_config)
     spec_dec_config["trt_llm"] = {
         "build": {
@@ -847,40 +847,11 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
                 "use_paged_context_fmha": True,
             },
             "speculator": {
-                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL.value,
-                "num_draft_tokens": 4,
-                "build": {
-                    "base_model": "llama",
-                    "max_seq_len": 2048,
-                    "max_batch_size": 512,
-                    "checkpoint_repository": {
-                        "source": "HF",
-                        "repo": "meta/llama4-500B",
-                    },
-                },
-            },
-        }
-    }
-    return spec_dec_config
-
-
-@pytest.fixture
-def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
-    spec_dec_config = copy.deepcopy(trtllm_config)
-    spec_dec_config["trt_llm"] = {
-        "build": {
-            "base_model": "llama",
-            "max_seq_len": 2048,
-            "max_batch_size": 512,
-            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
-            "plugin_configuration": {
-                "paged_kv_cache": True,
-                "use_paged_context_fmha": True,
-            },
-            "speculator": {
-                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL.value,
-                "num_draft_tokens": 4,
-                "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
+                "speculative_decoding_mode": TrussSpecDecMode.LOOKAHEAD_DECODING.value,
+                "lookahead_ngram_size": 5,
+                "lookahead_windows_size": 4,
+                "lookahead_verification_set_size": 3,
+                "num_draft_tokens": 27,
             },
         }
     }

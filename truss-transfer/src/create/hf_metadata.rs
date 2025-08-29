@@ -78,14 +78,19 @@ pub async fn get_hf_metadata(
     revision: &str,
     filename: &str,
 ) -> Result<HfFileMetadata, HfError> {
+    // Define HuggingFace-specific header constants
+    // const HUGGINGFACE_HEADER_X_REPO_COMMIT: &str = "X-Repo-Commit";
+    const HUGGINGFACE_HEADER_X_LINKED_ETAG: &str = "X-Linked-Etag";
+    const HUGGINGFACE_HEADER_X_LINKED_SIZE: &str = "X-Linked-Size";
+    // const HUGGINGFACE_HEADER_X_BILL_TO: &str = "X-HF-Bill-To";
+
     let repo = Repo::with_revision(repo_id.to_string(), RepoType::Model, revision.to_string());
     let api_repo = api.repo(repo);
 
     // Create the URL for the file
     let url = api_repo.url(filename);
 
-    // Use reqwest to get metadata, should not be needed.
-    // better to resolve it using the hf-hub crate
+    // Use reqwest to get metadata
     let client = reqwest::Client::new();
     let response = client
         .head(&url)
@@ -93,16 +98,21 @@ pub async fn get_hf_metadata(
         .await
         .map_err(|_e| HfError::InvalidMetadata)?;
 
+    // We favor a custom header indicating the etag of the linked resource,
+    // and we fallback to the regular etag header
     let etag = response
         .headers()
-        .get("etag")
+        .get(HUGGINGFACE_HEADER_X_LINKED_ETAG)
+        .or_else(|| response.headers().get("etag"))
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default()
-        .replace('"', "");
+        .replace('"', ""); // Remove quotes from etag
 
+    // Get file size, prioritizing X-Linked-Size over Content-Length
     let size = response
         .headers()
-        .get("content-length")
+        .get(HUGGINGFACE_HEADER_X_LINKED_SIZE)
+        .or_else(|| response.headers().get("content-length"))
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
