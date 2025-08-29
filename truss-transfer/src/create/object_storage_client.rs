@@ -15,5 +15,17 @@ pub fn get_client_options() -> ClientOptions {
     std::env::set_var("NO_PROXY", "*");
     std::env::set_var("no_proxy", "*");
 
-    ClientOptions::new().with_config(ClientConfigKey::ProxyExcludes, "*")
+    const CLOUD_PROXY_EXCLUDES: &str = concat!(
+        ".amazonaws.com,",
+        ".s3.amazonaws.com,",
+        "s3-accelerate.amazonaws.com,",
+        ".googleapis.com,",
+        "storage.googleapis.com,",
+        ".blob.core.windows.net,",
+        ".dfs.core.windows.net,",
+        ".core.windows.net,",
+        "169.254.169.254"
+    );
+
+    ClientOptions::new().with_config(ClientConfigKey::ProxyExcludes, CLOUD_PROXY_EXCLUDES)
 }
