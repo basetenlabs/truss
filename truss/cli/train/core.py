@@ -463,6 +463,8 @@ def view_cache_summary(
         table.add_column("File Path", style="cyan")
         table.add_column("Size", style="green")
         table.add_column("Modified", style="yellow")
+        table.add_column("Type", style="blue")
+        table.add_column("Permissions", style="magenta")
 
         # Add files to table
         files = cache_data.get("file_summaries", [])
@@ -512,6 +514,8 @@ def view_cache_summary(
                 file_info.get("path", "Unknown"),
                 size_str,
                 file_info.get("modified", "Unknown"),
+                file_info.get("file_type", "Unknown"),
+                file_info.get("permissions", "Unknown"),
             )
 
         console.print(table)

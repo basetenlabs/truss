@@ -128,6 +128,14 @@ class FileSummary(pydantic.BaseModel):
     path: str = pydantic.Field(description="Relative path of the file in the cache")
     size_bytes: int = pydantic.Field(description="Size of the file in bytes")
     modified: str = pydantic.Field(description="Last modification time of the file")
+    file_type: Optional[str] = pydantic.Field(
+        default=None,
+        description="Type of the file (e.g., 'file', 'directory', 'symlink')",
+    )
+    permissions: Optional[str] = pydantic.Field(
+        default=None,
+        description="File permissions in octal format (e.g., '644', '755')",
+    )
 
 
 class GetCacheSummaryResponseV1(pydantic.BaseModel):
