@@ -11,6 +11,15 @@ from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
 from truss.cli.train import core
+
+# Import sorting constants
+from truss.cli.train.core import (
+    SORT_BY_FILEPATH,
+    SORT_BY_MODIFIED,
+    SORT_BY_SIZE,
+    SORT_ORDER_ASC,
+    SORT_ORDER_DESC,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
@@ -346,3 +355,38 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
     except Exception as e:
         error_console.print(f"Failed to download checkpoint artifacts data: {str(e)}")
         sys.exit(1)
+
+
+@train.group(name="cache")
+def cache():
+    """Cache-related subcommands for truss train"""
+
+
+@cache.command(name="summarize")
+@click.option(
+    "--project", type=str, required=True, help="Project ID or name to view cache for."
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--sort",
+    type=click.Choice([SORT_BY_FILEPATH, SORT_BY_SIZE, SORT_BY_MODIFIED]),
+    default=SORT_BY_FILEPATH,
+    help="Sort files by filepath, size, or modified date.",
+)
+@click.option(
+    "--order",
+    type=click.Choice([SORT_ORDER_ASC, SORT_ORDER_DESC]),
+    default=SORT_ORDER_ASC,
+    help="Sort order: ascending or descending.",
+)
+@common.common_options()
+def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+    """View cache summary for a training project"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)

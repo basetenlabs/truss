@@ -669,6 +669,13 @@ class BasetenApi:
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
 
+    def get_cache_summary(self, project_id: str):
+        """Get cache summary for a training project."""
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/cache/summary"
+        )
+        return resp_json
+
     def _fetch_log_batch(
         self, project_id: str, job_id: str, query_params: Dict[str, Any]
     ) -> List[Any]:
