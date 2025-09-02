@@ -73,7 +73,6 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.truss_handle.patch.hash import directory_content_hash
-from truss.util.basetenpointer import model_cache_hf_to_b10ptr
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -326,36 +325,27 @@ def get_files_to_model_cache_v1(config: TrussConfig, truss_dir: Path, build_dir:
 def build_model_cache_v2_and_copy_bptr_manifest(config: TrussConfig, build_dir: Path):
     assert config.model_cache.is_v2
     assert all(model.volume_folder is not None for model in config.model_cache.models)
-    try:
-        from truss_transfer import PyModelRepo, create_basetenpointer_from_models
+    from truss_transfer import PyModelRepo, create_basetenpointer_from_models
 
-        py_models = [
-            PyModelRepo(
-                repo_id=model.repo_id,
-                revision=model.revision,
-                runtime_secret_name=model.runtime_secret_name,
-                allow_patterns=model.allow_patterns,
-                ignore_patterns=model.ignore_patterns,
-                volume_folder=model.volume_folder,
-                kind=model.kind.value,
-            )
-            for model in config.model_cache.models
-        ]
-        # create BasetenPointer from models
-        basetenpointer_json = create_basetenpointer_from_models(models=py_models)
-        bptr_py = json.loads(basetenpointer_json)["pointers"]
-        logging.info(f"created ({len(bptr_py)}) Basetenpointer")
-        logging.info(f"pointers json: {basetenpointer_json}")
-        with open(build_dir / "bptr-manifest", "w") as f:
-            f.write(basetenpointer_json)
-    except Exception as e:
-        logging.warning(f"debug: failed to create BasetenPointer: {e}")
-        # TODO: remove below section + remove logging lines above.
-        # builds BasetenManifest for caching
-        basetenpointers = model_cache_hf_to_b10ptr(config.model_cache)
-        # write json of bastenpointers into build dir
-        with open(build_dir / "bptr-manifest", "w") as f:
-            f.write(basetenpointers.model_dump_json())
+    py_models = [
+        PyModelRepo(
+            repo_id=model.repo_id,
+            revision=model.revision,
+            runtime_secret_name=model.runtime_secret_name,
+            allow_patterns=model.allow_patterns,
+            ignore_patterns=model.ignore_patterns,
+            volume_folder=model.volume_folder,
+            kind=model.kind.value,
+        )
+        for model in config.model_cache.models
+    ]
+    # create BasetenPointer from models
+    basetenpointer_json = create_basetenpointer_from_models(models=py_models)
+    bptr_py = json.loads(basetenpointer_json)["pointers"]
+    logging.info(f"created ({len(bptr_py)}) Basetenpointer")
+    logging.info(f"pointers json: {basetenpointer_json}")
+    with open(build_dir / "bptr-manifest", "w") as f:
+        f.write(basetenpointer_json)
 
 
 def generate_docker_server_nginx_config(build_dir, config):

@@ -82,8 +82,11 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@click.option("--job-name", type=str, required=False, help="Name of the training job.")
 @common.common_options()
-def push_training_job(config: Path, remote: Optional[str], tail: bool):
+def push_training_job(
+    config: Path, remote: Optional[str], tail: bool, job_name: Optional[str]
+):
     """Run a training job"""
     from truss_train import deployment
 
@@ -94,7 +97,9 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
         remote_provider: BasetenRemote = cast(
             BasetenRemote, RemoteFactory.create(remote=remote)
         )
-        job_resp = deployment.create_training_job_from_file(remote_provider, config)
+        job_resp = deployment.create_training_job_from_file(
+            remote_provider, config, job_name
+        )
 
     # Note: This post create logic needs to happen outside the context
     # of the above context manager, as only one console session can be active

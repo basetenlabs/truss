@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
-
+use crate::create::object_storage_client::get_client_options;
 use crate::secrets::get_secret_from_file;
+use anyhow::{anyhow, Result};
 /// Parse S3 URI into bucket and key components
 /// Expected format: s3://bucket-name/path/to/object
 pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
@@ -47,7 +47,9 @@ pub fn s3_storage(
 ) -> Result<Box<dyn object_store::ObjectStore>, anyhow::Error> {
     use object_store::aws::{AmazonS3, AmazonS3Builder};
 
-    let mut builder = AmazonS3Builder::new().with_bucket_name(bucket_name);
+    let mut builder = AmazonS3Builder::new()
+        .with_bucket_name(bucket_name)
+        .with_client_options(get_client_options());
 
     // Read AWS credentials from single file
     if let Some(credentials_content) = get_secret_from_file(runtime_secret_name) {

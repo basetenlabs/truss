@@ -18,6 +18,7 @@ class ModelWeightsFormat(str, enum.Enum):
 
     LORA = "lora"
     FULL = "full"
+    WHISPER = "whisper"
 
     def to_truss_config(self) -> "ModelWeightsFormat":
         return ModelWeightsFormat[self.name]
@@ -126,6 +127,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
+    name: Optional[str] = None
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -168,6 +170,10 @@ class LoRADetails(custom_types.ConfigModel):
 
 class FullCheckpoint(Checkpoint):
     model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
+
+
+class WhisperCheckpoint(Checkpoint):
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.WHISPER
 
 
 class LoRACheckpoint(Checkpoint):

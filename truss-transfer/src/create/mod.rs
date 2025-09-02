@@ -5,6 +5,7 @@ pub mod common_metadata;
 pub mod filter;
 pub mod gcs_metadata;
 pub mod hf_metadata;
+pub mod object_storage_client;
 pub mod provider;
 pub mod providers;
 

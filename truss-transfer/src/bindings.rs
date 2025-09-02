@@ -64,10 +64,29 @@ pub fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>
 /// Python-callable function to read the manifest and download data.
 /// By default, it will use the `TRUSS_TRANSFER_DOWNLOAD_DIR` environment variable.
 #[pyfunction]
-#[pyo3(signature = (download_dir=None))]
-pub fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
-    Python::with_gil(|py| py.allow_threads(|| lazy_data_resolve_entrypoint(download_dir)))
-        .map_err(|err| PyException::new_err(err.to_string()))
+#[pyo3(signature = (download_dir=None, models=None, model_path=None))]
+pub fn lazy_data_resolve(
+    download_dir: Option<String>,
+    models: Option<Vec<Bound<'_, PyModelRepo>>>,
+    model_path: Option<String>,
+) -> PyResult<String> {
+    let (models, model_path) = match models {
+        Some(m) => {
+            let models: PyResult<Vec<ModelRepo>> = m.into_iter().map(TryInto::try_into).collect();
+            if model_path.is_none() {
+                return Err(PyException::new_err(
+                    "model_path must be provided when models are provided",
+                ));
+            }
+            (Some(models?), model_path.unwrap())
+        }
+        None => (None, "".to_string()),
+    };
+
+    Python::with_gil(|py| {
+        py.allow_threads(|| lazy_data_resolve_entrypoint(download_dir, models, model_path))
+    })
+    .map_err(|err| PyException::new_err(err.to_string()))
 }
 
 // create PyModelRepo
@@ -163,9 +182,13 @@ pub fn create_basetenpointer_from_models(
 ) -> PyResult<String> {
     // convert PyModelRepo to ModelRepo
     let models: PyResult<Vec<ModelRepo>> = models.into_iter().map(TryInto::try_into).collect();
-    GLOBAL_RUNTIME
-        .block_on(async move { create_basetenpointer(models?, model_path).await })
-        .map_err(|e| PyException::new_err(e.to_string()))
+    let models = models?; // Resolve PyResult here before passing it to the async block
+
+    let manifest = GLOBAL_RUNTIME
+        .block_on(async move { create_basetenpointer(models, model_path).await })
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    serde_json::to_string_pretty(&manifest).map_err(|e| PyException::new_err(e.to_string()))
 }
 
 /// Python module definition

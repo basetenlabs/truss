@@ -1,6 +1,6 @@
 [project]
 name = "truss"
-version = "0.10.9rc003"
+version = "0.10.10rc1"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
@@ -43,8 +43,7 @@ dependencies = [
     "ruff>=0.4.8",
     "tenacity>=8.0.1",
     "watchfiles>=0.19.0,<0.20",
-    "truss-transfer==0.0.27",
-    "types-python-dateutil>=2.9.0.20250822",
+    "truss-transfer==0.0.29",
 ]
 
 [project.urls]
@@ -79,6 +78,7 @@ dev = [
     "types-aiofiles>=24.1.0",
     "types-requests==2.31.0.2",
     "types-setuptools>=69.0.0.0,<70",
+    "types-python-dateutil>=2.9.0.20250822",
 ]
 dev-server = [
     "aiohttp>3.11.13",
