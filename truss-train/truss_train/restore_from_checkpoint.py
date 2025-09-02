@@ -4,27 +4,21 @@ import truss_train
 # Restores all contents
 restore_config = truss_train.RestoreFromCheckpointConfig(enabled=True)
 
+# This is the one I like the most since it takes no arguments and it theory it could always be on - even if no checkpointing is happening.
+# So if a job ever fails for an unknown reason, you could just do truss train recreate and it will restore from the most recent checkpoint (no code changes needed)
+restore_from_most_recent_checkpoint = truss_train.RestoreMostRecentCheckpoint()
+
+restore_from_named_checkpoint = truss_train.RestoreNamedCheckpoint(
+    checkpoint_name="checkpoint-24"
+)
+restore_from_paths = truss_train.RestorePaths(paths=["rank-0/checkpoint-10/"])
+
 # Restore only the latest chcekpoint
 restore_config = truss_train.RestoreFromCheckpointConfig(
-    enabled=True, restore=truss_train.RestoreCheckpoint(most_recent_checkpoint=True)
-)
-
-# Restore so that the contents are stored in a specific subdirectory
-restore_config = truss_train.RestoreFromCheckpointConfig(
     enabled=True,
-    restore=truss_train.RestoreCheckpoint(most_recent_checkpoint=True),
-    mount_subdir="previous_ckpts",
-)
-
-# Restore some specific paths
-restore_config = truss_train.RestoreFromCheckpointConfig(
-    enabled=True,
-    restore=truss_train.RestorePaths(paths=["checkpoint-24/*", "tokenizer.json"]),
-)
-
-# Restore from a specific job in a specific project
-restore_config = truss_train.RestoreFromCheckpointConfig(
-    enabled=True, job_id="1234567890", project_name="test-project"
+    restore=restore_from_most_recent_checkpoint,  # Or restore_from_named_checkpoint or restore_from_paths
+    mount_subdir="/tmp/custom_location",  # default is /tmp/restored_checkpoints
+    # Could also pass in job_id and project_name
 )
 
 checkpointing_config = truss_train.CheckpointingConfig(

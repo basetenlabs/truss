@@ -1,9 +1,9 @@
 import enum
 from abc import ABC
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from truss.base import custom_types, truss_config
 
@@ -56,22 +56,29 @@ class Compute(custom_types.SafeModelNoExtra):
 
 
 class RestorePaths(custom_types.SafeModelNoExtra):
+    restore_type: Literal["paths"] = "paths"
     paths: List[str] = ["*"]
 
 
-class RestoreCheckpoint(custom_types.SafeModelNoExtra):
-    most_recent_checkpoint: bool = True
-    checkpoint_name: Optional[str] = None
+class RestoreNamedCheckpoint(custom_types.SafeModelNoExtra):
+    restore_type: Literal["named_checkpoint"] = "named_checkpoint"
+    checkpoint_name: str
+
+
+class RestoreMostRecentCheckpoint(custom_types.SafeModelNoExtra):
+    restore_type: Literal["most_recent_checkpoint"] = "most_recent_checkpoint"
 
 
 class RestoreFromCheckpointConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
-    restore: Union[RestoreCheckpoint, RestorePaths] = RestorePaths()
-    job_id: Optional[str] = None  # defaults to latest job with checkpointing
-    project_name: Optional[str] = None  # defaults to current project
-    mount_subdir: str = (
-        ""  # where to store the checkpoints within the checkpointing directory
+    restore: Union[
+        RestoreNamedCheckpoint, RestoreMostRecentCheckpoint, RestorePaths
+    ] = Field(default_factory=RestoreMostRecentCheckpoint, discriminator="restore_type")
+    job_id: Optional[str] = (
+        None  # defaults to latest job with checkpointing inside the given project (if project_name is provided else defaults to current project)
     )
+    project_name: Optional[str] = None  # defaults to current project
+    mount_subdir: str = "/tmp/restored_checkpoints"
 
 
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
