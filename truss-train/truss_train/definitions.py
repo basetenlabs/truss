@@ -79,6 +79,9 @@ class RestoreFromCheckpointConfig(custom_types.SafeModelNoExtra):
     )
     project_name: Optional[str] = None  # defaults to current project
     mount_subdir: str = "/tmp/restored_checkpoints"
+    # Escape hatch flag for rare cases where you want to restore from a checkpoint
+    # but not enable checkpointing (aka the checkpointing sidecar should be disabled)
+    restore_only: bool = False
 
 
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
