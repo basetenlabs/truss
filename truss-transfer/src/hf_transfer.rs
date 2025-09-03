@@ -54,18 +54,22 @@ pub async fn download_async(
     let chunk_size = CHUNK_SIZE;
     let mut headers = HeaderMap::new();
 
-    let response = if let Some(token) = auth_token.as_ref() {
-        client.get(&url).header(AUTHORIZATION, token)
-    } else {
-        client.get(&url)
+    if let Some(token) = auth_token.as_ref() {
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", token))?,
+        );
     }
-    .headers(headers.clone())
-    .header(RANGE, "bytes=0-0")
-    .send()
-    .await
-    .map_err(|err| anyhow!("Error while downloading: {err}"))?
-    .error_for_status()
-    .map_err(|err| anyhow!(err.to_string()))?;
+
+    let response = client
+        .get(&url)
+        .headers(headers.clone())
+        .header(RANGE, "bytes=0-0")
+        .send()
+        .await
+        .map_err(|err| anyhow!("Error while downloading: {err}"))?
+        .error_for_status()
+        .map_err(|err| anyhow!(err.to_string()))?;
 
     // Only call the final redirect URL to avoid overloading the Hub with requests and also
     // altering the download count
@@ -73,11 +77,9 @@ pub async fn download_async(
     if Url::parse(&url)
         .map_err(|err| anyhow!("failed to parse url: {err}"))?
         .host()
-        == redirected_url.host()
+        != redirected_url.host()
     {
-        if let Some(token) = auth_token {
-            headers.insert(AUTHORIZATION, HeaderValue::from_str(&token)?);
-        }
+        headers.remove(AUTHORIZATION);
     }
 
     let content_range = response

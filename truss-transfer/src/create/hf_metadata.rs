@@ -117,7 +117,8 @@ pub async fn get_hf_metadata(
                 let location_str = location.to_str().unwrap_or("");
                 if location_str.starts_with('/') {
                     // Relative redirect, update URL and continue loop
-                    let mut parsed_url = url::Url::parse(&url).map_err(|_| HfError::InvalidMetadata)?;
+                    let mut parsed_url =
+                        url::Url::parse(&url).map_err(|_| HfError::InvalidMetadata)?;
                     parsed_url.set_path(location_str);
                     url = parsed_url.to_string();
                     continue;
