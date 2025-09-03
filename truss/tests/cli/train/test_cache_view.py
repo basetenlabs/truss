@@ -6,6 +6,7 @@ import pytest
 from truss.cli.train.core import (
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
+    SORT_BY_PERMISSIONS,
     SORT_BY_SIZE,
     SORT_BY_TYPE,
     SORT_ORDER_ASC,
@@ -31,21 +32,21 @@ def test_view_cache_summary_success(capsys):
                 "size_bytes": 1024 * 1024 * 100,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "config.json",
                 "size_bytes": 1024,
                 "modified": "2024-01-01T09:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "model/",
                 "size_bytes": 0,
                 "modified": "2024-01-01T08:00:00Z",
                 "file_type": "directory",
-                "permissions": "755",
+                "permissions": "drwxr-xr-x",
             },
         ],
     }
@@ -63,13 +64,6 @@ def test_view_cache_summary_success(capsys):
     assert "config.json" in captured.out
     assert "104.86 MB" in captured.out
     assert "1.02 KB" in captured.out
-    # Check for the text content (rich adds color codes and emojis)
-    # Check for the text content (rich adds color codes and emojis)
-    assert "2" in captured.out  # Total files count
-    assert "104.86 MB" in captured.out  # Total size
-    # Check for the text content (rich adds color codes and emojis)
-    assert "2" in captured.out  # Total files count
-    assert "104.86 MB" in captured.out  # Total size
 
 
 def test_view_cache_summary_no_cache(capsys):
@@ -153,21 +147,21 @@ def test_view_cache_summary_sort_by_size_asc(capsys):
                 "size_bytes": 1024 * 1024 * 100,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "small_file.txt",
                 "size_bytes": 1024,
                 "modified": "2024-01-01T09:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "medium_file.dat",
                 "size_bytes": 1024 * 1024,
                 "modified": "2024-01-01T11:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
         ],
     }
@@ -226,21 +220,21 @@ def test_view_cache_summary_sort_by_size_desc(capsys):
                 "size_bytes": 1024 * 1024 * 100,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "small_file.txt",
                 "size_bytes": 1024,
                 "modified": "2024-01-01T09:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "medium_file.dat",
                 "size_bytes": 1024 * 1024,
                 "modified": "2024-01-01T11:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
         ],
     }
@@ -276,21 +270,21 @@ def test_view_cache_summary_sort_by_modified_asc(capsys):
                 "size_bytes": 1024,
                 "modified": "2024-01-01T08:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "new_file.txt",
                 "size_bytes": 1024,
                 "modified": "2024-01-01T12:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "middle_file.txt",
                 "size_bytes": 1024,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
         ],
     }
@@ -323,21 +317,21 @@ def test_view_cache_summary_sort_by_filepath_desc(capsys):
                 "size_bytes": 1024,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "z_file.txt",
                 "size_bytes": 1024,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "m_file.txt",
                 "size_bytes": 1024,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
         ],
     }
@@ -371,7 +365,7 @@ def test_view_cache_summary_by_project_name_success(capsys):
                 "size_bytes": 1024 * 1024 * 100,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             }
         ],
     }
@@ -421,7 +415,6 @@ def test_view_cache_summary_by_project_id_direct(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
-    # Mock the get_cache_summary response
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -431,26 +424,22 @@ def test_view_cache_summary_by_project_id_direct(capsys):
                 "size_bytes": 1024 * 1024 * 100,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             }
         ],
     }
 
-    # Mock the list_training_projects response
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"},
         {"id": "proj456", "name": "another-project"},
     ]
 
-    # Use a short project ID
     project_id = "proj123"
     view_cache_summary_by_project(
         mock_remote, project_id, SORT_BY_FILEPATH, SORT_ORDER_ASC
     )
 
-    # Should call get_cache_summary twice: once in helper, once in view function
     assert mock_api.get_cache_summary.call_count == 1
-    # Should call list_training_projects once: to get the project details
     assert mock_api.list_training_projects.call_count == 1
 
     captured = capsys.readouterr()
@@ -482,7 +471,6 @@ def test_view_cache_summary_by_project_list_error(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
-    # Mock the list_training_projects to fail
     mock_api.list_training_projects.side_effect = Exception("API error")
 
     with pytest.raises(click.ClickException, match="Error fetching project: API error"):
@@ -511,21 +499,21 @@ def test_view_cache_summary_sort_by_type_asc(capsys):
                 "size_bytes": 1024,
                 "modified": "2024-01-01T09:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "model/",
                 "size_bytes": 0,
                 "modified": "2024-01-01T08:00:00Z",
                 "file_type": "directory",
-                "permissions": "755",
+                "permissions": "drwxr-xr-x",
             },
             {
                 "path": "data.txt",
                 "size_bytes": 2048,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
         ],
     }
@@ -537,14 +525,12 @@ def test_view_cache_summary_sort_by_type_asc(capsys):
     captured = capsys.readouterr()
     output_lines = captured.out.split("\n")
 
-    # Find the table section
     table_start = -1
     for i, line in enumerate(output_lines):
         if "config.json" in line or "data.txt" in line or "model/" in line:
             table_start = i
             break
 
-    # Check that directories come first (alphabetically), then files
     directory_line = None
     file_lines = []
 
@@ -557,7 +543,6 @@ def test_view_cache_summary_sort_by_type_asc(capsys):
     assert directory_line is not None
     assert len(file_lines) == 2
 
-    # Verify order: directory first, then files
     directory_pos = captured.out.find("model/")
     config_pos = captured.out.find("config.json")
     data_pos = captured.out.find("data.txt")
@@ -584,21 +569,21 @@ def test_view_cache_summary_sort_by_type_desc(capsys):
                 "size_bytes": 1024,
                 "modified": "2024-01-01T09:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
             {
                 "path": "model/",
                 "size_bytes": 0,
                 "modified": "2024-01-01T08:00:00Z",
                 "file_type": "directory",
-                "permissions": "755",
+                "permissions": "drwxr-xr-x",
             },
             {
                 "path": "data.txt",
                 "size_bytes": 2048,
                 "modified": "2024-01-01T10:00:00Z",
                 "file_type": "file",
-                "permissions": "644",
+                "permissions": "-rw-r--r--",
             },
         ],
     }
@@ -609,10 +594,119 @@ def test_view_cache_summary_sort_by_type_desc(capsys):
 
     captured = capsys.readouterr()
 
-    # Verify order: files first, then directory
     config_pos = captured.out.find("config.json")
     data_pos = captured.out.find("data.txt")
     directory_pos = captured.out.find("model/")
 
     assert config_pos < directory_pos
     assert data_pos < directory_pos
+
+
+def test_view_cache_summary_sort_by_permissions_asc(capsys):
+    """Test sorting by permissions in ascending order."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
+    mock_api.get_cache_summary.return_value = {
+        "timestamp": "2024-01-01T12:00:00Z",
+        "project_id": "proj123",
+        "file_summaries": [
+            {
+                "path": "config.json",
+                "size_bytes": 1024,
+                "modified": "2024-01-01T09:00:00Z",
+                "file_type": "file",
+                "permissions": "-rw-r--r--",
+            },
+            {
+                "path": "model/",
+                "size_bytes": 0,
+                "modified": "2024-01-01T08:00:00Z",
+                "file_type": "directory",
+                "permissions": "drwxr-xr-x",
+            },
+            {
+                "path": "script.sh",
+                "size_bytes": 2048,
+                "modified": "2024-01-01T10:00:00Z",
+                "file_type": "file",
+                "permissions": "-rwxr-xr-x",
+            },
+        ],
+    }
+
+    view_cache_summary(mock_remote, "proj123", SORT_BY_PERMISSIONS, SORT_ORDER_ASC)
+
+    mock_api.get_cache_summary.assert_called_once_with("proj123")
+
+    captured = capsys.readouterr()
+
+    config_pos = captured.out.find("config.json")
+    script_pos = captured.out.find("script.sh")
+    directory_pos = captured.out.find("model/")
+
+    assert config_pos != -1, "Config file not found in output"
+    assert script_pos != -1, "Script file not found in output"
+    assert directory_pos != -1, "Directory not found in output"
+
+    assert config_pos < script_pos
+    assert script_pos < directory_pos
+
+
+def test_view_cache_summary_sort_by_permissions_desc(capsys):
+    """Test sorting by permissions in descending order."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
+    mock_api.get_cache_summary.return_value = {
+        "timestamp": "2024-01-01T12:00:00Z",
+        "project_id": "proj123",
+        "file_summaries": [
+            {
+                "path": "config.json",
+                "size_bytes": 1024,
+                "modified": "2024-01-01T09:00:00Z",
+                "file_type": "file",
+                "permissions": "-rw-r--r--",
+            },
+            {
+                "path": "model/",
+                "size_bytes": 0,
+                "modified": "2024-01-01T08:00:00Z",
+                "file_type": "directory",
+                "permissions": "drwxr-xr-x",
+            },
+            {
+                "path": "script.sh",
+                "size_bytes": 2048,
+                "modified": "2024-01-01T10:00:00Z",
+                "file_type": "file",
+                "permissions": "-rwxr-xr-x",
+            },
+        ],
+    }
+
+    view_cache_summary(mock_remote, "proj123", SORT_BY_PERMISSIONS, SORT_ORDER_DESC)
+
+    mock_api.get_cache_summary.assert_called_once_with("proj123")
+
+    captured = capsys.readouterr()
+
+    directory_pos = captured.out.find("model/")
+    script_pos = captured.out.find("script.sh")
+    config_pos = captured.out.find("config.json")
+
+    assert directory_pos != -1, "Directory not found in output"
+    assert script_pos != -1, "Script file not found in output"
+    assert config_pos != -1, "Config file not found in output"
+
+    assert directory_pos < script_pos
+    assert script_pos < config_pos

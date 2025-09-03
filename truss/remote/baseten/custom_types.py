@@ -134,7 +134,7 @@ class FileSummary(pydantic.BaseModel):
     )
     permissions: Optional[str] = pydantic.Field(
         default=None,
-        description="File permissions in octal format (e.g., '644', '755')",
+        description="File permissions in Unix symbolic format (e.g., 'drwxr-xr-x', '-rw-r--r--')",
     )
 
 

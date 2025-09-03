@@ -11,11 +11,10 @@ from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
 from truss.cli.train import core
-
-# Import sorting constants
 from truss.cli.train.core import (
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
+    SORT_BY_PERMISSIONS,
     SORT_BY_SIZE,
     SORT_BY_TYPE,
     SORT_ORDER_ASC,
@@ -375,9 +374,17 @@ def cache():
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
     "--sort",
-    type=click.Choice([SORT_BY_FILEPATH, SORT_BY_SIZE, SORT_BY_MODIFIED, SORT_BY_TYPE]),
+    type=click.Choice(
+        [
+            SORT_BY_FILEPATH,
+            SORT_BY_SIZE,
+            SORT_BY_MODIFIED,
+            SORT_BY_TYPE,
+            SORT_BY_PERMISSIONS,
+        ]
+    ),
     default=SORT_BY_FILEPATH,
-    help="Sort files by filepath, size, modified date, or file type.",
+    help="Sort files by filepath, size, modified date, file type, or permissions.",
 )
 @click.option(
     "--order",

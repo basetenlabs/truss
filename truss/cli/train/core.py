@@ -24,7 +24,7 @@ SORT_BY_FILEPATH = "filepath"
 SORT_BY_SIZE = "size"
 SORT_BY_MODIFIED = "modified"
 SORT_BY_TYPE = "type"
-
+SORT_BY_PERMISSIONS = "permissions"
 SORT_ORDER_ASC = "asc"
 SORT_ORDER_DESC = "desc"
 
@@ -467,13 +467,11 @@ def view_cache_summary(
         table.add_column("Type")
         table.add_column("Permissions", style="magenta")
 
-        # Add files to table
         files = cache_data.get("file_summaries", [])
         if not files:
             console.print("No files found in cache.", style="yellow")
             return
 
-        # Sort files based on the provided criteria
         reverse = order == SORT_ORDER_DESC
 
         if sort_by == SORT_BY_FILEPATH:
@@ -484,13 +482,13 @@ def view_cache_summary(
             files.sort(key=lambda x: x.get("modified", ""), reverse=reverse)
         elif sort_by == SORT_BY_TYPE:
             files.sort(key=lambda x: x.get("file_type", ""), reverse=reverse)
+        elif sort_by == SORT_BY_PERMISSIONS:
+            files.sort(key=lambda x: x.get("permissions", ""), reverse=reverse)
 
-        # Calculate total size first
         total_size = 0
         for file_info in files:
             total_size += file_info.get("size_bytes", 0)
 
-        # Format total size
         total_size_str = common.format_bytes_to_human_readable(total_size)
 
         console.print(
@@ -506,14 +504,11 @@ def view_cache_summary(
         console.print(f"💾 Total size: {total_size_str}", style="bold green")
         console.print()
 
-        # Add files to table
         for file_info in files:
             size_bytes = file_info.get("size_bytes", 0)
 
-            # Format size
             size_str = cli_common.format_bytes_to_human_readable(int(size_bytes))
 
-            # Format timestamp
             modified_str = cli_common.format_localized_time(
                 file_info.get("modified", "Unknown")
             )
@@ -540,8 +535,5 @@ def view_cache_summary_by_project(
     order: str = SORT_ORDER_ASC,
 ):
     """View cache summary for a training project by ID or name."""
-    # Fetch the project by name or ID
     project = fetch_project_by_name_or_id(remote_provider, project_identifier)
-
-    # Now call the original function with the resolved project ID
     view_cache_summary(remote_provider, project["id"], sort_by, order)
