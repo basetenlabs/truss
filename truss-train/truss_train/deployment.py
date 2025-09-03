@@ -83,4 +83,5 @@ def create_training_job_from_file(
             training_project=training_project,
             config=config,
         )
+        job_resp["job_object"] = training_project.job
     return job_resp

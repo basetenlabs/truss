@@ -25,6 +25,7 @@ from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
+from truss_train import TrainingJob
 
 
 @click.group()
@@ -36,15 +37,30 @@ truss_cli.add_command(train)
 
 
 def _print_training_job_success_message(
-    job_id: str, remote_provider: BasetenRemote
+    job_id: str,
+    project_name: str,
+    job_object: TrainingJob,
+    remote_provider: BasetenRemote,
 ) -> None:
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
+    should_print_cache_summary = (
+        job_object.runtime.enable_cache
+        or job_object.runtime.cache_config
+        and job_object.runtime.cache_config.enabled
+    )
+    cache_summary_snippet = ""
+    if should_print_cache_summary:
+        cache_summary_snippet = (
+            f"📁 View cache summary via "
+            f"[cyan]'truss train cache summarize --project {project_name}'[/cyan]\n"
+        )
     console.print(
         f"🪵 View logs for your job via "
         f"[cyan]'truss train logs --job-id {job_id} --tail'[/cyan]\n"
         f"🔍 View metrics for your job via "
         f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+        f"{cache_summary_snippet}"
         f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
     )
 
@@ -53,6 +69,7 @@ def _handle_post_create_logic(
     job_resp: dict, remote_provider: BasetenRemote, tail: bool
 ) -> None:
     project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
+    project_name = job_resp["training_project"]["name"]
 
     if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
         console.print(
@@ -60,7 +77,9 @@ def _handle_post_create_logic(
             style="green",
         )
     else:
-        _print_training_job_success_message(job_id, remote_provider)
+        _print_training_job_success_message(
+            job_id, project_name, job_resp["job_object"], remote_provider
+        )
 
     if tail:
         watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)

@@ -186,7 +186,7 @@ def format_localized_time(iso_timestamp: str) -> str:
         iso_timestamp = iso_timestamp.replace("Z", "+00:00")
     utc_time = datetime.datetime.fromisoformat(iso_timestamp)
     local_time = utc_time.astimezone()
-    return local_time.strftime("%Y-%m-%d %H:%M")
+    return local_time.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_bytes_to_human_readable(bytes: int) -> str:
