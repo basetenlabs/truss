@@ -77,12 +77,11 @@ pub async fn get_hf_metadata(
     repo_id: &str,
     revision: &str,
     filename: &str,
+    token: Option<String>,
 ) -> Result<HfFileMetadata, HfError> {
     // Define HuggingFace-specific header constants
-    // const HUGGINGFACE_HEADER_X_REPO_COMMIT: &str = "X-Repo-Commit";
     const HUGGINGFACE_HEADER_X_LINKED_ETAG: &str = "X-Linked-Etag";
     const HUGGINGFACE_HEADER_X_LINKED_SIZE: &str = "X-Linked-Size";
-    // const HUGGINGFACE_HEADER_X_BILL_TO: &str = "X-HF-Bill-To";
 
     let repo = Repo::with_revision(repo_id.to_string(), RepoType::Model, revision.to_string());
     let api_repo = api.repo(repo);
@@ -90,29 +89,36 @@ pub async fn get_hf_metadata(
     // Create the URL for the file
     let url = api_repo.url(filename);
 
-    // Use reqwest to get metadata
-    let client = reqwest::Client::new();
-    let response = client
-        .head(&url)
-        .send()
-        .await
-        .map_err(|_e| HfError::InvalidMetadata)?;
+    // TODO: client with different redicted policy, see python huggingface_hub method.
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|_| HfError::InvalidMetadata)?;
 
-    // We favor a custom header indicating the etag of the linked resource,
-    // and we fallback to the regular etag header
-    let etag = response
-        .headers()
+    // Build request with Accept-Encoding header
+    let mut req = client.head(&url).header("Accept-Encoding", "identity");
+
+    // Add token if provided
+    if let Some(t) = token.as_ref() {
+        req = req.header("Authorization", format!("Bearer {}", t));
+    }
+
+    // Send initial request
+    let response = req.send().await.map_err(|_| HfError::InvalidMetadata)?;
+
+    let headers = response.headers().clone();
+
+    // Extract etag from headers
+    let etag = headers
         .get(HUGGINGFACE_HEADER_X_LINKED_ETAG)
-        .or_else(|| response.headers().get("etag"))
+        .or_else(|| headers.get("etag"))
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default()
         .replace('"', ""); // Remove quotes from etag
 
-    // Get file size, prioritizing X-Linked-Size over Content-Length
-    let size = response
-        .headers()
+    // Extract size from headers
+    let size = headers
         .get(HUGGINGFACE_HEADER_X_LINKED_SIZE)
-        .or_else(|| response.headers().get("content-length"))
+        .or_else(|| headers.get("content-length"))
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
@@ -129,7 +135,7 @@ pub async fn metadata_hf_repo(
     token: Option<String>,
 ) -> Result<HashMap<String, HfFileMetadata>, HfError> {
     let api = ApiBuilder::new()
-        .with_token(token)
+        .with_token(token.clone())
         .build()
         .map_err(|_e| HfError::InvalidMetadata)?;
     let repo = Repo::with_revision(repo_id.to_string(), RepoType::Model, revision.to_string());
@@ -161,7 +167,7 @@ pub async fn metadata_hf_repo(
     let mut metadata_map: HashMap<String, HfFileMetadata> = HashMap::new();
 
     for file in filtered_files {
-        let metadata = get_hf_metadata(&api, repo_id, real_revision, &file).await?;
+        let metadata = get_hf_metadata(&api, repo_id, real_revision, &file, token.clone()).await?;
         metadata_map.insert(file, metadata);
     }
 
