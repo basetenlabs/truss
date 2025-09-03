@@ -4,6 +4,8 @@ use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, Resolu
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
 use log::{debug, warn};
+use reqwest::header::{HeaderMap, LOCATION};
+use reqwest::redirect::Policy;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -82,48 +84,86 @@ pub async fn get_hf_metadata(
     // Define HuggingFace-specific header constants
     const HUGGINGFACE_HEADER_X_LINKED_ETAG: &str = "X-Linked-Etag";
     const HUGGINGFACE_HEADER_X_LINKED_SIZE: &str = "X-Linked-Size";
+    const MAX_REDIRECTS: u8 = 5;
 
     let repo = Repo::with_revision(repo_id.to_string(), RepoType::Model, revision.to_string());
     let api_repo = api.repo(repo);
 
     // Create the URL for the file
-    let url = api_repo.url(filename);
+    let mut url = api_repo.url(filename);
 
-    // TODO: client with different redicted policy, see python huggingface_hub method.
     let client = reqwest::Client::builder()
+        .redirect(Policy::none()) // Disable automatic redirects
         .build()
         .map_err(|_| HfError::InvalidMetadata)?;
 
-    // Build request with Accept-Encoding header
-    let mut req = client.head(&url).header("Accept-Encoding", "identity");
+    for _ in 0..MAX_REDIRECTS {
+        // Build request with Accept-Encoding header
+        let mut req_builder = client.head(&url).header("Accept-Encoding", "identity");
 
-    // Add token if provided
-    if let Some(t) = token.as_ref() {
-        req = req.header("Authorization", format!("Bearer {}", t));
+        // Add token if provided
+        if let Some(t) = token.as_ref() {
+            req_builder = req_builder.header("Authorization", format!("Bearer {}", t));
+        }
+
+        // Send request
+        let response = req_builder
+            .send()
+            .await
+            .map_err(|_| HfError::InvalidMetadata)?;
+
+        if response.status().is_redirection() {
+            if let Some(location) = response.headers().get(LOCATION) {
+                let location_str = location.to_str().unwrap_or("");
+                if location_str.starts_with('/') {
+                    // Relative redirect, update URL and continue loop
+                    let mut parsed_url = url::Url::parse(&url).map_err(|_| HfError::InvalidMetadata)?;
+                    parsed_url.set_path(location_str);
+                    url = parsed_url.to_string();
+                    continue;
+                }
+            }
+        }
+
+        // From here, we are not following any more redirects.
+        // Ensure the response is successful.
+        let response = response
+            .error_for_status()
+            .map_err(|e| HfError::Pattern(format!("HTTP Error: {}", e)))?;
+
+        let final_url = response
+            .headers()
+            .get(LOCATION)
+            .and_then(|loc| loc.to_str().ok())
+            .unwrap_or(&url)
+            .to_string();
+        let headers = response.headers().clone();
+
+        // Extract etag from headers
+        let etag = headers
+            .get(HUGGINGFACE_HEADER_X_LINKED_ETAG)
+            .or_else(|| headers.get("etag"))
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .trim_start_matches("W/")
+            .replace('"', ""); // Remove quotes from etag
+
+        // Extract size from headers
+        let size = headers
+            .get(HUGGINGFACE_HEADER_X_LINKED_SIZE)
+            .or_else(|| headers.get("content-length"))
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
+        return Ok(HfFileMetadata {
+            etag,
+            url: final_url,
+            size,
+        });
     }
 
-    // Send initial request
-    let response = req.send().await.map_err(|_| HfError::InvalidMetadata)?;
-
-    let headers = response.headers().clone();
-
-    // Extract etag from headers
-    let etag = headers
-        .get(HUGGINGFACE_HEADER_X_LINKED_ETAG)
-        .or_else(|| headers.get("etag"))
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .replace('"', ""); // Remove quotes from etag
-
-    // Extract size from headers
-    let size = headers
-        .get(HUGGINGFACE_HEADER_X_LINKED_SIZE)
-        .or_else(|| headers.get("content-length"))
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-
-    Ok(HfFileMetadata { etag, url, size })
+    Err(HfError::Timeout) // Exceeded max redirects
 }
 
 /// Get metadata for all files in a HuggingFace repository
