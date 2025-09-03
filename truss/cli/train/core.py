@@ -23,6 +23,7 @@ from truss_train.definitions import DeployCheckpointsConfig
 SORT_BY_FILEPATH = "filepath"
 SORT_BY_SIZE = "size"
 SORT_BY_MODIFIED = "modified"
+SORT_BY_TYPE = "type"
 
 SORT_ORDER_ASC = "asc"
 SORT_ORDER_DESC = "desc"
@@ -463,7 +464,7 @@ def view_cache_summary(
         table.add_column("File Path", style="cyan")
         table.add_column("Size", style="green")
         table.add_column("Modified", style="yellow")
-        table.add_column("Type", style="blue")
+        table.add_column("Type")
         table.add_column("Permissions", style="magenta")
 
         # Add files to table
@@ -481,6 +482,8 @@ def view_cache_summary(
             files.sort(key=lambda x: x.get("size_bytes", 0), reverse=reverse)
         elif sort_by == SORT_BY_MODIFIED:
             files.sort(key=lambda x: x.get("modified", ""), reverse=reverse)
+        elif sort_by == SORT_BY_TYPE:
+            files.sort(key=lambda x: x.get("file_type", ""), reverse=reverse)
 
         # Calculate total size first
         total_size = 0
@@ -510,10 +513,15 @@ def view_cache_summary(
             # Format size
             size_str = cli_common.format_bytes_to_human_readable(int(size_bytes))
 
+            # Format timestamp
+            modified_str = cli_common.format_localized_time(
+                file_info.get("modified", "Unknown")
+            )
+
             table.add_row(
                 file_info.get("path", "Unknown"),
                 size_str,
-                file_info.get("modified", "Unknown"),
+                modified_str,
                 file_info.get("file_type", "Unknown"),
                 file_info.get("permissions", "Unknown"),
             )

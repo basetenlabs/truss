@@ -7,6 +7,7 @@ from truss.cli.train.core import (
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
     SORT_BY_SIZE,
+    SORT_BY_TYPE,
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
     view_cache_summary,
@@ -39,6 +40,13 @@ def test_view_cache_summary_success(capsys):
                 "file_type": "file",
                 "permissions": "644",
             },
+            {
+                "path": "model/",
+                "size_bytes": 0,
+                "modified": "2024-01-01T08:00:00Z",
+                "file_type": "directory",
+                "permissions": "755",
+            },
         ],
     }
     mock_api.list_training_projects.return_value = [
@@ -55,6 +63,10 @@ def test_view_cache_summary_success(capsys):
     assert "config.json" in captured.out
     assert "104.86 MB" in captured.out
     assert "1.02 KB" in captured.out
+    # Check for the text content (rich adds color codes and emojis)
+    # Check for the text content (rich adds color codes and emojis)
+    assert "2" in captured.out  # Total files count
+    assert "104.86 MB" in captured.out  # Total size
     # Check for the text content (rich adds color codes and emojis)
     assert "2" in captured.out  # Total files count
     assert "104.86 MB" in captured.out  # Total size
@@ -479,3 +491,128 @@ def test_view_cache_summary_by_project_list_error(capsys):
         )
 
     mock_api.list_training_projects.assert_called_once()
+
+
+def test_view_cache_summary_sort_by_type_asc(capsys):
+    """Test sorting by file type in ascending order."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
+    mock_api.get_cache_summary.return_value = {
+        "timestamp": "2024-01-01T12:00:00Z",
+        "project_id": "proj123",
+        "file_summaries": [
+            {
+                "path": "config.json",
+                "size_bytes": 1024,
+                "modified": "2024-01-01T09:00:00Z",
+                "file_type": "file",
+                "permissions": "644",
+            },
+            {
+                "path": "model/",
+                "size_bytes": 0,
+                "modified": "2024-01-01T08:00:00Z",
+                "file_type": "directory",
+                "permissions": "755",
+            },
+            {
+                "path": "data.txt",
+                "size_bytes": 2048,
+                "modified": "2024-01-01T10:00:00Z",
+                "file_type": "file",
+                "permissions": "644",
+            },
+        ],
+    }
+
+    view_cache_summary(mock_remote, "proj123", SORT_BY_TYPE, SORT_ORDER_ASC)
+
+    mock_api.get_cache_summary.assert_called_once_with("proj123")
+
+    captured = capsys.readouterr()
+    output_lines = captured.out.split("\n")
+
+    # Find the table section
+    table_start = -1
+    for i, line in enumerate(output_lines):
+        if "config.json" in line or "data.txt" in line or "model/" in line:
+            table_start = i
+            break
+
+    # Check that directories come first (alphabetically), then files
+    directory_line = None
+    file_lines = []
+
+    for line in output_lines[table_start:]:
+        if "model/" in line:
+            directory_line = line
+        elif "config.json" in line or "data.txt" in line:
+            file_lines.append(line)
+
+    assert directory_line is not None
+    assert len(file_lines) == 2
+
+    # Verify order: directory first, then files
+    directory_pos = captured.out.find("model/")
+    config_pos = captured.out.find("config.json")
+    data_pos = captured.out.find("data.txt")
+
+    assert directory_pos < config_pos
+    assert directory_pos < data_pos
+
+
+def test_view_cache_summary_sort_by_type_desc(capsys):
+    """Test sorting by file type in descending order."""
+    mock_api = Mock()
+    mock_remote = Mock(spec=BasetenRemote)
+    mock_remote.api = mock_api
+
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
+    mock_api.get_cache_summary.return_value = {
+        "timestamp": "2024-01-01T12:00:00Z",
+        "project_id": "proj123",
+        "file_summaries": [
+            {
+                "path": "config.json",
+                "size_bytes": 1024,
+                "modified": "2024-01-01T09:00:00Z",
+                "file_type": "file",
+                "permissions": "644",
+            },
+            {
+                "path": "model/",
+                "size_bytes": 0,
+                "modified": "2024-01-01T08:00:00Z",
+                "file_type": "directory",
+                "permissions": "755",
+            },
+            {
+                "path": "data.txt",
+                "size_bytes": 2048,
+                "modified": "2024-01-01T10:00:00Z",
+                "file_type": "file",
+                "permissions": "644",
+            },
+        ],
+    }
+
+    view_cache_summary(mock_remote, "proj123", SORT_BY_TYPE, SORT_ORDER_DESC)
+
+    mock_api.get_cache_summary.assert_called_once_with("proj123")
+
+    captured = capsys.readouterr()
+
+    # Verify order: files first, then directory
+    config_pos = captured.out.find("config.json")
+    data_pos = captured.out.find("data.txt")
+    directory_pos = captured.out.find("model/")
+
+    assert config_pos < directory_pos
+    assert data_pos < directory_pos

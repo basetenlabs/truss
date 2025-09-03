@@ -17,6 +17,7 @@ from truss.cli.train.core import (
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
     SORT_BY_SIZE,
+    SORT_BY_TYPE,
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
@@ -374,9 +375,9 @@ def cache():
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
     "--sort",
-    type=click.Choice([SORT_BY_FILEPATH, SORT_BY_SIZE, SORT_BY_MODIFIED]),
+    type=click.Choice([SORT_BY_FILEPATH, SORT_BY_SIZE, SORT_BY_MODIFIED, SORT_BY_TYPE]),
     default=SORT_BY_FILEPATH,
-    help="Sort files by filepath, size, or modified date.",
+    help="Sort files by filepath, size, modified date, or file type.",
 )
 @click.option(
     "--order",
