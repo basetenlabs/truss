@@ -10,7 +10,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use log::{debug, info, warn};
 use object_store::ObjectStore;
-use reqwest::Client;
+use reqwest::{Client, Url};
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::mpsc;
@@ -119,15 +119,30 @@ pub async fn download_http_to_path_fast(
 
     // The monitor will be automatically aborted when `_monitor_guard` goes out of scope.
     let _monitor_guard = DownloadMonitorGuard(spawn_download_monitor(path.to_path_buf(), size));
-    let auth_token = if url.starts_with("https://huggingface.co") {
+    let is_hf_url = if let Ok(parsed_url) = Url::parse(url) {
+        if let Some(host) = parsed_url.host_str() {
+            host == "huggingface.co"
+                || host.ends_with(".huggingface.co")
+                || host == "hf.co"
+                || host.ends_with(".hf.co")
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    let auth_token = if is_hf_url {
         get_hf_secret_from_file(runtime_secret_name)
     } else {
+        info!("no hf token, since using {url}");
         None
     };
+
     if *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD {
         // global concurrency
         let concurrency = *TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE;
-        let _ = crate::hf_transfer::download_async(
+        let result = crate::hf_transfer::download_async(
             url.to_string(),
             path.to_string_lossy().to_string(),
             concurrency, // max_files
@@ -139,6 +154,11 @@ pub async fn download_http_to_path_fast(
             semaphore_range_dw,
         )
         .await;
+
+        if let Err(e) = result {
+            return Err(anyhow!("Range HTTP download failed: {}", e));
+        }
+
         // assure that the file got flushed, without asking each file to flush it
         for i in (0..1000).rev() {
             if check_metadata_size(path, size).await {
