@@ -216,6 +216,7 @@ def test_direct_download():
 
     truss_transfer.lazy_data_resolve("", models, "/tmp/data")
     assert pathlib.Path("/tmp/data/julien_dummy/config.json").exists()
+    assert pathlib.Path("/tmp/data/julien_dummy/config.json").stat().st_size == 496
 
     # print(json.dumps(manifest, indent=2))
 
