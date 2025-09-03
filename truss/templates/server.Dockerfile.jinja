@@ -102,10 +102,6 @@ COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/mod
 
 {% block run %}
 
-{%- if non_root_user %}
-RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME}
-{%- endif %} {#- endif non_root_user #}
-
     {%- if config.docker_server %}
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
         curl nginx && rm -rf /var/lib/apt/lists/*
@@ -128,6 +124,7 @@ RUN rm -f /etc/nginx/sites-enabled/default
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
 {% set nginx_dirs = ["/var/lib/nginx", "/var/log/nginx", "/run"] %}
 RUN chown -R {{ app_username }}:{{ app_username }} {{ nginx_dirs | join(" ") }}
+RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME}
 USER {{ app_username }}
 {%- endif %} {#- endif non_root_user #}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
@@ -138,6 +135,7 @@ ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python /control/control/server.py"
 {%- if non_root_user %}
+RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME}
 USER {{ app_username }}
 {%- endif %} {#- endif non_root_user #}
 ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
@@ -146,6 +144,7 @@ ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{ python_executable }} /app/main.py"
 {%- if non_root_user %}
+RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME}
 USER {{ app_username }}
 {%- endif %} {#- endif non_root_user #}
 ENTRYPOINT ["{{ python_executable }}", "/app/main.py"]

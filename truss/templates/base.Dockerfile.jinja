@@ -61,13 +61,13 @@ RUN {{ python_exec_path }} -c "import sys; \
 {% endblock %}
 
 {% block install_uv %}
-# Add the user's local bin to the path, used by uv.
-ENV PATH=${PATH}:${HOME}/.local/bin
 {# Install `uv` and `curl` if not already present in the image. #}
 RUN if ! command -v uv >/dev/null 2>&1; then \
     command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
     curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh; \
 fi
+# Add the user's local bin to the path, used by uv.
+ENV PATH=${PATH}:${HOME}/.local/bin
 {% endblock %}
 
 {% block base_image_patch %}
