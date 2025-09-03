@@ -4,7 +4,7 @@ use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, Resolu
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
 use log::{debug, warn};
-use reqwest::header::{HeaderMap, LOCATION};
+use reqwest::header::LOCATION;
 use reqwest::redirect::Policy;
 use std::collections::HashMap;
 use std::env;
@@ -91,6 +91,7 @@ pub async fn get_hf_metadata(
 
     // Create the URL for the file
     let mut url = api_repo.url(filename);
+    let original_url = url.clone();
 
     let client = reqwest::Client::builder()
         .redirect(Policy::none()) // Disable automatic redirects
@@ -132,12 +133,6 @@ pub async fn get_hf_metadata(
             .error_for_status()
             .map_err(|e| HfError::Pattern(format!("HTTP Error: {}", e)))?;
 
-        let final_url = response
-            .headers()
-            .get(LOCATION)
-            .and_then(|loc| loc.to_str().ok())
-            .unwrap_or(&url)
-            .to_string();
         let headers = response.headers().clone();
 
         // Extract etag from headers
@@ -159,7 +154,7 @@ pub async fn get_hf_metadata(
 
         return Ok(HfFileMetadata {
             etag,
-            url: final_url,
+            url: original_url,
             size,
         });
     }
