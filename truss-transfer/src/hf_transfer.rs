@@ -57,7 +57,7 @@ pub async fn download_async(
     if let Some(token) = auth_token.as_ref() {
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", token))?,
+            HeaderValue::from_str(&format!("Bearer {token}"))?,
         );
     }
 

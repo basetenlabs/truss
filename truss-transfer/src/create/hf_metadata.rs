@@ -104,7 +104,7 @@ pub async fn get_hf_metadata(
 
         // Add token if provided
         if let Some(t) = token.as_ref() {
-            req_builder = req_builder.header("Authorization", format!("Bearer {}", t));
+            req_builder = req_builder.header("Authorization", format!("Bearer {t}"));
         }
 
         // Send request
@@ -131,7 +131,7 @@ pub async fn get_hf_metadata(
         // Ensure the response is successful.
         let response = response
             .error_for_status()
-            .map_err(|e| HfError::Pattern(format!("HTTP Error: {}", e)))?;
+            .map_err(|e| HfError::Pattern(format!("HTTP Error: {e}")))?;
 
         let headers = response.headers().clone();
 
