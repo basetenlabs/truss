@@ -20,6 +20,14 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
 
+SORT_BY_FILEPATH = "filepath"
+SORT_BY_SIZE = "size"
+SORT_BY_MODIFIED = "modified"
+SORT_BY_TYPE = "type"
+SORT_BY_PERMISSIONS = "permissions"
+SORT_ORDER_ASC = "asc"
+SORT_ORDER_DESC = "desc"
+
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
     "TRAINING_JOB_CREATED",
@@ -401,3 +409,131 @@ def download_checkpoint_artifacts(
 
 def status_page_url(remote_url: str, training_job_id: str) -> str:
     return f"{remote_url}/training/jobs/{training_job_id}"
+
+
+def fetch_project_by_name_or_id(
+    remote_provider: BasetenRemote, project_identifier: str
+) -> dict:
+    """Fetch a training project by name or ID.
+
+    Args:
+        remote_provider: The remote provider instance
+        project_identifier: Either a project ID or project name
+
+    Returns:
+        The project object as a dictionary
+
+    Raises:
+        click.ClickException: If the project is not found
+    """
+    try:
+        projects = remote_provider.api.list_training_projects()
+        projects_by_name = {project.get("name"): project for project in projects}
+        projects_by_id = {project.get("id"): project for project in projects}
+        if project_identifier in projects_by_id:
+            return projects_by_id[project_identifier]
+        if project_identifier in projects_by_name:
+            return projects_by_name[project_identifier]
+        valid_project_ids_and_names = ", ".join(
+            [f"{project.get('id')} ({project.get('name')})" for project in projects]
+        )
+        raise click.ClickException(
+            f"Project '{project_identifier}' not found. Valid project IDs and names: {valid_project_ids_and_names}"
+        )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Error fetching project: {str(e)}")
+
+
+def view_cache_summary(
+    remote_provider: BasetenRemote,
+    project_id: str,
+    sort_by: str = SORT_BY_FILEPATH,
+    order: str = SORT_ORDER_ASC,
+):
+    """View cache summary for a training project."""
+    try:
+        cache_data = remote_provider.api.get_cache_summary(project_id)
+
+        if not cache_data:
+            console.print("No cache summary found for this project.", style="yellow")
+            return
+
+        table = rich.table.Table(title=f"Cache summary for project: {project_id}")
+        table.add_column("File Path", style="cyan")
+        table.add_column("Size", style="green")
+        table.add_column("Modified", style="yellow")
+        table.add_column("Type")
+        table.add_column("Permissions", style="magenta")
+
+        files = cache_data.get("file_summaries", [])
+        if not files:
+            console.print("No files found in cache.", style="yellow")
+            return
+
+        reverse = order == SORT_ORDER_DESC
+
+        if sort_by == SORT_BY_FILEPATH:
+            files.sort(key=lambda x: x.get("path", ""), reverse=reverse)
+        elif sort_by == SORT_BY_SIZE:
+            files.sort(key=lambda x: x.get("size_bytes", 0), reverse=reverse)
+        elif sort_by == SORT_BY_MODIFIED:
+            files.sort(key=lambda x: x.get("modified", ""), reverse=reverse)
+        elif sort_by == SORT_BY_TYPE:
+            files.sort(key=lambda x: x.get("file_type", ""), reverse=reverse)
+        elif sort_by == SORT_BY_PERMISSIONS:
+            files.sort(key=lambda x: x.get("permissions", ""), reverse=reverse)
+
+        total_size = 0
+        for file_info in files:
+            total_size += file_info.get("size_bytes", 0)
+
+        total_size_str = common.format_bytes_to_human_readable(total_size)
+
+        console.print(
+            f"📅 Cache captured at: {cache_data.get('timestamp', 'Unknown')}",
+            style="bold blue",
+        )
+        console.print(
+            f"📁 Project ID: {cache_data.get('project_id', 'Unknown')}",
+            style="bold blue",
+        )
+        console.print()
+        console.print(f"📊 Total files: {len(files)}", style="bold green")
+        console.print(f"💾 Total size: {total_size_str}", style="bold green")
+        console.print()
+
+        for file_info in files:
+            size_bytes = file_info.get("size_bytes", 0)
+
+            size_str = cli_common.format_bytes_to_human_readable(int(size_bytes))
+
+            modified_str = cli_common.format_localized_time(
+                file_info.get("modified", "Unknown")
+            )
+
+            table.add_row(
+                file_info.get("path", "Unknown"),
+                size_str,
+                modified_str,
+                file_info.get("file_type", "Unknown"),
+                file_info.get("permissions", "Unknown"),
+            )
+
+        console.print(table)
+
+    except Exception as e:
+        console.print(f"Error fetching cache summary: {str(e)}", style="red")
+        raise
+
+
+def view_cache_summary_by_project(
+    remote_provider: BasetenRemote,
+    project_identifier: str,
+    sort_by: str = SORT_BY_FILEPATH,
+    order: str = SORT_ORDER_ASC,
+):
+    """View cache summary for a training project by ID or name."""
+    project = fetch_project_by_name_or_id(remote_provider, project_identifier)
+    view_cache_summary(remote_provider, project["id"], sort_by, order)
