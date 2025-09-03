@@ -21,18 +21,19 @@ ENV APP_HOME=/{{ app_username }}
 RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
 # Create a non-root user to run model containers.
 RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
-# Add the user's local bin to the path, used by uv.
-ENV PATH=${PATH}:${HOME}/.local/bin
 {% endblock %} {#- endblock user_setup #}
 
-{%- if enable_model_container_admin_commands %}
+{#- at the very beginning, set non-interactive mode for apt #}
+ENV DEBIAN_FRONTEND=noninteractive
+
+{%- if non_root_user and enable_model_container_admin_commands %}
 RUN apt update && apt install -y sudo
 {%- set allowed_admin_commands = ["/usr/bin/apt install *", "/usr/bin/apt update"] %}
 RUN echo "Defaults:{{ app_username }} passwd_tries=0\n{{ app_username }} ALL=(root) NOPASSWD: {{ allowed_admin_commands | join(", ") }}" > /etc/sudoers.d/app-packages
 RUN chmod 0440 /etc/sudoers.d/app-packages
 {#- optional but good practice: check if the sudoers file is valid #}
 RUN visudo -c
-{%- endif %}
+{%- endif %} {#- endif non_root_user and enable_model_container_admin_commands #}
 
 {%- set UV_VERSION = "0.7.19" %}
 {#
@@ -60,6 +61,8 @@ RUN {{ python_exec_path }} -c "import sys; \
 {% endblock %}
 
 {% block install_uv %}
+# Add the user's local bin to the path, used by uv.
+ENV PATH=${PATH}:${HOME}/.local/bin
 {# Install `uv` and `curl` if not already present in the image. #}
 RUN if ! command -v uv >/dev/null 2>&1; then \
     command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
