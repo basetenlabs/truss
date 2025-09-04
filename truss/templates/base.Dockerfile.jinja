@@ -13,19 +13,21 @@ ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 {%- set app_user_uid = 60000 %}
 {%- set control_server_dir = "/control" %}
 {%- set default_owner = "root:root" %}
-# The non-root user's home directory.
-# uv will use $HOME to install packages.
+{# The non-root user's home directory. #}
+{# uv will use $HOME to install packages. #}
 ENV HOME=/home/{{ app_username }}
-# Directory containing inference server code.
+{# Directory containing inference server code. #}
 ENV APP_HOME=/{{ app_username }}
 RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
-# Create a non-root user to run model containers.
+{# Create a non-root user to run model containers. #}
 RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
 {% endblock %} {#- endblock user_setup #}
 
 {#- at the very beginning, set non-interactive mode for apt #}
 ENV DEBIAN_FRONTEND=noninteractive
 
+{# If non-root user is enabled and model container admin commands are enabled, install sudo #}
+{# to allow the non-root user to install packages. #}
 {%- if non_root_user and enable_model_container_admin_commands %}
 RUN apt update && apt install -y sudo
 {%- set allowed_admin_commands = ["/usr/bin/apt install *", "/usr/bin/apt update"] %}
@@ -66,7 +68,7 @@ RUN if ! command -v uv >/dev/null 2>&1; then \
     command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
     curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh; \
 fi
-# Add the user's local bin to the path, used by uv.
+{# Add the user's local bin to the path, used by uv. #}
 ENV PATH=${PATH}:${HOME}/.local/bin
 {% endblock %}
 
