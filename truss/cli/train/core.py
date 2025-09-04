@@ -503,7 +503,6 @@ def view_cache_summary(
             console.print("No cache summary found for this project.", style="yellow")
             return
 
-        # Parse the raw data with Pydantic models
         cache_data = GetCacheSummaryResponseV1.model_validate(raw_cache_data)
 
         table = rich.table.Table(title=f"Cache summary for project: {project_id}")
@@ -518,7 +517,6 @@ def view_cache_summary(
             console.print("No files found in cache.", style="yellow")
             return
 
-        # Calculate directory sizes
         files_with_total_sizes = create_file_summary_with_directory_sizes(files)
 
         reverse = order == SORT_ORDER_DESC
