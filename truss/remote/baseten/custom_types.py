@@ -138,6 +138,13 @@ class FileSummary(pydantic.BaseModel):
     )
 
 
+class FileSummaryWithTotalSize(pydantic.BaseModel):
+    file_summary: FileSummary
+    total_size: int = pydantic.Field(
+        description="Total size of the file and all its subdirectories"
+    )
+
+
 class GetCacheSummaryResponseV1(pydantic.BaseModel):
     """Response for getting cache summary."""
 
