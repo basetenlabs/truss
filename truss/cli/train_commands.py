@@ -53,7 +53,7 @@ def _print_training_job_success_message(
     if should_print_cache_summary:
         cache_summary_snippet = (
             f"📁 View cache summary via "
-            f"[cyan]'truss train cache summarize --project {project_name}'[/cyan]\n"
+            f"[cyan]'truss train cache summarize \"{project_name}\"'[/cyan]\n"
         )
     console.print(
         f"🪵 View logs for your job via "
@@ -387,9 +387,7 @@ def cache():
 
 
 @cache.command(name="summarize")
-@click.option(
-    "--project", type=str, required=True, help="Project ID or name to view cache for."
-)
+@click.argument("project", type=str, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
     "--sort",
