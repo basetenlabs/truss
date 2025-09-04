@@ -990,8 +990,10 @@ def test_is_healthy_returns_503_on_load_failure():
                 # when the model goes down, this will throw an exception
                 break
         diff = container.diff()
-        assert "/root/inference_server_crashed.txt" in diff
-        assert diff["/root/inference_server_crashed.txt"] == "A"
+        # the crash file is written to the app user's home directory
+        crash_file_path = "/home/app/inference_server_crashed.txt"
+        assert crash_file_path in diff
+        assert diff[crash_file_path] == "A"
 
 
 @pytest.mark.integration

@@ -1,5 +1,6 @@
 FROM python:3.11-slim AS cache_warmer
 
+ENV APP_HOME=/app
 RUN mkdir -p ${APP_HOME}/model_cache
 WORKDIR ${APP_HOME}
 
@@ -8,9 +9,9 @@ ENV HUGGING_FACE_HUB_TOKEN="{{hf_access_token}}"
 {% endif %}
 
 RUN apt-get -y update; apt-get -y install curl; curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
-ENV B10CP_PATH_TRUSS="/app/b10cp"
+ENV B10CP_PATH_TRUSS="${APP_HOME}/b10cp"
 COPY --chown={{ default_owner }} ./cache_requirements.txt ${APP_HOME}/cache_requirements.txt
-RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+RUN pip install -r ${APP_HOME}/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 COPY --chown={{ default_owner }} ./cache_warmer.py /cache_warmer.py
 
 {% for credential in credentials_to_cache  %}
