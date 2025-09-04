@@ -101,6 +101,13 @@ COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/mod
 {% endblock %} {#- endblock app_copy #}
 
 {% block run %}
+{# Macro to change ownership of directories and switch to regular user #}
+{%- macro chown_and_switch_to_regular_user_if_enabled(additional_chown_dirs=[]) -%}
+{%- if non_root_user %}
+RUN chown -R {{ app_username }}:{{ app_username }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}${HOME} ${APP_HOME}
+USER {{ app_username }}
+{%- endif %} {#- endif non_root_user #}
+{%- endmacro -%}
 
     {%- if config.docker_server %}
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
@@ -120,13 +127,8 @@ ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
 {#- default configuration uses port 80, which requires root privileges, so we remove it #}
 RUN rm -f /etc/nginx/sites-enabled/default
-{%- if non_root_user %}
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
-{% set nginx_dirs = ["/var/lib/nginx", "/var/log/nginx", "/run"] %}
-RUN chown -R {{ app_username }}:{{ app_username }} {{ nginx_dirs | join(" ") }}
-RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME}
-USER {{ app_username }}
-{%- endif %} {#- endif non_root_user #}
+{{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run"]) }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
 
     {%- elif requires_live_reload %} {#- elif requires_live_reload #}
@@ -134,19 +136,13 @@ ENV HASH_TRUSS="{{ truss_hash }}"
 ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python /control/control/server.py"
-{%- if non_root_user %}
-RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME}
-USER {{ app_username }}
-{%- endif %} {#- endif non_root_user #}
+{{ chown_and_switch_to_regular_user_if_enabled() }}
 ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
 
     {%- else %} {#- else (default inference server) #}
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{ python_executable }} /app/main.py"
-{%- if non_root_user %}
-RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME}
-USER {{ app_username }}
-{%- endif %} {#- endif non_root_user #}
+{{ chown_and_switch_to_regular_user_if_enabled() }}
 ENTRYPOINT ["{{ python_executable }}", "/app/main.py"]
     {%- endif %} {#- endif config.docker_server / live_reload #}
 
