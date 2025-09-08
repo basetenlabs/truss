@@ -465,8 +465,9 @@ def create_file_summary_with_directory_sizes(
     ]
 
 
-def calculate_directory_sizes(files: list[FileSummary]) -> dict[str, int]:
-    MAX_DEPTH = 100
+def calculate_directory_sizes(
+    files: list[FileSummary], max_depth: int = 100
+) -> dict[str, int]:
     directory_sizes = {}
 
     for file_info in files:
@@ -474,9 +475,10 @@ def calculate_directory_sizes(files: list[FileSummary]) -> dict[str, int]:
             directory_sizes[file_info.path] = 0
 
     for file_info in files:
-        i = 0
         current_path = file_info.path
-        while i < MAX_DEPTH and current_path:
+        for i in range(max_depth):
+            if current_path is None:
+                break
             if current_path in directory_sizes:
                 directory_sizes[current_path] += file_info.size_bytes
             # Move to parent directory
@@ -484,7 +486,6 @@ def calculate_directory_sizes(files: list[FileSummary]) -> dict[str, int]:
             if parent == current_path:  # Reached root
                 break
             current_path = parent
-            i += 1
 
     return directory_sizes
 
@@ -520,30 +521,12 @@ def view_cache_summary(
         files_with_total_sizes = create_file_summary_with_directory_sizes(files)
 
         reverse = order == SORT_ORDER_DESC
+        sort_key = _get_sort_key(sort_by)
+        files_with_total_sizes.sort(key=sort_key, reverse=reverse)
 
-        if sort_by == SORT_BY_FILEPATH:
-            files_with_total_sizes.sort(
-                key=lambda x: x.file_summary.path, reverse=reverse
-            )
-        elif sort_by == SORT_BY_SIZE:
-            files_with_total_sizes.sort(key=lambda x: x.total_size, reverse=reverse)
-        elif sort_by == SORT_BY_MODIFIED:
-            files_with_total_sizes.sort(
-                key=lambda x: x.file_summary.modified, reverse=reverse
-            )
-        elif sort_by == SORT_BY_TYPE:
-            files_with_total_sizes.sort(
-                key=lambda x: x.file_summary.file_type or "", reverse=reverse
-            )
-        elif sort_by == SORT_BY_PERMISSIONS:
-            files_with_total_sizes.sort(
-                key=lambda x: x.file_summary.permissions or "", reverse=reverse
-            )
-
-        total_size = 0
-        for file_info in files_with_total_sizes:
-            total_size += file_info.file_summary.size_bytes
-
+        total_size = sum(
+            file_info.file_summary.size_bytes for file_info in files_with_total_sizes
+        )
         total_size_str = common.format_bytes_to_human_readable(total_size)
 
         console.print(
@@ -579,6 +562,21 @@ def view_cache_summary(
     except Exception as e:
         console.print(f"Error fetching cache summary: {str(e)}", style="red")
         raise
+
+
+def _get_sort_key(sort_by: str) -> Callable[[FileSummaryWithTotalSize], Any]:
+    if sort_by == SORT_BY_FILEPATH:
+        return lambda x: x.file_summary.path
+    elif sort_by == SORT_BY_SIZE:
+        return lambda x: x.total_size
+    elif sort_by == SORT_BY_MODIFIED:
+        return lambda x: x.file_summary.modified
+    elif sort_by == SORT_BY_TYPE:
+        return lambda x: x.file_summary.file_type or ""
+    elif sort_by == SORT_BY_PERMISSIONS:
+        return lambda x: x.file_summary.permissions or ""
+    else:
+        raise ValueError(f"Invalid --sort argument: {sort_by}")
 
 
 def view_cache_summary_by_project(

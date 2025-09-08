@@ -345,3 +345,100 @@ def test_create_file_summary_with_directory_sizes_empty_list():
     """Test create_file_summary_with_directory_sizes with empty file list."""
     result = create_file_summary_with_directory_sizes([])
     assert result == []
+
+
+def test_calculate_directory_sizes_max_depth():
+    """Test that calculate_directory_sizes respects the max_depth parameter.
+
+    The max_depth parameter controls how many parent directories up from each file
+    the algorithm will traverse to add the file's size to parent directories.
+    """
+    # Create a deep directory structure: /root/level1/level2/level3/level4/level5/file.txt
+    files = [
+        # Root directory
+        FileSummary(
+            path="/root",
+            size_bytes=0,
+            modified="2023-01-01T00:00:00Z",
+            file_type="directory",
+            permissions="drwxr-xr-x",
+        ),
+        # Level 1 directory
+        FileSummary(
+            path="/root/level1",
+            size_bytes=0,
+            modified="2023-01-01T00:00:00Z",
+            file_type="directory",
+            permissions="drwxr-xr-x",
+        ),
+        # Level 2 directory
+        FileSummary(
+            path="/root/level1/level2",
+            size_bytes=0,
+            modified="2023-01-01T00:00:00Z",
+            file_type="directory",
+            permissions="drwxr-xr-x",
+        ),
+        # Level 3 directory
+        FileSummary(
+            path="/root/level1/level2/level3",
+            size_bytes=0,
+            modified="2023-01-01T00:00:00Z",
+            file_type="directory",
+            permissions="drwxr-xr-x",
+        ),
+        # Level 4 directory
+        FileSummary(
+            path="/root/level1/level2/level3/level4",
+            size_bytes=0,
+            modified="2023-01-01T00:00:00Z",
+            file_type="directory",
+            permissions="drwxr-xr-x",
+        ),
+        # Level 5 directory
+        FileSummary(
+            path="/root/level1/level2/level3/level4/level5",
+            size_bytes=0,
+            modified="2023-01-01T00:00:00Z",
+            file_type="directory",
+            permissions="drwxr-xr-x",
+        ),
+        # File at level 1
+        FileSummary(
+            path="/root/level1/file1.txt",
+            size_bytes=100,
+            modified="2023-01-01T00:00:00Z",
+            file_type="file",
+            permissions="-rw-r--r--",
+        ),
+        # File at level 2
+        FileSummary(
+            path="/root/level1/level2/file2.txt",
+            size_bytes=200,
+            modified="2023-01-01T00:00:00Z",
+            file_type="file",
+            permissions="-rw-r--r--",
+        ),
+        # File at level 3
+        FileSummary(
+            path="/root/level1/level2/level3/file3.txt",
+            size_bytes=300,
+            modified="2023-01-01T00:00:00Z",
+            file_type="file",
+            permissions="-rw-r--r--",
+        ),
+    ]
+
+    result_depth_0 = calculate_directory_sizes(files, max_depth=0)
+    assert result_depth_0["/root"] == 0
+    assert result_depth_0["/root/level1"] == 0
+    assert result_depth_0["/root/level1/level2"] == 0
+    assert result_depth_0["/root/level1/level2/level3"] == 0
+
+    # ensure that we stop early if the max depth is reached
+    result_depth_2 = calculate_directory_sizes(files, max_depth=2)
+
+    assert result_depth_2["/root"] == 0
+    assert result_depth_2["/root/level1"] == 100  # file1.txt only
+    assert result_depth_2["/root/level1/level2"] == 200  # file2.txt only
+    assert result_depth_2["/root/level1/level2/level3"] == 300  # file3.txt only
