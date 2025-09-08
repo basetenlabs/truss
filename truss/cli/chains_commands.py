@@ -43,18 +43,29 @@ def _load_example_chainlet_code() -> str:
     return source
 
 
-def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
+def _make_chains_curl_snippet(
+    run_remote_url: str, environment: Optional[str], is_websocket: bool = False
+) -> str:
     if environment:
         idx = run_remote_url.find("deployment")
         if idx != -1:
             run_remote_url = (
                 run_remote_url[:idx] + f"environments/{environment}/run_remote"
             )
-    return (
-        f"curl -X POST '{run_remote_url}' \\\n"
-        '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
-        "    -d '<JSON_INPUT>'"
-    )
+
+    if is_websocket:
+        # Replace 'run_remote' with 'websocket' for websocket endpoints
+        websocket_url = run_remote_url.replace("run_remote", "websocket")
+        return (
+            f'websocat -H="Authorization: Api-Key $BASETEN_API_KEY" \\\n'
+            f"    {websocket_url}"
+        )
+    else:
+        return (
+            f"curl -X POST '{run_remote_url}' \\\n"
+            '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
+            "    -d '<JSON_INPUT>'"
+        )
 
 
 def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
@@ -281,7 +292,7 @@ def push_chain(
 
     assert isinstance(service, deployment_client.BasetenChainService)
     curl_snippet = _make_chains_curl_snippet(
-        service.run_remote_url, options.environment
+        service.run_remote_url, options.environment, service.is_websocket
     )
 
     table, statuses = _create_chains_table(service)
