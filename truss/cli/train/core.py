@@ -1,4 +1,5 @@
 import json
+import os
 import tarfile
 import tempfile
 from dataclasses import dataclass
@@ -16,6 +17,11 @@ from truss.cli.train.metrics_watcher import MetricsWatcher
 from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
+from truss.remote.baseten.custom_types import (
+    FileSummary,
+    FileSummaryWithTotalSize,
+    GetCacheSummaryResponseV1,
+)
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
@@ -446,6 +452,44 @@ def fetch_project_by_name_or_id(
         raise click.ClickException(f"Error fetching project: {str(e)}")
 
 
+def create_file_summary_with_directory_sizes(
+    files: list[FileSummary],
+) -> list[FileSummaryWithTotalSize]:
+    directory_sizes = calculate_directory_sizes(files)
+    return [
+        FileSummaryWithTotalSize(
+            file_summary=file_info,
+            total_size=directory_sizes.get(file_info.path, file_info.size_bytes),
+        )
+        for file_info in files
+    ]
+
+
+def calculate_directory_sizes(
+    files: list[FileSummary], max_depth: int = 100
+) -> dict[str, int]:
+    directory_sizes = {}
+
+    for file_info in files:
+        if file_info.file_type == "directory":
+            directory_sizes[file_info.path] = 0
+
+    for file_info in files:
+        current_path = file_info.path
+        for i in range(max_depth):
+            if current_path is None:
+                break
+            if current_path in directory_sizes:
+                directory_sizes[current_path] += file_info.size_bytes
+            # Move to parent directory
+            parent = os.path.dirname(current_path)
+            if parent == current_path:  # Reached root
+                break
+            current_path = parent
+
+    return directory_sizes
+
+
 def view_cache_summary(
     remote_provider: BasetenRemote,
     project_id: str,
@@ -454,11 +498,13 @@ def view_cache_summary(
 ):
     """View cache summary for a training project."""
     try:
-        cache_data = remote_provider.api.get_cache_summary(project_id)
+        raw_cache_data = remote_provider.api.get_cache_summary(project_id)
 
-        if not cache_data:
+        if not raw_cache_data:
             console.print("No cache summary found for this project.", style="yellow")
             return
+
+        cache_data = GetCacheSummaryResponseV1.model_validate(raw_cache_data)
 
         table = rich.table.Table(title=f"Cache summary for project: {project_id}")
         table.add_column("File Path", style="cyan")
@@ -467,58 +513,48 @@ def view_cache_summary(
         table.add_column("Type")
         table.add_column("Permissions", style="magenta")
 
-        files = cache_data.get("file_summaries", [])
+        files = cache_data.file_summaries
         if not files:
             console.print("No files found in cache.", style="yellow")
             return
 
+        files_with_total_sizes = create_file_summary_with_directory_sizes(files)
+
         reverse = order == SORT_ORDER_DESC
+        sort_key = _get_sort_key(sort_by)
+        files_with_total_sizes.sort(key=sort_key, reverse=reverse)
 
-        if sort_by == SORT_BY_FILEPATH:
-            files.sort(key=lambda x: x.get("path", ""), reverse=reverse)
-        elif sort_by == SORT_BY_SIZE:
-            files.sort(key=lambda x: x.get("size_bytes", 0), reverse=reverse)
-        elif sort_by == SORT_BY_MODIFIED:
-            files.sort(key=lambda x: x.get("modified", ""), reverse=reverse)
-        elif sort_by == SORT_BY_TYPE:
-            files.sort(key=lambda x: x.get("file_type", ""), reverse=reverse)
-        elif sort_by == SORT_BY_PERMISSIONS:
-            files.sort(key=lambda x: x.get("permissions", ""), reverse=reverse)
-
-        total_size = 0
-        for file_info in files:
-            total_size += file_info.get("size_bytes", 0)
-
+        total_size = sum(
+            file_info.file_summary.size_bytes for file_info in files_with_total_sizes
+        )
         total_size_str = common.format_bytes_to_human_readable(total_size)
 
         console.print(
-            f"📅 Cache captured at: {cache_data.get('timestamp', 'Unknown')}",
-            style="bold blue",
+            f"📅 Cache captured at: {cache_data.timestamp}", style="bold blue"
         )
-        console.print(
-            f"📁 Project ID: {cache_data.get('project_id', 'Unknown')}",
-            style="bold blue",
-        )
+        console.print(f"📁 Project ID: {cache_data.project_id}", style="bold blue")
         console.print()
-        console.print(f"📊 Total files: {len(files)}", style="bold green")
+        console.print(
+            f"📊 Total files: {len(files_with_total_sizes)}", style="bold green"
+        )
         console.print(f"💾 Total size: {total_size_str}", style="bold green")
         console.print()
 
-        for file_info in files:
-            size_bytes = file_info.get("size_bytes", 0)
+        for file_info in files_with_total_sizes:
+            total_size = file_info.total_size
 
-            size_str = cli_common.format_bytes_to_human_readable(int(size_bytes))
+            size_str = cli_common.format_bytes_to_human_readable(int(total_size))
 
             modified_str = cli_common.format_localized_time(
-                file_info.get("modified", "Unknown")
+                file_info.file_summary.modified
             )
 
             table.add_row(
-                file_info.get("path", "Unknown"),
+                file_info.file_summary.path,
                 size_str,
                 modified_str,
-                file_info.get("file_type", "Unknown"),
-                file_info.get("permissions", "Unknown"),
+                file_info.file_summary.file_type or "Unknown",
+                file_info.file_summary.permissions or "Unknown",
             )
 
         console.print(table)
@@ -526,6 +562,21 @@ def view_cache_summary(
     except Exception as e:
         console.print(f"Error fetching cache summary: {str(e)}", style="red")
         raise
+
+
+def _get_sort_key(sort_by: str) -> Callable[[FileSummaryWithTotalSize], Any]:
+    if sort_by == SORT_BY_FILEPATH:
+        return lambda x: x.file_summary.path
+    elif sort_by == SORT_BY_SIZE:
+        return lambda x: x.total_size
+    elif sort_by == SORT_BY_MODIFIED:
+        return lambda x: x.file_summary.modified
+    elif sort_by == SORT_BY_TYPE:
+        return lambda x: x.file_summary.file_type or ""
+    elif sort_by == SORT_BY_PERMISSIONS:
+        return lambda x: x.file_summary.permissions or ""
+    else:
+        raise ValueError(f"Invalid --sort argument: {sort_by}")
 
 
 def view_cache_summary_by_project(
