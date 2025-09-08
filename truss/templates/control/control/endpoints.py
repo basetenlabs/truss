@@ -118,9 +118,9 @@ def inference_retries(
         yield attempt
 
 
-async def _safe_close_ws(ws: WebSocket, logger: logging.Logger):
+async def _safe_close_ws(ws: WebSocket, logger: logging.Logger, code: int = 1000, reason: str | None = None):
     try:
-        await ws.close()
+        await ws.close(code, reason)
     except RuntimeError as close_error:
         logger.debug(f"Duplicate close of websocket: `{close_error}`.")
 
@@ -160,9 +160,9 @@ async def proxy_ws(client_ws: WebSocket):
                         await asyncio.gather(forward_to_client(), forward_to_server())
                     finally:
                         await _safe_close_ws(client_ws, logger)
-            except httpx_ws_exceptions.HTTPXWSException as e:
+            except httpx_ws_exceptions.WebSocketDisconnect as e:
                 logger.warning(f"WebSocket connection rejected: {e}")
-                await _safe_close_ws(client_ws, logger)
+                await _safe_close_ws(client_ws, logger, code=e.code, reason=e.reason)
                 break
 
 
