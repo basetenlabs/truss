@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import os
 import json
 import logging
+import os
 import re
 import shutil
 from abc import ABC, abstractmethod
@@ -785,7 +785,9 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
-        enable_model_container_admin_commands = os.getenv("BT_ENABLE_MODEL_CONTAINER_ADMIN_CMDS")
+        enable_model_container_admin_commands = os.getenv(
+            "BT_ENABLE_MODEL_CONTAINER_ADMIN_CMDS"
+        )
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,

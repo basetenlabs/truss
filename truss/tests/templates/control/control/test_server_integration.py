@@ -63,9 +63,7 @@ def _start_patch_ping_server(patch_ping_server_port: int):
             time.sleep(random.uniform(0, PATCH_PING_MAX_DELAY_SECS))
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(
-                bytes(json.dumps({"is_current": True}), encoding="utf-8")
-            )
+            self.wfile.write(bytes(json.dumps({"is_current": True}), encoding="utf-8"))
 
     httpd = HTTPServer(("localhost", patch_ping_server_port), Handler)
     httpd.serve_forever()

@@ -34,23 +34,29 @@ class DockerBuildEmulator:
     def run(self, fs_root_dir: Path) -> DockerBuildEmulatorResult:
         def _resolve_env(in_value: str) -> str:
             # Valid environment variable name pattern
-            var_name_pattern = r'[A-Za-z_][A-Za-z0-9_]*'
-            
+            var_name_pattern = r"[A-Za-z_][A-Za-z0-9_]*"
+
             # Handle ${VAR} syntax
             def replace_braced_var(match):
                 var_name = match.group(1)
-                return result.env.get(var_name, match.group(0))  # Return original if not found
-            
+                return result.env.get(
+                    var_name, match.group(0)
+                )  # Return original if not found
+
             # Handle $VAR syntax (word boundary ensures we don't match parts of other vars)
             def replace_simple_var(match):
                 var_name = match.group(1)
-                return result.env.get(var_name, match.group(0))  # Return original if not found
-            
+                return result.env.get(
+                    var_name, match.group(0)
+                )  # Return original if not found
+
             # Replace ${VAR} patterns first, using % substitution to avoid additional braces noise with f-strings
-            value = re.sub(r'\$\{(%s)\}' % var_name_pattern, replace_braced_var, in_value)
+            value = re.sub(
+                r"\$\{(%s)\}" % var_name_pattern, replace_braced_var, in_value
+            )
             # Then replace remaining $VAR patterns (only at word boundaries)
-            value = re.sub(r'\$(%s)\b' % var_name_pattern, replace_simple_var, value)
-            
+            value = re.sub(r"\$(%s)\b" % var_name_pattern, replace_simple_var, value)
+
             return value
 
         def _resolve_values(keys: List[str]) -> List[str]:
@@ -70,7 +76,7 @@ class DockerBuildEmulator:
             if cmd.instruction == DockerInstruction.COPY:
                 # Filter out --chown flags
                 filtered_values = [v for v in values if not v.startswith("--chown")]
-                
+
                 # NB(nikhil): Skip COPY commands with --from flag (multi-stage builds)
                 if len(filtered_values) != 2:
                     continue

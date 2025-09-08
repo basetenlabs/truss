@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 
-def _start_truss_server(stdout_capture_file_path: str, truss_container_fs: Path, port: int):
+def _start_truss_server(
+    stdout_capture_file_path: str, truss_container_fs: Path, port: int
+):
     """Module-level function to avoid pickling issues with multiprocessing."""
     sys.stdout = open(stdout_capture_file_path, "w")
     app_path = truss_container_fs / "app"
@@ -29,8 +31,8 @@ def test_truss_server_termination(truss_container_fs):
 
     stdout_capture_file = tempfile.NamedTemporaryFile()
     subproc = Process(
-        target=_start_truss_server, 
-        args=(stdout_capture_file.name, truss_container_fs, port)
+        target=_start_truss_server,
+        args=(stdout_capture_file.name, truss_container_fs, port),
     )
     subproc.start()
     proc_id = subproc.pid
