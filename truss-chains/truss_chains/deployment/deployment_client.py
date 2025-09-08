@@ -655,7 +655,9 @@ class _Watcher:
         with framework.ChainletImporter.import_target(
             source, entrypoint
         ) as entrypoint_cls:
-            self._deployed_chain_name = name or entrypoint_cls.__name__
+            self._deployed_chain_name = (
+                name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.__name__
+            )
             self._chain_root = _get_chain_root(entrypoint_cls)
             chainlet_names = set(
                 desc.display_name
@@ -677,7 +679,7 @@ class _Watcher:
         )
         if not chain_id:
             raise public_types.ChainsDeploymentError(
-                f"Chain `{chain_id}` was not found."
+                f"Chain `{self._deployed_chain_name}` was not found."
             )
         self._status_page_url = b10_service.URLConfig.status_page_url(
             self._remote_provider.remote_url, b10_service.URLConfig.CHAIN, chain_id
