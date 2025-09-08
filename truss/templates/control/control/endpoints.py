@@ -146,22 +146,18 @@ async def proxy_ws(client_ws: WebSocket):
                             except Exception as e:
                                 logger.warning(f"failed to receive message from client: {e}")
                                 await server_ws.close(1006, f"failed to receive message from client: {e}")
-                                break
+                                return
 
                             try:
                                 if message.get("type") == "websocket.disconnect":
                                     await server_ws.close(message["code"], message.get("reason"))
-                                    break
-                            except:
-                                break
-
-                            try:
+                                    return
                                 if "text" in message:
                                     await server_ws.send_text(message["text"])
                                 elif "bytes" in message:
                                     await server_ws.send_bytes(message["bytes"])
                             except:
-                                break
+                                return
                         
 
                     async def forward_to_client():
@@ -170,10 +166,10 @@ async def proxy_ws(client_ws: WebSocket):
                                 message = await server_ws.receive()
                             except httpx_ws_exceptions.WebsocketDisconnect as e:
                                 await client_ws.close(e.code, e.reason)
-                                break
+                                return
                             except Exception as e:
                                 await client_ws.close(1006, f"failed to receive message from server: {e}")
-                                break
+                                return
 
                             if message is None:
                                 break
@@ -184,10 +180,11 @@ async def proxy_ws(client_ws: WebSocket):
                                 elif isinstance(message, BytesMessage):
                                     await client_ws.send_bytes(message.data)
                             except:
-                                break
+                                return
 
                     await client_ws.accept()
                     await asyncio.gather(forward_to_client(), forward_to_server())
+            # The asyncio funcs all catch their own exceptions, so this should only be triggered by the aconnect_ws call.
             except Exception as e:
                 logger.warning(f"error initializing websocket connection to server: {e}")
                 try:
