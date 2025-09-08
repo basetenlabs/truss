@@ -11,11 +11,21 @@ from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
 from truss.cli.train import core
+from truss.cli.train.core import (
+    SORT_BY_FILEPATH,
+    SORT_BY_MODIFIED,
+    SORT_BY_PERMISSIONS,
+    SORT_BY_SIZE,
+    SORT_BY_TYPE,
+    SORT_ORDER_ASC,
+    SORT_ORDER_DESC,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
+from truss_train import TrainingJob
 
 
 @click.group()
@@ -27,15 +37,30 @@ truss_cli.add_command(train)
 
 
 def _print_training_job_success_message(
-    job_id: str, remote_provider: BasetenRemote
+    job_id: str,
+    project_name: str,
+    job_object: TrainingJob,
+    remote_provider: BasetenRemote,
 ) -> None:
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
+    should_print_cache_summary = (
+        job_object.runtime.enable_cache
+        or job_object.runtime.cache_config
+        and job_object.runtime.cache_config.enabled
+    )
+    cache_summary_snippet = ""
+    if should_print_cache_summary:
+        cache_summary_snippet = (
+            f"📁 View cache summary via "
+            f"[cyan]'truss train cache summarize \"{project_name}\"'[/cyan]\n"
+        )
     console.print(
         f"🪵 View logs for your job via "
         f"[cyan]'truss train logs --job-id {job_id} --tail'[/cyan]\n"
         f"🔍 View metrics for your job via "
         f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
+        f"{cache_summary_snippet}"
         f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
     )
 
@@ -44,6 +69,7 @@ def _handle_post_create_logic(
     job_resp: dict, remote_provider: BasetenRemote, tail: bool
 ) -> None:
     project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
+    project_name = job_resp["training_project"]["name"]
 
     if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
         console.print(
@@ -51,7 +77,9 @@ def _handle_post_create_logic(
             style="green",
         )
     else:
-        _print_training_job_success_message(job_id, remote_provider)
+        _print_training_job_success_message(
+            job_id, project_name, job_resp["job_object"], remote_provider
+        )
 
     if tail:
         watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
@@ -73,8 +101,11 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@click.option("--job-name", type=str, required=False, help="Name of the training job.")
 @common.common_options()
-def push_training_job(config: Path, remote: Optional[str], tail: bool):
+def push_training_job(
+    config: Path, remote: Optional[str], tail: bool, job_name: Optional[str]
+):
     """Run a training job"""
     from truss_train import deployment
 
@@ -85,7 +116,9 @@ def push_training_job(config: Path, remote: Optional[str], tail: bool):
         remote_provider: BasetenRemote = cast(
             BasetenRemote, RemoteFactory.create(remote=remote)
         )
-        job_resp = deployment.create_training_job_from_file(remote_provider, config)
+        job_resp = deployment.create_training_job_from_file(
+            remote_provider, config, job_name
+        )
 
     # Note: This post create logic needs to happen outside the context
     # of the above context manager, as only one console session can be active
@@ -346,3 +379,44 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
     except Exception as e:
         error_console.print(f"Failed to download checkpoint artifacts data: {str(e)}")
         sys.exit(1)
+
+
+@train.group(name="cache")
+def cache():
+    """Cache-related subcommands for truss train"""
+
+
+@cache.command(name="summarize")
+@click.argument("project", type=str, required=True)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--sort",
+    type=click.Choice(
+        [
+            SORT_BY_FILEPATH,
+            SORT_BY_SIZE,
+            SORT_BY_MODIFIED,
+            SORT_BY_TYPE,
+            SORT_BY_PERMISSIONS,
+        ]
+    ),
+    default=SORT_BY_FILEPATH,
+    help="Sort files by filepath, size, modified date, file type, or permissions.",
+)
+@click.option(
+    "--order",
+    type=click.Choice([SORT_ORDER_ASC, SORT_ORDER_DESC]),
+    default=SORT_ORDER_ASC,
+    help="Sort order: ascending or descending.",
+)
+@common.common_options()
+def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+    """View cache summary for a training project"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)

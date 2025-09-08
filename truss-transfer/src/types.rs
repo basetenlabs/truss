@@ -174,6 +174,7 @@ pub struct BasetenPointer {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BasetenPointerManifest {
     pub pointers: Vec<BasetenPointer>,
+    pub models: Option<Vec<ModelRepo>>,
 }
 
 /// Model cache entry configuration

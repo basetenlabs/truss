@@ -120,3 +120,38 @@ class TrussUserEnv(pydantic.BaseModel):
 class BlobType(Enum):
     MODEL = "model"
     TRAIN = "train"
+
+
+class FileSummary(pydantic.BaseModel):
+    """Information about a file in the cache."""
+
+    path: str = pydantic.Field(description="Relative path of the file in the cache")
+    size_bytes: int = pydantic.Field(description="Size of the file in bytes")
+    modified: str = pydantic.Field(description="Last modification time of the file")
+    file_type: Optional[str] = pydantic.Field(
+        default=None,
+        description="Type of the file (e.g., 'file', 'directory', 'symlink')",
+    )
+    permissions: Optional[str] = pydantic.Field(
+        default=None,
+        description="File permissions in Unix symbolic format (e.g., 'drwxr-xr-x', '-rw-r--r--')",
+    )
+
+
+class FileSummaryWithTotalSize(pydantic.BaseModel):
+    file_summary: FileSummary
+    total_size: int = pydantic.Field(
+        description="Total size of the file and all its subdirectories"
+    )
+
+
+class GetCacheSummaryResponseV1(pydantic.BaseModel):
+    """Response for getting cache summary."""
+
+    timestamp: str = pydantic.Field(
+        description="Timestamp when the cache summary was captured"
+    )
+    project_id: str = pydantic.Field(description="Project ID associated with the cache")
+    file_summaries: list[FileSummary] = pydantic.Field(
+        description="List of files in the cache"
+    )

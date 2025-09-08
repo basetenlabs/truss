@@ -1,4 +1,5 @@
 import json
+import pathlib
 
 import truss_transfer
 
@@ -200,3 +201,25 @@ def test_qwen3():
     manifest = json.loads(result)
 
     print(json.dumps(manifest, indent=2))
+
+
+def test_direct_download():
+    models = [
+        truss_transfer.PyModelRepo(
+            repo_id="julien-c/dummy-unknown",
+            revision="main",
+            runtime_secret_name="none",
+            volume_folder="julien_dummy",
+            kind="hf",
+        )
+    ]
+
+    truss_transfer.lazy_data_resolve("", models, "/tmp/data")
+    assert pathlib.Path("/tmp/data/julien_dummy/config.json").exists()
+    assert pathlib.Path("/tmp/data/julien_dummy/config.json").stat().st_size == 496
+
+    # print(json.dumps(manifest, indent=2))
+
+
+if __name__ == "__main__":
+    test_direct_download()
