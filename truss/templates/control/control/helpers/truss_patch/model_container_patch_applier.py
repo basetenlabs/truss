@@ -1,4 +1,6 @@
 import logging
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -91,27 +93,38 @@ class ModelContainerPatchApplier:
         )
         action = python_requirement_patch.action
 
-        if action == Action.REMOVE:
-            subprocess.run(
-                [
-                    self._pip_path,
-                    "uninstall",
-                    "-y",
+        if self._pip_path == "uv-control-env":
+            # Use uv pip with the control environment's Python
+            if action == Action.REMOVE:
+                subprocess.run([
+                    "uv", "pip", "uninstall", "-y",
                     python_requirement_patch.requirement,
-                ],
-                check=True,
-            )
-        elif action in [Action.ADD, Action.UPDATE]:
-            subprocess.run(
-                [
-                    self._pip_path,
-                    "install",
+                    "--python", "/control/.env/bin/python"
+                ], check=True)
+            elif action in [Action.ADD, Action.UPDATE]:
+                subprocess.run([
+                    "uv", "pip", "install",
                     python_requirement_patch.requirement,
                     "--upgrade",
-                ],
-                check=True,
-            )
+                    "--python", "/control/.env/bin/python"
+                ], check=True)
         else:
+            # Deprecated: use traditional pip executable
+            # This code block should eventually be removed,
+            # because we now use uv.
+            if action == Action.REMOVE:
+                subprocess.run([
+                    self._pip_path, "uninstall", "-y",
+                    python_requirement_patch.requirement,
+                ], check=True)
+            elif action in [Action.ADD, Action.UPDATE]:
+                subprocess.run([
+                    self._pip_path, "install",
+                    python_requirement_patch.requirement,
+                    "--upgrade",
+                ], check=True)
+        
+        if action not in [Action.REMOVE, Action.ADD, Action.UPDATE]:
             raise ValueError(f"Unknown python requirement patch action {action}")
 
     def _apply_system_package_patch(self, system_package_patch: SystemPackagePatch):
@@ -120,17 +133,34 @@ class ModelContainerPatchApplier:
         )
         action = system_package_patch.action
 
+        # Check if we're running as root
+        # Deprecated: this code should be removed eventually.
+        is_root = os.getuid() == 0
+        
+        # If not root, check for sudo availability
+        if not is_root:
+            if not shutil.which("sudo"):
+                raise RuntimeError(
+                    "Cannot install system packages for security reasons, please redeploy the model. "
+                    "System package installation requires elevated privileges that are not available in this environment."
+                )
+        
+        # Build the apt command with sudo if needed
+        apt_prefix = [] if is_root else ["sudo"]
+
         if action == Action.REMOVE:
             subprocess.run(
-                ["apt", "remove", "-y", system_package_patch.package], check=True
+                apt_prefix + ["apt", "remove", "-y", system_package_patch.package], 
+                check=True
             )
         elif action in [Action.ADD, Action.UPDATE]:
-            subprocess.run(["apt", "update"], check=True)
+            subprocess.run(apt_prefix + ["apt", "update"], check=True)
             subprocess.run(
-                ["apt", "install", "-y", system_package_patch.package], check=True
+                apt_prefix + ["apt", "install", "-y", system_package_patch.package], 
+                check=True
             )
         else:
-            raise ValueError(f"Unknown python requirement patch action {action}")
+            raise ValueError(f"Unknown system package patch action {action}")
 
     def _apply_config_patch(self, config_patch: ConfigPatch):
         self._app_logger.debug(f"Applying config patch {config_patch.to_dict()}")
@@ -176,10 +206,17 @@ class ModelContainerPatchApplier:
 
 
 def _identify_pip_path() -> str:
+    # For uv-managed environments, we don't use a pip executable directly
+    # Instead, we return a special marker that indicates we should use uv pip
+    control_python = Path("/control/.env/bin/python")
+    if control_python.exists():
+        return "uv-control-env"  # Special marker
+    
+    # Fallback to system pip if control environment doesn't exist
     if Path("/usr/local/bin/pip3").exists():
         return "/usr/local/bin/pip3"
-
+    
     if Path("/usr/local/bin/pip").exists():
         return "/usr/local/bin/pip"
-
+    
     raise RuntimeError("Unable to find pip, make sure it's installed.")
