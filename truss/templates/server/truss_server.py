@@ -76,7 +76,7 @@ async def parse_body(request: Request) -> bytes:
 
 
 async def _safe_close_websocket(
-    ws: WebSocket, reason: Optional[str], status_code: int = 1000
+    ws: WebSocket, status_code: int = 1000, reason: Optional[str] = None
 ) -> None:
     try:
         await ws.close(code=status_code, reason=reason)
@@ -257,14 +257,14 @@ class BasetenEndpoints:
                 try:
                     await ws.accept()
                     await self._model.websocket(ws)
-                    await _safe_close_websocket(ws, None, status_code=1000)
+                    await _safe_close_websocket(ws, status_code=1000, reason=None)
                 except WebSocketDisconnect as ws_error:
                     logging.info(
                         f"Client terminated websocket connection: `{ws_error}`."
                     )
                 except Exception:
                     await _safe_close_websocket(
-                        ws, errors.MODEL_ERROR_MESSAGE, status_code=1011
+                        ws, status_code=1011, reason=errors.MODEL_ERROR_MESSAGE
                     )
                     raise  # Re raise to let `intercept_exceptions` deal with it.
 

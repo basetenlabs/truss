@@ -1,14 +1,15 @@
 import asyncio
 import logging
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional, Protocol
 
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
+from httpx_ws import AsyncWebSocketSession, WebSocketDisconnect, aconnect_ws
 from httpx_ws import _exceptions as httpx_ws_exceptions
-from httpx_ws import aconnect_ws
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
+from starlette.websockets import WebSocketDisconnect as StartletteWebSocketDisconnect
 from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
 from wsproto.events import BytesMessage, TextMessage
 
@@ -28,6 +29,10 @@ BASE_RETRY_EXCEPTIONS = (
 )
 
 control_app = APIRouter()
+
+
+class CloseableWebsocket(Protocol):
+    async def close(self, code: int = 1000, reason: Optional[str] = None) -> None: ...
 
 
 @control_app.get("/")
@@ -118,11 +123,71 @@ def inference_retries(
         yield attempt
 
 
-async def _safe_close_ws(ws: WebSocket, logger: logging.Logger):
+async def _safe_close_ws(
+    ws: CloseableWebsocket,
+    logger: logging.Logger,
+    code: int = 1000,
+    reason: Optional[str] = None,
+):
     try:
-        await ws.close()
+        await ws.close(code, reason)
     except RuntimeError as close_error:
         logger.debug(f"Duplicate close of websocket: `{close_error}`.")
+
+
+async def forward_to_server(
+    client_ws: WebSocket, server_ws: AsyncWebSocketSession
+) -> None:
+    while True:
+        message = await client_ws.receive()
+        if message.get("type") == "websocket.disconnect":
+            raise StartletteWebSocketDisconnect(
+                message.get("code", 1000), message.get("reason")
+            )
+        if "text" in message:
+            await server_ws.send_text(message["text"])
+        elif "bytes" in message:
+            await server_ws.send_bytes(message["bytes"])
+
+
+async def forward_to_client(client_ws: WebSocket, server_ws: AsyncWebSocketSession):
+    while True:
+        message = await server_ws.receive()
+        if isinstance(message, TextMessage):
+            await client_ws.send_text(message.data)
+        elif isinstance(message, BytesMessage):
+            await client_ws.send_bytes(message.data)
+
+
+# NB(nikhil): _handle_websocket_forwarding uses some py311 specific syntax, but in newer
+# versions of truss we're guaranteed to be running the control server with at least that version.
+async def _handle_websocket_forwarding(
+    client_ws: WebSocket, server_ws: AsyncWebSocketSession
+):
+    logger = client_ws.app.state.logger
+    try:
+        async with asyncio.TaskGroup() as tg:  # type: ignore[attr-defined]
+            tg.create_task(forward_to_client(client_ws, server_ws))
+            tg.create_task(forward_to_server(client_ws, server_ws))
+    except ExceptionGroup as eg:  # type: ignore[name-defined] # noqa: F821
+        exc = eg.exceptions[0]  # NB(nikhil): Only care about the first one.
+        if isinstance(exc, WebSocketDisconnect):
+            await _safe_close_ws(client_ws, logger, exc.code, exc.reason)
+        elif isinstance(exc, StartletteWebSocketDisconnect):
+            await _safe_close_ws(server_ws, logger, exc.code, exc.reason)
+        else:
+            logger.warning(f"Ungraceful websocket close: {exc}")
+    finally:
+        await _safe_close_ws(client_ws, logger)
+        await _safe_close_ws(server_ws, logger)
+
+
+async def _attempt_websocket_proxy(
+    client_ws: WebSocket, proxy_client: httpx.AsyncClient, logger
+):
+    async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
+        await client_ws.accept()
+        await _handle_websocket_forwarding(client_ws, server_ws)
 
 
 async def proxy_ws(client_ws: WebSocket):
@@ -132,34 +197,7 @@ async def proxy_ws(client_ws: WebSocket):
     for attempt in inference_retries():
         with attempt:
             try:
-                async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
-                    # Unfortunate, but FastAPI and httpx-ws have slightly different abstractions
-                    # for sending data, so it's not easy to create a unified wrapper.
-                    async def forward_to_server():
-                        while True:
-                            message = await client_ws.receive()
-                            if message.get("type") == "websocket.disconnect":
-                                break
-                            if "text" in message:
-                                await server_ws.send_text(message["text"])
-                            elif "bytes" in message:
-                                await server_ws.send_bytes(message["bytes"])
-
-                    async def forward_to_client():
-                        while True:
-                            message = await server_ws.receive()
-                            if message is None:
-                                break
-                            if isinstance(message, TextMessage):
-                                await client_ws.send_text(message.data)
-                            elif isinstance(message, BytesMessage):
-                                await client_ws.send_bytes(message.data)
-
-                    await client_ws.accept()
-                    try:
-                        await asyncio.gather(forward_to_client(), forward_to_server())
-                    finally:
-                        await _safe_close_ws(client_ws, logger)
+                await _attempt_websocket_proxy(client_ws, proxy_client, logger)
             except httpx_ws_exceptions.HTTPXWSException as e:
                 logger.warning(f"WebSocket connection rejected: {e}")
                 await _safe_close_ws(client_ws, logger)

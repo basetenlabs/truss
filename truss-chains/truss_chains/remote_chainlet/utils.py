@@ -11,6 +11,7 @@ import textwrap
 import threading
 import time
 import traceback
+import typing
 from collections.abc import AsyncIterator
 from typing import (
     TYPE_CHECKING,
@@ -585,6 +586,13 @@ class WebsocketWrapperFastAPI:
 
     async def close(self, code: int = 1000, reason: Optional[str] = None) -> None:
         await self._websocket.close(code=code, reason=reason)
+
+    async def receive(self) -> Union[str, bytes]:
+        message = await self._websocket.receive()
+        if message.get("text"):
+            return typing.cast(str, message["text"])
+        else:
+            return typing.cast(bytes, message["bytes"])
 
     async def receive_text(self) -> str:
         return await self._websocket.receive_text()
