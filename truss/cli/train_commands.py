@@ -385,11 +385,27 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
 
 
 @train.command(name="init")
+@click.option("--list-examples", is_flag=True, help="List all available examples.")
 @click.option("--target-directory", type=str, required=False)
 @click.option("--examples", type=str, required=False)
 @common.common_options()
-def init_training_job(target_directory: Optional[str], examples: Optional[str]) -> None:
+def init_training_job(
+    list_examples: Optional[bool],
+    target_directory: Optional[str],
+    examples: Optional[str],
+) -> None:
     try:
+        if list_examples:
+            all_examples = train_cli._get_all_train_init_example_options()
+            console.print("Available training examples:", style="bold")
+            for example in all_examples:
+                console.print(f"- {example}")
+            console.print(
+                "To launch, run `truss train init --examples <example1,example2>`",
+                style="bold",
+            )
+            return
+
         selected_options = examples.split(",") if examples else []
 
         # No examples selected, initialize empty training project structure
