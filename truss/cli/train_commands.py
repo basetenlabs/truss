@@ -441,7 +441,7 @@ def init_training_job(target_dir: Optional[str], examples: Optional[str]) -> Non
         error_console.print(f"Failed to initialize training artifacts: {str(e)}")
         sys.exit(1)
 
-        
+
 @train.group(name="cache")
 def cache():
     """Cache-related subcommands for truss train"""
