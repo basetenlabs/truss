@@ -395,7 +395,7 @@ def init_training_job(target_dir: Optional[str], examples: Optional[str]) -> Non
         # No examples selected, initialize empty training project structure
         if not selected_options:
             if target_dir is None:
-                target_dir = Path("truss-train-init")
+                target_dir = "truss-train-init"
             console.print(f"Initializing empty training project at {target_dir}")
             os.makedirs(target_dir)
             copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_dir))

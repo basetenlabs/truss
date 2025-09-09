@@ -425,7 +425,7 @@ def _get_all_train_init_example_options(
     repo_id: str = "ml-cookbook",
     examples_subdir: str = "examples",
     token: Optional[str] = None,
-) -> list[Dict[str, str]]:
+) -> list[str]:
     """
     Retrieve a list of all example options from the ml-cookbook repository to
     copy locally for training initialization. This method generates a list
