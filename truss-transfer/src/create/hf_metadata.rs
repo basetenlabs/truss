@@ -3,48 +3,9 @@ use crate::secrets::get_hf_secret_from_file;
 use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, ResolutionType};
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
-use log::{debug, warn};
 use std::collections::HashMap;
-use std::env;
 use std::path::Path;
 use tokio::time::{sleep, Duration};
-
-/// Get HuggingFace token from multiple sources
-/// 1. Check file system at /secrets/{runtime_secret_name}
-/// 2. Check environment variables: HF_TOKEN or HUGGING_FACE_HUB_TOKEN
-/// 3. Return None if not found
-fn get_hf_token(runtime_secret_name: &str) -> Option<String> {
-    // 1. Try to read from secrets file
-    let secret = get_hf_secret_from_file(runtime_secret_name);
-    if secret.is_some() {
-        return secret;
-    }
-
-    // 2. Try environment variables
-    // Check for HF_TOKEN first (common in many setups)
-    if let Ok(token) = env::var("HF_TOKEN") {
-        let trimmed = token.trim().to_string();
-        if !trimmed.is_empty() {
-            debug!("Found HF token in HF_TOKEN environment variable");
-            return Some(trimmed);
-        }
-    }
-
-    // Check for HUGGING_FACE_HUB_TOKEN (official HF environment variable)
-    if let Ok(token) = env::var("HUGGING_FACE_HUB_TOKEN") {
-        let trimmed = token.trim().to_string();
-        if !trimmed.is_empty() {
-            debug!("Found HF token in HUGGING_FACE_HUB_TOKEN environment variable");
-            return Some(trimmed);
-        }
-    }
-
-    // 3. No token found
-    warn!(
-        "No HuggingFace token found secrets or environment variables (HF_TOKEN, HUGGING_FACE_HUB_TOKEN). Using unauthenticated access.",
-    );
-    None
-}
 
 /// Error types for HuggingFace operations
 #[derive(Debug, thiserror::Error)]
@@ -57,8 +18,8 @@ pub enum HfError {
     Timeout,
     #[error("Pattern matching error: {0}")]
     Pattern(String),
-    #[error("Invalid metadata")]
-    InvalidMetadata,
+    #[error("Invalid metadata: {0}")]
+    InvalidMetadata(String),
 }
 
 /// HuggingFace file metadata
@@ -77,32 +38,54 @@ pub async fn get_hf_metadata(
     repo_id: &str,
     revision: &str,
     filename: &str,
+    token: Option<String>,
 ) -> Result<HfFileMetadata, HfError> {
+    // Define HuggingFace-specific header constants
+    const HUGGINGFACE_HEADER_X_LINKED_ETAG: &str = "X-Linked-Etag";
+    const HUGGINGFACE_HEADER_X_LINKED_SIZE: &str = "X-Linked-Size";
+
     let repo = Repo::with_revision(repo_id.to_string(), RepoType::Model, revision.to_string());
     let api_repo = api.repo(repo);
 
     // Create the URL for the file
     let url = api_repo.url(filename);
 
-    // Use reqwest to get metadata, should not be needed.
-    // better to resolve it using the hf-hub crate
-    let client = reqwest::Client::new();
-    let response = client
-        .head(&url)
+    // TODO: client with different redicted policy, see python huggingface_hub method.
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| HfError::InvalidMetadata(format!("Failed to build request client: {e}")))?;
+
+    // Build request with Accept-Encoding header
+    let mut req = client.head(&url).header("Accept-Encoding", "identity");
+
+    // Add token if provided
+    if let Some(t) = token.as_ref() {
+        req = req.header("Authorization", format!("Bearer {}", t));
+    }
+
+    // Send initial request
+    let response = req
         .send()
         .await
-        .map_err(|_e| HfError::InvalidMetadata)?;
+        .map_err(|e| HfError::InvalidMetadata(format!("Failed to send request to {url}: {e}")))?;
 
-    let etag = response
-        .headers()
-        .get("etag")
+    let headers = response.headers().clone();
+    response
+        .error_for_status()
+        .map_err(|e| HfError::Pattern(format!("HTTP Error: {e}")))?;
+
+    // Extract etag from headers
+    let etag = headers
+        .get(HUGGINGFACE_HEADER_X_LINKED_ETAG)
+        .or_else(|| headers.get("etag"))
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default()
-        .replace('"', "");
+        .replace('"', ""); // Remove quotes from etag
 
-    let size = response
-        .headers()
-        .get("content-length")
+    // Extract size from headers
+    let size = headers
+        .get(HUGGINGFACE_HEADER_X_LINKED_SIZE)
+        .or_else(|| headers.get("content-length"))
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
@@ -119,17 +102,16 @@ pub async fn metadata_hf_repo(
     token: Option<String>,
 ) -> Result<HashMap<String, HfFileMetadata>, HfError> {
     let api = ApiBuilder::new()
-        .with_token(token)
+        .with_token(token.clone())
         .build()
-        .map_err(|_e| HfError::InvalidMetadata)?;
+        .map_err(|e| HfError::InvalidMetadata(format!("Failed to build HuggingFace API: {e}")))?;
     let repo = Repo::with_revision(repo_id.to_string(), RepoType::Model, revision.to_string());
     let api_repo = api.repo(repo);
 
     // Get repository info to get the actual revision and file list
-    let repo_info = api_repo
-        .info()
-        .await
-        .map_err(|_e| HfError::InvalidMetadata)?;
+    let repo_info = api_repo.info().await.map_err(|e| {
+        HfError::InvalidMetadata(format!("Failed to get repo info for {repo_id}: {e}"))
+    })?;
     let real_revision = &repo_info.sha;
 
     if revision != real_revision {
@@ -151,7 +133,7 @@ pub async fn metadata_hf_repo(
     let mut metadata_map: HashMap<String, HfFileMetadata> = HashMap::new();
 
     for file in filtered_files {
-        let metadata = get_hf_metadata(&api, repo_id, real_revision, &file).await?;
+        let metadata = get_hf_metadata(&api, repo_id, real_revision, &file, token.clone()).await?;
         metadata_map.insert(file, metadata);
     }
 
@@ -172,7 +154,7 @@ pub async fn create_hf_basetenpointers(
     let mut metadata_result = None;
 
     // Get token for this model
-    let token = get_hf_token(&model.runtime_secret_name);
+    let token = get_hf_secret_from_file(&model.runtime_secret_name);
 
     // Retry mechanism (up to 3 times)
     for attempt in 0..3 {
@@ -282,23 +264,5 @@ mod tests {
         assert_eq!(model_repo.revision, "main");
         assert_eq!(model_repo.volume_folder, "test");
         assert_eq!(model_repo.runtime_secret_name, "hf_access_token");
-    }
-
-    #[test]
-    fn test_get_hf_token_priority() {
-        // Test that environment variables have the right priority
-        use std::env;
-
-        // Set both environment variables
-        env::set_var("HF_TOKEN", "hf_token_value");
-        env::set_var("HUGGING_FACE_HUB_TOKEN", "hf_hub_token_value");
-
-        // HF_TOKEN should take precedence over HUGGING_FACE_HUB_TOKEN
-        let token = get_hf_token("hf_access_token");
-        assert_eq!(token, Some("hf_token_value".to_string()));
-
-        // Clean up
-        env::remove_var("HF_TOKEN");
-        env::remove_var("HUGGING_FACE_HUB_TOKEN");
     }
 }

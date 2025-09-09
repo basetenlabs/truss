@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
@@ -31,12 +32,32 @@ class DockerBuildEmulator:
         self._context_dir = context_dir
 
     def run(self, fs_root_dir: Path) -> DockerBuildEmulatorResult:
-        def _resolve_env(key: str) -> str:
-            if key.startswith("$"):
-                key = key.replace("$", "", 1)
-                v = result.env[key]
-                return v
-            return key
+        def _resolve_env(in_value: str) -> str:
+            # Valid environment variable name pattern
+            var_name_pattern = r"[A-Za-z_][A-Za-z0-9_]*"
+
+            # Handle ${VAR} syntax
+            def replace_braced_var(match):
+                var_name = match.group(1)
+                return result.env.get(
+                    var_name, match.group(0)
+                )  # Return original if not found
+
+            # Handle $VAR syntax (word boundary ensures we don't match parts of other vars)
+            def replace_simple_var(match):
+                var_name = match.group(1)
+                return result.env.get(
+                    var_name, match.group(0)
+                )  # Return original if not found
+
+            # Replace ${VAR} patterns first, using % substitution to avoid additional braces noise with f-strings
+            value = re.sub(
+                r"\$\{(%s)\}" % var_name_pattern, replace_braced_var, in_value
+            )
+            # Then replace remaining $VAR patterns (only at word boundaries)
+            value = re.sub(r"\$(%s)\b" % var_name_pattern, replace_simple_var, value)
+
+            return value
 
         def _resolve_values(keys: List[str]) -> List[str]:
             return list(map(_resolve_env, keys))
@@ -53,11 +74,14 @@ class DockerBuildEmulator:
             if cmd.instruction == DockerInstruction.ENTRYPOINT:
                 result.entrypoint = list(values)
             if cmd.instruction == DockerInstruction.COPY:
+                # Filter out --chown flags
+                filtered_values = [v for v in values if not v.startswith("--chown")]
+
                 # NB(nikhil): Skip COPY commands with --from flag (multi-stage builds)
-                if len(values) != 2:
+                if len(filtered_values) != 2:
                     continue
 
-                src, dst = values
+                src, dst = filtered_values
                 src = src.replace("./", "", 1)
                 dst = dst.replace("/", "", 1)
                 copy_tree_or_file(self._context_dir / src, fs_root_dir / dst)

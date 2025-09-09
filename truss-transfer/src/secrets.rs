@@ -55,6 +55,6 @@ pub fn get_hf_secret_from_file(hf_token_name: &str) -> Option<String> {
     if let Some(token) = get_secret_from_file(hf_token_name) {
         Some(token)
     } else {
-        (*HF_TOKEN).clone().map(|token| token)
+        (*HF_TOKEN).clone()
     }
 }

@@ -8,7 +8,7 @@ pub fn main() -> anyhow::Result<()> {
 
     // Pass the first CLI argument as the download directory, if provided.
     let download_dir = std::env::args().nth(1);
-    if let Err(e) = lazy_data_resolve_entrypoint(download_dir) {
+    if let Err(e) = lazy_data_resolve_entrypoint(download_dir, None, "".to_string()) {
         error!("Error during execution: {}", e);
         std::process::exit(1);
     }

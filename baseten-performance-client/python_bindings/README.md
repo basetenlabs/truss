@@ -1,6 +1,6 @@
 # High performance client for Baseten.co
 
-This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. PerformanceClient releases the GIL while performing requests in the Rust, and supports simulaneous sync and async usage. It was benchmarked with >1200 rps per client in [our blog](https://www.baseten.co/blog/your-client-code-matters-10x-higher-embedding-throughput-with-python-and-rust/). PerformanceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
+This library provides a high-performance Python client for Baseten.co endpoints including embeddings, reranking, and classification. It was built for massive concurrent post requests to any URL, also outside of baseten.co. PerformanceClient releases the GIL while performing requests in the Rust, and supports simultaneous sync and async usage. It was benchmarked with >1200 rps per client in [our blog](https://www.baseten.co/blog/your-client-code-matters-10x-higher-embedding-throughput-with-python-and-rust/). PerformanceClient is built on top of pyo3, reqwest and tokio and is MIT licensed.
 
 ![benchmarks](https://www.baseten.co/_next/image/?url=https%3A%2F%2Fwww.datocms-assets.com%2F104802%2F1749832130-diagram-9.png%3Fauto%3Dformat%26fit%3Dmax%26w%3D1200&w=3840&q=75)
 
@@ -93,7 +93,7 @@ Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `.
 | 131 072                        |           1 024 |                4.63 |           39.07 |    8.44× |
 | 2 097 152                      |          16 384 |               70.92 |          903.68 |   12.74× |
 
-### Gerneral Batch POST
+### General Batch POST
 
 The batch_post method is generic. It can be used to send POST requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON item.
 
@@ -179,7 +179,7 @@ async def async_rerank():
 ```
 
 ### Classification
-Predicy (classification endpoint) compatible with BEI or text-embeddings-inference.
+Predict (classification endpoint) compatible with BEI or text-embeddings-inference.
 #### Synchronous Classification
 
 ```python
@@ -230,7 +230,7 @@ Here's an example demonstrating how to catch these errors for the `embed` method
 ```python
 import requests
 
-# client = PerformanceClient(base_url="your_b10_url", api_key="your_b10_api_key")
+# client = PerformanceClient(base_url="your_baseten_url", api_key="your_baseten_api_key")
 
 texts_to_embed = ["Hello world", "Another text example"]
 try:

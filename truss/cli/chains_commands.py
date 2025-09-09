@@ -359,7 +359,7 @@ def push_chain(
     "--name",
     type=str,
     required=False,
-    help="Name of the chain to be deployed, if not given, the entrypoint name is used.",
+    help="Name of the chain to be watched. If not given, the entrypoint name is used.",
 )
 @click.option(
     "--remote",
