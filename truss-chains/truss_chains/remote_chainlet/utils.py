@@ -588,8 +588,18 @@ class WebsocketWrapperFastAPI:
         await self._websocket.close(code=code, reason=reason)
 
     async def receive(self) -> Union[str, bytes]:
+        try:
+            import fastapi
+        except ImportError:
+            raise utils.make_optional_import_error("fastapi")
+
         message = await self._websocket.receive()
-        if message.get("text"):
+
+        if message.get("type") == "websocket.disconnect":
+            # NB(nikhil): Mimics FastAPI `_raise_on_disconnect`, since otherwise the user has no
+            # way of detecting that the client disconnected.
+            raise fastapi.WebSocketDisconnect(message["code"], message.get("reason"))
+        elif message.get("text"):
             return typing.cast(str, message["text"])
         else:
             return typing.cast(bytes, message["bytes"])
