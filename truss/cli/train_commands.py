@@ -352,25 +352,22 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
 
 
 @train.command(name="init")
-@click.argument("target_dir", required=False)
+@click.option("--target_dir", type=str, required=False)
+@click.option("--examples", type=str, required=False)
 @common.common_options()
-def init_training_job(target_dir: str) -> None:
+def init_training_job(target_dir: Optional[str], examples: Optional[str]) -> None:
     try:
-        example_options = train_cli._get_train_init_example_options()
-        if example_options:
-            selected_options = train_cli._select_multiple_examples(example_options)
-        else:  # if some error in fetching examples, proceed with bare-metal init
-            selected_options = []
+        selected_options = examples.split(",") if examples else []
 
-        # No examples selected, initialize bare-metal structure
+        # No examples selected, initialize empty training project structure
         if not selected_options:
             if target_dir is None:
-                target_dir = "truss-train-init"
-            console.print(f"Initializing bare-metal training directory at {target_dir}")
+                target_dir = Path("truss-train-init")
+            console.print(f"Initializing empty training project at {target_dir}")
             os.makedirs(target_dir)
             copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_dir))
             console.print(
-                f"✨ Baremetal training directory initialized at {target_dir}",
+                f"✨ Empty training project initialized at {target_dir}",
                 style="bold green",
             )
             return
@@ -378,18 +375,28 @@ def init_training_job(target_dir: str) -> None:
         if target_dir is None:
             target_dir = os.getcwd()
         for example_to_download in selected_options:
+            download_info = train_cli._get_train_init_example_info(
+                example_name=example_to_download
+            )
             if (
                 len(selected_options) > 1
             ):  # if only 1 example is selected, no subdirs with example names
-                local_dir = os.path.join(target_dir, example_to_download["name"])
+                local_dir = os.path.join(target_dir, example_to_download)
             else:
-                local_dir = target_dir if target_dir else example_to_download["name"]
+                local_dir = target_dir if target_dir else example_to_download
+
+            if not download_info:
+                all_examples = train_cli._get_all_train_init_example_options()
+                error_console.print(
+                    f"Example {example_to_download} not found in the ml-cookbook repository. Examples have to be one or more comma separated values from: {', '.join(all_examples)}"
+                )
+                continue
             success = train_cli.download_git_directory(
-                git_api_url=example_to_download["url"], local_dir=local_dir
+                git_api_url=download_info[0]["url"], local_dir=local_dir
             )
             if success:
                 console.print(
-                    f"✨ Training directory for {example_to_download['name']} initialized at {local_dir}",
+                    f"✨ Training directory for {example_to_download} initialized at {local_dir}",
                     style="bold green",
                 )
             else:

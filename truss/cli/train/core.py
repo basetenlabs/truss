@@ -408,13 +408,13 @@ def status_page_url(remote_url: str, training_job_id: str) -> str:
     return f"{remote_url}/training/jobs/{training_job_id}"
 
 
-def _get_train_init_example_options(
+def _get_all_train_init_example_options(
     repo_id: str = "ml-cookbook",
     examples_subdir: str = "examples",
     token: Optional[str] = None,
 ) -> list[Dict[str, str]]:
     """
-    Retrieve a list of example options from the ml-cookbook repository to
+    Retrieve a list of all example options from the ml-cookbook repository to
     copy locally for training initialization. This method generates a list
     of examples and URL paths to show the user for selection.
     """
@@ -425,6 +425,38 @@ def _get_train_init_example_options(
     url = (
         f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{examples_subdir}"
     )
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        items = response.json()
+        if not isinstance(items, list):
+            items = [items]
+        items = [item["name"] for item in items if item["type"] == "dir"]
+        return items
+
+    except requests.exceptions.RequestException as e:
+        click.echo(
+            f"Error exploring directory: {e}. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
+        return []
+
+
+def _get_train_init_example_info(
+    repo_id: str = "ml-cookbook",
+    examples_subdir: str = "examples",
+    example_name: Optional[str] = None,
+    token: Optional[str] = None,
+) -> list[Dict[str, str]]:
+    """
+    Retrieve directory download links for the example from the ml-cookbook repository to
+    copy locally for training initialization.
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    url = f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{examples_subdir}/{example_name}"
 
     try:
         response = requests.get(url, headers=headers)
@@ -435,27 +467,22 @@ def _get_train_init_example_options(
             items = [items]
         return items
 
+    except requests.exceptions.HTTPError as e:
+        if response.status_code == 404:
+            # example_name does not exist, return empty list
+            return []
+        else:
+            # Other HTTP errors
+            click.echo(
+                f"Error exploring directory: {e}. Please file an issue at https://github.com/basetenlabs/truss/issues"
+            )
+            return []
     except requests.exceptions.RequestException as e:
+        # Network or other request errors
         click.echo(
             f"Error exploring directory: {e}. Please file an issue at https://github.com/basetenlabs/truss/issues"
         )
         return []
-
-
-def _select_multiple_examples(example_options: list[dict]) -> list[dict]:
-    """Select multiple examples using interactive checkbox.
-    Input and output is a list of dicts with each dict having
-    name, path, sha, size, url, html_url, git_url etc, defined
-    by Github API.
-    """
-    examples = set(
-        inquirer.checkbox(
-            message="Use spacebar to select/deselect examples to initialize, or leave empty and press enter to initialize baremetal structure.",
-            choices=[example["name"] for example in example_options],
-        ).execute()
-    )
-
-    return [example for example in example_options if example["name"] in examples]
 
 
 def download_git_directory(

@@ -16,7 +16,6 @@ BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
 # `SecretReference`.
 training_runtime = definitions.Runtime(
     start_commands=[  # Example: list of commands to run your training script
-        # "pip install -r requirements.txt", # pip install requirements on top of base image
         "/bin/sh -c 'chmod +x ./run.sh && ./run.sh'"
     ],
     environment_variables={

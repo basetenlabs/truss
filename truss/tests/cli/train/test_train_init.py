@@ -4,8 +4,8 @@ import pytest
 import requests
 
 from truss.cli.train.core import (
-    _get_train_init_example_options,
-    _select_multiple_examples,
+    _get_all_train_init_example_options,
+    _get_train_init_example_info,
     download_git_directory,
 )
 
@@ -21,12 +21,13 @@ class TestGetTrainInitExampleOptions:
         mock_response.json.return_value = [
             {"name": "example1", "type": "dir"},
             {"name": "example2", "type": "dir"},
+            {"name": "file1", "type": "file"},  # Should be filtered out
         ]
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         # Act
-        result = _get_train_init_example_options()
+        result = _get_all_train_init_example_options()
 
         # Assert
         mock_get.assert_called_once_with(
@@ -34,8 +35,9 @@ class TestGetTrainInitExampleOptions:
             headers={},
         )
         assert len(result) == 2
-        assert result[0]["name"] == "example1"
-        assert result[1]["name"] == "example2"
+        assert "example1" in result
+        assert "example2" in result
+        assert "file1" not in result  # Files should be filtered out
 
     @patch("requests.get")
     def test_successful_request_with_token(self, mock_get):
@@ -47,7 +49,7 @@ class TestGetTrainInitExampleOptions:
         mock_get.return_value = mock_response
 
         # Act
-        result = _get_train_init_example_options(token="test_token")
+        result = _get_all_train_init_example_options(token="test_token")
 
         # Assert
         mock_get.assert_called_once_with(
@@ -55,6 +57,7 @@ class TestGetTrainInitExampleOptions:
             headers={"Authorization": "token test_token"},
         )
         assert len(result) == 1
+        assert "example1" in result
 
     @patch("requests.get")
     def test_custom_repo_and_subdir(self, mock_get):
@@ -66,7 +69,7 @@ class TestGetTrainInitExampleOptions:
         mock_get.return_value = mock_response
 
         # Act
-        _ = _get_train_init_example_options(
+        _ = _get_all_train_init_example_options(
             repo_id="custom-repo", examples_subdir="custom-examples"
         )
 
@@ -86,11 +89,11 @@ class TestGetTrainInitExampleOptions:
         mock_get.return_value = mock_response
 
         # Act
-        result = _get_train_init_example_options()
+        result = _get_all_train_init_example_options()
 
         # Assert
         assert len(result) == 1
-        assert result[0]["name"] == "single_example"
+        assert "single_example" in result
 
     @patch("requests.get")
     @patch("click.echo")
@@ -100,7 +103,7 @@ class TestGetTrainInitExampleOptions:
         mock_get.side_effect = requests.exceptions.RequestException("Network error")
 
         # Act
-        result = _get_train_init_example_options()
+        result = _get_all_train_init_example_options()
 
         # Assert
         mock_echo.assert_called_once_with(
@@ -120,7 +123,7 @@ class TestGetTrainInitExampleOptions:
         mock_get.return_value = mock_response
 
         # Act
-        result = _get_train_init_example_options()
+        result = _get_all_train_init_example_options()
 
         # Assert
         mock_echo.assert_called_once_with(
@@ -128,74 +131,191 @@ class TestGetTrainInitExampleOptions:
         )
         assert result == []
 
-
-class TestSelectMultipleExamples:
-    """Test cases for _select_multiple_examples function"""
-
-    @patch("truss.cli.train.core.inquirer.checkbox")
-    def test_select_multiple_examples(self, mock_checkbox):
-        """Test selecting multiple examples"""
+    @patch("requests.get")
+    def test_filters_only_directories(self, mock_get):
+        """Test that only directories are returned, files are filtered out"""
         # Arrange
-        example_options = [
-            {"name": "example1", "path": "path1"},
-            {"name": "example2", "path": "path2"},
-            {"name": "example3", "path": "path3"},
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {"name": "example1", "type": "dir"},
+            {"name": "readme.md", "type": "file"},
+            {"name": "example2", "type": "dir"},
+            {"name": "config.json", "type": "file"},
         ]
-
-        mock_prompt = Mock()
-        mock_prompt.execute.return_value = ["example1", "example3"]
-        mock_checkbox.return_value = mock_prompt
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
 
         # Act
-        result = _select_multiple_examples(example_options)
+        result = _get_all_train_init_example_options()
 
         # Assert
-        mock_checkbox.assert_called_once_with(
-            message="Use spacebar to select/deselect examples to initialize, or leave empty and press enter to initialize baremetal structure.",
-            choices=["example1", "example2", "example3"],
+        assert len(result) == 2
+        assert "example1" in result
+        assert "example2" in result
+        assert "readme.md" not in result
+        assert "config.json" not in result
+
+
+class TestGetTrainInitExampleInfo:
+    """Test cases for _get_train_init_example_info function"""
+
+    @patch("requests.get")
+    def test_successful_request_without_token(self, mock_get):
+        """Test successful API call without authentication token"""
+        # Arrange
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {"name": "file1.py", "type": "file"},
+            {"name": "file2.py", "type": "file"},
+        ]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        # Act
+        result = _get_train_init_example_info(example_name="test_example")
+
+        # Assert
+        mock_get.assert_called_once_with(
+            "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/test_example",
+            headers={},
         )
         assert len(result) == 2
-        assert result[0]["name"] == "example1"
-        assert result[1]["name"] == "example3"
+        assert result[0]["name"] == "file1.py"
+        assert result[1]["name"] == "file2.py"
 
-    @patch("truss.cli.train.core.inquirer.checkbox")
-    def test_select_no_examples(self, mock_checkbox):
-        """Test selecting no examples"""
+    @patch("requests.get")
+    def test_successful_request_with_token(self, mock_get):
+        """Test successful API call with authentication token"""
         # Arrange
-        example_options = [
-            {"name": "example1", "path": "path1"},
-            {"name": "example2", "path": "path2"},
-        ]
-
-        mock_prompt = Mock()
-        mock_prompt.execute.return_value = []
-        mock_checkbox.return_value = mock_prompt
+        mock_response = Mock()
+        mock_response.json.return_value = [{"name": "file1.py", "type": "file"}]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
 
         # Act
-        result = _select_multiple_examples(example_options)
-
-        # Assert
-        assert len(result) == 0
-
-    @patch("truss.cli.train.core.inquirer.checkbox")
-    def test_empty_options_list(self, mock_checkbox):
-        """Test with empty example options"""
-        # Arrange
-        example_options = []
-
-        mock_prompt = Mock()
-        mock_prompt.execute.return_value = []
-        mock_checkbox.return_value = mock_prompt
-
-        # Act
-        result = _select_multiple_examples(example_options)
-
-        # Assert
-        mock_checkbox.assert_called_once_with(
-            message="Use spacebar to select/deselect examples to initialize, or leave empty and press enter to initialize baremetal structure.",
-            choices=[],
+        result = _get_train_init_example_info(
+            example_name="test_example", token="test_token"
         )
-        assert len(result) == 0
+
+        # Assert
+        mock_get.assert_called_once_with(
+            "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/test_example",
+            headers={"Authorization": "token test_token"},
+        )
+        assert len(result) == 1
+
+    @patch("requests.get")
+    def test_custom_repo_and_subdir(self, mock_get):
+        """Test with custom repository and subdirectory"""
+        # Arrange
+        mock_response = Mock()
+        mock_response.json.return_value = []
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        # Act
+        _ = _get_train_init_example_info(
+            repo_id="custom-repo",
+            examples_subdir="custom-examples",
+            example_name="test_example",
+        )
+
+        # Assert
+        mock_get.assert_called_once_with(
+            "https://api.github.com/repos/basetenlabs/custom-repo/contents/custom-examples/test_example",
+            headers={},
+        )
+
+    @patch("requests.get")
+    def test_single_item_response(self, mock_get):
+        """Test when API returns a single item instead of a list"""
+        # Arrange
+        mock_response = Mock()
+        mock_response.json.return_value = {"name": "single_file.py", "type": "file"}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        # Act
+        result = _get_train_init_example_info(example_name="test_example")
+
+        # Assert
+        assert len(result) == 1
+        assert result[0]["name"] == "single_file.py"
+
+    @patch("requests.get")
+    @patch("click.echo")
+    def test_404_error_returns_empty_list(self, mock_echo, mock_get):
+        """Test that 404 errors return empty list without error message"""
+        # Arrange
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "404 Not Found"
+        )
+        mock_get.return_value = mock_response
+
+        # Act
+        result = _get_train_init_example_info(example_name="nonexistent_example")
+
+        # Assert
+        mock_echo.assert_not_called()  # Should not echo error for 404
+        assert result == []
+
+    @patch("requests.get")
+    @patch("click.echo")
+    def test_other_http_error_handling(self, mock_echo, mock_get):
+        """Test handling of non-404 HTTP errors"""
+        # Arrange
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "500 Internal Server Error"
+        )
+        mock_get.return_value = mock_response
+
+        # Act
+        result = _get_train_init_example_info(example_name="test_example")
+
+        # Assert
+        mock_echo.assert_called_once_with(
+            "Error exploring directory: 500 Internal Server Error. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
+        assert result == []
+
+    @patch("requests.get")
+    @patch("click.echo")
+    def test_request_exception_handling(self, mock_echo, mock_get):
+        """Test handling of request exceptions"""
+        # Arrange
+        mock_get.side_effect = requests.exceptions.RequestException("Network error")
+
+        # Act
+        result = _get_train_init_example_info(example_name="test_example")
+
+        # Assert
+        mock_echo.assert_called_once_with(
+            "Error exploring directory: Network error. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
+        assert result == []
+
+    @patch("requests.get")
+    def test_none_example_name(self, mock_get):
+        """Test with None as example_name"""
+        # Arrange
+        mock_response = Mock()
+        mock_response.json.return_value = []
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        # Act
+        result = _get_train_init_example_info(example_name=None)
+
+        # Assert
+        mock_get.assert_called_once_with(
+            "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/None",
+            headers={},
+        )
+        assert result == []
 
 
 class TestDownloadGitDirectory:
