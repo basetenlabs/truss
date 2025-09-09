@@ -385,38 +385,33 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
 
 
 @train.command(name="init")
-@click.option("--target_dir", type=str, required=False)
+@click.option("--target-directory", type=str, required=False)
 @click.option("--examples", type=str, required=False)
 @common.common_options()
-def init_training_job(target_dir: Optional[str], examples: Optional[str]) -> None:
+def init_training_job(target_directory: Optional[str], examples: Optional[str]) -> None:
     try:
         selected_options = examples.split(",") if examples else []
 
         # No examples selected, initialize empty training project structure
         if not selected_options:
-            if target_dir is None:
-                target_dir = "truss-train-init"
-            console.print(f"Initializing empty training project at {target_dir}")
-            os.makedirs(target_dir)
-            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_dir))
+            if target_directory is None:
+                target_directory = "truss-train-init"
+            console.print(f"Initializing empty training project at {target_directory}")
+            os.makedirs(target_directory)
+            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_directory))
             console.print(
-                f"✨ Empty training project initialized at {target_dir}",
+                f"✨ Empty training project initialized at {target_directory}",
                 style="bold green",
             )
             return
 
-        if target_dir is None:
-            target_dir = os.getcwd()
+        if target_directory is None:
+            target_directory = os.getcwd()
         for example_to_download in selected_options:
             download_info = train_cli._get_train_init_example_info(
                 example_name=example_to_download
             )
-            if (
-                len(selected_options) > 1
-            ):  # if only 1 example is selected, no subdirs with example names
-                local_dir = os.path.join(target_dir, example_to_download)
-            else:
-                local_dir = target_dir if target_dir else example_to_download
+            local_dir = os.path.join(target_directory, example_to_download)
 
             if not download_info:
                 all_examples = train_cli._get_all_train_init_example_options()
