@@ -264,7 +264,9 @@ class BasetenEndpoints:
                     )
                 except Exception:
                     await _safe_close_websocket(
-                        ws, status_code=1011, reason=errors.MODEL_ERROR_MESSAGE
+                        ws,
+                        status_code=errors.WEBSOCKET_SERVER_ERROR_CODE,
+                        reason=errors.MODEL_ERROR_MESSAGE,
                     )
                     raise  # Re raise to let `intercept_exceptions` deal with it.
 

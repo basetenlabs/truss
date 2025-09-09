@@ -30,9 +30,14 @@ BASE_RETRY_EXCEPTIONS = (
 
 control_app = APIRouter()
 
+WEBSOCKET_NORMAL_CLOSURE_CODE = 1000
+WEBSOCKET_SERVER_ERROR_CODE = 1011
+
 
 class CloseableWebsocket(Protocol):
-    async def close(self, code: int = 1000, reason: Optional[str] = None) -> None: ...
+    async def close(
+        self, code: int = WEBSOCKET_NORMAL_CLOSURE_CODE, reason: Optional[str] = None
+    ) -> None: ...
 
 
 @control_app.get("/")
@@ -126,7 +131,7 @@ def inference_retries(
 async def _safe_close_ws(
     ws: CloseableWebsocket,
     logger: logging.Logger,
-    code: int = 1000,
+    code: int,
     reason: Optional[str] = None,
 ):
     try:
@@ -170,7 +175,11 @@ async def _handle_websocket_forwarding(
             tg.create_task(forward_to_client(client_ws, server_ws))
             tg.create_task(forward_to_server(client_ws, server_ws))
     except ExceptionGroup as eg:  # type: ignore[name-defined] # noqa: F821
-        exc = eg.exceptions[0]  # NB(nikhil): Only care about the first one.
+        # NB(nikhil): The first websocket proxy method to raise an error will
+        # be surfaced here, and that contains the information we want to forward to the
+        # other websocket. Further errors might raise as a result of cancellation, but we
+        # can safely ignore those.
+        exc = eg.exceptions[0]
         if isinstance(exc, WebSocketDisconnect):
             await _safe_close_ws(client_ws, logger, exc.code, exc.reason)
         elif isinstance(exc, StartletteWebSocketDisconnect):
@@ -178,8 +187,10 @@ async def _handle_websocket_forwarding(
         else:
             logger.warning(f"Ungraceful websocket close: {exc}")
     finally:
-        await _safe_close_ws(client_ws, logger)
-        await _safe_close_ws(server_ws, logger)
+        # NB(nikhil): In most common cases, both websockets would have been successfully
+        # closed with applicable codes above, these lines are just a failsafe.
+        await _safe_close_ws(client_ws, logger, code=WEBSOCKET_SERVER_ERROR_CODE)
+        await _safe_close_ws(server_ws, logger, code=WEBSOCKET_SERVER_ERROR_CODE)
 
 
 async def _attempt_websocket_proxy(
@@ -200,7 +211,7 @@ async def proxy_ws(client_ws: WebSocket):
                 await _attempt_websocket_proxy(client_ws, proxy_client, logger)
             except httpx_ws_exceptions.HTTPXWSException as e:
                 logger.warning(f"WebSocket connection rejected: {e}")
-                await _safe_close_ws(client_ws, logger)
+                await _safe_close_ws(client_ws, logger, WEBSOCKET_SERVER_ERROR_CODE)
                 break
 
 

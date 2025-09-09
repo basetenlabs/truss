@@ -51,8 +51,6 @@ async def test_proxy_ws_bidirectional_messaging(client_ws):
         return_value=mock_server_ws,
     ):
         proxy_task = asyncio.create_task(proxy_ws(client_ws))
-        await asyncio.sleep(0.5)
-
         client_queue.put_nowait(
             {"type": "websocket.disconnect", "code": 1002, "reason": "test-closure"}
         )
