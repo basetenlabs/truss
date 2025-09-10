@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from typing import Optional, cast
@@ -5,6 +6,7 @@ from typing import Optional, cast
 import rich_click as click
 
 import truss.cli.train.core as train_cli
+from truss.base.constants import TRAINING_TEMPLATE_DIR
 from truss.cli import remote_cli
 from truss.cli.cli import push, truss_cli
 from truss.cli.logs import utils as cli_log_utils
@@ -25,6 +27,7 @@ from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
+from truss.util.path import copy_tree_path
 from truss_train import TrainingJob
 
 
@@ -378,6 +381,75 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
         )
     except Exception as e:
         error_console.print(f"Failed to download checkpoint artifacts data: {str(e)}")
+        sys.exit(1)
+
+
+@train.command(name="init")
+@click.option("--list-examples", is_flag=True, help="List all available examples.")
+@click.option("--target-directory", type=str, required=False)
+@click.option("--examples", type=str, required=False)
+@common.common_options()
+def init_training_job(
+    list_examples: Optional[bool],
+    target_directory: Optional[str],
+    examples: Optional[str],
+) -> None:
+    try:
+        if list_examples:
+            all_examples = train_cli._get_all_train_init_example_options()
+            console.print("Available training examples:", style="bold")
+            for example in all_examples:
+                console.print(f"- {example}")
+            console.print(
+                "To launch, run `truss train init --examples <example1,example2>`",
+                style="bold",
+            )
+            return
+
+        selected_options = examples.split(",") if examples else []
+
+        # No examples selected, initialize empty training project structure
+        if not selected_options:
+            if target_directory is None:
+                target_directory = "truss-train-init"
+            console.print(f"Initializing empty training project at {target_directory}")
+            os.makedirs(target_directory)
+            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_directory))
+            console.print(
+                f"✨ Empty training project initialized at {target_directory}",
+                style="bold green",
+            )
+            return
+
+        if target_directory is None:
+            target_directory = os.getcwd()
+        for example_to_download in selected_options:
+            download_info = train_cli._get_train_init_example_info(
+                example_name=example_to_download
+            )
+            local_dir = os.path.join(target_directory, example_to_download)
+
+            if not download_info:
+                all_examples = train_cli._get_all_train_init_example_options()
+                error_console.print(
+                    f"Example {example_to_download} not found in the ml-cookbook repository. Examples have to be one or more comma separated values from: {', '.join(all_examples)}"
+                )
+                continue
+            success = train_cli.download_git_directory(
+                git_api_url=download_info[0]["url"], local_dir=local_dir
+            )
+            if success:
+                console.print(
+                    f"✨ Training directory for {example_to_download} initialized at {local_dir}",
+                    style="bold green",
+                )
+            else:
+                error_console.print(
+                    f"Failed to initialize training artifacts to {local_dir}"
+                )
+
+    except Exception as e:
+        error_console.print(f"Failed to initialize training artifacts: {str(e)}")
         sys.exit(1)
 
 

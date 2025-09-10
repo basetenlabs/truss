@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import FastAPI, WebSocket
@@ -31,33 +32,38 @@ def client_ws(app):
 
 @pytest.mark.asyncio
 async def test_proxy_ws_bidirectional_messaging(client_ws):
-    """Test that both directions of communication work and clean up properly"""
-    client_ws.receive.side_effect = [
-        {"type": "websocket.receive", "text": "msg1"},
-        {"type": "websocket.receive", "text": "msg2"},
-        {"type": "websocket.disconnect"},
-    ]
+    client_queue = asyncio.Queue()
+    client_ws.receive = client_queue.get
 
+    server_queue = asyncio.Queue()
     mock_server_ws = AsyncMock(spec=AsyncWebSocketSession)
-    mock_server_ws.receive.side_effect = [
-        TextMessage(data="response1"),
-        TextMessage(data="response2"),
-        None,  # server closing connection
-    ]
+    mock_server_ws.receive = server_queue.get
     mock_server_ws.__aenter__.return_value = mock_server_ws
     mock_server_ws.__aexit__.return_value = None
+
+    client_queue.put_nowait({"type": "websocket.receive", "text": "msg1"})
+    client_queue.put_nowait({"type": "websocket.receive", "text": "msg2"})
+    server_queue.put_nowait(TextMessage(data="response1"))
+    server_queue.put_nowait(TextMessage(data="response2"))
 
     with patch(
         "truss.templates.control.control.endpoints.aconnect_ws",
         return_value=mock_server_ws,
     ):
-        await proxy_ws(client_ws)
+        proxy_task = asyncio.create_task(proxy_ws(client_ws))
+        client_queue.put_nowait(
+            {"type": "websocket.disconnect", "code": 1002, "reason": "test-closure"}
+        )
+
+        await proxy_task
 
     assert mock_server_ws.send_text.call_count == 2
     assert mock_server_ws.send_text.call_args_list == [(("msg1",),), (("msg2",),)]
     assert client_ws.send_text.call_count == 2
     assert client_ws.send_text.call_args_list == [(("response1",),), (("response2",),)]
-    client_ws.close.assert_called_once()
+
+    assert mock_server_ws.close.call_args_list[0] == call(1002, "test-closure")
+    client_ws.close.assert_called()
 
 
 @pytest.mark.asyncio
