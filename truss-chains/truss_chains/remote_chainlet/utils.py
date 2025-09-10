@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 try:
     import prometheus_client
 except ImportError:
-    logging.warning("Optional `prometheus_client` is not installed. ")
+    logging.warning("Optional `prometheus_client` is not installed.")
 
     class _NoOpMetric:
         def labels(self, *args: object, **kwargs: object) -> "_NoOpMetric":
@@ -63,6 +63,26 @@ except ImportError:
 
         def Counter(*args, **kwargs) -> _NoOpMetric:
             return _NoOpMetric()
+
+
+try:
+    from fastapi import WebSocketDisconnect
+except ImportError:
+    # NB(nikhil): Stub implementation of WebSocketDisconnect, in case local environment doesn't have
+    # fastapi.
+    class WebSocketDisconnect(Exception):  # type: ignore[no-redef]
+        def __init__(self, code: int, reason: Optional[str] = None):
+            super().__init__()
+            self.code = code
+            self.reason = reason
+
+
+try:
+    from starlette.websockets import WebSocketState
+except ImportError:
+    # NB(nikhil): Stub implementation of WebSocketState, in case local environment doesn't have starlette.
+    class WebSocketState:  # type: ignore[no-redef]
+        CONNECTED = "connected"
 
 
 T = TypeVar("T")
@@ -588,17 +608,12 @@ class WebsocketWrapperFastAPI:
         await self._websocket.close(code=code, reason=reason)
 
     async def receive(self) -> Union[str, bytes]:
-        try:
-            import fastapi
-        except ImportError:
-            raise utils.make_optional_import_error("fastapi")
-
         message = await self._websocket.receive()
 
         if message.get("type") == "websocket.disconnect":
             # NB(nikhil): Mimics FastAPI `_raise_on_disconnect`, since otherwise the user has no
             # way of detecting that the client disconnected.
-            raise fastapi.WebSocketDisconnect(message["code"], message.get("reason"))
+            raise WebSocketDisconnect(message["code"], message.get("reason"))
         elif message.get("text"):
             return typing.cast(str, message["text"])
         else:
@@ -623,13 +638,19 @@ class WebsocketWrapperFastAPI:
         await self._websocket.send_json(data)
 
     async def iter_text(self) -> AsyncIterator[str]:
-        while True:
-            yield await self.receive_text()
+        return self._websocket.iter_text()
 
     async def iter_bytes(self) -> AsyncIterator[bytes]:
-        while True:
-            yield await self.receive_bytes()
+        return self._websocket.iter_bytes()
 
     async def iter_json(self) -> AsyncIterator[Any]:
-        while True:
-            yield await self.receive_json()
+        return self._websocket.iter_json()
+
+    async def is_connected(self) -> bool:
+        # NB(nikhil): This isn't a foolproof mechanism for detecting whether a websocket
+        # connection is actually alive, ping/pong messages are best suited for that. However,
+        # as a heuristic to determine if a message is safe to send, this can do a pretty good job.
+        return (
+            self._websocket.application_state == WebSocketState.CONNECTED
+            and self._websocket.client_state == WebSocketState.CONNECTED
+        )
