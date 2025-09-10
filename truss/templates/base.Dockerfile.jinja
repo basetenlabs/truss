@@ -8,6 +8,7 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
+{%- set bundled_packages_path = "/packages" %}  {# path for bundled packages #}
 {%- set app_username = "app" %}  {# needed later for USER directive#}
 {% block user_setup %}
 {%- set app_user_uid = 60000 %}
@@ -30,7 +31,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 {# to allow the non-root user to install packages. #}
 {%- if non_root_user and enable_model_container_admin_commands %}
 RUN apt update && apt install -y sudo
-{%- set allowed_admin_commands = ["/usr/bin/apt install *", "/usr/bin/apt update"] %}
+{%- set allowed_admin_commands = ["/usr/bin/apt install *", "/usr/bin/apt update", "/usr/bin/apt remove *"] %}
 RUN echo "Defaults:{{ app_username }} passwd_tries=0\n{{ app_username }} ALL=(root) NOPASSWD: {{ allowed_admin_commands | join(", ") }}" > /etc/sudoers.d/app-packages
 RUN chmod 0440 /etc/sudoers.d/app-packages
 {#- optional but good practice: check if the sudoers file is valid #}
@@ -119,7 +120,7 @@ WORKDIR $APP_HOME
 
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} /packages
+COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} {{ bundled_packages_path }}
 {%- endif %}
 {% endblock %}
 
