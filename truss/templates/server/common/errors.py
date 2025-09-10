@@ -18,6 +18,7 @@ _BASETEN_DOWNSTREAM_ERROR_CODE = 600
 _BASETEN_CLIENT_ERROR_CODE = 700
 
 MODEL_ERROR_MESSAGE = "Internal Server Error (in model/chainlet)."
+WEBSOCKET_SERVER_ERROR_CODE = 1011
 
 
 class ModelMissingError(Exception):
