@@ -584,7 +584,7 @@ def test_get_checkpoint_ids_to_deploy_full_checkpoints():
         mock_checkbox.assert_called_once()
         assert (
             mock_checkbox.call_args[1]["message"]
-            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+            == "Use spacebar to select/deselect checkpoints to deploy. Press enter when done."
         )
         assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
 
@@ -621,7 +621,7 @@ def test_get_checkpoint_ids_to_deploy_lora_checkpoints():
         mock_checkbox.assert_called_once()
         assert (
             mock_checkbox.call_args[1]["message"]
-            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+            == "Use spacebar to select/deselect checkpoints to deploy. Press enter when done."
         )
         assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
 
@@ -656,7 +656,7 @@ def test_get_checkpoint_ids_to_deploy_mixed_checkpoints():
         mock_checkbox.assert_called_once()
         assert (
             mock_checkbox.call_args[1]["message"]
-            == "Select the checkpoint to deploy. Use spacebar to select/deselect."
+            == "Use spacebar to select/deselect checkpoints to deploy. Press enter when done."
         )
         assert mock_checkbox.call_args[1]["choices"] == checkpoint_options
 
