@@ -544,7 +544,11 @@ async def websocket(self, websocket: fastapi.WebSocket) -> None:
         )"""
     return _Source(
         src=src,
-        imports={"import fastapi", "from truss_chains.remote_chainlet import utils"},
+        imports={
+            "import fastapi",
+            "from starlette.websockets import WebSocketState",
+            "from truss_chains.remote_chainlet import utils",
+        },
     )
 
 
