@@ -23,7 +23,7 @@ load_from_named_checkpoint = BasetenCheckpoint.from_named_checkpoint(
     training_job_id="lqz4pw4",  # Optional
 )
 
-load_model_config = LoadCheckpointConfig(
+load_checkpoint_config = LoadCheckpointConfig(
     enabled=True,
     download_folder="/tmp/custom_location",  # default is None -> default path set by server-side
     checkpoints=[load_from_most_recent_checkpoint, load_from_named_checkpoint],
@@ -35,7 +35,7 @@ job = TrainingJob(
     image=Image(base_image="ghcr.io/baseten-ai/truss-train-base:latest"),
     runtime=Runtime(
         checkpointing_config=checkpointing_config,
-        load_checkpoint_config=load_model_config,
+        load_checkpoint_config=load_checkpoint_config,
     ),
 )
 
