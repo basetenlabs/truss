@@ -5,7 +5,7 @@ from typing import Dict, List, Literal, Optional, Union
 import pydantic
 from pydantic import field_validator, model_validator
 
-from truss.base import custom_types, truss_config
+from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
 
@@ -56,49 +56,47 @@ class Compute(custom_types.SafeModelNoExtra):
 
 
 class _CheckpointBase(custom_types.SafeModelNoExtra):
-    typ: str
+    type: str
 
 
 class _BasetenLatestCheckpoint(_CheckpointBase):
-    training_job_id: Optional[str] = None
+    job_id: Optional[str] = None
     project_name: Optional[str] = None
-    typ: Literal["baseten_latest_checkpoint"] = "baseten_latest_checkpoint"
+    type: Literal["baseten_latest_checkpoint"] = "baseten_latest_checkpoint"
 
 
 class _BasetenNamedCheckpoint(_CheckpointBase):
     checkpoint_name: str
-    training_job_id: Optional[str]
+    job_id: Optional[str]
     project_name: Optional[str]
-    typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
+    type: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
 
 
 class BasetenCheckpoint:
     @staticmethod
     def from_latest_checkpoint(
-        project_name: Optional[str] = None, training_job_id: Optional[str] = None
+        project_name: Optional[str] = None, job_id: Optional[str] = None
     ) -> _BasetenLatestCheckpoint:
-        return _BasetenLatestCheckpoint(
-            project_name=project_name, training_job_id=training_job_id
-        )
+        return _BasetenLatestCheckpoint(project_name=project_name, job_id=job_id)
 
     @classmethod
     def from_named_checkpoint(
         cls,
         checkpoint_name: str,
-        project_name: Optional[str],
-        training_job_id: Optional[str],
+        project_name: Optional[str] = None,
+        job_id: Optional[str] = None,
     ) -> _BasetenNamedCheckpoint:
         return _BasetenNamedCheckpoint(
-            checkpoint_name=checkpoint_name,
-            project_name=project_name,
-            training_job_id=training_job_id,
+            checkpoint_name=checkpoint_name, project_name=project_name, job_id=job_id
         )
 
 
 class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
-    download_folder: Optional[str] = None
-    checkpoints: List[_CheckpointBase] = [_BasetenLatestCheckpoint()]
+    checkpoints: List[Union[_BasetenLatestCheckpoint, _BasetenNamedCheckpoint]] = [
+        _BasetenLatestCheckpoint()
+    ]
+    download_folder: str = constants.DEFAULT_TRAINING_CHECKPOINT_FOLDER
 
 
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
