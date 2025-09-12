@@ -85,3 +85,5 @@ OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecat
 PRODUCTION_ENVIRONMENT_NAME = "production"
 
 TRUSS_BASE_IMAGE_NAME = "baseten/truss-server-base"
+
+DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/loaded_checkpoints"
