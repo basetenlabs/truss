@@ -138,7 +138,12 @@ class ChainService(abc.ABC):
 
 def _generate_chainlet_artifacts(
     options: private_types.PushOptions, entrypoint: Type[private_types.ABCChainlet]
-) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact], bool]:
+) -> tuple[
+    b10_types.ChainletArtifact,
+    list[b10_types.ChainletArtifact],
+    bool,
+    Optional[private_types.ChainletAPIDescriptor],
+]:
     chain_root = _get_chain_root(entrypoint)
     entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
     dependency_artifacts: list[b10_types.ChainletArtifact] = []
@@ -192,7 +197,19 @@ def _generate_chainlet_artifacts(
 
     assert entrypoint_artifact is not None
 
-    return entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets
+    # Find the entrypoint descriptor
+    entrypoint_descriptor = None
+    for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
+        if chainlet_descriptor.chainlet_cls == entrypoint:
+            entrypoint_descriptor = chainlet_descriptor
+            break
+
+    return (
+        entrypoint_artifact,
+        dependency_artifacts,
+        has_engine_builder_chainlets,
+        entrypoint_descriptor,
+    )
 
 
 @framework.raise_validation_errors_before
@@ -201,9 +218,12 @@ def push(
     options: private_types.PushOptions,
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
-    entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets = (
-        _generate_chainlet_artifacts(options, entrypoint)
-    )
+    (
+        entrypoint_artifact,
+        dependency_artifacts,
+        has_engine_builder_chainlets,
+        entrypoint_descriptor,
+    ) = _generate_chainlet_artifacts(options, entrypoint)
     if options.only_generate_trusses:
         return None
     if isinstance(options, private_types.PushOptionsBaseten):
@@ -213,7 +233,11 @@ def push(
                 "not supportd, push with `--publish`."
             )
         return _create_baseten_chain(
-            options, entrypoint_artifact, dependency_artifacts, progress_bar
+            options,
+            entrypoint_artifact,
+            dependency_artifacts,
+            progress_bar,
+            entrypoint_descriptor,
         )
     elif isinstance(options, private_types.PushOptionsLocalDocker):
         if has_engine_builder_chainlets:
@@ -369,16 +393,19 @@ def _create_docker_chain(
 class BasetenChainService(ChainService):
     _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
     _remote: b10_remote.BasetenRemote
+    _entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor]
 
     def __init__(
         self,
         name: str,
         chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
         remote: b10_remote.BasetenRemote,
+        entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
     ) -> None:
         super().__init__(name)
         self._chain_deployment_handle = chain_deployment_handle
         self._remote = remote
+        self._entrypoint_descriptor = entrypoint_descriptor
 
     @property
     def run_remote_url(self) -> str:
@@ -392,6 +419,13 @@ class BasetenChainService(ChainService):
             entity_version_id=handle.chain_deployment_id,
             is_draft=handle.is_draft,
         )
+
+    @property
+    def is_websocket(self) -> bool:
+        """Check if the entrypoint uses websockets."""
+        if self._entrypoint_descriptor is None:
+            return False
+        return self._entrypoint_descriptor.endpoint.is_websocket
 
     def run_remote(self, json_data: Dict) -> Any:
         """Invokes the entrypoint with JSON data.
@@ -462,6 +496,7 @@ def _create_baseten_chain(
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
     progress_bar: Optional[Type["progress.Progress"]],
+    entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
 ):
     logging.info(
         f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
@@ -491,7 +526,10 @@ def _create_baseten_chain(
         progress_bar=progress_bar,
     )
     return BasetenChainService(
-        baseten_options.chain_name, chain_deployment_handle, remote_provider
+        baseten_options.chain_name,
+        chain_deployment_handle,
+        remote_provider,
+        entrypoint_descriptor,
     )
 
 
