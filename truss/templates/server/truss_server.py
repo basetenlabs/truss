@@ -465,19 +465,23 @@ class TrussServer:
             else "INFO"
         )
         extra_kwargs = {}
-        # We don't pass these if not set, to not override the default.
         if (
             ws_ping_interval_seconds := self._config["runtime"]
             .get("transport", {})
             .get("ping_interval_seconds")
         ):
             extra_kwargs["ws_ping_interval"] = ws_ping_interval_seconds
+        else:
+            extra_kwargs["ws_ping_interval"] = ws_ping_interval_seconds
+
         if (
             ws_ping_timeout_seconds := self._config["runtime"]
             .get("transport", {})
             .get("ping_timeout_seconds")
         ):
             extra_kwargs["ws_ping_timeout"] = ws_ping_timeout_seconds
+        else:
+            extra_kwargs["ws_ping_timeout"] = None
 
         cfg = uvicorn.Config(
             self.create_application(),
