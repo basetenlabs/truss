@@ -472,7 +472,7 @@ class TrussServer:
         ):
             extra_kwargs["ws_ping_interval"] = ws_ping_interval_seconds
         else:
-            extra_kwargs["ws_ping_interval"] = ws_ping_interval_seconds
+            extra_kwargs["ws_ping_interval"] = None
 
         if (
             ws_ping_timeout_seconds := self._config["runtime"]
