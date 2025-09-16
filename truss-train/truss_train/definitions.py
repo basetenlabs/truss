@@ -56,20 +56,20 @@ class Compute(custom_types.SafeModelNoExtra):
 
 
 class _CheckpointBase(custom_types.SafeModelNoExtra):
-    type: str
+    typ: str
 
 
 class _BasetenLatestCheckpoint(_CheckpointBase):
     job_id: Optional[str] = None
     project_name: Optional[str] = None
-    type: Literal["baseten_latest_checkpoint"] = "baseten_latest_checkpoint"
+    typ: Literal["baseten_latest_checkpoint"] = "baseten_latest_checkpoint"
 
 
 class _BasetenNamedCheckpoint(_CheckpointBase):
     checkpoint_name: str
     job_id: Optional[str]
     project_name: Optional[str]
-    type: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
+    typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
 
 
 class BasetenCheckpoint:
