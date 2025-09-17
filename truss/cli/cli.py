@@ -1,8 +1,10 @@
 import inspect
 import json
 import os
+import re
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, cast
 
@@ -28,6 +30,7 @@ from truss.remote.baseten.core import (
     ModelIdentifier,
     ModelName,
     ModelVersionId,
+    get_model_deployment_logs_with_pagination,
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
@@ -63,6 +66,11 @@ click.rich_click.COMMAND_GROUPS = {
             "name": "Train",
             "commands": ["train"],
             "table_styles": {"row_styles": ["magenta"]},  # type: ignore
+        },
+        {
+            "name": "Deployment",
+            "commands": ["deployment"],
+            "table_styles": {"row_styles": ["blue"]},  # type: ignore
         },
     ]
 }
@@ -251,6 +259,52 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     raise click.UsageError(
         "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
     )
+
+
+def _parse_time_string(time_str: str) -> int:
+    """
+    Parse a time string and return milliseconds since epoch.
+    Supports ISO format and relative format (e.g., '1h', '30m', '2d').
+    """
+    if not time_str:
+        return None
+
+    # Try relative format first (e.g., '1h', '30m', '2d')
+    relative_match = re.match(r"^(\d+)([hmsd])$", time_str.lower())
+    if relative_match:
+        value = int(relative_match.group(1))
+        unit = relative_match.group(2)
+
+        now = datetime.now()
+        if unit == "s":
+            delta = timedelta(seconds=value)
+        elif unit == "m":
+            delta = timedelta(minutes=value)
+        elif unit == "h":
+            delta = timedelta(hours=value)
+        elif unit == "d":
+            delta = timedelta(days=value)
+        else:
+            raise click.UsageError(f"Unsupported time unit: {unit}")
+
+        target_time = now - delta
+        return int(target_time.timestamp() * 1000)
+
+    # Try ISO format
+    try:
+        # Handle both with and without timezone info
+        if time_str.endswith("Z"):
+            dt = datetime.fromisoformat(time_str[:-1] + "+00:00")
+        elif "+" in time_str or time_str.count("-") > 2:
+            dt = datetime.fromisoformat(time_str)
+        else:
+            dt = datetime.fromisoformat(time_str)
+
+        return int(dt.timestamp() * 1000)
+    except ValueError:
+        raise click.UsageError(
+            f"Invalid time format: {time_str}. Use ISO format or relative format (e.g., '1h', '30m')"
+        )
 
 
 @truss_cli.command()
@@ -488,7 +542,7 @@ def run_python(script, target_directory):
     default=False,
     help=common.INCLUDE_GIT_INFO_DOC,
 )
-@click.option("--tail", is_flag=True)
+@click.option("--tail", is_flag=True, help="Tail deployment logs after pushing.")
 @click.option(
     "--preserve-env-instance-type/--no-preserve-env-instance-type",
     is_flag=True,
@@ -654,6 +708,7 @@ def push(
     console.print(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
+
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
@@ -673,7 +728,7 @@ def push(
 
                 if deployment_status == ACTIVE_STATUS:
                     console.print("Deployment succeeded.", style="bold green")
-                    return
+                    break
 
                 if deployment_status not in DEPLOYING_STATUSES:
                     console.print(
@@ -682,10 +737,10 @@ def push(
                     )
                     sys.exit(1)
 
-    elif tail and isinstance(service, BasetenService):
+    if tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
         log_watcher = ModelDeploymentLogWatcher(
-            bt_remote.api, service.model_id, service.model_version_id
+            bt_remote.api, service.model_id, service.model_version_id, tail_only=True
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log)
@@ -913,6 +968,95 @@ def kill(target_directory: str) -> None:
 def kill_all() -> None:
     """Kills all truss containers that are not manually persisted."""
     docker.kill_all()
+
+
+@truss_cli.group()
+def deployment():
+    """Subcommands for truss deployment"""
+
+
+@deployment.command(name="logs")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--deployment-id", type=str, required=True, help="Deployment ID")
+@click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
+@click.option(
+    "--start-time",
+    type=str,
+    required=False,
+    help="Start time for logs in ISO format (e.g., '2023-01-01T00:00:00Z') or relative format (e.g., '1h' for 1 hour ago, '30m' for 30 minutes ago)",
+)
+@click.option(
+    "--end-time",
+    type=str,
+    required=False,
+    help="End time for logs in ISO format (e.g., '2023-01-01T00:00:00Z')",
+)
+@common.common_options()
+def deployment_logs(
+    remote: Optional[str],
+    deployment_id: str,
+    tail: bool = False,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> None:
+    """
+    Fetches logs for a deployment
+
+    This command provides the same functionality as 'truss model_logs' but with
+    a simplified interface that only requires the deployment ID.
+    """
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    # Get the model ID from the deployment ID
+    # We need to fetch the deployment details to get the model ID
+    try:
+        deployment_info = remote_provider.api.get_deployment_by_id(deployment_id)
+        model_id = deployment_info["model_id"]
+    except Exception as e:
+        error_console.print(f"Failed to get deployment info: {str(e)}")
+        sys.exit(1)
+
+    # Parse time parameters
+    start_epoch_millis = None
+    end_epoch_millis = None
+
+    if start_time:
+        start_epoch_millis = _parse_time_string(start_time)
+    elif tail:
+        # Default to 1 hour ago for tail mode if no start time specified
+        now = int(time.time() * 1000)
+        start_epoch_millis = now - (60 * 60 * 1000)  # 1 hour ago
+
+    if end_time:
+        end_epoch_millis = _parse_time_string(end_time)
+
+    if not tail:
+        if start_epoch_millis or end_epoch_millis:
+            # Use pagination for time range queries
+            logs = get_model_deployment_logs_with_pagination(
+                remote_provider.api, model_id, deployment_id
+            )
+        else:
+            # Use simple API call for all logs
+            logs = remote_provider.api.get_model_deployment_logs(
+                model_id, deployment_id
+            )
+
+        for log in cli_log_utils.parse_logs(logs):
+            cli_log_utils.output_log(log)
+    else:
+        log_watcher = ModelDeploymentLogWatcher(
+            remote_provider.api,
+            model_id,
+            deployment_id,
+            tail_only=True,
+            start_epoch_millis=start_epoch_millis,
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log)
 
 
 # These imports are needed to register the subcommands

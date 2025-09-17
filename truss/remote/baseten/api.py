@@ -474,6 +474,25 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
+    def get_deployment_by_id(self, deployment_id: str):
+        """
+        Get deployment information by deployment ID.
+        Uses get_model_version_by_id to get the model_id from the deployment_id.
+        """
+        # First get the model version info to extract the model_id
+        model_version_data = self.get_model_version_by_id(deployment_id)
+        model_version = model_version_data["model_version"]
+
+        # Extract the oracle (model) ID from the model version
+        oracle_id = model_version["oracle"]["id"]
+
+        # Return the deployment info in the expected format
+        return {
+            "model_id": oracle_id,
+            "deployment_id": deployment_id,
+            "model_version": model_version,
+        }
+
     def patch_draft_truss_two_step(self, model_name, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())
         query_string = f"""

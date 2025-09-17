@@ -652,6 +652,94 @@ class BatchedTrainingLogsFetcher:
             raise StopIteration
 
 
+class BatchedModelDeploymentLogsFetcher:
+    """
+    Iterator that fetches model deployment logs in batches using time-based pagination.
+    """
+
+    def __init__(
+        self, api: BasetenApi, model_id: str, deployment_id: str, batch_size: int
+    ):
+        self.api = api
+        self.model_id = model_id
+        self.deployment_id = deployment_id
+        self.batch_size = batch_size
+        self.iteration = 0
+        self.current_start_time = None
+        self.current_end_time = None
+        self._initialize_time_window()
+
+    def _initialize_time_window(self):
+        # For model deployments, we'll start from 1 hour ago by default
+        # This can be overridden by the caller if needed
+        now = int(datetime.datetime.now().timestamp() * 1000)
+        self.current_start_time = now - MILLISECONDS_PER_HOUR
+        self.current_end_time = now
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> List[Any]:
+        if self.iteration >= MAX_ITERATIONS:
+            logging.warning(
+                f"Reached maximum iteration limit ({MAX_ITERATIONS}) while paginating "
+                f"model deployment logs for model_id={self.model_id}, deployment_id={self.deployment_id}."
+            )
+            raise StopIteration
+
+        query_params = _build_log_query_params(
+            self.current_start_time, self.current_end_time, self.batch_size
+        )
+
+        try:
+            batch_logs = self.api.get_model_deployment_logs(
+                self.model_id,
+                self.deployment_id,
+                start_epoch_millis=self.current_start_time,
+                end_epoch_millis=self.current_end_time,
+            )
+
+            should_continue, next_start_time, next_end_time = _process_batch_logs(
+                batch_logs, self.deployment_id, self.iteration, self.batch_size
+            )
+
+            if not should_continue:
+                logging.info(
+                    f"Completed pagination for deployment {self.deployment_id}. Total iterations: {self.iteration + 1}"
+                )
+                raise StopIteration
+
+            self.current_start_time = next_start_time  # type: ignore[assignment]
+            self.current_end_time = next_end_time  # type: ignore[assignment]
+            self.iteration += 1
+
+            return batch_logs
+
+        except requests.HTTPError as e:
+            if 500 <= e.response.status_code < 600:
+                if self.batch_size == MIN_BATCH_SIZE:
+                    logging.error(
+                        "Failed to fetch all model deployment logs due to persistent server errors. "
+                        "Please try again later or contact support if the issue persists."
+                    )
+                    raise StopIteration
+                self.batch_size = _handle_server_error_backoff(
+                    e, self.deployment_id, self.iteration, self.batch_size
+                )
+                # Retry the same iteration with reduced batch size
+                return self.__next__()
+            else:
+                logging.error(
+                    f"HTTP error fetching logs for deployment {self.deployment_id} at iteration {self.iteration}: {e}"
+                )
+                raise StopIteration
+        except Exception as e:
+            logging.error(
+                f"Error fetching logs for deployment {self.deployment_id} at iteration {self.iteration}: {e}"
+            )
+            raise StopIteration
+
+
 def get_training_job_logs_with_pagination(
     api: BasetenApi, project_id: str, job_id: str, batch_size: int = MAX_BATCH_SIZE
 ) -> List[Any]:
@@ -671,5 +759,32 @@ def get_training_job_logs_with_pagination(
         all_logs.extend(batch_logs)
 
     logging.info(f"Completed pagination for job {job_id}. Total logs: {len(all_logs)}")
+
+    return all_logs
+
+
+def get_model_deployment_logs_with_pagination(
+    api: BasetenApi, model_id: str, deployment_id: str, batch_size: int = MAX_BATCH_SIZE
+) -> List[Any]:
+    """
+    This method implements forward time-based pagination for model deployment logs by starting
+    from the earliest available log and working forward in time. It uses the timestamp of the
+    newest log in each batch as the start time for the next request.
+
+    Returns:
+        List of all logs in chronological order (oldest first)
+    """
+    all_logs = []
+
+    logs_iterator = BatchedModelDeploymentLogsFetcher(
+        api, model_id, deployment_id, batch_size
+    )
+
+    for batch_logs in logs_iterator:
+        all_logs.extend(batch_logs)
+
+    logging.info(
+        f"Completed pagination for deployment {deployment_id}. Total logs: {len(all_logs)}"
+    )
 
     return all_logs
