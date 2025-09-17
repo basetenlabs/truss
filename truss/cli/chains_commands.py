@@ -55,7 +55,9 @@ def _make_chains_curl_snippet(
 
     if is_websocket:
         # Replace 'run_remote' with 'websocket' for websocket endpoints
-        websocket_url = run_remote_url.replace("run_remote", "websocket")
+        websocket_url = run_remote_url.replace("run_remote", "websocket").replace(
+            "https", "wss"
+        )
         return (
             f'websocat -H="Authorization: Api-Key $BASETEN_API_KEY" \\\n'
             f"    {websocket_url}"
