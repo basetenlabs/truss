@@ -1,11 +1,11 @@
 import enum
 from abc import ABC
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
 from pydantic import field_validator, model_validator
 
-from truss.base import custom_types, truss_config
+from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
 
@@ -56,6 +56,50 @@ class Compute(custom_types.SafeModelNoExtra):
         )
 
 
+class _CheckpointBase(custom_types.SafeModelNoExtra):
+    typ: str
+
+
+class _BasetenLatestCheckpoint(_CheckpointBase):
+    job_id: Optional[str] = None
+    project_name: Optional[str] = None
+    typ: Literal["baseten_latest_checkpoint"] = "baseten_latest_checkpoint"
+
+
+class _BasetenNamedCheckpoint(_CheckpointBase):
+    checkpoint_name: str
+    job_id: Optional[str]
+    project_name: Optional[str]
+    typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
+
+
+class BasetenCheckpoint:
+    @staticmethod
+    def from_latest_checkpoint(
+        project_name: Optional[str] = None, job_id: Optional[str] = None
+    ) -> _BasetenLatestCheckpoint:
+        return _BasetenLatestCheckpoint(project_name=project_name, job_id=job_id)
+
+    @classmethod
+    def from_named_checkpoint(
+        cls,
+        checkpoint_name: str,
+        project_name: Optional[str] = None,
+        job_id: Optional[str] = None,
+    ) -> _BasetenNamedCheckpoint:
+        return _BasetenNamedCheckpoint(
+            checkpoint_name=checkpoint_name, project_name=project_name, job_id=job_id
+        )
+
+
+class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
+    enabled: bool = False
+    checkpoints: List[Union[_BasetenLatestCheckpoint, _BasetenNamedCheckpoint]] = [
+        _BasetenLatestCheckpoint()
+    ]
+    download_folder: str = constants.DEFAULT_TRAINING_CHECKPOINT_FOLDER
+
+
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
@@ -72,6 +116,7 @@ class Runtime(custom_types.SafeModelNoExtra):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: Optional[bool] = None
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()
+    load_checkpoint_config: Optional[LoadCheckpointConfig] = None
     cache_config: Optional[CacheConfig] = None
 
     @model_validator(mode="before")
