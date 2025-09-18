@@ -54,7 +54,9 @@ class ModelContainerPatchApplier:
             py_req_patch: PythonRequirementPatch = patch.body
             self._apply_python_requirement_patch(py_req_patch)
         elif isinstance(patch.body, SystemPackagePatch):
-            raise UnsupportedPatch("System package patches are not supported for model container, please push truss again instead")
+            raise UnsupportedPatch(
+                "System package patches are not supported for model container, please run truss push again"
+            )
         elif isinstance(patch.body, ConfigPatch):
             config_patch: ConfigPatch = patch.body
             self._apply_config_patch(config_patch)
@@ -112,7 +114,6 @@ class ModelContainerPatchApplier:
             )
         else:
             raise ValueError(f"Unknown python requirement patch action {action}")
-
 
     def _apply_config_patch(self, config_patch: ConfigPatch):
         self._app_logger.debug(f"Applying config patch {config_patch.to_dict()}")
