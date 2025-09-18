@@ -18,7 +18,6 @@ from truss.templates.control.control.helpers.custom_types import (
     Patch,
     PatchType,
     PythonRequirementPatch,
-    SystemPackagePatch,
 )
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
     RequirementMeta,
@@ -423,22 +422,18 @@ def _calc_python_requirements_patches(
 def _calc_system_packages_patches(
     prev_config: TrussConfig, new_config: TrussConfig
 ) -> List[Patch]:
-    """Calculate patch based on changes to system packates.
+    """Calculate patch based on changes to system packages.
 
-    Empty list means no relevant differences found.
+    System package patches are no longer supported, so this function
+    raises an exception if any system package changes are detected.
     """
-    patches = []
     prev_pkgs = system_packages_set(prev_config.system_packages)
     new_pkgs = system_packages_set(new_config.system_packages)
-    removed_pkgs = prev_pkgs.difference(new_pkgs)
-    for removed_pkg in removed_pkgs:
-        patches.append(_mk_system_package_patch(Action.REMOVE, removed_pkg))
 
-    added_pkgs = new_pkgs.difference(prev_pkgs)
-    for added_pkg in added_pkgs:
-        patches.append(_mk_system_package_patch(Action.ADD, added_pkg))
+    if prev_pkgs != new_pkgs:
+        raise ValueError("System package changes detected - full rebuild required")
 
-    return patches
+    return []
 
 
 def _mk_config_patch(action: Action, config: dict) -> Patch:
@@ -468,13 +463,6 @@ def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
     return Patch(
         type=PatchType.PYTHON_REQUIREMENT,
         body=PythonRequirementPatch(action=action, requirement=requirement),
-    )
-
-
-def _mk_system_package_patch(action: Action, package: str) -> Patch:
-    return Patch(
-        type=PatchType.SYSTEM_PACKAGE,
-        body=SystemPackagePatch(action=action, package=package),
     )
 
 
