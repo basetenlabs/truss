@@ -13,6 +13,7 @@ from truss.cli.train.deploy_checkpoints import prepare_checkpoint_deploy
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     _get_checkpoint_ids_to_deploy,
     _render_truss_config_for_checkpoint_deployment,
+    deploy_checkpoints_via_graphql,
     hydrate_checkpoint,
 )
 from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
@@ -1118,3 +1119,61 @@ def test_setup_base_truss_config():
                 assert result.environment_variables[key] == expected_value, (
                     f"Test case '{test_case.desc}': Environment variable {key} mismatch"
                 )
+
+
+@patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints._get_model_name")
+@patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints._ensure_deployment_name")
+@patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints._ensure_compute_spec")
+@patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints._ensure_runtime_config")
+def test_deploy_checkpoints_via_graphql(
+    mock_runtime_config,
+    mock_compute_spec,
+    mock_deployment_name,
+    mock_model_name,
+    mock_remote,
+):
+    """Test the new GraphQL deployment function."""
+    # Mock the interactive prompts
+    mock_model_name.return_value = "test-model-vLLM-LORA"
+    mock_deployment_name.return_value = "test-deployment"
+    mock_compute_spec.return_value = definitions.Compute(cpu_count=0, memory="0Mi")
+    mock_runtime_config.return_value = definitions.DeployCheckpointsRuntime()
+
+    # Mock the API response
+    mock_remote.api.deploy_checkpoints_from_training.return_value = {
+        "deployment": {
+            "id": "deployment123",
+            "name": "test-deployment",
+            "status": "DEPLOYING",
+            "modelVersion": {"id": "model_version123", "name": "test-model"},
+        }
+    }
+
+    # Create a simple checkpoint deployment config
+    checkpoint_deploy_config = definitions.DeployCheckpointsConfig()
+
+    # Test the GraphQL deployment
+    response = deploy_checkpoints_via_graphql(
+        mock_remote,
+        checkpoint_deploy_config,
+        "project123",
+        "job123",
+        "instance_type_123",
+    )
+
+    # Verify the response
+    assert response["deployment"]["id"] == "deployment123"
+    assert response["deployment"]["name"] == "test-deployment"
+    assert response["deployment"]["status"] == "DEPLOYING"
+
+    # Verify the API was called with the correct parameters
+    mock_remote.api.deploy_checkpoints_from_training.assert_called_once()
+    call_args = mock_remote.api.deploy_checkpoints_from_training.call_args[0][0]
+
+    # Verify the request structure
+    assert "request" in call_args
+    request = call_args["request"]
+    assert "metadata" in request
+    assert "weights_sources" in request
+    assert "inference_stack" in request
+    assert request["instance_type_id"] == "instance_type_123"

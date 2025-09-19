@@ -742,3 +742,33 @@ class BasetenApi:
 
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
+
+    def deploy_checkpoints_from_training(self, request_data: dict):
+        """
+        Deploy checkpoints from training using GraphQL mutation.
+
+        Args:
+            request_data: Dictionary containing the deployment request with metadata,
+                         weights_sources, inference_stack, and instance_type_id
+        """
+        # Convert the request data to GraphQL variables
+        variables = {"request": request_data}
+
+        query_string = """
+            mutation ($request: DeployCheckpointsFromTrainingRequest!) {
+                deployCheckpointsFromTraining(request: $request) {
+                    deployment {
+                        id
+                        name
+                        status
+                        modelVersion {
+                            id
+                            name
+                        }
+                    }
+                }
+            }
+        """
+
+        resp = self._post_graphql_query(query_string, variables=variables)
+        return resp["data"]["deployCheckpointsFromTraining"]

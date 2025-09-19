@@ -268,6 +268,17 @@ def get_job_metrics(
     "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--instance-type-id",
+    type=str,
+    required=False,
+    help="Instance type ID for deployment (required for GraphQL deployment)",
+)
+@click.option(
+    "--use-graphql",
+    is_flag=True,
+    help="Use GraphQL API for deployment instead of building truss",
+)
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
@@ -275,6 +286,8 @@ def deploy_checkpoints(
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
+    instance_type_id: Optional[str],
+    use_graphql: bool,
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -286,26 +299,62 @@ def deploy_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
-        remote_provider,
-        train_cli.PrepareCheckpointArgs(
-            project_id=project_id, job_id=job_id, deploy_config_path=config
-        ),
-    )
 
-    params = {
-        "target_directory": prepare_checkpoint_result.truss_directory,
-        "remote": remote,
-        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
-        "publish": True,
-        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
-    }
-    ctx = _prepare_click_context(push, params)
-    if dry_run:
-        console.print("--dry-run flag provided, not deploying", style="yellow")
+    if use_graphql:
+        # Use GraphQL API for deployment
+        if not instance_type_id:
+            raise click.UsageError(
+                "Instance type ID is required when using GraphQL deployment. "
+                "Please provide --instance-type-id parameter."
+            )
+
+        if dry_run:
+            console.print("--dry-run flag provided, not deploying", style="yellow")
+            # Still prepare the config to show what would be deployed
+            prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+                remote_provider,
+                train_cli.PrepareCheckpointArgs(
+                    project_id=project_id, job_id=job_id, deploy_config_path=config
+                ),
+            )
+            train_cli.print_deploy_checkpoints_success_message(
+                prepare_checkpoint_result
+            )
+        else:
+            # Deploy using GraphQL API
+            response = train_cli.deploy_checkpoints_via_graphql(
+                remote_provider,
+                train_cli.PrepareCheckpointArgs(
+                    project_id=project_id, job_id=job_id, deploy_config_path=config
+                ),
+                instance_type_id=instance_type_id,
+            )
+            console.print("Deployment completed successfully!", style="green")
+            console.print(
+                f"Deployment ID: {response['deployment']['id']}", style="green"
+            )
     else:
-        push.invoke(ctx)
-    train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
+        # Use the original truss-based deployment
+        prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+            remote_provider,
+            train_cli.PrepareCheckpointArgs(
+                project_id=project_id, job_id=job_id, deploy_config_path=config
+            ),
+        )
+
+        params = {
+            "target_directory": prepare_checkpoint_result.truss_directory,
+            "remote": remote,
+            "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
+            "publish": True,
+            "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
+        }
+        ctx = _prepare_click_context(push, params)
+        if dry_run:
+            console.print("--dry-run flag provided, not deploying", style="yellow")
+        else:
+            push.invoke(ctx)
+        train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
 
 
 @train.command(name="download")

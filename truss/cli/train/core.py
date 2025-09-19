@@ -258,6 +258,41 @@ def prepare_checkpoint_deploy(
         )
 
 
+def deploy_checkpoints_via_graphql(
+    remote_provider: BasetenRemote, args: PrepareCheckpointArgs, instance_type_id: str
+) -> dict:
+    """
+    Deploy checkpoints using GraphQL API instead of building truss.
+
+    Args:
+        remote_provider: The Baseten remote provider
+        args: The checkpoint deployment arguments
+        instance_type_id: The instance type ID for deployment
+
+    Returns:
+        Dictionary containing the deployment response from GraphQL
+    """
+    if not args.deploy_config_path:
+        return deploy_checkpoints.deploy_checkpoints.deploy_checkpoints_via_graphql(
+            remote_provider,
+            DeployCheckpointsConfig(),
+            args.project_id,
+            args.job_id,
+            instance_type_id,
+        )
+    #### User provided a checkpoint deploy config file
+    with loader.import_deploy_checkpoints_config(
+        Path(args.deploy_config_path)
+    ) as checkpoint_deploy:
+        return deploy_checkpoints.deploy_checkpoints.deploy_checkpoints_via_graphql(
+            remote_provider,
+            checkpoint_deploy,
+            args.project_id,
+            args.job_id,
+            instance_type_id,
+        )
+
+
 def _get_checkpoint_names(
     prepare_checkpoint_result: PrepareCheckpointResult,
 ) -> list[str]:

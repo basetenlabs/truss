@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Any, Dict
 
 from truss.base import truss_config
 from truss.cli.train.types import DeployCheckpointsConfigComplete
@@ -50,3 +51,66 @@ def setup_environment_variables_and_secrets(
             truss_deploy_config.environment_variables[key] = value
 
     return start_command_envvars
+
+
+def prepare_graphql_deployment_request(
+    checkpoint_deploy: DeployCheckpointsConfigComplete,
+    oracle_name: str,
+    instance_type_id: str,
+) -> Dict[str, Any]:
+    """
+    Convert DeployCheckpointsConfigComplete to GraphQL request format.
+
+    Args:
+        checkpoint_deploy: The complete checkpoint deployment configuration
+        oracle_name: Name for the oracle/deployment
+        instance_type_id: The instance type ID for deployment
+
+    Returns:
+        Dictionary in the format expected by the GraphQL mutation
+    """
+    # Prepare weights sources from checkpoints
+    weights_sources = []
+    for checkpoint in checkpoint_deploy.checkpoint_details.checkpoints:
+        weight_source = {
+            "weight_source_type": "B10_CHECKPOINTING",
+            "b10_training_checkpoint_weights_source": {
+                "checkpoint": {
+                    "training_job_id": checkpoint.training_job_id,
+                    "checkpoint_name": checkpoint.paths[0].strip("/").split("/")[-1],
+                }
+            },
+        }
+        weights_sources.append(weight_source)
+
+    # Prepare environment variables
+    env_vars = []
+    for key, value in checkpoint_deploy.runtime.environment_variables.items():
+        if isinstance(value, SecretReference):
+            # For secret references, we'll need to handle this differently
+            # For now, we'll pass the secret name as the value
+            env_vars.append(
+                {"name": key, "value": value.name, "is_secret_reference": True}
+            )
+        else:
+            env_vars.append(
+                {"name": key, "value": str(value), "is_secret_reference": False}
+            )
+
+    # Determine stack type based on model weight format
+    stack_type = "VLLM"  # Default to VLLM
+
+    # Prepare inference stack
+    inference_stack = {"stack_type": stack_type, "environment_variables": env_vars}
+
+    # Build the complete request
+    request_data = {
+        "request": {
+            "metadata": {"oracle_name": oracle_name},
+            "weights_sources": weights_sources,
+            "inference_stack": inference_stack,
+            "instance_type_id": instance_type_id,
+        }
+    }
+
+    return request_data

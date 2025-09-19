@@ -25,6 +25,7 @@ from truss_train.definitions import (
     SecretReference,
 )
 
+from .deploy_checkpoints_helpers import prepare_graphql_deployment_request
 from .deploy_full_checkpoints import (
     hydrate_full_checkpoint,
     render_vllm_full_truss_config,
@@ -65,6 +66,54 @@ def prepare_checkpoint_deploy(
         truss_directory=truss_directory,
         checkpoint_deploy_config=checkpoint_deploy_config,
     )
+
+
+def deploy_checkpoints_via_graphql(
+    remote_provider: BasetenRemote,
+    checkpoint_deploy_config: DeployCheckpointsConfig,
+    project_id: Optional[str],
+    job_id: Optional[str],
+    instance_type_id: str,
+) -> dict:
+    """
+    Deploy checkpoints using GraphQL API instead of building truss.
+
+    Args:
+        remote_provider: The Baseten remote provider
+        checkpoint_deploy_config: The checkpoint deployment configuration
+        project_id: Optional project ID
+        job_id: Optional job ID
+        instance_type_id: The instance type ID for deployment
+
+    Returns:
+        Dictionary containing the deployment response from GraphQL
+    """
+    # Hydrate the deployment config (reuse existing logic)
+    checkpoint_deploy_config = _hydrate_deploy_config(
+        checkpoint_deploy_config, remote_provider, project_id, job_id
+    )
+
+    # Use the deployment name as the oracle name
+    oracle_name = checkpoint_deploy_config.deployment_name
+
+    # Prepare the GraphQL request
+    request_data = prepare_graphql_deployment_request(
+        checkpoint_deploy_config, oracle_name, instance_type_id
+    )
+
+    console.print("Deploying checkpoints via GraphQL API...", style="green")
+    console.print(f"Oracle name: {oracle_name}", style="yellow")
+    console.print(f"Instance type: {instance_type_id}", style="yellow")
+
+    # Make the GraphQL request
+    try:
+        response = remote_provider.api.deploy_checkpoints_from_training(request_data)
+        console.print("Deployment successful!", style="green")
+        console.print(f"Deployment ID: {response['deployment']['id']}", style="green")
+        return response
+    except Exception as e:
+        console.print(f"Deployment failed: {str(e)}", style="red")
+        raise
 
 
 def _validate_base_model_id(
