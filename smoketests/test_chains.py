@@ -30,7 +30,7 @@ DEPLOY_TIMEOUT_SEC = 500
 def make_stub(url: str, options: public_types.RPCOptions) -> stub.StubBase:
     context = public_types.DeploymentContext(
         chainlet_to_service={},
-        secrets={public_types._CHAIN_API_KEY_SECRET_NAME: BASETEN_API_KEY},
+        secrets={public_types.CHAIN_API_KEY_SECRET_NAME: BASETEN_API_KEY},
     )
     return stub.StubBase.from_url(url, context, options)
 

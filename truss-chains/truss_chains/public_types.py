@@ -30,10 +30,10 @@ CPU_COUNT: CpuCountT = "cpu_count"
 
 
 # NOTE(Tyron): This is a secret that points to an API key value.
-_CHAIN_API_KEY_SECRET_NAME = "baseten_chain_api_key"
+CHAIN_API_KEY_SECRET_NAME = "baseten_chain_api_key"
 
 # NOTE(Tyron): This is the actual API key pointed to by the above secret.
-_CHAIN_API_KEY_NAME = "baseten-chain-api-key"
+CHAIN_API_KEY_NAME = "baseten-chain-api-key"
 
 _K = TypeVar("_K", contravariant=True)
 _V = TypeVar("_V", covariant=True)
@@ -743,14 +743,14 @@ class DeploymentContext(custom_types.SafeModelNonSerializable):
             )
         error_msg = (
             "For using chains, it is required to setup a an API key with name "
-            f"`{_CHAIN_API_KEY_SECRET_NAME}` on Baseten to allow chain Chainlet to "
+            f"`{CHAIN_API_KEY_SECRET_NAME}` on Baseten to allow chain Chainlet to "
             "call other Chainlets. For local execution, secrets can be provided "
             "to `run_local`."
         )
-        if _CHAIN_API_KEY_SECRET_NAME not in self.secrets:
+        if CHAIN_API_KEY_SECRET_NAME not in self.secrets:
             raise MissingDependencyError(error_msg)
 
-        api_key = self.secrets[_CHAIN_API_KEY_SECRET_NAME]
+        api_key = self.secrets[CHAIN_API_KEY_SECRET_NAME]
         if api_key == SECRET_DUMMY:
             raise MissingDependencyError(
                 f"{error_msg}. Retrieved dummy value of `{api_key}`."
