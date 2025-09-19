@@ -64,6 +64,7 @@ def push(
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
+    preserve_env_instance_type: bool = True,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -88,6 +89,9 @@ def push(
         include_git_info: Whether to attach git versioning info (sha, branch, tag) to
           deployments made from within a git repo. If set to True in `.trussrc`, it
           will always be attached.
+        preserve_env_instance_type: When pushing a truss to an environment, whether to use the resources
+          specified in the truss config to resolve the instance type or preserve the instance type
+          configured in the specified environment.
 
     Returns:
         The newly created ModelDeployment.
@@ -130,6 +134,7 @@ def push(
         environment=environment,
         progress_bar=progress_bar,
         include_git_info=include_git_info,
+        preserve_env_instance_type=preserve_env_instance_type,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))

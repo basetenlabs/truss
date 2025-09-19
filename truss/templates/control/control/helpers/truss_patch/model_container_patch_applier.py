@@ -54,8 +54,9 @@ class ModelContainerPatchApplier:
             py_req_patch: PythonRequirementPatch = patch.body
             self._apply_python_requirement_patch(py_req_patch)
         elif isinstance(patch.body, SystemPackagePatch):
-            sys_pkg_patch: SystemPackagePatch = patch.body
-            self._apply_system_package_patch(sys_pkg_patch)
+            raise UnsupportedPatch(
+                "System package patches are not supported for model container, please run truss push again"
+            )
         elif isinstance(patch.body, ConfigPatch):
             config_patch: ConfigPatch = patch.body
             self._apply_config_patch(config_patch)
@@ -110,24 +111,6 @@ class ModelContainerPatchApplier:
                     "--upgrade",
                 ],
                 check=True,
-            )
-        else:
-            raise ValueError(f"Unknown python requirement patch action {action}")
-
-    def _apply_system_package_patch(self, system_package_patch: SystemPackagePatch):
-        self._app_logger.debug(
-            f"Applying system package patch {system_package_patch.to_dict()}"
-        )
-        action = system_package_patch.action
-
-        if action == Action.REMOVE:
-            subprocess.run(
-                ["apt", "remove", "-y", system_package_patch.package], check=True
-            )
-        elif action in [Action.ADD, Action.UPDATE]:
-            subprocess.run(["apt", "update"], check=True)
-            subprocess.run(
-                ["apt", "install", "-y", system_package_patch.package], check=True
             )
         else:
             raise ValueError(f"Unknown python requirement patch action {action}")
