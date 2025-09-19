@@ -1,5 +1,6 @@
 from truss_train.definitions import (
     AWSIAMDockerAuth,
+    BasetenCheckpoint,
     CacheConfig,
     CheckpointingConfig,
     CheckpointList,
@@ -10,6 +11,7 @@ from truss_train.definitions import (
     FullCheckpoint,
     GCPServiceAccountJSONDockerAuth,
     Image,
+    LoadCheckpointConfig,
     LoRACheckpoint,
     LoRADetails,
     ModelWeightsFormat,
@@ -36,6 +38,8 @@ __all__ = [
     "CacheConfig",
     "AWSIAMDockerAuth",
     "GCPServiceAccountJSONDockerAuth",
+    "LoadCheckpointConfig",
+    "BasetenCheckpoint",
     "DockerAuth",
     "Image",
 ]
