@@ -155,3 +155,10 @@ class GetCacheSummaryResponseV1(pydantic.BaseModel):
     file_summaries: list[FileSummary] = pydantic.Field(
         description="List of files in the cache"
     )
+
+
+class APIKeyCategory(Enum):
+    PERSONAL = "PERSONAL"
+    WORKSPACE_MANAGE_ALL = "WORKSPACE_MANAGE_ALL"
+    WORKSPACE_EXPORT_METRICS = "WORKSPACE_EXPORT_METRICS"
+    WORKSPACE_INVOKE = "WORKSPACE_INVOKE"
