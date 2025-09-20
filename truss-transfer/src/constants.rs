@@ -127,6 +127,15 @@ pub static TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS_FEW_CORES: f64 = 90.0;
 /// Minimum required available space in GB for b10fs
 pub static TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB: u64 = 100;
 
+/// Maximum combined size for b10fs in GB
+/// If active purge the stale files to max this size.
+pub static TRUSS_TRANSFER_B10FS_MAX_STALE_CACHE_SIZE_GB: Lazy<Option<u64>> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_B10FS_MAX_STALE_CACHE_SIZE_GB")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .or(None)
+});
+
 // 128MB
 // random number, uniform between 25 and 400 MB/s as a threshold
 // using random instead of fixed number to e.g. avoid catastrophic

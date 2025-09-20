@@ -106,12 +106,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
             let resolution = provider.create_resolution(&bucket, &object_path);
             let uid = provider.generate_uid(&bucket, &object_path, &hash);
 
-            let file_name = format!(
-                "{}/{}/{}",
-                model_path,
-                model.volume_folder,
-                relative_path
-            );
+            let file_name = format!("{}/{}/{}", model_path, model.volume_folder, relative_path);
 
             let pointer = BasetenPointer {
                 resolution,

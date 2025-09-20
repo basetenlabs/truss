@@ -33,6 +33,7 @@ fn get_atime(metadata: &std::fs::Metadata) -> std::io::Result<i64> {
 /// Returns a tuple: (available_volume_bytes, manifest_files_in_cache_bytes).
 /// Files are cleaned up if they:
 /// - Have not been accessed within the threshold AND are not in `current_hashes`
+/// - Are not in `current_hashes` and cache size exceeds TRUSS_TRANSFER_B10FS_MAX_STALE_CACHE_SIZE_GB
 pub async fn cleanup_b10cache_and_get_space_stats(
     current_hashes: &HashSet<String>,
     manifest_hash_to_size_map: &HashMap<String, u64>,
@@ -42,6 +43,7 @@ pub async fn cleanup_b10cache_and_get_space_stats(
     let cache_dir_path = Path::new(&*CACHE_DIR);
     let now = chrono::Utc::now().timestamp();
     let threshold_seconds = cleanup_threshold_hours * 3600;
+    let max_stale_cache_size_gb = *crate::constants::TRUSS_TRANSFER_B10FS_MAX_STALE_CACHE_SIZE_GB;
 
     let mut dir = fs::read_dir(cache_dir_path)
         .await
@@ -51,12 +53,19 @@ pub async fn cleanup_b10cache_and_get_space_stats(
     let mut total_files_managed_in_cache = 0usize;
     let mut manifest_files_in_cache_bytes = 0u64; // Size of files from current manifest, correctly cached
 
+    // For size-based cleanup: list of (access_time, file_path, size) for non-current files
+    let mut stale_files: Vec<(i64, std::path::PathBuf, u64)> = Vec::new();
+
     info!(
         "Analyzing b10cache at {} with a cleanup threshold of {} hours ({} days)",
         &*CACHE_DIR,
         cleanup_threshold_hours,
         cleanup_threshold_hours as f64 / 24.0
     );
+
+    if let Some(max_size_gb) = max_stale_cache_size_gb {
+        info!("Max stale cache size limit: {} GB", max_size_gb);
+    }
 
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
@@ -81,34 +90,82 @@ pub async fn cleanup_b10cache_and_get_space_stats(
                         // This file, though in manifest, is corrupted in cache.
                         // It won't be deleted by age here, but download logic might replace it if it tries to use it.
                     }
-                } else if now - atime > threshold_seconds as i64
-                    && !current_hashes.contains(file_name_hash)
-                {
-                    // File is NOT in current manifest AND is older than threshold
-                    info!(
-                        "Deleting old cached file {} ({} bytes): not in current manifest and not accessed for over {} hours",
-                        file_name_hash, actual_file_size, cleanup_threshold_hours
-                    );
-                    if let Err(e) = fs::remove_file(&path).await {
-                        warn!("Failed to delete cached file {:?}: {}", path, e);
-                    }
-                } else {
-                    // File is NOT in current manifest but is NOT old enough to delete OR
-                    // it IS in current_hashes but somehow not in manifest_hash_to_size_map (should not happen if maps are consistent)
-                    // or it was in manifest_hash_to_size_map but had wrong size (already handled above for manifest_files_in_cache_bytes)
-                    if !manifest_hash_to_size_map.contains_key(file_name_hash) {
-                        // only log if truly not in manifest
+                } else if !current_hashes.contains(file_name_hash) {
+                    // File is NOT in current_hashes - candidate for deletion
+                    if now - atime > threshold_seconds as i64 {
+                        // File is older than threshold - delete immediately
+                        info!(
+                            "Deleting old cached file {} ({} bytes): not in current manifest and not accessed for over {} hours",
+                            file_name_hash, actual_file_size, cleanup_threshold_hours
+                        );
+                        if let Err(e) = fs::remove_file(&path).await {
+                            warn!("Failed to delete cached file {:?}: {}", path, e);
+                        }
+                    } else {
+                        // File is not old enough for time-based cleanup, but might be cleaned up for size limit
+                        stale_files.push((atime, path.clone(), actual_file_size));
+                        total_bytes_managed_in_cache += actual_file_size;
+                        total_files_managed_in_cache += 1;
                         debug!(
                             "Keeping non-manifest file {} ({} bytes): last accessed {} minutes ago.",
                             file_name_hash,
                             actual_file_size,
                             (now - atime) / 60
                         );
-                        total_bytes_managed_in_cache += actual_file_size;
-                        total_files_managed_in_cache += 1;
+                    }
+                } else {
+                    // File is in current_hashes but not in manifest_hash_to_size_map
+                    // (should not happen if maps are consistent)
+                    total_bytes_managed_in_cache += actual_file_size;
+                    total_files_managed_in_cache += 1;
+                }
+            }
+        }
+    }
+
+    // Size-based cleanup if max_stale_cache_size_gb is set
+    if let Some(max_size_gb) = max_stale_cache_size_gb {
+        let max_size_bytes = max_size_gb * 1024 * 1024 * 1024; // Convert GB to bytes
+        let mut current_stale_size: u64 = stale_files.iter().map(|(_, _, size)| size).sum();
+
+        if current_stale_size > max_size_bytes {
+            info!(
+                "Stale cache size ({:.2} GB) exceeds limit ({} GB). Starting size-based cleanup.",
+                current_stale_size as f64 / (1024.0 * 1024.0 * 1024.0),
+                max_size_gb
+            );
+
+            // Sort by access time (oldest first)
+            stale_files.sort_by_key(|(atime, _, _)| *atime);
+
+            // Delete files starting from oldest access time until under the limit
+            for (atime, file_path, file_size) in stale_files.iter() {
+                if current_stale_size <= max_size_bytes {
+                    break;
+                }
+
+                if let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) {
+                    info!(
+                        "Deleting stale cached file {} ({} bytes) for size limit: last accessed {} hours ago",
+                        file_name,
+                        file_size,
+                        (now - atime) / 3600
+                    );
+
+                    if let Err(e) = fs::remove_file(file_path).await {
+                        warn!("Failed to delete cached file {:?}: {}", file_path, e);
+                    } else {
+                        current_stale_size -= file_size;
+                        total_bytes_managed_in_cache -= file_size;
+                        total_files_managed_in_cache -= 1;
                     }
                 }
             }
+
+            info!(
+                "Size-based cleanup complete. Stale cache size now: {:.2} GB",
+                current_stale_size as f64 / (1024.0 * 1024.0 * 1024.0)
+            );
         }
     }
 
