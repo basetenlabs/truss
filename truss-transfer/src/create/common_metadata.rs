@@ -77,8 +77,16 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
             let relative_path = if prefix.is_empty() {
                 object_path.clone()
             } else {
+                // Try multiple formats to handle trailing slashes correctly
+                let prefix_with_slash = if prefix.ends_with('/') {
+                    prefix.clone()
+                } else {
+                    format!("{}/", prefix)
+                };
+                // stip away the bucket name.
                 object_path
-                    .strip_prefix(&format!("{prefix}/"))
+                    .strip_prefix(&prefix_with_slash)
+                    .or_else(|| object_path.strip_prefix(&prefix))
                     .unwrap_or(&object_path)
                     .to_string()
             };
@@ -103,9 +111,6 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
                 model_path,
                 model.volume_folder,
                 relative_path
-                    .split('/')
-                    .next_back()
-                    .unwrap_or(&relative_path)
             );
 
             let pointer = BasetenPointer {
