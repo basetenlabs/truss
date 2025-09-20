@@ -81,7 +81,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
                 let prefix_with_slash = if prefix.ends_with('/') {
                     prefix.clone()
                 } else {
-                    format!("{}/", prefix)
+                    format!("{prefix}/")
                 };
                 // stip away the bucket name.
                 object_path

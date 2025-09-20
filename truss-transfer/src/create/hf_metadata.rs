@@ -60,7 +60,7 @@ pub async fn get_hf_metadata(
 
     // Add token if provided
     if let Some(t) = token.as_ref() {
-        req = req.header("Authorization", format!("Bearer {}", t));
+        req = req.header("Authorization", format!("Bearer {t}"));
     }
 
     // Send initial request
