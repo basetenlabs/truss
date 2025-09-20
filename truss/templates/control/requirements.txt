@@ -7,6 +7,6 @@ python-json-logger>=2.0.2
 tenacity>=8.1.0
  # To avoid divergence, this should follow the latest release.
 truss==0.11.1
-uvicorn>=0.24.0
+uvicorn>=0.24.0,<0.36.0
 uvloop>=0.19.0
 websockets>=10.0
