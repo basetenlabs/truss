@@ -6,6 +6,7 @@ import requests
 
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
+from truss.remote.baseten.custom_types import APIKeyCategory
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -559,6 +560,13 @@ class BasetenApi:
 
     def get_all_secrets(self) -> Any:
         return self._rest_api_client.get("v1/secrets")
+
+    # NOTE(Tyron): `name` is required because all official
+    # Baseten API keys should have a descriptive name.
+    def create_api_key(self, api_key_type: APIKeyCategory, name: str) -> Any:
+        return self._rest_api_client.post(
+            "v1/api_keys", body={"type": api_key_type.value, "name": name}
+        )
 
     def upsert_training_project(self, training_project):
         resp_json = self._rest_api_client.post(
