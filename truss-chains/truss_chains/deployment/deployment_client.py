@@ -303,7 +303,7 @@ def _push_service_docker(
     options: private_types.PushOptionsLocalDocker,
 ) -> str:
     th = truss_handle.TrussHandle(truss_dir)
-    th.add_secret(public_types._BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
+    th.add_secret(public_types.CHAIN_API_KEY_SECRET_NAME, options.baseten_chain_api_key)
     container = th.docker_run(
         local_port=None,
         detach=True,
@@ -536,14 +536,21 @@ def _create_baseten_chain(
 def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) -> None:
     secrets_info = remote_provider.api.get_all_secrets()
     secret_names = {sec["name"] for sec in secrets_info["secrets"]}
-    if public_types._BASETEN_API_SECRET_NAME not in secret_names:
+
+    if public_types.CHAIN_API_KEY_SECRET_NAME not in secret_names:
         logging.info(
             "It seems you are using chains for the first time, since there "
-            f"is no `{public_types._BASETEN_API_SECRET_NAME}` secret on baseten. "
+            f"is no `{public_types.CHAIN_API_KEY_SECRET_NAME}` secret on baseten. "
             "Creating secret automatically."
         )
+
+        workspace_api_key = remote_provider.api.create_api_key(
+            api_key_type=b10_types.APIKeyCategory.WORKSPACE_INVOKE,
+            name=public_types.CHAIN_API_KEY_NAME,
+        )["api_key"]
+
         remote_provider.api.upsert_secret(
-            public_types._BASETEN_API_SECRET_NAME, remote_provider.api.auth_token.value
+            public_types.CHAIN_API_KEY_SECRET_NAME, workspace_api_key
         )
 
 
