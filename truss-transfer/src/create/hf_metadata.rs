@@ -202,6 +202,7 @@ pub async fn create_hf_basetenpointers(
             hashtype: "etag".to_string(),
             hash: normalize_hash(&metadata.etag),
             size: metadata.size,
+            last_modified_time: None,
             runtime_secret_name: model.runtime_secret_name.clone(),
         };
 
