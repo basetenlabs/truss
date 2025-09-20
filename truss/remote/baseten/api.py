@@ -565,7 +565,7 @@ class BasetenApi:
     # Baseten API keys should have a descriptive name.
     def create_api_key(self, api_key_type: APIKeyCategory, name: str) -> Any:
         return self._rest_api_client.post(
-            "v1/api_keys", body={"type": api_key_type, "name": name}
+            "v1/api_keys", body={"type": api_key_type.value, "name": name}
         )
 
     def upsert_training_project(self, training_project):
