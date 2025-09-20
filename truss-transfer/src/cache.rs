@@ -223,8 +223,18 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
                 }
             }
         });
-
-        let copy_result = fs::copy(download_path, &incomplete_cache_path).await;
+        let copy_result = match fs::rename(download_path, &incomplete_cache_path).await {
+            Ok(_) => {
+                info!("Successfully moved file to cache.");
+                Ok(0) // Using 0 as a placeholder for success, similar to how copy returns bytes.
+            }
+            Err(_) => {
+                //  Failed to move file, falling back to copy (likely cross-device)
+                let copy_result = fs::copy(download_path, &incomplete_cache_path).await;
+                info!("Successfully copied local file to incomplete cache.");
+                copy_result
+            }
+        };
 
         // Stop monitoring regardless of copy result
         monitor_handle.abort();
