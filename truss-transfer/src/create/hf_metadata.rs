@@ -60,7 +60,7 @@ pub async fn get_hf_metadata(
 
     // Add token if provided
     if let Some(t) = token.as_ref() {
-        req = req.header("Authorization", format!("Bearer {}", t));
+        req = req.header("Authorization", format!("Bearer {t}"));
     }
 
     // Send initial request
@@ -202,6 +202,7 @@ pub async fn create_hf_basetenpointers(
             hashtype: "etag".to_string(),
             hash: normalize_hash(&metadata.etag),
             size: metadata.size,
+            last_modified_time: None,
             runtime_secret_name: model.runtime_secret_name.clone(),
         };
 

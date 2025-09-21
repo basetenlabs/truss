@@ -28,6 +28,10 @@ pub trait CloudMetadataProvider {
     /// Extract hash from object metadata, with fallback generation
     fn extract_hash(&self, meta: &object_store::ObjectMeta) -> String;
 
+    fn last_modified_time(&self, meta: &object_store::ObjectMeta) -> chrono::DateTime<chrono::Utc> {
+        meta.last_modified
+    }
+
     /// Generate unique identifier for the object using hash
     fn generate_uid(&self, bucket: &str, object_path: &str, hash: &str) -> String;
 }
@@ -73,8 +77,16 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
             let relative_path = if prefix.is_empty() {
                 object_path.clone()
             } else {
+                // Try multiple formats to handle trailing slashes correctly
+                let prefix_with_slash = if prefix.ends_with('/') {
+                    prefix.clone()
+                } else {
+                    format!("{prefix}/")
+                };
+                // stip away the bucket name.
                 object_path
-                    .strip_prefix(&format!("{prefix}/"))
+                    .strip_prefix(&prefix_with_slash)
+                    .or_else(|| object_path.strip_prefix(&prefix))
                     .unwrap_or(&object_path)
                     .to_string()
             };
@@ -90,18 +102,11 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
             }
 
             let hash = provider.extract_hash(&meta);
+            let last_modified_time = provider.last_modified_time(&meta);
             let resolution = provider.create_resolution(&bucket, &object_path);
             let uid = provider.generate_uid(&bucket, &object_path, &hash);
 
-            let file_name = format!(
-                "{}/{}/{}",
-                model_path,
-                model.volume_folder,
-                relative_path
-                    .split('/')
-                    .next_back()
-                    .unwrap_or(&relative_path)
-            );
+            let file_name = format!("{}/{}/{}", model_path, model.volume_folder, relative_path);
 
             let pointer = BasetenPointer {
                 resolution,
@@ -110,6 +115,7 @@ pub async fn extract_cloud_metadata<T: CloudMetadataProvider>(
                 hashtype: provider.hash_type().to_string(),
                 hash: normalize_hash(&hash),
                 size: meta.size,
+                last_modified_time: Some(last_modified_time),
                 runtime_secret_name: model.runtime_secret_name.clone(),
             };
 
