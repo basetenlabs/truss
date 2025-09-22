@@ -83,7 +83,7 @@ class BasetenCheckpoint:
 
     @classmethod
     def from_named_checkpoint(
-        cls, checkpoint_name: str, job_id: Optional[str] = None
+        cls, checkpoint_name: str, job_id: str
     ) -> _BasetenNamedCheckpoint:
         return _BasetenNamedCheckpoint(checkpoint_name=checkpoint_name, job_id=job_id)
 
