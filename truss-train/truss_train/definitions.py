@@ -3,7 +3,7 @@ from abc import ABC
 from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import field_validator, model_validator
+from pydantic import ValidationError, field_validator, model_validator
 
 from truss.base import constants, custom_types, truss_config
 
@@ -68,8 +68,7 @@ class _BasetenLatestCheckpoint(_CheckpointBase):
 
 class _BasetenNamedCheckpoint(_CheckpointBase):
     checkpoint_name: str
-    job_id: Optional[str]
-    project_name: Optional[str]
+    job_id: str
     typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
 
 
@@ -78,18 +77,15 @@ class BasetenCheckpoint:
     def from_latest_checkpoint(
         project_name: Optional[str] = None, job_id: Optional[str] = None
     ) -> _BasetenLatestCheckpoint:
+        if not job_id and not project_name:
+            raise ValidationError("job_id or project_name is required")
         return _BasetenLatestCheckpoint(project_name=project_name, job_id=job_id)
 
     @classmethod
     def from_named_checkpoint(
-        cls,
-        checkpoint_name: str,
-        project_name: Optional[str] = None,
-        job_id: Optional[str] = None,
+        cls, checkpoint_name: str, job_id: str
     ) -> _BasetenNamedCheckpoint:
-        return _BasetenNamedCheckpoint(
-            checkpoint_name=checkpoint_name, project_name=project_name, job_id=job_id
-        )
+        return _BasetenNamedCheckpoint(checkpoint_name=checkpoint_name, job_id=job_id)
 
 
 class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
