@@ -30,7 +30,7 @@ RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --index-strategy unsa
 COPY --chown= ./requirements.txt requirements.txt
 RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
 WORKDIR $APP_HOME
-COPY --chown= ./data ${APP_HOME}/data
+COPY ./data ${APP_HOME}/data
 COPY --chown= ./server ${APP_HOME}
 COPY --chown= ./config.yaml ${APP_HOME}/config.yaml
 COPY --chown= ./model ${APP_HOME}/model
