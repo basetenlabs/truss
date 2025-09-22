@@ -26,16 +26,6 @@ RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
 {#- at the very beginning, set non-interactive mode for apt #}
 ENV DEBIAN_FRONTEND=noninteractive
 
-{# If non-root user is enabled and model container admin commands are enabled, install sudo #}
-{# to allow the non-root user to install packages. #}
-{%- if non_root_user and enable_model_container_admin_commands %}
-RUN apt update && apt install -y sudo
-{%- set allowed_admin_commands = ["/usr/bin/apt install *", "/usr/bin/apt update"] %}
-RUN echo "Defaults:{{ app_username }} passwd_tries=0\n{{ app_username }} ALL=(root) NOPASSWD: {{ allowed_admin_commands | join(", ") }}" > /etc/sudoers.d/app-packages
-RUN chmod 0440 /etc/sudoers.d/app-packages
-{#- optional but good practice: check if the sudoers file is valid #}
-RUN visudo -c
-{%- endif %} {#- endif non_root_user and enable_model_container_admin_commands #}
 
 {%- set UV_VERSION = "0.7.19" %}
 {#
