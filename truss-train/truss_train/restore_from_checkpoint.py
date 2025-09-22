@@ -18,9 +18,7 @@ load_most_recent_checkpoint = BasetenCheckpoint.from_latest_checkpoint(
 )
 
 load_from_named_checkpoint = BasetenCheckpoint.from_named_checkpoint(
-    checkpoint_name="checkpoint-24",
-    project_name="first-project",  # Optional
-    job_id="lqz4pw4",  # Optional
+    checkpoint_name="checkpoint-24", job_id="lqz4pw4"
 )
 
 load_checkpoint_config = LoadCheckpointConfig(

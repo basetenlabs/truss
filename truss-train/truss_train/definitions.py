@@ -69,7 +69,6 @@ class _BasetenLatestCheckpoint(_CheckpointBase):
 class _BasetenNamedCheckpoint(_CheckpointBase):
     checkpoint_name: str
     job_id: Optional[str]
-    project_name: Optional[str]
     typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
 
 
@@ -78,18 +77,15 @@ class BasetenCheckpoint:
     def from_latest_checkpoint(
         project_name: Optional[str] = None, job_id: Optional[str] = None
     ) -> _BasetenLatestCheckpoint:
+        if not job_id and not project_name:
+            raise ValueError("job_id or project_name is required")
         return _BasetenLatestCheckpoint(project_name=project_name, job_id=job_id)
 
     @classmethod
     def from_named_checkpoint(
-        cls,
-        checkpoint_name: str,
-        project_name: Optional[str] = None,
-        job_id: Optional[str] = None,
+        cls, checkpoint_name: str, job_id: Optional[str] = None
     ) -> _BasetenNamedCheckpoint:
-        return _BasetenNamedCheckpoint(
-            checkpoint_name=checkpoint_name, project_name=project_name, job_id=job_id
-        )
+        return _BasetenNamedCheckpoint(checkpoint_name=checkpoint_name, job_id=job_id)
 
 
 class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
