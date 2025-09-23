@@ -258,6 +258,35 @@ def prepare_checkpoint_deploy(
         )
 
 
+<<<<<<< Updated upstream
+=======
+def deploy_checkpoints_via_graphql(
+    remote_provider: BasetenRemote, args: PrepareCheckpointArgs
+) -> dict:
+    """
+    Deploy checkpoints using GraphQL API instead of building truss.
+
+    Args:
+        remote_provider: The Baseten remote provider
+        args: The checkpoint deployment arguments
+
+    Returns:
+        Dictionary containing the deployment response from GraphQL
+    """
+    if not args.deploy_config_path:
+        return deploy_checkpoints.deploy_checkpoints.deploy_checkpoints_via_graphql(
+            remote_provider, DeployCheckpointsConfig(), args.project_id, args.job_id
+        )
+    #### User provided a checkpoint deploy config file
+    with loader.import_deploy_checkpoints_config(
+        Path(args.deploy_config_path)
+    ) as checkpoint_deploy:
+        return deploy_checkpoints.deploy_checkpoints.deploy_checkpoints_via_graphql(
+            remote_provider, checkpoint_deploy, args.project_id, args.job_id
+        )
+
+
+>>>>>>> Stashed changes
 def _get_checkpoint_names(
     prepare_checkpoint_result: PrepareCheckpointResult,
 ) -> list[str]:
@@ -571,6 +600,16 @@ def download_git_directory(
     except Exception as e:
         print(f"Error processing response: {e}")
         return False
+
+
+def resolve_project_id_or_name(
+    remote_provider: BasetenRemote, project_id: Optional[str], project: Optional[str]
+) -> Optional[str]:
+    if not project and not project_id:
+        return None
+    if project and project_id:
+        print("Both `project-id` and `project` provided. Using project ID.")
+    return fetch_project_by_name_or_id(remote_provider, project_id or project)["id"]
 
 
 def fetch_project_by_name_or_id(

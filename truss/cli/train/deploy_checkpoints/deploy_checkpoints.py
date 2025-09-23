@@ -25,6 +25,14 @@ from truss_train.definitions import (
     SecretReference,
 )
 
+<<<<<<< Updated upstream
+=======
+from .deploy_checkpoints_helpers import (
+    get_instance_type_details,
+    infer_instance_type_id,
+    prepare_graphql_deployment_request,
+)
+>>>>>>> Stashed changes
 from .deploy_full_checkpoints import (
     hydrate_full_checkpoint,
     render_vllm_full_truss_config,
@@ -67,6 +75,102 @@ def prepare_checkpoint_deploy(
     )
 
 
+<<<<<<< Updated upstream
+=======
+def deploy_checkpoints_via_graphql(
+    remote_provider: BasetenRemote,
+    checkpoint_deploy_config: DeployCheckpointsConfig,
+    project_id: Optional[str],
+    job_id: Optional[str],
+) -> dict:
+    """
+    Deploy checkpoints using GraphQL API instead of building truss.
+
+    Args:
+        remote_provider: The Baseten remote provider
+        checkpoint_deploy_config: The checkpoint deployment configuration
+        project_id: Optional project ID
+        job_id: Optional job ID
+
+    Returns:
+        Dictionary containing the deployment response from GraphQL
+    """
+    # Hydrate the deployment config (reuse existing logic)
+    checkpoint_deploy_config = _hydrate_deploy_config(
+        checkpoint_deploy_config, remote_provider, project_id, job_id
+    )
+
+    # Infer the instance type ID from compute configuration
+    console.print(
+        "Inferring instance type from compute requirements...", style="yellow"
+    )
+    instance_type_id = infer_instance_type_id(
+        checkpoint_deploy_config.compute, remote_provider
+    )
+
+    if not instance_type_id:
+        console.print(
+            "Could not find a suitable instance type for the specified compute requirements.",
+            style="red",
+        )
+        console.print("Available compute requirements:", style="yellow")
+        console.print(
+            f"  CPU: {checkpoint_deploy_config.compute.cpu_count}", style="yellow"
+        )
+        console.print(
+            f"  Memory: {checkpoint_deploy_config.compute.memory}", style="yellow"
+        )
+        if checkpoint_deploy_config.compute.accelerator:
+            console.print(
+                f"  GPU: {checkpoint_deploy_config.compute.accelerator.accelerator} x{checkpoint_deploy_config.compute.accelerator.count}",
+                style="yellow",
+            )
+        raise click.UsageError(
+            "No suitable instance type found for the specified compute requirements"
+        )
+
+    # Display the selected instance type
+    instance_details = get_instance_type_details(instance_type_id, remote_provider)
+    if instance_details:
+        console.print(
+            f"Selected instance type: {instance_details.get('name', instance_type_id)}",
+            style="green",
+        )
+        console.print(
+            f"  CPU: {instance_details.get('cpu_count', 'N/A')}", style="green"
+        )
+        console.print(
+            f"  Memory: {instance_details.get('memory', 'N/A')}", style="green"
+        )
+        if instance_details.get("gpu_type"):
+            console.print(
+                f"  GPU: {instance_details.get('gpu_type')} x{instance_details.get('gpu_count', 1)}",
+                style="green",
+            )
+
+    # Use the deployment name as the oracle name
+    oracle_name = checkpoint_deploy_config.deployment_name
+
+    # Prepare the GraphQL request
+    request_data = prepare_graphql_deployment_request(
+        checkpoint_deploy_config, oracle_name, instance_type_id
+    )
+
+    console.print("Deploying checkpoints via GraphQL API...", style="green")
+    console.print(f"Oracle name: {oracle_name}", style="yellow")
+
+    # Make the GraphQL request
+    try:
+        response = remote_provider.api.deploy_checkpoints_from_training(request_data)
+        console.print("Deployment successful!", style="green")
+        console.print(f"Deployment ID: {response['deployment']['id']}", style="green")
+        return response
+    except Exception as e:
+        console.print(f"Deployment failed: {str(e)}", style="red")
+        raise
+
+
+>>>>>>> Stashed changes
 def _validate_base_model_id(
     base_model_id: Optional[str], model_weight_format: ModelWeightsFormat
 ) -> None:

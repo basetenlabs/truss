@@ -22,6 +22,10 @@ from truss.cli.train.core import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints_helpers import (
+    validate_instance_type_id,
+    get_instance_type_details,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
@@ -156,11 +160,12 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
 @common.common_options()
 def get_job_logs(
-    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+    remote: Optional[str], project_id: Optional[str], project: Optional[str], job_id: Optional[str], tail: bool
 ):
     """Fetch logs for a training job"""
 
@@ -170,6 +175,8 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = train_cli.resolve_project_id_or_name(remote_provider, project_id=project_id, project=project)
+
     project_id, job_id = train_common.get_most_recent_job(
         remote_provider, project_id, job_id
     )
@@ -188,6 +195,7 @@ def get_job_logs(
 
 @train.command(name="stop")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
@@ -217,13 +225,14 @@ def stop_job(
 @click.option(
     "--project-id", type=str, required=False, help="View training jobs for a project."
 )
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def view_training(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str], project: Optional[str], job_id: Optional[str], remote: Optional[str]
 ):
     """List all training jobs for a project"""
 
@@ -233,16 +242,19 @@ def view_training(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = train_cli.resolve_project_id_or_name(remote_provider, project_id=project_id, project=project)
+
     train_cli.view_training_details(remote_provider, project_id, job_id)
 
 
 @train.command(name="metrics")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def get_job_metrics(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str], project: Optional[str], job_id: Optional[str], remote: Optional[str]
 ):
     """Get metrics for a training job"""
 
@@ -252,11 +264,13 @@ def get_job_metrics(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = train_cli.resolve_project_id_or_name(remote_provider, project_id=project_id, project=project)
     train_cli.view_training_job_metrics(remote_provider, project_id, job_id)
 
 
 @train.command(name="deploy_checkpoints")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
     "--config",
@@ -268,13 +282,26 @@ def get_job_metrics(
     "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
+<<<<<<< Updated upstream
+=======
+@click.option(
+    "--use-graphql",
+    is_flag=True,
+    help="Use GraphQL API for deployment instead of building truss",
+)
+>>>>>>> Stashed changes
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
+    project: Optional[str],
     job_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
+<<<<<<< Updated upstream
+=======
+    use_graphql: bool,
+>>>>>>> Stashed changes
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -293,6 +320,7 @@ def deploy_checkpoints(
         ),
     )
 
+<<<<<<< Updated upstream
     params = {
         "target_directory": prepare_checkpoint_result.truss_directory,
         "remote": remote,
@@ -303,6 +331,38 @@ def deploy_checkpoints(
     ctx = _prepare_click_context(push, params)
     if dry_run:
         console.print("--dry-run flag provided, not deploying", style="yellow")
+=======
+    project_id = train_cli.resolve_project_id_or_name(remote_provider, project_id=project_id, project=project)
+
+    if use_graphql:
+        # Use GraphQL API for deployment
+        console.print("Preparing GraphQL deployment...", style="yellow")
+
+        if dry_run:
+            console.print("--dry-run flag provided, not deploying", style="yellow")
+            # Still prepare the config to show what would be deployed
+            prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+                remote_provider,
+                train_cli.PrepareCheckpointArgs(
+                    project_id=project_id, job_id=job_id, deploy_config_path=config
+                ),
+            )
+            train_cli.print_deploy_checkpoints_success_message(
+                prepare_checkpoint_result
+            )
+        else:
+            # Deploy using GraphQL API
+            response = train_cli.deploy_checkpoints_via_graphql(
+                remote_provider,
+                train_cli.PrepareCheckpointArgs(
+                    project_id=project_id, job_id=job_id, deploy_config_path=config
+                ),
+            )
+            console.print("Deployment completed successfully!", style="green")
+            console.print(
+                f"Deployment ID: {response['deployment']['id']}", style="green"
+            )
+>>>>>>> Stashed changes
     else:
         push.invoke(ctx)
     train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)

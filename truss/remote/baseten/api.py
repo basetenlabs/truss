@@ -750,3 +750,46 @@ class BasetenApi:
 
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
+<<<<<<< Updated upstream
+=======
+
+    def list_instance_types(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all available instance types from the REST API.
+
+        Returns:
+            List of instance type dictionaries containing id, name, and other properties
+        """
+        response = self._rest_api_client.get("v1/instance_types")
+        return response.get("instance_types", [])
+
+    def deploy_checkpoints_from_training(self, request_data: dict):
+        """
+        Deploy checkpoints from training using GraphQL mutation.
+
+        Args:
+            request_data: Dictionary containing the deployment request with metadata,
+                         weights_sources, inference_stack, and instance_type_id
+        """
+        # Convert the request data to GraphQL variables
+        variables = {"request": request_data}
+
+        query_string = """
+            mutation ($request: DeployCheckpointsFromTrainingRequest!) {
+                deployCheckpointsFromTraining(request: $request) {
+                    deployment {
+                        id
+                        name
+                        status
+                        modelVersion {
+                            id
+                            name
+                        }
+                    }
+                }
+            }
+        """
+
+        resp = self._post_graphql_query(query_string, variables=variables)
+        return resp["data"]["deployCheckpointsFromTraining"]
+>>>>>>> Stashed changes
