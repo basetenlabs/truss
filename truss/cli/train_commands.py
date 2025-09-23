@@ -156,11 +156,16 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
 @common.common_options()
 def get_job_logs(
-    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+    remote: Optional[str],
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    tail: bool,
 ):
     """Fetch logs for a training job"""
 
@@ -170,6 +175,10 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = train_cli.resolve_project_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+
     project_id, job_id = train_common.get_most_recent_job(
         remote_provider, project_id, job_id
     )
@@ -188,6 +197,7 @@ def get_job_logs(
 
 @train.command(name="stop")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or ID.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
@@ -217,13 +227,17 @@ def stop_job(
 @click.option(
     "--project-id", type=str, required=False, help="View training jobs for a project."
 )
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def view_training(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    remote: Optional[str],
 ):
     """List all training jobs for a project"""
 
@@ -233,16 +247,24 @@ def view_training(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = train_cli.resolve_project_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+
     train_cli.view_training_details(remote_provider, project_id, job_id)
 
 
 @train.command(name="metrics")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def get_job_metrics(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    remote: Optional[str],
 ):
     """Get metrics for a training job"""
 
@@ -252,11 +274,15 @@ def get_job_metrics(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = train_cli.resolve_project_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
     train_cli.view_training_job_metrics(remote_provider, project_id, job_id)
 
 
 @train.command(name="deploy_checkpoints")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
     "--config",
@@ -271,6 +297,7 @@ def get_job_metrics(
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
+    project: Optional[str],
     job_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
