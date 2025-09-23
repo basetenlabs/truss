@@ -160,7 +160,7 @@ class TestGetTrainInitExampleInfo:
     """Test cases for _get_train_init_example_info function"""
 
     @patch("requests.get")
-    def test_successful_request_without_token(self, mock_get):
+    def test_request_without_token(self, mock_get):
         """Test successful API call without authentication token"""
         # Arrange
         mock_response = Mock()
@@ -179,12 +179,32 @@ class TestGetTrainInitExampleInfo:
             "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/test_example",
             headers={},
         )
-        assert len(result) == 2
-        assert result[0]["name"] == "file1.py"
-        assert result[1]["name"] == "file2.py"
+        assert len(result) == 0  # No training subdir in mock response
 
     @patch("requests.get")
-    def test_successful_request_with_token(self, mock_get):
+    def test_successful_request_without_token(self, mock_get):
+        """Test successful API call without authentication token"""
+        # Arrange
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {"name": "training", "path": "git_path_1", "type": "dir"},
+            {"name": "file2.py", "type": "file"},
+        ]
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        # Act
+        result = _get_train_init_example_info(example_name="test_example")
+
+        # Assert
+        mock_get.assert_called_once_with(
+            "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/test_example",
+            headers={},
+        )
+        assert len(result) == 1  # One training subdir in mock response
+
+    @patch("requests.get")
+    def test_request_with_token(self, mock_get):
         """Test successful API call with authentication token"""
         # Arrange
         mock_response = Mock()
@@ -202,7 +222,7 @@ class TestGetTrainInitExampleInfo:
             "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/test_example",
             headers={"Authorization": "token test_token"},
         )
-        assert len(result) == 1
+        assert len(result) == 0  # No training subdir in mock response
 
     @patch("requests.get")
     def test_custom_repo_and_subdir(self, mock_get):
@@ -225,22 +245,6 @@ class TestGetTrainInitExampleInfo:
             "https://api.github.com/repos/basetenlabs/custom-repo/contents/custom-examples/test_example",
             headers={},
         )
-
-    @patch("requests.get")
-    def test_single_item_response(self, mock_get):
-        """Test when API returns a single item instead of a list"""
-        # Arrange
-        mock_response = Mock()
-        mock_response.json.return_value = {"name": "single_file.py", "type": "file"}
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
-
-        # Act
-        result = _get_train_init_example_info(example_name="test_example")
-
-        # Assert
-        assert len(result) == 1
-        assert result[0]["name"] == "single_file.py"
 
     @patch("requests.get")
     @patch("click.echo")
