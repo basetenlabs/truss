@@ -1,7 +1,7 @@
 ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3 AS truss_server
 ENV PYTHON_EXECUTABLE="/usr/local/bin/python3"
-ENV HOME=/home/app
+ENV HOME=/root
 ENV APP_HOME=/app
 RUN mkdir -p ${APP_HOME} /control
 RUN useradd -u 60000 -ms /bin/bash app
