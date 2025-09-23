@@ -175,7 +175,7 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id = train_cli.resolve_project_id_or_name(
+    project_id = _maybe_resolve_project_id_from_id_or_name(
         remote_provider, project_id=project_id, project=project
     )
 
@@ -247,7 +247,7 @@ def view_training(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id = train_cli.resolve_project_id_or_name(
+    project_id = _maybe_resolve_project_id_from_id_or_name(
         remote_provider, project_id=project_id, project=project
     )
 
@@ -274,7 +274,7 @@ def get_job_metrics(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    project_id = train_cli.resolve_project_id_or_name(
+    project_id = _maybe_resolve_project_id_from_id_or_name(
         remote_provider, project_id=project_id, project=project
     )
     train_cli.view_training_job_metrics(remote_provider, project_id, job_id)
@@ -519,3 +519,15 @@ def view_cache_summary(project: str, remote: Optional[str], sort: str, order: st
     )
 
     train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)
+
+
+def _maybe_resolve_project_id_from_id_or_name(
+    remote_provider: BasetenRemote, project_id: Optional[str], project: Optional[str]
+) -> Optional[str]:
+    """resolve the project_id or project. `project` can be name or id"""
+    if project and project_id:
+        console.print("Both `project-id` and `project` provided. Using `project`.")
+    project_str = project or project_id
+    if not project_str:
+        return None
+    return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]

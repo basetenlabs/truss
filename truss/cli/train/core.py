@@ -573,17 +573,6 @@ def download_git_directory(
         return False
 
 
-def resolve_project_id_or_name(
-    remote_provider: BasetenRemote, project_id: Optional[str], project: Optional[str]
-) -> Optional[str]:
-    if project and project_id:
-        print("Both `project-id` and `project` provided. Using `project`.")
-    project_str = project or project_id
-    if not project_str:
-        return None
-    return fetch_project_by_name_or_id(remote_provider, project_str)["id"]
-
-
 def fetch_project_by_name_or_id(
     remote_provider: BasetenRemote, project_identifier: str
 ) -> dict:
