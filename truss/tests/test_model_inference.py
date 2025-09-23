@@ -990,8 +990,8 @@ def test_is_healthy_returns_503_on_load_failure():
                 # when the model goes down, this will throw an exception
                 break
         diff = container.diff()
-        # the crash file is written to the app user's home directory
-        crash_file_path = "/home/app/inference_server_crashed.txt"
+        # the crash file is written to the user's home directory
+        crash_file_path = "/root/inference_server_crashed.txt"
         assert crash_file_path in diff
         assert diff[crash_file_path] == "A"
 
