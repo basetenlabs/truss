@@ -13,9 +13,14 @@ ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 {%- set app_user_uid = 60000 %}
 {%- set control_server_dir = "/control" %}
 {%- set default_owner = "root:root" %}
+{%- if non_root_user %}
 {# The non-root user's home directory. #}
 {# uv will use $HOME to install packages. #}
 ENV HOME=/home/{{ app_username }}
+{%- else %}
+{# This is the default, but we use this variable later so ... setting it here too.#}
+ENV HOME=/root
+{%- endif %} {#- endif non_root_user #}
 {# Directory containing inference server code. #}
 ENV APP_HOME=/{{ app_username }}
 RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
