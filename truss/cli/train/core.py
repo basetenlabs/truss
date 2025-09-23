@@ -458,6 +458,7 @@ def _get_all_train_init_example_options(
 def _get_train_init_example_info(
     repo_id: str = "ml-cookbook",
     examples_subdir: str = "examples",
+    training_subdir: str = "training",
     example_name: Optional[str] = None,
     token: Optional[str] = None,
 ) -> list[Dict[str, str]]:
@@ -471,6 +472,7 @@ def _get_train_init_example_info(
 
     url = f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{examples_subdir}/{example_name}"
 
+    console.print(f"Attempting to retrieve example info from: {url}")
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -478,6 +480,8 @@ def _get_train_init_example_info(
         items = response.json()
         if not isinstance(items, list):
             items = [items]
+        # return only training subdirectory info for example
+        items = [item for item in items if item["name"] == training_subdir]
         return items
 
     except requests.exceptions.HTTPError as e:
