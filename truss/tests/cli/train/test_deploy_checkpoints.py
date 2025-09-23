@@ -16,6 +16,12 @@ from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     deploy_checkpoints_via_graphql,
     hydrate_checkpoint,
 )
+from truss.cli.train.deploy_checkpoints.deploy_checkpoints_helpers import (
+    get_instance_type_details,
+    get_instance_types_map,
+    infer_instance_type_id,
+    validate_instance_type_id,
+)
 from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
     hydrate_full_checkpoint,
     render_vllm_full_truss_config,
@@ -1121,6 +1127,10 @@ def test_setup_base_truss_config():
                 )
 
 
+@patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints.infer_instance_type_id")
+@patch(
+    "truss.cli.train.deploy_checkpoints.deploy_checkpoints.get_instance_type_details"
+)
 @patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints._get_model_name")
 @patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints._ensure_deployment_name")
 @patch("truss.cli.train.deploy_checkpoints.deploy_checkpoints._ensure_compute_spec")
@@ -1130,6 +1140,8 @@ def test_deploy_checkpoints_via_graphql(
     mock_compute_spec,
     mock_deployment_name,
     mock_model_name,
+    mock_get_instance_details,
+    mock_infer_instance_type,
     mock_remote,
 ):
     """Test the new GraphQL deployment function."""
@@ -1138,6 +1150,17 @@ def test_deploy_checkpoints_via_graphql(
     mock_deployment_name.return_value = "test-deployment"
     mock_compute_spec.return_value = definitions.Compute(cpu_count=0, memory="0Mi")
     mock_runtime_config.return_value = definitions.DeployCheckpointsRuntime()
+
+    # Mock instance type inference
+    mock_infer_instance_type.return_value = "instance_type_123"
+    mock_get_instance_details.return_value = {
+        "id": "instance_type_123",
+        "name": "Test GPU Instance",
+        "cpu_count": 4,
+        "memory": "16Gi",
+        "gpu_type": "A10G",
+        "gpu_count": 1,
+    }
 
     # Mock the API response
     mock_remote.api.deploy_checkpoints_from_training.return_value = {
@@ -1154,11 +1177,7 @@ def test_deploy_checkpoints_via_graphql(
 
     # Test the GraphQL deployment
     response = deploy_checkpoints_via_graphql(
-        mock_remote,
-        checkpoint_deploy_config,
-        "project123",
-        "job123",
-        "instance_type_123",
+        mock_remote, checkpoint_deploy_config, "project123", "job123"
     )
 
     # Verify the response
@@ -1177,3 +1196,167 @@ def test_deploy_checkpoints_via_graphql(
     assert "weights_sources" in request
     assert "inference_stack" in request
     assert request["instance_type_id"] == "instance_type_123"
+
+
+def test_get_instance_types_map(mock_remote):
+    """Test fetching instance types map."""
+    # Mock the API response
+    mock_instance_types = [
+        {"id": "type1", "name": "GPU Type 1", "cpu_count": 4, "memory": "16Gi"},
+        {"id": "type2", "name": "GPU Type 2", "cpu_count": 8, "memory": "32Gi"},
+    ]
+    mock_remote.api.list_instance_types.return_value = mock_instance_types
+
+    # Test getting instance types map
+    instance_types_map = get_instance_types_map(mock_remote)
+
+    # Verify the mapping
+    assert len(instance_types_map) == 2
+    assert "type1" in instance_types_map
+    assert "type2" in instance_types_map
+    assert instance_types_map["type1"]["name"] == "GPU Type 1"
+    assert instance_types_map["type2"]["name"] == "GPU Type 2"
+
+    # Verify API was called
+    mock_remote.api.list_instance_types.assert_called_once()
+
+
+def test_get_instance_types_map_api_error(mock_remote):
+    """Test handling API errors when fetching instance types."""
+    # Mock API error
+    mock_remote.api.list_instance_types.side_effect = Exception("API Error")
+
+    # Test getting instance types map with error
+    instance_types_map = get_instance_types_map(mock_remote)
+
+    # Should return empty dict on error
+    assert instance_types_map == {}
+
+
+def test_validate_instance_type_id(mock_remote):
+    """Test instance type ID validation."""
+    # Mock the API response
+    mock_instance_types = [
+        {"id": "type1", "name": "GPU Type 1"},
+        {"id": "type2", "name": "GPU Type 2"},
+    ]
+    mock_remote.api.list_instance_types.return_value = mock_instance_types
+
+    # Test valid instance type
+    assert validate_instance_type_id("type1", mock_remote) is True
+    assert validate_instance_type_id("type2", mock_remote) is True
+
+    # Test invalid instance type
+    assert validate_instance_type_id("invalid_type", mock_remote) is False
+
+
+def test_get_instance_type_details(mock_remote):
+    """Test getting instance type details."""
+    # Mock the API response
+    mock_instance_types = [
+        {"id": "type1", "name": "GPU Type 1", "cpu_count": 4, "memory": "16Gi"},
+        {"id": "type2", "name": "GPU Type 2", "cpu_count": 8, "memory": "32Gi"},
+    ]
+    mock_remote.api.list_instance_types.return_value = mock_instance_types
+
+    # Test getting existing instance type details
+    details = get_instance_type_details("type1", mock_remote)
+    assert details is not None
+    assert details["name"] == "GPU Type 1"
+    assert details["cpu_count"] == 4
+    assert details["memory"] == "16Gi"
+
+    # Test getting non-existing instance type details
+    details = get_instance_type_details("invalid_type", mock_remote)
+    assert details is None
+
+
+def test_infer_instance_type_id(mock_remote):
+    """Test instance type ID inference from compute configuration."""
+    # Mock the API response
+    mock_instance_types = [
+        {
+            "id": "type1",
+            "name": "Small GPU",
+            "cpu_count": 4,
+            "memory": "16Gi",
+            "gpu_type": "T4",
+            "gpu_count": 1,
+        },
+        {
+            "id": "type2",
+            "name": "Large GPU",
+            "cpu_count": 8,
+            "memory": "32Gi",
+            "gpu_type": "A10G",
+            "gpu_count": 1,
+        },
+        {
+            "id": "type3",
+            "name": "CPU Only",
+            "cpu_count": 4,
+            "memory": "16Gi",
+            "gpu_type": None,
+            "gpu_count": 0,
+        },
+    ]
+    mock_remote.api.list_instance_types.return_value = mock_instance_types
+
+    # Test with CPU-only requirements
+    compute_config = definitions.Compute(cpu_count=4, memory="16Gi")
+    instance_id = infer_instance_type_id(compute_config, mock_remote)
+    assert instance_id == "type1"  # Should pick the first matching one
+
+    # Test with GPU requirements
+    from truss.base import truss_config
+
+    accelerator = truss_config.AcceleratorSpec(accelerator="A10G", count=1)
+    compute_config = definitions.Compute(
+        cpu_count=8, memory="32Gi", accelerator=accelerator
+    )
+    instance_id = infer_instance_type_id(compute_config, mock_remote)
+    assert instance_id == "type2"  # Should pick the A10G instance
+
+    # Test with no matching requirements
+    compute_config = definitions.Compute(cpu_count=16, memory="64Gi")
+    instance_id = infer_instance_type_id(compute_config, mock_remote)
+    assert instance_id is None  # No instance meets these requirements
+
+
+def test_parse_memory_to_gb():
+    """Test memory parsing utility function."""
+    from truss.cli.train.deploy_checkpoints.deploy_checkpoints_helpers import (
+        _parse_memory_to_gb,
+    )
+
+    # Test various memory formats
+    assert _parse_memory_to_gb("16Gi") == 16.0
+    assert _parse_memory_to_gb("32GB") == 32.0
+    assert _parse_memory_to_gb("8192Mi") == 8.0
+    assert _parse_memory_to_gb("4096MB") == 4.0
+    assert _parse_memory_to_gb("") == 0.0
+    assert _parse_memory_to_gb("invalid") == 0.0
+
+
+def test_matches_gpu_type():
+    """Test GPU type matching utility function."""
+    from truss.cli.train.deploy_checkpoints.deploy_checkpoints_helpers import (
+        _matches_gpu_type,
+    )
+
+    # Test exact matches
+    assert _matches_gpu_type("A10G", "A10G") is True
+    assert _matches_gpu_type("T4", "T4") is True
+
+    # Test case insensitive
+    assert _matches_gpu_type("a10g", "A10G") is True
+    assert _matches_gpu_type("A10G", "a10g") is True
+
+    # Test partial matches
+    assert _matches_gpu_type("A10G", "NVIDIA A10G") is True
+    assert _matches_gpu_type("T4", "Tesla T4") is True
+
+    # Test no match
+    assert _matches_gpu_type("A10G", "T4") is False
+    assert _matches_gpu_type("", "A10G") is False
+    assert _matches_gpu_type("A10G", "") is False

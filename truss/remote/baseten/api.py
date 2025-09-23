@@ -743,6 +743,16 @@ class BasetenApi:
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
 
+    def list_instance_types(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all available instance types from the REST API.
+
+        Returns:
+            List of instance type dictionaries containing id, name, and other properties
+        """
+        response = self._rest_api_client.get("v1/instance_types")
+        return response.get("instance_types", [])
+
     def deploy_checkpoints_from_training(self, request_data: dict):
         """
         Deploy checkpoints from training using GraphQL mutation.
