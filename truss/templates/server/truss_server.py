@@ -470,7 +470,6 @@ class TrussServer:
             if self._config["runtime"].get("enable_debug_logs", False)
             else "INFO"
         )
-
         extra_kwargs = {}
         # We don't pass these if not set, to not override the default.
         if (
