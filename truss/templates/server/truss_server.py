@@ -182,6 +182,12 @@ class BasetenEndpoints:
         """
         Executes a predictive endpoint
         """
+        request_id = request.headers.get("x-baseten-request-id")
+
+        logging.debug(
+            f"[DEBUG] Request received - {request.method} /{method.__name__} "
+            f", Request ID: {request_id}"
+        )
         self.check_healthy()
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
