@@ -210,9 +210,6 @@ async fn lazy_data_resolve_async(
         }
 
         // only use at max 2 workers for b10cache, to avoid conflicts on parallel writes
-        if write_to_b10cache {
-            num_workers = num_workers.min(2);
-        }
         info!(
             "b10cache use: Read: {}, Write: {}",
             read_from_b10cache, write_to_b10cache
