@@ -156,7 +156,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
         latest_job = project.get("latest_job") or {}
         if latest_job_id := latest_job.get("id", ""):
             latest_job_link = cli_common.format_link(
-                status_page_url(remote_url, latest_job_id), "link"
+                status_page_url(remote_url, project["id"], latest_job_id), "link"
             )
         else:
             latest_job_link = ""
@@ -305,8 +305,11 @@ def display_training_job(
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
     table.add_row(
-        "Status Page",
-        cli_common.format_link(status_page_url(remote_url, job["id"]), "link"),
+        "Job Page",
+        cli_common.format_link(
+            status_page_url(remote_url, job["training_project"]["id"], job["id"]),
+            "link",
+        ),
     )
 
     # Add error message if present
@@ -417,8 +420,8 @@ def download_checkpoint_artifacts(
     return urls_file
 
 
-def status_page_url(remote_url: str, training_job_id: str) -> str:
-    return f"{remote_url}/training/jobs/{training_job_id}"
+def status_page_url(remote_url: str, project_id: str, training_job_id: str) -> str:
+    return f"{remote_url}/training/{project_id}/logs/{training_job_id}"
 
 
 def _get_all_train_init_example_options(

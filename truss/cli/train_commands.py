@@ -41,6 +41,7 @@ truss_cli.add_command(train)
 
 def _print_training_job_success_message(
     job_id: str,
+    project_id: str,
     project_name: str,
     job_object: Optional[TrainingJob],
     remote_provider: BasetenRemote,
@@ -64,7 +65,7 @@ def _print_training_job_success_message(
         f"🔍 View metrics for your job via "
         f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
         f"{cache_summary_snippet}"
-        f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
+        f"🌐 View job in the UI: {common.format_link(core.status_page_url(remote_provider.remote_url, project_id, job_id))}"
     )
 
 
@@ -82,7 +83,11 @@ def _handle_post_create_logic(
     else:
         # recreate currently doesn't pass back a job object.
         _print_training_job_success_message(
-            job_id, project_name, job_resp.get("job_object"), remote_provider
+            job_id,
+            project_id,
+            project_name,
+            job_resp.get("job_object"),
+            remote_provider,
         )
 
     if tail:
