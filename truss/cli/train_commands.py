@@ -42,12 +42,12 @@ truss_cli.add_command(train)
 def _print_training_job_success_message(
     job_id: str,
     project_name: str,
-    job_object: TrainingJob,
+    job_object: Optional[TrainingJob],
     remote_provider: BasetenRemote,
 ) -> None:
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
-    should_print_cache_summary = (
+    should_print_cache_summary = job_object and (
         job_object.runtime.enable_cache
         or job_object.runtime.cache_config
         and job_object.runtime.cache_config.enabled
@@ -80,8 +80,9 @@ def _handle_post_create_logic(
             style="green",
         )
     else:
+        # recreate currently doesn't pass back a job object.
         _print_training_job_success_message(
-            job_id, project_name, job_resp["job_object"], remote_provider
+            job_id, project_name, job_resp.get("job_object"), remote_provider
         )
 
     if tail:
@@ -156,7 +157,7 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--project", type=str, required=False, help="Project name.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
 @common.common_options()
@@ -197,13 +198,17 @@ def get_job_logs(
 
 @train.command(name="stop")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--project", type=str, required=False, help="Project name or ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def stop_job(
-    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    all: bool,
+    remote: Optional[str],
 ):
     """Stop a training job"""
 
@@ -212,6 +217,9 @@ def stop_job(
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
     )
     if all:
         train_cli.stop_all_jobs(remote_provider, project_id)
@@ -227,7 +235,7 @@ def stop_job(
 @click.option(
     "--project-id", type=str, required=False, help="View training jobs for a project."
 )
-@click.option("--project", type=str, required=False, help="Project name.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
@@ -256,7 +264,7 @@ def view_training(
 
 @train.command(name="metrics")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--project", type=str, required=False, help="Project name.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
@@ -282,7 +290,7 @@ def get_job_metrics(
 
 @train.command(name="deploy_checkpoints")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
-@click.option("--project", type=str, required=False, help="Project name.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
     "--config",
@@ -312,6 +320,9 @@ def deploy_checkpoints(
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
     )
     prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
         remote_provider,
