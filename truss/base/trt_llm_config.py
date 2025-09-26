@@ -336,7 +336,7 @@ pip install truss==0.10.8
             )
         ):
             raise ValueError(
-                "Using fp8 context fmha requires fp8 kv, or fp4 kv cache dtype"
+                "Using fp8 context fmha requires fp8 kv, or fp4 with kv cache dtype"
             )
 
         return self
