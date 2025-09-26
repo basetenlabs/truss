@@ -329,9 +329,9 @@ pip install truss==0.10.8
             raise ValueError("Using fp8 context fmha requires paged context fmha")
         if (
             self.plugin_configuration.use_fp8_context_fmha
-            and not self.quantization_type in (TrussTRTLLMQuantizationType.FP8_KV, TrussTRTLLMQuantizationType.FP4_KV, TrussTRTLLMQuantizationType.FP4)
+            and self.quantization_type not in (TrussTRTLLMQuantizationType.FP8_KV, TrussTRTLLMQuantizationType.FP4_KV)
         ):
-            raise ValueError("Using fp8 context fmha requires fp8 kv, fp4, or fp4 kv cache dtype")
+            raise ValueError("Using fp8 context fmha requires fp8 kv, or fp4 kv cache dtype")
 
         return self
 
