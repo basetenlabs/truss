@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Optional, Protocol
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
+from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx_ws import AsyncWebSocketSession, WebSocketDisconnect, aconnect_ws
 from httpx_ws import _exceptions as httpx_ws_exceptions
 from starlette.requests import ClientDisconnect, Request
@@ -12,11 +13,6 @@ from starlette.responses import Response
 from starlette.websockets import WebSocketDisconnect as StartletteWebSocketDisconnect
 from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
 from wsproto.events import BytesMessage, TextMessage
-
-from truss.templates.control.control.helpers.errors import (
-    ModelLoadFailed,
-    ModelNotReady,
-)
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 BASE_RETRY_EXCEPTIONS = (
