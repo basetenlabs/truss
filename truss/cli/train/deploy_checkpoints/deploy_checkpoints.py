@@ -115,24 +115,22 @@ def _build_inference_template_request(
     }
 
     # Get instance type ID from compute spec
-    instance_type_id = _get_instance_type_id(
+    instance_type_label = _get_instance_type_label(
         checkpoint_deploy_config.compute, remote_provider
     )
 
     # Build the complete request
     request_data = {
-        "request": {
-            "metadata": {"oracle_name": checkpoint_deploy_config.model_name},
-            "weights_sources": weights_sources,
-            "inference_stack": inference_stack,
-            "instance_type_id": instance_type_id,
-        }
+        "metadata": {"oracle_name": checkpoint_deploy_config.model_name},
+        "weights_sources": weights_sources,
+        "inference_stack": inference_stack,
+        "instance_type_label": instance_type_label,
     }
 
     return request_data
 
 
-def _get_instance_type_id(compute: Compute, remote_provider: BasetenRemote) -> str:
+def _get_instance_type_label(compute: Compute, remote_provider: BasetenRemote) -> str:
     """
     Get the instance type ID based on the compute specification.
     Fetches available instance types from the API and maps compute specs to instance type IDs.
