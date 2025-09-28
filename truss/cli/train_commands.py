@@ -8,7 +8,7 @@ import rich_click as click
 import truss.cli.train.core as train_cli
 from truss.base.constants import TRAINING_TEMPLATE_DIR
 from truss.cli import remote_cli
-from truss.cli.cli import push, truss_cli
+from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
@@ -329,26 +329,16 @@ def deploy_checkpoints(
     project_id = _maybe_resolve_project_id_from_id_or_name(
         remote_provider, project_id=project_id, project=project
     )
-    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+    result = train_cli.create_model_version_from_inference_template(
         remote_provider,
-        train_cli.PrepareCheckpointArgs(
+        train_cli.DeployCheckpointArgs(
             project_id=project_id, job_id=job_id, deploy_config_path=config
         ),
     )
 
-    params = {
-        "target_directory": prepare_checkpoint_result.truss_directory,
-        "remote": remote,
-        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
-        "publish": True,
-        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
-    }
-    ctx = _prepare_click_context(push, params)
     if dry_run:
-        console.print("--dry-run flag provided, not deploying", style="yellow")
-    else:
-        push.invoke(ctx)
-    train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
+        console.print("--dry-run flag provided, did not deploy", style="yellow")
+    train_cli.print_deploy_checkpoints_success_message(result)
 
 
 @train.command(name="download")

@@ -16,7 +16,7 @@ from rich.text import Text
 
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
-from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
+from truss.cli.train.types import DeployCheckpointArgs, DeployCheckpointsConfigComplete
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.custom_types import (
@@ -242,35 +242,35 @@ def view_training_job_metrics(
     metrics_display.watch()
 
 
-def prepare_checkpoint_deploy(
-    remote_provider: BasetenRemote, args: PrepareCheckpointArgs
-) -> PrepareCheckpointResult:
+def create_model_version_from_inference_template(
+    remote_provider: BasetenRemote, args: DeployCheckpointArgs
+) -> DeployCheckpointsConfigComplete:
     if not args.deploy_config_path:
-        return deploy_checkpoints.prepare_checkpoint_deploy(
+        return deploy_checkpoints.create_model_version_from_inference_template(
             remote_provider, DeployCheckpointsConfig(), args.project_id, args.job_id
         )
     #### User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:
-        return deploy_checkpoints.prepare_checkpoint_deploy(
+        return deploy_checkpoints.create_model_version_from_inference_template(
             remote_provider, checkpoint_deploy, args.project_id, args.job_id
         )
 
 
 def _get_checkpoint_names(
-    prepare_checkpoint_result: PrepareCheckpointResult,
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ) -> list[str]:
     return [
         checkpoint.paths[0].strip("/").split("/")[-1]
-        for checkpoint in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints
+        for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints
     ]
 
 
 def print_deploy_checkpoints_success_message(
-    prepare_checkpoint_result: PrepareCheckpointResult,
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ):
-    checkpoint_names = _get_checkpoint_names(prepare_checkpoint_result)
+    checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
     console.print(
         Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),

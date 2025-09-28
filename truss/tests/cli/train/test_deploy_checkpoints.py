@@ -9,7 +9,9 @@ import pytest
 
 import truss_train.definitions as definitions
 from truss.base import truss_config
-from truss.cli.train.deploy_checkpoints import prepare_checkpoint_deploy
+from truss.cli.train.deploy_checkpoints import (
+    create_model_version_from_inference_template,
+)
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     _get_checkpoint_ids_to_deploy,
     _render_truss_config_for_checkpoint_deployment,
@@ -30,10 +32,7 @@ from truss.cli.train.deploy_checkpoints.deploy_whisper_checkpoints import (
     hydrate_whisper_checkpoint,
     render_vllm_whisper_truss_config,
 )
-from truss.cli.train.types import (
-    DeployCheckpointsConfigComplete,
-    PrepareCheckpointResult,
-)
+from truss.cli.train.types import DeployCheckpointsConfigComplete
 from truss_train.definitions import ModelWeightsFormat
 
 
@@ -186,30 +185,24 @@ def test_prepare_checkpoint_deploy_empty_config(
     empty_config = definitions.DeployCheckpointsConfig()
 
     # Call function under test
-    result = prepare_checkpoint_deploy(
+    result = create_model_version_from_inference_template(
         remote_provider=mock_remote,
         checkpoint_deploy_config=empty_config,
         project_id="project123",
         job_id="job123",
     )
 
-    assert isinstance(result, PrepareCheckpointResult)
-    assert result.checkpoint_deploy_config.model_name == "gemma-3-27b-it-vLLM-LORA"
-    assert (
-        result.checkpoint_deploy_config.checkpoint_details.base_model_id
-        == "google/gemma-3-27b-it"
-    )
-    assert len(result.checkpoint_deploy_config.checkpoint_details.checkpoints) == 1
-    checkpoint = result.checkpoint_deploy_config.checkpoint_details.checkpoints[0]
+    assert isinstance(result, DeployCheckpointsConfigComplete)
+    assert result.model_name == "gemma-3-27b-it-vLLM-LORA"
+    assert result.checkpoint_details.base_model_id == "google/gemma-3-27b-it"
+    assert len(result.checkpoint_details.checkpoints) == 1
+    checkpoint = result.checkpoint_details.checkpoints[0]
     assert checkpoint.training_job_id == "job123"
     assert isinstance(checkpoint, definitions.LoRACheckpoint)
     assert checkpoint.lora_details.rank == 16
-    assert result.checkpoint_deploy_config.compute.accelerator.accelerator == "H100"
-    assert result.checkpoint_deploy_config.compute.accelerator.count == 4
-    assert (
-        result.checkpoint_deploy_config.runtime.environment_variables["HF_TOKEN"].name
-        == "hf_access_token"
-    )
+    assert result.compute.accelerator.accelerator == "H100"
+    assert result.compute.accelerator.count == 4
+    assert result.runtime.environment_variables["HF_TOKEN"].name == "hf_access_token"
 
 
 def test_prepare_checkpoint_deploy_complete_config(
@@ -245,7 +238,7 @@ def test_prepare_checkpoint_deploy_complete_config(
     )
 
     # Call function under test
-    result = prepare_checkpoint_deploy(
+    result = create_model_version_from_inference_template(
         remote_provider=mock_remote,
         checkpoint_deploy_config=complete_config,
         project_id="project123",
@@ -253,7 +246,7 @@ def test_prepare_checkpoint_deploy_complete_config(
     )
 
     # Verify result
-    assert isinstance(result, PrepareCheckpointResult)
+    assert isinstance(result, DeployCheckpointsConfigComplete)
 
     # Verify no prompts were called
     deploy_checkpoints_mock_select.assert_not_called()
@@ -261,40 +254,26 @@ def test_prepare_checkpoint_deploy_complete_config(
     deploy_checkpoints_mock_checkbox.assert_not_called()
 
     # Verify config values were preserved
-    config = result.checkpoint_deploy_config
-    assert config.model_name == "my-custom-model"
-    assert config.deployment_name == "my-deployment"
+    assert result.model_name == "my-custom-model"
+    assert result.deployment_name == "my-deployment"
 
     # Verify checkpoint details
-    assert config.checkpoint_details.base_model_id == "google/gemma-3-27b-it"
-    assert len(config.checkpoint_details.checkpoints) == 1
-    checkpoint = config.checkpoint_details.checkpoints[0]
+    assert result.checkpoint_details.base_model_id == "google/gemma-3-27b-it"
+    assert len(result.checkpoint_details.checkpoints) == 1
+    checkpoint = result.checkpoint_details.checkpoints[0]
     assert checkpoint.training_job_id == "job123"
     assert checkpoint.model_weight_format == ModelWeightsFormat.LORA
     assert isinstance(checkpoint, definitions.LoRACheckpoint)
     assert checkpoint.lora_details.rank == 32
 
     # Verify compute config
-    assert config.compute.accelerator.accelerator == "A100"
-    assert config.compute.accelerator.count == 2
+    assert result.compute.accelerator.accelerator == "A100"
+    assert result.compute.accelerator.count == 2
 
     # Verify runtime config
-    env_vars = config.runtime.environment_variables
+    env_vars = result.runtime.environment_variables
     assert env_vars["HF_TOKEN"].name == "my_custom_secret"
     assert env_vars["CUSTOM_VAR"] == "custom_value"
-
-    # open the config.yaml file and verify the tensor parallel size is 2
-    # additional tests can be added to verify the config.yaml file is correct
-    truss_cfg = truss_config.TrussConfig.from_yaml(
-        Path(result.truss_directory, "config.yaml")
-    )
-    # Check that the start command is now the environment variable reference
-    assert truss_cfg.docker_server.start_command == "%(ENV_BT_DOCKER_SERVER_START_CMD)s"
-    # Check that the actual start command with tensor parallel size is in the environment variable
-    assert (
-        "--tensor-parallel-size 2"
-        in truss_cfg.environment_variables["BT_DOCKER_SERVER_START_CMD"]
-    )
 
 
 def test_checkpoint_lora_rank_validation():
