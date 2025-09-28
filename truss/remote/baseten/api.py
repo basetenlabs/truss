@@ -19,18 +19,33 @@ class InstanceTypeV1(BaseModel):
     """An instance type."""
 
     id: str = Field(description="Identifier string for the instance type")
-    name: str = Field(description="Display name of the instance type")
-    memory_limit_mib: int = Field(
-        description="Memory limit of the instance type in Mebibytes"
+    name: str = Field(description="Name of the instance type")
+    display_name: str = Field(
+        alias="displayName", description="Display name of the instance type"
+    )
+    gpu_count: int = Field(
+        alias="gpuCount", description="Number of GPUs on the instance type"
+    )
+    default: bool = Field(description="Whether this is the default instance type")
+    gpu_memory: Optional[int] = Field(alias="gpuMemory", description="GPU memory in MB")
+    node_count: int = Field(alias="nodeCount", description="Number of nodes")
+    gpu_type: Optional[str] = Field(
+        alias="gpuType", description="Type of GPU on the instance type"
     )
     millicpu_limit: int = Field(
-        description="CPU limit of the instance type in millicpu"
+        alias="millicpuLimit", description="CPU limit of the instance type in millicpu"
     )
-    gpu_count: int = Field(description="Number of GPUs on the instance type")
-    gpu_type: Optional[str] = Field(description="Type of GPU on the instance type")
-    gpu_memory_limit_mib: Optional[int] = Field(
-        description="Memory limit of the GPU on the instance type in Mebibytes"
+    memory_limit: int = Field(
+        alias="memoryLimit", description="Memory limit of the instance type in MB"
     )
+    price: Optional[float] = Field(description="Price of the instance type")
+    limited_capacity: Optional[bool] = Field(
+        alias="limitedCapacity",
+        description="Whether this instance type has limited capacity",
+    )
+
+    class Config:
+        populate_by_name = True
 
 
 API_URL_MAPPING = {
@@ -796,10 +811,29 @@ class BasetenApi:
 
     def get_instance_types(self) -> List[InstanceTypeV1]:
         """
-        Get all available instance types via REST API.
+        Get all available instance types via GraphQL API.
         """
-        resp_json = self._rest_api_client.get("v1/instance_types")
-        instance_types_data = resp_json.get("instance_types", [])
+        query_string = """
+        query Instances {
+            listedInstances: listed_instances {
+                id
+                name
+                millicpuLimit: millicpu_limit
+                memoryLimit: memory_limit
+                gpuCount: gpu_count
+                gpuType: gpu_type
+                gpuMemory: gpu_memory
+                default
+                displayName: display_name
+                nodeCount: node_count
+                price
+                limitedCapacity: limited_capacity
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        instance_types_data = resp["data"]["listedInstances"]
         return [
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]

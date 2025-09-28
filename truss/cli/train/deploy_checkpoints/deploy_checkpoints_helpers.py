@@ -13,9 +13,13 @@ def setup_base_truss_config(
 ) -> truss_config.TrussConfig:
     """Set up the base truss config with common properties."""
     truss_deploy_config = None
+    # Derive model weight format from checkpoint details
+    model_weight_format = checkpoint_deploy.checkpoint_details.checkpoints[
+        0
+    ].model_weight_format
     truss_base_file = (
         "deploy_from_checkpoint_config_whisper.yml"
-        if checkpoint_deploy.model_weight_format == ModelWeightsFormat.WHISPER
+        if model_weight_format == ModelWeightsFormat.WHISPER
         else "deploy_from_checkpoint_config.yml"
     )
     truss_deploy_config = truss_config.TrussConfig.from_yaml(

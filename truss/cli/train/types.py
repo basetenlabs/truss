@@ -24,6 +24,5 @@ class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
 
     checkpoint_details: CheckpointList
     model_name: str
-    deployment_name: str
     runtime: DeployCheckpointsRuntime
     compute: Compute

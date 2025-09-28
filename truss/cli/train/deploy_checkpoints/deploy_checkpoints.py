@@ -115,7 +115,7 @@ def _build_inference_template_request(
     }
 
     # Get instance type ID from compute spec
-    instance_type_label = _get_instance_type_label(
+    instance_type_id = _get_instance_type_id(
         checkpoint_deploy_config.compute, remote_provider
     )
 
@@ -124,30 +124,35 @@ def _build_inference_template_request(
         "metadata": {"oracle_name": checkpoint_deploy_config.model_name},
         "weights_sources": weights_sources,
         "inference_stack": inference_stack,
-        "instance_type_label": instance_type_label,
+        "instance_type_id": instance_type_id,
     }
 
     return request_data
 
 
-def _get_instance_type_label(compute: Compute, remote_provider: BasetenRemote) -> str:
+def _get_instance_type_id(compute: Compute, remote_provider: BasetenRemote) -> str:
     """
     Get the instance type ID based on the compute specification.
     Fetches available instance types from the API and maps compute specs to instance type IDs.
+    Only considers single-node instances (node_count == 1).
     """
     # step 1: fetch the instance types from the API
     instance_types = remote_provider.api.get_instance_types()
-    # step 2: sort them into two different dictionaries:
-    cpu_instance_types = {it.id: it for it in instance_types if it.gpu_count == 0}
-    gpu_instance_types = {it.id: it for it in instance_types if it.gpu_count > 0}
+    # step 2: sort them into two different dictionaries, excluding multi-node instances:
+    cpu_instance_types = {
+        it.id: it for it in instance_types if it.gpu_count == 0 and it.node_count == 1
+    }
+    gpu_instance_types = {
+        it.id: it for it in instance_types if it.gpu_count > 0 and it.node_count == 1
+    }
     # step 3: if compute is cpu, find the smallest such cpu that matches the compute request
-    if compute.accelerator.accelerator is None:
+    if not compute.accelerator or compute.accelerator.accelerator is None:
         compute_as_truss_config = compute.to_truss_config()
         smallest_cpu_instance_type = None
         for it in cpu_instance_types.values():
             if (
                 it.millicpu_limit / 1000 >= compute.cpu_count
-                and it.memory_limit_mib >= compute_as_truss_config.memory_in_bytes
+                and it.memory_limit >= compute_as_truss_config.memory_in_bytes
             ):
                 if (
                     smallest_cpu_instance_type is None
@@ -156,17 +161,18 @@ def _get_instance_type_label(compute: Compute, remote_provider: BasetenRemote) -
                     smallest_cpu_instance_type = it
         if not smallest_cpu_instance_type:
             raise ValueError(
-                f"Unable to find instance type for {compute.cpu_count} CPU and {compute.memory} memory. Reach out to Baseten for support if this persists."
+                f"Unable to find single-node instance type for {compute.cpu_count} CPU and {compute.memory} memory. Reach out to Baseten for support if this persists."
             )
         return smallest_cpu_instance_type.id
     # step 4: if compute is gpu, find the smallest such gpu by instance type
     else:
+        assert compute.accelerator.accelerator is not None
         compute_as_truss_config = compute.to_truss_config()
         smallest_gpu_instance_type = None
         for it in gpu_instance_types.values():
             if (
-                it.gpu_type == compute_as_truss_config.accelerator.accelerator.value
-                and it.gpu_count >= compute_as_truss_config.accelerator.count
+                it.gpu_type == compute.accelerator.accelerator.value
+                and it.gpu_count >= compute.accelerator.count
             ):
                 if (
                     smallest_gpu_instance_type is None
@@ -175,7 +181,7 @@ def _get_instance_type_label(compute: Compute, remote_provider: BasetenRemote) -
                     smallest_gpu_instance_type = it
         if not smallest_gpu_instance_type:
             raise ValueError(
-                f"Unable to find instance type for {compute.accelerator.accelerator.value} x{compute.accelerator.count}. Reach out to Baseten for support if this persists."
+                f"Unable to find single-node instance type for {compute.accelerator}:{compute.accelerator.count}. Reach out to Baseten for support if this persists."
             )
         return smallest_gpu_instance_type.id
 
@@ -206,17 +212,11 @@ def _get_model_name(
         else ""
     )
 
-    model_name = inquirer.text(
+    return inquirer.text(
         message=f"Enter the model name for your {model_weight_format.value} model.",
         validate=lambda s: s and s.strip(),
         default=default,
     ).execute()
-
-    if model_weight_format == ModelWeightsFormat.FULL:
-        model_name += "-vLLM-Full"
-    elif model_weight_format == ModelWeightsFormat.LORA:
-        model_name += "-vLLM-LORA"
-    return model_name
 
 
 def _hydrate_deploy_config(
@@ -239,47 +239,13 @@ def _hydrate_deploy_config(
     compute = _ensure_compute_spec(deploy_config.compute, remote_provider)
 
     runtime = _ensure_runtime_config(deploy_config.runtime)
-    deployment_name = _ensure_deployment_name(
-        deploy_config.deployment_name, checkpoint_details.checkpoints
-    )
 
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
-        deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
     )
-
-
-def _ensure_deployment_name(
-    deploy_config_deployment_name: Optional[str], checkpoints: List[Checkpoint]
-) -> str:
-    if deploy_config_deployment_name:
-        return deploy_config_deployment_name
-
-    default_deployment_name = "checkpoint"
-
-    if checkpoints and checkpoints[0].paths:
-        first_checkpoint_name = checkpoints[0].paths[0].strip("/").split("/")[-1]
-
-        if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
-            # Allow autoincrementing if the checkpoint matches both regexes
-            if (
-                CHECKPOINT_PATTERN.match(first_checkpoint_name)
-                and len(checkpoints) == 1
-            ):
-                return first_checkpoint_name
-
-    # If no valid autoincrementing checkpoint name is found, prompt the user
-    deployment_name = inquirer.text(
-        message="Enter the deployment name.", default=default_deployment_name
-    ).execute()
-
-    if not deployment_name:
-        raise click.UsageError("Deployment name is required.")
-
-    return deployment_name
 
 
 def hydrate_checkpoint(
@@ -412,112 +378,59 @@ def _ensure_compute_spec(
 
 def _get_accelerator_if_specified(
     user_input: Optional[Compute], remote_provider: BasetenRemote
-) -> Optional[Compute]:
+) -> Compute:
     if user_input and user_input.accelerator:
         return user_input
 
-    try:
-        # Fetch available instance types to get valid GPU options
-        instance_types = remote_provider.api.get_instance_types()
+    # Fetch available instance types to get valid GPU options
+    instance_types = remote_provider.api.get_instance_types()
 
-        # Extract unique accelerator types from instance types
-        accelerator_options = set()
-        for it in instance_types:
-            if it.gpu_type and it.gpu_count > 0:
-                accelerator_options.add(it.gpu_type)
+    # Extract unique accelerator types from instance types
+    accelerator_options = set()
+    for it in instance_types:
+        if it.gpu_type and it.gpu_count > 0:
+            accelerator_options.add(it.gpu_type)
 
-        # Convert to sorted list and add CPU option
-        choices = sorted(list(accelerator_options)) + [None]
+    # Convert to sorted list and add CPU option
+    choices = sorted(list(accelerator_options)) + [None]
 
-        if not choices or choices == [None]:
-            console.print("No GPU instance types available, using CPU", style="yellow")
-            return Compute(cpu_count=0, memory="0Mi", accelerator=None)
+    if not choices or choices == [None]:
+        console.print("No GPU instance types available, using CPU", style="yellow")
+        return Compute(cpu_count=0, memory="0Mi", accelerator=None)
 
-        # Display available instance types for user reference
-        _display_available_instance_types(remote_provider)
+    # prompt user for accelerator
+    gpu_type = inquirer.select(
+        message="Select the GPU type to use for deployment. Select None for CPU.",
+        choices=choices,
+    ).execute()
 
-        # prompt user for accelerator
-        gpu_type = inquirer.select(
-            message="Select the GPU type to use for deployment. Select None for CPU.",
-            choices=choices,
+    if gpu_type is None:
+        return Compute(cpu_count=0, memory="0Mi", accelerator=None)
+
+    # Get available counts for the selected GPU type
+    available_counts = set()
+    for it in instance_types:
+        if it.gpu_type == gpu_type and it.gpu_count > 0:
+            available_counts.add(it.gpu_count)
+
+    if available_counts:
+        count_choices = sorted(list(available_counts))
+        count = inquirer.select(
+            message=f"Select the number of {gpu_type} GPUs to use for deployment.",
+            choices=count_choices,
+            default=str(count_choices[0]) if count_choices else "1",
         ).execute()
-
-        if gpu_type is None:
-            return Compute(cpu_count=0, memory="0Mi", accelerator=None)
-
-        # Get available counts for the selected GPU type
-        available_counts = set()
-        for it in instance_types:
-            if it.gpu_type == gpu_type and it.gpu_count > 0:
-                available_counts.add(it.gpu_count)
-
-        if available_counts:
-            count_choices = sorted(list(available_counts))
-            count = inquirer.select(
-                message=f"Select the number of {gpu_type} GPUs to use for deployment.",
-                choices=count_choices,
-                default=str(count_choices[0]) if count_choices else "1",
-            ).execute()
-        else:
-            count = inquirer.text(
-                message=f"Enter the number of {gpu_type} accelerators to use for deployment.",
-                default="1",
-                validate=lambda x: x.isdigit() and int(x) > 0 and int(x) <= 8,
-            ).execute()
-
-        # Create a simple accelerator spec
-        return Compute(
-            cpu_count=0,
-            memory="0Mi",
-            accelerator={"type": gpu_type, "count": int(count)},
-        )
-
-    except Exception as e:
-        console.print(f"Error fetching instance types: {e}", style="red")
-        console.print("Using default GPU selection", style="yellow")
-
-        # Fallback to hardcoded options
-        gpu_type = inquirer.select(
-            message="Select the GPU type to use for deployment. Select None for CPU.",
-            choices=["T4", "A10G", "A100", "H100", None],
-        ).execute()
-        if gpu_type is None:
-            return Compute(cpu_count=0, memory="0Mi", accelerator=None)
+    else:
         count = inquirer.text(
-            message="Enter the number of accelerators to use for deployment.",
+            message=f"Enter the number of {gpu_type} accelerators to use for deployment.",
             default="1",
             validate=lambda x: x.isdigit() and int(x) > 0 and int(x) <= 8,
         ).execute()
-        return Compute(
-            cpu_count=0,
-            memory="0Mi",
-            accelerator={"type": gpu_type, "count": int(count)},
-        )
 
-
-def _display_available_instance_types(remote_provider: BasetenRemote) -> None:
-    """
-    Display available instance types to help users understand their options.
-    """
-    try:
-        instance_types = remote_provider.api.get_instance_types()
-
-        if not instance_types:
-            console.print("No instance types available", style="yellow")
-            return
-
-        console.print("\nAvailable instance types:", style="cyan")
-        for it in instance_types:
-            if it.gpu_count > 0:
-                console.print(
-                    f"  • {it.name}: {it.gpu_count}x {it.gpu_type}", style="white"
-                )
-            else:
-                console.print(f"  • {it.name}: CPU only", style="white")
-        console.print()  # Add spacing
-
-    except Exception as e:
-        console.print(f"Could not fetch instance types: {e}", style="yellow")
+    # Create a simple accelerator spec
+    return Compute(
+        cpu_count=0, memory="0Mi", accelerator={"type": gpu_type, "count": int(count)}
+    )
 
 
 def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> Optional[str]:
