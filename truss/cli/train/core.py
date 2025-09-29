@@ -279,7 +279,9 @@ def print_deploy_checkpoints_success_message(
             style="magenta",
         ),
         Text("in your request. An example request body might look like this:"),
-        Text(f"\n{{'model': {checkpoint_names[0]}, 'messages': [...]}}", style="green"),
+        Text(
+            f'\n{{"model": "{checkpoint_names[0]}", "messages": [...]}}', style="green"
+        ),
     )
 
 
