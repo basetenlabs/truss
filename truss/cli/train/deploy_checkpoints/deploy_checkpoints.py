@@ -5,6 +5,7 @@ from typing import List, Optional, Union
 import rich_click as click
 from InquirerPy import inquirer
 
+from truss.base import truss_config
 from truss.cli.train import common
 from truss.cli.train.types import DeployCheckpointsConfigComplete
 from truss.cli.utils.output import console
@@ -412,13 +413,17 @@ def _get_accelerator_if_specified(
     for it in instance_types:
         if it.gpu_type == gpu_type and it.gpu_count > 0:
             available_counts.add(it.gpu_count)
+    if not available_counts:
+        raise ValueError(
+            f"No available counts for {gpu_type}. Reach out to Baseten for support if this persists."
+        )
 
     if available_counts:
         count_choices = sorted(list(available_counts))
         count = inquirer.select(
             message=f"Select the number of {gpu_type} GPUs to use for deployment.",
             choices=count_choices,
-            default=str(count_choices[0]) if count_choices else "1",
+            default=str(count_choices[0]),
         ).execute()
     else:
         count = inquirer.text(
@@ -427,9 +432,12 @@ def _get_accelerator_if_specified(
             validate=lambda x: x.isdigit() and int(x) > 0 and int(x) <= 8,
         ).execute()
 
-    # Create a simple accelerator spec
     return Compute(
-        cpu_count=0, memory="0Mi", accelerator={"type": gpu_type, "count": int(count)}
+        cpu_count=0,
+        memory="0Mi",
+        accelerator=truss_config.AcceleratorSpec(
+            accelerator=gpu_type.replace("-", "_"), count=int(count)
+        ),
     )
 
 
