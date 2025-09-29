@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from truss_train.definitions import (
     ALLOWED_LORA_RANKS,
     DEFAULT_LORA_RANK,
@@ -34,19 +32,3 @@ def _get_lora_rank(checkpoint_resp: dict) -> int:
         )
 
     return lora_rank
-
-
-def _build_lora_checkpoint_string(truss_deploy_config) -> str:
-    """Build the checkpoint string for LoRA modules from truss deploy config."""
-    checkpoint_parts = []
-    for (
-        truss_checkpoint
-    ) in truss_deploy_config.training_checkpoints.artifact_references:  # type: ignore
-        ckpt_path = Path(
-            truss_deploy_config.training_checkpoints.download_folder,  # type: ignore
-            truss_checkpoint.training_job_id,
-            truss_checkpoint.paths[0],
-        )
-        checkpoint_parts.append(f"{truss_checkpoint.training_job_id}={ckpt_path}")
-
-    return " ".join(checkpoint_parts)
