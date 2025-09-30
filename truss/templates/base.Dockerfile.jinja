@@ -33,7 +33,7 @@ RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
 ENV DEBIAN_FRONTEND=noninteractive
 
 
-{%- set UV_VERSION = "0.7.19" %}
+{%- set UV_VERSION = "0.8.22" %}
 {#
 NB(nikhil): We use a semi-complex uv installation command across the board:
 - A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
@@ -59,10 +59,12 @@ RUN {{ python_exec_path }} -c "import sys; \
 {% endblock %}
 
 {% block install_uv %}
-{# Install `uv` and `curl` if not already present in the image. #}
+{# Install `uv` and `curl` if not already present in the image. We validate the expected location for `uv` at the very end
+   due to limitations with `pipefail` in Docker context. #}
 RUN if ! command -v uv >/dev/null 2>&1; then \
     command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
-    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh; \
+    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh && \
+    test -x ${HOME}/.local/bin/uv; \
 fi
 {# Add the user's local bin to the path, used by uv. #}
 ENV PATH=${PATH}:${HOME}/.local/bin

@@ -85,3 +85,19 @@ def test_dolly():
             )
 
     print("✓ BasetenPointer structure validation passed")
+    return result
+
+
+def test_dolly_with_download():
+    manifest = test_dolly()
+    Path("/static-bptr").mkdir(parents=True, exist_ok=True)
+    with open("/static-bptr/static-bptr-manifest.json", "w") as f:
+        f.write(manifest)
+
+    print("✓ BasetenPointer manifest written to /static-bptr/static-bptr-manifest.json")
+    truss_transfer.lazy_data_resolve("")
+    print("✓ Data download via BasetenPointer successful")
+    # check that tokenizer_config.json exists
+    assert Path(
+        "/app/model_cache/julien_dummy/rank-0/checkpoint-24/tokenizer_config.json"
+    ).exists()

@@ -81,6 +81,13 @@ pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS: Lazy<usize> = Lazy::new(|| {
         .unwrap_or(192)
 });
 
+pub static TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS: Lazy<u64> = Lazy::new(|| {
+    env::var("TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30)
+});
+
 pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE: Lazy<usize> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE")
         .ok()
