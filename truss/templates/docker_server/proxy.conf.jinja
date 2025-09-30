@@ -35,7 +35,7 @@ server {
         proxy_pass http://127.0.0.1:{{server_port}};
     }
     # Predict
-    location ~ ^(/v1/models/model:predict|/v1/websocket)$ {
+    location ~ ^/v1/models/model:predict$ {
         proxy_redirect off;
         proxy_read_timeout 18030s;
         proxy_http_version 1.1;
@@ -45,10 +45,13 @@ server {
         proxy_pass http://127.0.0.1:{{server_port}};
     }
 
-    location ~ ^/v1/models/model:predict$ {
+    location ~ ^/v1/websocket$ {
         proxy_redirect off;
         proxy_read_timeout 18030s;
         proxy_http_version 1.1;
+
+        proxy_set_header Upgrade $upgrade_header;
+        proxy_set_header Connection $connection_header;
 
         rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
 
