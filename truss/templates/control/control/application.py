@@ -1,4 +1,5 @@
 import asyncio
+import http
 import logging
 import logging.config
 import re
@@ -41,22 +42,23 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
             request.app.state.logger.error(sanitized_traceback)
 
             if isinstance(exc, ModelLoadFailed):
-                return JSONResponse({"error": str(exc)}, status_code=503)
+                return JSONResponse(
+                    {"error": str(exc)}, status_code=http.HTTPStatus.BAD_GATEWAY.value
+                )
             elif isinstance(exc, PatchApplicatonError):
                 error_type = _camel_to_snake_case(type(exc).__name__)
                 return JSONResponse({"error": {"type": error_type, "msg": str(exc)}})
             else:
                 return JSONResponse(
-                    {"error": {"type": "unknown", "msg": str(exc)}}, status_code=500
+                    {"error": {"type": "unknown", "msg": str(exc)}},
+                    status_code=http.HTTPStatus.INTERNAL_SERVER_ERROR.value,
                 )
 
     def _create_sanitized_traceback(self, error: Exception) -> str:
         tb_lines = traceback.format_tb(error.__traceback__)
         if tb_lines and self.num_frames > 0:
-            selected_frames = tb_lines[-self.num_frames :]
-            return "".join(selected_frames).rstrip()
-        else:
-            return f"{type(error).__name__}: {error}"
+            return "".join(tb_lines[-self.num_frames :])
+        return f"{type(error).__name__}: {error}"
 
 
 def create_app(base_config: Dict):

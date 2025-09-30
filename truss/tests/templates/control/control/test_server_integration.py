@@ -35,10 +35,12 @@ def _start_truss_server(
             f"http://localhost:{patch_ping_server_port}"
         )
     sys.stdout = open(stdout_capture_file_path, "w")
+
+    # NB(nikhil): Insert paths at the beginning to ensure we search there first.
     app_path = truss_control_container_fs / "app"
-    sys.path.append(str(app_path))
+    sys.path.insert(0, str(app_path))
     control_path = truss_control_container_fs / "control" / "control"
-    sys.path.append(str(control_path))
+    sys.path.insert(0, str(control_path))
 
     from server import ControlServer
 

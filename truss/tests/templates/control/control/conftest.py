@@ -6,10 +6,15 @@ from pathlib import Path
 def setup_control_imports():
     base_path = Path(__file__).parent.parent.parent.parent.parent
     paths = [
-        str(base_path / "templates" / "control" / "control"),
-        str(base_path / "templates"),
-        str(base_path / "templates" / "shared"),
+        base_path / "templates" / "control" / "control",
+        base_path / "templates",
+        base_path / "templates" / "shared",
     ]
+
     for path in paths:
-        if path not in sys.path:
-            sys.path.insert(0, path)
+        if not path.exists():
+            raise FileNotFoundError(f"Expected control path does not exist: {path}")
+
+        path_str = str(path)
+        if path_str not in sys.path:
+            sys.path.insert(0, path_str)
