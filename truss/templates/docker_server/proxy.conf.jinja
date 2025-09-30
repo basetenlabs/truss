@@ -53,7 +53,7 @@ server {
         proxy_set_header Upgrade $upgrade_header;
         proxy_set_header Connection $connection_header;
 
-        rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
+        rewrite ^/v1/websocket$ {{server_endpoint}} break;
 
         proxy_pass http://127.0.0.1:{{server_port}};
     }
