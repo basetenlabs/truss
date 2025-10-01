@@ -53,7 +53,7 @@ def app(truss_container_fs, truss_original_hash, ports):
                 "control_server_port": ports["control_server_port"],
                 "inference_server_port": ports["inference_server_port"],
                 "oversee_inference_server": False,
-                "pip_path": "pip",
+                "uv_path": "uv",
             }
         )
         inference_server_controller = control_app.state.inference_server_controller
