@@ -17,6 +17,8 @@ class LogWatcher(ABC):
     # NB(nikhil): we add buffer for clock skew, so this helps us detect duplicates.
     # TODO(nikhil): clean up hashes so this doesn't grow indefinitely.
     _log_hashes: set[str] = set()
+
+    # NOTE(Tyron): Should only be used by the `poll` method.
     _last_poll_time: Optional[int] = None
 
     def __init__(self, api: BasetenApi):
@@ -26,22 +28,31 @@ class LogWatcher(ABC):
         log_str = f"{log.timestamp}-{log.message}-{log.replica}"
         return hashlib.sha256(log_str.encode("utf-8")).hexdigest()
 
-    def _poll(self) -> Iterator[ParsedLog]:
-        start_epoch: Optional[int] = None
-        now = int(time.time() * 1000)
-        if self._last_poll_time is not None:
-            start_epoch = self._last_poll_time - CLOCK_SKEW_BUFFER_MS
-
+    def fetch_and_parse_logs(
+        self, start_epoch_millis: Optional[int], end_epoch_millis: Optional[int]
+    ) -> Iterator[ParsedLog]:
         api_logs = self.fetch_logs(
-            start_epoch_millis=start_epoch, end_epoch_millis=now + CLOCK_SKEW_BUFFER_MS
+            start_epoch_millis=start_epoch_millis, end_epoch_millis=end_epoch_millis
         )
 
         parsed_logs = parse_logs(api_logs)
+
         for log in parsed_logs:
-            h = self._hash_log(log)
-            if h not in self._log_hashes:
+            if (h := self._hash_log(log)) not in self._log_hashes:
                 self._log_hashes.add(h)
+
                 yield log
+
+    def poll(self) -> Iterator[ParsedLog]:
+        start_epoch: Optional[int] = None
+        now = int(time.time() * 1000)
+
+        if self._last_poll_time is not None:
+            start_epoch = self._last_poll_time - CLOCK_SKEW_BUFFER_MS
+
+        yield from self.fetch_and_parse_logs(
+            start_epoch_millis=start_epoch, end_epoch_millis=now + CLOCK_SKEW_BUFFER_MS
+        )
 
         self._last_poll_time = now
 
@@ -49,14 +60,14 @@ class LogWatcher(ABC):
         self.before_polling()
         with console.status("Polling logs", spinner="aesthetic"):
             while True:
-                for log in self._poll():
+                for log in self.poll():
                     yield log
                 if self._log_hashes:
                     break
                 time.sleep(POLL_INTERVAL_SEC)
 
             while self.should_poll_again():
-                for log in self._poll():
+                for log in self.poll():
                     yield log
                 time.sleep(POLL_INTERVAL_SEC)
                 self.post_poll()
