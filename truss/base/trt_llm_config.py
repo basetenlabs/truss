@@ -75,6 +75,13 @@ class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
     use_paged_context_fmha: bool = True
     use_fp8_context_fmha: bool = False
 
+class TrussTRTLLMAttentionImplementation(str, Enum):
+    DEFAULT = "default"  # default attention implementation, e.g. "sdpa" in torch 2.1.1
+    EAGER = "eager"  # eager attention implementation
+    SDPA = "sdpa"  # scaled dot product attention
+    FLASH2 = "flash_attention_2"  # flash attention 2
+    FLASH3 = "flash_attention_3"  # flash attention 3
+
 
 class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     """Configuration for quantization of TRT models
@@ -90,6 +97,10 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     calib_size: int = 1024
     calib_dataset: str = "cnn_dailymail"
     calib_max_seq_length: int = 2048
+    max_gpu_usage_fraction: float = 0.8
+    attention_implementation: Optional[TrussTRTLLMAttentionImplementation] = None
+    pad_tokenizer_during_calibration: Optional[str] = False
+
 
     def __init__(self, **data):
         super().__init__(**data)
