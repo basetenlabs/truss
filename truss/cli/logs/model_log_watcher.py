@@ -1,12 +1,11 @@
-from typing import Any, List, Optional, Iterator
 import time
+from functools import cached_property
+from typing import Any, Iterator, List, Optional
 
 from truss.cli.logs.base_watcher import LogWatcher
+from truss.cli.logs.utils import ParsedLog
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.utils.status import MODEL_RUNNING_STATES
-from functools import cached_property
-from truss.cli.logs.utils import ParsedLog
-
 
 MAX_LOOK_BACK_MS = 1000 * 60 * 60  # 1 hour.
 
