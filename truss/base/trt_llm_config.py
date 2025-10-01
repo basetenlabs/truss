@@ -75,6 +75,7 @@ class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
     use_paged_context_fmha: bool = True
     use_fp8_context_fmha: bool = False
 
+
 class TrussTRTLLMAttentionImplementation(str, Enum):
     DEFAULT = "default"  # default attention implementation, e.g. "sdpa" in torch 2.1.1
     EAGER = "eager"  # eager attention implementation
@@ -100,7 +101,6 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     max_gpu_usage_fraction: float = 0.8
     attention_implementation: Optional[TrussTRTLLMAttentionImplementation] = None
     pad_tokenizer_during_calibration: Optional[bool] = False
-
 
     def __init__(self, **data):
         super().__init__(**data)
