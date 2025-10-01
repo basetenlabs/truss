@@ -99,7 +99,7 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     calib_max_seq_length: int = 2048
     max_gpu_usage_fraction: float = 0.8
     attention_implementation: Optional[TrussTRTLLMAttentionImplementation] = None
-    pad_tokenizer_during_calibration: Optional[str] = False
+    pad_tokenizer_during_calibration: Optional[bool] = False
 
 
     def __init__(self, **data):
