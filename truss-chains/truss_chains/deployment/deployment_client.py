@@ -138,7 +138,12 @@ class ChainService(abc.ABC):
 
 def _generate_chainlet_artifacts(
     options: private_types.PushOptions, entrypoint: Type[private_types.ABCChainlet]
-) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact], bool]:
+) -> tuple[
+    b10_types.ChainletArtifact,
+    list[b10_types.ChainletArtifact],
+    bool,
+    Optional[private_types.ChainletAPIDescriptor],
+]:
     chain_root = _get_chain_root(entrypoint)
     entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
     dependency_artifacts: list[b10_types.ChainletArtifact] = []
@@ -192,7 +197,19 @@ def _generate_chainlet_artifacts(
 
     assert entrypoint_artifact is not None
 
-    return entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets
+    # Find the entrypoint descriptor
+    entrypoint_descriptor = None
+    for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
+        if chainlet_descriptor.chainlet_cls == entrypoint:
+            entrypoint_descriptor = chainlet_descriptor
+            break
+
+    return (
+        entrypoint_artifact,
+        dependency_artifacts,
+        has_engine_builder_chainlets,
+        entrypoint_descriptor,
+    )
 
 
 @framework.raise_validation_errors_before
@@ -201,9 +218,12 @@ def push(
     options: private_types.PushOptions,
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
-    entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets = (
-        _generate_chainlet_artifacts(options, entrypoint)
-    )
+    (
+        entrypoint_artifact,
+        dependency_artifacts,
+        has_engine_builder_chainlets,
+        entrypoint_descriptor,
+    ) = _generate_chainlet_artifacts(options, entrypoint)
     if options.only_generate_trusses:
         return None
     if isinstance(options, private_types.PushOptionsBaseten):
@@ -213,7 +233,11 @@ def push(
                 "not supportd, push with `--publish`."
             )
         return _create_baseten_chain(
-            options, entrypoint_artifact, dependency_artifacts, progress_bar
+            options,
+            entrypoint_artifact,
+            dependency_artifacts,
+            progress_bar,
+            entrypoint_descriptor,
         )
     elif isinstance(options, private_types.PushOptionsLocalDocker):
         if has_engine_builder_chainlets:
@@ -279,7 +303,7 @@ def _push_service_docker(
     options: private_types.PushOptionsLocalDocker,
 ) -> str:
     th = truss_handle.TrussHandle(truss_dir)
-    th.add_secret(public_types._BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
+    th.add_secret(public_types.CHAIN_API_KEY_SECRET_NAME, options.baseten_chain_api_key)
     container = th.docker_run(
         local_port=None,
         detach=True,
@@ -369,16 +393,19 @@ def _create_docker_chain(
 class BasetenChainService(ChainService):
     _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
     _remote: b10_remote.BasetenRemote
+    _entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor]
 
     def __init__(
         self,
         name: str,
         chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
         remote: b10_remote.BasetenRemote,
+        entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
     ) -> None:
         super().__init__(name)
         self._chain_deployment_handle = chain_deployment_handle
         self._remote = remote
+        self._entrypoint_descriptor = entrypoint_descriptor
 
     @property
     def run_remote_url(self) -> str:
@@ -392,6 +419,13 @@ class BasetenChainService(ChainService):
             entity_version_id=handle.chain_deployment_id,
             is_draft=handle.is_draft,
         )
+
+    @property
+    def is_websocket(self) -> bool:
+        """Check if the entrypoint uses websockets."""
+        if self._entrypoint_descriptor is None:
+            return False
+        return self._entrypoint_descriptor.endpoint.is_websocket
 
     def run_remote(self, json_data: Dict) -> Any:
         """Invokes the entrypoint with JSON data.
@@ -462,6 +496,7 @@ def _create_baseten_chain(
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
     progress_bar: Optional[Type["progress.Progress"]],
+    entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
 ):
     logging.info(
         f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
@@ -491,21 +526,31 @@ def _create_baseten_chain(
         progress_bar=progress_bar,
     )
     return BasetenChainService(
-        baseten_options.chain_name, chain_deployment_handle, remote_provider
+        baseten_options.chain_name,
+        chain_deployment_handle,
+        remote_provider,
+        entrypoint_descriptor,
     )
 
 
 def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) -> None:
     secrets_info = remote_provider.api.get_all_secrets()
     secret_names = {sec["name"] for sec in secrets_info["secrets"]}
-    if public_types._BASETEN_API_SECRET_NAME not in secret_names:
+
+    if public_types.CHAIN_API_KEY_SECRET_NAME not in secret_names:
         logging.info(
             "It seems you are using chains for the first time, since there "
-            f"is no `{public_types._BASETEN_API_SECRET_NAME}` secret on baseten. "
+            f"is no `{public_types.CHAIN_API_KEY_SECRET_NAME}` secret on baseten. "
             "Creating secret automatically."
         )
+
+        workspace_api_key = remote_provider.api.create_api_key(
+            api_key_type=b10_types.APIKeyCategory.WORKSPACE_INVOKE,
+            name=public_types.CHAIN_API_KEY_NAME,
+        )["api_key"]
+
         remote_provider.api.upsert_secret(
-            public_types._BASETEN_API_SECRET_NAME, remote_provider.api.auth_token.value
+            public_types.CHAIN_API_KEY_SECRET_NAME, workspace_api_key
         )
 
 
@@ -655,7 +700,9 @@ class _Watcher:
         with framework.ChainletImporter.import_target(
             source, entrypoint
         ) as entrypoint_cls:
-            self._deployed_chain_name = name or entrypoint_cls.__name__
+            self._deployed_chain_name = (
+                name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.__name__
+            )
             self._chain_root = _get_chain_root(entrypoint_cls)
             chainlet_names = set(
                 desc.display_name
@@ -677,7 +724,7 @@ class _Watcher:
         )
         if not chain_id:
             raise public_types.ChainsDeploymentError(
-                f"Chain `{chain_id}` was not found."
+                f"Chain `{self._deployed_chain_name}` was not found."
             )
         self._status_page_url = b10_service.URLConfig.status_page_url(
             self._remote_provider.remote_url, b10_service.URLConfig.CHAIN, chain_id

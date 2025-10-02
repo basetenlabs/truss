@@ -1,11 +1,11 @@
 import enum
 from abc import ABC
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import field_validator, model_validator
+from pydantic import ValidationError, field_validator, model_validator
 
-from truss.base import custom_types, truss_config
+from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
 
@@ -18,6 +18,7 @@ class ModelWeightsFormat(str, enum.Enum):
 
     LORA = "lora"
     FULL = "full"
+    WHISPER = "whisper"
 
     def to_truss_config(self) -> "ModelWeightsFormat":
         return ModelWeightsFormat[self.name]
@@ -55,6 +56,46 @@ class Compute(custom_types.SafeModelNoExtra):
         )
 
 
+class _CheckpointBase(custom_types.SafeModelNoExtra):
+    typ: str
+
+
+class _BasetenLatestCheckpoint(_CheckpointBase):
+    job_id: Optional[str] = None
+    project_name: Optional[str] = None
+    typ: Literal["baseten_latest_checkpoint"] = "baseten_latest_checkpoint"
+
+
+class _BasetenNamedCheckpoint(_CheckpointBase):
+    checkpoint_name: str
+    job_id: str
+    typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
+
+
+class BasetenCheckpoint:
+    @staticmethod
+    def from_latest_checkpoint(
+        project_name: Optional[str] = None, job_id: Optional[str] = None
+    ) -> _BasetenLatestCheckpoint:
+        if not job_id and not project_name:
+            raise ValidationError("job_id or project_name is required")
+        return _BasetenLatestCheckpoint(project_name=project_name, job_id=job_id)
+
+    @classmethod
+    def from_named_checkpoint(
+        cls, checkpoint_name: str, job_id: str
+    ) -> _BasetenNamedCheckpoint:
+        return _BasetenNamedCheckpoint(checkpoint_name=checkpoint_name, job_id=job_id)
+
+
+class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
+    enabled: bool = False
+    checkpoints: List[Union[_BasetenLatestCheckpoint, _BasetenNamedCheckpoint]] = [
+        _BasetenLatestCheckpoint()
+    ]
+    download_folder: str = constants.DEFAULT_TRAINING_CHECKPOINT_FOLDER
+
+
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
@@ -71,6 +112,7 @@ class Runtime(custom_types.SafeModelNoExtra):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: Optional[bool] = None
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()
+    load_checkpoint_config: Optional[LoadCheckpointConfig] = None
     cache_config: Optional[CacheConfig] = None
 
     @model_validator(mode="before")
@@ -126,6 +168,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
+    name: Optional[str] = None
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -170,6 +213,10 @@ class FullCheckpoint(Checkpoint):
     model_weight_format: ModelWeightsFormat = ModelWeightsFormat.FULL
 
 
+class WhisperCheckpoint(Checkpoint):
+    model_weight_format: ModelWeightsFormat = ModelWeightsFormat.WHISPER
+
+
 class LoRACheckpoint(Checkpoint):
     lora_details: LoRADetails = LoRADetails()
     model_weight_format: ModelWeightsFormat = ModelWeightsFormat.LORA
@@ -197,6 +244,5 @@ class DeployCheckpointsRuntime(custom_types.SafeModelNoExtra):
 class DeployCheckpointsConfig(custom_types.SafeModelNoExtra):
     checkpoint_details: Optional[CheckpointList] = None
     model_name: Optional[str] = None
-    deployment_name: Optional[str] = None
     runtime: Optional[DeployCheckpointsRuntime] = None
     compute: Optional[Compute] = None

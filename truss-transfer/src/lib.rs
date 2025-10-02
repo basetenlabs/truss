@@ -5,6 +5,7 @@
 // Module declarations
 mod bindings;
 mod cache;
+mod cloud_range_download;
 mod constants;
 mod core;
 mod create;
@@ -65,6 +66,7 @@ mod tests {
                 future_timestamp,
             )),
             uid: "123".into(),
+            last_modified_time: None,
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
@@ -73,6 +75,7 @@ mod tests {
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None,
         };
         let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_ok());
@@ -91,6 +94,7 @@ mod tests {
                 past_timestamp,
             )),
             uid: "123".into(),
+            last_modified_time: None,
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
@@ -99,16 +103,10 @@ mod tests {
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None,
         };
         let _result = crate::core::build_resolution_map(&manifest);
         // used to be that we raise an error here, but now we just log a warning
-    }
-
-    #[test]
-    fn test_init_logger_once() {
-        // Calling init_logger_once multiple times should not panic.
-        crate::bindings::init_logger_once();
-        crate::bindings::init_logger_once();
     }
 
     #[test]
@@ -122,6 +120,7 @@ mod tests {
             )),
             uid: "123".into(),
             file_name: "file.txt".into(),
+            last_modified_time: None,
             hashtype: "sha256".into(),
             hash: "abc/def".into(), // Invalid hash with slash
             size: 1024,
@@ -129,6 +128,7 @@ mod tests {
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None,
         };
         let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_err());
@@ -147,12 +147,14 @@ mod tests {
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "abcdef".into(),
             size: 1024,
             runtime_secret_name: "hf_access_token".into(),
         };
         let manifest = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None,
         };
         let result = crate::core::build_resolution_map(&manifest);
         assert!(result.is_ok()); // Should still be OK as resolution is checked only when available
@@ -174,9 +176,11 @@ mod tests {
                 file_name: "file1.txt".into(),
                 hashtype: "sha256".into(),
                 hash: "hash1".into(),
+                last_modified_time: None,
                 size: 1024,
                 runtime_secret_name: "hf_access_token".into(),
             }],
+            models: None,
         };
 
         let manifest2 = BasetenPointerManifest {
@@ -189,9 +193,11 @@ mod tests {
                 file_name: "file2.txt".into(),
                 hashtype: "sha256".into(),
                 hash: "hash2".into(),
+                last_modified_time: None,
                 size: 2048,
                 runtime_secret_name: "hf_access_token".into(),
             }],
+            models: None,
         };
 
         let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
@@ -222,6 +228,7 @@ mod tests {
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "samehash".into(),
             size: 1024,
             runtime_secret_name: "hf_access_token".into(),
@@ -229,10 +236,12 @@ mod tests {
 
         let manifest1 = BasetenPointerManifest {
             pointers: vec![pointer.clone()],
+            models: None,
         };
 
         let manifest2 = BasetenPointerManifest {
             pointers: vec![pointer],
+            models: None,
         };
 
         let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
@@ -253,6 +262,7 @@ mod tests {
             )),
             uid: "123".into(),
             file_name: "file.txt".into(),
+            last_modified_time: None,
             hashtype: "sha256".into(),
             hash: "hash1".into(),
             size: 1024,
@@ -267,6 +277,7 @@ mod tests {
             uid: "456".into(),
             file_name: "file.txt".into(), // Same name
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "hash2".into(), // Different hash
             size: 2048,
             runtime_secret_name: "hf_access_token".into(),
@@ -274,10 +285,12 @@ mod tests {
 
         let manifest1 = BasetenPointerManifest {
             pointers: vec![pointer1],
+            models: None,
         };
 
         let manifest2 = BasetenPointerManifest {
             pointers: vec![pointer2],
+            models: None,
         };
 
         let result = crate::core::merge_manifests(vec![manifest1, manifest2]);
@@ -309,6 +322,7 @@ mod tests {
                     uid: "123".into(),
                     file_name: "file1.txt".into(),
                     hashtype: "sha256".into(),
+                    last_modified_time: None,
                     hash: "hash1".into(),
                     size: 1024,
                     runtime_secret_name: "hf_access_token".into(),
@@ -322,10 +336,12 @@ mod tests {
                     file_name: "file2.txt".into(),
                     hashtype: "sha256".into(),
                     hash: "hash2".into(),
+                    last_modified_time: None,
                     size: 2048,
                     runtime_secret_name: "hf_access_token".into(),
                 },
             ],
+            models: None,
         };
 
         let hashes = crate::core::current_hashes_from_manifest(&manifest);

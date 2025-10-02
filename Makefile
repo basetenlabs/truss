@@ -7,5 +7,5 @@ docker_build_push_context_builder: docker_build_context_builder
 	&& docker push baseten/truss-context-builder:v$$VERSION
 
 format:
-	uv run ruff check . --fix
-	uv run ruff format .
+	uv run ruff check --fix
+	uv run ruff format

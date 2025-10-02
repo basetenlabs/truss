@@ -11,7 +11,6 @@
 {% if config.base_image %}
     {%- if not config.docker_server %}
 ENV PYTHONUNBUFFERED="True"
-ENV DEBIAN_FRONTEND="noninteractive"
 
 {# Install common dependencies #}
 RUN apt update && \
@@ -20,7 +19,7 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
+COPY --chown={{ default_owner }} ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ base_server_requirements_filename }} --no-cache-dir
     {%- endif %} {#- endif not config.docker_server #}
 
@@ -38,7 +37,7 @@ RUN ln -sf {{ config.base_image.python_executable_path }} /usr/local/bin/python
 
 {% block install_requirements %}
     {%- if should_install_server_requirements %}
-COPY ./{{ server_requirements_filename }} {{ server_requirements_filename }}
+COPY --chown={{ default_owner }} ./{{ server_requirements_filename }} {{ server_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ server_requirements_filename }} --no-cache-dir
     {%- endif %} {#- endif should_install_server_requirements #}
 {{ super() }}
@@ -47,7 +46,7 @@ RUN {{ sys_pip_install_command }} -r {{ server_requirements_filename }} --no-cac
 
 {% block app_copy %}
 {%- if model_cache_v1 %}
-# Copy data before code for better caching
+{# Copy data before code for better caching #}
 {%- include "copy_cache_files.Dockerfile.jinja" -%}
 {%- endif %} {#- endif model_cache_v1 #}
 
@@ -65,47 +64,55 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 
 {# Copy data before code for better caching #}
 {%- if data_dir_exists %}
-COPY ./{{ config.data_dir }} /app/data
+COPY --chown={{ default_owner }} ./{{ config.data_dir }} ${APP_HOME}/data
 {%- endif %} {#- endif data_dir_exists #}
 
 {%- if model_cache_v2 %}
-# v0.0.9, keep synced with server_requirements.txt
-RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.10.9rc0/truss-transfer-cli-v0.10.9rc0-linux-x86_64-unknown-linux-musl
+{# v0.0.9, keep synced with server_requirements.txt #}
+RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.10.11rc1/truss-transfer-cli-v0.10.11rc1-linux-x86_64-unknown-linux-musl
 RUN chmod +x /usr/local/bin/truss-transfer-cli
 RUN mkdir /static-bptr
 RUN echo "hash {{model_cache_hash}}"
-COPY ./bptr-manifest /static-bptr/static-bptr-manifest.json
+COPY --chown={{ default_owner }} ./bptr-manifest /static-bptr/static-bptr-manifest.json
 {%- endif %} {#- endif model_cache_v2 #}
 
 {%- if not config.docker_server %}
-COPY ./server /app
+COPY --chown={{ default_owner }} ./server ${APP_HOME}
 {%- endif %} {#- endif not config.docker_server #}
 
 {%- if use_local_src %}
 {# This path takes precedence over site-packages. #}
-COPY ./truss_chains /app/truss_chains
-COPY ./truss /app/truss
+COPY --chown={{ default_owner }} ./truss_chains ${APP_HOME}/truss_chains
+COPY --chown={{ default_owner }} ./truss ${APP_HOME}/truss
 {%- endif %} {#- endif use_local_src #}
 
-COPY ./config.yaml /app/config.yaml
+COPY --chown={{ default_owner }} ./config.yaml ${APP_HOME}/config.yaml
 {%- if requires_live_reload %}
 RUN uv python install {{ control_python_version }}
 RUN uv venv /control/.env --python {{ control_python_version }}
 
-COPY ./control /control
+COPY --chown={{ default_owner }} ./control /control
 RUN uv pip install -r /control/requirements.txt --python /control/.env/bin/python --no-cache-dir
 {%- endif %} {#- endif requires_live_reload #}
 
 {%- if model_dir_exists %}
-COPY ./{{ config.model_module_dir }} /app/model
+COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/model
 {%- endif %} {#- endif model_dir_exists #}
 {% endblock %} {#- endblock app_copy #}
 
 {% block run %}
+{# Macro to change ownership of directories and switch to regular user #}
+{%- macro chown_and_switch_to_regular_user_if_enabled(additional_chown_dirs=[]) -%}
+{%- if non_root_user %}
+RUN chown -R {{ app_username }}:{{ app_username }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}${HOME} ${APP_HOME}
+USER {{ app_username }}
+{%- endif %} {#- endif non_root_user #}
+{%- endmacro -%}
+
     {%- if config.docker_server %}
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
         curl nginx && rm -rf /var/lib/apt/lists/*
-COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
+COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
 
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
 RUN uv python install {{ control_python_version }}
@@ -113,23 +120,30 @@ RUN uv venv /docker_server/.venv --python {{ control_python_version }}
 RUN uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt --no-cache-dir
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
-{% set supervisor_log_dir = "/var/log/supervisor" %}
 {% set supervisor_server_url = "http://localhost:8080" %}
-COPY ./proxy.conf {{ proxy_config_path }}
-RUN mkdir -p {{ supervisor_log_dir }}
-COPY supervisord.conf {{ supervisor_config_path }}
+COPY --chown={{ default_owner }} ./proxy.conf {{ proxy_config_path }}
+COPY --chown={{ default_owner }} ./supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
+{#- default configuration uses port 80, which requires root privileges, so we remove it #}
+RUN rm -f /etc/nginx/sites-enabled/default
+{#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
+{{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run"]) }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
+
     {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
 ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python /control/control/server.py"
+{{ chown_and_switch_to_regular_user_if_enabled() }}
 ENTRYPOINT ["/control/.env/bin/python", "/control/control/server.py"]
+
     {%- else %} {#- else (default inference server) #}
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{ python_executable }} /app/main.py"
+{{ chown_and_switch_to_regular_user_if_enabled() }}
 ENTRYPOINT ["{{ python_executable }}", "/app/main.py"]
     {%- endif %} {#- endif config.docker_server / live_reload #}
+
 {% endblock %} {#- endblock run #}

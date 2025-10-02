@@ -3,14 +3,49 @@ from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
 import requests
+from pydantic import BaseModel, Field
 
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
+from truss.remote.baseten.custom_types import APIKeyCategory
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
+
+
+class InstanceTypeV1(BaseModel):
+    """An instance type."""
+
+    id: str = Field(description="Identifier string for the instance type")
+    name: str = Field(description="Name of the instance type")
+    display_name: str = Field(
+        alias="displayName", description="Display name of the instance type"
+    )
+    gpu_count: int = Field(
+        alias="gpuCount", description="Number of GPUs on the instance type"
+    )
+    default: bool = Field(description="Whether this is the default instance type")
+    gpu_memory: Optional[int] = Field(alias="gpuMemory", description="GPU memory in MB")
+    node_count: int = Field(alias="nodeCount", description="Number of nodes")
+    gpu_type: Optional[str] = Field(
+        alias="gpuType", description="Type of GPU on the instance type"
+    )
+    millicpu_limit: int = Field(
+        alias="millicpuLimit", description="CPU limit of the instance type in millicpu"
+    )
+    memory_limit: int = Field(
+        alias="memoryLimit", description="Memory limit of the instance type in MB"
+    )
+    price: Optional[float] = Field(description="Price of the instance type")
+    limited_capacity: Optional[bool] = Field(
+        alias="limitedCapacity",
+        description="Whether this instance type has limited capacity",
+    )
+
+    class Config:
+        populate_by_name = True
 
 
 API_URL_MAPPING = {
@@ -560,6 +595,13 @@ class BasetenApi:
     def get_all_secrets(self) -> Any:
         return self._rest_api_client.get("v1/secrets")
 
+    # NOTE(Tyron): `name` is required because all official
+    # Baseten API keys should have a descriptive name.
+    def create_api_key(self, api_key_type: APIKeyCategory, name: str) -> Any:
+        return self._rest_api_client.post(
+            "v1/api_keys", body={"type": api_key_type.value, "name": name}
+        )
+
     def upsert_training_project(self, training_project):
         resp_json = self._rest_api_client.post(
             "v1/training_projects",
@@ -669,6 +711,24 @@ class BasetenApi:
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
 
+    def get_cache_summary(self, project_id: str):
+        """Get cache summary for a training project."""
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/cache/summary"
+        )
+        return resp_json
+
+    def _fetch_log_batch(
+        self, project_id: str, job_id: str, query_params: Dict[str, Any]
+    ) -> List[Any]:
+        """
+        Fetch a single batch of logs from the API.
+        """
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/logs", body=query_params
+        )
+        return resp_json["logs"]
+
     def get_training_job_checkpoint_presigned_url(
         self, project_id: str, job_id: str, page_size: int = 100
     ) -> List[Dict[str, str]]:
@@ -724,3 +784,56 @@ class BasetenApi:
 
         # NB(nikhil): reverse order so latest logs are at the end
         return resp_json["logs"][::-1]
+
+    def create_model_version_from_inference_template(self, request_data: dict):
+        """
+        Create a model version from an inference template using GraphQL mutation.
+
+        Args:
+            request_data: Dictionary containing the request structure with metadata,
+                         weights_sources, inference_stack, and instance_type_id
+        """
+        query_string = """
+        mutation ($request: CreateModelVersionFromInferenceTemplateRequest!) {
+            create_model_version_from_inference_template(request: $request) {
+                model_version {
+                    id
+                    name
+                }
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(
+            query_string, variables={"request": request_data}
+        )
+        return resp["data"]["create_model_version_from_inference_template"]
+
+    def get_instance_types(self) -> List[InstanceTypeV1]:
+        """
+        Get all available instance types via GraphQL API.
+        """
+        query_string = """
+        query Instances {
+            listedInstances: listed_instances {
+                id
+                name
+                millicpuLimit: millicpu_limit
+                memoryLimit: memory_limit
+                gpuCount: gpu_count
+                gpuType: gpu_type
+                gpuMemory: gpu_memory
+                default
+                displayName: display_name
+                nodeCount: node_count
+                price
+                limitedCapacity: limited_capacity
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        instance_types_data = resp["data"]["listedInstances"]
+        return [
+            InstanceTypeV1(**instance_type) for instance_type in instance_types_data
+        ]

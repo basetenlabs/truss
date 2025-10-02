@@ -1,13 +1,14 @@
+use crate::create_basetenpointer;
+use anyhow::{anyhow, Context, Result};
+use log::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-
-use anyhow::{anyhow, Context, Result};
-use log::{debug, error, info, warn};
 use tokio::fs;
 use tokio::sync::Mutex as TokioMutex;
+
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -16,7 +17,7 @@ use crate::cache::cleanup_b10cache_and_get_space_stats;
 use crate::constants::*;
 use crate::download::download_file_with_cache;
 use crate::speed_checks::is_b10cache_fast_heuristic;
-use crate::types::{BasetenPointer, BasetenPointerManifest, Resolution};
+use crate::types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution};
 
 // Global lock to serialize downloads (NOTE: this is process-local only)
 // For multi-process synchronization (e.g. in a "double start" scenario),
@@ -29,7 +30,11 @@ fn get_global_lock() -> &'static Arc<Mutex<()>> {
 }
 
 /// Shared entrypoint for both Python and CLI
-pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> {
+pub fn lazy_data_resolve_entrypoint(
+    download_dir: Option<String>,
+    models: Option<Vec<ModelRepo>>,
+    model_path: String,
+) -> Result<String> {
     init_logger_once();
     let num_workers = *TRUSS_TRANSFER_NUM_WORKERS as usize;
     let download_dir = resolve_truss_transfer_download_dir(download_dir);
@@ -50,19 +55,29 @@ pub fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<Stri
         .context("Failed to build Tokio runtime")?;
 
     // Run the asynchronous logic.
-    rt.block_on(async { lazy_data_resolve_async(download_dir.clone().into(), num_workers).await })?;
+    rt.block_on(async {
+        lazy_data_resolve_async(download_dir.clone().into(), num_workers, models, model_path).await
+    })?;
     Ok(download_dir)
 }
 
 /// Asynchronous implementation of the lazy data resolver logic.
-async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> Result<()> {
+async fn lazy_data_resolve_async(
+    download_dir: PathBuf,
+    num_workers: usize,
+    models: Option<Vec<ModelRepo>>,
+    model_path: String,
+) -> Result<()> {
     debug!("Checking for manifest files in multiple locations...");
     let timer = tokio::time::Instant::now();
-    let mut num_workers = num_workers;
 
     // 1. Check multiple manifest locations and collect all available manifests
     let mut all_manifests = Vec::new();
     let mut found_paths = Vec::new();
+    let mut jit_models = Vec::new();
+    if let Some(m) = models {
+        jit_models.extend(m);
+    }
 
     for manifest_path_str in LAZY_DATA_RESOLVER_PATHS {
         let manifest_path = Path::new(manifest_path_str);
@@ -86,10 +101,18 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
                     format!("Failed to parse YAML manifest from {manifest_path_str}")
                 })?
             };
+            if bptr_manifest.models.is_some() {
+                jit_models.extend(bptr_manifest.models.clone().unwrap());
+            }
 
             all_manifests.push(bptr_manifest);
         }
     }
+
+    let manifest_jit = create_basetenpointer(jit_models, model_path)
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    all_manifests.push(manifest_jit);
 
     if all_manifests.is_empty() {
         return Err(anyhow!(
@@ -185,10 +208,6 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
             }
         }
 
-        // only use at max 2 workers for b10cache, to avoid conflicts on parallel writes
-        if write_to_b10cache {
-            num_workers = num_workers.min(2);
-        }
         info!(
             "b10cache use: Read: {}, Write: {}",
             read_from_b10cache, write_to_b10cache
@@ -468,5 +487,6 @@ pub fn merge_manifests(manifests: Vec<BasetenPointerManifest>) -> Result<Baseten
 
     Ok(BasetenPointerManifest {
         pointers: merged_pointers,
+        models: None,
     })
 }

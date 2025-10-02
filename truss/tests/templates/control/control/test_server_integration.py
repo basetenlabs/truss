@@ -21,6 +21,56 @@ from prometheus_client.parser import text_string_to_metric_families
 PATCH_PING_MAX_DELAY_SECS = 3
 
 
+def _start_truss_server(
+    stdout_capture_file_path: str,
+    truss_control_container_fs: Path,
+    with_patch_ping_flow: bool,
+    patch_ping_server_port: int,
+    ctrl_port: int,
+    inf_port: int,
+):
+    """Module-level function to avoid pickling issues with multiprocessing."""
+    if with_patch_ping_flow:
+        os.environ["PATCH_PING_URL_TRUSS"] = (
+            f"http://localhost:{patch_ping_server_port}"
+        )
+    sys.stdout = open(stdout_capture_file_path, "w")
+
+    # NB(nikhil): Insert paths at the beginning to ensure we search there first.
+    app_path = truss_control_container_fs / "app"
+    sys.path.insert(0, str(app_path))
+    control_path = truss_control_container_fs / "control" / "control"
+    sys.path.insert(0, str(control_path))
+
+    from server import ControlServer
+
+    control_server = ControlServer(
+        python_executable_path=sys.executable,
+        inf_serv_home=str(app_path),
+        control_server_port=ctrl_port,
+        inference_server_port=inf_port,
+    )
+    control_server.run()
+
+
+def _start_patch_ping_server(patch_ping_server_port: int):
+    """Module-level function to avoid pickling issues with multiprocessing."""
+    import json
+    import random
+    import time
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            time.sleep(random.uniform(0, PATCH_PING_MAX_DELAY_SECS))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(bytes(json.dumps({"is_current": True}), encoding="utf-8"))
+
+    httpd = HTTPServer(("localhost", patch_ping_server_port), Handler)
+    httpd.serve_forever()
+
+
 @dataclass
 class ControlServerDetails:
     control_server_process: Process
@@ -270,51 +320,24 @@ def _configured_control_server(
     inf_port = ctrl_port + 1
     patch_ping_server_port = ctrl_port + 2
 
-    def start_truss_server(stdout_capture_file_path):
-        if with_patch_ping_flow:
-            os.environ["PATCH_PING_URL_TRUSS"] = (
-                f"http://localhost:{patch_ping_server_port}"
-            )
-        sys.stdout = open(stdout_capture_file_path, "w")
-        app_path = truss_control_container_fs / "app"
-        sys.path.append(str(app_path))
-        control_path = truss_control_container_fs / "control" / "control"
-        sys.path.append(str(control_path))
-
-        from server import ControlServer
-
-        control_server = ControlServer(
-            python_executable_path=sys.executable,
-            inf_serv_home=str(app_path),
-            control_server_port=ctrl_port,
-            inference_server_port=inf_port,
-        )
-        control_server.run()
-
-    def start_patch_ping_server():
-        import json
-        import random
-        import time
-        from http.server import BaseHTTPRequestHandler, HTTPServer
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                time.sleep(random.uniform(0, PATCH_PING_MAX_DELAY_SECS))
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(
-                    bytes(json.dumps({"is_current": True}), encoding="utf-8")
-                )
-
-        httpd = HTTPServer(("localhost", patch_ping_server_port), Handler)
-        httpd.serve_forever()
-
     stdout_capture_file = tempfile.NamedTemporaryFile()
-    subproc = Process(target=start_truss_server, args=(stdout_capture_file.name,))
+    subproc = Process(
+        target=_start_truss_server,
+        args=(
+            stdout_capture_file.name,
+            truss_control_container_fs,
+            with_patch_ping_flow,
+            patch_ping_server_port,
+            ctrl_port,
+            inf_port,
+        ),
+    )
     subproc.start()
     proc_id = subproc.pid
     if with_patch_ping_flow:
-        patch_ping_server_proc = Process(target=start_patch_ping_server)
+        patch_ping_server_proc = Process(
+            target=_start_patch_ping_server, args=(patch_ping_server_port,)
+        )
         patch_ping_server_proc.start()
     try:
         time.sleep(2.0)

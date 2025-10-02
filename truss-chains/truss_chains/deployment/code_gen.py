@@ -544,7 +544,11 @@ async def websocket(self, websocket: fastapi.WebSocket) -> None:
         )"""
     return _Source(
         src=src,
-        imports={"import fastapi", "from truss_chains.remote_chainlet import utils"},
+        imports={
+            "import fastapi",
+            "from starlette.websockets import WebSocketState",
+            "from truss_chains.remote_chainlet import utils",
+        },
     )
 
 
@@ -760,13 +764,13 @@ def _gen_truss_config(
             config.external_package_dirs.append(ext_dir.abs_path)
     config.use_local_src = use_local_src
 
-    if public_types._BASETEN_API_SECRET_NAME not in config.secrets:
-        config.secrets[public_types._BASETEN_API_SECRET_NAME] = (
+    if public_types.CHAIN_API_KEY_SECRET_NAME not in config.secrets:
+        config.secrets[public_types.CHAIN_API_KEY_SECRET_NAME] = (
             public_types.SECRET_DUMMY
         )
     else:
         logging.info(
-            f"Chains automatically add {public_types._BASETEN_API_SECRET_NAME} "
+            f"Chains automatically add {public_types.CHAIN_API_KEY_SECRET_NAME} "
             "to secrets - no need to manually add it."
         )
     config.model_cache = truss_config.ModelCache(assets.cached)

@@ -18,6 +18,7 @@ SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
 CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_chains"
 TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
+TRAINING_TEMPLATE_DIR = TEMPLATES_DIR / "train"
 # Must be sorted ascendingly.
 SUPPORTED_PYTHON_VERSIONS = ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
 
@@ -29,7 +30,6 @@ BEI_REQUIRED_MAX_NUM_TOKENS = 16384
 TRTLLM_MIN_MEMORY_REQUEST_GI = 10
 HF_MODELS_API_URL = "https://huggingface.co/api/models"
 HF_ACCESS_TOKEN_KEY = "hf_access_token"
-HF_ACCESS_TOKEN_FILE_NAME = "hf_access_token"
 TRUSSLESS_MAX_PAYLOAD_SIZE = "64M"
 # Alias for TEMPLATES_DIR
 SERVING_DIR: pathlib.Path = TEMPLATES_DIR
@@ -85,3 +85,5 @@ OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecat
 PRODUCTION_ENVIRONMENT_NAME = "production"
 
 TRUSS_BASE_IMAGE_NAME = "baseten/truss-server-base"
+
+DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/loaded_checkpoints"

@@ -1,4 +1,6 @@
+import base64
 import json
+import os
 import tarfile
 import tempfile
 from dataclasses import dataclass
@@ -7,18 +9,32 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import click
+import requests
 import rich
 from InquirerPy import inquirer
 from rich.text import Text
 
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
-from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
+from truss.cli.train.types import DeployCheckpointArgs, DeployCheckpointsConfigComplete
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
+from truss.remote.baseten.custom_types import (
+    FileSummary,
+    FileSummaryWithTotalSize,
+    GetCacheSummaryResponseV1,
+)
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
+
+SORT_BY_FILEPATH = "filepath"
+SORT_BY_SIZE = "size"
+SORT_BY_MODIFIED = "modified"
+SORT_BY_TYPE = "type"
+SORT_BY_PERMISSIONS = "permissions"
+SORT_ORDER_ASC = "asc"
+SORT_ORDER_DESC = "desc"
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -140,7 +156,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
         latest_job = project.get("latest_job") or {}
         if latest_job_id := latest_job.get("id", ""):
             latest_job_link = cli_common.format_link(
-                status_page_url(remote_url, latest_job_id), "link"
+                status_page_url(remote_url, project["id"], latest_job_id), "link"
             )
         else:
             latest_job_link = ""
@@ -226,35 +242,35 @@ def view_training_job_metrics(
     metrics_display.watch()
 
 
-def prepare_checkpoint_deploy(
-    remote_provider: BasetenRemote, args: PrepareCheckpointArgs
-) -> PrepareCheckpointResult:
+def create_model_version_from_inference_template(
+    remote_provider: BasetenRemote, args: DeployCheckpointArgs
+) -> DeployCheckpointsConfigComplete:
     if not args.deploy_config_path:
-        return deploy_checkpoints.prepare_checkpoint_deploy(
+        return deploy_checkpoints.create_model_version_from_inference_template(
             remote_provider, DeployCheckpointsConfig(), args.project_id, args.job_id
         )
     #### User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:
-        return deploy_checkpoints.prepare_checkpoint_deploy(
+        return deploy_checkpoints.create_model_version_from_inference_template(
             remote_provider, checkpoint_deploy, args.project_id, args.job_id
         )
 
 
 def _get_checkpoint_names(
-    prepare_checkpoint_result: PrepareCheckpointResult,
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ) -> list[str]:
     return [
         checkpoint.paths[0].strip("/").split("/")[-1]
-        for checkpoint in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints
+        for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints
     ]
 
 
 def print_deploy_checkpoints_success_message(
-    prepare_checkpoint_result: PrepareCheckpointResult,
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ):
-    checkpoint_names = _get_checkpoint_names(prepare_checkpoint_result)
+    checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
     console.print(
         Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),
@@ -263,7 +279,9 @@ def print_deploy_checkpoints_success_message(
             style="magenta",
         ),
         Text("in your request. An example request body might look like this:"),
-        Text(f"\n{{'model': {checkpoint_names[0]}, 'messages': [...]}}", style="green"),
+        Text(
+            f'\n{{"model": "{checkpoint_names[0]}", "messages": [...]}}', style="green"
+        ),
     )
 
 
@@ -289,8 +307,11 @@ def display_training_job(
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
     table.add_row(
-        "Status Page",
-        cli_common.format_link(status_page_url(remote_url, job["id"]), "link"),
+        "Job Page",
+        cli_common.format_link(
+            status_page_url(remote_url, job["training_project"]["id"], job["id"]),
+            "link",
+        ),
     )
 
     # Add error message if present
@@ -341,6 +362,7 @@ def download_training_job_data(
             temp_path.write_bytes(content)
 
             unzip_dir = output_dir / artifact_base_name
+            unzip_dir = Path(str(unzip_dir).replace(" ", "-"))
             if unzip_dir.exists():
                 raise click.ClickException(
                     f"Directory '{unzip_dir}' already exists. "
@@ -353,6 +375,7 @@ def download_training_job_data(
 
             return unzip_dir
     else:
+        target_path = Path(str(target_path).replace(" ", "-"))
         target_path.write_bytes(content)
         return target_path
 
@@ -399,5 +422,334 @@ def download_checkpoint_artifacts(
     return urls_file
 
 
-def status_page_url(remote_url: str, training_job_id: str) -> str:
-    return f"{remote_url}/training/jobs/{training_job_id}"
+def status_page_url(remote_url: str, project_id: str, training_job_id: str) -> str:
+    return f"{remote_url}/training/{project_id}/logs/{training_job_id}"
+
+
+def _get_all_train_init_example_options(
+    repo_id: str = "ml-cookbook",
+    examples_subdir: str = "examples",
+    token: Optional[str] = None,
+) -> list[str]:
+    """
+    Retrieve a list of all example options from the ml-cookbook repository to
+    copy locally for training initialization. This method generates a list
+    of examples and URL paths to show the user for selection.
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    url = (
+        f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{examples_subdir}"
+    )
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        items = response.json()
+        if not isinstance(items, list):
+            items = [items]
+        items = [item["name"] for item in items if item["type"] == "dir"]
+        return items
+
+    except requests.exceptions.RequestException as e:
+        click.echo(
+            f"Error exploring directory: {e}. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
+        return []
+
+
+def _get_train_init_example_info(
+    repo_id: str = "ml-cookbook",
+    examples_subdir: str = "examples",
+    training_subdir: str = "training",
+    example_name: Optional[str] = None,
+    token: Optional[str] = None,
+) -> list[Dict[str, str]]:
+    """
+    Retrieve directory download links for the example from the ml-cookbook repository to
+    copy locally for training initialization.
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    url = f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{examples_subdir}/{example_name}"
+
+    console.print(f"Attempting to retrieve example info from: {url}")
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        items = response.json()
+        if not isinstance(items, list):
+            items = [items]
+        # return only training subdirectory info for example
+        items = [item for item in items if item["name"] == training_subdir]
+        return items
+
+    except requests.exceptions.HTTPError as e:
+        if response.status_code == 404:
+            # example_name does not exist, return empty list
+            return []
+        else:
+            # Other HTTP errors
+            click.echo(
+                f"Error exploring directory: {e}. Please file an issue at https://github.com/basetenlabs/truss/issues"
+            )
+            return []
+    except requests.exceptions.RequestException as e:
+        # Network or other request errors
+        click.echo(
+            f"Error exploring directory: {e}. Please file an issue at https://github.com/basetenlabs/truss/issues"
+        )
+        return []
+
+
+def download_git_directory(
+    git_api_url: str, local_dir: str, token: Optional[str] = None
+):
+    """
+    Recursively download directory contents from git api url.
+    Special handling for 'training' directory: downloads its contents directly
+    to local_dir without creating a 'training' subdirectory.
+    Args:
+        git_api_url (str): Example format "https://api.github.com/repos/basetenlabs/ml-cookbook/contents/examples/llama-finetune-8b-lora?ref=main"
+        local_dir(str): Local directory to download this directory to
+    """
+    headers = {}
+    if token:
+        headers["Authorization"] = f"token {token}"
+    try:
+        response = requests.get(git_api_url, headers=headers)
+        response.raise_for_status()
+        items = response.json()
+
+        # Handle single file case
+        if not isinstance(items, list):
+            items = [items]
+
+        # Create local directory
+        print(f"Creating directory {local_dir}")
+        os.makedirs(local_dir, exist_ok=True)
+
+        # Check if there's a 'training' directory in the items
+        training_dir = None
+        other_items = []
+
+        for item in items:
+            if item["name"] == "training" and item["type"] == "dir":
+                training_dir = item
+            else:
+                other_items.append(item)
+
+        # If training directory exists, download its contents directly to local_dir
+        if training_dir:
+            print(
+                f"📁 Found training directory, downloading its contents to {local_dir}"
+            )
+            return download_git_directory(training_dir["url"], local_dir)
+
+        # If no training directory, download all files normally
+        for item in other_items:
+            item_name = item["name"]
+            local_item_path = os.path.join(local_dir, item_name)
+
+            if item["type"] == "file":
+                print(f"📄 Downloading {item_name}")
+                if item.get("download_url"):
+                    # Download file directly
+                    file_response = requests.get(item["download_url"])
+                    file_response.raise_for_status()
+                    with open(local_item_path, "wb") as f:
+                        f.write(file_response.content)
+                elif item.get("content"):
+                    # Decode base64 content (for small files)
+                    try:
+                        content = base64.b64decode(item["content"])
+                        with open(local_item_path, "wb") as f:
+                            f.write(content)
+                    except Exception as e:
+                        print(f"⚠️ Could not decode {item_name}: {e}")
+            elif item["type"] == "dir":
+                print(f"📁 Entering directory {item_name}")
+                # Use the API URL from the response for subdirectories
+                download_git_directory(item["url"], local_item_path)
+        return True
+    except Exception as e:
+        print(f"Error processing response: {e}")
+        return False
+
+
+def fetch_project_by_name_or_id(
+    remote_provider: BasetenRemote, project_identifier: str
+) -> dict:
+    """Fetch a training project by name or ID.
+
+    Args:
+        remote_provider: The remote provider instance
+        project_identifier: Either a project ID or project name
+
+    Returns:
+        The project object as a dictionary
+
+    Raises:
+        click.ClickException: If the project is not found
+    """
+    try:
+        projects = remote_provider.api.list_training_projects()
+        projects_by_name = {project.get("name"): project for project in projects}
+        projects_by_id = {project.get("id"): project for project in projects}
+        if project_identifier in projects_by_id:
+            return projects_by_id[project_identifier]
+        if project_identifier in projects_by_name:
+            return projects_by_name[project_identifier]
+        valid_project_ids_and_names = ", ".join(
+            [f"{project.get('id')} ({project.get('name')})" for project in projects]
+        )
+        raise click.ClickException(
+            f"Project '{project_identifier}' not found. Valid project IDs and names: {valid_project_ids_and_names}"
+        )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Error fetching project: {str(e)}")
+
+
+def create_file_summary_with_directory_sizes(
+    files: list[FileSummary],
+) -> list[FileSummaryWithTotalSize]:
+    directory_sizes = calculate_directory_sizes(files)
+    return [
+        FileSummaryWithTotalSize(
+            file_summary=file_info,
+            total_size=directory_sizes.get(file_info.path, file_info.size_bytes),
+        )
+        for file_info in files
+    ]
+
+
+def calculate_directory_sizes(
+    files: list[FileSummary], max_depth: int = 100
+) -> dict[str, int]:
+    directory_sizes = {}
+
+    for file_info in files:
+        if file_info.file_type == "directory":
+            directory_sizes[file_info.path] = 0
+
+    for file_info in files:
+        current_path = file_info.path
+        for i in range(max_depth):
+            if current_path is None:
+                break
+            if current_path in directory_sizes:
+                directory_sizes[current_path] += file_info.size_bytes
+            # Move to parent directory
+            parent = os.path.dirname(current_path)
+            if parent == current_path:  # Reached root
+                break
+            current_path = parent
+
+    return directory_sizes
+
+
+def view_cache_summary(
+    remote_provider: BasetenRemote,
+    project_id: str,
+    sort_by: str = SORT_BY_FILEPATH,
+    order: str = SORT_ORDER_ASC,
+):
+    """View cache summary for a training project."""
+    try:
+        raw_cache_data = remote_provider.api.get_cache_summary(project_id)
+
+        if not raw_cache_data:
+            console.print("No cache summary found for this project.", style="yellow")
+            return
+
+        cache_data = GetCacheSummaryResponseV1.model_validate(raw_cache_data)
+
+        table = rich.table.Table(title=f"Cache summary for project: {project_id}")
+        table.add_column("File Path", style="cyan")
+        table.add_column("Size", style="green")
+        table.add_column("Modified", style="yellow")
+        table.add_column("Type")
+        table.add_column("Permissions", style="magenta")
+
+        files = cache_data.file_summaries
+        if not files:
+            console.print("No files found in cache.", style="yellow")
+            return
+
+        files_with_total_sizes = create_file_summary_with_directory_sizes(files)
+
+        reverse = order == SORT_ORDER_DESC
+        sort_key = _get_sort_key(sort_by)
+        files_with_total_sizes.sort(key=sort_key, reverse=reverse)
+
+        total_size = sum(
+            file_info.file_summary.size_bytes for file_info in files_with_total_sizes
+        )
+        total_size_str = common.format_bytes_to_human_readable(total_size)
+
+        console.print(
+            f"📅 Cache captured at: {cache_data.timestamp}", style="bold blue"
+        )
+        console.print(f"📁 Project ID: {cache_data.project_id}", style="bold blue")
+        console.print()
+        console.print(
+            f"📊 Total files: {len(files_with_total_sizes)}", style="bold green"
+        )
+        console.print(f"💾 Total size: {total_size_str}", style="bold green")
+        console.print()
+
+        for file_info in files_with_total_sizes:
+            total_size = file_info.total_size
+
+            size_str = cli_common.format_bytes_to_human_readable(int(total_size))
+
+            modified_str = cli_common.format_localized_time(
+                file_info.file_summary.modified
+            )
+
+            table.add_row(
+                file_info.file_summary.path,
+                size_str,
+                modified_str,
+                file_info.file_summary.file_type or "Unknown",
+                file_info.file_summary.permissions or "Unknown",
+            )
+
+        console.print(table)
+
+    except Exception as e:
+        console.print(f"Error fetching cache summary: {str(e)}", style="red")
+        raise
+
+
+def _get_sort_key(sort_by: str) -> Callable[[FileSummaryWithTotalSize], Any]:
+    if sort_by == SORT_BY_FILEPATH:
+        return lambda x: x.file_summary.path
+    elif sort_by == SORT_BY_SIZE:
+        return lambda x: x.total_size
+    elif sort_by == SORT_BY_MODIFIED:
+        return lambda x: x.file_summary.modified
+    elif sort_by == SORT_BY_TYPE:
+        return lambda x: x.file_summary.file_type or ""
+    elif sort_by == SORT_BY_PERMISSIONS:
+        return lambda x: x.file_summary.permissions or ""
+    else:
+        raise ValueError(f"Invalid --sort argument: {sort_by}")
+
+
+def view_cache_summary_by_project(
+    remote_provider: BasetenRemote,
+    project_identifier: str,
+    sort_by: str = SORT_BY_FILEPATH,
+    order: str = SORT_ORDER_ASC,
+):
+    """View cache summary for a training project by ID or name."""
+    project = fetch_project_by_name_or_id(remote_provider, project_identifier)
+    view_cache_summary(remote_provider, project["id"], sort_by, order)

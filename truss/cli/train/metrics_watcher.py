@@ -35,18 +35,17 @@ class MetricsWatcher(TrainingPollerMixin):
 
     def _format_bytes(self, bytes_val: float) -> Tuple[str, str]:
         """Convert bytes to human readable format"""
+        default_color = "green"
         color_map = {"MB": "green", "GB": "cyan", "TB": "magenta"}
-        unit = "MB"
-        if bytes_val > 1024 * 1024 * 1024 * 1024:
+        unit = "B"
+        if bytes_val > 1000 * 1000 * 1000 * 1000:
             unit = "TB"
-        elif bytes_val > 1024 * 1024 * 1024:
+        elif bytes_val > 1000 * 1000 * 1000:
             unit = "GB"
-
-        if unit == "MB":
-            return f"{bytes_val / (1024 * 1024):.2f} MB", color_map[unit]
-        elif unit == "GB":
-            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB", color_map[unit]
-        return f"{bytes_val:.2f} bytes", color_map[unit]
+        elif bytes_val > 1000 * 1000:
+            unit = "MB"
+        color = color_map.get(unit, default_color)
+        return (common.format_bytes_to_human_readable(int(bytes_val)), color)
 
     def _format_storage_utilization(self, utilization: float) -> Tuple[str, str]:
         percent = round(utilization * 100, 4)

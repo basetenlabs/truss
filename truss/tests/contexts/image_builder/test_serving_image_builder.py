@@ -10,7 +10,6 @@ import pytest
 import yaml
 
 from truss.base.constants import (
-    HF_ACCESS_TOKEN_FILE_NAME,
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
@@ -18,6 +17,7 @@ from truss.base.constants import (
 )
 from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
+    HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_model_cache_v1,
 )
@@ -466,7 +466,7 @@ def test_model_cache_dockerfile_v2(test_data_path):
             print(gen_docker_file)
             assert "truss-transfer" in gen_docker_file
             assert (
-                "COPY ./bptr-manifest /static-bptr/static-bptr-manifest.json"
+                "COPY --chown= ./bptr-manifest /static-bptr/static-bptr-manifest.json"
                 in gen_docker_file
             ), "bptr-manifest copy not found in Dockerfile"
             assert "cache_warmer.py" not in gen_docker_file
