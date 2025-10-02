@@ -1,9 +1,7 @@
-import time
 from functools import cached_property
-from typing import Any, Iterator, List, Optional
+from typing import Any, List, Optional
 
 from truss.cli.logs.base_watcher import LogWatcher
-from truss.cli.logs.utils import ParsedLog
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.utils.status import MODEL_RUNNING_STATES
 
@@ -30,29 +28,18 @@ class ModelDeploymentLogWatcher(LogWatcher):
             self._model_id, self._deployment_id, start_epoch_millis, end_epoch_millis
         )
 
-    def poll(self) -> Iterator[ParsedLog]:
+    def get_start_epoch_ms(self, now_ms: int) -> Optional[int]:
         # NOTE(Tyron): If there can be multiple replicas,
         # we can't use a timestamp cursor to poll for logs.
         if not self._is_development:
-            yield from super().poll()
+            return super().get_start_epoch_ms()
 
-            return
+        # Cursor logic.
 
-        # Cursor logic. Assumes single replica.
+        if self._last_log_time_ms:
+            return max(self._last_log_time_ms, now_ms - MAX_LOOK_BACK_MS)
 
-        start_epoch_ms = self._last_poll_time
-        now_ms = int(time.time() * 1000)
-
-        if start_epoch_ms:
-            start_epoch_ms = max(start_epoch_ms, now_ms - MAX_LOOK_BACK_MS)
-
-        for log in self.fetch_and_parse_logs(
-            start_epoch_millis=start_epoch_ms, end_epoch_millis=now_ms
-        ):
-            yield log
-
-            epoch_ns = int(log.timestamp)
-            self._last_poll_time = int(epoch_ns / 1e6)
+        return None
 
     def should_poll_again(self) -> bool:
         return self._current_status in MODEL_RUNNING_STATES
