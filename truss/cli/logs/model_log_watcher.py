@@ -32,7 +32,7 @@ class ModelDeploymentLogWatcher(LogWatcher):
         # NOTE(Tyron): If there can be multiple replicas,
         # we can't use a timestamp cursor to poll for logs.
         if not self._is_development:
-            return super().get_start_epoch_ms()
+            return super().get_start_epoch_ms(now_ms)
 
         # Cursor logic.
 
