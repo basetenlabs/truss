@@ -8,9 +8,14 @@ set -euo pipefail
 declare -A PROCESS_PIDS
 declare -A RESTART_COUNTS
 declare -A LAST_RESTART_TIME
-NGINX_RESTART_COUNT=0
-MODEL_SERVER_RESTART_COUNT=0
+declare -A PROCESS_START_TIME
 SHUTDOWN_REQUESTED=false
+
+# Configuration matching supervisord defaults
+MAX_RESTART_ATTEMPTS=3
+RESTART_RESET_TIME=10  # Reset restart counter after 10 seconds of stable operation
+FATAL_STATE_GRACE_PERIOD=5  # Wait 5 seconds before declaring fatal state
+LINEAR_BACKOFF_INTERVAL=1  # supervisord uses linear backoff by default
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2
@@ -30,6 +35,7 @@ start_nginx() {
     # Check if nginx started successfully
     if kill -0 "$nginx_pid" 2>/dev/null; then
         PROCESS_PIDS["nginx"]=$nginx_pid
+        PROCESS_START_TIME["nginx"]=$(date +%s)
         log "Nginx started successfully (PID: $nginx_pid)"
         return 0
     else
@@ -69,33 +75,50 @@ start_model_server() {
     done
 
     PROCESS_PIDS["model_server"]=$model_pid
+    PROCESS_START_TIME["model_server"]=$(date +%s)
     log "Model server started successfully (PID: $model_pid)"
     return 0
 }
 
-# Function to restart a process with backoff
+# Function to check if restart counter should be reset (like supervisord's startsecs behavior)
+should_reset_restart_counter() {
+    local process_name=$1
+    local current_time=$(date +%s)
+    local start_time=${PROCESS_START_TIME[$process_name]:-0}
+
+    # Reset counter if process has been running stably for RESTART_RESET_TIME seconds
+    if [[ $((current_time - start_time)) -gt $RESTART_RESET_TIME ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Function to restart a process with backoff (matching supervisord behavior)
 restart_process() {
     local process_name=$1
-    local max_restarts=3
-    local backoff_time=1
 
-    # Get current restart count
-    local restart_count_var="${process_name^^}_RESTART_COUNT"
-    local restart_count=${!restart_count_var}
+    # Check if we should reset the restart counter (process ran successfully for a while)
+    if should_reset_restart_counter "$process_name"; then
+        RESTART_COUNTS[$process_name]=0
+        log "Resetting restart counter for $process_name (process ran stably for $RESTART_RESET_TIME seconds)"
+    fi
 
-    if [[ $restart_count -ge $max_restarts ]]; then
-        log "ERROR: $process_name has reached max restart limit ($max_restarts)"
+    local restart_count=${RESTART_COUNTS[$process_name]:-0}
+
+    if [[ $restart_count -ge $MAX_RESTART_ATTEMPTS ]]; then
+        log "ERROR: $process_name has reached max restart limit ($MAX_RESTART_ATTEMPTS)"
         return 1
     fi
 
-    # Calculate backoff time (exponential backoff)
-    backoff_time=$((2 ** restart_count))
+    # Use linear backoff like supervisord (not exponential)
+    local backoff_time=$((restart_count * LINEAR_BACKOFF_INTERVAL))
 
-    log "Restarting $process_name (attempt $((restart_count + 1))/$max_restarts) after ${backoff_time}s backoff"
+    log "Restarting $process_name (attempt $((restart_count + 1))/$MAX_RESTART_ATTEMPTS) after ${backoff_time}s backoff"
     sleep $backoff_time
 
-    # Increment restart count
-    eval "$restart_count_var=$((restart_count + 1))"
+    # Increment restart count and record restart time
+    RESTART_COUNTS[$process_name]=$((restart_count + 1))
+    LAST_RESTART_TIME[$process_name]=$(date +%s)
 
     # Restart the process
     if [[ "$process_name" == "nginx" ]]; then
@@ -119,7 +142,7 @@ check_process() {
     fi
 }
 
-# Function to handle process failures
+# Function to handle process failures (implements supervisord's PROCESS_STATE_FATAL behavior)
 handle_process_failure() {
     local process_name=$1
 
@@ -138,6 +161,17 @@ handle_process_failure() {
         return 0
     else
         log "ERROR: Failed to restart $process_name after max attempts"
+
+        # Implement supervisord's PROCESS_STATE_FATAL behavior - wait before declaring fatal
+        log "Waiting $FATAL_STATE_GRACE_PERIOD seconds before declaring fatal state..."
+        sleep $FATAL_STATE_GRACE_PERIOD
+
+        # Check if shutdown was requested during grace period
+        if [[ "$SHUTDOWN_REQUESTED" == "true" ]]; then
+            return 0
+        fi
+
+        log "ERROR: $process_name has entered FATAL state (exhausted restart attempts)"
         return 1
     fi
 }
@@ -209,9 +243,9 @@ log "Starting custom server wrapper"
 log "Model server command: $START_COMMAND"
 log "Server port: $SERVER_PORT"
 
-# Initialize restart counts
-NGINX_RESTART_COUNT=0
-MODEL_SERVER_RESTART_COUNT=0
+# Initialize restart counts using associative arrays (properly scoped)
+RESTART_COUNTS["nginx"]=0
+RESTART_COUNTS["model_server"]=0
 
 # Start both processes
 if ! start_nginx; then
@@ -228,27 +262,39 @@ fi
 log "Both services are running, monitoring processes..."
 
 # Main monitoring loop - matches supervisord's behavior
-while true; do
+FATAL_STATE_REACHED=false
+
+while [[ "$FATAL_STATE_REACHED" == "false" && "$SHUTDOWN_REQUESTED" == "false" ]]; do
     # Check nginx status
     if ! check_process "nginx"; then
         log "WARNING: Nginx process has stopped"
         if ! handle_process_failure "nginx"; then
-            log "ERROR: Failed to restart nginx, shutting down"
-            cleanup
-            exit 1
+            log "ERROR: Nginx has entered FATAL state"
+            FATAL_STATE_REACHED=true
         fi
     fi
 
-    # Check model server status
-    if ! check_process "model_server"; then
+    # Check model server status (only if we haven't reached fatal state)
+    if [[ "$FATAL_STATE_REACHED" == "false" ]] && ! check_process "model_server"; then
         log "WARNING: Model server process has stopped"
         if ! handle_process_failure "model_server"; then
-            log "ERROR: Failed to restart model server, shutting down"
-            cleanup
-            exit 1
+            log "ERROR: Model server has entered FATAL state"
+            FATAL_STATE_REACHED=true
         fi
     fi
 
     # Sleep for a short interval before checking again (like supervisord)
     sleep 5
 done
+
+# Handle fatal state (like supervisord's PROCESS_STATE_FATAL)
+if [[ "$FATAL_STATE_REACHED" == "true" ]]; then
+    log "ERROR: One or more processes have entered FATAL state - shutting down"
+    cleanup
+    exit 1
+fi
+
+# Normal shutdown
+if [[ "$SHUTDOWN_REQUESTED" == "true" ]]; then
+    cleanup
+fi
