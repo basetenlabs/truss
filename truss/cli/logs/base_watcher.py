@@ -54,7 +54,8 @@ class LogWatcher(ABC):
         start_epoch_ms = self.get_start_epoch_ms(now_ms)
 
         for log in self.fetch_and_parse_logs(
-            start_epoch_millis=start_epoch_ms, end_epoch_millis=now_ms
+            start_epoch_millis=start_epoch_ms,
+            end_epoch_millis=now_ms + CLOCK_SKEW_BUFFER_MS,
         ):
             yield log
 
