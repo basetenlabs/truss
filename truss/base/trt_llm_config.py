@@ -577,7 +577,7 @@ class TRTLLMConfigurationV2(PydanticTrTBaseModel):
             "quantization_type",
             "quantization_config",
             "skip_build_result",
-            "num_builder_gpus"
+            "num_builder_gpus",
         ]
 
         build_settings = self.build.model_dump(exclude_unset=True)
