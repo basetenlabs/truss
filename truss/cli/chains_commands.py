@@ -149,7 +149,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--publish/--no-publish",
-    default=False,
+    default=True,
     help="Create chainlets as published deployments.",
 )
 @click.option(
@@ -178,7 +178,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         "Watches the chains source code and applies live patches. Using this option "
         "will wait for the chain to be deployed (i.e. `--wait` flag is applied), "
         "before starting to watch for changes. This option required the deployment "
-        "to be a development deployment (i.e. `--no-promote` and `--no-publish`."
+        "to be a development deployment (i.e. use `--watch` flag when pushing)."
     ),
 )
 @click.option(
