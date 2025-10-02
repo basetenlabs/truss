@@ -123,9 +123,9 @@ RUN uv pip install --python /docker_server/.venv/bin/python -r /app/docker_serve
 COPY --chown={{ default_owner }} ./proxy.conf {{ proxy_config_path }}
 COPY --chown={{ default_owner }} ./server_wrapper.sh {{ server_wrapper_path }}
 RUN chmod +x {{ server_wrapper_path }}
-ENV START_COMMAND="{{ config.docker_server.start_command }}"
-ENV SERVER_PORT="{{ config.docker_server.server_port }}"
-ENV SERVER_START_CMD="{{ server_wrapper_path }}"
+ENV START_COMMAND={{ config.docker_server.start_command | tojson }}
+ENV SERVER_PORT={{ config.docker_server.server_port | tojson }}
+ENV SERVER_START_CMD={{ server_wrapper_path | tojson }}
 {#- default configuration uses port 80, which requires root privileges, so we remove it #}
 RUN rm -f /etc/nginx/sites-enabled/default
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
