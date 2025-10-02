@@ -1,4 +1,6 @@
 import logging
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -30,7 +32,7 @@ class ModelContainerPatchApplier:
         self,
         inference_server_home: Path,
         app_logger: logging.Logger,
-        pip_path: Optional[str] = None,  # Only meant for testing
+        uv_path: Optional[str] = None,  # Only meant for testing
     ) -> None:
         self._inference_server_home = inference_server_home
         self._model_module_dir = (
@@ -41,9 +43,19 @@ class ModelContainerPatchApplier:
         ).resolve()
         self._data_dir = self._inference_server_home / self._truss_config.data_dir
         self._app_logger = app_logger
-        self._pip_path_cached = None
-        if pip_path is not None:
-            self._pip_path_cached = "pip"
+        self._uv_path_cached = None
+        if uv_path is not None:
+            self._uv_path_cached = uv_path
+
+        self._python_executable = self._get_python_executable()
+
+    def _get_python_executable(self) -> str:
+        # NB(nikhil): `uv` requires the full path to the python interpreter for patching
+        # python modules. We expect PYTHON_EXECUTABLE to exist in all development images, but
+        # we fallback to python3 as a default.
+        python_executable = os.environ.get("PYTHON_EXECUTABLE", "python3")
+        full_executable_path = shutil.which(python_executable)
+        return full_executable_path or python_executable
 
     def __call__(self, patch: Patch, inf_env: dict):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
@@ -79,10 +91,10 @@ class ModelContainerPatchApplier:
         return TrussConfig.from_yaml(self._inference_server_home / "config.yaml")
 
     @property
-    def _pip_path(self) -> str:
-        if self._pip_path_cached is None:
-            self._pip_path_cached = _identify_pip_path()
-        return self._pip_path_cached
+    def _uv_path(self) -> str:
+        if self._uv_path_cached is None:
+            self._uv_path_cached = _identify_uv_path()
+        return self._uv_path_cached
 
     def _apply_python_requirement_patch(
         self, python_requirement_patch: PythonRequirementPatch
@@ -95,20 +107,25 @@ class ModelContainerPatchApplier:
         if action == Action.REMOVE:
             subprocess.run(
                 [
-                    self._pip_path,
+                    self._uv_path,
+                    "pip",
                     "uninstall",
-                    "-y",
                     python_requirement_patch.requirement,
+                    "--python",
+                    self._python_executable,
                 ],
                 check=True,
             )
         elif action in [Action.ADD, Action.UPDATE]:
             subprocess.run(
                 [
-                    self._pip_path,
+                    self._uv_path,
+                    "pip",
                     "install",
                     python_requirement_patch.requirement,
                     "--upgrade",
+                    "--python",
+                    self._python_executable,
                 ],
                 check=True,
             )
@@ -158,11 +175,9 @@ class ModelContainerPatchApplier:
             raise ValueError(f"Unknown patch action {action}")
 
 
-def _identify_pip_path() -> str:
-    if Path("/usr/local/bin/pip3").exists():
-        return "/usr/local/bin/pip3"
+def _identify_uv_path() -> str:
+    uv_path = shutil.which("uv")
+    if not uv_path:
+        raise RuntimeError("Unable to find `uv`, make sure it's installed.")
 
-    if Path("/usr/local/bin/pip").exists():
-        return "/usr/local/bin/pip"
-
-    raise RuntimeError("Unable to find pip, make sure it's installed.")
+    return uv_path

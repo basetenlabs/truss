@@ -244,6 +244,5 @@ class DeployCheckpointsRuntime(custom_types.SafeModelNoExtra):
 class DeployCheckpointsConfig(custom_types.SafeModelNoExtra):
     checkpoint_details: Optional[CheckpointList] = None
     model_name: Optional[str] = None
-    deployment_name: Optional[str] = None
     runtime: Optional[DeployCheckpointsRuntime] = None
     compute: Optional[Compute] = None

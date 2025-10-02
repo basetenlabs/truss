@@ -1,7 +1,5 @@
 import re
-import tempfile
 from collections import OrderedDict
-from pathlib import Path
 from typing import List, Optional, Union
 
 import rich_click as click
@@ -9,10 +7,7 @@ from InquirerPy import inquirer
 
 from truss.base import truss_config
 from truss.cli.train import common
-from truss.cli.train.types import (
-    DeployCheckpointsConfigComplete,
-    PrepareCheckpointResult,
-)
+from truss.cli.train.types import DeployCheckpointsConfigComplete
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
@@ -25,18 +20,9 @@ from truss_train.definitions import (
     SecretReference,
 )
 
-from .deploy_full_checkpoints import (
-    hydrate_full_checkpoint,
-    render_vllm_full_truss_config,
-)
-from .deploy_lora_checkpoints import (
-    hydrate_lora_checkpoint,
-    render_vllm_lora_truss_config,
-)
-from .deploy_whisper_checkpoints import (
-    hydrate_whisper_checkpoint,
-    render_vllm_whisper_truss_config,
-)
+from .deploy_full_checkpoints import hydrate_full_checkpoint
+from .deploy_lora_checkpoints import hydrate_lora_checkpoint
+from .deploy_whisper_checkpoints import hydrate_whisper_checkpoint
 
 HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 # If we change this, make sure to update the logic in backend codebase
@@ -44,27 +30,161 @@ CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
 ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
 
 
-def prepare_checkpoint_deploy(
+def create_model_version_from_inference_template(
     remote_provider: BasetenRemote,
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
-) -> PrepareCheckpointResult:
+) -> DeployCheckpointsConfigComplete:
     checkpoint_deploy_config = _hydrate_deploy_config(
         checkpoint_deploy_config, remote_provider, project_id, job_id
     )
-    rendered_truss = _render_truss_config_for_checkpoint_deployment(
-        checkpoint_deploy_config
+
+    request_data = _build_inference_template_request(
+        checkpoint_deploy_config, remote_provider
     )
-    truss_directory = Path(tempfile.mkdtemp())
-    truss_config_path = truss_directory / "config.yaml"
-    rendered_truss.write_to_yaml_file(truss_config_path)
-    console.print(rendered_truss, style="green")
-    console.print(f"Writing truss config to {truss_config_path}", style="yellow")
-    return PrepareCheckpointResult(
-        truss_directory=truss_directory,
-        checkpoint_deploy_config=checkpoint_deploy_config,
+
+    # Call the GraphQL mutation to create model version from inference template
+    try:
+        result = remote_provider.api.create_model_version_from_inference_template(
+            request_data
+        )
+
+        if result and result.get("model_version"):
+            console.print(
+                f"Successfully created model version: {result['model_version']['name']}",
+                style="green",
+            )
+            console.print(
+                f"Model version ID: {result['model_version']['id']}", style="yellow"
+            )
+        else:
+            console.print(
+                "Warning: Unexpected response format from server", style="yellow"
+            )
+            console.print(f"Response: {result}", style="yellow")
+
+    except Exception as e:
+        console.print(f"Error creating model version: {e}", style="red")
+        raise
+
+    return checkpoint_deploy_config
+
+
+def _build_inference_template_request(
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete,
+    remote_provider: BasetenRemote,
+) -> dict:
+    """
+    Build the GraphQL request data structure for createModelVersionFromInferenceTemplate mutation.
+    """
+
+    # Build weights sources
+    weights_sources = []
+    for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints:
+        # Extract checkpoint name from the first path
+        checkpoint_name = (
+            checkpoint.paths[0].strip("/").split("/")[-1]
+            if checkpoint.paths
+            else "checkpoint"
+        )
+
+        weights_source = {
+            "weight_source_type": "B10_CHECKPOINTING",
+            "b10_training_checkpoint_weights_source": {
+                "checkpoint": {
+                    "training_job_id": checkpoint.training_job_id,
+                    "checkpoint_name": checkpoint_name,
+                }
+            },
+        }
+        weights_sources.append(weights_source)
+
+    # Build environment variables
+    environment_variables = []
+    for name, value in checkpoint_deploy_config.runtime.environment_variables.items():
+        if isinstance(value, SecretReference):
+            env_var = {"name": name, "value": value.name, "is_secret_reference": True}
+        else:
+            env_var = {"name": name, "value": str(value), "is_secret_reference": False}
+        environment_variables.append(env_var)
+
+    # Build inference stack
+    inference_stack = {
+        "stack_type": "VLLM",
+        "environment_variables": environment_variables,
+    }
+
+    # Get instance type ID from compute spec
+    instance_type_id = _get_instance_type_id(
+        checkpoint_deploy_config.compute, remote_provider
     )
+
+    # Build the complete request
+    request_data = {
+        "metadata": {"oracle_name": checkpoint_deploy_config.model_name},
+        "weights_sources": weights_sources,
+        "inference_stack": inference_stack,
+        "instance_type_id": instance_type_id,
+    }
+
+    return request_data
+
+
+def _get_instance_type_id(compute: Compute, remote_provider: BasetenRemote) -> str:
+    """
+    Get the instance type ID based on the compute specification.
+    Fetches available instance types from the API and maps compute specs to instance type IDs.
+    Only considers single-node instances (node_count == 1).
+    """
+    # step 1: fetch the instance types from the API
+    instance_types = remote_provider.api.get_instance_types()
+    # step 2: sort them into two different dictionaries, excluding multi-node instances:
+    cpu_instance_types = {
+        it.id: it for it in instance_types if it.gpu_count == 0 and it.node_count == 1
+    }
+    gpu_instance_types = {
+        it.id: it for it in instance_types if it.gpu_count > 0 and it.node_count == 1
+    }
+    # step 3: if compute is cpu, find the smallest such cpu that matches the compute request
+    if not compute.accelerator or compute.accelerator.accelerator is None:
+        compute_as_truss_config = compute.to_truss_config()
+        smallest_cpu_instance_type = None
+        for it in cpu_instance_types.values():
+            if (
+                it.millicpu_limit / 1000 >= compute.cpu_count
+                and it.memory_limit >= compute_as_truss_config.memory_in_bytes
+            ):
+                if (
+                    smallest_cpu_instance_type is None
+                    or it.millicpu_limit < smallest_cpu_instance_type.millicpu_limit
+                ):
+                    smallest_cpu_instance_type = it
+        if not smallest_cpu_instance_type:
+            raise ValueError(
+                f"Unable to find single-node instance type for {compute.cpu_count} CPU and {compute.memory} memory. Reach out to Baseten for support if this persists."
+            )
+        return smallest_cpu_instance_type.id
+    # step 4: if compute is gpu, find the smallest such gpu by instance type
+    else:
+        assert compute.accelerator.accelerator is not None
+        compute_as_truss_config = compute.to_truss_config()
+        smallest_gpu_instance_type = None
+        for it in gpu_instance_types.values():
+            if (
+                it.gpu_type == compute.accelerator.accelerator.value
+                and it.gpu_count >= compute.accelerator.count
+            ):
+                if (
+                    smallest_gpu_instance_type is None
+                    or it.gpu_count < smallest_gpu_instance_type.gpu_count
+                ):
+                    smallest_gpu_instance_type = it
+        if not smallest_gpu_instance_type:
+            raise ValueError(
+                f"Unable to find single-node instance type for {compute.accelerator}:{compute.accelerator.count}. Reach out to Baseten for support if this persists."
+            )
+        return smallest_gpu_instance_type.id
 
 
 def _validate_base_model_id(
@@ -93,17 +213,11 @@ def _get_model_name(
         else ""
     )
 
-    model_name = inquirer.text(
+    return inquirer.text(
         message=f"Enter the model name for your {model_weight_format.value} model.",
         validate=lambda s: s and s.strip(),
         default=default,
     ).execute()
-
-    if model_weight_format == ModelWeightsFormat.FULL:
-        model_name += "-vLLM-Full"
-    elif model_weight_format == ModelWeightsFormat.LORA:
-        model_name += "-vLLM-LORA"
-    return model_name
 
 
 def _hydrate_deploy_config(
@@ -123,51 +237,16 @@ def _hydrate_deploy_config(
     else:
         model_name = _get_model_name(model_weight_format, base_model_id)
 
-    compute = _ensure_compute_spec(deploy_config.compute)
+    compute = _ensure_compute_spec(deploy_config.compute, remote_provider)
 
     runtime = _ensure_runtime_config(deploy_config.runtime)
-    deployment_name = _ensure_deployment_name(
-        deploy_config.deployment_name, checkpoint_details.checkpoints
-    )
 
     return DeployCheckpointsConfigComplete(
         checkpoint_details=checkpoint_details,
         model_name=model_name,
-        deployment_name=deployment_name,
         runtime=runtime,
         compute=compute,
-        model_weight_format=model_weight_format.to_truss_config(),  # type: ignore[attr-defined]
     )
-
-
-def _ensure_deployment_name(
-    deploy_config_deployment_name: Optional[str], checkpoints: List[Checkpoint]
-) -> str:
-    if deploy_config_deployment_name:
-        return deploy_config_deployment_name
-
-    default_deployment_name = "checkpoint"
-
-    if checkpoints and checkpoints[0].paths:
-        first_checkpoint_name = checkpoints[0].paths[0].strip("/").split("/")[-1]
-
-        if ALLOWED_DEPLOYMENT_NAMES.match(first_checkpoint_name):
-            # Allow autoincrementing if the checkpoint matches both regexes
-            if (
-                CHECKPOINT_PATTERN.match(first_checkpoint_name)
-                and len(checkpoints) == 1
-            ):
-                return first_checkpoint_name
-
-    # If no valid autoincrementing checkpoint name is found, prompt the user
-    deployment_name = inquirer.text(
-        message="Enter the deployment name.", default=default_deployment_name
-    ).execute()
-
-    if not deployment_name:
-        raise click.UsageError("Deployment name is required.")
-
-    return deployment_name
 
 
 def hydrate_checkpoint(
@@ -187,26 +266,6 @@ def hydrate_checkpoint(
     else:
         raise ValueError(
             f"Unsupported checkpoint type: {checkpoint_type}. Contact Baseten for support with other checkpoint types."
-        )
-
-
-def _render_truss_config_for_checkpoint_deployment(
-    checkpoint_deploy: DeployCheckpointsConfigComplete,
-) -> truss_config.TrussConfig:
-    """
-    Render truss config for checkpoint deployment.
-    Currently supports LoRA checkpoints via vLLM, but can be extended for other formats.
-    """
-    # Delegate to specific rendering function based on model weight format
-    if checkpoint_deploy.model_weight_format == ModelWeightsFormat.LORA:
-        return render_vllm_lora_truss_config(checkpoint_deploy)
-    elif checkpoint_deploy.model_weight_format == ModelWeightsFormat.FULL:
-        return render_vllm_full_truss_config(checkpoint_deploy)
-    elif checkpoint_deploy.model_weight_format == ModelWeightsFormat.WHISPER:
-        return render_vllm_whisper_truss_config(checkpoint_deploy)
-    else:
-        raise ValueError(
-            f"Unsupported model weight format: {checkpoint_deploy.model_weight_format}. Please upgrade to the latest Truss version to access the latest supported formats. Contact Baseten if you would like us to support additional formats."
         )
 
 
@@ -309,31 +368,77 @@ def _select_multiple_checkpoints(checkpoint_id_options: List[str]) -> List[str]:
     return checkpoint_ids
 
 
-def _ensure_compute_spec(compute: Optional[Compute]) -> Compute:
+def _ensure_compute_spec(
+    compute: Optional[Compute], remote_provider: BasetenRemote
+) -> Compute:
     if not compute:
         compute = Compute(cpu_count=0, memory="0Mi")
-    compute.accelerator = _get_accelerator_if_specified(compute.accelerator)
+    compute = _get_accelerator_if_specified(compute, remote_provider)
     return compute
 
 
 def _get_accelerator_if_specified(
-    user_input: Optional[truss_config.AcceleratorSpec],
-) -> Optional[truss_config.AcceleratorSpec]:
-    if user_input:
+    user_input: Optional[Compute], remote_provider: BasetenRemote
+) -> Compute:
+    if user_input and user_input.accelerator:
         return user_input
+
+    # Fetch available instance types to get valid GPU options
+    instance_types = remote_provider.api.get_instance_types()
+
+    # Extract unique accelerator types from instance types
+    accelerator_options = set()
+    for it in instance_types:
+        if it.gpu_type and it.gpu_count > 0:
+            accelerator_options.add(it.gpu_type)
+
+    # Convert to sorted list and add CPU option
+    choices = sorted(list(accelerator_options)) + [None]
+
+    if not choices or choices == [None]:
+        console.print("No GPU instance types available, using CPU", style="yellow")
+        return Compute(cpu_count=0, memory="0Mi", accelerator=None)
+
     # prompt user for accelerator
     gpu_type = inquirer.select(
         message="Select the GPU type to use for deployment. Select None for CPU.",
-        choices=[x.value for x in truss_config.Accelerator] + [None],
+        choices=choices,
     ).execute()
+
     if gpu_type is None:
-        return None
-    count = inquirer.text(
-        message="Enter the number of accelerators to use for deployment.",
-        default="1",
-        validate=lambda x: x.isdigit() and int(x) > 0 and int(x) <= 8,
-    ).execute()
-    return truss_config.AcceleratorSpec(accelerator=gpu_type, count=int(count))
+        return Compute(cpu_count=0, memory="0Mi", accelerator=None)
+
+    # Get available counts for the selected GPU type
+    available_counts = set()
+    for it in instance_types:
+        if it.gpu_type == gpu_type and it.gpu_count > 0:
+            available_counts.add(it.gpu_count)
+    if not available_counts:
+        raise ValueError(
+            f"No available counts for {gpu_type}. Reach out to Baseten for support if this persists."
+        )
+
+    if available_counts:
+        count_choices = sorted(list(available_counts))
+        count = inquirer.select(
+            message=f"Select the number of {gpu_type} GPUs to use for deployment.",
+            choices=count_choices,
+            default=str(count_choices[0]),
+        ).execute()
+    else:
+        count = inquirer.text(
+            message=f"Enter the number of {gpu_type} accelerators to use for deployment.",
+            default="1",
+            validate=lambda x: x.isdigit() and int(x) > 0 and int(x) <= 8,
+        ).execute()
+
+    return Compute(
+        cpu_count=0,
+        memory="0Mi",
+        accelerator=truss_config.AcceleratorSpec(
+            accelerator=gpu_type.replace("-", "_"), count=int(count)
+        ),
+    )
 
 
 def _get_base_model_id(user_input: Optional[str], checkpoint: dict) -> Optional[str]:

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 from truss_train.definitions import (
@@ -7,12 +6,11 @@ from truss_train.definitions import (
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
-    ModelWeightsFormat,
 )
 
 
 @dataclass
-class PrepareCheckpointArgs:
+class DeployCheckpointArgs:
     project_id: Optional[str]
     job_id: Optional[str]
     deploy_config_path: Optional[str]
@@ -26,13 +24,5 @@ class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
 
     checkpoint_details: CheckpointList
     model_name: str
-    deployment_name: str
     runtime: DeployCheckpointsRuntime
     compute: Compute
-    model_weight_format: ModelWeightsFormat
-
-
-@dataclass
-class PrepareCheckpointResult:
-    truss_directory: Path
-    checkpoint_deploy_config: DeployCheckpointsConfigComplete
