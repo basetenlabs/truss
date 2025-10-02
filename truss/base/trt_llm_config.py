@@ -90,6 +90,9 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     calib_size: int = 1024
     calib_dataset: str = "cnn_dailymail"
     calib_max_seq_length: int = 2048
+    max_gpu_usage_fraction: float = 0.8
+    attention_implementation: Optional[str] = None
+    pad_tokenizer_during_calibration: Optional[bool] = False
 
     def __init__(self, **data):
         super().__init__(**data)
