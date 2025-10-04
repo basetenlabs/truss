@@ -6,7 +6,8 @@ use crate::cloud_range_download::{
     download_cloud_range_streaming, should_use_cloud_range_download,
 };
 use crate::constants::{
-    TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE, TRUSS_TRANSFER_USE_RANGE_DOWNLOAD, TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS,
+    TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS, TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE,
+    TRUSS_TRANSFER_USE_RANGE_DOWNLOAD,
 };
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -358,7 +359,10 @@ async fn download_from_object_store_range(
     // Use the new streaming approach that writes chunks as they arrive
     download_cloud_range_streaming(storage, object_path, local_path, size, concurrency)
         .await
-        .context("range download failed")?;
+        .context(format!(
+            "Range download failed for {} to {:?} (size: {} bytes, concurrency: {})",
+            source_description, local_path, size, concurrency
+        ))?;
 
     info!("Completed range download to {:?}", local_path);
     Ok(())

@@ -259,7 +259,10 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
                     let current_size = match fs::metadata(&monitor_path).await {
                         Ok(metadata) => metadata.len(),
                         Err(e) => {
-                            warn!("Failed to read metadata for {:?}: {}", monitor_path, e);
+                            warn!(
+                                "Issue monitoring the copy: read metadata for {:?} failed: {}",
+                                monitor_path, e
+                            );
                             continue;
                         }
                     };
