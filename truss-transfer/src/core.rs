@@ -275,11 +275,11 @@ async fn lazy_data_resolve_async(
                 return Err(anyhow!("Download failure: {}", e));
             }
             Err(e) => {
-                // A Tokio task panicked. Abort all other tasks.
-                error!("A Tokio task panicked: {}", e);
+                // A Tokio task paniced. Abort all other tasks.
+                error!("A Tokio task paniced: {}", e);
                 download_tasks.abort_all();
                 page_tasks.abort_all();
-                return Err(anyhow!("Tokio task panicked: {}", e));
+                return Err(anyhow!("Tokio task paniced: {}", e));
             }
         }
     }
@@ -299,7 +299,7 @@ async fn lazy_data_resolve_async(
             tokio::time::timeout_at(deadline, page_tasks.join_next()).await
         {
             if let Err(e) = join_result {
-                warn!("A paging task panicked: {}", e);
+                warn!("A paging task paniced: {}", e);
             }
         }
     }
@@ -398,11 +398,11 @@ async fn page_file_into_memory(path: &Path, lock: Arc<TokioMutex<()>>) {
             }
         }
         Err(e) => {
-            // The spawn_blocking task itself panicked or was cancelled.
+            // The spawn_blocking task itself paniced or was cancelled.
             if e.is_cancelled() {
                 warn!("Paging task for {} was cancelled.", path.display());
             } else {
-                error!("Paging task for {} panicked: {}", path.display(), e);
+                error!("Paging task for {} paniced: {}", path.display(), e);
             }
         }
     }

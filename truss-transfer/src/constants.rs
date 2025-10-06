@@ -71,7 +71,7 @@ pub static TRUSS_TRANSFER_USE_RANGE_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_USE_RANGE_DOWNLOAD")
         .ok()
         .map(|s| is_truthy(&s))
-        .unwrap_or(false)
+        .unwrap_or(true)
 });
 
 pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS: Lazy<usize> = Lazy::new(|| {

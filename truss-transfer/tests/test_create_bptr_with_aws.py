@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -91,6 +92,7 @@ def test_dolly():
 def test_dolly_with_download():
     manifest = test_dolly()
     Path("/static-bptr").mkdir(parents=True, exist_ok=True)
+    shutil.rmtree("/app/model_cache/julien_dummy", ignore_errors=True)
     with open("/static-bptr/static-bptr-manifest.json", "w") as f:
         f.write(manifest)
 

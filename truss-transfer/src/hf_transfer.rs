@@ -110,6 +110,11 @@ pub async fn download_async(
     let semaphore = Arc::new(Semaphore::new(max_files));
     let parallel_failures_semaphore = Arc::new(Semaphore::new(parallel_failures));
 
+    // Determine which chunks should be flushed (last 16 or max_files chunks)
+    let total_chunks = (length + chunk_size - 1) / chunk_size; // equivalent to div_ceil
+    let flush_threshold_chunk = total_chunks.saturating_sub(max_files.min(16));
+
+    let mut chunk_index = 0;
     for start in (0..length).step_by(chunk_size) {
         let url = redirected_url.to_string();
         let filename = filename.clone();
@@ -117,6 +122,7 @@ pub async fn download_async(
         let headers = headers.clone();
 
         let stop = std::cmp::min(start + chunk_size - 1, length - 1);
+        let should_flush = chunk_index >= flush_threshold_chunk;
         let semaphore = semaphore.clone();
         let parallel_failures_semaphore = parallel_failures_semaphore.clone();
         let semaphore_global = semaphore_global.clone();
@@ -128,7 +134,7 @@ pub async fn download_async(
             let permit_global = semaphore_global.acquire_owned().await.map_err(|err| {
                 anyhow!("Failed to acquire global semaphore: {err}")
             })?;
-            let mut chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone()).await;
+            let mut chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone(), should_flush).await;
             let mut i = 0;
             if parallel_failures > 0 {
                 while let Err(dlerr) = chunk {
@@ -146,7 +152,7 @@ pub async fn download_async(
                     let wait_time = exponential_backoff(BASE_WAIT_TIME, i, MAX_WAIT_TIME);
                     sleep(Duration::from_millis(wait_time as u64)).await;
 
-                    chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone()).await;
+                    chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone(), should_flush).await;
                     i += 1;
                     drop(parallel_failure_permit);
                 }
@@ -155,6 +161,7 @@ pub async fn download_async(
             drop(permit_global);
             chunk.map_err(|e| anyhow!("Downloading error {e}")).and(Ok(stop - start))
         }));
+        chunk_index += 1;
     }
 
     // Output the chained result
@@ -220,6 +227,7 @@ async fn download_chunk(
     start: usize,
     stop: usize,
     headers: HeaderMap,
+    should_flush: bool,
 ) -> Result<(), Error> {
     // Process each socket concurrently.
     let range = format!("bytes={start}-{stop}");
@@ -239,5 +247,11 @@ async fn download_chunk(
         .error_for_status()?;
     let content = response.bytes().await?;
     file.write_all(&content).await?;
+
+    // Flush only for the last max_files (capped at 16) chunks to ensure data is written to disk
+    if should_flush {
+        file.flush().await?;
+    }
+
     Ok(())
 }
