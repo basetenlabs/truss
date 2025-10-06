@@ -1,8 +1,8 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
-import shutil
 import truss_transfer
 
 MANIFEST_EXPECTED = [
