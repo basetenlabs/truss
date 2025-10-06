@@ -2,7 +2,7 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
-use log::debug;
+use log::{debug, warn};
 use object_store::{path::Path as ObjectPath, ObjectStore};
 use rand::{rng, Rng};
 use std::ops::Range;
@@ -16,7 +16,7 @@ use tokio::time::{sleep, Duration};
 const BASE_WAIT_TIME: usize = 300;
 const MAX_WAIT_TIME: usize = 10_000;
 const MAX_RETRIES: usize = 5;
-const PARALLEL_FAILURES: usize = 3;
+const PARALLEL_FAILURES: usize = 6;
 
 fn jitter() -> usize {
     rng().random_range(0..=500)
@@ -61,11 +61,18 @@ pub async fn download_cloud_range_streaming(
     let semaphore_failures = Arc::new(Semaphore::new(PARALLEL_FAILURES));
     let mut tasks = FuturesUnordered::new();
 
+    // Determine which chunks should be flushed (last 8 or max_concurrency chunks)
+    let flush_threshold = total_chunks.saturating_sub(
+        max_concurrency.min(8) as u64
+    );
+
     // Spawn tasks for each chunk
     for chunk_index in 0..total_chunks {
         let start = chunk_index * chunk_size;
         let end = std::cmp::min(start + chunk_size, file_size);
         let range = start..end;
+        // only flush last chunk. 
+        let should_flush = chunk_index >= flush_threshold;
 
         let storage_clone = storage.clone();
         let object_path_clone = object_path.clone();
@@ -92,7 +99,7 @@ pub async fn download_cloud_range_streaming(
                     &object_path_clone,
                     &local_path_clone,
                     range.clone(),
-                    chunk_index,
+                    should_flush,
                 )
                 .await
                 {
@@ -117,7 +124,7 @@ pub async fn download_cloud_range_streaming(
 
                         let wait_time =
                             exponential_backoff(BASE_WAIT_TIME, attempts, MAX_WAIT_TIME);
-                        debug!(
+                        info!(
                             "Chunk {} failed (attempt {}), retrying in {}ms: {}",
                             chunk_index,
                             attempts + 1,
@@ -175,7 +182,7 @@ async fn download_chunk_with_positioned_write(
     object_path: &ObjectPath,
     local_path: &Path,
     range: Range<u64>,
-    _chunk_index: u64,
+    should_flush: bool,
 ) -> Result<usize> {
     // TODO: add retries here to the requests, with parallel backoff failure strategy
     let content = storage
@@ -210,6 +217,14 @@ async fn download_chunk_with_positioned_write(
         range.start,
         local_path
     ))?;
+
+    // Flush only for the last max_concurrency chunks to ensure data is written to disk
+    if should_flush {
+        file.flush().await.context(format!(
+            "Failed to flush chunk data at position {} to {:?}",
+            range.start, local_path
+        ))?;
+    }
 
     Ok(content.len())
 }
