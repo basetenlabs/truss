@@ -309,10 +309,10 @@ def get_job_metrics(
     "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
 @click.option(
-    "--truss-config-output-path",
+    "--truss-config-output-dir",
     type=str,
     required=False,
-    help="Path to output the truss config to",
+    help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
@@ -323,7 +323,7 @@ def deploy_checkpoints(
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
-    truss_config_output_path: Optional[str],
+    truss_config_output_dir: Optional[str],
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -351,14 +351,14 @@ def deploy_checkpoints(
     if dry_run:
         console.print("did not deploy because --dry-run flag provided", style="yellow")
 
-    _write_truss_config(result, truss_config_output_path)
+    _write_truss_config(result, truss_config_output_dir)
 
     if not dry_run:
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
 
 
 def _write_truss_config(
-    result: DeploySuccessResult, truss_config_output_path: Optional[str]
+    result: DeploySuccessResult, truss_config_output_dir: Optional[str]
 ) -> None:
     if not result.truss_config:
         return
@@ -369,14 +369,19 @@ def _write_truss_config(
         if result.model_version
         else f"dry_run_{datestamp}"
     )
-    output_path = truss_config_output_path or f"truss_configs/{folder_name}/config.yaml"
-    # add config.yaml suffix to the output path if we're not saving to a file
-    if not output_path.endswith(".yaml"):
-        output_path += "/config.yaml"
-    console.print(f"Writing truss config to {output_path}", style="yellow")
+    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
+    output_dir = Path(output_dir_str)
+    output_path = output_dir / "config.yaml"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w") as f:
-        f.write(result.truss_config.model_dump_json())
+    console.print(f"Writing truss config to {output_path}", style="yellow")
+    console.print(
+        f"👀 Run `cat {output_path}` to view the truss config", style="yellow"
+    )
+    console.print(
+        f"🚀 Run `cd {output_dir} && truss push --publish` to deploy the truss",
+        style="yellow",
+    )
+    result.truss_config.write_to_yaml_file(output_path)
 
 
 @train.command(name="download")
