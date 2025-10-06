@@ -2,7 +2,7 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
-use log::{debug, warn};
+use log::{debug, info};
 use object_store::{path::Path as ObjectPath, ObjectStore};
 use rand::{rng, Rng};
 use std::ops::Range;
@@ -61,8 +61,8 @@ pub async fn download_cloud_range_streaming(
     let semaphore_failures = Arc::new(Semaphore::new(PARALLEL_FAILURES));
     let mut tasks = FuturesUnordered::new();
 
-    // Determine which chunks should be flushed (last 8 or max_concurrency chunks)
-    let flush_threshold = total_chunks.saturating_sub(max_concurrency.min(8) as u64);
+    // Determine which chunks should be flushed (last 16 or max_concurrency chunks)
+    let flush_threshold = total_chunks.saturating_sub(max_concurrency.min(16) as u64);
 
     // Spawn tasks for each chunk
     for chunk_index in 0..total_chunks {
@@ -145,7 +145,7 @@ pub async fn download_cloud_range_streaming(
     // Wait for all chunks to complete
     let mut completed = 0;
     while let Some(result) = tasks.next().await {
-        result.context("Chunk download task panicked")??;
+        result.context("Chunk download task paniced")??;
         completed += 1;
 
         if completed % 50 == 0 {
