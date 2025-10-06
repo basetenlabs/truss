@@ -349,7 +349,7 @@ def deploy_checkpoints(
     )
 
     if dry_run:
-        console.print("did not deploy, --dry-run flag provided", style="yellow")
+        console.print("did not deploy because --dry-run flag provided", style="yellow")
 
     _write_truss_config(result, truss_config_output_path)
 
@@ -362,7 +362,8 @@ def _write_truss_config(
 ) -> None:
     if not result.truss_config:
         return
-    datestamp = datetime.now().isoformat().split(".")[0]
+    # format: 20251006_123456
+    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     folder_name = (
         f"{result.model_version.name}_{result.model_version.id}"
         if result.model_version
