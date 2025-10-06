@@ -62,16 +62,14 @@ pub async fn download_cloud_range_streaming(
     let mut tasks = FuturesUnordered::new();
 
     // Determine which chunks should be flushed (last 8 or max_concurrency chunks)
-    let flush_threshold = total_chunks.saturating_sub(
-        max_concurrency.min(8) as u64
-    );
+    let flush_threshold = total_chunks.saturating_sub(max_concurrency.min(8) as u64);
 
     // Spawn tasks for each chunk
     for chunk_index in 0..total_chunks {
         let start = chunk_index * chunk_size;
         let end = std::cmp::min(start + chunk_size, file_size);
         let range = start..end;
-        // only flush last chunk. 
+        // only flush last chunk.
         let should_flush = chunk_index >= flush_threshold;
 
         let storage_clone = storage.clone();
