@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
 
@@ -22,6 +23,7 @@ from truss.cli.train.core import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
+from truss.cli.train.types import DeploySuccessResult
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
@@ -306,6 +308,12 @@ def get_job_metrics(
 @click.option(
     "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
+@click.option(
+    "--truss-config-output-dir",
+    type=str,
+    required=False,
+    help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def deploy_checkpoints(
@@ -315,6 +323,7 @@ def deploy_checkpoints(
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
+    truss_config_output_dir: Optional[str],
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -332,13 +341,46 @@ def deploy_checkpoints(
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
         train_cli.DeployCheckpointArgs(
-            project_id=project_id, job_id=job_id, deploy_config_path=config
+            project_id=project_id,
+            job_id=job_id,
+            deploy_config_path=config,
+            dry_run=dry_run,
         ),
     )
 
     if dry_run:
-        console.print("--dry-run flag provided, did not deploy", style="yellow")
-    train_cli.print_deploy_checkpoints_success_message(result)
+        console.print("did not deploy because --dry-run flag provided", style="yellow")
+
+    _write_truss_config(result, truss_config_output_dir, dry_run)
+
+    if not dry_run:
+        train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
+
+
+def _write_truss_config(
+    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
+) -> None:
+    if not result.truss_config:
+        return
+    # format: 20251006_123456
+    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_name = (
+        f"{result.model_version.name}_{result.model_version.id}"
+        if result.model_version
+        else f"dry_run_{datestamp}"
+    )
+    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
+    output_dir = Path(output_dir_str)
+    output_path = output_dir / "config.yaml"
+    os.makedirs(output_dir, exist_ok=True)
+    console.print(f"Writing truss config to {output_path}", style="yellow")
+    console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
+    if dry_run:
+        console.print(
+            f"🚀 Run `cd {output_dir} && truss push --publish` to deploy the truss",
+            style="green",
+        )
+    result.truss_config.write_to_yaml_file(output_path)
 
 
 @train.command(name="download")
