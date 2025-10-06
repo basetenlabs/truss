@@ -16,7 +16,11 @@ from rich.text import Text
 
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
-from truss.cli.train.types import DeployCheckpointArgs, DeployCheckpointsConfigComplete
+from truss.cli.train.types import (
+    DeployCheckpointArgs,
+    DeployCheckpointsConfigComplete,
+    DeploySuccessResult,
+)
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.custom_types import (
@@ -244,17 +248,25 @@ def view_training_job_metrics(
 
 def create_model_version_from_inference_template(
     remote_provider: BasetenRemote, args: DeployCheckpointArgs
-) -> DeployCheckpointsConfigComplete:
+) -> DeploySuccessResult:
     if not args.deploy_config_path:
         return deploy_checkpoints.create_model_version_from_inference_template(
-            remote_provider, DeployCheckpointsConfig(), args.project_id, args.job_id
+            remote_provider,
+            DeployCheckpointsConfig(),
+            args.project_id,
+            args.job_id,
+            args.dry_run,
         )
     #### User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:
         return deploy_checkpoints.create_model_version_from_inference_template(
-            remote_provider, checkpoint_deploy, args.project_id, args.job_id
+            remote_provider,
+            checkpoint_deploy,
+            args.project_id,
+            args.job_id,
+            args.dry_run,
         )
 
 
