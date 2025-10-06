@@ -92,6 +92,9 @@ def _get_truss_config_from_result(result: dict) -> Optional[truss_config.TrussCo
     if result and result.get("truss_config"):
         truss_config_dict = json.loads(result["truss_config"])
         return truss_config.TrussConfig.from_dict(truss_config_dict)
+    # Although this should never happen, we defensively allow ourselves to return None
+    # because we need a failure to handle the truss config doesn't necessarily mean we failed to deploy
+    # the model version.
     console.print(
         "No truss config returned. Reach out to Baseten for support if this persists.",
         style="red",
