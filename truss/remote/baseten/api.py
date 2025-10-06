@@ -800,6 +800,7 @@ class BasetenApi:
                     id
                     name
                 }
+                truss_config
             }
         }
         """

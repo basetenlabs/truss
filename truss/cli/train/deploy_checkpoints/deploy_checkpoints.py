@@ -1,3 +1,4 @@
+import json
 import re
 from collections import OrderedDict
 from typing import List, Optional, Union
@@ -7,7 +8,11 @@ from InquirerPy import inquirer
 
 from truss.base import truss_config
 from truss.cli.train import common
-from truss.cli.train.types import DeployCheckpointsConfigComplete
+from truss.cli.train.types import (
+    DeployCheckpointsConfigComplete,
+    DeploySuccessModelVersion,
+    DeploySuccessResult,
+)
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train.definitions import (
@@ -35,13 +40,16 @@ def create_model_version_from_inference_template(
     checkpoint_deploy_config: DeployCheckpointsConfig,
     project_id: Optional[str],
     job_id: Optional[str],
-) -> DeployCheckpointsConfigComplete:
+    dry_run: bool,
+) -> DeploySuccessResult:
     checkpoint_deploy_config = _hydrate_deploy_config(
         checkpoint_deploy_config, remote_provider, project_id, job_id
     )
 
     request_data = _build_inference_template_request(
-        checkpoint_deploy_config, remote_provider
+        checkpoint_deploy_config=checkpoint_deploy_config,
+        remote_provider=remote_provider,
+        dry_run=dry_run,
     )
 
     # Call the GraphQL mutation to create model version from inference template
@@ -49,7 +57,9 @@ def create_model_version_from_inference_template(
         result = remote_provider.api.create_model_version_from_inference_template(
             request_data
         )
+        truss_config_result = _get_truss_config_from_result(result)
 
+        model_version = None
         if result and result.get("model_version"):
             console.print(
                 f"Successfully created model version: {result['model_version']['name']}",
@@ -58,7 +68,10 @@ def create_model_version_from_inference_template(
             console.print(
                 f"Model version ID: {result['model_version']['id']}", style="yellow"
             )
-        else:
+            model_version = DeploySuccessModelVersion.model_validate(
+                result["model_version"]
+            )
+        elif not dry_run:
             console.print(
                 "Warning: Unexpected response format from server", style="yellow"
             )
@@ -68,12 +81,28 @@ def create_model_version_from_inference_template(
         console.print(f"Error creating model version: {e}", style="red")
         raise
 
-    return checkpoint_deploy_config
+    return DeploySuccessResult(
+        deploy_config=checkpoint_deploy_config,
+        truss_config=truss_config_result,
+        model_version=model_version,
+    )
+
+
+def _get_truss_config_from_result(result: dict) -> Optional[truss_config.TrussConfig]:
+    if result and result.get("truss_config"):
+        truss_config_dict = json.loads(result["truss_config"])
+        return truss_config.TrussConfig.from_dict(truss_config_dict)
+    console.print(
+        "No truss config returned. Reach out to Baseten for support if this persists.",
+        style="red",
+    )
+    return None
 
 
 def _build_inference_template_request(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
     remote_provider: BasetenRemote,
+    dry_run: bool,
 ) -> dict:
     """
     Build the GraphQL request data structure for createModelVersionFromInferenceTemplate mutation.
@@ -126,6 +155,7 @@ def _build_inference_template_request(
         "weights_sources": weights_sources,
         "inference_stack": inference_stack,
         "instance_type_id": instance_type_id,
+        "dry_run": dry_run,
     }
 
     return request_data
