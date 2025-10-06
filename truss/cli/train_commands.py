@@ -351,14 +351,14 @@ def deploy_checkpoints(
     if dry_run:
         console.print("did not deploy because --dry-run flag provided", style="yellow")
 
-    _write_truss_config(result, truss_config_output_dir)
+    _write_truss_config(result, truss_config_output_dir, dry_run)
 
     if not dry_run:
         train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
 
 
 def _write_truss_config(
-    result: DeploySuccessResult, truss_config_output_dir: Optional[str]
+    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
 ) -> None:
     if not result.truss_config:
         return
@@ -377,10 +377,11 @@ def _write_truss_config(
     console.print(
         f"👀 Run `cat {output_path}` to view the truss config", style="yellow"
     )
-    console.print(
-        f"🚀 Run `cd {output_dir} && truss push --publish` to deploy the truss",
-        style="yellow",
-    )
+    if dry_run:
+        console.print(
+            f"🚀 Run `cd {output_dir} && truss push --publish` to deploy the truss",
+            style="yellow",
+        )
     result.truss_config.write_to_yaml_file(output_path)
 
 
