@@ -161,8 +161,8 @@ jobs:
           - runner: windows-latest
             target: x64
           # TODO: enabled after issue: https://github.com/PyO3/maturin-action/issues/375 is resolved
-          # - runner: windows-latest
-          #   target: x86
+          - runner: windows-latest
+            target: x86
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
