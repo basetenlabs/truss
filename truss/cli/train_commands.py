@@ -372,7 +372,7 @@ def _write_truss_config(
     output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
     output_dir = Path(output_dir_str)
     output_path = output_dir / "config.yaml"
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     console.print(f"Writing truss config to {output_path}", style="yellow")
     console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
     if dry_run:
