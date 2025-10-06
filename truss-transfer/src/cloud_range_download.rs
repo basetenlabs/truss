@@ -13,10 +13,10 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt, SeekFrom};
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, Duration};
 
-const BASE_WAIT_TIME: usize = 500;
-const MAX_WAIT_TIME: usize = 20_000;
+const BASE_WAIT_TIME: usize = 300;
+const MAX_WAIT_TIME: usize = 10_000;
 const MAX_RETRIES: usize = 5;
-const PARALLEL_FAILURES: usize = 10;
+const PARALLEL_FAILURES: usize = 3;
 
 fn jitter() -> usize {
     rng().random_range(0..=500)
@@ -57,8 +57,8 @@ pub async fn download_cloud_range_streaming(
     );
 
     let semaphore = Arc::new(Semaphore::new(max_concurrency));
-    // todo: acquire on parallel failures?
-    let _semaphore_failures = Arc::new(Semaphore::new(PARALLEL_FAILURES));
+    // todo: parallel failures could be improved
+    let semaphore_failures = Arc::new(Semaphore::new(PARALLEL_FAILURES));
     let mut tasks = FuturesUnordered::new();
 
     // Spawn tasks for each chunk
@@ -71,6 +71,7 @@ pub async fn download_cloud_range_streaming(
         let object_path_clone = object_path.clone();
         let local_path_clone = local_path.to_path_buf();
         let semaphore_clone = semaphore.clone();
+        let semaphore_failures_clone = semaphore_failures.clone();
 
         let task = tokio::spawn(async move {
             let _permit = semaphore_clone
@@ -108,6 +109,11 @@ pub async fn download_cloud_range_streaming(
                                 e
                             ));
                         }
+                        // Limit parallel retries to avoid overwhelming the system
+                        let permit = semaphore_failures_clone
+                            .acquire()
+                            .await
+                            .map_err(|e| anyhow!("Failed to acquire failure semaphore: {}", e))?;
 
                         let wait_time =
                             exponential_backoff(BASE_WAIT_TIME, attempts, MAX_WAIT_TIME);
@@ -120,6 +126,7 @@ pub async fn download_cloud_range_streaming(
                         );
                         sleep(Duration::from_millis(wait_time as u64)).await;
                         attempts += 1;
+                        drop(permit); // Release failure semaphore
                     }
                 }
             }
