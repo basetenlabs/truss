@@ -70,7 +70,7 @@ def test_chain_logs_url():
     assert url == "https://app.baseten.co/chains/abc/logs/666/543"
 
 
-def test_predict_normal_dict_response():
+def test_predict_response_to_json():
     """Test that predict method returns JSON response for normal dict result."""
     # Create a mock BasetenService
     mock_handle = MagicMock(spec=ModelVersionHandle)
@@ -86,7 +86,7 @@ def test_predict_normal_dict_response():
         is_draft=False,
         api_key="test-key",
         service_url="https://test.com",
-        api=mock_api
+        api=mock_api,
     )
 
     # Mock the _send_request method to return a successful JSON response
@@ -100,46 +100,24 @@ def test_predict_normal_dict_response():
     # Verify that the JSON response is returned directly
     assert result == {"result": "success"}
 
+    # Test non-dict response types below
 
-def test_predict_non_dict_response():
-    """Test that predict method returns JSON response for non-dict results."""
-    # Create a mock BasetenService
-    mock_handle = MagicMock(spec=ModelVersionHandle)
-    mock_handle.model_id = "test-model"
-    mock_handle.version_id = "test-version"
-    mock_handle.hostname = "https://model-test.api.baseten.co"
-
-    mock_api = MagicMock()
-    mock_api.app_url = "https://app.baseten.co"
-
-    service_instance = service.BasetenService(
-        model_version_handle=mock_handle,
-        is_draft=False,
-        api_key="test-key",
-        service_url="https://test.com",
-        api=mock_api
-    )
-
-    # Mock the _send_request method to return our mock response
-    mock_response = MagicMock()
-    service_instance._send_request = MagicMock(return_value=mock_response)
-
-    # Test predict method with integer response
+    # With integer response
     mock_response.json.return_value = 42
     result = service_instance.predict({"input": "test"})
     assert result == 42
 
-    # Test with string response
+    # With string response
     mock_response.json.return_value = "success"
     result = service_instance.predict({"input": "test"})
     assert result == "success"
 
-    # Test with list response
+    # With list response
     mock_response.json.return_value = [1, 2, 3, 4]
     result = service_instance.predict({"input": "test"})
     assert result == [1, 2, 3, 4]
 
-    # Test with boolean response
+    # With boolean response
     mock_response.json.return_value = True
     result = service_instance.predict({"input": "test"})
     assert result is True
