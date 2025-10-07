@@ -28,17 +28,15 @@ deploy_checkpoint = DeployCheckpointsConfig(
         checkpoints=[
             LoRACheckpoint(
                 training_job_id="lqz4pw4",
-                paths=["lqz4pw4/rank-0/checkpoint-24/"],
+                checkpoint_name="checkpoint-24",
                 lora_details=LoRADetails(rank=16),
             ),
             LoRACheckpoint(
                 training_job_id="lqz4pw5",
-                paths=["lqz4pw5/rank-0/checkpoint-42/"],
+                checkpoint_name="checkpoint-42",
                 lora_details=LoRADetails(rank=8),
             ),
-            FullCheckpoint(
-                training_job_id="lqz4pw6", paths=["lqz4pw6/checkpoint-123/"]
-            ),
+            FullCheckpoint(training_job_id="lqz4pw6", checkpoint_name="checkpoint-123"),
         ],
     ),
 )

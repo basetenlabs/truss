@@ -274,7 +274,7 @@ def _get_checkpoint_names(
     checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ) -> list[str]:
     return [
-        checkpoint.paths[0].strip("/").split("/")[-1]
+        checkpoint.checkpoint_name
         for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints
     ]
 
@@ -311,9 +311,10 @@ def display_training_job(
     table.add_column("Value")
 
     # Basic job details
+    table.add_row("Job Name", job["name"])
+    table.add_row("Job ID", job["id"])
     table.add_row("Project ID", job["training_project"]["id"])
     table.add_row("Project Name", job["training_project"]["name"])
-    table.add_row("Job ID", job["id"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))

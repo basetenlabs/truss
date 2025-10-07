@@ -804,7 +804,6 @@ class BasetenApi:
             }
         }
         """
-
         resp = self._post_graphql_query(
             query_string, variables={"request": request_data}
         )
