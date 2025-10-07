@@ -185,12 +185,13 @@ class TrainingProject(custom_types.SafeModelNoExtra):
 
 class Checkpoint(custom_types.ConfigModel, ABC):
     training_job_id: str
-    paths: List[str]
+    checkpoint_name: str
     model_weight_format: ModelWeightsFormat
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
-            training_job_id=self.training_job_id, paths=self.paths
+            training_job_id=self.training_job_id,
+            paths=[f"rank-0/{self.checkpoint_name}/"],
         )
 
 

@@ -115,18 +115,12 @@ def _build_inference_template_request(
     weights_sources = []
     for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints:
         # Extract checkpoint name from the first path
-        checkpoint_name = (
-            checkpoint.paths[0].strip("/").split("/")[-1]
-            if checkpoint.paths
-            else "checkpoint"
-        )
-
         weights_source = {
             "weight_source_type": "B10_CHECKPOINTING",
             "b10_training_checkpoint_weights_source": {
                 "checkpoint": {
                     "training_job_id": checkpoint.training_job_id,
-                    "checkpoint_name": checkpoint_name,
+                    "checkpoint_name": checkpoint.checkpoint_name,
                 }
             },
         }
@@ -309,6 +303,7 @@ def _ensure_checkpoint_details(
     job_id: Optional[str],
 ) -> CheckpointList:
     if checkpoint_details and checkpoint_details.checkpoints:
+        # TODO: check here
         return _process_user_provided_checkpoints(checkpoint_details, remote_provider)
     else:
         return _prompt_user_for_checkpoint_details(
