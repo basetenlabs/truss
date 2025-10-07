@@ -115,8 +115,7 @@ def test_hydrate_full_checkpoint():
     assert isinstance(result, definitions.FullCheckpoint)
     assert result.training_job_id == job_id
     assert result.model_weight_format == ModelWeightsFormat.FULL
-    assert len(result.paths) == 1
-    assert result.paths[0] == f"rank-0/{checkpoint_id}/"
+    assert result.checkpoint_name == checkpoint_id
 
 
 def test_hydrate_checkpoint_dispatcher_full():
@@ -272,6 +271,6 @@ def test_hydrate_whisper_checkpoint():
     result = hydrate_whisper_checkpoint(job_id, checkpoint_id, checkpoint)
 
     assert result.training_job_id == job_id
-    assert result.paths == [f"rank-0/{checkpoint_id}/"]
+    assert result.checkpoint_name == checkpoint_id
     assert result.model_weight_format == definitions.ModelWeightsFormat.WHISPER
     assert isinstance(result, definitions.WhisperCheckpoint)

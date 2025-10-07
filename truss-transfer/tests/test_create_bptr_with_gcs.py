@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -220,6 +221,7 @@ def test_dolly_with_download():
     Path("/static-bptr").mkdir(parents=True, exist_ok=True)
     with open("/static-bptr/static-bptr-manifest.json", "w") as f:
         f.write(manifest)
+    shutil.rmtree("/app/model_cache/julien_dummy", ignore_errors=True)
 
     print("✓ BasetenPointer manifest written to /static-bptr/static-bptr-manifest.json")
     truss_transfer.lazy_data_resolve("")
