@@ -69,7 +69,7 @@ async def benchmark_every(
                 print(f"Error in task completion: {e}")
 
         return all_times
-
+    await kick_off_task()  # Warm-up call to avoid initial latency spikes
     user_times = await asyncio.gather(
         *[simulate_single_user(launches_blocking=False) for _ in range(n_users)]
     )
