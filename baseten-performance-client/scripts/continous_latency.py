@@ -6,29 +6,31 @@ import time
 from baseten_performance_client import PerformanceClient
 
 client = PerformanceClient(
-    base_url="https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
+    base_url="https://model-7wl2op73.api.baseten.co/environments/production/sync"
 )
 
 
 async def benchmark_every(
-    interval=0.01,
+    interval=0.1,
     lb_split=128,
-    tokens_per_sentence=500,
-    sentences_per_request=1,
-    n_requests=1000,
+    tokens_per_sentence=5,
+    sentences_per_request=10,
+    n_requests=100,
     n_users=1,
 ):
     async def kick_off_task():
         """kicks of a single task to measure latency."""
         try:
             t = time.time()
-            await client.async_embed(
-                input=["Hello " * tokens_per_sentence] * sentences_per_request,
+            result = await client.async_classify(
+                inputs=["Hello " * tokens_per_sentence] * sentences_per_request,
                 max_concurrent_requests=lb_split,
                 batch_size=1,
-                model="model",
             )
+            total_time = result.total_time
             # TODO: use total time or
+            other_t = time.time() - t
+            print(f"Task completed in {total_time:.4f} seconds (measured: {other_t:.4f})")
             return [(time.time() - t)]
         except Exception as e:
             print(f"Error in task: {e}")
