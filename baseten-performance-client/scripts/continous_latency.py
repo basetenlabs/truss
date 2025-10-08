@@ -12,7 +12,7 @@ client = PerformanceClient(
 
 
 async def benchmark_every(
-    interval=0.10,  # 1/0.1 * 60 = 600 requests per minute
+    interval=0.50,  # 1/0.5 * 60 = 120 requests per minute
     tokens_per_sentence=[500, 1000],
     max_concurrent_requests_per_user=100,
     sentences_per_request=100,
@@ -25,7 +25,7 @@ async def benchmark_every(
         try:
             result = await client.async_classify(
                 inputs=[
-                    "Hello "
+                    "Hello " # "Hello " is one token if concatinated with more text
                     * random.randint(tokens_per_sentence[0], tokens_per_sentence[1])
                 ]
                 * sentences_per_request,
@@ -49,7 +49,7 @@ async def benchmark_every(
         """user may launch tasks with concurrency=1 (blocking=True)
         or without any feedback at x inferval. (blocking=False)"""
         all_tasks = []
-        await asyncio.sleep(random.uniform(0, 1))
+        await asyncio.sleep(random.uniform(0, 1)) # Stagger start times slightly
         for _ in range(n_requests):
             task = asyncio.create_task(kick_off_task())
             if launches_blocking:
