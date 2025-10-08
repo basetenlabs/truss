@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import random
 
 from baseten_performance_client import PerformanceClient
 
@@ -11,27 +12,35 @@ client = PerformanceClient(
 
 
 async def benchmark_every(
-    interval=0.1,
-    lb_split=128,
-    tokens_per_sentence=5,
-    sentences_per_request=10,
-    n_requests=100,
+    interval=0.10,  # 1/0.1 * 60 = 600 requests per minute
+    tokens_per_sentence=[500, 1000],
+    max_concurrent_requests_per_user=100,
+    sentences_per_request=100,
+    n_requests=10000,
     n_users=1,
+    lb_split=256,
 ):
     async def kick_off_task():
         """kicks of a single task to measure latency."""
         try:
-            t = time.time()
             result = await client.async_classify(
-                inputs=["Hello " * tokens_per_sentence] * sentences_per_request,
-                max_concurrent_requests=lb_split,
-                batch_size=1,
+                inputs=[
+                    "Hello "
+                    * random.randint(tokens_per_sentence[0], tokens_per_sentence[1])
+                ]
+                * sentences_per_request,
+                max_concurrent_requests=max_concurrent_requests_per_user,
+                batch_size=16,
+                # splits in smaller chunks to pack large requests more sparseley
+                max_chars_per_request=5000,
+                # hedge_delay=0.5,
             )
             total_time = result.total_time
-            # TODO: use total time or
-            other_t = time.time() - t
-            print(f"Task completed in {total_time:.4f} seconds (measured: {other_t:.4f})")
-            return [(time.time() - t)]
+            individual_times = result.individual_request_times
+            print(
+                f"total time {total_time}, min {min(individual_times)} max {max(individual_times)} avg {sum(individual_times) / len(individual_times)}"
+            )
+            return [total_time]
         except Exception as e:
             print(f"Error in task: {e}")
             return [(time.time() - t)]
@@ -40,6 +49,7 @@ async def benchmark_every(
         """user may launch tasks with concurrency=1 (blocking=True)
         or without any feedback at x inferval. (blocking=False)"""
         all_tasks = []
+        await asyncio.sleep(random.uniform(0, 1))
         for _ in range(n_requests):
             task = asyncio.create_task(kick_off_task())
             if launches_blocking:
