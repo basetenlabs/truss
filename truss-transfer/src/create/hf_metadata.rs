@@ -1,10 +1,14 @@
 use super::{filter_repo_files, normalize_hash};
 use crate::secrets::get_hf_secret_from_file;
 use crate::types::{BasetenPointer, HttpResolution, ModelRepo, Resolution, ResolutionType};
+use futures_util::stream::FuturesUnordered;
+use futures_util::StreamExt;
 use hf_hub::api::tokio::{Api, ApiBuilder};
 use hf_hub::{Repo, RepoType};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tokio::time::{sleep, Duration};
 
 /// Error types for HuggingFace operations
@@ -130,10 +134,43 @@ pub async fn metadata_hf_repo(
         .collect();
     let filtered_files = filter_repo_files(files, allow_patterns, ignore_patterns)?;
 
-    let mut metadata_map: HashMap<String, HfFileMetadata> = HashMap::new();
+    // Use semaphore to limit concurrent metadata requests (max 20 concurrent)
+    let semaphore = Arc::new(Semaphore::new(20));
+    let mut tasks = FuturesUnordered::new();
 
+    // Spawn concurrent tasks for metadata fetching
     for file in filtered_files {
-        let metadata = get_hf_metadata(&api, repo_id, real_revision, &file, token.clone()).await?;
+        let api_clone = api.clone();
+        let repo_id_clone = repo_id.to_string();
+        let real_revision_clone = real_revision.to_string();
+        let file_clone = file.clone();
+        let token_clone = token.clone();
+        let semaphore_clone = semaphore.clone();
+
+        let task = tokio::spawn(async move {
+            let _permit = semaphore_clone.acquire().await.map_err(|e| {
+                HfError::InvalidMetadata(format!("Failed to acquire semaphore: {}", e))
+            })?;
+
+            let metadata = get_hf_metadata(
+                &api_clone,
+                &repo_id_clone,
+                &real_revision_clone,
+                &file_clone,
+                token_clone,
+            )
+            .await?;
+            Ok::<(String, HfFileMetadata), HfError>((file_clone, metadata))
+        });
+
+        tasks.push(task);
+    }
+
+    // Collect results
+    let mut metadata_map: HashMap<String, HfFileMetadata> = HashMap::new();
+    while let Some(result) = tasks.next().await {
+        let (file, metadata) =
+            result.map_err(|e| HfError::InvalidMetadata(format!("Task paniced: {}", e)))??;
         metadata_map.insert(file, metadata);
     }
 

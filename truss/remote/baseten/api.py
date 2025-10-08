@@ -800,10 +800,10 @@ class BasetenApi:
                     id
                     name
                 }
+                truss_config
             }
         }
         """
-
         resp = self._post_graphql_query(
             query_string, variables={"request": request_data}
         )

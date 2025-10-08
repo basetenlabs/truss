@@ -2,7 +2,7 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
-use log::{debug};
+use log::{debug, info};
 use object_store::{path::Path as ObjectPath, ObjectStore};
 use rand::{rng, Rng};
 use std::ops::Range;
@@ -16,6 +16,7 @@ use tokio::time::{sleep, Duration};
 const BASE_WAIT_TIME: usize = 300;
 const MAX_WAIT_TIME: usize = 10_000;
 const MAX_RETRIES: usize = 5;
+const PARALLEL_FAILURES: usize = 6;
 
 fn jitter() -> usize {
     rng().random_range(0..=500)
@@ -29,11 +30,11 @@ pub fn exponential_backoff(base_wait_time: usize, n: usize, max: usize) -> usize
 const RANGE_DOWNLOAD_CHUNK_MB: u64 = 8 * 1024 * 1024;
 
 /// Check if range downloads should be used based on file size and configuration
-pub fn should_use_cloud_range_download(file_size: u64) -> bool {
+pub fn should_use_cloud_range_download(_file_size: u64) -> bool {
     use crate::constants::TRUSS_TRANSFER_USE_RANGE_DOWNLOAD;
 
     // Only use range downloads for files larger than threshold and when enabled
-    *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD && file_size > RANGE_DOWNLOAD_CHUNK_MB
+    *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD // && file_size > RANGE_DOWNLOAD_CHUNK_MB
 }
 
 /// High-concurrency range download using positioned writes for large files
@@ -56,18 +57,26 @@ pub async fn download_cloud_range_streaming(
     );
 
     let semaphore = Arc::new(Semaphore::new(max_concurrency));
+    // todo: parallel failures could be improved
+    let semaphore_failures = Arc::new(Semaphore::new(PARALLEL_FAILURES));
     let mut tasks = FuturesUnordered::new();
+
+    // Determine which chunks should be flushed (last 16 or max_concurrency chunks)
+    let flush_threshold = total_chunks.saturating_sub(max_concurrency.min(16) as u64);
 
     // Spawn tasks for each chunk
     for chunk_index in 0..total_chunks {
         let start = chunk_index * chunk_size;
         let end = std::cmp::min(start + chunk_size, file_size);
         let range = start..end;
+        // only flush last chunk.
+        let should_flush = chunk_index >= flush_threshold;
 
         let storage_clone = storage.clone();
         let object_path_clone = object_path.clone();
         let local_path_clone = local_path.to_path_buf();
         let semaphore_clone = semaphore.clone();
+        let semaphore_failures_clone = semaphore_failures.clone();
 
         let task = tokio::spawn(async move {
             let _permit = semaphore_clone
@@ -88,7 +97,7 @@ pub async fn download_cloud_range_streaming(
                     &object_path_clone,
                     &local_path_clone,
                     range.clone(),
-                    chunk_index,
+                    should_flush,
                 )
                 .await
                 {
@@ -105,10 +114,15 @@ pub async fn download_cloud_range_streaming(
                                 e
                             ));
                         }
+                        // Limit parallel retries to avoid overwhelming the system
+                        let permit = semaphore_failures_clone
+                            .acquire()
+                            .await
+                            .map_err(|e| anyhow!("Failed to acquire failure semaphore: {}", e))?;
 
                         let wait_time =
                             exponential_backoff(BASE_WAIT_TIME, attempts, MAX_WAIT_TIME);
-                        debug!(
+                        info!(
                             "Chunk {} failed (attempt {}), retrying in {}ms: {}",
                             chunk_index,
                             attempts + 1,
@@ -117,6 +131,7 @@ pub async fn download_cloud_range_streaming(
                         );
                         sleep(Duration::from_millis(wait_time as u64)).await;
                         attempts += 1;
+                        drop(permit); // Release failure semaphore
                     }
                 }
             }
@@ -130,11 +145,16 @@ pub async fn download_cloud_range_streaming(
     // Wait for all chunks to complete
     let mut completed = 0;
     while let Some(result) = tasks.next().await {
-        result.context("Chunk download task panicked")??;
+        result.context("Chunk download task paniced")??;
         completed += 1;
 
         if completed % 50 == 0 {
-            debug!("Completed {}/{} chunks for {}", completed, total_chunks, local_path.display());
+            debug!(
+                "Completed {}/{} chunks for {}",
+                completed,
+                total_chunks,
+                local_path.display()
+            );
         }
     }
 
@@ -160,29 +180,49 @@ async fn download_chunk_with_positioned_write(
     object_path: &ObjectPath,
     local_path: &Path,
     range: Range<u64>,
-    _chunk_index: u64,
+    should_flush: bool,
 ) -> Result<usize> {
-    // Get the chunk data from cloud storage
+    // TODO: add retries here to the requests, with parallel backoff failure strategy
     let content = storage
         .get_range(object_path, range.clone())
         .await
         .context(format!(
-            "Failed to download range {}..{}",
-            range.start, range.end
+            "Failed to download range {}..{} for object {:?}",
+            range.start, range.end, object_path
         ))?;
 
-    // Write chunk directly to its position in the file (exactly like hf_transfer)
     let mut file = OpenOptions::new()
         .write(true)
-        .truncate(false) // Don't truncate - preserve existing content
-        .create(true) // Create if doesn't exist
+        .truncate(false)
+        .create(true)
         .open(local_path)
         .await
-        .context("Failed to open file for writing chunk")?;
+        .context(format!(
+            "Failed to open file {:?} for writing chunk at position {}",
+            local_path, range.start
+        ))?;
 
-    file.seek(SeekFrom::Start(range.start)).await?;
+    file.seek(SeekFrom::Start(range.start))
+        .await
+        .context(format!(
+            "Failed to seek to position {} in {:?}",
+            range.start, local_path
+        ))?;
 
-    file.write_all(&content).await?;
+    file.write_all(&content).await.context(format!(
+        "Failed to write {} bytes at position {} to {:?}",
+        content.len(),
+        range.start,
+        local_path
+    ))?;
+
+    // Flush only for the last max_concurrency chunks to ensure data is written to disk
+    if should_flush {
+        file.flush().await.context(format!(
+            "Failed to flush chunk data at position {} to {:?}",
+            range.start, local_path
+        ))?;
+    }
 
     Ok(content.len())
 }
