@@ -1,7 +1,6 @@
 """leightweight benchmarking script for user-style continuous latency testing"""
 
 import asyncio
-import time
 import random
 
 from baseten_performance_client import PerformanceClient
@@ -25,7 +24,7 @@ async def benchmark_every(
         try:
             result = await client.async_classify(
                 inputs=[
-                    "Hello " # "Hello " is one token if concatinated with more text
+                    "Hello "  # "Hello " is one token if concatinated with more text
                     * random.randint(tokens_per_sentence[0], tokens_per_sentence[1])
                 ]
                 * sentences_per_request,
@@ -43,13 +42,13 @@ async def benchmark_every(
             return [total_time]
         except Exception as e:
             print(f"Error in task: {e}")
-            return [(time.time() - t)]
+            return [1000]
 
     async def simulate_single_user(launches_blocking=False):
         """user may launch tasks with concurrency=1 (blocking=True)
         or without any feedback at x inferval. (blocking=False)"""
         all_tasks = []
-        await asyncio.sleep(random.uniform(0, 1)) # Stagger start times slightly
+        await asyncio.sleep(random.uniform(0, 1))  # Stagger start times slightly
         for _ in range(n_requests):
             task = asyncio.create_task(kick_off_task())
             if launches_blocking:
@@ -69,6 +68,7 @@ async def benchmark_every(
                 print(f"Error in task completion: {e}")
 
         return all_times
+
     await kick_off_task()  # Warm-up call to avoid initial latency spikes
     user_times = await asyncio.gather(
         *[simulate_single_user(launches_blocking=False) for _ in range(n_users)]
