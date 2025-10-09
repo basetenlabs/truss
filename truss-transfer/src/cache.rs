@@ -356,7 +356,9 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
             // Copy succeeded, now remove the incomplete file
             if let Err(remove_err) = fs::remove_file(&incomplete_cache_path).await {
                 // Log warning but don't fail - the cache file was successfully created
-                eprintln!("Warning: Failed to remove incomplete cache file {incomplete_cache_path:?}: {remove_err}");
+                warn!(
+                    "Failed to remove incomplete cache file {incomplete_cache_path:?} after copy: {remove_err}"
+                );
             }
         }
     }
