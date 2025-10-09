@@ -497,9 +497,9 @@ class TrussServer:
             timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config=log_config.make_log_config(log_level),
             ws_max_size=WS_MAX_MSG_SZ_BYTES,
+            loop="uvloop",
             **extra_kwargs,
         )
-        cfg.setup_event_loop()  # Call this so uvloop gets used
         server = uvicorn.Server(config=cfg)
         self._server = server
         asyncio.run(server.serve())
