@@ -42,7 +42,7 @@ async def benchmark_every(
             return [total_time]
         except Exception as e:
             print(f"Error in task: {e}")
-            return [1000]
+            return [float("inf")]
 
     async def simulate_single_user(launches_blocking=False):
         """user may launch tasks with concurrency=1 (blocking=True)
