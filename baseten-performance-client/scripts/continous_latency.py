@@ -1,4 +1,4 @@
-"""leightweight benchmarking script for user-style continuous latency testing"""
+"""lightweight benchmarking script for user-style continuous latency testing"""
 
 import asyncio
 import random
