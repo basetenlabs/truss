@@ -1,8 +1,10 @@
 // copied from https://github.com/huggingface/hf_transfer/blob/main/src/lib.rs Apache License
 // Do not modify.
 
+use anyhow::{anyhow, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
+use log::warn;
 use rand::{rng, Rng};
 use reqwest::header::{HeaderMap, HeaderValue, ToStrError, AUTHORIZATION, CONTENT_RANGE, RANGE};
 use reqwest::Url;
@@ -15,8 +17,6 @@ use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
-use log::{warn};
-use anyhow::{anyhow, Result};
 
 const BASE_WAIT_TIME: usize = 300;
 const MAX_WAIT_TIME: usize = 10_000;

@@ -139,7 +139,7 @@ pub async fn download_http_to_path_fast(
     let auth_token = if is_hf_url {
         get_hf_secret_from_file(runtime_secret_name)
     } else {
-        info!("no hf token, since using {url}");
+        info!("no hf token, since using {sanitized_url}");
         None
     };
 
