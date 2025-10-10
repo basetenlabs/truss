@@ -15,7 +15,7 @@ use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
-
+use log::{warn};
 use anyhow::{anyhow, Result};
 
 const BASE_WAIT_TIME: usize = 300;
@@ -67,7 +67,49 @@ pub async fn download_async(
         .header(RANGE, "bytes=0-0")
         .send()
         .await
-        .map_err(|err| anyhow!("Error while downloading: {err}"))?
+        .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+
+    // Check if range request failed with 416 - fallback to regular download
+    // typically for 0 byte files.
+    if response.status() != 200 {
+        warn!("Range requests not supported, falling back to regular download");
+
+        // just download to file, with little as code as possible
+        let response = client
+            .get(&url)
+            .headers(headers.clone())
+            .send()
+            .await
+            .map_err(|err| anyhow!("Error while downloading: {err}"))?
+            .error_for_status()
+            .map_err(|err| anyhow!(err.to_string()))?;
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(&filename)
+            .await
+            .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| anyhow!("Error downloading: {err}"))?;
+
+        file.write_all(&bytes)
+            .await
+            .map_err(|err| anyhow!("Error writing: {err}"))?;
+
+        if let Some(ref callback) = callback {
+            callback(bytes.len());
+        }
+
+        return Ok(());
+    }
+
+    // Continue with original range-based download logic
+    let response = response
         .error_for_status()
         .map_err(|err| anyhow!(err.to_string()))?;
 
@@ -105,7 +147,6 @@ pub async fn download_async(
         .ok_or(anyhow!("Error while downloading: No size was detected"))?
         .parse()
         .map_err(|err| anyhow!("Error while downloading: {err}"))?;
-
     let mut handles = FuturesUnordered::new();
     let semaphore = Arc::new(Semaphore::new(max_files));
     let parallel_failures_semaphore = Arc::new(Semaphore::new(parallel_failures));
