@@ -708,6 +708,7 @@ def test_editable_external_pkg(test_data_path, tmp_path):
     shutil.copytree(parent_dir, tmp_path / "test_editable_external_pkg_parent")
     return tmp_path / "test_editable_external_pkg"
 
+
 def _build_truss_fs(truss_dir: Path, tmp_path: Path) -> Path:
     truss_fs = tmp_path / "truss_fs"
     truss_fs.mkdir()

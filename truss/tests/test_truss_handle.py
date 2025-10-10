@@ -12,11 +12,11 @@ from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.base.truss_config import map_local_to_supported_python_version
-from truss.contexts.image_builder.util import TRUSS_BASE_IMAGE_VERSION_TAG
-from truss.local.local_config_handler import LocalConfigHandler
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
+from truss.contexts.image_builder.util import TRUSS_BASE_IMAGE_VERSION_TAG
+from truss.local.local_config_handler import LocalConfigHandler
 from truss.templates.control.control.helpers.custom_types import (
     Action,
     ModelCodePatch,
@@ -481,6 +481,7 @@ def test_build_commands(test_data_path):
     with ensure_kill_all():
         r1 = tr.docker_predict([1, 2], local_port=None)
         assert r1 == {"predictions": [1, 2]}
+
 
 def test_build_commands_in_run_block_order(test_data_path, tmp_path):
     truss_dir = test_data_path / "test_editable_external_pkg"
