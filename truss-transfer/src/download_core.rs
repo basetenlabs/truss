@@ -164,7 +164,7 @@ pub async fn download_http_to_path_fast(
         }
 
         // assure that the file got flushed, without asking each file to flush it
-        for i in (0..1000).rev() {
+        for i in (0..100).rev() {
             if check_metadata_size(path, size).await {
                 break;
             }
