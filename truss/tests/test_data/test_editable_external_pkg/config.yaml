@@ -1,0 +1,5 @@
+external_package_dirs:
+- ../test_editable_external_pkg_parent
+
+build_commands:
+- uv pip install --system -e /packages/local_pkg

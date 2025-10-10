@@ -700,6 +700,15 @@ def helpers():
     return Helpers()
 
 
+@pytest.fixture
+def test_editable_external_pkg(test_data_path, tmp_path):
+    truss_dir = test_data_path / "test_editable_external_pkg"
+    parent_dir = test_data_path / "test_editable_external_pkg_parent"
+    shutil.copytree(truss_dir, tmp_path / "test_editable_external_pkg")
+    shutil.copytree(parent_dir, tmp_path / "test_editable_external_pkg_parent")
+    return tmp_path / "test_editable_external_pkg"
+
+
 def _build_truss_fs(truss_dir: Path, tmp_path: Path) -> Path:
     truss_fs = tmp_path / "truss_fs"
     truss_fs.mkdir()
