@@ -72,7 +72,7 @@ pub async fn download_async(
     // Check if range request failed with 416 - fallback to regular download
     // typically for 0 byte files.
     if response.status() == 416 && check_file_size == 0 {
-        warn!(
+        info!(
             "Range requests to {} not supported, creating empty file (status: {})",
             response.url(),
             response.status()
