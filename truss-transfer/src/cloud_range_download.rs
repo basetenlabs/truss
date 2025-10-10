@@ -30,10 +30,10 @@ pub fn exponential_backoff(base_wait_time: usize, n: usize, max: usize) -> usize
 const RANGE_DOWNLOAD_CHUNK_MB: u64 = 8 * 1024 * 1024;
 
 /// Check if range downloads should be used based on file size and configuration
-pub fn should_use_cloud_range_download(file_size: u64) -> bool {
+pub fn should_use_cloud_range_download(_file_size: u64) -> bool {
     use crate::constants::TRUSS_TRANSFER_USE_RANGE_DOWNLOAD;
 
-    // Only use range downloads for files larger than 0 bytes
+    // Only use range downloads
     *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD
 }
 
