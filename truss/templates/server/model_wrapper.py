@@ -24,7 +24,6 @@ import starlette.requests
 import starlette.responses
 from anyio import Semaphore, to_thread
 from common import errors, tracing
-from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
 from fastapi import HTTPException, WebSocket
@@ -474,10 +473,6 @@ class ModelWrapper:
         secrets = SecretsResolver.get_secrets(self._config)
         lazy_data_resolver = LazyDataResolverV2(data_dir)
 
-        apply_patches(
-            self._config.get("apply_library_patches", True),
-            self._config["requirements"],
-        )
 
         extensions = _init_extensions(
             self._config, data_dir, secrets, lazy_data_resolver
