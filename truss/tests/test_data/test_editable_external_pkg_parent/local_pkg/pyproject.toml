@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "local-pkg"
+version = "0.0.1"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/local_pkg"]
+
+

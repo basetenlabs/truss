@@ -56,12 +56,6 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 {% endfor %} {#- endfor external_data_files #}
 {%- endif %} {#- endif external_data_files #}
 
-{%- if build_commands %}
-{% for command in build_commands %}
-RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{ secret }},target={{ path }}{%- endfor %} {{ command }}
-{% endfor %} {#- endfor build_commands #}
-{%- endif %} {#- endif build_commands #}
-
 {# Copy data before code for better caching #}
 {%- if data_dir_exists %}
 COPY --chown={{ default_owner }} ./{{ config.data_dir }} ${APP_HOME}/data
@@ -108,6 +102,12 @@ RUN chown -R {{ app_username }}:{{ app_username }} {% for dir in additional_chow
 USER {{ app_username }}
 {%- endif %} {#- endif non_root_user #}
 {%- endmacro -%}
+
+{%- if build_commands %}
+{% for command in build_commands %}
+RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{ secret }},target={{ path }}{%- endfor %} {{ command }}
+{% endfor %} {#- endfor build_commands #}
+{%- endif %} {#- endif build_commands #}
 
     {%- if config.docker_server %}
 RUN apt-get update -y && apt-get install -y --no-install-recommends \

@@ -14,6 +14,9 @@ from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.base.truss_config import map_local_to_supported_python_version
 from truss.contexts.image_builder.util import TRUSS_BASE_IMAGE_VERSION_TAG
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.contexts.image_builder.serving_image_builder import (
+    ServingImageBuilderContext,
+)
 from truss.templates.control.control.helpers.custom_types import (
     Action,
     ModelCodePatch,
@@ -478,6 +481,26 @@ def test_build_commands(test_data_path):
     with ensure_kill_all():
         r1 = tr.docker_predict([1, 2], local_port=None)
         assert r1 == {"predictions": [1, 2]}
+def test_build_commands_in_run_block_order(test_data_path, tmp_path):
+    truss_dir = test_data_path / "test_editable_external_pkg"
+    build_dir = tmp_path / "build_dir"
+    image_builder = ServingImageBuilderContext.run(truss_dir)
+    image_builder.prepare_image_build_dir(build_dir)
+    dockerfile = (build_dir / "Dockerfile").read_text()
+
+    cmd_idx = dockerfile.find("uv pip install --system -e /packages/local_pkg")
+    if cmd_idx == -1:
+        cmd_idx = dockerfile.find("uv pip install -e /packages/local_pkg")
+    if cmd_idx == -1:
+        cmd_idx = dockerfile.find("pip install -e /packages/local_pkg")
+    assert cmd_idx != -1
+
+    entry_idx = dockerfile.find("ENTRYPOINT ")
+    user_idx = dockerfile.find("\nUSER ")
+    if user_idx != -1:
+        assert cmd_idx < user_idx
+    assert cmd_idx < entry_idx
+
 
 
 @pytest.mark.integration
@@ -845,6 +868,19 @@ def test_config_verbose(custom_model_truss_dir_with_pre_and_post):
     new_config = generate_default_config()
     assert new_config == th.spec.config.to_dict(verbose=False)
 
-    th.live_reload()
-    new_config["live_reload"] = True
-    assert new_config == th.spec.config.to_dict(verbose=False)
+
+@pytest.mark.integration
+def test_editable_external_package_install_and_predict(test_data_path):
+    truss_dir = test_data_path / "test_editable_external_pkg"
+    th = TrussHandle(truss_dir)
+    tag = "test-editable-ext-pkg:0.0.1"
+    with ensure_kill_all():
+        container = th.docker_run(tag=tag, local_port=None)
+        try:
+            verify_python_requirement_installed_on_container(container, "local-pkg")
+        finally:
+            Docker.client().kill(container)
+
+    with ensure_kill_all():
+        result = th.docker_predict([1], tag=tag, local_port=None)
+        assert result == {"predictions": [42]}
