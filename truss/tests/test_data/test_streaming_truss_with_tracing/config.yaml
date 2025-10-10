@@ -1,4 +1,3 @@
-apply_library_patches: true
 base_image: null
 build:
   arguments: {}

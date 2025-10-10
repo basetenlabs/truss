@@ -272,6 +272,16 @@ resources:
     assert config_yaml.strip() == yaml.dump(config.to_dict(verbose=False)).strip()
 
 
+def test_apply_library_patches_is_ignored_with_warning(tmp_path, caplog):
+    config_path = tmp_path / "config.yaml"
+    yaml.safe_dump({"apply_library_patches": False}, open(config_path, "w"))
+    with caplog.at_level("WARNING"):
+        cfg = TrussConfig.from_yaml(config_path)
+        # Key should be dropped and not present in serialized output
+        dumped = cfg.to_dict(verbose=False)
+        assert "apply_library_patches" not in dumped
+
+
 def test_null_cache_internal_key():
     config_yaml_dict = {"cache_internal": None}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:

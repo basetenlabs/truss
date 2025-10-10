@@ -779,20 +779,17 @@ def test_system_package_changes_make_truss_unpatchable_modify(
         )
 
 
-def test_calc_config_patches_toggle_apply_library_patches(custom_model_truss_dir: Path):
-    def config_op(config: TrussConfig):
-        config.apply_library_patches = False
+def test_removed_apply_library_patches_key_has_no_effect(custom_model_truss_dir: Path):
+    config_path = custom_model_truss_dir / "config.yaml"
+    config_yaml = yaml.safe_load(config_path.open())
+    config_yaml["apply_library_patches"] = False
+    with config_path.open("w") as f:
+        yaml.safe_dump(config_yaml, f)
 
-    patches = _apply_config_change_and_calc_patches(custom_model_truss_dir, config_op)
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.CONFIG,
-        body=ConfigPatch(
-            action=Action.UPDATE,
-            config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
-        ),
-    )
+    prev_sign = calc_truss_signature(custom_model_truss_dir)
+    # Rewriting config without any material changes should not produce patches
+    patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
+    assert patches == []
 
 
 def test_calc_config_patches_add_external_data(
