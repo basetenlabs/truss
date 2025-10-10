@@ -96,8 +96,8 @@ pub async fn download_async(
         return Ok(());
     } else if response.status() != 206 {
         error!(
-            "Range requests are not supported (status: {})?",
-            response.status()
+            "Range requests are not supported (status: {}) for url?",
+            response.status(), url
         );
     }
 
