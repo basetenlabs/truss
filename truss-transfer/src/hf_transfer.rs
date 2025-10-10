@@ -71,41 +71,34 @@ pub async fn download_async(
 
     // Check if range request failed with 416 - fallback to regular download
     // typically for 0 byte files.
-    if response.status() == 416 || response.status() == 200 {
-        warn!("Range requests to {} not supported, falling back to regular download (status: {})", response.url(), response.status());
+    if response.status() == 416 && check_file_size == 0 {
+        warn!(
+            "Range requests to {} not supported, creating empty file (status: {})",
+            response.url(),
+            response.status()
+        );
 
-        // just download to file, with little as code as possible
-        let response = client
-            .get(&url)
-            .headers(headers.clone())
-            .send()
-            .await
-            .map_err(|err| anyhow!("Error while downloading: {err}"))?
-            .error_for_status()
-            .map_err(|err| anyhow!(err.to_string()))?;
-
+        // writing a empty file.
         let mut file = OpenOptions::new()
             .write(true)
-            .truncate(true)
             .create(true)
             .open(&filename)
             .await
             .map_err(|err| anyhow!("Error while downloading: {err}"))?;
 
-        let bytes = response
-            .bytes()
+        file.set_len(0)
             .await
-            .map_err(|err| anyhow!("Error downloading: {err}"))?;
-
-        file.write_all(&bytes)
+            .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+        file.flush()
             .await
-            .map_err(|err| anyhow!("Error writing: {err}"))?;
-
-        if let Some(ref callback) = callback {
-            callback(bytes.len());
-        }
+            .map_err(|err| anyhow!("Error while downloading: {err}"))?;
 
         return Ok(());
+    } else if response.status() != 206 {
+        error!(
+            "Range requests are not supported (status: {})?",
+            response.status()
+        );
     }
 
     // Continue with original range-based download logic
