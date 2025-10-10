@@ -3312,7 +3312,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-version = "0.11.12rc2"
+version = "0.11.12rc4"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -3413,7 +3413,7 @@ requires-dist = [
     { name = "ruff", specifier = ">=0.4.8" },
     { name = "tenacity", specifier = ">=8.0.1" },
     { name = "tomlkit", specifier = ">=0.13.2" },
-    { name = "truss-transfer", specifier = ">=0.0.32,<0.0.36" },
+    { name = "truss-transfer", specifier = ">=0.0.32,<0.0.37" },
     { name = "watchfiles", specifier = ">=0.19.0,<0.20" },
 ]
 

@@ -4,7 +4,7 @@
 use anyhow::{anyhow, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
-use log::warn;
+use log::{warn};
 use rand::{rng, Rng};
 use reqwest::header::{HeaderMap, HeaderValue, ToStrError, AUTHORIZATION, CONTENT_RANGE, RANGE};
 use reqwest::Url;
@@ -69,12 +69,16 @@ pub async fn download_async(
         .await
         .map_err(|err| anyhow!("Error while downloading: {err}"))?;
 
-    // Check if range request failed with 416 - fallback to regular download
-    // typically for 0 byte files.
-    if response.status() != 200 {
-        warn!("Range requests not supported, falling back to regular download");
+    // Check if range request failed - fallback to regular download for any non-206 response
+    if response.status() != 206 {
+        warn!(
+            "Range requests not supported (status: {}), falling back to regular download for url {}",
+            response.status(),
+            // sanitize URL to avoid logging tokens
+            url.split('?').next().unwrap_or(&url)
+        );
 
-        // just download to file, with little as code as possible
+        // Simple fallback download without ranges
         let response = client
             .get(&url)
             .headers(headers.clone())
