@@ -4,7 +4,7 @@
 use anyhow::{anyhow, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
-use log::{info, error, warn};
+use log::{warn};
 use rand::{rng, Rng};
 use reqwest::header::{HeaderMap, HeaderValue, ToStrError, AUTHORIZATION, CONTENT_RANGE, RANGE};
 use reqwest::Url;
