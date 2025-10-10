@@ -4,7 +4,7 @@
 use anyhow::{anyhow, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
-use log::warn;
+use log::{info, error, warn};
 use rand::{rng, Rng};
 use reqwest::header::{HeaderMap, HeaderValue, ToStrError, AUTHORIZATION, CONTENT_RANGE, RANGE};
 use reqwest::Url;
@@ -69,36 +69,46 @@ pub async fn download_async(
         .await
         .map_err(|err| anyhow!("Error while downloading: {err}"))?;
 
-    // Check if range request failed with 416 - fallback to regular download
-    // typically for 0 byte files.
-    if response.status() == 416 && check_file_size == 0 {
-        info!(
-            "Range requests to {} not supported, creating empty file (status: {})",
-            response.url(),
-            response.status()
+    // Check if range request failed - fallback to regular download for any non-206 response
+    if response.status() != 206 {
+        warn!(
+            "Range requests not supported (status: {}), falling back to regular download for url: {}",
+            response.status(),
+            url
         );
 
-        // writing a empty file.
+        // Simple fallback download without ranges
+        let response = client
+            .get(&url)
+            .headers(headers.clone())
+            .send()
+            .await
+            .map_err(|err| anyhow!("Error while downloading: {err}"))?
+            .error_for_status()
+            .map_err(|err| anyhow!(err.to_string()))?;
+
         let mut file = OpenOptions::new()
             .write(true)
+            .truncate(true)
             .create(true)
             .open(&filename)
             .await
             .map_err(|err| anyhow!("Error while downloading: {err}"))?;
 
-        file.set_len(0)
+        let bytes = response
+            .bytes()
             .await
-            .map_err(|err| anyhow!("Error while downloading: {err}"))?;
-        file.flush()
+            .map_err(|err| anyhow!("Error downloading: {err}"))?;
+
+        file.write_all(&bytes)
             .await
-            .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+            .map_err(|err| anyhow!("Error writing: {err}"))?;
+
+        if let Some(ref callback) = callback {
+            callback(bytes.len());
+        }
 
         return Ok(());
-    } else if response.status() != 206 {
-        error!(
-            "Range requests are not supported (status: {}) for url?",
-            response.status(), url
-        );
     }
 
     // Continue with original range-based download logic
