@@ -72,9 +72,10 @@ pub async fn download_async(
     // Check if range request failed - fallback to regular download for any non-206 response
     if response.status() != 206 {
         warn!(
-            "Range requests not supported (status: {}), falling back to regular download for url: {}",
+            "Range requests not supported (status: {}), falling back to regular download for url {}",
             response.status(),
-            url
+            // sanitize URL to avoid logging tokens
+            url.split('?').next().unwrap_or(&url)
         );
 
         // Simple fallback download without ranges
