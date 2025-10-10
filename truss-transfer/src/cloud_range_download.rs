@@ -33,8 +33,8 @@ const RANGE_DOWNLOAD_CHUNK_MB: u64 = 8 * 1024 * 1024;
 pub fn should_use_cloud_range_download(file_size: u64) -> bool {
     use crate::constants::TRUSS_TRANSFER_USE_RANGE_DOWNLOAD;
 
-    // Only use range downloads for files larger than threshold and when enabled
-    *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD && file_size > RANGE_DOWNLOAD_CHUNK_MB
+    // Only use range downloads for files larger than 0 bytes
+    *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD && file_size > 0
 }
 
 /// High-concurrency range download using positioned writes for large files
