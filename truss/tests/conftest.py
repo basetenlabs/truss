@@ -700,6 +700,18 @@ def helpers():
     return Helpers()
 
 
+@contextlib.contextmanager
+def copy_truss_with_parent(src_truss_dir: Path, src_parent_dir: Path, tmp_path: Path):
+    work_truss_dir = tmp_path / src_truss_dir.name
+    work_parent_dir = tmp_path / src_parent_dir.name
+    shutil.copytree(src_truss_dir, work_truss_dir)
+    shutil.copytree(src_parent_dir, work_parent_dir)
+    try:
+        yield work_truss_dir
+    finally:
+        pass
+
+
 def _build_truss_fs(truss_dir: Path, tmp_path: Path) -> Path:
     truss_fs = tmp_path / "truss_fs"
     truss_fs.mkdir()

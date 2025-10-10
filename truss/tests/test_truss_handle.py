@@ -9,6 +9,8 @@ from python_on_whales.exceptions import DockerException
 from tenacity import RetryError
 
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
+from contextlib import contextmanager
+import shutil
 from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.base.truss_config import map_local_to_supported_python_version
@@ -874,9 +876,25 @@ def test_config_verbose(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def test_editable_external_package_install_and_predict(test_data_path):
-    truss_dir = test_data_path / "test_editable_external_pkg"
-    th = TrussHandle(truss_dir)
+def test_editable_external_package_install_and_predict(test_data_path, tmp_path):
+    src_truss_dir = test_data_path / "test_editable_external_pkg"
+    src_parent_dir = test_data_path / "test_editable_external_pkg_parent"
+    from truss.tests.conftest import copy_truss_with_parent
+
+    with copy_truss_with_parent(src_truss_dir, src_parent_dir, tmp_path) as work_truss_dir:
+        th = TrussHandle(work_truss_dir)
+        th.live_reload(False)
+        tag = "test-editable-ext-pkg:0.0.1"
+        with ensure_kill_all():
+            container = th.docker_run(tag=tag, local_port=None)
+            try:
+                verify_python_requirement_installed_on_container(container, "local-pkg")
+            finally:
+                Docker.client().kill(container)
+
+        with ensure_kill_all():
+            result = th.docker_predict([1], tag=tag, local_port=None)
+            assert result == {"predictions": [42]}
     # Ensure standard inference server flow for this test
     th.live_reload(False)
     tag = "test-editable-ext-pkg:0.0.1"
