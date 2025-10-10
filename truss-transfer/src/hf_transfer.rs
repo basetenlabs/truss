@@ -1,8 +1,10 @@
 // copied from https://github.com/huggingface/hf_transfer/blob/main/src/lib.rs Apache License
 // Do not modify.
 
+use anyhow::{anyhow, Result};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
+use log::{warn};
 use rand::{rng, Rng};
 use reqwest::header::{HeaderMap, HeaderValue, ToStrError, AUTHORIZATION, CONTENT_RANGE, RANGE};
 use reqwest::Url;
@@ -15,8 +17,6 @@ use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
-
-use anyhow::{anyhow, Result};
 
 const BASE_WAIT_TIME: usize = 300;
 const MAX_WAIT_TIME: usize = 10_000;
@@ -67,7 +67,53 @@ pub async fn download_async(
         .header(RANGE, "bytes=0-0")
         .send()
         .await
-        .map_err(|err| anyhow!("Error while downloading: {err}"))?
+        .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+
+    // Check if range request failed - fallback to regular download for any non-206 response
+    if response.status() != 206 {
+        warn!(
+            "Range requests not supported (status: {}), falling back to regular download for url {}",
+            response.status(),
+            // sanitize URL to avoid logging tokens
+            url.split('?').next().unwrap_or(&url)
+        );
+
+        // Simple fallback download without ranges
+        let response = client
+            .get(&url)
+            .headers(headers.clone())
+            .send()
+            .await
+            .map_err(|err| anyhow!("Error while downloading: {err}"))?
+            .error_for_status()
+            .map_err(|err| anyhow!(err.to_string()))?;
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(&filename)
+            .await
+            .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| anyhow!("Error downloading: {err}"))?;
+
+        file.write_all(&bytes)
+            .await
+            .map_err(|err| anyhow!("Error writing: {err}"))?;
+
+        if let Some(ref callback) = callback {
+            callback(bytes.len());
+        }
+
+        return Ok(());
+    }
+
+    // Continue with original range-based download logic
+    let response = response
         .error_for_status()
         .map_err(|err| anyhow!(err.to_string()))?;
 
@@ -105,7 +151,6 @@ pub async fn download_async(
         .ok_or(anyhow!("Error while downloading: No size was detected"))?
         .parse()
         .map_err(|err| anyhow!("Error while downloading: {err}"))?;
-
     let mut handles = FuturesUnordered::new();
     let semaphore = Arc::new(Semaphore::new(max_files));
     let parallel_failures_semaphore = Arc::new(Semaphore::new(parallel_failures));

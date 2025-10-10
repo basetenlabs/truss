@@ -33,8 +33,8 @@ const RANGE_DOWNLOAD_CHUNK_MB: u64 = 8 * 1024 * 1024;
 pub fn should_use_cloud_range_download(_file_size: u64) -> bool {
     use crate::constants::TRUSS_TRANSFER_USE_RANGE_DOWNLOAD;
 
-    // Only use range downloads for files larger than threshold and when enabled
-    *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD // && file_size > RANGE_DOWNLOAD_CHUNK_MB
+    // Only use range downloads
+    *TRUSS_TRANSFER_USE_RANGE_DOWNLOAD
 }
 
 /// High-concurrency range download using positioned writes for large files
@@ -55,6 +55,17 @@ pub async fn download_cloud_range_streaming(
         chunk_size / (1024 * 1024),
         max_concurrency
     );
+    if file_size == 0 {
+        // Create an empty file, as some object stores do not support 0-byte range requests
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(local_path)
+            .await
+            .context("Failed to create empty file")?;
+        return Ok(());
+    }
 
     let semaphore = Arc::new(Semaphore::new(max_concurrency));
     // todo: parallel failures could be improved
