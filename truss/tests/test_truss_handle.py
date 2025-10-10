@@ -481,6 +481,7 @@ def test_build_commands(test_data_path):
     with ensure_kill_all():
         r1 = tr.docker_predict([1, 2], local_port=None)
         assert r1 == {"predictions": [1, 2]}
+
 def test_build_commands_in_run_block_order(test_data_path, tmp_path):
     truss_dir = test_data_path / "test_editable_external_pkg"
     build_dir = tmp_path / "build_dir"
@@ -500,7 +501,6 @@ def test_build_commands_in_run_block_order(test_data_path, tmp_path):
     if user_idx != -1:
         assert cmd_idx < user_idx
     assert cmd_idx < entry_idx
-
 
 
 @pytest.mark.integration
@@ -868,11 +868,17 @@ def test_config_verbose(custom_model_truss_dir_with_pre_and_post):
     new_config = generate_default_config()
     assert new_config == th.spec.config.to_dict(verbose=False)
 
+    th.live_reload()
+    new_config["live_reload"] = True
+    assert new_config == th.spec.config.to_dict(verbose=False)
+
 
 @pytest.mark.integration
 def test_editable_external_package_install_and_predict(test_data_path):
     truss_dir = test_data_path / "test_editable_external_pkg"
     th = TrussHandle(truss_dir)
+    # Ensure standard inference server flow for this test
+    th.live_reload(False)
     tag = "test-editable-ext-pkg:0.0.1"
     with ensure_kill_all():
         container = th.docker_run(tag=tag, local_port=None)

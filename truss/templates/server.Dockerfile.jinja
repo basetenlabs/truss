@@ -95,6 +95,12 @@ COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/mod
 {% endblock %} {#- endblock app_copy #}
 
 {% block run %}
+{%- if build_commands %}
+{% for command in build_commands %}
+RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{ secret }},target={{ path }}{%- endfor %} {{ command }}
+{% endfor %} {#- endfor build_commands #}
+{%- endif %} {#- endif build_commands #}
+
 {# Macro to change ownership of directories and switch to regular user #}
 {%- macro chown_and_switch_to_regular_user_if_enabled(additional_chown_dirs=[]) -%}
 {%- if non_root_user %}
@@ -102,12 +108,6 @@ RUN chown -R {{ app_username }}:{{ app_username }} {% for dir in additional_chow
 USER {{ app_username }}
 {%- endif %} {#- endif non_root_user #}
 {%- endmacro -%}
-
-{%- if build_commands %}
-{% for command in build_commands %}
-RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{ secret }},target={{ path }}{%- endfor %} {{ command }}
-{% endfor %} {#- endfor build_commands #}
-{%- endif %} {#- endif build_commands #}
 
     {%- if config.docker_server %}
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
