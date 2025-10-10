@@ -153,6 +153,7 @@ def sort_manifest(manifest):
     return sorted(manifest, key=lambda x: x["uid"])
 
 
+@pytest.mark.skip(reason="Skipping GCS download test in CI")
 def test_dolly():
     # fix the below models
     models = [
@@ -216,6 +217,7 @@ def test_dolly():
     return result
 
 
+@pytest.mark.skip(reason="Skipping GCS download test in CI")
 def test_dolly_with_download():
     manifest = test_dolly()
     Path("/static-bptr").mkdir(parents=True, exist_ok=True)
