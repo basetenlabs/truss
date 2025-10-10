@@ -71,8 +71,8 @@ pub async fn download_async(
 
     // Check if range request failed with 416 - fallback to regular download
     // typically for 0 byte files.
-    if response.status() != 200 {
-        warn!("Range requests not supported, falling back to regular download");
+    if response.status() == 416 || response.status() == 200 {
+        warn!("Range requests to {} not supported, falling back to regular download (status: {})", response.url(), response.status());
 
         // just download to file, with little as code as possible
         let response = client
