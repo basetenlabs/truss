@@ -68,6 +68,7 @@ class TrussTRTLLMQuantizationType(str, Enum):
     FP8_KV = "fp8_kv"
     FP4 = "fp4"
     FP4_KV = "fp4_kv"
+    FP4_MLP_ONLY = "fp4_mlp_only"
 
 
 class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
@@ -713,7 +714,8 @@ def trt_llm_common_validation(config: "TrussConfig"):
             "accelerators or newer (CUDA_COMPUTE>=89)"
         )
     elif trt_llm_config.build.quantization_type in [
-        TrussTRTLLMQuantizationType.FP4
+        TrussTRTLLMQuantizationType.FP4,
+        TrussTRTLLMQuantizationType.FP4_MLP_ONLY
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.H100,
         truss_config.Accelerator.L4,
