@@ -185,6 +185,9 @@ class LazyDataResolverV2:
 
         """
         start_lock = time.time()
+        publish_stats = (
+            log_stats and not self._is_collected_by_user
+        )  # only publish results once per resolver
         self._is_collected_by_user = issue_collect or self._is_collected_by_user
         with self._lock:
             result = self._fetch()
@@ -199,8 +202,9 @@ class LazyDataResolverV2:
                 stats = TrussTransferStats.from_json_file(
                     Path("/tmp/truss_transfer_stats.json")
                 )
-                if stats is None:
+                if stats is None and publish_stats:
                     self.logger.info(f"model_cache: {stats}")
+                    # TODO: add the stats to prometheus or a system core-product consumes.
                 self.logger.info(
                     f"model_cache: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
                 )
