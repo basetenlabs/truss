@@ -199,6 +199,8 @@ class LazyDataResolverV2:
                 # TODO: instument the stats, which are written to /tmp/truss_transfer_stats.json
                 # also add fetch time, and blocking time
                 # TrussTransferStats
+                fetch_t = time.time() - self._start_time
+                start_lock_t = time.time() - start_lock
                 stats = TrussTransferStats.from_json_file(
                     Path("/tmp/truss_transfer_stats.json")
                 )
@@ -206,7 +208,7 @@ class LazyDataResolverV2:
                     self.logger.info(f"model_cache: {stats}")
                     # TODO: add the stats to prometheus or a system core-product consumes.
                 self.logger.info(
-                    f"model_cache: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
+                    f"model_cache: Fetch took {fetch_t:.2f} seconds, of which {start_lock_t:.2f} seconds were spent blocking."
                 )
             return result
 
