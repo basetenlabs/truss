@@ -1,10 +1,66 @@
 import atexit
+import json
 import logging
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock, Thread
 from typing import Optional, Union
+
+
+@dataclass(frozen=True)
+class FileDownloadMetric:
+    file_name: str
+    file_size_bytes: int
+    download_time_secs: float
+    download_speed_mb_s: float
+
+
+@dataclass(frozen=True)
+class TrussTransferStats:
+    total_manifest_size_bytes: int
+    total_download_time_secs: float
+    total_aggregated_mb_s: Optional[float]
+    file_downloads: list[FileDownloadMetric]
+    b10fs_read_speed_mbps: Optional[float]
+    b10fs_decision_to_use: bool
+    b10fs_enabled: bool
+    b10fs_hot_starts_files: int
+    b10fs_hot_starts_bytes: int
+    b10fs_cold_starts_files: int
+    b10fs_cold_starts_bytes: int
+    success: bool
+    timestamp: int
+
+    @classmethod
+    def from_json_file(cls, path: Path) -> Optional["TrussTransferStats"]:
+        if not path.exists():
+            return None
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            file_downloads = [
+                FileDownloadMetric(**fd) for fd in data.get("file_downloads", [])
+            ]
+            return cls(
+                total_manifest_size_bytes=data["total_manifest_size_bytes"],
+                total_download_time_secs=data["total_download_time_secs"],
+                total_aggregated_mb_s=data.get("total_aggregated_mb_s"),
+                file_downloads=file_downloads,
+                b10fs_read_speed_mbps=data.get("b10fs_read_speed_mbps"),
+                b10fs_decision_to_use=data["b10fs_decision_to_use"],
+                b10fs_enabled=data["b10fs_enabled"],
+                b10fs_hot_starts_files=data["b10fs_hot_starts_files"],
+                b10fs_hot_starts_bytes=data["b10fs_hot_starts_bytes"],
+                b10fs_cold_starts_files=data["b10fs_cold_starts_files"],
+                b10fs_cold_starts_bytes=data["b10fs_cold_starts_bytes"],
+                success=data["success"],
+                timestamp=data["timestamp"],
+            )
+        except Exception:
+            return None
+
 
 LAZY_DATA_RESOLVER_PATH = [
     # synced with pub static LAZY_DATA_RESOLVER_PATHS: &[&str]
@@ -137,6 +193,14 @@ class LazyDataResolverV2:
                     f"Error occurred while fetching data: {result}"
                 ) from result
             if log_stats and result:
+                # TODO: instument the stats, which are written to /tmp/truss_transfer_stats.json
+                # also add fetch time, and blocking time
+                # TrussTransferStats
+                stats = TrussTransferStats.from_json_file(
+                    Path("/tmp/truss_transfer_stats.json")
+                )
+                if stats is None:
+                    self.logger.info(f"model_cache: {stats}")
                 self.logger.info(
                     f"model_cache: Fetch took {time.time() - self._start_time:.2f} seconds, of which {time.time() - start_lock:.2f} seconds were spent blocking."
                 )
