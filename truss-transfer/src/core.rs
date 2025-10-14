@@ -92,10 +92,7 @@ async fn lazy_data_resolve_async(
     .await;
 
     // Finalize and flush metrics (after metrics_sender is dropped)
-    _ = tokio::time::timeout(
-        std::time::Duration::from_secs(1),
-        metrics_guard.finalize()    
-    ).await;
+    _ = tokio::time::timeout(std::time::Duration::from_secs(1), metrics_guard.finalize()).await;
 
     result
 }
