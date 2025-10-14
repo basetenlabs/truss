@@ -1,16 +1,16 @@
 import atexit
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-import os
 from threading import Lock, Thread
 from typing import Optional, Union
 
 try:
-    from prometheus_client import Counter, Histogram, Gauge
+    from prometheus_client import Counter, Gauge, Histogram
 
     PROMETHEUS_AVAILABLE = True
 except ImportError:
