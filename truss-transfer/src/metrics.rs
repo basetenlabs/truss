@@ -39,7 +39,7 @@ pub struct AggregatedMetrics {
     pub b10fs_cold_starts_files: usize,
     pub b10fs_cold_starts_bytes: u64,
     pub success: bool,
-    pub timestamp: String,
+    pub timestamp: u64,
 }
 
 impl Default for AggregatedMetrics {
@@ -57,7 +57,7 @@ impl Default for AggregatedMetrics {
             b10fs_cold_starts_files: 0,
             b10fs_cold_starts_bytes: 0,
             success: false,
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: chrono::Utc::now().timestamp() as u64,
         }
     }
 }
@@ -136,7 +136,7 @@ impl MetricsCollector {
 
         // Set total time
         metrics.total_download_time_secs = elapsed.as_secs_f64();
-        metrics.timestamp = chrono::Utc::now().to_rfc3339();
+        metrics.timestamp = chrono::Utc::now().timestamp() as u64;
         // Calculate total aggregated Mbps if there are file downloads
         if !metrics.file_downloads.is_empty() && metrics.total_download_time_secs > 0.0 {
             let total_bytes: u64 = metrics
