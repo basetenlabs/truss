@@ -5,8 +5,17 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+import os
 from threading import Lock, Thread
 from typing import Optional, Union
+
+try:
+    from prometheus_client import Counter, Histogram, Gauge
+
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+METRICS_REGISTERED = False
 
 
 @dataclass(frozen=True)
@@ -60,6 +69,122 @@ class TrussTransferStats:
             )
         except Exception:
             return None
+
+    @staticmethod
+    def publish_to_prometheus(self: "TrussTransferStats"):
+        """Publish transfer stats to Prometheus metrics. Only runs once."""
+        if not PROMETHEUS_AVAILABLE:
+            return
+        global METRICS_REGISTERED
+        if not METRICS_REGISTERED:
+            # Ensure metrics are only registered once
+            METRICS_REGISTERED = True
+
+        # Define metrics with model_cache label
+        manifest_size_gauge = Gauge(
+            "model_cache_manifest_size_bytes", "Total manifest size in bytes"
+        )
+        download_time_histogram = Histogram(
+            "model_cache_download_time_seconds",
+            "Total download time in seconds",
+            buckets=[
+                2**i
+                for i in range(-3, 11)  # = [0.125, .. 2048] seconds
+            ],
+        )
+        download_speed_gauge = Gauge(
+            "model_cache_download_speed_mbps", "Aggregated download speed in MB/s"
+        )
+
+        # File download metrics (aggregated)
+        files_downloaded_counter = Counter(
+            "model_cache_files_downloaded_total", "Total number of files downloaded"
+        )
+        total_file_size_counter = Counter(
+            "model_cache_file_size_bytes_total",
+            "Total size of downloaded files in bytes",
+        )
+        file_download_time_histogram = Histogram(
+            "model_cache_file_download_time_seconds",
+            "File download time distribution",
+            buckets=[
+                2**i
+                for i in range(-3, 11)  # = [0.125, .. 2048] seconds
+            ],
+        )
+        file_download_speed_histogram = Histogram(
+            "model_cache_file_download_speed_mbps",
+            "File download speed distribution",
+            buckets=[
+                2**i
+                for i in range(-1, 12)  # = [0.5, .. 4096] MB/s
+            ],
+        )
+
+        # B10FS specific metrics
+        b10fs_enabled_gauge = Gauge(
+            "model_cache_b10fs_enabled", "Whether B10FS is enabled"
+        )
+        b10fs_decision_gauge = Gauge(
+            "model_cache_b10fs_decision_to_use", "Whether B10FS was chosen for use"
+        )
+        b10fs_read_speed_gauge = Gauge(
+            "model_cache_b10fs_read_speed_mbps", "B10FS read speed in Mbps"
+        )
+        b10fs_hot_files_gauge = Gauge(
+            "model_cache_b10fs_hot_starts_files", "Number of hot start files"
+        )
+        b10fs_hot_bytes_gauge = Gauge(
+            "model_cache_b10fs_hot_starts_bytes", "Number of hot start bytes"
+        )
+        b10fs_cold_files_gauge = Gauge(
+            "model_cache_b10fs_cold_starts_files", "Number of cold start files"
+        )
+        b10fs_cold_bytes_gauge = Gauge(
+            "model_cache_b10fs_cold_starts_bytes", "Number of cold start bytes"
+        )
+
+        # Transfer success metric
+        transfer_success_counter = Counter(
+            "model_cache_transfer_success_total",
+            "Total successful transfers",
+            ["success"],
+        )
+
+        # Set main transfer metrics
+        manifest_size_gauge.set(self.total_manifest_size_bytes)
+        download_time_histogram.observe(self.total_download_time_secs)
+
+        if self.total_aggregated_mb_s is not None:
+            download_speed_gauge.set(self.total_aggregated_mb_s)
+
+        # Aggregate file download metrics
+        total_files = len(self.file_downloads)
+        total_file_bytes = sum(fd.file_size_bytes for fd in self.file_downloads)
+
+        files_downloaded_counter.inc(total_files)
+        total_file_size_counter.inc(total_file_bytes)
+
+        # Record individual file metrics for distribution
+        for fd in self.file_downloads:
+            if fd.file_size_bytes > 1 * 1024 * 1024:  # Only log files larger than 1MB
+                file_download_time_histogram.observe(fd.download_time_secs)
+                file_download_speed_histogram.observe(fd.download_speed_mb_s)
+
+        # B10FS metrics
+        b10fs_enabled_gauge.set(1 if self.b10fs_enabled else 0)
+        b10fs_decision_gauge.set(1 if self.b10fs_decision_to_use else 0)
+
+        if self.b10fs_read_speed_mbps is not None:
+            b10fs_read_speed_gauge.set(self.b10fs_read_speed_mbps)
+
+        b10fs_hot_files_gauge.set(self.b10fs_hot_starts_files)
+        b10fs_hot_bytes_gauge.set(self.b10fs_hot_starts_bytes)
+        b10fs_cold_files_gauge.set(self.b10fs_cold_starts_files)
+        b10fs_cold_bytes_gauge.set(self.b10fs_cold_starts_bytes)
+
+        # Success metric
+        transfer_success_counter.labels(success=str(self.success)).inc()
 
 
 LAZY_DATA_RESOLVER_PATH = [
@@ -204,9 +329,13 @@ class LazyDataResolverV2:
                 stats = TrussTransferStats.from_json_file(
                     Path("/tmp/truss_transfer_stats.json")
                 )
-                if stats is None and publish_stats:
+                if stats and publish_stats:
                     self.logger.info(f"model_cache: {stats}")
-                    # TODO: add the stats to prometheus or a system core-product consumes.
+                    # Publish stats to Prometheus
+                    if (
+                        os.getenv("TRUSS_MODEL_CACHE_PROMETHEUS", "0") == "1"
+                    ):  # Hide behind feature flag for core-product to enabled.
+                        stats.publish_to_prometheus()
                 self.logger.info(
                     f"model_cache: Fetch took {fetch_t:.2f} seconds, of which {start_lock_t:.2f} seconds were spent blocking."
                 )
