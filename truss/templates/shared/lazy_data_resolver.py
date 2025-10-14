@@ -77,12 +77,13 @@ class TrussTransferStats:
         global METRICS_REGISTERED
 
         if METRICS_REGISTERED:
-            logging.info("Model cache metrics already registered, skipping.") # this should never happen
+            logging.info(
+                "Model cache metrics already registered, skipping."
+            )  # this should never happen
             return
         else:
             # Ensure metrics are only registered once
             METRICS_REGISTERED = True
-
 
         # Define metrics with model_cache prefix
         manifest_size_gauge = Gauge(
