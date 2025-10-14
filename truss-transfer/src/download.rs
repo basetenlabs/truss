@@ -8,9 +8,11 @@ use crate::download_core::{
     check_metadata_size, download_azure_to_path, download_gcs_to_path, download_http_to_path_fast,
     download_s3_to_path,
 };
+use crate::metrics::{FileDownloadMetric, MetricEvent};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::fs;
-use tokio::sync::Semaphore;
+use tokio::sync::{mpsc, Semaphore};
 
 /// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 /// Now handles both HTTP and GCS downloads with unified caching logic.
@@ -22,6 +24,7 @@ pub async fn download_file_with_cache(
     write_to_b10cache: bool,
     num_workers: usize,
     semaphore_range_dw: Arc<Semaphore>,
+    metrics_sender: mpsc::UnboundedSender<MetricEvent>,
 ) -> Result<String> {
     let destination = download_dir.join(file_name); // if file_name is absolute, discards download_dir
     let cache_filepath = Path::new(&*CACHE_DIR).join(&pointer.hash);
@@ -61,6 +64,8 @@ pub async fn download_file_with_cache(
                     "Symlink created successfully. Skipping download for {}.",
                     file_name
                 );
+                // Record b10fs hot start (cache hit)
+                let _ = metrics_sender.send(MetricEvent::B10fsUsage { hot_start: true, size: pointer.size });
                 return Ok(file_name.to_string());
             }
         } else if !cache_filepath.exists() {
@@ -77,6 +82,7 @@ pub async fn download_file_with_cache(
     }
 
     // Download the file to the local path based on resolution type
+    let actual_download_start = Instant::now();
     match &pointer.resolution {
         crate::types::Resolution::Http(http_resolution) => {
             download_http_to_path_fast(
@@ -122,7 +128,28 @@ pub async fn download_file_with_cache(
         }
     }
 
+    let download_elapsed = actual_download_start.elapsed();
     let is_correct_size = check_metadata_size(&destination, pointer.size).await;
+
+    // Record download metrics (cold start - had to download)
+    let download_time_secs = download_elapsed.as_secs_f64();
+    let download_speed_mbps = if download_time_secs > 0.0 {
+        (pointer.size as f64 / (1024.0 * 1024.0)) / download_time_secs
+    } else {
+        0.0
+    };
+
+    let _ = metrics_sender.send(MetricEvent::FileDownload(FileDownloadMetric {
+        file_name: file_name.to_string(),
+        file_size_bytes: pointer.size,
+        download_time_secs,
+        download_speed_mbps,
+    }));
+
+    // Record b10fs cold start (cache miss - had to download)
+    if read_from_b10cache {
+        let _ = metrics_sender.send(MetricEvent::B10fsUsage { hot_start: false , size: pointer.size });
+    }
 
     // After the file is locally downloaded, optionally move it to b10cache.
     if write_to_b10cache && is_correct_size {
