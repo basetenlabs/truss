@@ -12,10 +12,8 @@ pub struct FileDownloadMetric {
     pub file_name: String,
     pub file_size_bytes: u64,
     pub download_time_secs: f64,
-    pub download_speed_mbps: f64,
+    pub download_speed_mb_s: f64,
 }
-
-
 
 #[derive(Debug, Clone)]
 pub enum MetricEvent {
@@ -31,6 +29,7 @@ pub enum MetricEvent {
 pub struct AggregatedMetrics {
     pub total_manifest_size_bytes: u64,
     pub total_download_time_secs: f64,
+    pub total_aggregated_mb_s: Option<f64>,
     pub file_downloads: Vec<FileDownloadMetric>,
     pub b10fs_read_speed_mbps: Option<f64>,
     pub b10fs_decision_to_use: bool,
@@ -48,6 +47,7 @@ impl Default for AggregatedMetrics {
         Self {
             total_manifest_size_bytes: 0,
             total_download_time_secs: 0.0,
+            total_aggregated_mb_s: None,
             file_downloads: Vec::new(),
             b10fs_read_speed_mbps: None,
             b10fs_enabled: *crate::constants::BASETEN_FS_ENABLED,
@@ -73,9 +73,7 @@ impl MetricsCollector {
         let (tx, rx) = mpsc::unbounded_channel();
         let start_time = Instant::now();
 
-        let aggregator_handle = tokio::spawn(async move {
-            Self::aggregator_task(rx).await
-        });
+        let aggregator_handle = tokio::spawn(async move { Self::aggregator_task(rx).await });
 
         Self {
             tx: Some(tx),
@@ -139,6 +137,18 @@ impl MetricsCollector {
         // Set total time
         metrics.total_download_time_secs = elapsed.as_secs_f64();
         metrics.timestamp = chrono::Utc::now().to_rfc3339();
+        // Calculate total aggregated Mbps if there are file downloads
+        if !metrics.file_downloads.is_empty() && metrics.total_download_time_secs > 0.0 {
+            let total_bytes: u64 = metrics
+                .file_downloads
+                .iter()
+                .map(|f| f.file_size_bytes)
+                .sum();
+            metrics.total_aggregated_mb_s =
+                Some((total_bytes as f64) / (metrics.total_download_time_secs * 1_000_000.0));
+        } else {
+            metrics.total_aggregated_mb_s = None;
+        }
 
         // Write to file
         let json = serde_json::to_string_pretty(&metrics)?;
@@ -161,7 +171,9 @@ impl Drop for MetricsCollector {
         // We can't run async code in Drop, so we spawn a blocking task
         // Note: This is a best-effort attempt. For proper cleanup, call finalize() explicitly.
         if self.aggregator_handle.is_some() {
-            error!("MetricsCollector dropped without calling finalize(). Metrics may be incomplete.");
+            error!(
+                "MetricsCollector dropped without calling finalize(). Metrics may be incomplete."
+            );
         }
     }
 }
@@ -189,8 +201,6 @@ impl MetricsGuard {
         }
         Ok(())
     }
-
-
 }
 
 impl Drop for MetricsGuard {

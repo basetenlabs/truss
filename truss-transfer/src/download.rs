@@ -65,7 +65,10 @@ pub async fn download_file_with_cache(
                     file_name
                 );
                 // Record b10fs hot start (cache hit)
-                let _ = metrics_sender.send(MetricEvent::B10fsUsage { hot_start: true, size: pointer.size });
+                let _ = metrics_sender.send(MetricEvent::B10fsUsage {
+                    hot_start: true,
+                    size: pointer.size,
+                });
                 return Ok(file_name.to_string());
             }
         } else if !cache_filepath.exists() {
@@ -133,7 +136,7 @@ pub async fn download_file_with_cache(
 
     // Record download metrics (cold start - had to download)
     let download_time_secs = download_elapsed.as_secs_f64();
-    let download_speed_mbps = if download_time_secs > 0.0 {
+    let download_speed_mb_s = if download_time_secs > 0.0 {
         (pointer.size as f64 / (1024.0 * 1024.0)) / download_time_secs
     } else {
         0.0
@@ -143,12 +146,15 @@ pub async fn download_file_with_cache(
         file_name: file_name.to_string(),
         file_size_bytes: pointer.size,
         download_time_secs,
-        download_speed_mbps,
+        download_speed_mb_s,
     }));
 
     // Record b10fs cold start (cache miss - had to download)
     if read_from_b10cache {
-        let _ = metrics_sender.send(MetricEvent::B10fsUsage { hot_start: false , size: pointer.size });
+        let _ = metrics_sender.send(MetricEvent::B10fsUsage {
+            hot_start: false,
+            size: pointer.size,
+        });
     }
 
     // After the file is locally downloaded, optionally move it to b10cache.

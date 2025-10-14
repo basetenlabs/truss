@@ -16,7 +16,7 @@ use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
 use crate::constants::*;
 use crate::download::download_file_with_cache;
-use crate::metrics::{MetricsGuard, MetricEvent};
+use crate::metrics::{MetricEvent, MetricsGuard};
 use crate::speed_checks::is_b10cache_fast_heuristic;
 use crate::types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution};
 
@@ -77,10 +77,19 @@ async fn lazy_data_resolve_async(
 
     // Initialize metrics collector
     let metrics_guard = MetricsGuard::new();
-    let metrics_sender = metrics_guard.sender().expect("Metrics sender should be available");
+    let metrics_sender = metrics_guard
+        .sender()
+        .expect("Metrics sender should be available");
 
     // Perform all operations - metrics_sender will be dropped at end of this function
-    let result = lazy_data_resolve_with_metrics(download_dir, num_workers, models, model_path, metrics_sender).await;
+    let result = lazy_data_resolve_with_metrics(
+        download_dir,
+        num_workers,
+        models,
+        model_path,
+        metrics_sender,
+    )
+    .await;
 
     // Finalize and flush metrics (after metrics_sender is dropped)
     metrics_guard.finalize().await?;
