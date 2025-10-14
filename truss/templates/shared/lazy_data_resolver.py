@@ -70,7 +70,6 @@ class TrussTransferStats:
         except Exception:
             return None
 
-    @staticmethod
     def publish_to_prometheus(self):
         """Publish transfer stats to Prometheus metrics. Only runs once."""
         if not PROMETHEUS_AVAILABLE:
