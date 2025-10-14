@@ -715,6 +715,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
         )
     elif trt_llm_config.build.quantization_type in [
         TrussTRTLLMQuantizationType.FP4,
+        TrussTRTLLMQuantizationType.FP4_KV,
         TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.H100,
