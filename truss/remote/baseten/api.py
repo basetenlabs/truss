@@ -165,6 +165,21 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["model_s3_upload_credentials"]
 
+    def chain_s3_upload_credentials(self):
+        query_string = """
+        {
+            chain_s3_upload_credentials {
+                s3_bucket
+                s3_key
+                aws_access_key_id
+                aws_secret_access_key
+                aws_session_token
+            }
+        }
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["chain_s3_upload_credentials"]
+
     def create_model_from_truss(
         self,
         model_name: str,

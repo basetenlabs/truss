@@ -31,11 +31,13 @@ from truss.remote.baseten.core import (
     get_model_and_versions,
     get_prod_version_from_versions,
     get_truss_watch_state,
+    upload_chain_artifact,
     upload_truss,
     validate_truss_config_against_backend,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
+from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import RemoteUser, TrussRemote
 from truss.truss_handle import build as truss_build
@@ -263,6 +265,7 @@ class BasetenRemote(TrussRemote):
         entrypoint_artifact: custom_types.ChainletArtifact,
         dependency_artifacts: List[custom_types.ChainletArtifact],
         truss_user_env: b10_types.TrussUserEnv,
+        chain_root: Optional[Path] = None,
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
@@ -299,6 +302,25 @@ class BasetenRemote(TrussRemote):
                     name=artifact.display_name, oracle=oracle_data
                 )
             )
+
+        # Upload raw chain artifact if chain_root is provided
+        raw_chain_s3_key = None
+        if chain_root is not None:
+            logging.info(f"Uploading raw chain artifact from {chain_root}")
+            # Create a tar file from the chain root directory
+            temp_file = create_tar_with_progress_bar(
+                source_dir=chain_root,
+                ignore_patterns=None,  # Use default ignore patterns
+                delete=True,
+                progress_bar=progress_bar,
+            )
+            # Upload the chain artifact to S3
+            raw_chain_s3_key = upload_chain_artifact(
+                api=self._api,
+                serialize_file=temp_file,
+                progress_bar=progress_bar,
+            )
+            logging.info(f"Successfully uploaded raw chain artifact to S3: {raw_chain_s3_key}")
 
         chain_deployment_handle = create_chain_atomic(
             api=self._api,

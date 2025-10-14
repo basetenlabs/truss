@@ -342,6 +342,30 @@ def upload_truss(
     return s3_key
 
 
+def upload_chain_artifact(
+    api: BasetenApi,
+    serialize_file: IO,
+    progress_bar: Optional[Type["progress.Progress"]],
+) -> str:
+    """
+    Upload a chain artifact to the Baseten remote.
+
+    Args:
+        api: BasetenApi instance
+        serialize_file: File-like object containing the serialized chain artifact
+
+    Returns:
+        The S3 key of the uploaded file
+    """
+    temp_credentials_s3_upload = api.chain_s3_upload_credentials()
+    s3_key = temp_credentials_s3_upload.pop("s3_key")
+    s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
+    multipart_upload_boto3(
+        serialize_file.name, s3_bucket, s3_key, temp_credentials_s3_upload, progress_bar
+    )
+    return s3_key
+
+
 def create_truss_service(
     api: BasetenApi,
     model_name: str,
