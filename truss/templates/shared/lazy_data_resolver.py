@@ -84,10 +84,11 @@ class TrussTransferStats:
             METRICS_REGISTERED = True
 
 
-        # Define metrics with model_cache label
+        # Define metrics with model_cache prefix
         manifest_size_gauge = Gauge(
             "model_cache_manifest_size_bytes", "Total manifest size in bytes"
         )
+        # histograms have intentially wide buckets to capture a variety of download times
         download_time_histogram = Histogram(
             "model_cache_download_time_seconds",
             "Total download time in seconds",
