@@ -1,7 +1,6 @@
 import atexit
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -93,10 +92,12 @@ class TrussTransferStats:
         download_time_histogram = Histogram(
             "model_cache_download_time_seconds",
             "Total download time in seconds",
-            buckets=[
+            buckets=[0]
+            + [
                 2**i
                 for i in range(-3, 11)  # = [0.125, .. 2048] seconds
-            ],
+            ]
+            + [float("inf")],
         )
         download_speed_gauge = Gauge(
             "model_cache_download_speed_mbps", "Aggregated download speed in MB/s"
@@ -113,18 +114,22 @@ class TrussTransferStats:
         file_download_time_histogram = Histogram(
             "model_cache_file_download_time_seconds",
             "File download time distribution",
-            buckets=[
+            buckets=[0]
+            + [
                 2**i
                 for i in range(-3, 11)  # = [0.125, .. 2048] seconds
-            ],
+            ]
+            + [float("inf")],
         )
         file_download_speed_histogram = Histogram(
             "model_cache_file_download_speed_mbps",
             "File download speed distribution",
-            buckets=[
+            buckets=[0]
+            + [
                 2**i
                 for i in range(-1, 12)  # = [0.5, .. 4096] MB/s
-            ],
+            ]
+            + [float("inf")],
         )
 
         # B10FS specific metrics
@@ -338,10 +343,7 @@ class LazyDataResolverV2:
                 if stats and publish_stats:
                     self.logger.info(f"model_cache: {stats}")
                     # Publish stats to Prometheus
-                    if (
-                        os.getenv("TRUSS_MODEL_CACHE_PROMETHEUS", "0") == "1"
-                    ):  # Hide behind feature flag for core-product to enabled.
-                        stats.publish_to_prometheus()
+                    stats.publish_to_prometheus()
                 self.logger.info(
                     f"model_cache: Fetch took {fetch_t:.2f} seconds, of which {start_lock_t:.2f} seconds were spent blocking."
                 )
