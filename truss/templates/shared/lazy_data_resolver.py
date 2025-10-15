@@ -69,7 +69,7 @@ class TrussTransferStats:
         except Exception:
             return None
 
-    def publish_to_prometheus(self):
+    def publish_to_prometheus(self, hidden_time: float = 0.0):
         """Publish transfer stats to Prometheus metrics. Only runs once."""
         if not PROMETHEUS_AVAILABLE:
             return
@@ -110,6 +110,10 @@ class TrussTransferStats:
         total_file_size_counter = Counter(
             "model_cache_file_size_bytes_total",
             "Total size of downloaded files in bytes",
+        )
+        file_download_hidden_time_gauge = Gauge(
+            "model_cache_file_download_hidden_time_seconds",
+            "Total time hidden from user by starting the import before user code (seconds)",
         )
         file_download_time_histogram = Histogram(
             "model_cache_file_download_time_seconds",
@@ -165,6 +169,7 @@ class TrussTransferStats:
         # Set main transfer metrics
         manifest_size_gauge.set(self.total_manifest_size_bytes)
         download_time_histogram.observe(self.total_download_time_secs)
+        file_download_hidden_time_gauge.set(hidden_time)
 
         if self.total_aggregated_mb_s is not None:
             download_speed_gauge.set(self.total_aggregated_mb_s)
