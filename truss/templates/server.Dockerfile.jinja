@@ -106,7 +106,7 @@ COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/mod
 {%- if non_root_user %}
 {% set packages_dir = "/packages" %}
 RUN mkdir -p {{ packages_dir }}
-RUN chown -R {{ app_username }}:{{ app_username }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}${HOME} ${APP_HOME} {{ packages_dir }}
+RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME} {{ packages_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
 USER {{ app_username }}
 {%- endif %} {#- endif non_root_user #}
 {%- endmacro -%}
