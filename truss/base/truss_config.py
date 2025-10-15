@@ -620,11 +620,22 @@ class TrussConfig(custom_types.ConfigModel):
         default_factory=lambda: CacheInternal([])
     )
     live_reload: bool = False
-    apply_library_patches: bool = True
     spec_version: str = "2.0"
 
     class Config:
         protected_namespaces = ()  # Silence warnings about fields starting with `model_`.
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def _drop_apply_library_patches(cls, values: object) -> object:
+        # Backward compatibility: accept and ignore removed key with a warning
+        if isinstance(values, dict) and "apply_library_patches" in values:
+            logger.warning(
+                "`apply_library_patches` is removed and has no effect; please remove it from config."
+            )
+            values = dict(values)
+            values.pop("apply_library_patches", None)
+        return values
 
     @property
     def canonical_python_version(self) -> str:

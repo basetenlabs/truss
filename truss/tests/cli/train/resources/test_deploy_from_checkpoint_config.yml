@@ -1,4 +1,3 @@
-apply_library_patches: true
 base_image:
   docker_auth: null
   image: vllm/vllm-openai:latest
