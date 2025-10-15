@@ -12,6 +12,7 @@ mod create;
 mod download;
 mod download_core;
 mod hf_transfer;
+mod metrics;
 mod secrets;
 mod speed_checks;
 mod types;
