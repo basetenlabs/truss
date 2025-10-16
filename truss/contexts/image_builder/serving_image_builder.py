@@ -577,7 +577,7 @@ class ServingImageBuilder(ImageBuilder):
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
-        if config.docker_server is not None:
+        if config.docker_server is not None and config.docker_server.as_is is not True:
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
                 build_dir,
@@ -750,6 +750,14 @@ class ServingImageBuilder(ImageBuilder):
         build_commands: List[str],
     ):
         config = self._spec.config
+        ff_as_is = os.getenv("BT_AS_IS_DEPLOYMENT", False)
+        # Escape hatch for as-is deployments
+        if ff_as_is and config.docker_server and config.docker_server.as_is:
+            dockerfile_contents = f"FROM {config.base_image.image}"
+            docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
+            docker_file_path.write_text(dockerfile_contents)
+            return
+
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir

@@ -541,11 +541,20 @@ class BaseImage(custom_types.ConfigModel):
 
 
 class DockerServer(custom_types.ConfigModel):
-    start_command: str
+    start_command: Optional[str] = None
     server_port: int
     predict_endpoint: str
     readiness_endpoint: str
     liveness_endpoint: str
+    as_is: Optional[bool] = None
+
+    @pydantic.model_validator(mode="after")
+    def _validate_start_command(self) -> "DockerServer":
+        if not self.as_is and self.start_command is None:
+            raise ValueError(
+                "start_command is required when as_is is not true"
+            )
+        return self
 
 
 class TrainingArtifactReference(custom_types.ConfigModel):
