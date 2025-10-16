@@ -37,7 +37,7 @@ COPY --chown= ./server ${APP_HOME}
 COPY --chown= ./config.yaml ${APP_HOME}/config.yaml
 COPY --chown= ./model ${APP_HOME}/model
 RUN mkdir -p /packages
-COPY --chown= ./packages/. /packages/
+COPY --chown= ./packages /packages
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="/usr/local/bin/python3 /app/main.py"
 ENTRYPOINT ["/usr/local/bin/python3", "/app/main.py"]
