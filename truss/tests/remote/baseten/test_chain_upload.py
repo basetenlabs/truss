@@ -13,40 +13,38 @@ from truss.remote.baseten import custom_types as b10_types
 class TestChainUpload:
     """Test chain artifact upload functionality."""
 
-    def test_chain_s3_upload_credentials_api_method(self):
-        """Test that the chain_s3_upload_credentials API method works correctly."""
-        # Mock the API response
+    def test_get_blob_credentials_for_chain(self):
+        """Test that get_blob_credentials works correctly for chain blob type."""
+        # Mock the REST API response
         mock_response = {
-            "data": {
-                "chain_s3_upload_credentials": {
-                    "s3_bucket": "test-chain-bucket",
-                    "s3_key": "chains/test-uuid/chain.tgz",
-                    "aws_access_key_id": "test_access_key",
-                    "aws_secret_access_key": "test_secret_key",
-                    "aws_session_token": "test_session_token"
-                }
+            "s3_bucket": "test-chain-bucket",
+            "s3_key": "chains/test-uuid/chain.tgz",
+            "creds": {
+                "aws_access_key_id": "test_access_key",
+                "aws_secret_access_key": "test_secret_key",
+                "aws_session_token": "test_session_token"
             }
         }
 
-        # Create a mock API instance
-        api = Mock(spec=BasetenApi)
-        api._post_graphql_query.return_value = mock_response
+        # Create a real API instance and mock the REST API call
+        mock_auth_service = Mock()
+        mock_auth_service.authenticate.return_value = Mock(value="test-token")
+        api = BasetenApi("https://test.baseten.co", mock_auth_service)
+        with patch.object(api, '_rest_api_client') as mock_client:
+            mock_client.get.return_value = mock_response
+            
+            # Call the method
+            result = api.get_blob_credentials(b10_types.BlobType.CHAIN)
 
-        # Call the method
-        result = api.chain_s3_upload_credentials()
+            # Verify the result
+            assert result["s3_bucket"] == "test-chain-bucket"
+            assert result["s3_key"] == "chains/test-uuid/chain.tgz"
+            assert result["creds"]["aws_access_key_id"] == "test_access_key"
+            assert result["creds"]["aws_secret_access_key"] == "test_secret_key"
+            assert result["creds"]["aws_session_token"] == "test_session_token"
 
-        # Verify the result
-        assert result == mock_response["data"]["chain_s3_upload_credentials"]
-        assert result["s3_bucket"] == "test-chain-bucket"
-        assert result["s3_key"] == "chains/test-uuid/chain.tgz"
-        assert result["aws_access_key_id"] == "test_access_key"
-
-        # Verify the GraphQL query was called
-        api._post_graphql_query.assert_called_once()
-        query = api._post_graphql_query.call_args[0][0]
-        assert "chain_s3_upload_credentials" in query
-        assert "s3_bucket" in query
-        assert "s3_key" in query
+            # Verify the REST API call was made
+            mock_client.get.assert_called_once_with("v1/blobs/credentials/chain")
 
     @patch('truss.remote.baseten.core.multipart_upload_boto3')
     def test_upload_chain_artifact_function(self, mock_multipart_upload):
@@ -55,14 +53,16 @@ class TestChainUpload:
         mock_credentials = {
             "s3_bucket": "test-chain-bucket",
             "s3_key": "chains/test-uuid/chain.tgz",
-            "aws_access_key_id": "test_access_key",
-            "aws_secret_access_key": "test_secret_key",
-            "aws_session_token": "test_session_token"
+            "creds": {
+                "aws_access_key_id": "test_access_key",
+                "aws_secret_access_key": "test_secret_key",
+                "aws_session_token": "test_session_token"
+            }
         }
 
         # Create mock API
         api = Mock(spec=BasetenApi)
-        api.chain_s3_upload_credentials.return_value = mock_credentials
+        api.get_blob_credentials.return_value = mock_credentials
 
         # Create a temporary file
         with tempfile.NamedTemporaryFile(suffix=".tgz", delete=False) as temp_file:
@@ -76,7 +76,7 @@ class TestChainUpload:
             assert result == "chains/test-uuid/chain.tgz"
 
             # Verify the API was called
-            api.chain_s3_upload_credentials.assert_called_once()
+            api.get_blob_credentials.assert_called_once_with(b10_types.BlobType.CHAIN)
 
             # Verify multipart upload was called with correct parameters
             mock_multipart_upload.assert_called_once()
@@ -91,25 +91,26 @@ class TestChainUpload:
             }
 
     @patch('truss.remote.baseten.remote.upload_chain_artifact')
-    @patch('truss.remote.baseten.remote.create_tar_with_progress_bar')
+    @patch('truss.remote.baseten.remote.archive_dir')
     @patch('truss.remote.baseten.remote.create_chain_atomic')
     def test_push_chain_atomic_with_chain_upload(
         self,
         mock_create_chain_atomic,
-        mock_create_tar,
+        mock_archive_dir,
         mock_upload_chain_artifact
     ):
         """Test that push_chain_atomic uploads raw chain artifact when chain_root is provided."""
         # Setup mocks
         mock_create_chain_atomic.return_value = Mock()
-        mock_create_tar.return_value = Mock()
+        mock_archive_dir.return_value = Mock()
         mock_upload_chain_artifact.return_value = "chains/test-uuid/chain.tgz"
 
         # Create mock API
         api = Mock(spec=BasetenApi)
 
-        # Create mock remote
-        remote = BasetenRemote(api, Mock())
+        # Create mock remote with proper URL
+        remote = BasetenRemote("https://test.baseten.co", "test-api-key")
+        remote._api = api
 
         # Create test data
         chain_name = "test-chain"
@@ -147,10 +148,8 @@ class TestChainUpload:
                 )
 
                 # Verify chain artifact upload was called
-                mock_create_tar.assert_called_once_with(
-                    source_dir=chain_root,
-                    ignore_patterns=None,
-                    delete=True,
+                mock_archive_dir.assert_called_once_with(
+                    dir=chain_root,
                     progress_bar=None
                 )
                 mock_upload_chain_artifact.assert_called_once()
@@ -167,8 +166,9 @@ class TestChainUpload:
         # Create mock API
         api = Mock(spec=BasetenApi)
 
-        # Create mock remote
-        remote = BasetenRemote(api, Mock())
+        # Create mock remote with proper URL
+        remote = BasetenRemote("https://test.baseten.co", "test-api-key")
+        remote._api = api
 
         # Create test data
         chain_name = "test-chain"
@@ -213,34 +213,13 @@ class TestChainUpload:
                         # Verify create_chain_atomic was called
                         mock_create_chain_atomic.assert_called_once()
 
-    def test_chain_s3_upload_credentials_query_structure(self):
-        """Test that the GraphQL query has the correct structure."""
-        api = Mock(spec=BasetenApi)
-        api._post_graphql_query.return_value = {
-            "data": {"chain_s3_upload_credentials": {}}
-        }
-
-        # Call the method
-        api.chain_s3_upload_credentials()
-
-        # Get the query that was sent
-        query = api._post_graphql_query.call_args[0][0]
-
-        # Verify query structure
-        assert "query" in query or query.strip().startswith("{")
-        assert "chain_s3_upload_credentials" in query
-        assert "s3_bucket" in query
-        assert "s3_key" in query
-        assert "aws_access_key_id" in query
-        assert "aws_secret_access_key" in query
-        assert "aws_session_token" in query
 
     @patch('truss.remote.baseten.core.multipart_upload_boto3')
     def test_upload_chain_artifact_error_handling(self, mock_multipart_upload):
         """Test error handling in upload_chain_artifact."""
         # Mock API to raise an exception
         api = Mock(spec=BasetenApi)
-        api.chain_s3_upload_credentials.side_effect = Exception("API Error")
+        api.get_blob_credentials.side_effect = Exception("API Error")
 
         with tempfile.NamedTemporaryFile(suffix=".tgz") as temp_file:
             # Should raise the exception
@@ -253,14 +232,16 @@ class TestChainUpload:
         mock_credentials = {
             "s3_bucket": "test-bucket",
             "s3_key": "chains/test-uuid/chain.tgz",
-            "aws_access_key_id": "access_key",
-            "aws_secret_access_key": "secret_key",
-            "aws_session_token": "session_token",
+            "creds": {
+                "aws_access_key_id": "access_key",
+                "aws_secret_access_key": "secret_key",
+                "aws_session_token": "session_token"
+            },
             "extra_field": "should_be_ignored"
         }
 
         api = Mock(spec=BasetenApi)
-        api.chain_s3_upload_credentials.return_value = mock_credentials
+        api.get_blob_credentials.return_value = mock_credentials
 
         with patch('truss.remote.baseten.core.multipart_upload_boto3') as mock_upload:
             with tempfile.NamedTemporaryFile(suffix=".tgz") as temp_file:

@@ -308,10 +308,8 @@ class BasetenRemote(TrussRemote):
         if chain_root is not None:
             logging.info(f"Uploading raw chain artifact from {chain_root}")
             # Create a tar file from the chain root directory
-            temp_file = create_tar_with_progress_bar(
-                source_dir=chain_root,
-                ignore_patterns=None,  # Use default ignore patterns
-                delete=True,
+            temp_file = archive_dir(
+                dir=chain_root,
                 progress_bar=progress_bar,
             )
             # Upload the chain artifact to S3
@@ -330,6 +328,7 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             truss_user_env=truss_user_env,
             environment=environment,
+            raw_artifact_s3_key=raw_chain_s3_key,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle

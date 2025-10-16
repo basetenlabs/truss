@@ -80,6 +80,7 @@ class ChainDeploymentHandleAtomic(NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
+    raw_artifact_s3_key: Optional[str] = None
 
 
 class ModelVersionHandle(NamedTuple):
@@ -127,6 +128,7 @@ def create_chain_atomic(
     is_draft: bool,
     truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
+    raw_artifact_s3_key: Optional[str] = None,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -149,6 +151,7 @@ def create_chain_atomic(
             chain_name=chain_name,
             is_draft=True,
             truss_user_env=truss_user_env,
+            raw_artifact_s3_key=raw_artifact_s3_key,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -162,6 +165,7 @@ def create_chain_atomic(
                 chain_id=chain_id,
                 environment=environment,
                 truss_user_env=truss_user_env,
+                raw_artifact_s3_key=raw_artifact_s3_key,
             )
         except ApiError as e:
             if (
@@ -182,6 +186,7 @@ def create_chain_atomic(
             dependencies=dependencies,
             chain_name=chain_name,
             truss_user_env=truss_user_env,
+            raw_artifact_s3_key=raw_artifact_s3_key,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -189,6 +194,7 @@ def create_chain_atomic(
         chain_id=res["chain_deployment"]["chain"]["id"],
         hostname=res["chain_deployment"]["chain"]["hostname"],
         is_draft=is_draft,
+        raw_artifact_s3_key=raw_artifact_s3_key,
     )
 
 
@@ -357,11 +363,20 @@ def upload_chain_artifact(
     Returns:
         The S3 key of the uploaded file
     """
-    temp_credentials_s3_upload = api.chain_s3_upload_credentials()
-    s3_key = temp_credentials_s3_upload.pop("s3_key")
-    s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
+    # Get chain upload credentials from REST API
+    credentials_response = api.get_blob_credentials(b10_types.BlobType.CHAIN)
+    s3_key = credentials_response["s3_key"]
+    s3_bucket = credentials_response["s3_bucket"]
+    
+    # Extract only the AWS credentials for the upload
+    aws_credentials = {
+        "aws_access_key_id": credentials_response["creds"]["aws_access_key_id"],
+        "aws_secret_access_key": credentials_response["creds"]["aws_secret_access_key"],
+        "aws_session_token": credentials_response["creds"]["aws_session_token"],
+    }
+    
     multipart_upload_boto3(
-        serialize_file.name, s3_bucket, s3_key, temp_credentials_s3_upload, progress_bar
+        serialize_file.name, s3_bucket, s3_key, aws_credentials, progress_bar
     )
     return s3_key
 

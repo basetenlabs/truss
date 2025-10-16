@@ -165,20 +165,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["model_s3_upload_credentials"]
 
-    def chain_s3_upload_credentials(self):
-        query_string = """
-        {
-            chain_s3_upload_credentials {
-                s3_bucket
-                s3_key
-                aws_access_key_id
-                aws_secret_access_key
-                aws_session_token
-            }
-        }
-        """
-        resp = self._post_graphql_query(query_string)
-        return resp["data"]["chain_s3_upload_credentials"]
 
     def create_model_from_truss(
         self,
@@ -314,6 +300,7 @@ class BasetenApi:
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
         is_draft: bool = False,
+        raw_artifact_s3_key: Optional[str] = None,
     ):
         entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
 
@@ -324,13 +311,25 @@ class BasetenApi:
             ]
         )
 
+        # Build the query parameters
+        params = []
+        if chain_id:
+            params.append(f'chain_id: "{chain_id}"')
+        if chain_name:
+            params.append(f'chain_name: "{chain_name}"')
+        if environment:
+            params.append(f'environment: "{environment}"')
+        if raw_artifact_s3_key:
+            params.append(f'raw_artifact_s3_key: "{raw_artifact_s3_key}"')
+        
+        params_str = "\n                    ".join(params)
+        if params_str:
+            params_str = "\n                    " + params_str + "\n                    "
+        
         query_string = f"""
             mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
-                    {f'chain_id: "{chain_id}"' if chain_id else ""}
-                    {f'chain_name: "{chain_name}"' if chain_name else ""}
-                    {f'environment: "{environment}"' if environment else ""}
-                    is_draft: {str(is_draft).lower()}
+                    {params_str}is_draft: {str(is_draft).lower()}
                     entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
                     truss_user_env: $trussUserEnv
