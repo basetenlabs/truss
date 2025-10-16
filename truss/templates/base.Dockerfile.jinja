@@ -116,12 +116,10 @@ WORKDIR $APP_HOME
 
 
 {% set packages_dir = "/packages" %}
+RUN mkdir -p {{ packages_dir }}
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-RUN mkdir -p {{ packages_dir }}
-{# Note: The /. at the end of the source path is to copy the contents of the directory, not the directory itself, because we have created the directory above. #}
-{# The / at the end of the target path is only to note that the target is a directory. #}
-COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }}/. {{ packages_dir }}/
+COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} {{ packages_dir }}
 {%- endif %}
 {% endblock %}
 
