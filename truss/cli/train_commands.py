@@ -434,8 +434,16 @@ def download_training_job(
 @train.command(name="get_checkpoint_urls")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--view",
+    type=click.Choice(["tree"]),
+    required=False,
+    help="View mode for displaying checkpoints. Use 'tree' for hierarchical view.",
+)
 @common.common_options()
-def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) -> None:
+def download_checkpoint_artifacts(
+    job_id: Optional[str], remote: Optional[str], view: Optional[str]
+) -> None:
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -448,12 +456,13 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
             "[bold green]Retrieving checkpoint artifacts...", spinner="dots"
         ):
             target_path = train_cli.download_checkpoint_artifacts(
-                remote_provider=remote_provider, job_id=job_id
+                remote_provider=remote_provider, job_id=job_id, view=view
             )
-        console.print(
-            f"✨ Training job checkpoint artifacts downloaded to {target_path}",
-            style="bold green",
-        )
+        if target_path:
+            console.print(
+                f"✨ Training job checkpoint artifacts downloaded to {target_path}",
+                style="bold green",
+            )
     except Exception as e:
         error_console.print(f"Failed to download checkpoint artifacts data: {str(e)}")
         sys.exit(1)
@@ -556,8 +565,16 @@ def cache():
     default=SORT_ORDER_ASC,
     help="Sort order: ascending or descending.",
 )
+@click.option(
+    "--view",
+    type=click.Choice(["tree"]),
+    required=False,
+    help="View mode for displaying cache. Use 'tree' for hierarchical view.",
+)
 @common.common_options()
-def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+def view_cache_summary(
+    project: str, remote: Optional[str], sort: str, order: str, view: Optional[str]
+):
     """View cache summary for a training project"""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -566,7 +583,7 @@ def view_cache_summary(project: str, remote: Optional[str], sort: str, order: st
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)
+    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order, view)
 
 
 def _maybe_resolve_project_id_from_id_or_name(
