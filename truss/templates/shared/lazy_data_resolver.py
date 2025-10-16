@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 try:
     from prometheus_client import Counter, Gauge, Histogram
@@ -31,7 +31,7 @@ class TrussTransferStats:
     total_manifest_size_bytes: int
     total_download_time_secs: float
     total_aggregated_mb_s: Optional[float]
-    file_downloads: list[FileDownloadMetric]
+    file_downloads: List[FileDownloadMetric]
     b10fs_read_speed_mbps: Optional[float]
     b10fs_decision_to_use: bool
     b10fs_enabled: bool
