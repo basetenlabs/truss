@@ -8,6 +8,9 @@ from truss.cli.cli import truss_cli
 def test_push_with_grpc_transport_fails_for_development_deployment():
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "grpc"
+    mock_truss.spec.config.model_name = "test_model"
+    mock_truss.spec.memory_in_bytes = 8 * 1024**3  # 8GB
+    mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
 
     runner = CliRunner()
 
@@ -30,6 +33,9 @@ def test_push_with_grpc_transport_succeeds_by_default():
     """Test that gRPC transport succeeds by default (published deployment)"""
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "grpc"
+    mock_truss.spec.config.model_name = "test_model"
+    mock_truss.spec.memory_in_bytes = 8 * 1024**3  # 8GB
+    mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
     mock_remote_provider = Mock()
     mock_service = Mock()
     mock_service.is_draft = False
@@ -53,6 +59,9 @@ def test_push_watch_and_publish_flags_conflict():
     """Test that --watch and --publish flags cannot be used together"""
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.model_name = "test_model"
+    mock_truss.spec.memory_in_bytes = 8 * 1024**3  # 8GB
+    mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
 
     runner = CliRunner()
 
@@ -71,6 +80,9 @@ def test_push_watch_and_promote_flags_conflict():
     """Test that --watch and --promote flags cannot be used together"""
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.model_name = "test_model"
+    mock_truss.spec.memory_in_bytes = 8 * 1024**3  # 8GB
+    mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
 
     runner = CliRunner()
 
@@ -89,6 +101,9 @@ def test_push_default_behavior_is_published():
     """Test that default push behavior creates published deployment"""
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.model_name = "test_model"
+    mock_truss.spec.memory_in_bytes = 8 * 1024**3  # 8GB
+    mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
     mock_remote_provider = Mock()
     mock_service = Mock()
     mock_service.is_draft = False
@@ -116,6 +131,9 @@ def test_push_watch_enables_log_streaming():
     """Test that --watch flag enables log streaming and watch functionality"""
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.model_name = "test_model"
+    mock_truss.spec.memory_in_bytes = 8 * 1024**3  # 8GB
+    mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
     mock_remote_provider = Mock()
     mock_service = Mock()
     mock_service.is_draft = True  # Development deployment
@@ -125,19 +143,21 @@ def test_push_watch_enables_log_streaming():
 
     runner = CliRunner()
 
-    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
+with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
             with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
-                # Mock the log watcher to avoid actual log streaming
-                with patch("truss.cli.cli.ModelDeploymentLogWatcher") as mock_log_watcher:
-                    mock_log_watcher.return_value.watch.return_value = []
-                    
-                    # Mock the sync function to avoid actual file watching
-                    with patch.object(mock_remote_provider, 'sync_truss_to_dev_version_by_name'):
-                        result = runner.invoke(
-                            truss_cli,
-                            ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch"],
-                        )
+                # Mock TRT-LLM builder check to allow development mode
+                with patch("truss.cli.cli.uses_trt_llm_builder", return_value=False):
+                    # Mock the log watcher to avoid actual log streaming
+                    with patch("truss.cli.cli.ModelDeploymentLogWatcher") as mock_log_watcher:
+                        mock_log_watcher.return_value.watch.return_value = []
+                        
+                        # Mock the sync function to avoid actual file watching
+                        with patch.object(mock_remote_provider, 'sync_truss_to_dev_version_by_name'):
+                            result = runner.invoke(
+                                truss_cli,
+                                ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch"],
+                            )
 
     # Should succeed and call with watch=True
     assert result.exit_code == 0
