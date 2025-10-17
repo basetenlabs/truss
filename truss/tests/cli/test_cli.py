@@ -110,3 +110,42 @@ def test_push_default_behavior_is_published():
     call_args = mock_remote_provider.push.call_args
     assert call_args.kwargs['publish'] is True
     assert call_args.kwargs['watch'] is False
+
+
+def test_push_watch_enables_log_streaming():
+    """Test that --watch flag enables log streaming and watch functionality"""
+    mock_truss = Mock()
+    mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_remote_provider = Mock()
+    mock_service = Mock()
+    mock_service.is_draft = True  # Development deployment
+    mock_service.model_id = "test_model_id"
+    mock_service.model_version_id = "test_version_id"
+    mock_remote_provider.push.return_value = mock_service
+
+    runner = CliRunner()
+
+    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
+        with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
+            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
+                # Mock the log watcher to avoid actual log streaming
+                with patch("truss.cli.cli.ModelDeploymentLogWatcher") as mock_log_watcher:
+                    mock_log_watcher.return_value.watch.return_value = []
+                    
+                    # Mock the sync function to avoid actual file watching
+                    with patch.object(mock_remote_provider, 'sync_truss_to_dev_version_by_name'):
+                        result = runner.invoke(
+                            truss_cli,
+                            ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch"],
+                        )
+
+    # Should succeed and call with watch=True
+    assert result.exit_code == 0
+    call_args = mock_remote_provider.push.call_args
+    assert call_args.kwargs['publish'] is False  # Development deployment
+    assert call_args.kwargs['watch'] is True
+    
+    # Verify log watcher was called
+    mock_log_watcher.assert_called_once_with(
+        mock_remote_provider.api, "test_model_id", "test_version_id"
+    )

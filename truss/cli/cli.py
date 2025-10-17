@@ -508,7 +508,8 @@ def run_python(script, target_directory):
     default=False,
     help=(
         "Push the truss as a development deployment with hot reload support. "
-        "Development models allow you to iterate quickly during the deployment process."
+        "Development models allow you to iterate quickly during the deployment process. "
+        "Automatically streams deployment logs and enables live patching."
     ),
 )
 @common.common_options()
@@ -715,6 +716,44 @@ def push(
                         style="red",
                     )
                     sys.exit(1)
+
+    elif watch and isinstance(service, BasetenService):
+        # For --watch, we want to stream logs and then enable live patching
+        bt_remote = cast(BasetenRemote, remote_provider)
+        
+        # First, stream the logs like --tail does
+        console.print("📡 Streaming deployment logs...", style="blue")
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log)
+        
+        # After logs are streamed, start the watch/patch functionality
+        console.print("🔄 Starting live patching mode...", style="green")
+        console.print("📝 Edit your truss files and changes will be applied automatically.", style="italic")
+        console.print("🛑 Press Ctrl+C to stop watching.", style="italic")
+        
+        # Run the watch functionality using the existing watch command logic
+        try:
+            # Use the same logic as the watch command
+            if not os.path.isfile(target_directory):
+                bt_remote.sync_truss_to_dev_version_by_name(
+                    model_name, target_directory, console, error_console
+                )
+            else:
+                # These imports are delayed, to handle pydantic v1 envs gracefully.
+                from truss_chains.deployment import deployment_client
+
+                deployment_client.watch_model(
+                    source=Path(target_directory),
+                    model_name=model_name,
+                    remote_provider=bt_remote,
+                    console=console,
+                    error_console=error_console,
+                )
+        except KeyboardInterrupt:
+            console.print("\n👋 Stopped watching. Your development deployment is still running.", style="yellow")
 
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
