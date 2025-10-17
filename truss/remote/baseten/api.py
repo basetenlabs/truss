@@ -299,7 +299,7 @@ class BasetenApi:
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
         is_draft: bool = False,
-        raw_artifact_s3_key: Optional[str] = None,
+        original_source_artifact_s3_key: Optional[str] = None,
     ):
         entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
 
@@ -318,8 +318,8 @@ class BasetenApi:
             params.append(f'chain_name: "{chain_name}"')
         if environment:
             params.append(f'environment: "{environment}"')
-        if raw_artifact_s3_key:
-            params.append(f'raw_artifact_s3_key: "{raw_artifact_s3_key}"')
+        if original_source_artifact_s3_key:
+            params.append(f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"')
 
         params_str = "\n                    ".join(params)
         if params_str:

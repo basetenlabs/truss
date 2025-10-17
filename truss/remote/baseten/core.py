@@ -80,7 +80,7 @@ class ChainDeploymentHandleAtomic(NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
-    raw_artifact_s3_key: Optional[str] = None
+    original_source_artifact_s3_key: Optional[str] = None
 
 
 class ModelVersionHandle(NamedTuple):
@@ -128,7 +128,7 @@ def create_chain_atomic(
     is_draft: bool,
     truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
-    raw_artifact_s3_key: Optional[str] = None,
+    original_source_artifact_s3_key: Optional[str] = None,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -151,7 +151,7 @@ def create_chain_atomic(
             chain_name=chain_name,
             is_draft=True,
             truss_user_env=truss_user_env,
-            raw_artifact_s3_key=raw_artifact_s3_key,
+            original_source_artifact_s3_key=original_source_artifact_s3_key,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -165,7 +165,7 @@ def create_chain_atomic(
                 chain_id=chain_id,
                 environment=environment,
                 truss_user_env=truss_user_env,
-                raw_artifact_s3_key=raw_artifact_s3_key,
+                original_source_artifact_s3_key=original_source_artifact_s3_key,
             )
         except ApiError as e:
             if (
@@ -186,7 +186,7 @@ def create_chain_atomic(
             dependencies=dependencies,
             chain_name=chain_name,
             truss_user_env=truss_user_env,
-            raw_artifact_s3_key=raw_artifact_s3_key,
+            original_source_artifact_s3_key=original_source_artifact_s3_key,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -194,7 +194,7 @@ def create_chain_atomic(
         chain_id=res["chain_deployment"]["chain"]["id"],
         hostname=res["chain_deployment"]["chain"]["hostname"],
         is_draft=is_draft,
-        raw_artifact_s3_key=raw_artifact_s3_key,
+        original_source_artifact_s3_key=original_source_artifact_s3_key,
     )
 
 

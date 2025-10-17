@@ -328,7 +328,7 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             truss_user_env=truss_user_env,
             environment=environment,
-            raw_artifact_s3_key=raw_chain_s3_key,
+            original_source_artifact_s3_key=raw_chain_s3_key,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle
