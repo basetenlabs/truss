@@ -2,15 +2,14 @@ import logging
 import os
 import pathlib
 import re
-import subprocess
 import tempfile
 import time
 import uuid
+from unittest.mock import patch
 
 import pytest
 import pytest_check
 from click.testing import CliRunner
-from unittest.mock import patch
 
 from smoketests.utils import BACKEND_ENV_DOMAIN, BASETEN_API_KEY, BASETEN_REMOTE_URL
 from truss.cli.cli import truss_cli
@@ -33,10 +32,9 @@ DEPLOY_TIMEOUT_SEC = 500
 def make_stub(url: str, options: public_types.RPCOptions) -> stub.StubBase:
     context = public_types.DeploymentContext(
         chainlet_to_service={},
-        secrets={public_types.CHAIN_API_KEY_SECRET_NAME: BASETEN_API_KEY}, 
+        secrets={public_types.CHAIN_API_KEY_SECRET_NAME: BASETEN_API_KEY},
     )
     return stub.StubBase.from_url(url, context, options)
-
 
 
 def write_trussrc(dir_path: pathlib.Path) -> pathlib.Path:
@@ -66,32 +64,6 @@ def generate_traceparent() -> str:
     trace_flags = "01"
     traceparent = f"00-{trace_id}-{span_id}-{trace_flags}"
     return traceparent
-
-
-def run_command(truss_rc_path: pathlib.Path, command: str) -> tuple[str, str]:
-    logging.info(f"Running command `{command}` in VENV `{VENV_PATH}` (subprocess).")
-    activate_script = VENV_PATH / "bin" / "activate"
-    env = os.environ.copy()
-    env["USER_TRUSSRC_PATH"] = str(truss_rc_path)
-    full_command = f"bash -c 'source {activate_script} && {command}'"
-    result = subprocess.run(
-        full_command,
-        shell=True,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    stdout = result.stdout.strip()
-    stderr = result.stderr.strip()
-    if result.returncode != 0:
-        logging.error(f"Command failed with exit code {result.returncode}")
-        logging.error(f"STDOUT:\n{stdout}")
-        logging.error(f"STDERR:\n{stderr}")
-        result.check_returncode()
-
-    logging.info("Command subprocess finished.")
-    return stdout, stderr
 
 
 def wait_ready(
@@ -133,96 +105,6 @@ def wait_ready(
 
 
 # Actual tests #########################################################################
-
-
-def test_itest_chain_publish(prepare) -> None:
-    remote: b10_remote.BasetenRemote
-    tmpdir, truss_rc_path, remote = prepare
-
-    chain_src = CHAINS_ROOT / "tests" / "itest_chain" / "itest_chain.py"
-    command = f"truss chains push {chain_src} --publish --name=itest_publish --no-wait"
-
-    stdout, stderr = run_command(truss_rc_path, command)
-    if stderr:
-        # On github CI this might be `Warning: Input is not a terminal (fd=0).` but
-        # could change over time -> just log it, but don't assert anything.
-        logging.warning(f"Subprocess had error output:\n{stderr}")
-
-    matches = URL_RE.search(stdout)
-    assert matches, stdout
-    url = matches.group(0)
-    chain_id = matches.group(1)
-    chain_deployment_id = matches.group(2)
-
-    success, wait_time_sec = wait_ready(remote, chain_id, chain_deployment_id)
-    pytest_check.less(wait_time_sec, 220, "Deployment took too long.")
-
-    # Test regular (JSON) invocation.
-    chain_stub = make_stub(url, public_types.RPCOptions(timeout_sec=10))
-    trace_parent = generate_traceparent()
-    with utils.trace_parent_raw(trace_parent):
-        result = chain_stub.predict_sync({"length": 30, "num_partitions": 3})
-
-    expected = [
-        6280,
-        "erodfderodfderodfderodfderodfd",
-        123,
-        {"parts": [], "part_lens": [10]},
-        ["a", "b"],
-    ]
-    pytest_check.equal(result, expected)
-
-    # Test speed.
-    invocation_times_sec = []
-    for i in range(10):
-        t0 = time.perf_counter()
-        with utils.trace_parent_raw(trace_parent):
-            chain_stub.predict_sync({"length": 30, "num_partitions": 3})
-        invocation_times_sec.append(time.perf_counter() - t0)
-
-    invocation_times_sec.sort()
-    logging.info(f"Invocation times(sec): {invocation_times_sec}.")
-    pytest_check.less(invocation_times_sec[0], 0.32)  # Best of 10, could be <0.30....
-
-    # Test binary invocation.
-    chain_stub_binary = make_stub(
-        url, public_types.RPCOptions(timeout_sec=10, use_binary=True)
-    )
-    trace_parent = generate_traceparent()
-    with utils.trace_parent_raw(trace_parent):
-        result = chain_stub_binary.predict_sync({"length": 30, "num_partitions": 3})
-
-    expected = [
-        6280,
-        "erodfderodfderodfderodfderodfd",
-        123,
-        {"parts": [], "part_lens": [10]},
-        ["a", "b"],
-    ]
-    pytest_check.equal(result, expected)
-
-    # Test binary speed.
-    invocation_times_sec = []
-    for i in range(10):
-        t0 = time.perf_counter()
-        with utils.trace_parent_raw(trace_parent):
-            chain_stub_binary.predict_sync({"length": 30, "num_partitions": 3})
-        invocation_times_sec.append(time.perf_counter() - t0)
-
-    invocation_times_sec.sort()
-    logging.info(f"Invocation times(sec): {invocation_times_sec}.")
-    pytest_check.less(invocation_times_sec[0], 0.32)  # Best of 10, could be <0.30...
-
-    if pytest_check.any_failures() or LEAVE_DEPLOYMENTS:
-        logging.info(
-            f"There were failures, leaving deployment `{chain_deployment_id}` "
-            "undeleted for inspection."
-        )
-    else:
-        logging.info(f"No failures. Deleting deployment `{chain_deployment_id}`.")
-        remote.api.delete_chain_deployment(chain_id, chain_deployment_id)
-
-
 
 
 def test_itest_chain_publish_click(prepare) -> None:
@@ -340,10 +222,10 @@ def test_itest_chain_publish_click(prepare) -> None:
         remote.api.delete_chain_deployment(chain_id, chain_deployment_id)
 
 
-
 @pytest.mark.skip("Not Implemented.")
-def test_itest_chain_development(prepare):
-    # 1. Push with watch.
+def test_itest_chain_development_click(prepare):
+    """Test chain development using click testing utilities."""
+    # 1. Push with watch .
     # 2. Invoke.
     # 3. Edit code.
     # 4. Verify invocation is updated.
@@ -351,3 +233,6 @@ def test_itest_chain_development(prepare):
     # 6. Verify invocation is updated.
     # 7. Delete.
     pass
+ 
+
+
