@@ -115,9 +115,11 @@ WORKDIR $APP_HOME
 {% endblock %}
 
 
+{% set packages_dir = "/packages" %}
+RUN mkdir -p {{ packages_dir }}
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} /packages
+COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} {{ packages_dir }}
 {%- endif %}
 {% endblock %}
 
