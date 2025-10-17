@@ -406,9 +406,8 @@ def run_python(script, target_directory):
     required=False,
     default=False,
     help=(
-        "Push the truss as a published deployment. If no production "
-        "deployment exists, promote the truss to production "
-        "after deploy completes."
+        "[DEPRECATED] Push the truss as a published deployment (default behavior). "
+        "Use --watch for development deployments instead. This flag will be removed in the following release."
     ),
 )
 @click.option(
@@ -539,7 +538,7 @@ def push(
     # Handle the new logic: --watch creates development deployment, default is published
     if watch and publish:
         raise click.UsageError(
-            "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments (default is published)."
         )
 
     if watch and promote:
@@ -554,6 +553,20 @@ def push(
     elif publish or promote:
         # --publish or --promote explicitly creates published deployment
         publish = True
+        # Show deprecation warning for --publish flag
+        if publish and not promote:
+            import warnings
+            warnings.warn(
+                "The '--publish' flag is deprecated. Published deployments are now the default behavior. "
+                "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            console.print(
+                "⚠️  The '--publish' flag is deprecated. Published deployments are now the default behavior. "
+                "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
+                style="yellow"
+            )
     else:
         # Default behavior: create published deployment
         publish = True

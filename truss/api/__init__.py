@@ -74,8 +74,9 @@ def push(
         target_directory: Directory of Truss to push.
         remote: Name of the remote in .trussrc to patch changes to.
         model_name: The name of the model, if different from the one in the config.yaml.
-        publish: Push the truss as a published deployment. If no production deployment exists,
-            promote the truss to production after deploy completes.
+        publish: [DEPRECATED] Push the truss as a published deployment (default behavior). 
+            Published deployments are now the default. Use 'watch=True' for development deployments. 
+            This parameter will be removed in the following release.
         promote: [DEPRECATED] Push the truss as a published deployment and promote to production.
             Use 'environment="production"' instead. For other environments, use 'environment="{env_name}"'.
         preserve_previous_production_deployment: Preserve the previous production deployment’s autoscaling
