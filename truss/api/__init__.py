@@ -76,14 +76,14 @@ def push(
         model_name: The name of the model, if different from the one in the config.yaml.
         publish: Push the truss as a published deployment. If no production deployment exists,
             promote the truss to production after deploy completes.
-        promote: Push the truss as a published deployment. Even if a production deployment exists,
-            promote the truss to production after deploy completes.
+        promote: [DEPRECATED] Push the truss as a published deployment and promote to production.
+            Use 'environment="production"' instead. For other environments, use 'environment="{env_name}"'.
         preserve_previous_production_deployment: Preserve the previous production deployment’s autoscaling
             setting. When not specified, the previous production deployment will be updated to allow it to
-            scale to zero. Can only be use in combination with `promote` option.
+            scale to zero. Can only be used in combination with environment deployments.
         trusted: [DEPRECATED]
         deployment_name: Name of the deployment created by the push. Can only be
-            used in combination with `publish` or `promote`. Deployment name must
+            used in combination with environment deployments. Deployment name must
             only contain alphanumeric, ’.’, ’-’ or ’_’ characters.
         environment: Name of stable environment on baseten.
         progress_bar: Optional `rich.progress.Progress` if output is desired.

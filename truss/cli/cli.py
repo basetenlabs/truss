@@ -417,9 +417,8 @@ def run_python(script, target_directory):
     required=False,
     default=False,
     help=(
-        "Push the truss as a published deployment. Even if a production "
-        "deployment exists, promote the truss to production "
-        "after deploy completes."
+        "[DEPRECATED] Push the truss as a published deployment and promote to production. "
+        "Use '--environment production' instead. For other environments, use '--environment {env_name}'."
     ),
 )
 @click.option(
@@ -439,7 +438,7 @@ def run_python(script, target_directory):
     help=(
         "Preserve the previous production deployment's autoscaling setting. When "
         "not specified, the previous production deployment will be updated to allow "
-        "it to scale to zero. Can only be use in combination with --promote option."
+        "it to scale to zero. Can only be used in combination with environment deployments."
     ),
 )
 @click.option(
@@ -462,7 +461,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with '--publish' or '--promote'."
+        "used in combination with environment deployments."
     ),
 )
 @click.option(
@@ -545,7 +544,7 @@ def push(
 
     if watch and promote:
         raise click.UsageError(
-            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --environment {env_name} for production deployments."
         )
 
     # Determine the deployment type based on flags
@@ -566,7 +565,7 @@ def push(
         and not promote
     ):
         raise click.UsageError(
-            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command without --watch, or with --promote."
+            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command without --watch, or with --environment {env_name}."
         )
 
     if not remote:
@@ -585,6 +584,19 @@ def push(
         promote_warning = "'promote' flag and 'environment' flag were both specified. Ignoring the value of 'promote'"
         console.print(promote_warning, style="yellow")
     if promote and not environment:
+        # Show deprecation warning for --promote flag
+        import warnings
+        warnings.warn(
+            "The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        console.print(
+            "⚠️  The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            style="yellow"
+        )
         environment = PRODUCTION_ENVIRONMENT_NAME
 
     if preserve_env_instance_type is not None and not environment:

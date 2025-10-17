@@ -155,7 +155,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 @click.option(
     "--promote/--no-promote",
     default=False,
-    help="Replace production chainlets with newly deployed chainlets.",
+    help="[DEPRECATED] Replace production chainlets with newly deployed chainlets. Use '--environment production' instead.",
 )
 @click.option(
     "--environment",
@@ -252,7 +252,7 @@ def push_chain(
 
     if watch and promote:
         raise ValueError(
-            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --environment {env_name} for production deployments."
         )
 
     # Determine the deployment type based on flags
@@ -279,6 +279,21 @@ def push_chain(
             "Ignoring the value of 'promote'."
         )
         console.print(promote_warning, style="yellow")
+    
+    if promote and not environment:
+        # Show deprecation warning for --promote flag
+        import warnings
+        warnings.warn(
+            "The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        console.print(
+            "⚠️  The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            style="yellow"
+        )
 
     if not remote:
         if dryrun:

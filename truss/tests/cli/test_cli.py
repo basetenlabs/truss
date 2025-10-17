@@ -166,3 +166,35 @@ def test_push_watch_enables_log_streaming():
     call_args = mock_remote_provider.push.call_args
     assert call_args.kwargs['publish'] is False  # Development deployment
     assert call_args.kwargs['watch'] is True
+
+
+def test_push_promote_deprecation_warning():
+    """Test that --promote flag shows deprecation warning"""
+    mock_truss = Mock()
+    mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.model_name = "test_model"
+    mock_truss.spec.memory_in_bytes = 8 * 1024**3  # 8GB
+    mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
+    mock_remote_provider = Mock()
+    mock_service = Mock()
+    mock_service.is_draft = False
+    mock_remote_provider.push.return_value = mock_service
+
+    runner = CliRunner()
+
+    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
+        with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
+            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
+                result = runner.invoke(
+                    truss_cli,
+                    ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--promote"],
+                )
+
+    # Should succeed but show deprecation warning
+    assert result.exit_code == 0
+    assert "⚠️  The '--promote' flag is deprecated" in result.output
+    assert "Use '--environment production' instead" in result.output
+    
+    # Verify it sets environment to production
+    call_args = mock_remote_provider.push.call_args
+    assert call_args.kwargs['environment'] == "production"
