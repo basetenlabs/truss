@@ -364,7 +364,7 @@ def upload_chain_artifact(
         The S3 key of the uploaded file
     """
     # Get chain upload credentials from REST API
-    credentials_response = api.get_blob_credentials(b10_types.BlobType.CHAIN)
+    credentials_response = api.get_chain_s3_upload_credentials()
     s3_key = credentials_response["s3_key"]
     s3_bucket = credentials_response["s3_bucket"]
     
