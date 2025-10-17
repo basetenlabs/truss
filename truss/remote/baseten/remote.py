@@ -204,6 +204,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
+        watch: bool = False,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -319,16 +320,16 @@ class BasetenRemote(TrussRemote):
             dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
                 raise RemoteError(
-                    "No development model found. Run `truss push` then try again."
+                    "No development model found. Run `truss push --watch` then try again."
                 )
             return dev_version
 
         # Return the production deployment version.
         prod_version = get_prod_version_from_versions(model_versions)
-        if not prod_version:
-            raise RemoteError(
-                "No production model found. Run `truss push --publish` then try again."
-            )
+if not prod_version:
+                raise RemoteError(
+                    "No production model found. Run `truss push` then try again."
+                )
         return prod_version
 
     @staticmethod

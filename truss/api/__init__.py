@@ -65,6 +65,7 @@ def push(
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
     preserve_env_instance_type: bool = True,
+    watch: bool = False,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -92,10 +93,34 @@ def push(
         preserve_env_instance_type: When pushing a truss to an environment, whether to use the resources
           specified in the truss config to resolve the instance type or preserve the instance type
           configured in the specified environment.
+        watch: Push the truss as a development deployment with hot reload support.
+          Development models allow you to iterate quickly during the deployment process.
 
     Returns:
         The newly created ModelDeployment.
     """
+    # Handle the new logic: --watch creates development deployment, default is published
+    if watch and publish:
+        raise ValueError(
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
+        )
+
+    if watch and promote:
+        raise ValueError(
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
+        )
+
+    # Determine the deployment type based on flags
+    if watch:
+        # --watch explicitly creates development deployment
+        publish = False
+    elif publish or promote:
+        # --publish or --promote explicitly creates published deployment
+        publish = True
+    else:
+        # Default behavior: create published deployment
+        publish = True
+
     if trusted is not None:
         warnings.warn(
             "`trusted` is deprecated and will be ignored, all models are "
@@ -135,6 +160,7 @@ def push(
         progress_bar=progress_bar,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
+        watch=watch,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))

@@ -149,7 +149,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--publish/--no-publish",
-    default=False,
+    default=True,
     help="Create chainlets as published deployments.",
 )
 @click.option(
@@ -178,7 +178,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         "Watches the chains source code and applies live patches. Using this option "
         "will wait for the chain to be deployed (i.e. `--wait` flag is applied), "
         "before starting to watch for changes. This option required the deployment "
-        "to be a development deployment (i.e. `--no-promote` and `--no-publish`."
+        "to be a development deployment (i.e. use `--watch` flag when pushing)."
     ),
 )
 @click.option(
@@ -244,11 +244,29 @@ def push_chain(
     if experimental_watch_chainlet_names:
         watch = True
 
+    # Handle the new logic: --watch creates development deployment, default is published
+    if watch and publish:
+        raise ValueError(
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
+        )
+
+    if watch and promote:
+        raise ValueError(
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
+        )
+
+    # Determine the deployment type based on flags
     if watch:
-        if publish or promote:
-            raise ValueError(
-                "When using `--watch`, the deployment cannot be published or promoted."
-            )
+        # --watch explicitly creates development deployment
+        publish = False
+    elif publish or promote:
+        # --publish or --promote explicitly creates published deployment
+        publish = True
+    else:
+        # Default behavior: create published deployment
+        publish = True
+
+    if watch:
         if not wait:
             console.print(
                 "'--watch' is used. Will wait for deployment before watching files."
