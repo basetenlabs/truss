@@ -105,10 +105,9 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
         elif value % 64 != 0:
             raise ValueError(f"{key} must be a multiple of 64, but got {value}")
 
-V2_QUANT_DATASET_OPTIONS = [
-    "cnn_dailymail",
-    "fused"
-]
+
+V2_QUANT_DATASET_OPTIONS = ["cnn_dailymail", "fused"]
+
 
 class TrussTRTQuantizationConfigurationV2(PydanticTrTBaseModel):
     """Configuration for quantization of TRT models in the V2 engine
@@ -137,7 +136,9 @@ class TrussTRTQuantizationConfigurationV2(PydanticTrTBaseModel):
         super().__init__(**data)
         self.validate_cuda_friendly("calib_size")
         self.validate_cuda_friendly("calib_max_seq_length")
-        self.validate_dataset_name(self.calib_dataset, self.text_field)
+        self.validate_dataset_name(
+            self.calib_dataset, self.text_field, self.calib_dataset_split
+        )
 
     def validate_cuda_friendly(self, key):
         value = getattr(self, key)
@@ -145,9 +146,8 @@ class TrussTRTQuantizationConfigurationV2(PydanticTrTBaseModel):
             raise ValueError(f"{key} must be between 64 and 16384, but got {value}")
         elif value % 64 != 0:
             raise ValueError(f"{key} must be a multiple of 64, but got {value}")
-    
-    def validate_dataset_name(self, ds_name, text_field):
 
+    def validate_dataset_name(self, ds_name, text_field, dataset_split):
         if not isinstance(ds_name, str) or not ds_name.strip():
             raise ValueError("Dataset name must be a non-empty string.")
         ds_name = ds_name.strip()
@@ -157,11 +157,19 @@ class TrussTRTQuantizationConfigurationV2(PydanticTrTBaseModel):
                 raise ValueError(
                     f"When using preset dataset {ds_name!r}, text_field must be 'text'."
                 )
+            if dataset_split != "train":
+                raise ValueError(
+                    f"When using preset dataset {ds_name!r}, dataset_split must be 'train'."
+                )
             return
 
-        hf_full = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]{0,62})/([A-Za-z0-9][A-Za-z0-9._-]{0,62})(?:@([A-Za-z0-9._/-]+))?$")
-        hf_bare = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]{0,62})(?:@([A-Za-z0-9._/-]+))?$")
-        
+        hf_full = re.compile(
+            r"^([A-Za-z0-9][A-Za-z0-9._-]{0,62})/([A-Za-z0-9][A-Za-z0-9._-]{0,62})(?:@([A-Za-z0-9._/-]+))?$"
+        )
+        hf_bare = re.compile(
+            r"^([A-Za-z0-9][A-Za-z0-9._-]{0,62})(?:@([A-Za-z0-9._/-]+))?$"
+        )
+
         if hf_full.match(ds_name):
             return
 
