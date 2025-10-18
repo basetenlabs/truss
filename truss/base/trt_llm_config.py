@@ -5,7 +5,7 @@ import os
 import re
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Dict, List, Literal, Optional, Union
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -118,16 +118,17 @@ class TrussTRTQuantizationConfigurationV2(PydanticTrTBaseModel):
             recommended to increase for production runs (e.g. 1536), or decrease e.g. to 256 for quick testing.
         calib_dataset (str, optional): Huggingface dataset to use for calibration. Defaults to 'cnn_dailymail'.
             uses split='train' and  quantized based on 'text' column.
-        text_field (str, optional): The field in the dataset to use for text data. Defaults to 'text'.
+        text_field (Union[str, List[str]], optional): The field in the dataset to use for text data. Defaults to 'text'.
         template (str, optional): String template that is a python f-string to format the text field.
             e.g. "Summarize the following article: {text}"
+            or for multiple fields: "Summarize the following article: {title}\n\n{content}"
         calib_max_seq_length (int, optional): Maximum sequence length for calibration. Defaults to 2048.
     """
 
     calib_size: int = 1024
     calib_max_seq_length: int = 2048
     calib_dataset: str = "cnn_dailymail"
-    text_field: str = "text"
+    text_field: Union[str, List[str]] = "text"
     template: Optional[str] = None
 
     def __init__(self, **data):
