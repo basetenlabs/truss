@@ -19,7 +19,15 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
             result = runner.invoke(
                 truss_cli,
-                ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch"],
+                [
+                    "push",
+                    "test_truss",
+                    "--remote",
+                    "remote1",
+                    "--model-name",
+                    "name",
+                    "--watch",
+                ],
             )
 
     assert result.exit_code == 2
@@ -45,10 +53,19 @@ def test_push_with_grpc_transport_succeeds_by_default():
 
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
-            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
+            with patch(
+                "truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider
+            ):
                 result = runner.invoke(
                     truss_cli,
-                    ["push", "test_truss", "--remote", "remote1", "--model-name", "name"],
+                    [
+                        "push",
+                        "test_truss",
+                        "--remote",
+                        "remote1",
+                        "--model-name",
+                        "name",
+                    ],
                 )
 
     # Should succeed now since default is published deployment
@@ -69,7 +86,16 @@ def test_push_watch_and_publish_flags_conflict():
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
             result = runner.invoke(
                 truss_cli,
-                ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch", "--publish"],
+                [
+                    "push",
+                    "test_truss",
+                    "--remote",
+                    "remote1",
+                    "--model-name",
+                    "name",
+                    "--watch",
+                    "--publish",
+                ],
             )
 
     assert result.exit_code == 2
@@ -90,7 +116,16 @@ def test_push_watch_and_promote_flags_conflict():
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
             result = runner.invoke(
                 truss_cli,
-                ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch", "--promote"],
+                [
+                    "push",
+                    "test_truss",
+                    "--remote",
+                    "remote1",
+                    "--model-name",
+                    "name",
+                    "--watch",
+                    "--promote",
+                ],
             )
 
     assert result.exit_code == 2
@@ -113,18 +148,27 @@ def test_push_default_behavior_is_published():
 
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
-            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
+            with patch(
+                "truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider
+            ):
                 result = runner.invoke(
                     truss_cli,
-                    ["push", "test_truss", "--remote", "remote1", "--model-name", "name"],
+                    [
+                        "push",
+                        "test_truss",
+                        "--remote",
+                        "remote1",
+                        "--model-name",
+                        "name",
+                    ],
                 )
 
     # Check that push was called with publish=True
     assert result.exit_code == 0
     mock_remote_provider.push.assert_called_once()
     call_args = mock_remote_provider.push.call_args
-    assert call_args.kwargs['publish'] is True
-    assert call_args.kwargs['watch'] is False
+    assert call_args.kwargs["publish"] is True
+    assert call_args.kwargs["watch"] is False
 
 
 def test_push_watch_enables_log_streaming():
@@ -136,7 +180,7 @@ def test_push_watch_enables_log_streaming():
     mock_truss.spec.config.model_metadata = {"tags": ["truss"]}  # Mock the tags
     mock_remote_provider = Mock()
     from truss.remote.baseten.remote import BasetenService
-    
+
     mock_service = Mock(spec=BasetenService)
     mock_service.is_draft = True  # Development deployment
     mock_service.model_id = "test_model_id"
@@ -147,25 +191,39 @@ def test_push_watch_enables_log_streaming():
 
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
-            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
+            with patch(
+                "truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider
+            ):
                 # Mock TRT-LLM builder check to allow development mode
                 with patch("truss.cli.cli.uses_trt_llm_builder", return_value=False):
                     # Mock the log watcher to avoid actual log streaming
-                    with patch("truss.cli.cli.ModelDeploymentLogWatcher") as mock_log_watcher:
+                    with patch(
+                        "truss.cli.cli.ModelDeploymentLogWatcher"
+                    ) as mock_log_watcher:
                         mock_log_watcher.return_value.watch.return_value = []
-                        
+
                         # Mock the sync function to avoid actual file watching
-                        with patch.object(mock_remote_provider, 'sync_truss_to_dev_version_by_name'):
+                        with patch.object(
+                            mock_remote_provider, "sync_truss_to_dev_version_by_name"
+                        ):
                             result = runner.invoke(
                                 truss_cli,
-                                ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch"],
+                                [
+                                    "push",
+                                    "test_truss",
+                                    "--remote",
+                                    "remote1",
+                                    "--model-name",
+                                    "name",
+                                    "--watch",
+                                ],
                             )
 
     # Should succeed and call with watch=True
     assert result.exit_code == 0
     call_args = mock_remote_provider.push.call_args
-    assert call_args.kwargs['publish'] is False  # Development deployment
-    assert call_args.kwargs['watch'] is True
+    assert call_args.kwargs["publish"] is False  # Development deployment
+    assert call_args.kwargs["watch"] is True
 
 
 def test_push_promote_deprecation_warning():
@@ -184,20 +242,30 @@ def test_push_promote_deprecation_warning():
 
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
-            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
+            with patch(
+                "truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider
+            ):
                 result = runner.invoke(
                     truss_cli,
-                    ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--promote"],
+                    [
+                        "push",
+                        "test_truss",
+                        "--remote",
+                        "remote1",
+                        "--model-name",
+                        "name",
+                        "--promote",
+                    ],
                 )
 
     # Should succeed but show deprecation warning
     assert result.exit_code == 0
     assert "⚠️  The '--promote' flag is deprecated" in result.output
     assert "Use '--environment production' instead" in result.output
-    
+
     # Verify it sets environment to production
     call_args = mock_remote_provider.push.call_args
-    assert call_args.kwargs['environment'] == "production"
+    assert call_args.kwargs["environment"] == "production"
 
 
 def test_push_publish_deprecation_warning():
@@ -216,10 +284,20 @@ def test_push_publish_deprecation_warning():
 
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
-            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider):
+            with patch(
+                "truss.cli.cli.RemoteFactory.create", return_value=mock_remote_provider
+            ):
                 result = runner.invoke(
                     truss_cli,
-                    ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--publish"],
+                    [
+                        "push",
+                        "test_truss",
+                        "--remote",
+                        "remote1",
+                        "--model-name",
+                        "name",
+                        "--publish",
+                    ],
                 )
 
     # Should succeed but show deprecation warning

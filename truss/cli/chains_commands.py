@@ -265,16 +265,17 @@ def push_chain(
         # Show deprecation warning for --publish flag
         if publish and not promote:
             import warnings
+
             warnings.warn(
                 "The '--publish' flag is deprecated. Published deployments are now the default behavior. "
                 "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
             console.print(
                 "⚠️  The '--publish' flag is deprecated. Published deployments are now the default behavior. "
                 "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
-                style="yellow"
+                style="yellow",
             )
     else:
         # Default behavior: create published deployment
@@ -293,20 +294,21 @@ def push_chain(
             "Ignoring the value of 'promote'."
         )
         console.print(promote_warning, style="yellow")
-    
+
     if promote and not environment:
         # Show deprecation warning for --promote flag
         import warnings
+
         warnings.warn(
             "The '--promote' flag is deprecated. Use '--environment production' instead. "
             "For other environments, use '--environment {env_name}'.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         console.print(
             "⚠️  The '--promote' flag is deprecated. Use '--environment production' instead. "
             "For other environments, use '--environment {env_name}'.",
-            style="yellow"
+            style="yellow",
         )
 
     if not remote:

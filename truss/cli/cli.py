@@ -556,16 +556,17 @@ def push(
         # Show deprecation warning for --publish flag
         if publish and not promote:
             import warnings
+
             warnings.warn(
                 "The '--publish' flag is deprecated. Published deployments are now the default behavior. "
                 "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
             console.print(
                 "⚠️  The '--publish' flag is deprecated. Published deployments are now the default behavior. "
                 "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
-                style="yellow"
+                style="yellow",
             )
     else:
         # Default behavior: create published deployment
@@ -599,16 +600,17 @@ def push(
     if promote and not environment:
         # Show deprecation warning for --promote flag
         import warnings
+
         warnings.warn(
             "The '--promote' flag is deprecated. Use '--environment production' instead. "
             "For other environments, use '--environment {env_name}'.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         console.print(
             "⚠️  The '--promote' flag is deprecated. Use '--environment production' instead. "
             "For other environments, use '--environment {env_name}'.",
-            style="yellow"
+            style="yellow",
         )
         environment = PRODUCTION_ENVIRONMENT_NAME
 
@@ -745,7 +747,7 @@ def push(
     elif watch and isinstance(service, BasetenService):
         # For --watch, we want to stream logs and then enable live patching
         bt_remote = cast(BasetenRemote, remote_provider)
-        
+
         # First, stream the logs like --tail does
         console.print("📡 Streaming deployment logs...", style="blue")
         log_watcher = ModelDeploymentLogWatcher(
@@ -753,12 +755,15 @@ def push(
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log)
-        
+
         # After logs are streamed, start the watch/patch functionality
         console.print("🔄 Starting live patching mode...", style="green")
-        console.print("📝 Edit your truss files and changes will be applied automatically.", style="italic")
+        console.print(
+            "📝 Edit your truss files and changes will be applied automatically.",
+            style="italic",
+        )
         console.print("🛑 Press Ctrl+C to stop watching.", style="italic")
-        
+
         # Run the watch functionality using the existing watch command logic
         try:
             # Use the same logic as the watch command
@@ -778,7 +783,10 @@ def push(
                     error_console=error_console,
                 )
         except KeyboardInterrupt:
-            console.print("\n👋 Stopped watching. Your development deployment is still running.", style="yellow")
+            console.print(
+                "\n👋 Stopped watching. Your development deployment is still running.",
+                style="yellow",
+            )
 
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)

@@ -12,7 +12,7 @@ This document summarizes the consistent behavior across both `truss push` and `t
 ### **Development Behavior**
 - **Command**: `truss push --watch` or `truss chains push --watch`
 - **Result**: Creates **development deployment** with hot reload support
-- **Features**: 
+- **Features**:
   - Automatic log streaming (like `--tail`)
   - Live patching mode after logs complete
   - Clear user feedback throughout process

@@ -326,10 +326,10 @@ class BasetenRemote(TrussRemote):
 
         # Return the production deployment version.
         prod_version = get_prod_version_from_versions(model_versions)
-if not prod_version:
-                raise RemoteError(
-                    "No production model found. Run `truss push` then try again."
-                )
+        if not prod_version:
+            raise RemoteError(
+                "No production model found. Run `truss push` then try again."
+            )
         return prod_version
 
     @staticmethod
