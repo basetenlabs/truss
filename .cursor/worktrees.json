@@ -1,7 +1,0 @@
-{
-  "setup-worktree": [
-    "# fnm use",
-    "# npm install",
-    "# cp $ROOT_WORKTREE_PATH/.env .env"
-  ]
-}
