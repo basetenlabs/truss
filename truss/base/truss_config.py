@@ -546,14 +546,13 @@ class DockerServer(custom_types.ConfigModel):
     predict_endpoint: str
     readiness_endpoint: str
     liveness_endpoint: str
+    run_as_user_id: Optional[int] = None
     as_is: Optional[bool] = None
 
     @pydantic.model_validator(mode="after")
     def _validate_start_command(self) -> "DockerServer":
         if not self.as_is and self.start_command is None:
-            raise ValueError(
-                "start_command is required when as_is is not true"
-            )
+            raise ValueError("start_command is required when as_is is not true")
         return self
 
 
