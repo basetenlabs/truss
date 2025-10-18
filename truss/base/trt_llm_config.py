@@ -123,6 +123,7 @@ class TrussTRTQuantizationConfigurationV2(PydanticTrTBaseModel):
             e.g. "Summarize the following article: {text}"
             or for multiple fields: "Summarize the following article: {title}\n\n{content}"
         calib_max_seq_length (int, optional): Maximum sequence length for calibration. Defaults to 2048.
+        calib_dataset_split (str): The dataset split to use for calibration. Defaults to 'train'.
     """
 
     calib_size: int = 1024
@@ -130,6 +131,7 @@ class TrussTRTQuantizationConfigurationV2(PydanticTrTBaseModel):
     calib_dataset: str = "cnn_dailymail"
     text_field: Union[str, List[str]] = "text"
     template: Optional[str] = None
+    calib_dataset_split: str = "train"
 
     def __init__(self, **data):
         super().__init__(**data)
