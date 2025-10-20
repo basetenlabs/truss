@@ -530,6 +530,7 @@ def _create_baseten_chain(
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,
+        disable_truss_download=baseten_options.disable_truss_download,
     )
     return BasetenChainService(
         baseten_options.chain_name,

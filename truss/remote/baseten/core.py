@@ -129,6 +129,7 @@ def create_chain_atomic(
     truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
     original_source_artifact_s3_key: Optional[str] = None,
+    allow_truss_download: bool = True,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -152,6 +153,7 @@ def create_chain_atomic(
             is_draft=True,
             truss_user_env=truss_user_env,
             original_source_artifact_s3_key=original_source_artifact_s3_key,
+            allow_truss_download=allow_truss_download,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -166,6 +168,7 @@ def create_chain_atomic(
                 environment=environment,
                 truss_user_env=truss_user_env,
                 original_source_artifact_s3_key=original_source_artifact_s3_key,
+                allow_truss_download=allow_truss_download,
             )
         except ApiError as e:
             if (
@@ -187,6 +190,7 @@ def create_chain_atomic(
             chain_name=chain_name,
             truss_user_env=truss_user_env,
             original_source_artifact_s3_key=original_source_artifact_s3_key,
+            allow_truss_download=allow_truss_download,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -195,6 +199,7 @@ def create_chain_atomic(
         hostname=res["chain_deployment"]["chain"]["hostname"],
         is_draft=is_draft,
         original_source_artifact_s3_key=original_source_artifact_s3_key,
+        allow_truss_download=allow_truss_download,
     )
 
 

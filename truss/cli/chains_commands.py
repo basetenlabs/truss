@@ -211,6 +211,13 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     default=False,
     help=common.INCLUDE_GIT_INFO_DOC,
 )
+@click.option(
+    "--disable-truss-download",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Disable downloading the truss directory from the UI.",
+)
 @click.pass_context
 @common.common_options()
 def push_chain(
@@ -227,6 +234,7 @@ def push_chain(
     environment: Optional[str],
     experimental_watch_chainlet_names: Optional[str],
     include_git_info: bool = False,
+    disable_truss_download: bool = False,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -284,6 +292,7 @@ def push_chain(
             environment=environment,
             include_git_info=include_git_info,
             working_dir=source.parent if source.is_file() else source.resolve(),
+            disable_truss_download=disable_truss_download,
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
