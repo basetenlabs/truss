@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 from pydantic import BaseModel, Field
+
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory
@@ -164,7 +165,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["model_s3_upload_credentials"]
 
-
     def create_model_from_truss(
         self,
         model_name: str,
@@ -319,11 +319,15 @@ class BasetenApi:
         if environment:
             params.append(f'environment: "{environment}"')
         if original_source_artifact_s3_key:
-            params.append(f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"')
+            params.append(
+                f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
+            )
 
         params_str = "\n                    ".join(params)
         if params_str:
-            params_str = "\n                    " + params_str + "\n                    "
+            params_str = (
+                "\n                    " + params_str + "\n                    "
+            )
 
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -699,8 +703,8 @@ class BasetenApi:
             "creds": {
                 "aws_access_key_id": chain_creds["aws_access_key_id"],
                 "aws_secret_access_key": chain_creds["aws_secret_access_key"],
-                "aws_session_token": chain_creds["aws_session_token"]
-            }
+                "aws_session_token": chain_creds["aws_session_token"],
+            },
         }
 
     def get_training_job_metrics(

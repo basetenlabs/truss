@@ -6,11 +6,11 @@ import subprocess
 import tempfile
 import time
 import uuid
+from unittest.mock import patch
 
 import pytest
 import pytest_check
 from click.testing import CliRunner
-from unittest.mock import patch
 
 from smoketests.utils import BACKEND_ENV_DOMAIN, BASETEN_API_KEY, BASETEN_REMOTE_URL
 from truss.cli.cli import truss_cli
@@ -33,10 +33,9 @@ DEPLOY_TIMEOUT_SEC = 500
 def make_stub(url: str, options: public_types.RPCOptions) -> stub.StubBase:
     context = public_types.DeploymentContext(
         chainlet_to_service={},
-        secrets={public_types.CHAIN_API_KEY_SECRET_NAME: BASETEN_API_KEY}, 
+        secrets={public_types.CHAIN_API_KEY_SECRET_NAME: BASETEN_API_KEY},
     )
     return stub.StubBase.from_url(url, context, options)
-
 
 
 def write_trussrc(dir_path: pathlib.Path) -> pathlib.Path:
@@ -223,41 +222,41 @@ def test_itest_chain_publish(prepare) -> None:
         remote.api.delete_chain_deployment(chain_id, chain_deployment_id)
 
 
-
-
 def test_itest_chain_publish_click(prepare) -> None:
     """Test chain publish using click testing utilities instead of subprocess."""
     remote: b10_remote.BasetenRemote
     tmpdir, truss_rc_path, remote = prepare
 
     chain_src = CHAINS_ROOT / "tests" / "itest_chain" / "itest_chain.py"
-    
+
     # Set up environment for click testing
     env = os.environ.copy()
     env["USER_TRUSSRC_PATH"] = str(truss_rc_path)
-    
+
     # Create CliRunner instance
     runner = CliRunner()
-    
+
     # Mock the remote inquiry to avoid interactive prompts
     with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
         result = runner.invoke(
             truss_cli,
             [
-                "chains", 
-                "push", 
-                str(chain_src), 
-                "--publish", 
-                "--name=itest_publish_click", 
+                "chains",
+                "push",
+                str(chain_src),
+                "--publish",
+                "--name=itest_publish_click",
                 "--no-wait",
-                "--remote=baseten"
+                "--remote=baseten",
             ],
-            env=env
+            env=env,
         )
 
     # Check that the command succeeded
-    assert result.exit_code == 0, f"Command failed with exit code {result.exit_code}. Output: {result.output}. Error: {result.exception}"
-    
+    assert result.exit_code == 0, (
+        f"Command failed with exit code {result.exit_code}. Output: {result.output}. Error: {result.exception}"
+    )
+
     # Parse the output to extract URL and IDs
     stdout = result.output
     if result.stderr:
@@ -338,7 +337,6 @@ def test_itest_chain_publish_click(prepare) -> None:
     else:
         logging.info(f"No failures. Deleting deployment `{chain_deployment_id}`.")
         remote.api.delete_chain_deployment(chain_id, chain_deployment_id)
-
 
 
 @pytest.mark.skip("Not Implemented.")

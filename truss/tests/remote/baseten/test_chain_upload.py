@@ -3,6 +3,7 @@ import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
+
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import upload_chain_artifact
@@ -22,7 +23,7 @@ class TestChainUpload:
                     "s3_key": "chains/test-uuid/chain.tgz",
                     "aws_access_key_id": "test_access_key",
                     "aws_secret_access_key": "test_secret_key",
-                    "aws_session_token": "test_session_token"
+                    "aws_session_token": "test_session_token",
                 }
             }
         }
@@ -31,7 +32,7 @@ class TestChainUpload:
         mock_auth_service = Mock()
         mock_auth_service.authenticate.return_value = Mock(value="test-token")
         api = BasetenApi("https://test.baseten.co", mock_auth_service)
-        with patch.object(api, '_post_graphql_query') as mock_graphql:
+        with patch.object(api, "_post_graphql_query") as mock_graphql:
             mock_graphql.return_value = mock_graphql_response
 
             # Call the method
@@ -58,16 +59,17 @@ class TestChainUpload:
             "creds": {
                 "aws_access_key_id": "test_access_key",
                 "aws_secret_access_key": "test_secret_key",
-                "aws_session_token": "test_session_token"
-            }
+                "aws_session_token": "test_session_token",
+            },
         }
 
         # Create a real API instance and mock both REST API and GraphQL calls
         mock_auth_service = Mock()
         mock_auth_service.authenticate.return_value = Mock(value="test-token")
         api = BasetenApi("https://test.baseten.co", mock_auth_service)
-        with patch.object(api, '_rest_api_client') as mock_client, \
-             patch.object(api, '_post_graphql_query') as mock_graphql:
+        with patch.object(api, "_rest_api_client") as mock_client, patch.object(
+            api, "_post_graphql_query"
+        ) as mock_graphql:
             mock_client.get.return_value = mock_response
 
             # Call the method for model blob type
@@ -81,7 +83,7 @@ class TestChainUpload:
             mock_client.get.assert_called_once_with("v1/blobs/credentials/model")
             mock_graphql.assert_not_called()
 
-    @patch('truss.remote.baseten.core.multipart_upload_boto3')
+    @patch("truss.remote.baseten.core.multipart_upload_boto3")
     def test_upload_chain_artifact_function(self, mock_multipart_upload):
         """Test the upload_chain_artifact function."""
         # Mock API response
@@ -91,8 +93,8 @@ class TestChainUpload:
             "creds": {
                 "aws_access_key_id": "test_access_key",
                 "aws_secret_access_key": "test_secret_key",
-                "aws_session_token": "test_session_token"
-            }
+                "aws_session_token": "test_session_token",
+            },
         }
 
         # Create mock API
@@ -122,17 +124,14 @@ class TestChainUpload:
             assert call_args[0][3] == {  # credentials
                 "aws_access_key_id": "test_access_key",
                 "aws_secret_access_key": "test_secret_key",
-                "aws_session_token": "test_session_token"
+                "aws_session_token": "test_session_token",
             }
 
-    @patch('truss.remote.baseten.remote.upload_chain_artifact')
-    @patch('truss.remote.baseten.remote.archive_dir')
-    @patch('truss.remote.baseten.remote.create_chain_atomic')
+    @patch("truss.remote.baseten.remote.upload_chain_artifact")
+    @patch("truss.remote.baseten.remote.archive_dir")
+    @patch("truss.remote.baseten.remote.create_chain_atomic")
     def test_push_chain_atomic_with_chain_upload(
-        self,
-        mock_create_chain_atomic,
-        mock_archive_dir,
-        mock_upload_chain_artifact
+        self, mock_create_chain_atomic, mock_archive_dir, mock_upload_chain_artifact
     ):
         """Test that push_chain_atomic uploads raw chain artifact when chain_root is provided."""
         # Setup mocks
@@ -166,8 +165,8 @@ class TestChainUpload:
         mock_push_data.model_id = "model-id"
         mock_push_data.version_name = None
 
-        with patch.object(remote, '_prepare_push', return_value=mock_push_data):
-            with patch('truss.remote.baseten.remote.truss_build.load') as mock_load:
+        with patch.object(remote, "_prepare_push", return_value=mock_push_data):
+            with patch("truss.remote.baseten.remote.truss_build.load") as mock_load:
                 mock_truss_handle = Mock()
                 mock_truss_handle.spec.config.model_name = "test-model"
                 mock_load.return_value = mock_truss_handle
@@ -179,20 +178,19 @@ class TestChainUpload:
                     dependency_artifacts=dependency_artifacts,
                     truss_user_env=truss_user_env,
                     chain_root=chain_root,
-                    publish=True
+                    publish=True,
                 )
 
                 # Verify chain artifact upload was called
                 mock_archive_dir.assert_called_once_with(
-                    dir=chain_root,
-                    progress_bar=None
+                    dir=chain_root, progress_bar=None
                 )
                 mock_upload_chain_artifact.assert_called_once()
 
                 # Verify create_chain_atomic was called
                 mock_create_chain_atomic.assert_called_once()
 
-    @patch('truss.remote.baseten.remote.create_chain_atomic')
+    @patch("truss.remote.baseten.remote.create_chain_atomic")
     def test_push_chain_atomic_without_chain_upload(self, mock_create_chain_atomic):
         """Test that push_chain_atomic skips chain upload when chain_root is None."""
         # Setup mocks
@@ -223,14 +221,18 @@ class TestChainUpload:
         mock_push_data.model_id = "model-id"
         mock_push_data.version_name = None
 
-        with patch.object(remote, '_prepare_push', return_value=mock_push_data):
-            with patch('truss.remote.baseten.remote.truss_build.load') as mock_load:
+        with patch.object(remote, "_prepare_push", return_value=mock_push_data):
+            with patch("truss.remote.baseten.remote.truss_build.load") as mock_load:
                 mock_truss_handle = Mock()
                 mock_truss_handle.spec.config.model_name = "test-model"
                 mock_load.return_value = mock_truss_handle
 
-                with patch('truss.remote.baseten.remote.upload_chain_artifact') as mock_upload:
-                    with patch('truss.remote.baseten.remote.create_tar_with_progress_bar') as mock_tar:
+                with patch(
+                    "truss.remote.baseten.remote.upload_chain_artifact"
+                ) as mock_upload:
+                    with patch(
+                        "truss.remote.baseten.remote.create_tar_with_progress_bar"
+                    ) as mock_tar:
                         # Call push_chain_atomic without chain_root
                         result = remote.push_chain_atomic(
                             chain_name=chain_name,
@@ -238,7 +240,7 @@ class TestChainUpload:
                             dependency_artifacts=dependency_artifacts,
                             truss_user_env=truss_user_env,
                             chain_root=None,  # No chain root
-                            publish=True
+                            publish=True,
                         )
 
                         # Verify chain artifact upload was NOT called
@@ -248,8 +250,7 @@ class TestChainUpload:
                         # Verify create_chain_atomic was called
                         mock_create_chain_atomic.assert_called_once()
 
-
-    @patch('truss.remote.baseten.core.multipart_upload_boto3')
+    @patch("truss.remote.baseten.core.multipart_upload_boto3")
     def test_upload_chain_artifact_error_handling(self, mock_multipart_upload):
         """Test error handling in upload_chain_artifact."""
         # Mock API to raise an exception
@@ -270,15 +271,15 @@ class TestChainUpload:
             "creds": {
                 "aws_access_key_id": "access_key",
                 "aws_secret_access_key": "secret_key",
-                "aws_session_token": "session_token"
+                "aws_session_token": "session_token",
             },
-            "extra_field": "should_be_ignored"
+            "extra_field": "should_be_ignored",
         }
 
         api = Mock(spec=BasetenApi)
         api.get_chain_s3_upload_credentials.return_value = mock_credentials
 
-        with patch('truss.remote.baseten.core.multipart_upload_boto3') as mock_upload:
+        with patch("truss.remote.baseten.core.multipart_upload_boto3") as mock_upload:
             with tempfile.NamedTemporaryFile(suffix=".tgz") as temp_file:
                 upload_chain_artifact(api, temp_file, None)
 
@@ -290,6 +291,6 @@ class TestChainUpload:
                 assert credentials == {
                     "aws_access_key_id": "access_key",
                     "aws_secret_access_key": "secret_key",
-                    "aws_session_token": "session_token"
+                    "aws_session_token": "session_token",
                 }
                 assert "extra_field" not in credentials

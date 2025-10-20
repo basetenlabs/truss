@@ -113,33 +113,35 @@ def test_itest_chain_publish_click(prepare) -> None:
     tmpdir, truss_rc_path, remote = prepare
 
     chain_src = CHAINS_ROOT / "tests" / "itest_chain" / "itest_chain.py"
-    
+
     # Set up environment for click testing
     env = os.environ.copy()
     env["USER_TRUSSRC_PATH"] = str(truss_rc_path)
-    
+
     # Create CliRunner instance
     runner = CliRunner()
-    
+
     # Mock the remote inquiry to avoid interactive prompts
     with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
         result = runner.invoke(
             truss_cli,
             [
-                "chains", 
-                "push", 
-                str(chain_src), 
-                "--publish", 
-                "--name=itest_publish_click", 
+                "chains",
+                "push",
+                str(chain_src),
+                "--publish",
+                "--name=itest_publish_click",
                 "--no-wait",
-                "--remote=baseten"
+                "--remote=baseten",
             ],
-            env=env
+            env=env,
         )
 
     # Check that the command succeeded
-    assert result.exit_code == 0, f"Command failed with exit code {result.exit_code}. Output: {result.output}. Error: {result.exception}"
-    
+    assert result.exit_code == 0, (
+        f"Command failed with exit code {result.exit_code}. Output: {result.output}. Error: {result.exception}"
+    )
+
     # Parse the output to extract URL and IDs
     stdout = result.output
     if result.stderr:
@@ -233,6 +235,3 @@ def test_itest_chain_development_click(prepare):
     # 6. Verify invocation is updated.
     # 7. Delete.
     pass
- 
-
-

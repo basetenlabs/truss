@@ -367,14 +367,14 @@ def upload_chain_artifact(
     credentials_response = api.get_chain_s3_upload_credentials()
     s3_key = credentials_response["s3_key"]
     s3_bucket = credentials_response["s3_bucket"]
-    
+
     # Extract only the AWS credentials for the upload
     aws_credentials = {
         "aws_access_key_id": credentials_response["creds"]["aws_access_key_id"],
         "aws_secret_access_key": credentials_response["creds"]["aws_secret_access_key"],
         "aws_session_token": credentials_response["creds"]["aws_session_token"],
     }
-    
+
     multipart_upload_boto3(
         serialize_file.name, s3_bucket, s3_key, aws_credentials, progress_bar
     )
