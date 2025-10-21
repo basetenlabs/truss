@@ -3,11 +3,6 @@ name: Create RC Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'RC version to release'
-        required: true
-        type: string
 
 # Prevent multiple simultaneous runs for security purposes
 concurrency:
@@ -33,36 +28,24 @@ jobs:
             exit 1
           fi
 
-      - name: Validate version format
+      - name: Validate version consistency
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          # Get version from pyproject.toml
+          VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+
+          # Validate version format
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+rc[0-9]+$ ]]; then
-            echo "❌ Invalid version format: $VERSION"
+            echo "❌ Invalid version format in pyproject.toml: $VERSION"
             echo "✅ Expected format: X.Y.ZrcN (e.g., 0.11.13rc1)"
             exit 1
           fi
-          echo "✅ Version format is valid: $VERSION"
 
-      - name: Validate version consistency
-        run: |
-          VERSION="${{ github.event.inputs.version }}"
-
-          # Check pyproject.toml version
-          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
-          if [[ "$PYPROJECT_VERSION" != "$VERSION" ]]; then
-            echo "❌ Version mismatch in pyproject.toml"
-            echo "   Expected: $VERSION"
-            echo "   Found: $PYPROJECT_VERSION"
-            echo "   Please update pyproject.toml to match the RC version"
-            exit 1
-          fi
-
-          # Check uv.lock version
+          # Check uv.lock version matches pyproject.toml
           UV_LOCK_VERSION=$(grep -A1 'name = "truss"' uv.lock | grep 'version = ' | cut -d'"' -f2)
           if [[ "$UV_LOCK_VERSION" != "$VERSION" ]]; then
-            echo "❌ Version mismatch in uv.lock"
-            echo "   Expected: $VERSION"
-            echo "   Found: $UV_LOCK_VERSION"
+            echo "❌ Version mismatch between pyproject.toml and uv.lock"
+            echo "   pyproject.toml: $VERSION"
+            echo "   uv.lock: $UV_LOCK_VERSION"
             echo "   Please run 'uv lock' to update uv.lock"
             exit 1
           fi
