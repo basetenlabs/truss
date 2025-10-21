@@ -9,12 +9,30 @@ on:
         required: true
         type: string
 
+# Prevent multiple simultaneous runs for security purposes
+concurrency:
+  group: create-rc-release
+  cancel-in-progress: false
+
 jobs:
   publish-rc-only:
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
     steps:
+      - name: Check user permissions
+        run: |
+          # Only allow specific users to trigger (from secret)
+          ALLOWED_USERS="${{ secrets.RC_RELEASE_ALLOWED_USERS }}"
+          if [[ -z "$ALLOWED_USERS" ]]; then
+            echo "❌ RC_RELEASE_ALLOWED_USERS secret not configured"
+            exit 1
+          fi
+          if [[ ! "$ALLOWED_USERS" =~ "${{ github.actor }}" ]]; then
+            echo "❌ User ${{ github.actor }} not authorized for RC releases"
+            exit 1
+          fi
+
       - name: Validate version format
         run: |
           VERSION="${{ github.event.inputs.version }}"
