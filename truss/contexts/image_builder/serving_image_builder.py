@@ -758,8 +758,7 @@ class ServingImageBuilder(ImageBuilder):
 
         # Note: as-is deployment template doesn't use most of the template variables,
         # because it tries to run the base image as-is to the extent possible.
-        ff_as_is = os.getenv("BT_AS_IS_DEPLOYMENT", False)
-        if ff_as_is and config.docker_server and config.docker_server.as_is:
+        if config.docker_server and config.docker_server.as_is:
             dockerfile_template = read_template_from_fs(
                 TEMPLATES_DIR, AS_IS_DOCKERFILE_TEMPLATE_NAME
             )
