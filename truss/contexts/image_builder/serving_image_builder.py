@@ -21,6 +21,7 @@ from huggingface_hub.utils import filter_repo_objects
 
 from truss.base import constants, truss_config
 from truss.base.constants import (
+    AS_IS_DOCKERFILE_TEMPLATE_NAME,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
@@ -750,20 +751,22 @@ class ServingImageBuilder(ImageBuilder):
         build_commands: List[str],
     ):
         config = self._spec.config
-        ff_as_is = os.getenv("BT_AS_IS_DEPLOYMENT", False)
-        # Escape hatch for as-is deployments
-        if ff_as_is and config.docker_server and config.docker_server.as_is:
-            dockerfile_contents = f"FROM {config.base_image.image}"
-            docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
-            docker_file_path.write_text(dockerfile_contents)
-            return
 
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        dockerfile_template = read_template_from_fs(
-            TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
-        )
+
+        # Note: as-is deployment template doesn't use most of the template variables,
+        # because it tries to run the base image as-is to the extent possible.
+        ff_as_is = os.getenv("BT_AS_IS_DEPLOYMENT", False)
+        if ff_as_is and config.docker_server and config.docker_server.as_is:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, AS_IS_DOCKERFILE_TEMPLATE_NAME
+            )
+        else:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
+            )
         python_version = truss_config.to_dotted_python_version(config.python_version)
         if config.base_image:
             base_image_name_and_tag = config.base_image.image
