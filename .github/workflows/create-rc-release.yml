@@ -42,7 +42,35 @@ jobs:
             exit 1
           fi
           echo "✅ Version format is valid: $VERSION"
+
+      - name: Validate version consistency
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          # Check pyproject.toml version
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+          if [[ "$PYPROJECT_VERSION" != "$VERSION" ]]; then
+            echo "❌ Version mismatch in pyproject.toml"
+            echo "   Expected: $VERSION"
+            echo "   Found: $PYPROJECT_VERSION"
+            echo "   Please update pyproject.toml to match the RC version"
+            exit 1
+          fi
+
+          # Check uv.lock version
+          UV_LOCK_VERSION=$(grep -A1 'name = "truss"' uv.lock | grep 'version = ' | cut -d'"' -f2)
+          if [[ "$UV_LOCK_VERSION" != "$VERSION" ]]; then
+            echo "❌ Version mismatch in uv.lock"
+            echo "   Expected: $VERSION"
+            echo "   Found: $UV_LOCK_VERSION"
+            echo "   Please run 'uv lock' to update uv.lock"
+            exit 1
+          fi
+
+          echo "✅ Version consistency validated: $VERSION"
+
       - uses: ./.github/actions/setup-python/
+
       - name: Install packages
         run: uv sync --no-dev
       - name: Build
