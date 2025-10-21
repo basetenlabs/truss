@@ -754,6 +754,13 @@ class ServingImageBuilder(ImageBuilder):
         # Escape hatch for as-is deployments
         if ff_as_is and config.docker_server and config.docker_server.as_is:
             dockerfile_contents = f"FROM {config.base_image.image}"
+            # Add COPY for bptr-manifest if model_cache v2 is enabled
+            if config.model_cache and config.model_cache.is_v2:
+                if config.docker_server and config.docker_server.run_as_user_id:
+                    user_id = config.docker_server.run_as_user_id
+                else:
+                    user_id = 60000
+                dockerfile_contents += f"\nCOPY --chown={user_id}:{user_id} ./bptr-manifest /static-bptr/static-bptr-manifest.json"
             docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
             docker_file_path.write_text(dockerfile_contents)
             return
