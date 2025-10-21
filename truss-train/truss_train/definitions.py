@@ -125,7 +125,7 @@ class Runtime(custom_types.SafeModelNoExtra):
             raise ValueError(
                 "Cannot set both 'enable_cache' and 'cache_config'. "
                 "'enable_cache' is deprecated. Prefer migrating to 'cache_config' with "
-                "`enabled=True` and `enable_legacy_hf_cache=True`."
+                "`enabled=True` and `enable_legacy_hf_mount=True`."
             )
 
         # Migrate enable_cache to cache_config if enable_cache is True
