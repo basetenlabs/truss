@@ -49,7 +49,7 @@ FILENAME_CONSTANTS_MAP = {
 }
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
-AS_IS_DOCKERFILE_TEMPLATE_NAME = "as_is.Dockerfile.jinja"
+NO_BUILD_DOCKERFILE_TEMPLATE_NAME = "no_build.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
 MODEL_CACHE_PATH = pathlib.Path("/app/model_cache")
 README_TEMPLATE_NAME = "README.md.jinja"
