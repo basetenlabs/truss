@@ -180,6 +180,7 @@ class TestChainUpload:
                     chain_root=chain_root,
                     publish=True,
                 )
+                assert result == mock_create_chain_atomic.return_value
 
                 # Verify chain artifact upload was called
                 mock_archive_dir.assert_called_once_with(
@@ -242,6 +243,9 @@ class TestChainUpload:
                             chain_root=None,  # No chain root
                             publish=True,
                         )
+
+                        # Verify the result
+                        assert result
 
                         # Verify chain artifact upload was NOT called
                         mock_tar.assert_not_called()

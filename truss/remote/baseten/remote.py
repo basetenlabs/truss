@@ -307,7 +307,7 @@ class BasetenRemote(TrussRemote):
         # Upload raw chain artifact if chain_root is provided
         raw_chain_s3_key = None
         if chain_root is not None:
-            logging.info(f"Uploading source artifact")
+            logging.info("Uploading source artifact")
             # Create a tar file from the chain root directory
             temp_file = archive_dir(dir=chain_root, progress_bar=progress_bar)
             # Upload the chain artifact to S3

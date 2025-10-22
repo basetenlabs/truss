@@ -326,7 +326,7 @@ class BasetenApi:
                 f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
             )
 
-        params.append(f'allow_truss_download: {str(allow_truss_download).lower()}')
+        params.append(f"allow_truss_download: {str(allow_truss_download).lower()}")
 
         params_str = "\n                    ".join(params)
         if params_str:
