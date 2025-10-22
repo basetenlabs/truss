@@ -326,6 +326,7 @@ class BasetenApi:
                 f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
             )
 
+        params.append(f"is_draft: {str(is_draft).lower()}")
         params.append(f"allow_truss_download: {str(allow_truss_download).lower()}")
 
         params_str = "\n                    ".join(params)
@@ -337,8 +338,7 @@ class BasetenApi:
         query_string = f"""
             mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
-                    {params_str}is_draft: {str(is_draft).lower()}
-                    entrypoint: {entrypoint_str}
+                    {params_str}entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
                     truss_user_env: $trussUserEnv
                 ) {{

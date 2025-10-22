@@ -35,6 +35,7 @@ from truss.remote.baseten.core import (
     upload_truss,
     validate_truss_config_against_backend,
 )
+from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
