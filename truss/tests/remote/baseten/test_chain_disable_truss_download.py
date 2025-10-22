@@ -1,12 +1,12 @@
 """Tests for disable_truss_download parameter in chain deployment."""
 
-from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
 
-from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import custom_types as b10_types
+from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten.core import ChainDeploymentHandleAtomic
 
 
@@ -51,11 +51,19 @@ class TestChainDisableTrussDownload:
     @patch("truss.remote.baseten.remote.create_chain_atomic")
     @patch("truss.remote.baseten.remote.truss_build.load")
     def test_push_chain_atomic_with_disable_truss_download_true(
-        self, mock_load, mock_create_chain_atomic, mock_remote, mock_chainlet_artifact, mock_truss_handle, mock_push_data
+        self,
+        mock_load,
+        mock_create_chain_atomic,
+        mock_remote,
+        mock_chainlet_artifact,
+        mock_truss_handle,
+        mock_push_data,
     ):
         """Test that disable_truss_download=True is passed to _prepare_push."""
         mock_load.return_value = mock_truss_handle
-        with patch.object(mock_remote, '_prepare_push', return_value=mock_push_data) as mock_prepare_push:
+        with patch.object(
+            mock_remote, "_prepare_push", return_value=mock_push_data
+        ) as mock_prepare_push:
             # Mock the return value for create_chain_atomic
             mock_deployment_handle = ChainDeploymentHandleAtomic(
                 chain_deployment_id="test_deployment_id",
@@ -64,7 +72,7 @@ class TestChainDisableTrussDownload:
                 is_draft=False,
             )
             mock_create_chain_atomic.return_value = mock_deployment_handle
-            
+
             # Call push_chain_atomic with disable_truss_download=True
             result = mock_remote.push_chain_atomic(
                 chain_name="test_chain",
@@ -74,23 +82,31 @@ class TestChainDisableTrussDownload:
                 publish=True,
                 disable_truss_download=True,
             )
-            
+
             # Verify that _prepare_push was called with disable_truss_download=True
             mock_prepare_push.assert_called()
             call_args = mock_prepare_push.call_args
             assert call_args[1]["disable_truss_download"] is True
-            
+
             # Verify the result
             assert result == mock_deployment_handle
 
     @patch("truss.remote.baseten.remote.create_chain_atomic")
     @patch("truss.remote.baseten.remote.truss_build.load")
     def test_push_chain_atomic_with_disable_truss_download_false(
-        self, mock_load, mock_create_chain_atomic, mock_remote, mock_chainlet_artifact, mock_truss_handle, mock_push_data
+        self,
+        mock_load,
+        mock_create_chain_atomic,
+        mock_remote,
+        mock_chainlet_artifact,
+        mock_truss_handle,
+        mock_push_data,
     ):
         """Test that disable_truss_download=False is passed to _prepare_push."""
         mock_load.return_value = mock_truss_handle
-        with patch.object(mock_remote, '_prepare_push', return_value=mock_push_data) as mock_prepare_push:
+        with patch.object(
+            mock_remote, "_prepare_push", return_value=mock_push_data
+        ) as mock_prepare_push:
             # Mock the return value for create_chain_atomic
             mock_deployment_handle = ChainDeploymentHandleAtomic(
                 chain_deployment_id="test_deployment_id",
@@ -99,7 +115,7 @@ class TestChainDisableTrussDownload:
                 is_draft=False,
             )
             mock_create_chain_atomic.return_value = mock_deployment_handle
-            
+
             # Call push_chain_atomic with disable_truss_download=False
             result = mock_remote.push_chain_atomic(
                 chain_name="test_chain",
@@ -109,23 +125,31 @@ class TestChainDisableTrussDownload:
                 publish=True,
                 disable_truss_download=False,
             )
-            
+
             # Verify that _prepare_push was called with disable_truss_download=False
             mock_prepare_push.assert_called()
             call_args = mock_prepare_push.call_args
             assert call_args[1]["disable_truss_download"] is False
-            
+
             # Verify the result
             assert result == mock_deployment_handle
 
     @patch("truss.remote.baseten.remote.create_chain_atomic")
     @patch("truss.remote.baseten.remote.truss_build.load")
     def test_push_chain_atomic_with_disable_truss_download_default(
-        self, mock_load, mock_create_chain_atomic, mock_remote, mock_chainlet_artifact, mock_truss_handle, mock_push_data
+        self,
+        mock_load,
+        mock_create_chain_atomic,
+        mock_remote,
+        mock_chainlet_artifact,
+        mock_truss_handle,
+        mock_push_data,
     ):
         """Test that disable_truss_download defaults to False when not specified."""
         mock_load.return_value = mock_truss_handle
-        with patch.object(mock_remote, '_prepare_push', return_value=mock_push_data) as mock_prepare_push:
+        with patch.object(
+            mock_remote, "_prepare_push", return_value=mock_push_data
+        ) as mock_prepare_push:
             # Mock the return value for create_chain_atomic
             mock_deployment_handle = ChainDeploymentHandleAtomic(
                 chain_deployment_id="test_deployment_id",
@@ -134,7 +158,7 @@ class TestChainDisableTrussDownload:
                 is_draft=False,
             )
             mock_create_chain_atomic.return_value = mock_deployment_handle
-            
+
             # Call push_chain_atomic without disable_truss_download parameter
             result = mock_remote.push_chain_atomic(
                 chain_name="test_chain",
@@ -143,12 +167,11 @@ class TestChainDisableTrussDownload:
                 truss_user_env=b10_types.TrussUserEnv.collect(),
                 publish=True,
             )
-            
+
             # Verify that _prepare_push was called with disable_truss_download=False (default)
             mock_prepare_push.assert_called()
             call_args = mock_prepare_push.call_args
             assert call_args[1]["disable_truss_download"] is False
-            
+
             # Verify the result
             assert result == mock_deployment_handle
-

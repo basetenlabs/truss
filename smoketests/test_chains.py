@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import pathlib
@@ -7,15 +6,12 @@ import subprocess
 import tempfile
 import time
 import uuid
-from unittest.mock import patch
 
 import pytest
 import pytest_check
 import requests
-from click.testing import CliRunner
 
 from smoketests.utils import BACKEND_ENV_DOMAIN, BASETEN_API_KEY, BASETEN_REMOTE_URL
-from truss.cli.cli import truss_cli
 from truss.remote.baseten import core
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten.utils import status as status_utils
@@ -108,7 +104,7 @@ def download_chain_artifact(download_url: str, output_path: pathlib.Path) -> Non
     response = requests.get(download_url, stream=True)
     response.raise_for_status()
 
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
 
@@ -260,7 +256,9 @@ def test_itest_chain_publish(prepare) -> None:
 
     # Test downloading chain artifact using GraphQL endpoint
     # This tests the chain_deployment_s3_download_url GraphQL endpoint
-    logging.info(f"Testing chain artifact download for deployment {chain_deployment_id}")
+    logging.info(
+        f"Testing chain artifact download for deployment {chain_deployment_id}"
+    )
     try:
         download_url = get_chain_deployment_s3_download_url(chain_deployment_id)
         logging.info(f"Got download URL: {download_url}")
@@ -273,7 +271,9 @@ def test_itest_chain_publish(prepare) -> None:
         assert artifact_path.exists(), "Artifact file was not created"
         assert artifact_path.stat().st_size > 0, "Downloaded artifact is empty"
 
-        logging.info(f"Successfully downloaded chain artifact: {artifact_path.stat().st_size} bytes")
+        logging.info(
+            f"Successfully downloaded chain artifact: {artifact_path.stat().st_size} bytes"
+        )
 
     except Exception as e:
         logging.warning(f"Chain artifact download failed: {e}")
