@@ -34,7 +34,7 @@ def test_chains_push_with_disable_chain_download_flag():
                     "chains",
                     "push",
                     "test_chain.py",
-                        "--disable-chain-download",
+                    "--disable-chain-download",
                     "--remote",
                     "test_remote",
                     "--dryrun",

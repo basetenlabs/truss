@@ -1,7 +1,5 @@
 """Comprehensive end-to-end tests for chain upload flow using Click test runner."""
 
-import tempfile
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
