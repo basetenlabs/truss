@@ -32,6 +32,7 @@ from truss.base.constants import (
     FILENAME_CONSTANTS_MAP,
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
+    NO_BUILD_DOCKERFILE_TEMPLATE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -577,7 +578,10 @@ class ServingImageBuilder(ImageBuilder):
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
-        if config.docker_server is not None:
+        if (
+            config.docker_server is not None
+            and config.docker_server.no_build is not True
+        ):
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
                 build_dir,
@@ -750,12 +754,21 @@ class ServingImageBuilder(ImageBuilder):
         build_commands: List[str],
     ):
         config = self._spec.config
+
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        dockerfile_template = read_template_from_fs(
-            TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
-        )
+
+        # Note: no-build deployment template doesn't use most of the template variables,
+        # because it tries to run the base image as-is to the extent possible.
+        if config.docker_server and config.docker_server.no_build:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, NO_BUILD_DOCKERFILE_TEMPLATE_NAME
+            )
+        else:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
+            )
         python_version = truss_config.to_dotted_python_version(config.python_version)
         if config.base_image:
             base_image_name_and_tag = config.base_image.image
