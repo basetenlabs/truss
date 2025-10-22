@@ -265,7 +265,7 @@ class PushOptionsBaseten(PushOptions):
     environment: Optional[str]
     include_git_info: bool
     working_dir: pathlib.Path
-    disable_truss_download: bool = False
+    disable_chain_download: bool = False
 
     @classmethod
     def create(
@@ -278,7 +278,7 @@ class PushOptionsBaseten(PushOptions):
         include_git_info: bool,
         working_dir: pathlib.Path,
         environment: Optional[str] = None,
-        disable_truss_download: bool = False,
+        disable_chain_download: bool = False,
     ) -> "PushOptionsBaseten":
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
@@ -292,7 +292,7 @@ class PushOptionsBaseten(PushOptions):
             environment=environment,
             include_git_info=include_git_info,
             working_dir=working_dir,
-            disable_truss_download=disable_truss_download,
+            disable_chain_download=disable_chain_download,
         )
 
 

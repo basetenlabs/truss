@@ -269,7 +269,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
-        disable_truss_download: bool = False,
+        disable_chain_download: bool = False,
     ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -289,7 +289,7 @@ class BasetenRemote(TrussRemote):
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
                 progress_bar=progress_bar,
-                disable_truss_download=disable_truss_download,
+                disable_truss_download=disable_chain_download,
             )
             oracle_data = custom_types.OracleData(
                 model_name=push_data.model_name,
@@ -324,7 +324,7 @@ class BasetenRemote(TrussRemote):
             truss_user_env=truss_user_env,
             environment=environment,
             original_source_artifact_s3_key=raw_chain_s3_key,
-            allow_truss_download=not disable_truss_download,
+            allow_truss_download=not disable_chain_download,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle

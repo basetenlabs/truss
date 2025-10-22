@@ -7,8 +7,8 @@ from click.testing import CliRunner
 from truss.cli.cli import truss_cli
 
 
-def test_chains_push_with_disable_truss_download_flag():
-    """Test that --disable-truss-download flag is properly parsed and passed through."""
+def test_chains_push_with_disable_chain_download_flag():
+    """Test that --disable-chain-download flag is properly parsed and passed through."""
     runner = CliRunner()
 
     # Mock the chainlet importer and deployment client
@@ -34,7 +34,7 @@ def test_chains_push_with_disable_truss_download_flag():
                     "chains",
                     "push",
                     "test_chain.py",
-                    "--disable-truss-download",
+                        "--disable-chain-download",
                     "--remote",
                     "test_remote",
                     "--dryrun",
@@ -48,13 +48,13 @@ def test_chains_push_with_disable_truss_download_flag():
     call_args = mock_push.call_args
     options = call_args[0][1]  # Second argument is the options
 
-    # Check that disable_truss_download is set to True in the options
-    assert hasattr(options, "disable_truss_download")
-    assert options.disable_truss_download is True
+    # Check that disable_chain_download is set to True in the options
+    assert hasattr(options, "disable_chain_download")
+    assert options.disable_chain_download is True
 
 
-def test_chains_push_without_disable_truss_download_flag():
-    """Test that disable_truss_download defaults to False when flag is not provided."""
+def test_chains_push_without_disable_chain_download_flag():
+    """Test that disable_chain_download defaults to False when flag is not provided."""
     runner = CliRunner()
 
     # Mock the chainlet importer and deployment client
@@ -93,19 +93,19 @@ def test_chains_push_without_disable_truss_download_flag():
     call_args = mock_push.call_args
     options = call_args[0][1]  # Second argument is the options
 
-    # Check that disable_truss_download defaults to False
-    assert hasattr(options, "disable_truss_download")
-    assert options.disable_truss_download is False
+    # Check that disable_chain_download defaults to False
+    assert hasattr(options, "disable_chain_download")
+    assert options.disable_chain_download is False
 
 
-def test_chains_push_help_includes_disable_truss_download():
-    """Test that --disable-truss-download appears in the help output."""
+def test_chains_push_help_includes_disable_chain_download():
+    """Test that --disable-chain-download appears in the help output."""
     runner = CliRunner()
 
     result = runner.invoke(truss_cli, ["chains", "push", "--help"])
 
     assert result.exit_code == 0
-    assert "--disable-truss-download" in result.output
+    assert "--disable-chain-download" in result.output
     # Check for the help text (it may be wrapped across lines)
     assert "Disable downloading" in result.output
     assert "truss directory" in result.output
