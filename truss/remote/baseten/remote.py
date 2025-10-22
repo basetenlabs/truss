@@ -307,17 +307,13 @@ class BasetenRemote(TrussRemote):
         # Upload raw chain artifact if chain_root is provided
         raw_chain_s3_key = None
         if chain_root is not None:
-            logging.info(f"Uploading raw chain artifact from {chain_root}")
+            logging.info(f"Uploading source artifact")
             # Create a tar file from the chain root directory
             temp_file = archive_dir(dir=chain_root, progress_bar=progress_bar)
             # Upload the chain artifact to S3
             raw_chain_s3_key = upload_chain_artifact(
                 api=self._api, serialize_file=temp_file, progress_bar=progress_bar
             )
-            logging.info(
-                f"Successfully uploaded raw chain artifact to S3: {raw_chain_s3_key}"
-            )
-
         chain_deployment_handle = create_chain_atomic(
             api=self._api,
             chain_name=chain_name,

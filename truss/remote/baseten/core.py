@@ -81,6 +81,7 @@ class ChainDeploymentHandleAtomic(NamedTuple):
     chain_deployment_id: str
     is_draft: bool
     original_source_artifact_s3_key: Optional[str] = None
+    allow_truss_download: Optional[bool] = True
 
 
 class ModelVersionHandle(NamedTuple):

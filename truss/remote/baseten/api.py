@@ -300,7 +300,10 @@ class BasetenApi:
         environment: Optional[str] = None,
         is_draft: bool = False,
         original_source_artifact_s3_key: Optional[str] = None,
+        allow_truss_download: Optional[bool] = True,
     ):
+        if allow_truss_download is None:
+            allow_truss_download = True
         entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
 
         dependencies_str = ", ".join(
@@ -322,6 +325,8 @@ class BasetenApi:
             params.append(
                 f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
             )
+
+        params.append(f'allow_truss_download: {str(allow_truss_download).lower()}')
 
         params_str = "\n                    ".join(params)
         if params_str:
