@@ -217,7 +217,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     is_flag=True,
     required=False,
     default=False,
-    help="Disable downloading the truss directory from the UI.",
+    help="Disable downloading of pushed chain source code from the UI.",
 )
 @click.pass_context
 @common.common_options()

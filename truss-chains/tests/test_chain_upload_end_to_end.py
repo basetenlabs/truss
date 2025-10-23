@@ -133,16 +133,6 @@ def test_push_chain_without_disable_chain_download_flag(
     assert options.chain_name == "test_chain"
 
 
-def test_push_chain_help_includes_disable_chain_download(cli_runner):
-    """Test that --disable-chain-download appears in the help output."""
-    result = cli_runner.invoke(truss_cli, ["chains", "push", "--help"])
-
-    assert result.exit_code == 0
-    assert "--disable-chain-download" in result.output
-    assert "Disable downloading" in result.output
-    assert "truss directory" in result.output
-
-
 def test_push_chain_with_all_parameters_including_disable_chain_download(
     mock_chainlet_file, mock_external_apis, cli_runner
 ):

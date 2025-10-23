@@ -173,8 +173,7 @@ def push(
         include_git_info: Whether to attach git versioning info (sha, branch, tag) to
           deployments made from within a git repo. If set to True in `.trussrc`, it
           will always be attached.
-        disable_chain_download: Whether to disable downloading the truss directory
-          from the UI.
+        disable_chain_download: Disable downloading of pushed chain source code from the UI.
 
     Returns:
         A chain service handle to the deployed chain.

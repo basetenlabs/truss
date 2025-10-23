@@ -98,5 +98,6 @@ def test_chains_push_help_includes_disable_chain_download():
 
     assert result.exit_code == 0
     assert "--disable-chain-download" in result.output
-    assert "Disable downloading" in result.output
-    assert "truss directory" in result.output
+    assert (
+        "Disable downloading of pushed chain source code from the UI" in result.output
+    )

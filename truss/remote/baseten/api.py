@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Mapping, Optional
 import requests
 from pydantic import BaseModel, Field
 
+from truss.contexts.image_builder.cache_warmer import AWSCredentials
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory
@@ -14,6 +15,22 @@ from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
 PARAMS_INDENT = "\n                    "
+
+
+class ChainUploadCredentials(BaseModel):
+    s3_bucket: str
+    s3_key: str
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_session_token: str
+
+    @property
+    def aws_credentials(self) -> AWSCredentials:
+        return AWSCredentials(
+            access_key_id=self.aws_access_key_id,
+            secret_access_key=self.aws_secret_access_key,
+            session_token=self.aws_session_token,
+        )
 
 
 class InstanceTypeV1(BaseModel):
@@ -125,6 +142,9 @@ class BasetenApi:
     def auth_token(self) -> ApiKey:
         return self._auth_token
 
+    @tenacity.retry(
+        stop=tenacity.stop_after_delay(300), wait=tenacity.wait_fixed(1), reraise=True
+    )
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
         headers = self._auth_token.header()
         payload: Dict[str, Any] = {"query": query}
@@ -681,7 +701,7 @@ class BasetenApi:
             return self.get_chain_s3_upload_credentials()
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
 
-    def get_chain_s3_upload_credentials(self):
+    def get_chain_s3_upload_credentials(self) -> ChainUploadCredentials:
         """Get chain artifact credentials using GraphQL query."""
         query = """
         query {
@@ -696,16 +716,9 @@ class BasetenApi:
         """
         response = self._post_graphql_query(query)
 
-        chain_creds = response["data"]["chain_s3_upload_credentials"]
-        return {
-            "s3_bucket": chain_creds["s3_bucket"],
-            "s3_key": chain_creds["s3_key"],
-            "creds": {
-                "aws_access_key_id": chain_creds["aws_access_key_id"],
-                "aws_secret_access_key": chain_creds["aws_secret_access_key"],
-                "aws_session_token": chain_creds["aws_session_token"],
-            },
-        }
+        return ChainUploadCredentials.model_validate(
+            response["data"]["chain_s3_upload_credentials"]
+        )
 
     def get_training_job_metrics(
         self,
