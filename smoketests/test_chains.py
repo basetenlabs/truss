@@ -254,8 +254,6 @@ def test_itest_chain_publish(prepare) -> None:
     logging.info(f"Invocation times(sec): {invocation_times_sec}.")
     pytest_check.less(invocation_times_sec[0], 0.32)  # Best of 10, could be <0.30...
 
-    # Test downloading chain artifact using GraphQL endpoint
-    # This tests the chain_deployment_s3_download_url GraphQL endpoint
     logging.info(
         f"Testing chain artifact download for deployment {chain_deployment_id}"
     )
@@ -263,11 +261,9 @@ def test_itest_chain_publish(prepare) -> None:
         download_url = get_chain_deployment_s3_download_url(chain_deployment_id)
         logging.info(f"Got download URL: {download_url}")
 
-        # Download the artifact to a temporary file
         artifact_path = tmpdir / f"chain_artifact_{chain_deployment_id}.tar.gz"
         download_chain_artifact(download_url, artifact_path)
 
-        # Verify the artifact was downloaded and has content
         assert artifact_path.exists(), "Artifact file was not created"
         assert artifact_path.stat().st_size > 0, "Downloaded artifact is empty"
 

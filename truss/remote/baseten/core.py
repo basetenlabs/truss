@@ -369,12 +369,10 @@ def upload_chain_artifact(
     Returns:
         The S3 key of the uploaded file
     """
-    # Get chain upload credentials from REST API
     credentials_response = api.get_chain_s3_upload_credentials()
     s3_key = credentials_response["s3_key"]
     s3_bucket = credentials_response["s3_bucket"]
 
-    # Extract only the AWS credentials for the upload
     aws_credentials = {
         "aws_access_key_id": credentials_response["creds"]["aws_access_key_id"],
         "aws_secret_access_key": credentials_response["creds"]["aws_secret_access_key"],

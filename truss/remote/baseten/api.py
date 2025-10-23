@@ -314,7 +314,6 @@ class BasetenApi:
             ]
         )
 
-        # Build the query parameters
         params = []
         if chain_id:
             params.append(f'chain_id: "{chain_id}"')
@@ -697,10 +696,7 @@ class BasetenApi:
         """
         response = self._post_graphql_query(query)
 
-        # Extract the credentials from GraphQL response
         chain_creds = response["data"]["chain_s3_upload_credentials"]
-
-        # Transform to match the expected REST API format
         return {
             "s3_bucket": chain_creds["s3_bucket"],
             "s3_key": chain_creds["s3_key"],

@@ -70,7 +70,6 @@ def mock_external_apis(mock_entrypoint_cls, mock_service):
         "truss_chains.framework.ChainletImporter.import_target"
     ) as mock_importer:
         with patch("truss_chains.deployment.deployment_client.push") as mock_push:
-            # Setup mocks
             mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
             mock_push.return_value = mock_service
 
@@ -81,7 +80,6 @@ def test_push_chain_with_disable_chain_download_flag(
     mock_chainlet_file, mock_external_apis, cli_runner
 ):
     """Test complete chain upload flow with --disable-chain-download flag."""
-    # Execute CLI command with --disable-chain-download flag
     result = cli_runner.invoke(
         truss_cli,
         [
@@ -95,16 +93,13 @@ def test_push_chain_with_disable_chain_download_flag(
         ],
     )
 
-    # Verify command executed successfully
     assert result.exit_code == 0
 
-    # Verify deployment_client.push was called with correct options
     mock_push = mock_external_apis["push"]
     mock_push.assert_called_once()
     call_args = mock_push.call_args
-    options = call_args[0][1]  # Second argument is the options
+    options = call_args[0][1]
 
-    # Verify disable_chain_download is set to True
     assert hasattr(options, "disable_chain_download")
     assert options.disable_chain_download is True
     assert options.chain_name == "test_chain"
@@ -114,7 +109,6 @@ def test_push_chain_without_disable_chain_download_flag(
     mock_chainlet_file, mock_external_apis, cli_runner
 ):
     """Test complete chain upload flow without --disable-chain-download flag (defaults to False)."""
-    # Execute CLI command without --disable-chain-download flag
     result = cli_runner.invoke(
         truss_cli,
         [
@@ -127,16 +121,13 @@ def test_push_chain_without_disable_chain_download_flag(
         ],
     )
 
-    # Verify command executed successfully
     assert result.exit_code == 0
 
-    # Verify deployment_client.push was called with correct options
     mock_push = mock_external_apis["push"]
     mock_push.assert_called_once()
     call_args = mock_push.call_args
-    options = call_args[0][1]  # Second argument is the options
+    options = call_args[0][1]
 
-    # Verify disable_chain_download defaults to False
     assert hasattr(options, "disable_chain_download")
     assert options.disable_chain_download is False
     assert options.chain_name == "test_chain"
@@ -156,7 +147,6 @@ def test_push_chain_with_all_parameters_including_disable_chain_download(
     mock_chainlet_file, mock_external_apis, cli_runner
 ):
     """Test complete chain upload flow with all parameters including disable_chain_download."""
-    # Execute CLI command with all parameters
     result = cli_runner.invoke(
         truss_cli,
         [
@@ -177,16 +167,13 @@ def test_push_chain_with_all_parameters_including_disable_chain_download(
         ],
     )
 
-    # Verify command executed successfully
     assert result.exit_code == 0
 
-    # Verify deployment_client.push was called with correct options
     mock_push = mock_external_apis["push"]
     mock_push.assert_called_once()
     call_args = mock_push.call_args
-    options = call_args[0][1]  # Second argument is the options
+    options = call_args[0][1]
 
-    # Verify all parameters are passed correctly
     assert options.chain_name == "custom_chain_name"
     assert options.publish is True
     assert options.environment == "test_env"
