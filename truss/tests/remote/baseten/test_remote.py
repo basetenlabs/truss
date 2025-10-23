@@ -345,7 +345,6 @@ def test_create_chain_with_no_publish(remote):
                 deploy_chain_atomic(
                     chain_name: "draft_chain"
                     is_draft: true
-                    allow_truss_download: true
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
@@ -442,7 +441,6 @@ def test_create_chain_no_existing_chain(remote):
                 deploy_chain_atomic(
                     chain_name: "new_chain"
                     is_draft: false
-                    allow_truss_download: true
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
@@ -549,7 +547,6 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false(r
                     chain_id: "old-chain-id"
                     environment: "production"
                     is_draft: false
-                    allow_truss_download: true
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
@@ -653,7 +650,6 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
                 deploy_chain_atomic(
                     chain_id: "old-chain-id"
                     is_draft: false
-                    allow_truss_download: true
                     entrypoint: {chainlets_string}
                     dependencies: []
                     truss_user_env: $trussUserEnv
