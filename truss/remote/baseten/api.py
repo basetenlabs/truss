@@ -18,9 +18,9 @@ PARAMS_INDENT = "\n                    "
 
 
 class ChainAWSCredential(SafeModel):
-    access_key_id: str
-    secret_access_key: str
-    session_token: str
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_session_token: str
 
 
 class ChainUploadCredentials(SafeModel):
@@ -33,9 +33,9 @@ class ChainUploadCredentials(SafeModel):
     @property
     def aws_credentials(self) -> ChainAWSCredential:
         return ChainAWSCredential(
-            access_key_id=self.aws_access_key_id,
-            secret_access_key=self.aws_secret_access_key,
-            session_token=self.aws_session_token,
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+            aws_session_token=self.aws_session_token,
         )
 
 
