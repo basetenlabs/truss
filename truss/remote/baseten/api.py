@@ -3,10 +3,9 @@ from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
 import requests
-import tenacity
 from pydantic import BaseModel, Field
 
-from truss.contexts.image_builder.cache_warmer import AWSCredentials
+from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory
@@ -18,7 +17,13 @@ logger = logging.getLogger(__name__)
 PARAMS_INDENT = "\n                    "
 
 
-class ChainUploadCredentials(BaseModel):
+class ChainAWSCredential(SafeModel):
+    access_key_id: str
+    secret_access_key: str
+    session_token: str
+
+
+class ChainUploadCredentials(SafeModel):
     s3_bucket: str
     s3_key: str
     aws_access_key_id: str
@@ -26,8 +31,8 @@ class ChainUploadCredentials(BaseModel):
     aws_session_token: str
 
     @property
-    def aws_credentials(self) -> AWSCredentials:
-        return AWSCredentials(
+    def aws_credentials(self) -> ChainAWSCredential:
+        return ChainAWSCredential(
             access_key_id=self.aws_access_key_id,
             secret_access_key=self.aws_secret_access_key,
             session_token=self.aws_session_token,
@@ -143,9 +148,6 @@ class BasetenApi:
     def auth_token(self) -> ApiKey:
         return self._auth_token
 
-    @tenacity.retry(
-        stop=tenacity.stop_after_delay(300), wait=tenacity.wait_fixed(1), reraise=True
-    )
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
         headers = self._auth_token.header()
         payload: Dict[str, Any] = {"query": query}
