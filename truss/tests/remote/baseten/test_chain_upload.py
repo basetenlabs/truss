@@ -83,11 +83,11 @@ def test_get_blob_credentials_for_chain():
 
         result = api.get_chain_s3_upload_credentials()
 
-        assert result["s3_bucket"] == "test-chain-bucket"
-        assert result["s3_key"] == "chains/test-uuid/chain.tgz"
-        assert result["creds"]["aws_access_key_id"] == "test_access_key"
-        assert result["creds"]["aws_secret_access_key"] == "test_secret_key"
-        assert result["creds"]["aws_session_token"] == "test_session_token"
+        assert result.s3_bucket == "test-chain-bucket"
+        assert result.s3_key == "chains/test-uuid/chain.tgz"
+        assert result.aws_access_key_id == "test_access_key"
+        assert result.aws_secret_access_key == "test_secret_key"
+        assert result.aws_session_token == "test_session_token"
 
         mock_graphql.assert_called_once()
         call_args = mock_graphql.call_args
@@ -126,15 +126,15 @@ def test_get_blob_credentials_for_other_types_uses_rest():
 @patch("truss.remote.baseten.core.multipart_upload_boto3")
 def test_upload_chain_artifact_function(mock_multipart_upload):
     """Test the upload_chain_artifact function."""
-    # Mock API response
-    mock_credentials = {
-        "s3_bucket": "test-chain-bucket",
-        "s3_key": "chains/test-uuid/chain.tgz",
-        "creds": {
-            "aws_access_key_id": "test_access_key",
-            "aws_secret_access_key": "test_secret_key",
-            "aws_session_token": "test_session_token",
-        },
+    # Mock ChainUploadCredentials object
+    mock_credentials = Mock()
+    mock_credentials.s3_bucket = "test-chain-bucket"
+    mock_credentials.s3_key = "chains/test-uuid/chain.tgz"
+    mock_credentials.aws_credentials = Mock()
+    mock_credentials.aws_credentials.model_dump.return_value = {
+        "aws_access_key_id": "test_access_key",
+        "aws_secret_access_key": "test_secret_key",
+        "aws_session_token": "test_session_token",
     }
 
     api = Mock(spec=BasetenApi)
@@ -256,15 +256,15 @@ def test_upload_chain_artifact_error_handling(mock_multipart_upload):
 
 def test_upload_chain_artifact_credentials_extraction():
     """Test that credentials are properly extracted from API response."""
-    mock_credentials = {
-        "s3_bucket": "test-bucket",
-        "s3_key": "chains/test-uuid/chain.tgz",
-        "creds": {
-            "aws_access_key_id": "access_key",
-            "aws_secret_access_key": "secret_key",
-            "aws_session_token": "session_token",
-        },
-        "extra_field": "should_be_ignored",
+    # Mock ChainUploadCredentials object
+    mock_credentials = Mock()
+    mock_credentials.s3_bucket = "test-bucket"
+    mock_credentials.s3_key = "chains/test-uuid/chain.tgz"
+    mock_credentials.aws_credentials = Mock()
+    mock_credentials.aws_credentials.model_dump.return_value = {
+        "aws_access_key_id": "access_key",
+        "aws_secret_access_key": "secret_key",
+        "aws_session_token": "session_token",
     }
 
     api = Mock(spec=BasetenApi)
