@@ -175,6 +175,7 @@ class BasetenApi:
         allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
+        environment: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -187,6 +188,7 @@ class BasetenApi:
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f'version_name: "{deployment_name}"' if deployment_name else ""}
                     {f"model_origin: {origin.value}" if origin else ""}
+                    {f'environment_name: "{environment}"' if environment else ""}
                 ) {{
                     model_version {{
                         id
