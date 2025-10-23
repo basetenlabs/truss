@@ -1,8 +1,10 @@
+import json
 import logging
 from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
 import requests
+from gql_query_builder import GqlQuery
 from pydantic import BaseModel, Field
 
 from truss.remote.baseten import custom_types as b10_types
@@ -299,37 +301,38 @@ class BasetenApi:
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
         is_draft: bool = False,
+        original_source_artifact_s3_key: Optional[str] = None,
+        allow_truss_download: Optional[bool] = True,
     ):
-        entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
+        if allow_truss_download is None:
+            allow_truss_download = True
 
-        dependencies_str = ", ".join(
-            [
+        mutation_params = {
+            "chain_id": chain_id,
+            "chain_name": chain_name,
+            "environment": environment,
+            "original_source_artifact_s3_key": original_source_artifact_s3_key,
+            "allow_truss_download": "false" if allow_truss_download is False else None,
+            "is_draft": is_draft,
+            "entrypoint": _chainlet_data_atomic_to_graphql_mutation(entrypoint),
+            "dependencies": [
                 _chainlet_data_atomic_to_graphql_mutation(dependency)
                 for dependency in dependencies
-            ]
-        )
+            ],
+            "truss_user_env": "$trussUserEnv",
+        }
+        mutation_params = {
+            str(k): v for k, v in mutation_params.items() if v is not None
+        }
 
-        query_string = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    {f'chain_id: "{chain_id}"' if chain_id else ""}
-                    {f'chain_name: "{chain_name}"' if chain_name else ""}
-                    {f'environment: "{environment}"' if environment else ""}
-                    is_draft: {str(is_draft).lower()}
-                    entrypoint: {entrypoint_str}
-                    dependencies: [{dependencies_str}]
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """
+        gql = GqlQuery()
+        gql.operation(
+            "mutation",
+            "deploy_chain_atomic",
+            mutation_params,
+            ["chain_deployment { id chain { id hostname } }"],
+        )
+        query_string = gql.generate()
 
         resp = self._post_graphql_query(
             query_string, variables={"trussUserEnv": truss_user_env.json()}
