@@ -11,7 +11,6 @@ def test_chains_push_with_disable_chain_download_flag():
     """Test that --disable-chain-download flag is properly parsed and passed through."""
     runner = CliRunner()
 
-    # Mock the chainlet importer and deployment client
     mock_entrypoint_cls = Mock()
     mock_entrypoint_cls.meta_data.chain_name = "test_chain"
     mock_entrypoint_cls.display_name = "TestChain"
@@ -27,7 +26,6 @@ def test_chains_push_with_disable_chain_download_flag():
             mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
             mock_push.return_value = mock_service
 
-            # Test with --disable-truss-download flag
             result = runner.invoke(
                 truss_cli,
                 [
@@ -43,12 +41,10 @@ def test_chains_push_with_disable_chain_download_flag():
 
     assert result.exit_code == 0
 
-    # Verify that the deployment client was called with the correct options
     mock_push.assert_called_once()
     call_args = mock_push.call_args
-    options = call_args[0][1]  # Second argument is the options
+    options = call_args[0][1]
 
-    # Check that disable_chain_download is set to True in the options
     assert hasattr(options, "disable_chain_download")
     assert options.disable_chain_download is True
 
@@ -57,7 +53,6 @@ def test_chains_push_without_disable_chain_download_flag():
     """Test that disable_chain_download defaults to False when flag is not provided."""
     runner = CliRunner()
 
-    # Mock the chainlet importer and deployment client
     mock_entrypoint_cls = Mock()
     mock_entrypoint_cls.meta_data.chain_name = "test_chain"
     mock_entrypoint_cls.display_name = "TestChain"
@@ -73,7 +68,6 @@ def test_chains_push_without_disable_chain_download_flag():
             mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
             mock_push.return_value = mock_service
 
-            # Test without --disable-truss-download flag
             result = runner.invoke(
                 truss_cli,
                 [
@@ -88,12 +82,10 @@ def test_chains_push_without_disable_chain_download_flag():
 
     assert result.exit_code == 0
 
-    # Verify that the deployment client was called with the correct options
     mock_push.assert_called_once()
     call_args = mock_push.call_args
-    options = call_args[0][1]  # Second argument is the options
+    options = call_args[0][1]
 
-    # Check that disable_chain_download defaults to False
     assert hasattr(options, "disable_chain_download")
     assert options.disable_chain_download is False
 
@@ -106,6 +98,5 @@ def test_chains_push_help_includes_disable_chain_download():
 
     assert result.exit_code == 0
     assert "--disable-chain-download" in result.output
-    # Check for the help text (it may be wrapped across lines)
     assert "Disable downloading" in result.output
     assert "truss directory" in result.output

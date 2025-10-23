@@ -13,6 +13,7 @@ from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
+PARAMS_INDENT = "\n                    "
 
 
 class InstanceTypeV1(BaseModel):
@@ -327,18 +328,16 @@ class BasetenApi:
             )
 
         params.append(f"is_draft: {str(is_draft).lower()}")
-        params.append(f"allow_truss_download: {str(allow_truss_download).lower()}")
+        if allow_truss_download is False:
+            params.append("allow_truss_download: false")
 
-        params_str = "\n                    ".join(params)
-        if params_str:
-            params_str = (
-                "\n                    " + params_str + "\n                    "
-            )
+        params_str = PARAMS_INDENT.join(params)
 
         query_string = f"""
             mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
-                    {params_str}entrypoint: {entrypoint_str}
+                    {params_str}
+                    entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
                     truss_user_env: $trussUserEnv
                 ) {{

@@ -26,14 +26,11 @@ def mock_push_data():
 @pytest.fixture
 def mock_remote_context():
     """Fixture providing mock remote and context managers for tests."""
-    # Create mock API
     api = Mock(spec=BasetenApi)
 
-    # Create mock remote with proper URL
     remote = BasetenRemote("https://test.baseten.co", "test-api-key")
     remote._api = api
 
-    # Create test data
     chain_name = "test-chain"
     entrypoint_artifact = Mock()
     entrypoint_artifact.truss_dir = "/path/to/truss"
@@ -43,7 +40,6 @@ def mock_remote_context():
     truss_user_env = Mock()
     chain_root = pathlib.Path("/path/to/chain")
 
-    # Create context managers
     with patch.object(remote, "_prepare_push") as mock_prepare_push:
         with patch("truss.remote.baseten.remote.truss_build.load") as mock_load:
             mock_truss_handle = Mock()
@@ -66,7 +62,6 @@ def mock_remote_context():
 
 def test_get_blob_credentials_for_chain():
     """Test that get_blob_credentials works correctly for chain blob type using GraphQL."""
-    # Mock the GraphQL response
     mock_graphql_response = {
         "data": {
             "chain_s3_upload_credentials": {
@@ -86,17 +81,14 @@ def test_get_blob_credentials_for_chain():
     with patch.object(api, "_post_graphql_query") as mock_graphql:
         mock_graphql.return_value = mock_graphql_response
 
-        # Call the method
         result = api.get_chain_s3_upload_credentials()
 
-        # Verify the result
         assert result["s3_bucket"] == "test-chain-bucket"
         assert result["s3_key"] == "chains/test-uuid/chain.tgz"
         assert result["creds"]["aws_access_key_id"] == "test_access_key"
         assert result["creds"]["aws_secret_access_key"] == "test_secret_key"
         assert result["creds"]["aws_session_token"] == "test_session_token"
 
-        # Verify the GraphQL call was made
         mock_graphql.assert_called_once()
         call_args = mock_graphql.call_args
         assert "chain_s3_upload_credentials" in call_args[0][0]
@@ -104,7 +96,6 @@ def test_get_blob_credentials_for_chain():
 
 def test_get_blob_credentials_for_other_types_uses_rest():
     """Test that get_blob_credentials uses REST API for non-chain blob types."""
-    # Mock the REST API response
     mock_response = {
         "s3_bucket": "test-bucket",
         "s3_key": "test-key",
@@ -115,7 +106,6 @@ def test_get_blob_credentials_for_other_types_uses_rest():
         },
     }
 
-    # Create a real API instance and mock both REST API and GraphQL calls
     mock_auth_service = Mock()
     mock_auth_service.authenticate.return_value = Mock(value="test-token")
     api = BasetenApi("https://test.baseten.co", mock_auth_service)
@@ -124,14 +114,11 @@ def test_get_blob_credentials_for_other_types_uses_rest():
     ) as mock_graphql:
         mock_client.get.return_value = mock_response
 
-        # Call the method for model blob type
         result = api.get_blob_credentials(b10_types.BlobType.MODEL)
 
-        # Verify the result
         assert result["s3_bucket"] == "test-bucket"
         assert result["s3_key"] == "test-key"
 
-        # Verify the REST API call was made, not GraphQL
         mock_client.get.assert_called_once_with("v1/blobs/credentials/model")
         mock_graphql.assert_not_called()
 
@@ -150,25 +137,19 @@ def test_upload_chain_artifact_function(mock_multipart_upload):
         },
     }
 
-    # Create mock API
     api = Mock(spec=BasetenApi)
     api.get_chain_s3_upload_credentials.return_value = mock_credentials
 
-    # Create a temporary file
     with tempfile.NamedTemporaryFile(suffix=".tgz", delete=False) as temp_file:
         temp_file.write(b"test chain content")
         temp_file.flush()
 
-        # Call the function
         result = upload_chain_artifact(api, temp_file, None)
 
-        # Verify the result
         assert result == "chains/test-uuid/chain.tgz"
 
-        # Verify the API was called
         api.get_chain_s3_upload_credentials.assert_called_once_with()
 
-        # Verify multipart upload was called with correct parameters
         mock_multipart_upload.assert_called_once()
         call_args = mock_multipart_upload.call_args
         assert call_args[0][0] == temp_file.name  # file path
@@ -192,12 +173,10 @@ def test_push_chain_atomic_with_chain_upload(
     mock_remote_context,
 ):
     """Test that push_chain_atomic uploads raw chain artifact when chain_root is provided."""
-    # Setup mocks
     mock_create_chain_atomic.return_value = Mock()
     mock_archive_dir.return_value = Mock()
     mock_upload_chain_artifact.return_value = "chains/test-uuid/chain.tgz"
 
-    # Get context from fixture
     context = mock_remote_context
     remote = context["remote"]
     chain_name = context["chain_name"]
@@ -206,10 +185,8 @@ def test_push_chain_atomic_with_chain_upload(
     truss_user_env = context["truss_user_env"]
     chain_root = context["chain_root"]
 
-    # Set up the mock return value
     context["mock_prepare_push"].return_value = mock_push_data
 
-    # Call push_chain_atomic with chain_root
     result = remote.push_chain_atomic(
         chain_name=chain_name,
         entrypoint_artifact=entrypoint_artifact,
@@ -220,11 +197,9 @@ def test_push_chain_atomic_with_chain_upload(
     )
     assert result == mock_create_chain_atomic.return_value
 
-    # Verify chain artifact upload was called
     mock_archive_dir.assert_called_once_with(dir=chain_root, progress_bar=None)
     mock_upload_chain_artifact.assert_called_once()
 
-    # Verify create_chain_atomic was called
     mock_create_chain_atomic.assert_called_once()
 
 
@@ -233,10 +208,8 @@ def test_push_chain_atomic_without_chain_upload(
     mock_create_chain_atomic, mock_push_data, mock_remote_context
 ):
     """Test that push_chain_atomic skips chain upload when chain_root is None."""
-    # Setup mocks
     mock_create_chain_atomic.return_value = Mock()
 
-    # Get context from fixture
     context = mock_remote_context
     remote = context["remote"]
     chain_name = context["chain_name"]
@@ -244,7 +217,6 @@ def test_push_chain_atomic_without_chain_upload(
     dependency_artifacts = context["dependency_artifacts"]
     truss_user_env = context["truss_user_env"]
 
-    # Set up the mock return value
     context["mock_prepare_push"].return_value = mock_push_data
 
     with patch("truss.remote.baseten.remote.upload_chain_artifact") as mock_upload:
@@ -261,14 +233,11 @@ def test_push_chain_atomic_without_chain_upload(
                 publish=True,
             )
 
-            # Verify the result
             assert result
-
             # Verify chain artifact upload was NOT called
             mock_tar.assert_not_called()
             mock_upload.assert_not_called()
 
-            # Verify create_chain_atomic was called
             mock_create_chain_atomic.assert_called_once()
 
 
@@ -287,7 +256,6 @@ def test_upload_chain_artifact_error_handling(mock_multipart_upload):
 
 def test_upload_chain_artifact_credentials_extraction():
     """Test that credentials are properly extracted from API response."""
-    # Mock API response with extra fields
     mock_credentials = {
         "s3_bucket": "test-bucket",
         "s3_key": "chains/test-uuid/chain.tgz",
@@ -306,11 +274,9 @@ def test_upload_chain_artifact_credentials_extraction():
         with tempfile.NamedTemporaryFile(suffix=".tgz") as temp_file:
             upload_chain_artifact(api, temp_file, None)
 
-            # Verify multipart upload was called with correct credentials
             call_args = mock_upload.call_args
             credentials = call_args[0][3]
 
-            # Should only contain the AWS credentials, not extra fields
             assert credentials == {
                 "aws_access_key_id": "access_key",
                 "aws_secret_access_key": "secret_key",
