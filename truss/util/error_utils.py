@@ -4,8 +4,6 @@ from typing import Generator
 
 from botocore.exceptions import ClientError, NoCredentialsError
 
-logger = logging.getLogger(__name__)
-
 
 @contextmanager
 def handle_client_error(
