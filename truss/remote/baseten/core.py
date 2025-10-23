@@ -8,6 +8,7 @@ from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tup
 import requests
 
 from truss.base.errors import ValidationError
+from truss.util.error_utils import handle_client_error
 
 if TYPE_CHECKING:
     from rich import progress
@@ -370,13 +371,14 @@ def upload_chain_artifact(
         The S3 key of the uploaded file
     """
     credentials = api.get_chain_s3_upload_credentials()
-    multipart_upload_boto3(
-        serialize_file.name,
-        credentials.s3_bucket,
-        credentials.s3_key,
-        credentials.aws_credentials.model_dump(),
-        progress_bar,
-    )
+    with handle_client_error("Uploading chain source"):
+        multipart_upload_boto3(
+            serialize_file.name,
+            credentials.s3_bucket,
+            credentials.s3_key,
+            credentials.aws_credentials.model_dump(),
+            progress_bar,
+        )
     return credentials.s3_key
 
 
