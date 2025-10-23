@@ -1,0 +1,5 @@
+FROM {{ config.base_image.image }}
+{# Add COPY for bptr-manifest if model_cache v2 is enabled #}
+{% if user_id %}
+COPY --chown={{ user_id }}:{{ user_id }} ./bptr-manifest /static-bptr/static-bptr-manifest.json
+{% endif %}

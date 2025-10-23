@@ -32,6 +32,7 @@ from truss.base.constants import (
     FILENAME_CONSTANTS_MAP,
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
+    NO_BUILD_DOCKERFILE_TEMPLATE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -577,7 +578,10 @@ class ServingImageBuilder(ImageBuilder):
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
-        if config.docker_server is not None and config.docker_server.as_is is not True:
+        if (
+            config.docker_server is not None
+            and config.docker_server.no_build is not True
+        ):
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
                 build_dir,
@@ -750,27 +754,21 @@ class ServingImageBuilder(ImageBuilder):
         build_commands: List[str],
     ):
         config = self._spec.config
-        ff_as_is = os.getenv("BT_AS_IS_DEPLOYMENT", False)
-        # Escape hatch for as-is deployments
-        if ff_as_is and config.docker_server and config.docker_server.as_is:
-            dockerfile_contents = f"FROM {config.base_image.image}"
-            # Add COPY for bptr-manifest if model_cache v2 is enabled
-            if config.model_cache and config.model_cache.is_v2:
-                if config.docker_server and config.docker_server.run_as_user_id:
-                    user_id = config.docker_server.run_as_user_id
-                else:
-                    user_id = 60000
-                dockerfile_contents += f"\nCOPY --chown={user_id}:{user_id} ./bptr-manifest /static-bptr/static-bptr-manifest.json"
-            docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
-            docker_file_path.write_text(dockerfile_contents)
-            return
 
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        dockerfile_template = read_template_from_fs(
-            TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
-        )
+
+        # Note: no-build deployment template doesn't use most of the template variables,
+        # because it tries to run the base image as-is to the extent possible.
+        if config.docker_server and config.docker_server.no_build:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, NO_BUILD_DOCKERFILE_TEMPLATE_NAME
+            )
+        else:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
+            )
         python_version = truss_config.to_dotted_python_version(config.python_version)
         if config.base_image:
             base_image_name_and_tag = config.base_image.image
@@ -798,6 +796,11 @@ class ServingImageBuilder(ImageBuilder):
         passthrough_environment_variables = self._filter_reserved_environment_variables(
             config
         )
+
+        user_id = None
+        if config.model_cache and config.model_cache.is_v2:
+            if config.docker_server and config.docker_server.run_as_user_id:
+                user_id = config.docker_server.run_as_user_id
 
         non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
         dockerfile_contents = dockerfile_template.render(
@@ -834,6 +837,7 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             non_root_user=non_root_user,
+            user_id=user_id,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
