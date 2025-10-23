@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
 import requests
+import tenacity
 from pydantic import BaseModel, Field
 
 from truss.contexts.image_builder.cache_warmer import AWSCredentials
