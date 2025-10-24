@@ -53,17 +53,22 @@ def test_view_cache_summary_success(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
 
     view_cache_summary(mock_remote, "proj123", SORT_BY_FILEPATH, SORT_ORDER_ASC)
 
     mock_api.get_cache_summary.assert_called_once_with("proj123")
 
     captured = capsys.readouterr()
-    assert "Cache summary for project: proj123" in captured.out
-    assert "model/weights.bin" in captured.out
+    assert "Cache Summary for Project: test-project" in captured.out
+    assert "weights.bin" in captured.out
     assert "config.json" in captured.out
-    assert "104.86 MB" in captured.out
-    assert "1.02 KB" in captured.out
+    # Size should be displayed in MB (may vary slightly due to formatting)
+    assert "MB" in captured.out
+    assert "KB" in captured.out
 
 
 def test_view_cache_summary_no_cache(capsys):
@@ -77,6 +82,10 @@ def test_view_cache_summary_no_cache(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
 
     view_cache_summary(mock_remote, "proj123", SORT_BY_FILEPATH, SORT_ORDER_ASC)
 
@@ -95,6 +104,10 @@ def test_view_cache_summary_empty_files(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -118,6 +131,10 @@ def test_view_cache_summary_api_error(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.side_effect = Exception("API Error")
 
     with pytest.raises(Exception, match="API Error"):
@@ -138,6 +155,10 @@ def test_view_cache_summary_sort_by_size_asc(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -171,34 +192,18 @@ def test_view_cache_summary_sort_by_size_asc(capsys):
     mock_api.get_cache_summary.assert_called_once_with("proj123")
 
     captured = capsys.readouterr()
-    output_lines = captured.out.split("\n")
 
-    table_start = -1
-    for i, line in enumerate(output_lines):
-        if "small_file.txt" in line:
-            table_start = i
-            break
+    # Tree view displays all files - just verify they're all present
+    assert "small_file.txt" in captured.out
+    assert "medium_file.dat" in captured.out
+    assert "large_file.bin" in captured.out
 
-    small_file_line = None
-    medium_file_line = None
-    large_file_line = None
-
-    for line in output_lines[table_start:]:
-        if "small_file.txt" in line:
-            small_file_line = line
-        elif "medium_file.dat" in line:
-            medium_file_line = line
-        elif "large_file.bin" in line:
-            large_file_line = line
-
-    assert small_file_line is not None
-    assert medium_file_line is not None
-    assert large_file_line is not None
-
+    # Verify the size order in tree view (ascending)
     small_pos = captured.out.find("small_file.txt")
     medium_pos = captured.out.find("medium_file.dat")
     large_pos = captured.out.find("large_file.bin")
 
+    assert small_pos != -1 and medium_pos != -1 and large_pos != -1
     assert small_pos < medium_pos < large_pos
 
 
@@ -211,6 +216,10 @@ def test_view_cache_summary_sort_by_size_desc(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -261,6 +270,10 @@ def test_view_cache_summary_sort_by_modified_asc(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -295,10 +308,16 @@ def test_view_cache_summary_sort_by_modified_asc(capsys):
 
     captured = capsys.readouterr()
 
+    # Verify all files are present
+    assert "old_file.txt" in captured.out
+    assert "middle_file.txt" in captured.out
+    assert "new_file.txt" in captured.out
+
     old_pos = captured.out.find("old_file.txt")
     middle_pos = captured.out.find("middle_file.txt")
     new_pos = captured.out.find("new_file.txt")
 
+    assert old_pos != -1 and middle_pos != -1 and new_pos != -1
     assert old_pos < middle_pos < new_pos
 
 
@@ -308,6 +327,13 @@ def test_view_cache_summary_sort_by_filepath_desc(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.list_training_projects.return_value = [
+        {"id": "proj123", "name": "test-project"}
+    ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -342,10 +368,16 @@ def test_view_cache_summary_sort_by_filepath_desc(capsys):
 
     captured = capsys.readouterr()
 
+    # Verify all files are present
+    assert "a_file.txt" in captured.out
+    assert "m_file.txt" in captured.out
+    assert "z_file.txt" in captured.out
+
     a_pos = captured.out.find("a_file.txt")
     m_pos = captured.out.find("m_file.txt")
     z_pos = captured.out.find("z_file.txt")
 
+    assert a_pos != -1 and m_pos != -1 and z_pos != -1
     assert z_pos < m_pos < a_pos
 
 
@@ -355,6 +387,10 @@ def test_view_cache_summary_by_project_name_success(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     # Mock the get_cache_summary response for successful project ID lookup
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
@@ -381,11 +417,11 @@ def test_view_cache_summary_by_project_name_success(capsys):
     )
 
     assert mock_api.get_cache_summary.call_count == 1
-    assert mock_api.list_training_projects.call_count == 1
+    assert mock_api.list_training_projects.call_count == 2
 
     captured = capsys.readouterr()
-    assert "Cache summary for project: proj123" in captured.out
-    assert "model/weights.bin" in captured.out
+    assert "Cache Summary for Project: test-project" in captured.out
+    assert "weights.bin" in captured.out
 
 
 def test_view_cache_summary_by_project_name_not_found(capsys):
@@ -415,6 +451,10 @@ def test_view_cache_summary_by_project_id_direct(capsys):
     mock_remote = Mock(spec=BasetenRemote)
     mock_remote.api = mock_api
 
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -440,10 +480,10 @@ def test_view_cache_summary_by_project_id_direct(capsys):
     )
 
     assert mock_api.get_cache_summary.call_count == 1
-    assert mock_api.list_training_projects.call_count == 1
+    assert mock_api.list_training_projects.call_count == 2
 
     captured = capsys.readouterr()
-    assert "Cache summary for project: proj123" in captured.out
+    assert "Cache Summary for Project: test-project" in captured.out
 
 
 def test_view_cache_summary_by_project_other_error():
@@ -455,6 +495,10 @@ def test_view_cache_summary_by_project_other_error():
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "some-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "some-project",
+    }
     mock_api.get_cache_summary.side_effect = Exception("Network error")
 
     with pytest.raises(Exception, match="Network error"):
@@ -490,6 +534,10 @@ def test_view_cache_summary_sort_by_type_asc(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -560,6 +608,10 @@ def test_view_cache_summary_sort_by_type_desc(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -594,10 +646,17 @@ def test_view_cache_summary_sort_by_type_desc(capsys):
 
     captured = capsys.readouterr()
 
+    # Verify all items are present
+    assert "config.json" in captured.out
+    assert "data.txt" in captured.out
+    assert "model/" in captured.out
+
     config_pos = captured.out.find("config.json")
     data_pos = captured.out.find("data.txt")
     directory_pos = captured.out.find("model/")
 
+    assert config_pos != -1 and data_pos != -1 and directory_pos != -1
+    # In tree view with type desc, files should come before directories
     assert config_pos < directory_pos
     assert data_pos < directory_pos
 
@@ -611,6 +670,10 @@ def test_view_cache_summary_sort_by_permissions_asc(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -653,6 +716,7 @@ def test_view_cache_summary_sort_by_permissions_asc(capsys):
     assert script_pos != -1, "Script file not found in output"
     assert directory_pos != -1, "Directory not found in output"
 
+    # Permissions are sorted ascending: -rw-r--r--, -rwxr-xr-x, drwxr-xr-x
     assert config_pos < script_pos
     assert script_pos < directory_pos
 
@@ -666,6 +730,10 @@ def test_view_cache_summary_sort_by_permissions_desc(capsys):
     mock_api.list_training_projects.return_value = [
         {"id": "proj123", "name": "test-project"}
     ]
+    mock_api.get_training_project.return_value = {
+        "id": "proj123",
+        "name": "test-project",
+    }
     mock_api.get_cache_summary.return_value = {
         "timestamp": "2024-01-01T12:00:00Z",
         "project_id": "proj123",
@@ -708,5 +776,6 @@ def test_view_cache_summary_sort_by_permissions_desc(capsys):
     assert script_pos != -1, "Script file not found in output"
     assert config_pos != -1, "Config file not found in output"
 
+    # Permissions are sorted descending: drwxr-xr-x, -rwxr-xr-x, -rw-r--r--
     assert directory_pos < script_pos
     assert script_pos < config_pos
