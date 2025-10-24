@@ -406,9 +406,8 @@ def run_python(script, target_directory):
     required=False,
     default=False,
     help=(
-        "Push the truss as a published deployment. If no production "
-        "deployment exists, promote the truss to production "
-        "after deploy completes."
+        "[DEPRECATED] Push the truss as a published deployment (default behavior). "
+        "Use --watch for development deployments instead. This flag will be removed in the following release."
     ),
 )
 @click.option(
@@ -417,9 +416,8 @@ def run_python(script, target_directory):
     required=False,
     default=False,
     help=(
-        "Push the truss as a published deployment. Even if a production "
-        "deployment exists, promote the truss to production "
-        "after deploy completes."
+        "[DEPRECATED] Push the truss as a published deployment and promote to production. "
+        "Use '--environment production' instead. For other environments, use '--environment {env_name}'."
     ),
 )
 @click.option(
@@ -439,7 +437,7 @@ def run_python(script, target_directory):
     help=(
         "Preserve the previous production deployment's autoscaling setting. When "
         "not specified, the previous production deployment will be updated to allow "
-        "it to scale to zero. Can only be use in combination with --promote option."
+        "it to scale to zero. Can only be used in combination with environment deployments."
     ),
 )
 @click.option(
@@ -462,7 +460,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with '--publish' or '--promote'."
+        "used in combination with environment deployments."
     ),
 )
 @click.option(
@@ -501,6 +499,17 @@ def run_python(script, target_directory):
         "Default is --preserve-env-instance-type."
     ),
 )
+@click.option(
+    "--watch",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a development deployment with hot reload support. "
+        "Development models allow you to iterate quickly during the deployment process. "
+        "Automatically streams deployment logs and enables live patching."
+    ),
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -518,6 +527,7 @@ def push(
     include_git_info: bool = False,
     tail: bool = False,
     preserve_env_instance_type: bool = True,
+    watch: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -525,6 +535,43 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+    # Handle the new logic: --watch creates development deployment, default is published
+    if watch and publish:
+        raise click.UsageError(
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments (default is published)."
+        )
+
+    if watch and promote:
+        raise click.UsageError(
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --environment {env_name} for production deployments."
+        )
+
+    # Determine the deployment type based on flags
+    if watch:
+        # --watch explicitly creates development deployment
+        publish = False
+    elif publish or promote:
+        # --publish or --promote explicitly creates published deployment
+        publish = True
+        # Show deprecation warning for --publish flag
+        if publish and not promote:
+            import warnings
+
+            warnings.warn(
+                "The '--publish' flag is deprecated. Published deployments are now the default behavior. "
+                "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            console.print(
+                "⚠️  The '--publish' flag is deprecated. Published deployments are now the default behavior. "
+                "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
+                style="yellow",
+            )
+    else:
+        # Default behavior: create published deployment
+        publish = True
+
     tr = _get_truss_from_directory(target_directory=target_directory)
     if (
         tr.spec.config.runtime.transport.kind == TransportKind.GRPC
@@ -532,7 +579,7 @@ def push(
         and not promote
     ):
         raise click.UsageError(
-            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command with --publish or --promote."
+            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command without --watch, or with --environment {env_name}."
         )
 
     if not remote:
@@ -551,6 +598,20 @@ def push(
         promote_warning = "'promote' flag and 'environment' flag were both specified. Ignoring the value of 'promote'"
         console.print(promote_warning, style="yellow")
     if promote and not environment:
+        # Show deprecation warning for --promote flag
+        import warnings
+
+        warnings.warn(
+            "The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        console.print(
+            "⚠️  The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            style="yellow",
+        )
         environment = PRODUCTION_ENVIRONMENT_NAME
 
     if preserve_env_instance_type is not None and not environment:
@@ -625,6 +686,7 @@ def push(
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
+        watch=watch,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -635,9 +697,9 @@ def push(
 | Your model is deploying as a development model. Development models allow you to       |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
+| To monitor changes to your model and rapidly iterate, run the 'truss watch' command. |
 | When you are ready to publish your deployed model as a new deployment,                |
-| pass '--publish' to the 'truss push' command. To monitor changes to your model and    |
-| rapidly iterate, run the 'truss watch' command.                                       |
+| run 'truss push' without the --watch flag.                                           |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """
@@ -681,6 +743,50 @@ def push(
                         style="red",
                     )
                     sys.exit(1)
+
+    elif watch and isinstance(service, BasetenService):
+        # For --watch, we want to stream logs and then enable live patching
+        bt_remote = cast(BasetenRemote, remote_provider)
+
+        # First, stream the logs like --tail does
+        console.print("📡 Streaming deployment logs...", style="blue")
+        log_watcher = ModelDeploymentLogWatcher(
+            bt_remote.api, service.model_id, service.model_version_id
+        )
+        for log in log_watcher.watch():
+            cli_log_utils.output_log(log)
+
+        # After logs are streamed, start the watch/patch functionality
+        console.print("🔄 Starting live patching mode...", style="green")
+        console.print(
+            "📝 Edit your truss files and changes will be applied automatically.",
+            style="italic",
+        )
+        console.print("🛑 Press Ctrl+C to stop watching.", style="italic")
+
+        # Run the watch functionality using the existing watch command logic
+        try:
+            # Use the same logic as the watch command
+            if not os.path.isfile(target_directory):
+                bt_remote.sync_truss_to_dev_version_by_name(
+                    model_name, target_directory, console, error_console
+                )
+            else:
+                # These imports are delayed, to handle pydantic v1 envs gracefully.
+                from truss_chains.deployment import deployment_client
+
+                deployment_client.watch_model(
+                    source=Path(target_directory),
+                    model_name=model_name,
+                    remote_provider=bt_remote,
+                    console=console,
+                    error_console=error_console,
+                )
+        except KeyboardInterrupt:
+            console.print(
+                "\n👋 Stopped watching. Your development deployment is still running.",
+                style="yellow",
+            )
 
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)

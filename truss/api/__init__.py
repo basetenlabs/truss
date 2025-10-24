@@ -65,6 +65,7 @@ def push(
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
     preserve_env_instance_type: bool = True,
+    watch: bool = False,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -73,16 +74,17 @@ def push(
         target_directory: Directory of Truss to push.
         remote: Name of the remote in .trussrc to patch changes to.
         model_name: The name of the model, if different from the one in the config.yaml.
-        publish: Push the truss as a published deployment. If no production deployment exists,
-            promote the truss to production after deploy completes.
-        promote: Push the truss as a published deployment. Even if a production deployment exists,
-            promote the truss to production after deploy completes.
+        publish: [DEPRECATED] Push the truss as a published deployment (default behavior).
+            Published deployments are now the default. Use 'watch=True' for development deployments.
+            This parameter will be removed in the following release.
+        promote: [DEPRECATED] Push the truss as a published deployment and promote to production.
+            Use 'environment="production"' instead. For other environments, use 'environment="{env_name}"'.
         preserve_previous_production_deployment: Preserve the previous production deployment’s autoscaling
             setting. When not specified, the previous production deployment will be updated to allow it to
-            scale to zero. Can only be use in combination with `promote` option.
+            scale to zero. Can only be used in combination with environment deployments.
         trusted: [DEPRECATED]
         deployment_name: Name of the deployment created by the push. Can only be
-            used in combination with `publish` or `promote`. Deployment name must
+            used in combination with environment deployments. Deployment name must
             only contain alphanumeric, ’.’, ’-’ or ’_’ characters.
         environment: Name of stable environment on baseten.
         progress_bar: Optional `rich.progress.Progress` if output is desired.
@@ -92,10 +94,34 @@ def push(
         preserve_env_instance_type: When pushing a truss to an environment, whether to use the resources
           specified in the truss config to resolve the instance type or preserve the instance type
           configured in the specified environment.
+        watch: Push the truss as a development deployment with hot reload support.
+          Development models allow you to iterate quickly during the deployment process.
 
     Returns:
         The newly created ModelDeployment.
     """
+    # Handle the new logic: --watch creates development deployment, default is published
+    if watch and publish:
+        raise ValueError(
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
+        )
+
+    if watch and promote:
+        raise ValueError(
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
+        )
+
+    # Determine the deployment type based on flags
+    if watch:
+        # --watch explicitly creates development deployment
+        publish = False
+    elif publish or promote:
+        # --publish or --promote explicitly creates published deployment
+        publish = True
+    else:
+        # Default behavior: create published deployment
+        publish = True
+
     if trusted is not None:
         warnings.warn(
             "`trusted` is deprecated and will be ignored, all models are "
@@ -135,6 +161,7 @@ def push(
         progress_bar=progress_bar,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
+        watch=watch,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))

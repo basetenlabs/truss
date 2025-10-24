@@ -149,13 +149,13 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--publish/--no-publish",
-    default=False,
-    help="Create chainlets as published deployments.",
+    default=True,
+    help="[DEPRECATED] Create chainlets as published deployments (default behavior). Use --watch for development deployments instead. This flag will be removed in the following release.",
 )
 @click.option(
     "--promote/--no-promote",
     default=False,
-    help="Replace production chainlets with newly deployed chainlets.",
+    help="[DEPRECATED] Replace production chainlets with newly deployed chainlets. Use '--environment production' instead.",
 )
 @click.option(
     "--environment",
@@ -178,7 +178,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         "Watches the chains source code and applies live patches. Using this option "
         "will wait for the chain to be deployed (i.e. `--wait` flag is applied), "
         "before starting to watch for changes. This option required the deployment "
-        "to be a development deployment (i.e. `--no-promote` and `--no-publish`."
+        "to be a development deployment (i.e. use `--watch` flag when pushing)."
     ),
 )
 @click.option(
@@ -253,11 +253,44 @@ def push_chain(
     if experimental_watch_chainlet_names:
         watch = True
 
+    # Handle the new logic: --watch creates development deployment, default is published
+    if watch and publish:
+        raise ValueError(
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments (default is published)."
+        )
+
+    if watch and promote:
+        raise ValueError(
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --environment {env_name} for production deployments."
+        )
+
+    # Determine the deployment type based on flags
     if watch:
-        if publish or promote:
-            raise ValueError(
-                "When using `--watch`, the deployment cannot be published or promoted."
+        # --watch explicitly creates development deployment
+        publish = False
+    elif publish or promote:
+        # --publish or --promote explicitly creates published deployment
+        publish = True
+        # Show deprecation warning for --publish flag
+        if publish and not promote:
+            import warnings
+
+            warnings.warn(
+                "The '--publish' flag is deprecated. Published deployments are now the default behavior. "
+                "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
+                DeprecationWarning,
+                stacklevel=2,
             )
+            console.print(
+                "⚠️  The '--publish' flag is deprecated. Published deployments are now the default behavior. "
+                "Use '--watch' for development deployments instead. This flag will be removed in the following release.",
+                style="yellow",
+            )
+    else:
+        # Default behavior: create published deployment
+        publish = True
+
+    if watch:
         if not wait:
             console.print(
                 "'--watch' is used. Will wait for deployment before watching files."
@@ -270,6 +303,22 @@ def push_chain(
             "Ignoring the value of 'promote'."
         )
         console.print(promote_warning, style="yellow")
+
+    if promote and not environment:
+        # Show deprecation warning for --promote flag
+        import warnings
+
+        warnings.warn(
+            "The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        console.print(
+            "⚠️  The '--promote' flag is deprecated. Use '--environment production' instead. "
+            "For other environments, use '--environment {env_name}'.",
+            style="yellow",
+        )
 
     if not remote:
         if dryrun:
