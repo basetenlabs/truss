@@ -516,14 +516,21 @@ def _create_baseten_chain(
 
     _create_chains_secret_if_missing(remote_provider)
 
+    # Get chain root for raw chain artifact upload
+    chain_root = None
+    if entrypoint_descriptor is not None:
+        chain_root = _get_chain_root(entrypoint_descriptor.chainlet_cls)
+
     chain_deployment_handle = remote_provider.push_chain_atomic(
         baseten_options.chain_name,
         entrypoint_artifact,
         dependency_artifacts,
         truss_user_env,
+        chain_root=chain_root,
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,
+        disable_chain_download=baseten_options.disable_chain_download,
     )
     return BasetenChainService(
         baseten_options.chain_name,
