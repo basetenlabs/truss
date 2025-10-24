@@ -103,6 +103,9 @@ default-groups = [
     "dev-server",
 ]
 
+[tool.uv.extra-build-dependencies]
+gql-query-builder = ["pip"]
+
 # Simplified Hatchling configuration - let it auto-discover truss, manually include others
 [tool.hatch.build.targets.sdist]
 include = [
