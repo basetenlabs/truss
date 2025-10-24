@@ -353,8 +353,8 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
 
-    assert 'environment: "production"' in gql_mutation
-    assert 'chain_id: "chain_id"' in gql_mutation
+    assert "environment: production" in gql_mutation
+    assert "chain_id: chain_id" in gql_mutation
     assert "dependencies:" in gql_mutation
     assert "entrypoint:" in gql_mutation
 
@@ -378,8 +378,8 @@ def test_deploy_chain_deployment_with_gitinfo(mock_post, baseten_api):
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
 
-    assert 'environment: "production"' in gql_mutation
-    assert 'chain_id: "chain_id"' in gql_mutation
+    assert "environment: production" in gql_mutation
+    assert "chain_id: chain_id" in gql_mutation
     assert "dependencies:" in gql_mutation
     assert "entrypoint:" in gql_mutation
 
@@ -402,10 +402,68 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
 
-    assert 'chain_id: "chain_id"' in gql_mutation
+    assert "chain_id: chain_id" in gql_mutation
     assert "environment" not in gql_mutation
     assert "dependencies:" in gql_mutation
     assert "entrypoint:" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
+def test_deploy_chain_deployment_with_dependencies(mock_post, baseten_api):
+    dependencies = [
+        ChainletDataAtomic(
+            name="dependency-1",
+            oracle=OracleData(
+                model_name="dep-model-1",
+                s3_key="dep-s3-key-1",
+                encoded_config_str="dep-encoded-config-str-1",
+            ),
+        ),
+        ChainletDataAtomic(
+            name="dependency-2",
+            oracle=OracleData(
+                model_name="dep-model-2",
+                s3_key="dep-s3-key-2",
+                encoded_config_str="dep-encoded-config-str-2",
+            ),
+        ),
+    ]
+
+    baseten_api.deploy_chain_atomic(
+        environment="production",
+        chain_id="chain_id",
+        dependencies=dependencies,
+        entrypoint=ChainletDataAtomic(
+            name="chainlet-1",
+            oracle=OracleData(
+                model_name="model-1",
+                s3_key="s3-key-1",
+                encoded_config_str="encoded-config-str-1",
+            ),
+        ),
+        truss_user_env=b10_types.TrussUserEnv.collect(),
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+
+    # Single regex to check all assertions
+    import re
+
+    pattern = (
+        r"(?=.*environment: production)"
+        r"(?=.*chain_id: chain_id)"
+        r"(?=.*dependencies:)"
+        r"(?=.*entrypoint:)"
+        r'(?=.*name: "dependency-1")'
+        r'(?=.*name: "dependency-2")'
+        r'(?=.*model_name: "dep-model-1")'
+        r'(?=.*model_name: "dep-model-2")'
+        r'(?=.*s3_key: "dep-s3-key-1")'
+        r'(?=.*s3_key: "dep-s3-key-2")'
+    )
+    assert re.search(pattern, gql_mutation), (
+        f"GraphQL mutation does not contain all expected elements: {gql_mutation}"
+    )
 
 
 @mock.patch("requests.post", return_value=mock_upsert_training_project_response())
