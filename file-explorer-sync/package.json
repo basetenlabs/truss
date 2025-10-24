@@ -1,0 +1,59 @@
+{
+  "name": "file-explorer-sync",
+  "displayName": "File Explorer Sync",
+  "description": "Automatically expands and collapses directories in the file explorer as you open and close files",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "File Explorer Sync",
+      "properties": {
+        "fileExplorerSync.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic file explorer syncing"
+        },
+        "fileExplorerSync.collapseOnClose": {
+          "type": "boolean",
+          "default": false,
+          "description": "Collapse directories when all files in them are closed"
+        },
+        "fileExplorerSync.revealDepth": {
+          "type": "number",
+          "default": -1,
+          "description": "Maximum depth to reveal in tree (-1 for unlimited)"
+        },
+        "fileExplorerSync.focusExplorer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Focus the file explorer when syncing"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "fileExplorerSync.toggle",
+        "title": "Toggle File Explorer Sync"
+      },
+      {
+        "command": "fileExplorerSync.syncNow",
+        "title": "Sync File Explorer Now"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node extension.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0"
+  }
+}
