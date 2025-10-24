@@ -6,6 +6,7 @@ import requests
 from gql_query_builder import GqlQuery
 from pydantic import BaseModel, Field
 
+from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory
@@ -14,6 +15,29 @@ from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
+PARAMS_INDENT = "\n                    "
+
+
+class ChainAWSCredential(SafeModel):
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_session_token: str
+
+
+class ChainUploadCredentials(SafeModel):
+    s3_bucket: str
+    s3_key: str
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_session_token: str
+
+    @property
+    def aws_credentials(self) -> ChainAWSCredential:
+        return ChainAWSCredential(
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+            aws_session_token=self.aws_session_token,
+        )
 
 
 class InstanceTypeV1(BaseModel):
@@ -324,6 +348,7 @@ class BasetenApi:
             str(k): v for k, v in mutation_params.items() if v is not None
         }
 
+
         gql = GqlQuery()
         gql.operation(
             "mutation",
@@ -332,7 +357,6 @@ class BasetenApi:
             ["chain_deployment { id chain { id hostname } }"],
         )
         query_string = gql.generate()
-
         resp = self._post_graphql_query(
             query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
@@ -659,7 +683,28 @@ class BasetenApi:
         return resp_json["training_projects"]
 
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
+        if blob_type == b10_types.BlobType.CHAIN:
+            return self.get_chain_s3_upload_credentials()
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
+
+    def get_chain_s3_upload_credentials(self) -> ChainUploadCredentials:
+        """Get chain artifact credentials using GraphQL query."""
+        query = """
+        query {
+            chain_s3_upload_credentials {
+                s3_bucket
+                s3_key
+                aws_access_key_id
+                aws_secret_access_key
+                aws_session_token
+            }
+        }
+        """
+        response = self._post_graphql_query(query)
+
+        return ChainUploadCredentials.model_validate(
+            response["data"]["chain_s3_upload_credentials"]
+        )
 
     def get_training_job_metrics(
         self,
