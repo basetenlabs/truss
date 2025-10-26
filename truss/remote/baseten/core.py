@@ -8,7 +8,6 @@ from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tup
 import requests
 
 from truss.base.errors import ValidationError
-from truss.util.error_utils import handle_client_error
 
 if TYPE_CHECKING:
     from rich import progress
@@ -81,8 +80,6 @@ class ChainDeploymentHandleAtomic(NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
-    original_source_artifact_s3_key: Optional[str] = None
-    allow_truss_download: Optional[bool] = True
 
 
 class ModelVersionHandle(NamedTuple):
@@ -130,8 +127,6 @@ def create_chain_atomic(
     is_draft: bool,
     truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
-    original_source_artifact_s3_key: Optional[str] = None,
-    allow_truss_download: bool = True,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -154,8 +149,6 @@ def create_chain_atomic(
             chain_name=chain_name,
             is_draft=True,
             truss_user_env=truss_user_env,
-            original_source_artifact_s3_key=original_source_artifact_s3_key,
-            allow_truss_download=allow_truss_download,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -169,8 +162,6 @@ def create_chain_atomic(
                 chain_id=chain_id,
                 environment=environment,
                 truss_user_env=truss_user_env,
-                original_source_artifact_s3_key=original_source_artifact_s3_key,
-                allow_truss_download=allow_truss_download,
             )
         except ApiError as e:
             if (
@@ -191,8 +182,6 @@ def create_chain_atomic(
             dependencies=dependencies,
             chain_name=chain_name,
             truss_user_env=truss_user_env,
-            original_source_artifact_s3_key=original_source_artifact_s3_key,
-            allow_truss_download=allow_truss_download,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -200,8 +189,6 @@ def create_chain_atomic(
         chain_id=res["chain_deployment"]["chain"]["id"],
         hostname=res["chain_deployment"]["chain"]["hostname"],
         is_draft=is_draft,
-        original_source_artifact_s3_key=original_source_artifact_s3_key,
-        allow_truss_download=allow_truss_download,
     )
 
 
@@ -353,33 +340,6 @@ def upload_truss(
         serialize_file.name, s3_bucket, s3_key, temp_credentials_s3_upload, progress_bar
     )
     return s3_key
-
-
-def upload_chain_artifact(
-    api: BasetenApi,
-    serialize_file: IO,
-    progress_bar: Optional[Type["progress.Progress"]],
-) -> str:
-    """
-    Upload a chain artifact to the Baseten remote.
-
-    Args:
-        api: BasetenApi instance
-        serialize_file: File-like object containing the serialized chain artifact
-
-    Returns:
-        The S3 key of the uploaded file
-    """
-    credentials = api.get_chain_s3_upload_credentials()
-    with handle_client_error("Uploading chain source"):
-        multipart_upload_boto3(
-            serialize_file.name,
-            credentials.s3_bucket,
-            credentials.s3_key,
-            credentials.aws_credentials.model_dump(),
-            progress_bar,
-        )
-    return credentials.s3_key
 
 
 def create_truss_service(
