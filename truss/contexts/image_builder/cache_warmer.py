@@ -11,10 +11,9 @@ from typing import Optional, Type
 import boto3
 from botocore import UNSIGNED
 from botocore.client import Config
+from botocore.exceptions import ClientError, NoCredentialsError
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
-
-from truss.util.error_utils import handle_client_error
 
 B10CP_PATH_TRUSS_ENV_VAR_NAME = "B10CP_PATH_TRUSS"
 
@@ -189,13 +188,23 @@ class S3File(RepositoryFile):
         if not dst_file.parent.exists():
             dst_file.parent.mkdir(parents=True)
 
-        with handle_client_error(
-            f"accessing S3 bucket {bucket_name} for file {file_name}"
-        ):
+        try:
             url = client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": bucket_name, "Key": file_name},
                 ExpiresIn=3600,
+            )
+        except NoCredentialsError as nce:
+            raise RuntimeError(
+                f"No AWS credentials found\nOriginal exception: {str(nce)}"
+            )
+        except ClientError as ce:
+            raise RuntimeError(
+                f"Client error when accessing the S3 bucket (check your credentials): {str(ce)}"
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"File not found on S3 bucket: {file_name}\nOriginal exception: {str(exc)}"
             )
 
         download_file_using_b10cp(url, dst_file, self.file_name)
