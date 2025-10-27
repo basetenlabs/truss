@@ -246,6 +246,99 @@ class ModelDescriptor:
     chat_completions: Optional[MethodDescriptor]
     websocket: Optional[MethodDescriptor]
 
+
+class ModelInstance:
+    """Represents a single instance of a model with its own semaphore."""
+    
+    def __init__(self, model: Any, descriptor: ModelDescriptor, predict_semaphore: Semaphore):
+        self._model = model
+        self._descriptor = descriptor
+        self._predict_semaphore = predict_semaphore
+        self._round_robin_counter = 0
+        self._is_healthy = True
+        
+    @property
+    def model(self) -> Any:
+        return self._model
+        
+    @property
+    def descriptor(self) -> ModelDescriptor:
+        return self._descriptor
+        
+    @property
+    def predict_semaphore(self) -> Semaphore:
+        return self._predict_semaphore
+        
+    @property
+    def is_healthy(self) -> bool:
+        return self._is_healthy
+        
+    def set_health(self, healthy: bool) -> None:
+        self._is_healthy = healthy
+
+
+class ModelInstancePool:
+    """Pool of model instances with round-robin request distribution."""
+    
+    def __init__(self, config: Dict):
+        self._config = config
+        self._instances: List[ModelInstance] = []
+        self._current_instance_index = 0
+        self._pool_lock = Lock()
+        
+    @property
+    def instance_count(self) -> int:
+        return self._config.get("runtime", {}).get("instance_groups", 1)
+        
+    @property
+    def predict_concurrency(self) -> int:
+        return self._config.get("runtime", {}).get("predict_concurrency", 1)
+        
+    def add_instance(self, instance: ModelInstance) -> None:
+        self._instances.append(instance)
+        
+    def get_next_instance(self) -> ModelInstance:
+        """Get next healthy instance using round-robin."""
+        with self._pool_lock:
+            if not self._instances:
+                raise errors.ModelNotReady("No model instances available")
+                
+            # Find next healthy instance
+            attempts = 0
+            while attempts < len(self._instances):
+                instance = self._instances[self._current_instance_index]
+                self._current_instance_index = (self._current_instance_index + 1) % len(self._instances)
+                
+                if instance.is_healthy:
+                    return instance
+                attempts += 1
+                
+            raise errors.ModelNotReady("No healthy model instances available")
+            
+    async def check_instance_health(self, model_wrapper) -> None:
+        """Check health of all instances and update their health status."""
+        if not self._instances:
+            return
+            
+        for instance in self._instances:
+            try:
+                # Use existing health check logic from ModelWrapper
+                is_healthy = await model_wrapper.is_healthy()
+                instance.set_health(is_healthy is not False)
+            except Exception:
+                instance.set_health(False)
+                
+    async def load_all_instances(self, model_wrapper) -> None:
+        """Load all model instances."""
+        if self.instance_count == 1:
+            # Single instance mode - use existing logic
+            return
+            
+        # For multiple instances, we need to create multiple model objects
+        # This is a simplified approach - in practice we'd need to be more careful
+        # about how we initialize multiple instances
+        pass  # Implementation will be added in ModelWrapper
+
     @cached_property
     def skip_input_parsing(self) -> bool:
         return bool(
@@ -373,6 +466,7 @@ class ModelWrapper:
     _predict_semaphore: Semaphore
     _poll_for_environment_updates_task: Optional[asyncio.Task]
     _environment: Optional[dict]
+    _instance_pool: Optional[ModelInstancePool]
 
     class Status(enum.Enum):
         NOT_READY = 0
@@ -402,6 +496,7 @@ class ModelWrapper:
         )
         self._poll_for_environment_updates_task = None
         self._environment = None
+        self._instance_pool = ModelInstancePool(config)
 
     @property
     def _model(self) -> Any:
@@ -409,6 +504,16 @@ class ModelWrapper:
             return self._maybe_model
         else:
             raise errors.ModelNotReady(self.name)
+            
+    @property
+    def _current_model_instance(self) -> Any:
+        """Get current model instance, using instance pool if available."""
+        if self._instance_pool and self._instance_pool.instance_count > 1:
+            instance = self._instance_pool.get_next_instance()
+            return instance.model
+        else:
+            # Single instance mode (backward compatibility)
+            return self._model
 
     @property
     def model_descriptor(self) -> ModelDescriptor:
@@ -528,7 +633,30 @@ class ModelWrapper:
             for ext_name, ext in extensions.items():
                 if _signature_accepts_keyword_arg(signature, ext_name):
                     model_init_params[ext_name] = ext.model_args()
-            self._maybe_model = model_class(**model_init_params)
+            # Load multiple instances if instance_groups > 1
+            if self._instance_pool.instance_count > 1:
+                self._logger.info(f"Loading {self._instance_pool.instance_count} model instances")
+                for i in range(self._instance_pool.instance_count):
+                    # Create separate instance with same init params
+                    model_instance = model_class(**model_init_params)
+                    
+                    # Create descriptor for this instance
+                    model_descriptor = ModelDescriptor.from_model(model_instance)
+                    
+                    # Create semaphore for this instance
+                    instance_semaphore = Semaphore(self._instance_pool.predict_concurrency)
+                    
+                    # Create ModelInstance and add to pool
+                    truss_instance = ModelInstance(model_instance, model_descriptor, instance_semaphore)
+                    self._instance_pool.add_instance(truss_instance)
+                    
+                    self._logger.info(f"Loaded model instance {i+1}/{self._instance_pool.instance_count}")
+                
+                # Keep first instance as _maybe_model for backward compatibility
+                self._maybe_model = self._instance_pool._instances[0].model
+            else:
+                # Single instance mode - existing behavior
+                self._maybe_model = model_class(**model_init_params)
 
         elif TRT_LLM_EXTENSION_NAME in extensions:
             self._logger.info("Loading TRT LLM extension as model.")
@@ -543,7 +671,19 @@ class ModelWrapper:
 
         if self._maybe_model_descriptor.setup_environment:
             self._initialize_environment_before_load()
-        if hasattr(self._model, "load"):
+        
+        # Load all instances if multiple are configured
+        if self._instance_pool.instance_count > 1:
+            for instance in self._instance_pool._instances:
+                if hasattr(instance.model, "load"):
+                    retry(
+                        instance.model.load,
+                        NUM_LOAD_RETRIES,
+                        self._logger.warning,
+                        f"Failed to load model instance {instance.model}.",
+                        gap_seconds=1.0,
+                    )
+        elif hasattr(self._model, "load"):
             retry(
                 self._model.load,
                 NUM_LOAD_RETRIES,
@@ -551,6 +691,7 @@ class ModelWrapper:
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
+            
         lazy_data_resolver.raise_if_not_collected()
 
     def setup_polling_for_environment_updates(self):
@@ -662,7 +803,7 @@ class ModelWrapper:
         return await self._execute_user_model_fn(inputs, request, descriptor)
 
     async def _predict(
-        self, inputs: Any, request: starlette.requests.Request
+        self, inputs: Any, request: starlette.requests.Request, model_instance: Optional[Any] = None
     ) -> Union[OutputType, Any]:
         # The result can be a serializable data structure, byte-generator, a request,
         # or, if `postprocessing` is used, anything. In the last case postprocessing
@@ -671,7 +812,7 @@ class ModelWrapper:
         assert descriptor, (
             f"`{MethodName.PREDICT}` must only be called if model has it."
         )
-        return await self._execute_user_model_fn(inputs, request, descriptor)
+        return await self._execute_user_model_fn(inputs, request, descriptor, model_instance)
 
     async def postprocess(
         self, result: Union[InputType, Any], request: starlette.requests.Request
@@ -757,16 +898,41 @@ class ModelWrapper:
         inputs: Union[InputType, Any],
         request: starlette.requests.Request,
         descriptor: MethodDescriptor,
+        model_instance: Optional[Any] = None,
     ) -> OutputType:
         await raise_if_disconnected(request, descriptor.method_name)
         args = ArgConfig.prepare_args(inputs, request, descriptor)
+        
+        # Use provided model instance or get current one (for instance groups)
+        if model_instance is None:
+            target_model = self._current_model_instance
+        else:
+            target_model = model_instance
+            
+        # Bind method to the correct model instance
+        if str(descriptor.method_name) == str(MethodName.PREDICT):
+            bound_method = getattr(target_model, 'predict')
+        elif str(descriptor.method_name) == str(MethodName.PREPROCESS):
+            bound_method = getattr(target_model, 'preprocess')
+        elif str(descriptor.method_name) == str(MethodName.POSTPROCESS):
+            bound_method = getattr(target_model, 'postprocess')
+        elif str(descriptor.method_name) == str(MethodName.CHAT_COMPLETIONS):
+            bound_method = getattr(target_model, 'chat_completions')
+        elif str(descriptor.method_name) == str(MethodName.COMPLETIONS):
+            bound_method = getattr(target_model, 'completions')
+        elif str(descriptor.method_name) == str(MethodName.IS_HEALTHY):
+            bound_method = getattr(target_model, 'is_healthy')
+        else:
+            # Default to the descriptor's method for backward compatibility
+            bound_method = descriptor.method
+            
         with errors.intercept_exceptions(self._logger, self.model_file_name):
             if descriptor.is_generator:
                 # Even for async generators, don't await here.
-                return descriptor.method(*args)
+                return bound_method(*args)
             if descriptor.is_async:
-                return await cast(Awaitable[OutputType], descriptor.method(*args))
-            return await to_thread.run_sync(descriptor.method, *args)
+                return await cast(Awaitable[OutputType], bound_method(*args))
+            return await to_thread.run_sync(bound_method, *args)
 
     async def _execute_model_endpoint(
         self,
@@ -840,8 +1006,17 @@ class ModelWrapper:
             preprocess_result = inputs
 
         span_predict = self._tracer.start_span("call-predict")
+        
+        # Choose semaphore based on instance groups configuration
+        current_instance = None
+        if self._instance_pool and self._instance_pool.instance_count > 1:
+            current_instance = self._instance_pool.get_next_instance()
+            semaphore = current_instance.predict_semaphore
+        else:
+            semaphore = self._predict_semaphore
+            
         async with deferred_semaphore_and_span(
-            self._predict_semaphore, span_predict
+            semaphore, span_predict
         ) as get_defer_fn:
             with tracing.section_as_event(
                 span_predict, "predict", detach=True
@@ -859,7 +1034,7 @@ class ModelWrapper:
                 # exactly handle that case we would need to apply `detach_context`
                 # around each `next`-invocation that consumes the generator, which is
                 # prohibitive.
-                predict_result = await self._predict(preprocess_result, request)
+                predict_result = await self._predict(preprocess_result, request, model_instance=current_instance.model if current_instance else None)
 
             if inspect.isgenerator(predict_result) or inspect.isasyncgen(
                 predict_result

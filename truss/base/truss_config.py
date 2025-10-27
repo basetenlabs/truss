@@ -239,6 +239,7 @@ Transport = Annotated[
 
 class Runtime(custom_types.ConfigModel):
     predict_concurrency: int = 1
+    instance_groups: int = 1
     streaming_read_timeout: int = 60
     enable_tracing_data: bool = False
     enable_debug_logs: bool = False
@@ -297,6 +298,12 @@ class Runtime(custom_types.ConfigModel):
     def _default_transport_kind(cls, value: Any) -> Any:
         if value == {}:
             return {"kind": "http"}
+        return value
+
+    @pydantic.field_validator("instance_groups")
+    def _validate_instance_groups(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("instance_groups must be at least 1")
         return value
 
     @pydantic.field_validator("truss_server_version_override")
