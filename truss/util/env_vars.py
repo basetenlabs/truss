@@ -12,12 +12,12 @@ class override_env_vars:
         # Original environment is restored here
     """
 
-    def __init__(self, env_vars: Dict[str, str]):
+    def __init__(self, env_vars: Dict[str, Optional[str]]):
         """
         Args:
             env_vars: Dictionary of environment variables to set
         """
-        self.env_vars = env_vars
+        self.env_vars: Dict[str, Optional[str]] = env_vars
         self.original_vars: Dict[str, Optional[str]] = {}
 
     def __enter__(self):
@@ -25,7 +25,10 @@ class override_env_vars:
             self.original_vars[key] = os.environ.get(key)
 
         for key, value in self.env_vars.items():
-            os.environ[key] = value
+            if value is not None:
+                os.environ[key] = value
+            else:
+                del os.environ[key]
 
         return self
 
