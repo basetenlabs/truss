@@ -7,7 +7,9 @@ def test_override_env_vars():
     os.environ["API_KEY"] = "original_key"
     os.environ["AWS_CONFIG_FILE"] = "original_config_file"
 
-    with override_env_vars({"API_KEY": "new_key", "DEBUG": "true", "AWS_CONFIG_FILE": None}):
+    with override_env_vars(
+        {"API_KEY": "new_key", "DEBUG": "true", "AWS_CONFIG_FILE": None}
+    ):
         assert os.environ["API_KEY"] == "new_key"
         assert os.environ["DEBUG"] == "true"
         assert "AWS_CONFIG_FILE" not in os.environ
