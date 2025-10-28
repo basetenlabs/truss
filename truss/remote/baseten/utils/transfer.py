@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional, Type
 import boto3
 from boto3.s3.transfer import TransferConfig
 
-from truss.util.env_vars import override_env_vars
+from truss.util.env_vars import modify_env_vars
 
 if TYPE_CHECKING:
     from rich import progress
@@ -29,7 +29,7 @@ def multipart_upload_boto3(
     aws_env_vars = set(
         env_var for env_var in os.environ.keys() if env_var.startswith("AWS_")
     )
-    with override_env_vars(deleted_vars=aws_env_vars):
+    with modify_env_vars(deletions=aws_env_vars):
         s3_resource = boto3.resource("s3", **credentials)
         filesize = os.stat(file_path).st_size
 
