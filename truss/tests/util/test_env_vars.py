@@ -8,7 +8,8 @@ def test_override_env_vars():
     os.environ["AWS_CONFIG_FILE"] = "original_config_file"
 
     with override_env_vars(
-        {"API_KEY": "new_key", "DEBUG": "true", "AWS_CONFIG_FILE": None}
+        env_vars={"API_KEY": "new_key", "DEBUG": "true"},
+        deleted_vars={"AWS_CONFIG_FILE"},
     ):
         assert os.environ["API_KEY"] == "new_key"
         assert os.environ["DEBUG"] == "true"

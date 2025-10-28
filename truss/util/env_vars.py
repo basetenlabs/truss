@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 
 class override_env_vars:
@@ -12,22 +12,30 @@ class override_env_vars:
         # Original environment is restored here
     """
 
-    def __init__(self, env_vars: Dict[str, Optional[str]]):
+    def __init__(
+        self,
+        env_vars: Optional[Dict[str, str]] = None,
+        deleted_vars: Optional[Set[str]] = None,
+    ):
         """
         Args:
             env_vars: Dictionary of environment variables to set
+            deleted_vars: Set of environment variables to delete
         """
-        self.env_vars: Dict[str, Optional[str]] = env_vars
+        self.env_vars: Dict[str, str] = env_vars or dict()
+        self.deleted_vars: Set[str] = deleted_vars or set()
         self.original_vars: Dict[str, Optional[str]] = {}
 
     def __enter__(self):
-        for key in self.env_vars:
+        all_keys = set(self.env_vars.keys()) | self.deleted_vars
+        for key in all_keys:
             self.original_vars[key] = os.environ.get(key)
 
         for key, value in self.env_vars.items():
-            if value is not None:
-                os.environ[key] = value
-            else:
+            os.environ[key] = value
+
+        for key in self.deleted_vars:
+            if key in os.environ:
                 del os.environ[key]
 
         return self

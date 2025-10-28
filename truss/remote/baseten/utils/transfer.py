@@ -2,7 +2,7 @@ import base64
 import contextlib
 import json
 import os
-from typing import TYPE_CHECKING, Dict, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
 import boto3
 from boto3.s3.transfer import TransferConfig
@@ -26,10 +26,10 @@ def multipart_upload_boto3(
 ) -> None:
     # In the CLI flow, ignore any local ~/.aws/config files,
     # which can interfere with uploading the Truss to S3.
-    aws_env_vars: Dict[str, Optional[str]] = {
-        env_var: None for env_var in os.environ.keys() if env_var.startswith("AWS_")
-    }
-    with override_env_vars(aws_env_vars):
+    aws_env_vars = set(
+        env_var for env_var in os.environ.keys() if env_var.startswith("AWS_")
+    )
+    with override_env_vars(deleted_vars=aws_env_vars):
         s3_resource = boto3.resource("s3", **credentials)
         filesize = os.stat(file_path).st_size
 
