@@ -186,6 +186,7 @@ def test_push_chain_atomic_with_chain_upload(
     chain_root = context["chain_root"]
 
     context["mock_prepare_push"].return_value = mock_push_data
+    deployment_name = "custom_deployment"
 
     result = remote.push_chain_atomic(
         chain_name=chain_name,
@@ -194,13 +195,16 @@ def test_push_chain_atomic_with_chain_upload(
         truss_user_env=truss_user_env,
         chain_root=chain_root,
         publish=True,
+        deployment_name=deployment_name,
     )
     assert result == mock_create_chain_atomic.return_value
 
     mock_archive_dir.assert_called_once_with(dir=chain_root, progress_bar=None)
     mock_upload_chain_artifact.assert_called_once()
-
     mock_create_chain_atomic.assert_called_once()
+
+    prepare_kwargs = context["mock_prepare_push"].call_args.kwargs
+    assert prepare_kwargs["deployment_name"] == deployment_name
 
 
 @patch("truss.remote.baseten.remote.create_chain_atomic")
