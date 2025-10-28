@@ -31,6 +31,7 @@ from truss.remote.baseten.core import (
     get_model_and_versions,
     get_prod_version_from_versions,
     get_truss_watch_state,
+    upload_chain_artifact,
     upload_truss,
     validate_truss_config_against_backend,
 )
@@ -263,9 +264,11 @@ class BasetenRemote(TrussRemote):
         entrypoint_artifact: custom_types.ChainletArtifact,
         dependency_artifacts: List[custom_types.ChainletArtifact],
         truss_user_env: b10_types.TrussUserEnv,
+        chain_root: Optional[Path] = None,
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
+        disable_chain_download: bool = False,
     ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -285,6 +288,7 @@ class BasetenRemote(TrussRemote):
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
                 progress_bar=progress_bar,
+                disable_truss_download=disable_chain_download,
             )
             oracle_data = custom_types.OracleData(
                 model_name=push_data.model_name,
@@ -300,6 +304,18 @@ class BasetenRemote(TrussRemote):
                 )
             )
 
+        # Upload raw chain artifact if chain_root is provided
+        raw_chain_s3_key = None
+        if chain_root is not None:
+            logging.info("Uploading source artifact")
+            # Create a tar file from the chain root directory
+            original_source_tar = archive_dir(dir=chain_root, progress_bar=progress_bar)
+            # Upload the chain artifact to S3
+            raw_chain_s3_key = upload_chain_artifact(
+                api=self._api,
+                serialize_file=original_source_tar,
+                progress_bar=progress_bar,
+            )
         chain_deployment_handle = create_chain_atomic(
             api=self._api,
             chain_name=chain_name,
@@ -308,6 +324,8 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             truss_user_env=truss_user_env,
             environment=environment,
+            original_source_artifact_s3_key=raw_chain_s3_key,
+            allow_truss_download=not disable_chain_download,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle

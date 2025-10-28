@@ -120,6 +120,7 @@ class TrussUserEnv(pydantic.BaseModel):
 class BlobType(Enum):
     MODEL = "model"
     TRAIN = "train"
+    CHAIN = "chain"
 
 
 class FileSummary(pydantic.BaseModel):
