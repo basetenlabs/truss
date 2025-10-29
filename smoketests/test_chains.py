@@ -257,24 +257,18 @@ def test_itest_chain_publish(prepare) -> None:
     logging.info(
         f"Testing chain artifact download for deployment {chain_deployment_id}"
     )
-    try:
-        download_url = get_chain_deployment_s3_download_url(chain_deployment_id)
-        logging.info(f"Got download URL: {download_url}")
+    download_url = get_chain_deployment_s3_download_url(chain_deployment_id)
+    logging.info(f"Got download URL: {download_url}")
 
-        artifact_path = tmpdir / f"chain_artifact_{chain_deployment_id}.tar.gz"
-        download_chain_artifact(download_url, artifact_path)
+    artifact_path = tmpdir / f"chain_artifact_{chain_deployment_id}.tar.gz"
+    download_chain_artifact(download_url, artifact_path)
 
-        assert artifact_path.exists(), "Artifact file was not created"
-        assert artifact_path.stat().st_size > 0, "Downloaded artifact is empty"
+    assert artifact_path.exists(), "Artifact file was not created"
+    assert artifact_path.stat().st_size > 0, "Downloaded artifact is empty"
 
-        logging.info(
-            f"Successfully downloaded chain artifact: {artifact_path.stat().st_size} bytes"
-        )
-
-    except Exception as e:
-        logging.warning(f"Chain artifact download failed: {e}")
-        # Don't fail the test if artifact download fails, as not all deployments may have artifacts
-        # This is expected behavior based on the GraphQL endpoint documentation
+    logging.info(
+        f"Successfully downloaded chain artifact: {artifact_path.stat().st_size} bytes"
+    )
 
     if pytest_check.any_failures() or LEAVE_DEPLOYMENTS:
         logging.info(
