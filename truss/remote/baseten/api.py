@@ -242,6 +242,7 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
         preserve_env_instance_type: bool = True,
+        deploy_timeout: Optional[int] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -255,6 +256,7 @@ class BasetenApi:
                     preserve_env_instance_type: {"true" if preserve_env_instance_type else "false"}
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
+                    {f"deploy_timeout: {deploy_timeout}" if deploy_timeout is not None else ""}
                 ) {{
                     model_version {{
                         id

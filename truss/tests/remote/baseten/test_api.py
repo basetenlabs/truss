@@ -165,9 +165,9 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
         "config_str",
         "semver_bump",
         b10_types.TrussUserEnv.collect(),
-        False,
-        "deployment_name",
-        "production",
+        preserve_previous_prod_deployment=False,
+        deployment_name="deployment_name",
+        environment="production",
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -182,6 +182,7 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert 'name: "deployment_name"' in gql_mutation
     assert 'environment_name: "production"' in gql_mutation
     assert "preserve_env_instance_type: true" in gql_mutation
+    assert "deploy_timeout: " not in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -211,6 +212,7 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert " name: " not in gql_mutation
     assert "environment_name: " not in gql_mutation
     assert "preserve_env_instance_type: false" in gql_mutation
+    assert "deploy_timeout: " not in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -242,6 +244,55 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert " name: " not in gql_mutation
     assert 'environment_name: "staging"' in gql_mutation
     assert "preserve_env_instance_type: true" in gql_mutation
+    assert "deploy_timeout: " not in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_with_deploy_timeout(mock_post, baseten_api):
+    baseten_api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        preserve_previous_prod_deployment=False,
+        deployment_name="deployment_name",
+        environment="production",
+        deploy_timeout=300,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert 'model_id: "model_id"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
+    assert "scale_down_old_production: true" in gql_mutation
+    assert 'name: "deployment_name"' in gql_mutation
+    assert 'environment_name: "production"' in gql_mutation
+    assert "preserve_env_instance_type: true" in gql_mutation
+    assert "deploy_timeout: 300" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_with_deploy_timeout_zero(
+    mock_post, baseten_api
+):
+    """Test that deploy_timeout of 0 is handled correctly"""
+    baseten_api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        preserve_previous_prod_deployment=False,
+        deploy_timeout=0,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert "deploy_timeout: 0" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())

@@ -65,6 +65,7 @@ def push(
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
     preserve_env_instance_type: bool = True,
+    deploy_timeout: Optional[int] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -92,6 +93,7 @@ def push(
         preserve_env_instance_type: When pushing a truss to an environment, whether to use the resources
           specified in the truss config to resolve the instance type or preserve the instance type
           configured in the specified environment.
+        deploy_timeout: Optional timeout in seconds for the deployment operation.
 
     Returns:
         The newly created ModelDeployment.
@@ -135,6 +137,7 @@ def push(
         progress_bar=progress_bar,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
+        deploy_timeout=deploy_timeout,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))

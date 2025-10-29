@@ -187,6 +187,7 @@ def test_create_truss_service_handles_existing_model(inputs):
     _, kwargs = api.create_model_version_from_truss.call_args
     for k, v in inputs.items():
         assert kwargs[k] == v
+    assert kwargs.get("deploy_timeout") is None
 
 
 @pytest.mark.parametrize("allow_truss_download", [True, False])
@@ -761,3 +762,61 @@ def test_get_training_job_logs_with_pagination_default_batch_size(baseten_api):
     query_params = call_args[0][2]  # query_params
 
     assert query_params["limit"] == MAX_BATCH_SIZE
+
+
+def test_create_truss_service_passes_deploy_timeout():
+    """Test that deploy_timeout is passed through to create_model_version_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_model_version_from_truss.return_value = return_value
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id="model_id",
+        environment="staging",
+        deploy_timeout=600,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    assert version_handle.model_id == "model_id"
+    api.create_model_version_from_truss.assert_called_once()
+    _, kwargs = api.create_model_version_from_truss.call_args
+    assert kwargs["deploy_timeout"] == 600
+
+
+def test_create_truss_service_passes_deploy_timeout_with_other_params():
+    """Test that deploy_timeout works correctly with other parameters like preserve_env_instance_type"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_model_version_from_truss.return_value = return_value
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id="model_id",
+        environment="production",
+        preserve_env_instance_type=False,
+        deploy_timeout=900,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_model_version_from_truss.assert_called_once()
+    _, kwargs = api.create_model_version_from_truss.call_args
+    assert kwargs["deploy_timeout"] == 900
+    assert kwargs["preserve_env_instance_type"] is False
+    assert kwargs["environment"] == "production"

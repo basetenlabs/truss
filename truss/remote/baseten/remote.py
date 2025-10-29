@@ -205,6 +205,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
+        deploy_timeout: Optional[int] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -242,6 +243,7 @@ class BasetenRemote(TrussRemote):
             environment=push_data.environment,
             truss_user_env=truss_user_env,
             preserve_env_instance_type=preserve_env_instance_type,
+            deploy_timeout=deploy_timeout,
         )
 
         if model_version_handle.instance_type_name:
