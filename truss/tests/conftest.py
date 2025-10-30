@@ -2,15 +2,19 @@ import contextlib
 import copy
 import importlib
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict
+from unittest import mock
 
 import pytest
 import requests
+import requests_mock
 import yaml
 
 from truss.base.custom_types import Example
@@ -20,6 +24,8 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
+from truss.remote.baseten.core import ModelVersionHandle
+from truss.remote.baseten.remote import BasetenRemote
 from truss.truss_handle.build import init_directory
 from truss.truss_handle.truss_handle import TrussHandle
 
@@ -856,3 +862,170 @@ def trtllm_spec_dec_config_lookahead_v1(trtllm_config) -> Dict[str, Any]:
         }
     }
     return spec_dec_config
+
+
+TRUSS_RC_CONTENT = """
+[baseten]
+remote_provider = baseten
+api_key = test_key
+remote_url = http://test.com
+""".strip()
+
+
+@pytest.fixture
+def test_remote_url():
+    return "http://test_remote.com"
+
+
+@pytest.fixture
+def test_remote_graphql_path(test_remote_url):
+    return f"{test_remote_url}/graphql/"
+
+
+@pytest.fixture
+def remote(test_remote_url):
+    return BasetenRemote(test_remote_url, "api_key")
+
+
+@pytest.fixture
+def model_response():
+    return {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+
+
+@pytest.fixture
+def mock_model_version_handle():
+    return ModelVersionHandle(
+        version_id="version_id", model_id="model_id", hostname="hostname"
+    )
+
+
+@pytest.fixture
+def mock_baseten_backend(model_response, test_remote_url, test_remote_graphql_path):
+    """Fixture that mocks HTTP requests for truss push operations."""
+    with requests_mock.Mocker() as requests_mocker:
+        requests_mocker.post(
+            test_remote_graphql_path,
+            json=model_response,
+            additional_matcher=lambda req: "model(name" in req.json().get("query", ""),
+        )
+        requests_mocker.post(
+            test_remote_graphql_path,
+            json={"data": {"truss_validation": {"success": True, "details": "{}"}}},
+            additional_matcher=lambda req: "truss_validation"
+            in req.json().get("query", ""),
+        )
+        requests_mocker.post(
+            test_remote_graphql_path,
+            json={
+                "data": {
+                    "model_s3_upload_credentials": {
+                        "s3_bucket": "bucket",
+                        "s3_key": "key",
+                        "aws_access_key_id": "key_id",
+                        "aws_secret_access_key": "secret",
+                        "aws_session_token": "token",
+                    }
+                }
+            },
+            additional_matcher=lambda req: "model_s3_upload_credentials"
+            in req.json().get("query", ""),
+        )
+        requests_mocker.post(
+            f"{test_remote_url}/v1/models/model_id/upload",
+            json={"s3_bucket": "bucket", "s3_key": "key"},
+        )
+        requests_mocker.post(
+            f"{test_remote_url}/v1/blobs/credentials/truss",
+            json={
+                "s3_bucket": "bucket",
+                "s3_key": "key",
+                "aws_access_key_id": "key_id",
+                "aws_secret_access_key": "secret",
+                "aws_session_token": "token",
+            },
+        )
+        requests_mocker.post(
+            test_remote_graphql_path,
+            json={
+                "data": {
+                    "create_model_version_from_truss": {
+                        "model_version": {
+                            "id": "version_id",
+                            "oracle": {"id": "model_id", "hostname": "hostname"},
+                        }
+                    }
+                }
+            },
+            additional_matcher=lambda req: "create_model_version_from_truss"
+            in req.json().get("query", ""),
+        )
+        yield requests_mocker
+
+
+@pytest.fixture
+def mock_remote_factory():
+    """Fixture that mocks RemoteFactory.create and returns a configured mock remote."""
+    from unittest.mock import MagicMock, patch
+
+    from truss.remote.remote_factory import RemoteFactory
+
+    with patch.object(RemoteFactory, "create") as mock_factory:
+        mock_remote = MagicMock()
+        mock_service = MagicMock()
+        mock_service.model_id = "model_id"
+        mock_service.model_version_id = "version_id"
+        mock_remote.push.return_value = mock_service
+        mock_factory.return_value = mock_remote
+        yield mock_remote
+
+
+@pytest.fixture
+def temp_trussrc_dir():
+    """Fixture that creates a temporary directory with a .trussrc file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        trussrc_path = pathlib.Path(tmpdir) / ".trussrc"
+        trussrc_path.write_text(TRUSS_RC_CONTENT)
+        yield tmpdir
+
+
+@pytest.fixture
+def mock_available_config_names():
+    """Fixture that patches RemoteFactory.get_available_config_names."""
+    from unittest.mock import patch
+
+    with patch(
+        "truss.api.RemoteFactory.get_available_config_names", return_value=["baseten"]
+    ):
+        yield
+
+
+@pytest.fixture
+def mock_upload_truss():
+    """Fixture that patches upload_truss and returns a mock."""
+    with mock.patch("truss.remote.baseten.remote.upload_truss") as mock_upload:
+        mock_upload.return_value = "s3_key"
+        yield mock_upload
+
+
+@pytest.fixture
+def mock_create_truss_service(mock_model_version_handle):
+    """Fixture that patches create_truss_service and returns a mock."""
+    with mock.patch("truss.remote.baseten.remote.create_truss_service") as mock_create:
+        mock_create.return_value = mock_model_version_handle
+        yield mock_create
+
+
+@pytest.fixture
+def mock_truss_handle(custom_model_truss_dir_with_pre_and_post):
+    from truss.truss_handle.truss_handle import TrussHandle
+
+    truss_handle = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    return truss_handle

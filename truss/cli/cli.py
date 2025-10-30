@@ -524,7 +524,7 @@ def push(
     include_git_info: bool = False,
     tail: bool = False,
     preserve_env_instance_type: bool = True,
-    deploy_timeout_minutes: Optional[int] = 120,
+    deploy_timeout_minutes: Optional[int] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
