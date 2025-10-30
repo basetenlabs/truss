@@ -452,6 +452,28 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
     assert 'chain_id: "chain_id"' in gql_mutation
     assert "dependencies:" in gql_mutation
     assert "entrypoint:" in gql_mutation
+    assert "deployment_name" not in gql_mutation
+@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
+def test_deploy_chain_deployment_with_deployment_name(mock_post, baseten_api):
+    baseten_api.deploy_chain_atomic(
+        environment="production",
+        chain_id="chain_id",
+        dependencies=[],
+        entrypoint=ChainletDataAtomic(
+            name="chainlet-1",
+            oracle=OracleData(
+                model_name="model-1",
+                s3_key="s3-key-1",
+                encoded_config_str="encoded-config-str-1",
+            ),
+        ),
+        truss_user_env=b10_types.TrussUserEnv.collect(),
+        deployment_name="chain-deployment-name",
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+
+    assert 'deployment_name: "chain-deployment-name"' in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())

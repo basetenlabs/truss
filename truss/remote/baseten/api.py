@@ -333,6 +333,7 @@ class BasetenApi:
         is_draft: bool = False,
         original_source_artifact_s3_key: Optional[str] = None,
         allow_truss_download: Optional[bool] = True,
+        deployment_name: Optional[str] = None,
     ):
         if allow_truss_download is None:
             allow_truss_download = True
@@ -360,6 +361,9 @@ class BasetenApi:
         params.append(f"is_draft: {str(is_draft).lower()}")
         if allow_truss_download is False:
             params.append("allow_truss_download: false")
+        if deployment_name:
+            params.append(f'deployment_name: "{deployment_name}"')
+
 
         params_str = PARAMS_INDENT.join(params)
 

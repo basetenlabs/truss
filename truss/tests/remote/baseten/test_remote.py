@@ -378,6 +378,56 @@ def test_create_chain_no_existing_chain(remote):
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
+def test_create_chain_with_deployment_name(remote):
+    with requests_mock.Mocker() as m:
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": {"data": {"chains": []}}},
+                {
+                    "json": {
+                        "data": {
+                            "deploy_chain_atomic": {
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            ],
+        )
+
+        deployment_name = "chain-deployment"
+        create_chain_atomic(
+            api=remote.api,
+            chain_name="new_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=False,
+            environment=None,
+            deployment_name=deployment_name,
+        )
+
+        create_chain_graphql_request = m.request_history[1]
+
+        assert 'deployment_name: "chain-deployment"' in create_chain_graphql_request.json()[
+            "query"
+        ]
+
+
 def test_create_chain_with_existing_chain_promote_to_environment_publish_false(remote):
     mock_deploy_response = {
         "chain_deployment": {
