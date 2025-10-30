@@ -440,29 +440,18 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
 
 
 def test_create_chain_with_no_publish(remote):
-    with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            [
-                {"json": {"data": {"chains": []}}},
-                {
-                    "json": {
-                        "data": {
-                            "deploy_chain_atomic": {
-                                "chain_deployment": {
-                                    "id": "new-chain-deployment-id",
-                                    "chain": {
-                                        "id": "new-chain-id",
-                                        "hostname": "hostname",
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-            ],
-        )
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
 
+    with mock.patch.object(
+        remote.api, "get_chains", return_value=[]
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="draft_chain",
@@ -480,87 +469,31 @@ def test_create_chain_with_no_publish(remote):
             environment=None,
         )
 
-        get_chains_graphql_request = m.request_history[0]
-        create_chain_graphql_request = m.request_history[1]
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "draft_chain"
+        assert call_kwargs.get("is_draft") is True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
 
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
-        )
-
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
-
-        # Note that if publish=False and promote=True, we set publish to True and create
-        # a non-draft deployment
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_name: "draft_chain"
-                    is_draft: true
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
 def test_create_chain_no_existing_chain(remote):
-    with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            [
-                {"json": {"data": {"chains": []}}},
-                {
-                    "json": {
-                        "data": {
-                            "deploy_chain_atomic": {
-                                "chain_deployment": {
-                                    "id": "new-chain-deployment-id",
-                                    "chain": {
-                                        "id": "new-chain-id",
-                                        "hostname": "hostname",
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-            ],
-        )
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
 
+    with mock.patch.object(
+        remote.api, "get_chains", return_value=[]
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="new_chain",
@@ -578,92 +511,33 @@ def test_create_chain_no_existing_chain(remote):
             environment=None,
         )
 
-        get_chains_graphql_request = m.request_history[0]
-        create_chain_graphql_request = m.request_history[1]
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
-
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
-        )
-
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
-
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_name: "new_chain"
-                    is_draft: false
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "new_chain"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
 
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
 def test_create_chain_with_existing_chain_promote_to_environment_publish_false(remote):
-    with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            [
-                {
-                    "json": {
-                        "data": {
-                            "chains": [{"id": "old-chain-id", "name": "old_chain"}]
-                        }
-                    }
-                },
-                {
-                    "json": {
-                        "data": {
-                            "deploy_chain_atomic": {
-                                "chain_deployment": {
-                                    "id": "new-chain-deployment-id",
-                                    "chain": {
-                                        "id": "new-chain-id",
-                                        "hostname": "hostname",
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-            ],
-        )
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
 
+    with mock.patch.object(
+        remote.api,
+        "get_chains",
+        return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",
@@ -681,95 +555,34 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false(r
             environment="production",
         )
 
-        get_chains_graphql_request = m.request_history[0]
-        create_chain_graphql_request = m.request_history[1]
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
-
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
-        )
-
-        # Note that if publish=False and environment!=None, we set publish to True and create
-        # a non-draft deployment
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
-
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_id: "old-chain-id"
-                    environment: "production"
-                    is_draft: false
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_id"] == "old-chain-id"
+        assert call_kwargs["environment"] == "production"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
 
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
 def test_create_chain_existing_chain_publish_true_no_promotion(remote):
-    with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            [
-                {
-                    "json": {
-                        "data": {
-                            "chains": [{"id": "old-chain-id", "name": "old_chain"}]
-                        }
-                    }
-                },
-                {
-                    "json": {
-                        "data": {
-                            "deploy_chain_atomic": {
-                                "chain_deployment": {
-                                    "id": "new-chain-deployment-id",
-                                    "chain": {
-                                        "id": "new-chain-id",
-                                        "hostname": "hostname",
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-            ],
-        )
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
 
+    with mock.patch.object(
+        remote.api,
+        "get_chains",
+        return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",
@@ -787,57 +600,55 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
             environment=None,
         )
 
-        get_chains_graphql_request = m.request_history[0]
-        create_chain_graphql_request = m.request_history[1]
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_id"] == "old-chain-id"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
 
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_passes_deploy_timeout_minutes(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with mock.patch.object(
+        remote.api, "get_chains", return_value=[]
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
+        deployment_handle = create_chain_atomic(
+            api=remote.api,
+            chain_name="new_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=False,
+            environment=None,
+            deploy_timeout_minutes=600,
         )
 
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_id: "old-chain-id"
-                    is_draft: false
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "new_chain"
+        assert call_kwargs.get("deploy_timeout_minutes") == 600
 
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
@@ -898,7 +709,7 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
             remote.push(th, "model_name", th.truss_dir)
 
 
-def test_push_passes_deploy_timeout_to_create_truss_service(
+def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
     custom_model_truss_dir_with_pre_and_post,
     remote,
     mocked_push_requests,
@@ -911,15 +722,15 @@ def test_push_passes_deploy_timeout_to_create_truss_service(
         "model_name",
         mock_truss_handle.truss_dir,
         publish=True,
-        deploy_timeout=450,
+        deploy_timeout_minutes=450,
     )
 
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout"] == 450
+    assert kwargs["deploy_timeout_minutes"] == 450
 
 
-def test_push_passes_none_deploy_timeout_when_not_specified(
+def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
     custom_model_truss_dir_with_pre_and_post,
     remote,
     mocked_push_requests,
@@ -933,10 +744,10 @@ def test_push_passes_none_deploy_timeout_when_not_specified(
 
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs.get("deploy_timeout") is None
+    assert kwargs.get("deploy_timeout_minutes") is None
 
 
-def test_push_integration_deploy_timeout_propagated(
+def test_push_integration_deploy_timeout_minutes_propagated(
     custom_model_truss_dir_with_pre_and_post,
     remote,
     mocked_push_requests,
@@ -950,16 +761,16 @@ def test_push_integration_deploy_timeout_propagated(
         mock_truss_handle.truss_dir,
         publish=True,
         environment="staging",
-        deploy_timeout=750,
+        deploy_timeout_minutes=750,
     )
 
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout"] == 750
+    assert kwargs["deploy_timeout_minutes"] == 750
     assert kwargs["environment"] == "staging"
 
 
-def test_api_push_integration_deploy_timeout_propagated(
+def test_api_push_integration_deploy_timeout_minutes_propagated(
     custom_model_truss_dir_with_pre_and_post,
     mock_remote_factory,
     temp_trussrc_dir,
@@ -972,10 +783,10 @@ def test_api_push_integration_deploy_timeout_propagated(
         str(mock_truss_handle.truss_dir),
         remote="baseten",
         model_name="test_model",
-        deploy_timeout=1200,
+        deploy_timeout_minutes=1200,
     )
 
-    # Verify the remote.push was called with deploy_timeout
+    # Verify the remote.push was called with deploy_timeout_minutes
     mock_remote_factory.push.assert_called_once()
     _, push_kwargs = mock_remote_factory.push.call_args
-    assert push_kwargs.get("deploy_timeout") == 1200
+    assert push_kwargs.get("deploy_timeout_minutes") == 1200

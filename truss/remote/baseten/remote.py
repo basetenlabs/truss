@@ -205,7 +205,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
-        deploy_timeout: Optional[int] = None,
+        deploy_timeout_minutes: Optional[int] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -243,7 +243,7 @@ class BasetenRemote(TrussRemote):
             environment=push_data.environment,
             truss_user_env=truss_user_env,
             preserve_env_instance_type=preserve_env_instance_type,
-            deploy_timeout=deploy_timeout,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
 
         if model_version_handle.instance_type_name:
@@ -271,6 +271,7 @@ class BasetenRemote(TrussRemote):
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
         disable_chain_download: bool = False,
+        deploy_timeout_minutes: Optional[int] = None,
     ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -328,6 +329,7 @@ class BasetenRemote(TrussRemote):
             environment=environment,
             original_source_artifact_s3_key=raw_chain_s3_key,
             allow_truss_download=not disable_chain_download,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle

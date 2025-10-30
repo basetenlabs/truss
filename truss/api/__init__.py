@@ -65,7 +65,7 @@ def push(
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
     preserve_env_instance_type: bool = True,
-    deploy_timeout: Optional[int] = None,
+    deploy_timeout_minutes: Optional[int] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -78,13 +78,13 @@ def push(
             promote the truss to production after deploy completes.
         promote: Push the truss as a published deployment. Even if a production deployment exists,
             promote the truss to production after deploy completes.
-        preserve_previous_production_deployment: Preserve the previous production deployment’s autoscaling
+        preserve_previous_production_deployment: Preserve the previous production deployment's autoscaling
             setting. When not specified, the previous production deployment will be updated to allow it to
             scale to zero. Can only be use in combination with `promote` option.
         trusted: [DEPRECATED]
         deployment_name: Name of the deployment created by the push. Can only be
             used in combination with `publish` or `promote`. Deployment name must
-            only contain alphanumeric, ’.’, ’-’ or ’_’ characters.
+            only contain alphanumeric, '.', '-' or '_' characters.
         environment: Name of stable environment on baseten.
         progress_bar: Optional `rich.progress.Progress` if output is desired.
         include_git_info: Whether to attach git versioning info (sha, branch, tag) to
@@ -93,7 +93,7 @@ def push(
         preserve_env_instance_type: When pushing a truss to an environment, whether to use the resources
           specified in the truss config to resolve the instance type or preserve the instance type
           configured in the specified environment.
-        deploy_timeout: Optional timeout in seconds for the deployment operation.
+        deploy_timeout_minutes: Optional timeout in minutes for the deployment operation.
 
     Returns:
         The newly created ModelDeployment.
@@ -137,7 +137,7 @@ def push(
         progress_bar=progress_bar,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
-        deploy_timeout=deploy_timeout,
+        deploy_timeout_minutes=deploy_timeout_minutes,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))

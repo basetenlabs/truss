@@ -502,10 +502,10 @@ def run_python(script, target_directory):
     ),
 )
 @click.option(
-    "--deploy-timeout",
+    "--deploy-timeout-minutes",
     type=int,
     required=False,
-    help="Timeout in seconds for the deployment operation.",
+    help="Timeout in minutes for the deploy operation.",
 )
 @common.common_options()
 def push(
@@ -524,7 +524,7 @@ def push(
     include_git_info: bool = False,
     tail: bool = False,
     preserve_env_instance_type: bool = True,
-    deploy_timeout: Optional[int] = None,
+    deploy_timeout_minutes: Optional[int] = 120,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -632,7 +632,7 @@ def push(
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
-        deploy_timeout=deploy_timeout,
+        deploy_timeout_minutes=deploy_timeout_minutes,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
