@@ -1,3 +1,5 @@
+from unittest import mock
+
 import pydantic
 import pytest
 import requests_mock
@@ -13,6 +15,16 @@ from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
 from truss.truss_handle.truss_handle import TrussHandle
 
+_TEST_REMOTE_URL = "http://test_remote.com"
+_TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
+
+TRUSS_RC_CONTENT = """
+[baseten]
+remote_provider = baseten
+api_key = test_key
+remote_url = http://test.com
+""".strip()
+
 
 def assert_request_matches_expected_query(request, expected_query) -> None:
     query = request.json()["query"]
@@ -25,27 +37,27 @@ def assert_request_matches_expected_query(request, expected_query) -> None:
     assert actual_lines == expected_lines
 
 
-def test_get_service_by_version_id(remote, test_remote_graphql_path):
+def test_get_service_by_version_id(remote):
     version = {"id": "version_id", "oracle": {"id": "model_id", "hostname": "hostname"}}
     model_version_response = {"data": {"model_version": version}}
 
     with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_version_response)
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_version_response)
         service = remote.get_service(model_identifier=ModelVersionId("version_id"))
 
     assert service.model_id == "model_id"
     assert service.model_version_id == "version_id"
 
 
-def test_get_service_by_version_id_no_version(remote, test_remote_graphql_path):
+def test_get_service_by_version_id_no_version(remote):
     model_version_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_version_response)
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_version_response)
         with pytest.raises(RemoteError):
             remote.get_service(model_identifier=ModelVersionId("version_id"))
 
 
-def test_get_service_by_model_name(remote, test_remote_graphql_path):
+def test_get_service_by_model_name(remote):
     versions = [
         {"id": "1", "is_draft": False, "is_primary": False},
         {"id": "2", "is_draft": False, "is_primary": True},
@@ -63,100 +75,25 @@ def test_get_service_by_model_name(remote, test_remote_graphql_path):
     }
 
     with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_response)
-        service = remote.get_service(model_identifier=ModelName("model_name"))
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
 
-    assert service.model_id == "model_id"
-    assert service.model_version_id == "2"
+        # Check that the production version is returned when published is True.
+        service = remote.get_service(
+            model_identifier=ModelName("model_name"), published=True
+        )
+        assert service.model_id == "model_id"
+        assert service.model_version_id == "2"
 
-
-def test_get_service_by_model_name_no_primary(remote, test_remote_graphql_path):
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "3", "is_draft": True, "is_primary": False},
-    ]
-    model_response = {
-        "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
-        }
-    }
-
-    with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_response)
-        service = remote.get_service(model_identifier=ModelName("model_name"))
-
-    assert service.model_id == "model_id"
-    assert service.model_version_id == "1"
-
-
-def test_get_service_by_model_name_no_deployed_versions(
-    remote, test_remote_graphql_path
-):
-    versions = [{"id": "3", "is_draft": True, "is_primary": False}]
-    model_response = {
-        "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
-        }
-    }
-
-    with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_response)
-        with pytest.raises(RemoteError):
-            remote.get_service(model_identifier=ModelName("model_name"))
-
-
-def test_get_service_by_model_name_no_model(remote, test_remote_graphql_path):
-    model_response = {"data": {"model": None}}
-
-    with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_response)
-        with pytest.raises(RemoteError):
-            remote.get_service(model_identifier=ModelName("model_name"))
-
-
-def test_get_service_by_model_name_and_is_draft(remote, test_remote_graphql_path):
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "2", "is_draft": False, "is_primary": True},
-        {"id": "3", "is_draft": True, "is_primary": False},
-    ]
-    model_response = {
-        "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
-        }
-    }
-
-    with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_response)
+        # Check that the development version is returned when published is False.
         service = remote.get_service(
             model_identifier=ModelName("model_name"), published=False
         )
+        assert service.model_id == "model_id"
+        assert service.model_version_id == "3"
 
-    assert service.model_id == "model_id"
-    assert service.model_version_id == "3"
 
-
-def test_get_service_by_model_id(remote, test_remote_graphql_path):
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "2", "is_draft": False, "is_primary": True},
-        {"id": "3", "is_draft": True, "is_primary": False},
-    ]
+def test_get_service_by_model_name_no_dev_version(remote):
+    versions = [{"id": "1", "is_draft": False, "is_primary": True}]
     model_response = {
         "data": {
             "model": {
@@ -169,144 +106,446 @@ def test_get_service_by_model_id(remote, test_remote_graphql_path):
     }
 
     with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=model_response)
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+
+        # Check that the production version is returned when published is True.
+        service = remote.get_service(
+            model_identifier=ModelName("model_name"), published=True
+        )
+        assert service.model_id == "model_id"
+        assert service.model_version_id == "1"
+
+        # Since no development version exists, calling get_service with
+        # published=False should raise an error.
+        with pytest.raises(RemoteError):
+            remote.get_service(
+                model_identifier=ModelName("model_name"), published=False
+            )
+
+
+def test_get_service_by_model_name_no_prod_version(remote):
+    versions = [{"id": "1", "is_draft": True, "is_primary": False}]
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "versions": versions,
+            }
+        }
+    }
+
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+
+        # Since no production version exists, calling get_service with
+        # published=True should raise an error.
+        with pytest.raises(RemoteError):
+            remote.get_service(model_identifier=ModelName("model_name"), published=True)
+
+        # Check that the development version is returned when published is False.
+        service = remote.get_service(
+            model_identifier=ModelName("model_name"), published=False
+        )
+        assert service.model_id == "model_id"
+        assert service.model_version_id == "1"
+
+
+def test_get_service_by_model_id(remote):
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+                "hostname": "hostname",
+            }
+        }
+    }
+
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+
         service = remote.get_service(model_identifier=ModelId("model_id"))
+        assert service.model_id == "model_id"
+        assert service.model_version_id == "version_id"
 
-    assert service.model_id == "model_id"
-    assert service.model_version_id == "2"
 
-
-def test_get_chain_atomic_by_name(remote, test_remote_graphql_path):
-    chain_response = {
-        "data": {
-            "chain": {
-                "name": "chain_name",
-                "id": "chain_id",
-                "oracle": {"hostname": "hostname"},
-            }
-        }
-    }
-
+def test_get_service_by_model_id_no_model(remote):
+    model_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=chain_response)
-        chain = remote.get_chain(chain_name="chain_name")
-
-    assert chain.name == "chain_name"
-    assert chain.oracle_data == OracleData(
-        chain_id="chain_id", chain_deployment_hostname="hostname"
-    )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        with pytest.raises(RemoteError):
+            remote.get_service(model_identifier=ModelId("model_id"))
 
 
-def test_create_chain_atomic(remote, test_remote_graphql_path):
-    chain_response = {
-        "data": {
-            "chain": {
-                "name": "chain_name",
-                "id": "chain_id",
-                "oracle": {"hostname": "hostname"},
-            }
-        }
-    }
-
-    with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=chain_response)
-        chain = create_chain_atomic(remote._graphql_client, "chain_name", None, {})
-
-    assert chain.name == "chain_name"
-    assert chain.oracle_data == OracleData(
-        chain_id="chain_id", chain_deployment_hostname="hostname"
-    )
-
-
-def test_patch_chain_name_already_exists(remote, test_remote_graphql_path):
-    with requests_mock.Mocker() as m:
-        m.post(
-            test_remote_graphql_path,
-            json={"errors": [{"message": "Chain with name chain_name already exists"}]},
-        )
-        with pytest.raises(ValueError, match="Chain.*already exists"):
-            create_chain_atomic(remote._graphql_client, "chain_name", None, {})
-
-
-def test_patch_chain(remote, test_remote_graphql_path):
-    chain_deployment_response = {"data": {"chain_deployment": {"id": "deployment_id"}}}
-
-    with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=chain_deployment_response)
-        deployment_handle = remote.push_chain_atomic(
-            chain_name="chain_name",
-            chain_id="chain_id",
-            entrypoint="entrypoint",
-            chainlets_data=[],
-        )
-
-    assert deployment_handle.chain_deployment_id == "deployment_id"
-
-
-def test_push_model(
-    custom_model_truss_dir_with_pre_and_post,
-    remote,
-    mocked_push_requests,
-    mock_upload_truss,
+def test_push_raised_value_error_when_deployment_name_and_not_publish(
+    custom_model_truss_dir_with_pre_and_post, remote
 ):
-    remote.push(
-        TrussHandle(custom_model_truss_dir_with_pre_and_post),
-        "model_name",
-        custom_model_truss_dir_with_pre_and_post,
-        publish=True,
-    )
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+        with pytest.raises(
+            ValueError,
+            match="Deployment name cannot be used for development deployment",
+        ):
+            remote.push(
+                th,
+                "model_name",
+                th.truss_dir,
+                publish=False,
+                promote=False,
+                preserve_previous_prod_deployment=False,
+                deployment_name="dep_name",
+            )
 
 
-def test_get_dev_version_from_versions(remote):
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "2", "is_draft": False, "is_primary": True},
-        {"id": "3", "is_draft": True, "is_primary": False},
-    ]
+def test_push_raised_value_error_when_deployment_name_is_not_valid(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
-    dev_version = remote._get_dev_version_from_versions(versions)
-
-    assert dev_version["id"] == "3"
-
-
-def test_get_dev_version_from_versions_no_dev(remote):
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "2", "is_draft": False, "is_primary": True},
-    ]
-
-    dev_version = remote._get_dev_version_from_versions(versions)
-
-    assert dev_version is None
-
-
-def test_get_production_version_from_versions(remote):
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "2", "is_draft": False, "is_primary": True},
-        {"id": "3", "is_draft": True, "is_primary": False},
-    ]
-
-    prod_version = remote._get_production_version_from_versions(versions)
-
-    assert prod_version["id"] == "2"
+        with pytest.raises(
+            ValueError,
+            match="Deployment name must only contain alphanumeric, -, _ and . characters",
+        ):
+            remote.push(
+                th,
+                "model_name",
+                th.truss_dir,
+                publish=True,
+                promote=False,
+                preserve_previous_prod_deployment=False,
+                deployment_name="dep//name",
+            )
 
 
-def test_get_production_version_from_versions_no_prod(remote):
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "3", "is_draft": True, "is_primary": False},
-    ]
+def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promote(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
-    prod_version = remote._get_production_version_from_versions(versions)
+        with pytest.raises(
+            ValueError,
+            match="preserve-previous-production-deployment can only be used with the '--promote' option",
+        ):
+            remote.push(
+                th,
+                "model_name",
+                th.truss_dir,
+                publish=False,
+                promote=False,
+                preserve_previous_prod_deployment=True,
+            )
 
-    assert prod_version["id"] == "1"
+
+def test_create_chain_with_no_publish(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with mock.patch.object(
+        remote.api, "get_chains", return_value=[]
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
+        deployment_handle = create_chain_atomic(
+            api=remote.api,
+            chain_name="draft_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=True,
+            environment=None,
+        )
+
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
+
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "draft_chain"
+        assert call_kwargs.get("is_draft") is True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_no_existing_chain(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with mock.patch.object(
+        remote.api, "get_chains", return_value=[]
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
+        deployment_handle = create_chain_atomic(
+            api=remote.api,
+            chain_name="new_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=False,
+            environment=None,
+        )
+
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
+
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "new_chain"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_with_existing_chain_promote_to_environment_publish_false(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with mock.patch.object(
+        remote.api,
+        "get_chains",
+        return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
+        deployment_handle = create_chain_atomic(
+            api=remote.api,
+            chain_name="old_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=True,
+            environment="production",
+        )
+
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
+
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_id"] == "old-chain-id"
+        assert call_kwargs["environment"] == "production"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_existing_chain_publish_true_no_promotion(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with mock.patch.object(
+        remote.api,
+        "get_chains",
+        return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
+        deployment_handle = create_chain_atomic(
+            api=remote.api,
+            chain_name="old_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=False,
+            environment=None,
+        )
+
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
+
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_id"] == "old-chain-id"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_passes_deploy_timeout_minutes(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with mock.patch.object(
+        remote.api, "get_chains", return_value=[]
+    ) as mock_get_chains, mock.patch.object(
+        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+    ) as mock_deploy:
+        deployment_handle = create_chain_atomic(
+            api=remote.api,
+            chain_name="new_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=False,
+            environment=None,
+            deploy_timeout_minutes=600,
+        )
+
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
+
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "new_chain"
+        assert call_kwargs.get("deploy_timeout_minutes") == 600
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+@pytest.mark.parametrize("publish", [True, False])
+def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
+    publish, custom_model_truss_dir_with_pre_and_post, remote
+):
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+        with pytest.raises(
+            ValueError, match="disable-truss-download can only be used for new models"
+        ):
+            remote.push(
+                th,
+                "model_name",
+                th.truss_dir,
+                publish=publish,
+                disable_truss_download=True,
+            )
+
+
+def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+    model_name: Hello
+    extra_field: 123
+    who_am_i: 0.2
+    """)
+    th = TrussHandle(tmp_path)
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Extra fields not allowed: \[extra_field, who_am_i\]",
+        ):
+            remote.push(th, "model_name", th.truss_dir)
 
 
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
     custom_model_truss_dir_with_pre_and_post,
     remote,
-    mocked_push_requests,
+    mock_baseten_requests,
     mock_upload_truss,
     mock_create_truss_service,
     mock_truss_handle,
@@ -327,7 +566,7 @@ def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
 def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
     custom_model_truss_dir_with_pre_and_post,
     remote,
-    mocked_push_requests,
+    mock_baseten_requests,
     mock_upload_truss,
     mock_create_truss_service,
     mock_truss_handle,
@@ -344,7 +583,7 @@ def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
 def test_push_integration_deploy_timeout_minutes_propagated(
     custom_model_truss_dir_with_pre_and_post,
     remote,
-    mocked_push_requests,
+    mock_baseten_requests,
     mock_upload_truss,
     mock_create_truss_service,
     mock_truss_handle,
@@ -364,181 +603,23 @@ def test_push_integration_deploy_timeout_minutes_propagated(
     assert kwargs["environment"] == "staging"
 
 
-def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
-    custom_model_truss_dir_with_pre_and_post,
-    remote,
-    mocked_push_requests,
-    mock_upload_truss,
-    mock_create_truss_service,
-):
-    from unittest.mock import patch
-
-    from click.testing import CliRunner
-
-    from truss.cli.cli import truss_cli
-
-    runner = CliRunner()
-    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                str(custom_model_truss_dir_with_pre_and_post),
-                "--remote",
-                "baseten",
-                "--model-name",
-                "model_name",
-                "--publish",
-                "--deploy-timeout-minutes",
-                "450",
-            ],
-        )
-
-    assert result.exit_code == 0
-    mock_create_truss_service.assert_called_once()
-    _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout_minutes"] == 450
-
-
-def test_cli_push_passes_none_deploy_timeout_minutes_when_not_specified(
-    custom_model_truss_dir_with_pre_and_post,
-    remote,
-    mocked_push_requests,
-    mock_upload_truss,
-    mock_create_truss_service,
-):
-    from unittest.mock import patch
-
-    from click.testing import CliRunner
-
-    from truss.cli.cli import truss_cli
-
-    runner = CliRunner()
-    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                str(custom_model_truss_dir_with_pre_and_post),
-                "--remote",
-                "baseten",
-                "--model-name",
-                "model_name",
-                "--publish",
-            ],
-        )
-
-    assert result.exit_code == 0
-    mock_create_truss_service.assert_called_once()
-    _, kwargs = mock_create_truss_service.call_args
-    assert kwargs.get("deploy_timeout_minutes") is None
-
-
-def test_cli_push_integration_deploy_timeout_minutes_propagated(
-    custom_model_truss_dir_with_pre_and_post,
-    remote,
-    mocked_push_requests,
-    mock_upload_truss,
-    mock_create_truss_service,
-):
-    from unittest.mock import patch
-
-    from click.testing import CliRunner
-
-    from truss.cli.cli import truss_cli
-
-    runner = CliRunner()
-    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                str(custom_model_truss_dir_with_pre_and_post),
-                "--remote",
-                "baseten",
-                "--model-name",
-                "model_name",
-                "--publish",
-                "--environment",
-                "staging",
-                "--deploy-timeout-minutes",
-                "750",
-            ],
-        )
-
-    assert result.exit_code == 0
-    mock_create_truss_service.assert_called_once()
-    _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout_minutes"] == 750
-    assert kwargs["environment"] == "staging"
-
-
-def test_cli_push_api_integration_deploy_timeout_minutes_propagated(
+def test_api_push_integration_deploy_timeout_minutes_propagated(
     custom_model_truss_dir_with_pre_and_post,
     mock_remote_factory,
     temp_trussrc_dir,
     mock_available_config_names,
+    mock_truss_handle,
 ):
-    from unittest.mock import MagicMock, patch
+    from truss.api import push
 
-    from click.testing import CliRunner
+    push(
+        str(mock_truss_handle.truss_dir),
+        remote="baseten",
+        model_name="test_model",
+        deploy_timeout_minutes=1200,
+    )
 
-    from truss.cli.cli import truss_cli
-
-    mock_service = MagicMock()
-    mock_service.model_id = "model_id"
-    mock_service.model_version_id = "version_id"
-    mock_remote_factory.push.return_value = mock_service
-
-    runner = CliRunner()
-    with patch(
-        "truss.cli.cli.RemoteFactory.get_available_config_names",
-        return_value=["baseten"],
-    ):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                str(custom_model_truss_dir_with_pre_and_post),
-                "--remote",
-                "baseten",
-                "--model-name",
-                "model_name",
-                "--publish",
-                "--deploy-timeout-minutes",
-                "1200",
-            ],
-        )
-
-    assert result.exit_code == 0
+    # Verify the remote.push was called with deploy_timeout_minutes
     mock_remote_factory.push.assert_called_once()
     _, push_kwargs = mock_remote_factory.push.call_args
     assert push_kwargs.get("deploy_timeout_minutes") == 1200
-
-
-def test_push_chainlet_data_atomic(remote, test_remote_graphql_path):
-    response = {
-        "data": {"chainlet_data": {"id": "chainlet_data_id", "s3_key": "s3_key"}}
-    }
-
-    chainlet_data = b10_types.ChainletDataAtomic(
-        chainlet_name="chainlet_name", oracle_version_id="oracle_version_id"
-    )
-
-    with requests_mock.Mocker() as m:
-        m.post(test_remote_graphql_path, json=response)
-        result = remote.push_chainlet_data_atomic(chainlet_data)
-
-    assert result == ChainletDataAtomic(
-        name="chainlet_name",
-        oracle_predict_url=None,
-        oracle_version_id="oracle_version_id",
-        s3_key="s3_key",
-    )
-
-
-def test_validate_chainlets_data_atomic(remote):
-    with pydantic.ValidationError as e:
-        b10_types.ChainletDataAtomic(chainlet_name="chainlet_name")
-    # Should require oracle_version_id
-    assert "oracle_version_id" in str(e)

@@ -28,7 +28,7 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
 def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
     custom_model_truss_dir_with_pre_and_post,
     remote,
-    mocked_push_requests,
+    mock_baseten_requests,
     mock_upload_truss,
     mock_create_truss_service,
 ):
@@ -58,7 +58,7 @@ def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
 def test_cli_push_passes_none_deploy_timeout_minutes_when_not_specified(
     custom_model_truss_dir_with_pre_and_post,
     remote,
-    mocked_push_requests,
+    mock_baseten_requests,
     mock_upload_truss,
     mock_create_truss_service,
 ):
@@ -86,7 +86,7 @@ def test_cli_push_passes_none_deploy_timeout_minutes_when_not_specified(
 def test_cli_push_integration_deploy_timeout_minutes_propagated(
     custom_model_truss_dir_with_pre_and_post,
     remote,
-    mocked_push_requests,
+    mock_baseten_requests,
     mock_upload_truss,
     mock_create_truss_service,
 ):

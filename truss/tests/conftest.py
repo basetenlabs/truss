@@ -864,7 +864,14 @@ def trtllm_spec_dec_config_lookahead_v1(trtllm_config) -> Dict[str, Any]:
     return spec_dec_config
 
 
-TRUSS_RC_CONTENT = """
+@pytest.fixture
+def remote_url():
+    return "http://test_remote.com"
+
+
+@pytest.fixture
+def truss_rc_content():
+    return """
 [baseten]
 remote_provider = baseten
 api_key = test_key
@@ -873,18 +880,13 @@ remote_url = http://test.com
 
 
 @pytest.fixture
-def test_remote_url():
-    return "http://test_remote.com"
+def remote_graphql_path(remote_url):
+    return f"{remote_url}/graphql/"
 
 
 @pytest.fixture
-def test_remote_graphql_path(test_remote_url):
-    return f"{test_remote_url}/graphql/"
-
-
-@pytest.fixture
-def remote(test_remote_url):
-    return BasetenRemote(test_remote_url, "api_key")
+def remote(remote_url):
+    return BasetenRemote(remote_url, "api_key")
 
 
 @pytest.fixture
@@ -908,22 +910,24 @@ def mock_model_version_handle():
 
 
 @pytest.fixture
-def mock_baseten_backend(model_response, test_remote_url, test_remote_graphql_path):
-    """Fixture that mocks HTTP requests for truss push operations."""
-    with requests_mock.Mocker() as requests_mocker:
-        requests_mocker.post(
-            test_remote_graphql_path,
+def setup_push_mocks(model_response, remote_graphql_path):
+    def _setup(m):
+        # Mock for get_model query - matches queries containing "model(name"
+        m.post(
+            remote_graphql_path,
             json=model_response,
             additional_matcher=lambda req: "model(name" in req.json().get("query", ""),
         )
-        requests_mocker.post(
-            test_remote_graphql_path,
+        # Mock for validate_truss query - matches queries containing "truss_validation"
+        m.post(
+            remote_graphql_path,
             json={"data": {"truss_validation": {"success": True, "details": "{}"}}},
             additional_matcher=lambda req: "truss_validation"
             in req.json().get("query", ""),
         )
-        requests_mocker.post(
-            test_remote_graphql_path,
+        # Mock for model_s3_upload_credentials query
+        m.post(
+            remote_graphql_path,
             json={
                 "data": {
                     "model_s3_upload_credentials": {
@@ -938,12 +942,12 @@ def mock_baseten_backend(model_response, test_remote_url, test_remote_graphql_pa
             additional_matcher=lambda req: "model_s3_upload_credentials"
             in req.json().get("query", ""),
         )
-        requests_mocker.post(
-            f"{test_remote_url}/v1/models/model_id/upload",
+        m.post(
+            "http://test_remote.com/v1/models/model_id/upload",
             json={"s3_bucket": "bucket", "s3_key": "key"},
         )
-        requests_mocker.post(
-            f"{test_remote_url}/v1/blobs/credentials/truss",
+        m.post(
+            "http://test_remote.com/v1/blobs/credentials/truss",
             json={
                 "s3_bucket": "bucket",
                 "s3_key": "key",
@@ -952,8 +956,9 @@ def mock_baseten_backend(model_response, test_remote_url, test_remote_graphql_pa
                 "aws_session_token": "token",
             },
         )
-        requests_mocker.post(
-            test_remote_graphql_path,
+        # Mock for create_model_version_from_truss mutation
+        m.post(
+            "http://test_remote.com/graphql/",
             json={
                 "data": {
                     "create_model_version_from_truss": {
@@ -967,7 +972,16 @@ def mock_baseten_backend(model_response, test_remote_url, test_remote_graphql_pa
             additional_matcher=lambda req: "create_model_version_from_truss"
             in req.json().get("query", ""),
         )
-        yield requests_mocker
+
+    return _setup
+
+
+@pytest.fixture
+def mock_baseten_requests(setup_push_mocks):
+    """Fixture that provides a configured requests_mock.Mocker with push mocks setup."""
+    with requests_mock.Mocker() as m:
+        setup_push_mocks(m)
+        yield m
 
 
 @pytest.fixture
@@ -988,11 +1002,11 @@ def mock_remote_factory():
 
 
 @pytest.fixture
-def temp_trussrc_dir():
+def temp_trussrc_dir(truss_rc_content):
     """Fixture that creates a temporary directory with a .trussrc file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         trussrc_path = pathlib.Path(tmpdir) / ".trussrc"
-        trussrc_path.write_text(TRUSS_RC_CONTENT)
+        trussrc_path.write_text(truss_rc_content)
         yield tmpdir
 
 
