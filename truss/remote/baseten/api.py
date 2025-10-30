@@ -364,7 +364,6 @@ class BasetenApi:
         if deployment_name:
             params.append(f'deployment_name: "{deployment_name}"')
 
-
         params_str = PARAMS_INDENT.join(params)
 
         query_string = f"""

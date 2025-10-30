@@ -423,9 +423,10 @@ def test_create_chain_with_deployment_name(remote):
 
         create_chain_graphql_request = m.request_history[1]
 
-        assert 'deployment_name: "chain-deployment"' in create_chain_graphql_request.json()[
-            "query"
-        ]
+        assert (
+            'deployment_name: "chain-deployment"'
+            in create_chain_graphql_request.json()["query"]
+        )
 
 
 def test_create_chain_with_existing_chain_promote_to_environment_publish_false(remote):

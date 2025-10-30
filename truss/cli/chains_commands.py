@@ -25,7 +25,6 @@ from truss.util.log_utils import LogInterceptor
 # Chains Stuff #########################################################################
 
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -453,6 +453,8 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
     assert "dependencies:" in gql_mutation
     assert "entrypoint:" in gql_mutation
     assert "deployment_name" not in gql_mutation
+
+
 @mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
 def test_deploy_chain_deployment_with_deployment_name(mock_post, baseten_api):
     baseten_api.deploy_chain_atomic(
