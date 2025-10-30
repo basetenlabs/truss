@@ -555,8 +555,9 @@ def push(
         model_name = remote_cli.inquire_model_name()
 
     if promote and environment:
-        promote_warning = "'promote' flag and 'environment' flag were both specified. Ignoring the value of 'promote'"
-        console.print(promote_warning, style="yellow")
+        raise click.UsageError(
+            "'promote' flag and 'environment' flag cannot both be specified."
+        )
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
 

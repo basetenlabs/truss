@@ -444,9 +444,6 @@ def create_truss_service(
         )
 
     if model_id is None:
-        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
-
         model_version_json = api.create_model_from_truss(
             model_name,
             s3_key,
@@ -456,6 +453,7 @@ def create_truss_service(
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
+            environment=environment,
         )
 
         return ModelVersionHandle(
