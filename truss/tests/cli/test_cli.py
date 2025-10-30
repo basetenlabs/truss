@@ -6,7 +6,6 @@ from truss.cli.cli import truss_cli
 
 
 def test_push_with_grpc_transport_fails_for_development_deployment():
-    raise
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "grpc"
 
