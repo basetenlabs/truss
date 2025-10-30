@@ -9,6 +9,7 @@ import uuid
 
 import pytest
 import pytest_check
+import requests
 
 from smoketests.utils import BACKEND_ENV_DOMAIN, BASETEN_API_KEY, BASETEN_REMOTE_URL
 from truss.remote.baseten import core
@@ -62,6 +63,50 @@ def generate_traceparent() -> str:
     trace_flags = "01"
     traceparent = f"00-{trace_id}-{span_id}-{trace_flags}"
     return traceparent
+
+
+def get_chain_deployment_s3_download_url(chain_deployment_id: str) -> str:
+    """Get the S3 download URL for a chain deployment using GraphQL."""
+    graphql_url = f"{BASETEN_REMOTE_URL}/graphql/"
+
+    query = f"""
+        query {{
+            chain_deployment_s3_download_url(chain_deployment_id: "{chain_deployment_id}") {{
+                url
+            }}
+        }}
+    """
+
+    headers = {
+        "Authorization": f"Api-Key {BASETEN_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {"query": query}
+
+    response = requests.post(graphql_url, json=payload, headers=headers)
+    response.raise_for_status()
+
+    data = response.json()
+
+    if "errors" in data:
+        error_msg = data["errors"][0]["message"] if data["errors"] else "Unknown error"
+        raise Exception(f"GraphQL error: {error_msg}")
+
+    if "data" not in data or "chain_deployment_s3_download_url" not in data["data"]:
+        raise Exception("Invalid response format from GraphQL endpoint")
+
+    return data["data"]["chain_deployment_s3_download_url"]["url"]
+
+
+def download_chain_artifact(download_url: str, output_path: pathlib.Path) -> None:
+    """Download the chain artifact from the S3 URL to the specified path."""
+    response = requests.get(download_url, stream=True)
+    response.raise_for_status()
+
+    with open(output_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
 
 
 def run_command(truss_rc_path: pathlib.Path, command: str) -> tuple[str, str]:
@@ -208,6 +253,22 @@ def test_itest_chain_publish(prepare) -> None:
     invocation_times_sec.sort()
     logging.info(f"Invocation times(sec): {invocation_times_sec}.")
     pytest_check.less(invocation_times_sec[0], 0.32)  # Best of 10, could be <0.30...
+
+    logging.info(
+        f"Testing chain artifact download for deployment {chain_deployment_id}"
+    )
+    download_url = get_chain_deployment_s3_download_url(chain_deployment_id)
+    logging.info(f"Got download URL: {download_url}")
+
+    artifact_path = tmpdir / f"chain_artifact_{chain_deployment_id}.tar.gz"
+    download_chain_artifact(download_url, artifact_path)
+
+    assert artifact_path.exists(), "Artifact file was not created"
+    assert artifact_path.stat().st_size > 0, "Downloaded artifact is empty"
+
+    logging.info(
+        f"Successfully downloaded chain artifact: {artifact_path.stat().st_size} bytes"
+    )
 
     if pytest_check.any_failures() or LEAVE_DEPLOYMENTS:
         logging.info(

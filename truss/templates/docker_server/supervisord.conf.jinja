@@ -7,8 +7,9 @@ logfile_maxbytes=0           ; No size limit on logfile (since logging is disabl
 [program:model-server]
 command={{start_command}}    ; Command to start the model server (provided by Jinja variable)
 startsecs=30                 ; Wait 30 seconds before assuming the server is running
+startretries=0               ; Do not retry if server fails to start
 autostart=true               ; Automatically start the program when supervisord starts
-autorestart=true             ; Always restart the program if it exits, no matter what the exit code
+autorestart=false             ; Don't restart the program
 stdout_logfile=/dev/fd/1     ; Send stdout to the first file descriptor (stdout)
 stdout_logfile_maxbytes=0    ; No size limit on stdout log
 redirect_stderr=true         ; Redirect stderr to stdout
