@@ -62,7 +62,9 @@ def all_processes_dead(procs: List[multiprocessing.Process]) -> bool:
     return True
 
 
-def kill_child_processes(parent_pid: int, timeout: Optional[float] = CHILD_PROCESS_WAIT_TIMEOUT_SECONDS):
+def kill_child_processes(
+    parent_pid: int, timeout: Optional[float] = CHILD_PROCESS_WAIT_TIMEOUT_SECONDS
+):
     try:
         parent = psutil.Process(parent_pid)
     except psutil.NoSuchProcess:
@@ -70,8 +72,6 @@ def kill_child_processes(parent_pid: int, timeout: Optional[float] = CHILD_PROCE
     children = parent.children(recursive=True)
     for process in children:
         process.terminate()
-    gone, alive = psutil.wait_procs(
-        children, timeout=timeout
-    )
+    gone, alive = psutil.wait_procs(children, timeout=timeout)
     for process in alive:
         process.kill()
