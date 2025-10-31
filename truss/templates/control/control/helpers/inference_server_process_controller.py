@@ -49,7 +49,8 @@ class InferenceServerProcessController:
 
     def _terminate_children_and_process(self):
         """Kill child processes first, then parent. Prevents port binding conflicts."""
-        kill_child_processes(self._inference_server_process.pid)
+        # Use 2s timeout for faster restarts (was 120s default)
+        kill_child_processes(self._inference_server_process.pid, timeout=2)
         self._inference_server_process.terminate()
 
     def stop(self):
