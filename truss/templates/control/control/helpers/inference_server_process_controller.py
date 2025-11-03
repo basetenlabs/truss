@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from helpers.context_managers import current_directory
+from shared.util import kill_child_processes
 
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 TERMINATION_TIMEOUT_SECS = 120.0
@@ -46,17 +47,22 @@ class InferenceServerProcessController:
             self._inference_server_ever_started = True
             self._logged_unrecoverable_since_last_restart = False
 
+    def _terminate_children_and_process(self):
+        """Kill child processes first, then parent. Prevents port binding conflicts."""
+        # Use a shorter timeout than the truss patch read timeout (=120s):
+        # see remote/baseten/api.py:_post_graphql_query()
+        kill_child_processes(self._inference_server_process.pid, timeout_seconds=30)
+        self._inference_server_process.terminate()
+
     def stop(self):
         if self._inference_server_process is not None:
-            self._inference_server_process.terminate()
+            self._terminate_children_and_process()
             self._inference_server_process.wait()
-            # Introduce delay to avoid failing to grab the port
-            time.sleep(3)
 
         self._inference_server_started = False
 
     def terminate_with_wait(self):
-        self._inference_server_process.terminate()
+        self._terminate_children_and_process()
         self._inference_server_terminated = True
         termination_check_attempts = int(
             TERMINATION_TIMEOUT_SECS / TERMINATION_CHECK_INTERVAL_SECS
