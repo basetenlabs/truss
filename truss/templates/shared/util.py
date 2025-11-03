@@ -63,7 +63,8 @@ def all_processes_dead(procs: List[multiprocessing.Process]) -> bool:
 
 
 def kill_child_processes(
-    parent_pid: int, timeout_seconds: Optional[float] = CHILD_PROCESS_WAIT_TIMEOUT_SECONDS
+    parent_pid: int,
+    timeout_seconds: Optional[float] = CHILD_PROCESS_WAIT_TIMEOUT_SECONDS,
 ):
     try:
         parent = psutil.Process(parent_pid)
