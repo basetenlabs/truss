@@ -51,7 +51,7 @@ class InferenceServerProcessController:
         """Kill child processes first, then parent. Prevents port binding conflicts."""
         # Use a shorter timeout than the truss patch read timeout (=120s):
         # see remote/baseten/api.py:_post_graphql_query()
-        kill_child_processes(self._inference_server_process.pid, timeout=5)
+        kill_child_processes(self._inference_server_process.pid, timeout_seconds=30)
         self._inference_server_process.terminate()
 
     def stop(self):
