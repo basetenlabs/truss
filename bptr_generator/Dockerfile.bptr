@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install curl and other dependencies
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+COPY bptr_requirements.txt .
+RUN pip install --no-cache-dir -r bptr_requirements.txt
+
+# Install truss-transfer-cli
+RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.11.13rc3/truss-transfer-cli-v0.11.13rc3-linux-x86_64-unknown-linux-musl && \
+    chmod +x /usr/local/bin/truss-transfer-cli
+
+COPY bptr_manifest_generator.py /usr/local/bin/bptr_manifest_generator.py
+COPY run_bptr_workflow.sh /usr/local/bin/run_bptr_workflow.sh
+
+# Create the expected directory structure
+RUN mkdir -p /static-bptr && chmod +x /usr/local/bin/run_bptr_workflow.sh
+
+ENTRYPOINT ["/usr/local/bin/run_bptr_workflow.sh"]
