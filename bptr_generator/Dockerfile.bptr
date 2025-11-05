@@ -13,9 +13,8 @@ RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-
     chmod +x /usr/local/bin/truss-transfer-cli
 
 COPY bptr_manifest_generator.py /usr/local/bin/bptr_manifest_generator.py
-COPY run_bptr_workflow.sh /usr/local/bin/run_bptr_workflow.sh
+COPY bptr_init_script.sh /usr/local/bin/bptr_init_script.sh
 
-# Create the expected directory structure
-RUN mkdir -p /static-bptr && chmod +x /usr/local/bin/run_bptr_workflow.sh
+RUN chmod +x /usr/local/bin/bptr_init_script.sh
 
-ENTRYPOINT ["/usr/local/bin/run_bptr_workflow.sh"]
+ENTRYPOINT ["/usr/local/bin/bptr_init_script.sh"]
