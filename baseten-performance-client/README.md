@@ -16,6 +16,16 @@ pip install baseten_performance_client
 npm install baseten-performance-client
 ```
 
+### Rust
+```bash
+cargo add baseten_performance_client_core
+# Or add to your Cargo.toml:
+# [dependencies]
+# baseten_performance_client_core = "0.0.11"
+# tokio = { version = "1.0", features = ["full"] }
+```
+
+
 ## Usage
 
 ### Python
@@ -338,6 +348,54 @@ except requests.exceptions.HTTPError as e:
 ```
 
 For asynchronous methods (`async_embed`, `async_rerank`, `async_classify`, `async_batch_post`), the same exceptions will be raised by the `await` call and can be caught using a `try...except` block within an `async def` function.
+
+
+## Rust
+
+```rust
+use baseten_performance_client_core::{PerformanceClientCore, ClientError};
+use tokio;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let api_key = std::env::var("BASETEN_API_KEY").expect("BASETEN_API_KEY not set");
+    let base_url = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
+
+    let client = PerformanceClientCore::new(base_url, Some(api_key));
+
+    // Embedding example
+    let texts = vec!["Hello world".to_string(), "Example text".to_string()];
+    let embedding_response = client.embed(
+        texts,
+        "my_model".to_string(),
+        Some(4),                    // batch_size
+        Some(32),                   // max_concurrent_requests
+        Some(360.0),                // timeout_s
+        Some(10000),                // max_chars_per_request
+        Some(0.5),                  // hedge_delay
+    ).await?;
+
+    println!("Model: {}", embedding_response.model);
+    println!("Total tokens: {}", embedding_response.usage.total_tokens);
+
+    // Batch POST example
+    let payloads = vec![
+        serde_json::json!({"model": "my_model", "input": ["Rust sample 1"]}),
+        serde_json::json!({"model": "my_model", "input": ["Rust sample 2"]}),
+    ];
+
+    let batch_response = client.batch_post(
+        "/v1/embeddings".to_string(),
+        payloads,
+        Some(32),                   // max_concurrent_requests
+        Some(360.0),                // timeout_s
+    ).await?;
+
+    println!("Batch POST total time: {:.4}s", batch_response.total_time);
+
+    Ok(())
+}
+```
 
 ## Development
 
