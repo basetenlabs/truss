@@ -16,6 +16,16 @@ pip install baseten_performance_client
 npm install baseten-performance-client
 ```
 
+### Rust
+```bash
+cargo add baseten_performance_client_core
+# Or add to your Cargo.toml:
+# [dependencies]
+# baseten_performance_client_core = "0.0.11"
+# tokio = { version = "1.0", features = ["full"] }
+```
+
+
 ## Usage
 
 ### Python
