@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import click
 import pytest
 
-from truss.cli.train.core import (
+from truss.cli.train.cache import (
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
     SORT_BY_PERMISSIONS,
@@ -12,8 +12,8 @@ from truss.cli.train.core import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
     view_cache_summary,
-    view_cache_summary_by_project,
 )
+from truss.cli.train.core import view_cache_summary_by_project
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -106,7 +106,9 @@ def test_view_cache_summary_empty_files(capsys):
     mock_api.get_cache_summary.assert_called_once_with("proj123")
 
     captured = capsys.readouterr()
-    assert "No files found in cache." in captured.out
+    # Empty files should still show the table with 0 files
+    assert "Cache summary for project: proj123" in captured.out
+    assert "Total files: 0" in captured.out
 
 
 def test_view_cache_summary_api_error(capsys):
