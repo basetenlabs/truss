@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Mapping, Optional
 import requests
 from pydantic import BaseModel, Field
 
+from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.custom_types import APIKeyCategory
@@ -13,6 +14,29 @@ from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
+PARAMS_INDENT = "\n                    "
+
+
+class ChainAWSCredential(SafeModel):
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_session_token: str
+
+
+class ChainUploadCredentials(SafeModel):
+    s3_bucket: str
+    s3_key: str
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_session_token: str
+
+    @property
+    def aws_credentials(self) -> ChainAWSCredential:
+        return ChainAWSCredential(
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+            aws_session_token=self.aws_session_token,
+        )
 
 
 class InstanceTypeV1(BaseModel):
@@ -175,6 +199,7 @@ class BasetenApi:
         allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
+        environment: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -187,6 +212,7 @@ class BasetenApi:
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f'version_name: "{deployment_name}"' if deployment_name else ""}
                     {f"model_origin: {origin.value}" if origin else ""}
+                    {f'environment_name: "{environment}"' if environment else ""}
                 ) {{
                     model_version {{
                         id
@@ -299,7 +325,11 @@ class BasetenApi:
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
         is_draft: bool = False,
+        original_source_artifact_s3_key: Optional[str] = None,
+        allow_truss_download: Optional[bool] = True,
     ):
+        if allow_truss_download is None:
+            allow_truss_download = True
         entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
 
         dependencies_str = ", ".join(
@@ -309,13 +339,28 @@ class BasetenApi:
             ]
         )
 
+        params = []
+        if chain_id:
+            params.append(f'chain_id: "{chain_id}"')
+        if chain_name:
+            params.append(f'chain_name: "{chain_name}"')
+        if environment:
+            params.append(f'environment: "{environment}"')
+        if original_source_artifact_s3_key:
+            params.append(
+                f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
+            )
+
+        params.append(f"is_draft: {str(is_draft).lower()}")
+        if allow_truss_download is False:
+            params.append("allow_truss_download: false")
+
+        params_str = PARAMS_INDENT.join(params)
+
         query_string = f"""
             mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
-                    {f'chain_id: "{chain_id}"' if chain_id else ""}
-                    {f'chain_name: "{chain_name}"' if chain_name else ""}
-                    {f'environment: "{environment}"' if environment else ""}
-                    is_draft: {str(is_draft).lower()}
+                    {params_str}
                     entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
                     truss_user_env: $trussUserEnv
@@ -657,7 +702,28 @@ class BasetenApi:
         return resp_json["training_projects"]
 
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
+        if blob_type == b10_types.BlobType.CHAIN:
+            return self.get_chain_s3_upload_credentials()
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
+
+    def get_chain_s3_upload_credentials(self) -> ChainUploadCredentials:
+        """Get chain artifact credentials using GraphQL query."""
+        query = """
+        query {
+            chain_s3_upload_credentials {
+                s3_bucket
+                s3_key
+                aws_access_key_id
+                aws_secret_access_key
+                aws_session_token
+            }
+        }
+        """
+        response = self._post_graphql_query(query)
+
+        return ChainUploadCredentials.model_validate(
+            response["data"]["chain_s3_upload_credentials"]
+        )
 
     def get_training_job_metrics(
         self,
