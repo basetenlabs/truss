@@ -200,6 +200,7 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        team: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -244,6 +245,7 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
         preserve_env_instance_type: bool = True,
+        team: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -286,6 +288,7 @@ class BasetenApi:
         truss_user_env: b10_types.TrussUserEnv,
         allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
+        team: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -903,3 +906,16 @@ class BasetenApi:
         return [
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
+
+    def get_teams(self) -> list[str]:
+        """
+        Get all available teams for a user via GraphQL API.
+        """
+        query_string = """{
+            teams {
+                name
+            }
+        }
+        """
+        resp = self._post_graphql_query(query_string)
+        return [team["name"] for team in resp["data"]["teams"]]

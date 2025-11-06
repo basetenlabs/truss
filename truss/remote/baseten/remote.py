@@ -205,6 +205,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
+        team: Optional[str] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -242,6 +243,7 @@ class BasetenRemote(TrussRemote):
             environment=push_data.environment,
             truss_user_env=truss_user_env,
             preserve_env_instance_type=preserve_env_instance_type,
+            team=team,
         )
 
         if model_version_handle.instance_type_name:
@@ -591,3 +593,6 @@ class BasetenRemote(TrussRemote):
 
     def upsert_training_project(self, training_project):
         return self._api.upsert_training_project(training_project)
+
+    def get_teams(self) -> list[str]:
+        return self._api.get_teams()

@@ -56,3 +56,14 @@ def inquire_remote_name() -> str:
 
 def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
+
+
+def inquire_team(available_teams: list[str]) -> str:
+    if len(available_teams) > 1:
+        team = inquirer.select(
+            "🎮 Which team do you want to connect to?",
+            qmark="",
+            choices=available_teams,
+        ).execute()
+        return team
+    return available_teams[0]

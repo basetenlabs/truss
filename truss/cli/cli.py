@@ -501,6 +501,12 @@ def run_python(script, target_directory):
         "Default is --preserve-env-instance-type."
     ),
 )
+@click.option(
+    "--team",
+    type=str,
+    required=False,
+    help="Team to push the truss to. If not specified, the truss will be pushed to the default team.",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -518,6 +524,7 @@ def push(
     include_git_info: bool = False,
     tail: bool = False,
     preserve_env_instance_type: bool = True,
+    team: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -612,6 +619,13 @@ def push(
             console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
     source = Path(target_directory)
+
+    teams = remote_provider.get_teams()
+    if team is not None and team not in teams:
+        raise click.UsageError(f"Team {team} is not a valid team. Valid teams are: {teams}")
+    else:
+        team = remote_cli.inquire_team(teams)
+
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
@@ -626,6 +640,7 @@ def push(
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
+        team=team,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
