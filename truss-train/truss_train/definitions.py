@@ -99,6 +99,7 @@ class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
+    volume_size_gib: Optional[int] = None
 
 
 class CacheConfig(custom_types.SafeModelNoExtra):
