@@ -23,22 +23,9 @@ from truss.cli.train.types import (
 )
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
-from truss.remote.baseten.custom_types import (
-    FileSummary,
-    FileSummaryWithTotalSize,
-    GetCacheSummaryResponseV1,
-)
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
-
-SORT_BY_FILEPATH = "filepath"
-SORT_BY_SIZE = "size"
-SORT_BY_MODIFIED = "modified"
-SORT_BY_TYPE = "type"
-SORT_BY_PERMISSIONS = "permissions"
-SORT_ORDER_ASC = "asc"
-SORT_ORDER_DESC = "desc"
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -630,139 +617,28 @@ def fetch_project_by_name_or_id(
         raise click.ClickException(f"Error fetching project: {str(e)}")
 
 
-def create_file_summary_with_directory_sizes(
-    files: list[FileSummary],
-) -> list[FileSummaryWithTotalSize]:
-    directory_sizes = calculate_directory_sizes(files)
-    return [
-        FileSummaryWithTotalSize(
-            file_summary=file_info,
-            total_size=directory_sizes.get(file_info.path, file_info.size_bytes),
-        )
-        for file_info in files
-    ]
-
-
-def calculate_directory_sizes(
-    files: list[FileSummary], max_depth: int = 100
-) -> dict[str, int]:
-    directory_sizes = {}
-
-    for file_info in files:
-        if file_info.file_type == "directory":
-            directory_sizes[file_info.path] = 0
-
-    for file_info in files:
-        current_path = file_info.path
-        for i in range(max_depth):
-            if current_path is None:
-                break
-            if current_path in directory_sizes:
-                directory_sizes[current_path] += file_info.size_bytes
-            # Move to parent directory
-            parent = os.path.dirname(current_path)
-            if parent == current_path:  # Reached root
-                break
-            current_path = parent
-
-    return directory_sizes
-
-
-def view_cache_summary(
-    remote_provider: BasetenRemote,
-    project_id: str,
-    sort_by: str = SORT_BY_FILEPATH,
-    order: str = SORT_ORDER_ASC,
-):
-    """View cache summary for a training project."""
-    try:
-        raw_cache_data = remote_provider.api.get_cache_summary(project_id)
-
-        if not raw_cache_data:
-            console.print("No cache summary found for this project.", style="yellow")
-            return
-
-        cache_data = GetCacheSummaryResponseV1.model_validate(raw_cache_data)
-
-        table = rich.table.Table(title=f"Cache summary for project: {project_id}")
-        table.add_column("File Path", style="cyan")
-        table.add_column("Size", style="green")
-        table.add_column("Modified", style="yellow")
-        table.add_column("Type")
-        table.add_column("Permissions", style="magenta")
-
-        files = cache_data.file_summaries
-        if not files:
-            console.print("No files found in cache.", style="yellow")
-            return
-
-        files_with_total_sizes = create_file_summary_with_directory_sizes(files)
-
-        reverse = order == SORT_ORDER_DESC
-        sort_key = _get_sort_key(sort_by)
-        files_with_total_sizes.sort(key=sort_key, reverse=reverse)
-
-        total_size = sum(
-            file_info.file_summary.size_bytes for file_info in files_with_total_sizes
-        )
-        total_size_str = common.format_bytes_to_human_readable(total_size)
-
-        console.print(
-            f"📅 Cache captured at: {cache_data.timestamp}", style="bold blue"
-        )
-        console.print(f"📁 Project ID: {cache_data.project_id}", style="bold blue")
-        console.print()
-        console.print(
-            f"📊 Total files: {len(files_with_total_sizes)}", style="bold green"
-        )
-        console.print(f"💾 Total size: {total_size_str}", style="bold green")
-        console.print()
-
-        for file_info in files_with_total_sizes:
-            total_size = file_info.total_size
-
-            size_str = cli_common.format_bytes_to_human_readable(int(total_size))
-
-            modified_str = cli_common.format_localized_time(
-                file_info.file_summary.modified
-            )
-
-            table.add_row(
-                file_info.file_summary.path,
-                size_str,
-                modified_str,
-                file_info.file_summary.file_type or "Unknown",
-                file_info.file_summary.permissions or "Unknown",
-            )
-
-        console.print(table)
-
-    except Exception as e:
-        console.print(f"Error fetching cache summary: {str(e)}", style="red")
-        raise
-
-
-def _get_sort_key(sort_by: str) -> Callable[[FileSummaryWithTotalSize], Any]:
-    if sort_by == SORT_BY_FILEPATH:
-        return lambda x: x.file_summary.path
-    elif sort_by == SORT_BY_SIZE:
-        return lambda x: x.total_size
-    elif sort_by == SORT_BY_MODIFIED:
-        return lambda x: x.file_summary.modified
-    elif sort_by == SORT_BY_TYPE:
-        return lambda x: x.file_summary.file_type or ""
-    elif sort_by == SORT_BY_PERMISSIONS:
-        return lambda x: x.file_summary.permissions or ""
-    else:
-        raise ValueError(f"Invalid --sort argument: {sort_by}")
-
-
 def view_cache_summary_by_project(
     remote_provider: BasetenRemote,
     project_identifier: str,
-    sort_by: str = SORT_BY_FILEPATH,
-    order: str = SORT_ORDER_ASC,
+    sort_by: Optional[str] = None,
+    order: Optional[str] = None,
+    output_format: Optional[str] = None,
 ):
     """View cache summary for a training project by ID or name."""
+    from truss.cli.train.cache import (
+        OUTPUT_FORMAT_CLI_TABLE,
+        SORT_BY_FILEPATH,
+        SORT_ORDER_ASC,
+        view_cache_summary,
+    )
+
+    # Use constants for defaults if not provided
+    if sort_by is None:
+        sort_by = SORT_BY_FILEPATH
+    if order is None:
+        order = SORT_ORDER_ASC
+    if output_format is None:
+        output_format = OUTPUT_FORMAT_CLI_TABLE
+
     project = fetch_project_by_name_or_id(remote_provider, project_identifier)
-    view_cache_summary(remote_provider, project["id"], sort_by, order)
+    view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
