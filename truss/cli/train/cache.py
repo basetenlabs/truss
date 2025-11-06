@@ -287,8 +287,15 @@ def view_cache_summary(
     output_format: str = OUTPUT_FORMAT_CLI_TABLE,
 ):
     """View cache summary for a training project."""
-    viewer = _get_cache_summary_viewer(output_format)
-
+    viewer_factories = {
+        OUTPUT_FORMAT_CSV: lambda: CSVViewer(),
+        OUTPUT_FORMAT_JSON: lambda: JSONViewer(),
+        OUTPUT_FORMAT_CLI_TABLE: lambda: CLITableViewer(),
+    }
+    viewer_factory = viewer_factories.get(output_format)
+    if not viewer_factory:
+        raise ValueError(f"Invalid output format: {output_format}")
+    viewer = viewer_factory()
     try:
         raw_cache_data = remote_provider.api.get_cache_summary(project_id)
 
