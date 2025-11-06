@@ -14,7 +14,10 @@ from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.train import common as train_common
 from truss.cli.train import core
-from truss.cli.train.core import (
+from truss.cli.train.cache import (
+    OUTPUT_FORMAT_CLI_TABLE,
+    OUTPUT_FORMAT_CSV,
+    OUTPUT_FORMAT_JSON,
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
     SORT_BY_PERMISSIONS,
@@ -556,8 +559,17 @@ def cache():
     default=SORT_ORDER_ASC,
     help="Sort order: ascending or descending.",
 )
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice([OUTPUT_FORMAT_CLI_TABLE, OUTPUT_FORMAT_CSV, OUTPUT_FORMAT_JSON]),
+    default=OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
 @common.common_options()
-def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+def view_cache_summary(
+    project: str, remote: Optional[str], sort: str, order: str, output_format: str
+):
     """View cache summary for a training project"""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -566,7 +578,9 @@ def view_cache_summary(project: str, remote: Optional[str], sort: str, order: st
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)
+    train_cli.view_cache_summary_by_project(
+        remote_provider, project, sort, order, output_format
+    )
 
 
 def _maybe_resolve_project_id_from_id_or_name(
