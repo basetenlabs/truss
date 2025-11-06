@@ -495,7 +495,6 @@ def test_create_chain_passes_deploy_timeout_minutes(remote):
             truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=False,
             environment=None,
-            deploy_timeout_minutes=600,
         )
 
         mock_get_chains.assert_called_once()
