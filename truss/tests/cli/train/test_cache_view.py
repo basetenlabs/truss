@@ -712,3 +712,238 @@ def test_view_cache_summary_sort_by_permissions_desc(capsys):
 
     assert directory_pos < script_pos
     assert script_pos < config_pos
+
+
+# Tests for individual viewers
+def test_cli_table_viewer_with_data(capsys):
+    """Test CLITableViewer outputs table correctly with data."""
+    from truss.cli.train.cache import CLITableViewer
+    from truss.remote.baseten.custom_types import (
+        FileSummary,
+        FileSummaryWithTotalSize,
+        GetCacheSummaryResponseV1,
+    )
+
+    viewer = CLITableViewer()
+    cache_data = GetCacheSummaryResponseV1(
+        timestamp="2024-01-01T12:00:00Z",
+        project_id="proj123",
+        file_summaries=[
+            FileSummary(
+                path="test/file.txt",
+                size_bytes=1024,
+                modified="2024-01-01T10:00:00Z",
+                file_type="file",
+                permissions="-rw-r--r--",
+            )
+        ],
+    )
+    files_with_total_sizes = [
+        FileSummaryWithTotalSize(
+            file_summary=cache_data.file_summaries[0], total_size=1024
+        )
+    ]
+
+    viewer.output_cache_summary(
+        cache_data, files_with_total_sizes, 1024, "1.02 KB", "proj123"
+    )
+
+    captured = capsys.readouterr()
+    assert "Cache summary for project: proj123" in captured.out
+    assert "test/file.txt" in captured.out
+    assert "1.02 KB" in captured.out
+    assert "Total files: 1" in captured.out
+
+
+def test_cli_table_viewer_empty_files(capsys):
+    """Test CLITableViewer handles empty files correctly."""
+    from truss.cli.train.cache import CLITableViewer
+    from truss.remote.baseten.custom_types import GetCacheSummaryResponseV1
+
+    viewer = CLITableViewer()
+    cache_data = GetCacheSummaryResponseV1(
+        timestamp="2024-01-01T12:00:00Z", project_id="proj123", file_summaries=[]
+    )
+
+    viewer.output_cache_summary(cache_data, [], 0, "0 B", "proj123")
+
+    captured = capsys.readouterr()
+    assert "Cache summary for project: proj123" in captured.out
+    assert "Total files: 0" in captured.out
+    assert "Total size: 0 B" in captured.out
+
+
+def test_cli_table_viewer_no_cache(capsys):
+    """Test CLITableViewer handles no cache message."""
+    from truss.cli.train.cache import CLITableViewer
+
+    viewer = CLITableViewer()
+    viewer.output_no_cache_message("proj123")
+
+    captured = capsys.readouterr()
+    assert "No cache summary found for this project." in captured.out
+
+
+def test_csv_viewer_with_data(capsys):
+    """Test CSVViewer outputs CSV correctly with data."""
+    from truss.cli.train.cache import CSVViewer
+    from truss.remote.baseten.custom_types import (
+        FileSummary,
+        FileSummaryWithTotalSize,
+        GetCacheSummaryResponseV1,
+    )
+
+    viewer = CSVViewer()
+    cache_data = GetCacheSummaryResponseV1(
+        timestamp="2024-01-01T12:00:00Z",
+        project_id="proj123",
+        file_summaries=[
+            FileSummary(
+                path="test/file.txt",
+                size_bytes=2048,
+                modified="2024-01-01T10:00:00Z",
+                file_type="file",
+                permissions="-rw-r--r--",
+            )
+        ],
+    )
+    files_with_total_sizes = [
+        FileSummaryWithTotalSize(
+            file_summary=cache_data.file_summaries[0], total_size=2048
+        )
+    ]
+
+    viewer.output_cache_summary(
+        cache_data, files_with_total_sizes, 2048, "2.05 KB", "proj123"
+    )
+
+    captured = capsys.readouterr()
+    lines = captured.out.strip().split("\n")
+    assert len(lines) == 2  # Header + 1 data row
+    assert "File Path" in lines[0]
+    assert "Size (bytes)" in lines[0]
+    assert "test/file.txt" in lines[1]
+    assert "2048" in lines[1]
+    assert "2.05 KB" in lines[1]
+
+
+def test_csv_viewer_empty_files(capsys):
+    """Test CSVViewer handles empty files correctly (just headers)."""
+    from truss.cli.train.cache import CSVViewer
+    from truss.remote.baseten.custom_types import GetCacheSummaryResponseV1
+
+    viewer = CSVViewer()
+    cache_data = GetCacheSummaryResponseV1(
+        timestamp="2024-01-01T12:00:00Z", project_id="proj123", file_summaries=[]
+    )
+
+    viewer.output_cache_summary(cache_data, [], 0, "0 B", "proj123")
+
+    captured = capsys.readouterr()
+    lines = captured.out.strip().split("\n")
+    assert len(lines) == 1  # Just header row
+    assert "File Path" in lines[0]
+    assert "Size (bytes)" in lines[0]
+
+
+def test_csv_viewer_no_cache(capsys):
+    """Test CSVViewer handles no cache (outputs empty CSV with headers)."""
+    from truss.cli.train.cache import CSVViewer
+
+    viewer = CSVViewer()
+    viewer.output_no_cache_message("proj123")
+
+    captured = capsys.readouterr()
+    lines = captured.out.strip().split("\n")
+    assert len(lines) == 1  # Just header row
+    assert "File Path" in lines[0]
+
+
+def test_json_viewer_with_data(capsys):
+    """Test JSONViewer outputs JSON correctly with data."""
+    import json
+
+    from truss.cli.train.cache import JSONViewer
+    from truss.remote.baseten.custom_types import (
+        FileSummary,
+        FileSummaryWithTotalSize,
+        GetCacheSummaryResponseV1,
+    )
+
+    viewer = JSONViewer()
+    cache_data = GetCacheSummaryResponseV1(
+        timestamp="2024-01-01T12:00:00Z",
+        project_id="proj123",
+        file_summaries=[
+            FileSummary(
+                path="test/file.txt",
+                size_bytes=3072,
+                modified="2024-01-01T10:00:00Z",
+                file_type="file",
+                permissions="-rw-r--r--",
+            )
+        ],
+    )
+    files_with_total_sizes = [
+        FileSummaryWithTotalSize(
+            file_summary=cache_data.file_summaries[0], total_size=3072
+        )
+    ]
+
+    viewer.output_cache_summary(
+        cache_data, files_with_total_sizes, 3072, "3.07 KB", "proj123"
+    )
+
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert output["timestamp"] == "2024-01-01T12:00:00Z"
+    assert output["project_id"] == "proj123"
+    assert output["total_files"] == 1
+    assert output["total_size_bytes"] == 3072
+    assert output["total_size_human_readable"] == "3.07 KB"
+    assert len(output["files"]) == 1
+    assert output["files"][0]["path"] == "test/file.txt"
+    assert output["files"][0]["size_bytes"] == 3072
+
+
+def test_json_viewer_empty_files(capsys):
+    """Test JSONViewer handles empty files correctly."""
+    import json
+
+    from truss.cli.train.cache import JSONViewer
+    from truss.remote.baseten.custom_types import GetCacheSummaryResponseV1
+
+    viewer = JSONViewer()
+    cache_data = GetCacheSummaryResponseV1(
+        timestamp="2024-01-01T12:00:00Z", project_id="proj123", file_summaries=[]
+    )
+
+    viewer.output_cache_summary(cache_data, [], 0, "0 B", "proj123")
+
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert output["timestamp"] == "2024-01-01T12:00:00Z"
+    assert output["project_id"] == "proj123"
+    assert output["total_files"] == 0
+    assert output["total_size_bytes"] == 0
+    assert output["total_size_human_readable"] == "0 B"
+    assert output["files"] == []
+
+
+def test_json_viewer_no_cache(capsys):
+    """Test JSONViewer handles no cache (outputs empty JSON structure)."""
+    import json
+
+    from truss.cli.train.cache import JSONViewer
+
+    viewer = JSONViewer()
+    viewer.output_no_cache_message("proj123")
+
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+    assert output["timestamp"] == ""
+    assert output["project_id"] == "proj123"
+    assert output["total_files"] == 0
+    assert output["total_size_bytes"] == 0
+    assert output["total_size_human_readable"] == "0 B"
+    assert output["files"] == []
