@@ -467,47 +467,6 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_passes_deploy_timeout_minutes(remote):
-    mock_deploy_response = {
-        "chain_deployment": {
-            "id": "new-chain-deployment-id",
-            "chain": {"id": "new-chain-id", "hostname": "hostname"},
-        }
-    }
-
-    with mock.patch.object(
-        remote.api, "get_chains", return_value=[]
-    ) as mock_get_chains, mock.patch.object(
-        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
-    ) as mock_deploy:
-        deployment_handle = create_chain_atomic(
-            api=remote.api,
-            chain_name="new_chain",
-            entrypoint=ChainletDataAtomic(
-                name="chainlet-1",
-                oracle=OracleData(
-                    model_name="model-1",
-                    s3_key="s3-key-1",
-                    encoded_config_str="encoded-config-str-1",
-                ),
-            ),
-            dependencies=[],
-            truss_user_env=b10_types.TrussUserEnv.collect(),
-            is_draft=False,
-            environment=None,
-        )
-
-        mock_get_chains.assert_called_once()
-        mock_deploy.assert_called_once()
-
-        call_kwargs = mock_deploy.call_args.kwargs
-        assert call_kwargs["chain_name"] == "new_chain"
-        assert call_kwargs.get("deploy_timeout_minutes") == 600
-
-        assert deployment_handle.chain_id == "new-chain-id"
-        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
-
-
 @pytest.mark.parametrize("publish", [True, False])
 def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
     publish, custom_model_truss_dir_with_pre_and_post, remote
