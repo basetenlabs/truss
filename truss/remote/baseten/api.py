@@ -290,11 +290,6 @@ class BasetenApi:
         origin: Optional[b10_types.ModelOrigin] = None,
         deploy_timeout_minutes: Optional[int] = None,
     ):
-        deploy_timeout_str = (
-            f"                    deploy_timeout_minutes: {deploy_timeout_minutes}"
-            if deploy_timeout_minutes is not None
-            else ""
-        )
         query_string = f"""
             mutation ($trussUserEnv: String) {{
                 deploy_draft_truss(name: "{model_name}"
@@ -303,7 +298,7 @@ class BasetenApi:
                     truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
-                    {deploy_timeout_str}
+                    {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                 ) {{
                     model_version {{
                         id
@@ -336,7 +331,6 @@ class BasetenApi:
         is_draft: bool = False,
         original_source_artifact_s3_key: Optional[str] = None,
         allow_truss_download: Optional[bool] = True,
-        deploy_timeout_minutes: Optional[int] = None,
     ):
         if allow_truss_download is None:
             allow_truss_download = True
@@ -364,8 +358,6 @@ class BasetenApi:
         params.append(f"is_draft: {str(is_draft).lower()}")
         if allow_truss_download is False:
             params.append("allow_truss_download: false")
-        if deploy_timeout_minutes is not None:
-            params.append(f"deploy_timeout_minutes: {deploy_timeout_minutes}")
 
         params_str = PARAMS_INDENT.join(params)
 

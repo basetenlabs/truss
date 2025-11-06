@@ -462,7 +462,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with '--publish' or '--promote'."
+        "used in combination with --publish or --promote."
     ),
 )
 @click.option(

@@ -272,6 +272,28 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
             )
 
 
+@pytest.mark.parametrize("deploy_timeout_minutes", [9, 1441])
+def test_push_raised_value_error_when_deploy_timeout_minutes_is_invalid(
+    deploy_timeout_minutes, custom_model_truss_dir_with_pre_and_post, remote
+):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+    with pytest.raises(
+        ValueError,
+        match="deploy-timeout-minutes must be between 10 minutes and 1440 minutes \(24 hours\)",
+    ):
+        remote.push(
+            th,
+            "model_name",
+            th.truss_dir,
+            publish=True,
+            promote=False,
+            preserve_previous_prod_deployment=False,
+            deployment_name="dep_name",
+            deploy_timeout_minutes=deploy_timeout_minutes,
+        )
+
+
 def test_create_chain_with_no_publish(remote):
     mock_deploy_response = {
         "chain_deployment": {
