@@ -397,6 +397,7 @@ def create_truss_service(
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
     preserve_env_instance_type: bool = True,
+    deploy_timeout_minutes: Optional[int] = None,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -424,6 +425,7 @@ def create_truss_service(
             truss_user_env,
             allow_truss_download=allow_truss_download,
             origin=origin,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
 
         return ModelVersionHandle(
@@ -448,6 +450,7 @@ def create_truss_service(
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
 
         return ModelVersionHandle(
@@ -472,6 +475,7 @@ def create_truss_service(
             deployment_name=deployment_name,
             environment=environment,
             preserve_env_instance_type=preserve_env_instance_type,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
     except ApiError as e:
         if (
