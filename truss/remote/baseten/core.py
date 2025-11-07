@@ -450,6 +450,7 @@ def create_truss_service(
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
 
         return ModelVersionHandle(
