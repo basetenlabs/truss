@@ -135,7 +135,7 @@ def test_post_graphql_query_success(mock_post, baseten_api):
 
 
 @mock.patch("requests.post", return_value=mock_graphql_error_response())
-def test_post_graphql_query_error(raieemock_post, baseten_api):
+def test_post_graphql_query_error(mock_post, baseten_api):
     with pytest.raises(ApiError):
         baseten_api._post_graphql_query("sample_query_string")
 
