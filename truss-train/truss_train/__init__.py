@@ -2,6 +2,7 @@ from truss_train.definitions import (
     AWSIAMDockerAuth,
     BasetenCheckpoint,
     CacheConfig,
+    CacheScope,
     CheckpointingConfig,
     CheckpointList,
     Compute,
@@ -19,7 +20,6 @@ from truss_train.definitions import (
     SecretReference,
     TrainingJob,
     TrainingProject,
-    VolumeNamespace,
 )
 
 __all__ = [
@@ -37,7 +37,7 @@ __all__ = [
     "LoRADetails",
     "CheckpointingConfig",
     "CacheConfig",
-    "VolumeNamespace",
+    "CacheScope",
     "AWSIAMDockerAuth",
     "GCPServiceAccountJSONDockerAuth",
     "LoadCheckpointConfig",
