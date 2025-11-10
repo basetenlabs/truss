@@ -19,6 +19,7 @@ from truss_train.definitions import (
     SecretReference,
     TrainingJob,
     TrainingProject,
+    VolumeNamespace,
 )
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "LoRADetails",
     "CheckpointingConfig",
     "CacheConfig",
+    "VolumeNamespace",
     "AWSIAMDockerAuth",
     "GCPServiceAccountJSONDockerAuth",
     "LoadCheckpointConfig",

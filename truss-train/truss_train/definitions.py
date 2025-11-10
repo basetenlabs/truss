@@ -102,10 +102,16 @@ class CheckpointingConfig(custom_types.SafeModelNoExtra):
     volume_size_gib: Optional[int] = None
 
 
+class VolumeNamespace(str, enum.Enum):
+    PROJECT = "PROJECT"
+    ROOT = "ROOT"
+
+
 class CacheConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     enable_legacy_hf_mount: bool = False
     require_cache_affinity: bool = True
+    volume_namespace: VolumeNamespace = VolumeNamespace.PROJECT
 
 
 class Runtime(custom_types.SafeModelNoExtra):
