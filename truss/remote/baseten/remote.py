@@ -127,6 +127,7 @@ class BasetenRemote(TrussRemote):
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
+        deploy_timeout_minutes: Optional[int] = None,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -162,6 +163,13 @@ class BasetenRemote(TrussRemote):
         if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
             raise ValueError(
                 "Deployment name must only contain alphanumeric, -, _ and . characters"
+            )
+
+        if deploy_timeout_minutes is not None and (
+            deploy_timeout_minutes < 10 or deploy_timeout_minutes > 1440
+        ):
+            raise ValueError(
+                "deploy-timeout-minutes must be between 10 minutes and 1440 minutes (24 hours)"
             )
 
         model_id = exists_model(self._api, model_name)
@@ -205,6 +213,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
+        deploy_timeout_minutes: Optional[int] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -217,6 +226,7 @@ class BasetenRemote(TrussRemote):
             origin=origin,
             environment=environment,
             progress_bar=progress_bar,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
 
         if include_git_info:
@@ -242,6 +252,7 @@ class BasetenRemote(TrussRemote):
             environment=push_data.environment,
             truss_user_env=truss_user_env,
             preserve_env_instance_type=preserve_env_instance_type,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
 
         if model_version_handle.instance_type_name:
