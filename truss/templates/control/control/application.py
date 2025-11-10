@@ -116,6 +116,12 @@ def create_app(base_config: Dict):
     app.include_router(control_app)
     app.add_middleware(SanitizedExceptionMiddleware)
 
+    @app.on_event("startup")
+    async def log_live_reload_ready():
+        app.state.logger.info(
+            "Live reload server is up. It can now receive patch requests."
+        )
+
     @app.on_event("shutdown")
     def on_shutdown():
         # FastApi handles the term signal to start the shutdown flow. Here we
