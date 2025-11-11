@@ -1,4 +1,3 @@
-import logging
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -23,9 +22,6 @@ from truss.util import user_config
 from truss.util.log_utils import LogInterceptor
 
 # Chains Stuff #########################################################################
-
-
-logger = logging.getLogger(__name__)
 
 
 @click.group()
