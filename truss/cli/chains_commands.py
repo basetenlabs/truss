@@ -219,6 +219,15 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     default=False,
     help="Disable downloading of pushed chain source code from the UI.",
 )
+@click.option(
+    "--deployment-name",
+    type=str,
+    required=False,
+    help=(
+        "Name of the deployment created by the publish. Can only be used "
+        "in combination with '--publish' or '--promote'."
+    ),
+)
 @click.pass_context
 @common.common_options()
 def push_chain(
@@ -236,6 +245,7 @@ def push_chain(
     experimental_watch_chainlet_names: Optional[str],
     include_git_info: bool = False,
     disable_chain_download: bool = False,
+    deployment_name: Optional[str] = None,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -294,6 +304,7 @@ def push_chain(
             include_git_info=include_git_info,
             working_dir=source.parent if source.is_file() else source.resolve(),
             disable_chain_download=disable_chain_download,
+            deployment_name=deployment_name,
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
