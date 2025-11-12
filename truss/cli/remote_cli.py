@@ -1,7 +1,10 @@
+from typing import List, Optional
+
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
 
 from truss.cli.utils.output import console
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
@@ -56,3 +59,39 @@ def inquire_remote_name() -> str:
 
 def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
+
+
+def get_team_id_from_name(teams: List[dict], team_name: str) -> Optional[str]:
+    """
+    Get team ID from team name given a list of teams.
+    Returns team ID if found, None otherwise.
+    """
+    for t in teams:
+        if t["name"] == team_name:
+            return t["id"]
+    return None
+
+
+def format_available_teams(teams: List[dict]) -> str:
+    """
+    Format a list of teams into a comma-separated string of team names.
+    Returns "none" if the list is empty.
+    """
+    team_names = [t["name"] for t in teams]
+    return ", ".join(team_names) if team_names else "none"
+
+
+def inquire_team(remote_provider: BasetenRemote) -> Optional[str]:
+    """
+    Inquire for team selection if multiple teams are available.
+    Returns team ID if selected, None otherwise.
+    """
+    teams = remote_provider.api.get_teams()
+    if len(teams) > 1:
+        team_names = [team["name"] for team in teams]
+        selected_team_name = inquirer.select(
+            "👥 Which team do you want to use?", qmark="", choices=team_names
+        ).execute()
+        return get_team_id_from_name(teams, selected_team_name)
+    # If 0 or 1 teams, return None (don't propagate team param)
+    return None

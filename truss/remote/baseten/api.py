@@ -656,10 +656,15 @@ class BasetenApi:
             "v1/api_keys", body={"type": api_key_type.value, "name": name}
         )
 
-    def upsert_training_project(self, training_project):
+    def upsert_training_project(self, training_project, team_id: Optional[str] = None):
+        # Use team-specific endpoint if team_id is provided, otherwise use default endpoint
+        if team_id:
+            endpoint = f"v1/teams/{team_id}/training_projects"
+        else:
+            endpoint = "v1/training_projects"
         resp_json = self._rest_api_client.post(
-            "v1/training_projects",
-            body={"training_project": training_project.model_dump()},
+            endpoint,
+            body={"training_project": training_project.model_dump(exclude_none=True)},
         )
         return resp_json["training_project"]
 
@@ -912,3 +917,21 @@ class BasetenApi:
         return [
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
+
+    def get_teams(self) -> List[Dict[str, str]]:
+        """
+        Get all available teams via GraphQL API.
+        Returns a list of dictionaries with 'id' and 'name' keys.
+        """
+        query_string = """
+        query Teams {
+            teams {
+                id
+                name
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        teams_data = resp["data"]["teams"]
+        return teams_data

@@ -53,10 +53,14 @@ def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJo
 
 
 def create_training_job(
-    remote_provider: BasetenRemote, training_project: TrainingProject, config: Path
+    remote_provider: BasetenRemote,
+    training_project: TrainingProject,
+    config: Path,
+    team_id: Optional[str] = None,
 ) -> dict:
+    # Don't set team_id on training_project since it's passed as URL parameter, not in body
     project_resp = remote_provider.api.upsert_training_project(
-        training_project=training_project
+        training_project=training_project, team_id=team_id
     )
     prepared_job = prepare_push(remote_provider.api, config, training_project.job)
 
@@ -70,6 +74,7 @@ def create_training_job_from_file(
     remote_provider: BasetenRemote,
     config: Path,
     job_name_from_cli: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> dict:
     with loader.import_training_project(config) as training_project:
         if job_name_from_cli:
@@ -82,6 +87,7 @@ def create_training_job_from_file(
             remote_provider=remote_provider,
             training_project=training_project,
             config=config,
+            team_id=team_id,
         )
         job_resp["job_object"] = training_project.job
     return job_resp
