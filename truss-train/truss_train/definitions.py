@@ -179,6 +179,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
 
 class TrainingProject(custom_types.SafeModelNoExtra):
     name: str
+    team_name: Optional[str] = None
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)

@@ -659,7 +659,7 @@ class BasetenApi:
     def upsert_training_project(self, training_project):
         resp_json = self._rest_api_client.post(
             "v1/training_projects",
-            body={"training_project": training_project.model_dump()},
+            body={"training_project": training_project.model_dump(exclude_none=True)},
         )
         return resp_json["training_project"]
 
@@ -912,3 +912,21 @@ class BasetenApi:
         return [
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
+
+    def get_teams(self) -> List[Dict[str, str]]:
+        """
+        Get all available teams via GraphQL API.
+        Returns a list of dictionaries with 'id' and 'name' keys.
+        """
+        query_string = """
+        query Teams {
+            teams {
+                id
+                name
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        teams_data = resp["data"]["teams"]
+        return teams_data

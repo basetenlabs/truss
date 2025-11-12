@@ -1,7 +1,10 @@
+from typing import Optional
+
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
 
 from truss.cli.utils.output import console
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
@@ -56,3 +59,19 @@ def inquire_remote_name() -> str:
 
 def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
+
+
+def inquire_team(remote_provider: BasetenRemote) -> Optional[str]:
+    """
+    Inquire for team selection if multiple teams are available.
+    Returns team name if selected, None otherwise.
+    """
+    teams = remote_provider.api.get_teams()
+    if len(teams) > 1:
+        team_names = [team["name"] for team in teams]
+        selected_team_name = inquirer.select(
+            "👥 Which team do you want to use?", qmark="", choices=team_names
+        ).execute()
+        return selected_team_name
+    # If 0 or 1 teams, return None (don't propagate team param)
+    return None
