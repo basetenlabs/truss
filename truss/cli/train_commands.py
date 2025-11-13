@@ -141,7 +141,7 @@ def _resolve_team_id(
     # No team specified: default to single team or inquire for selection
     if len(existing_teams) == 1:
         return next(iter(existing_teams.values()))["id"]
-    return remote_cli.inquire_team(remote_provider, existing_teams=existing_teams)
+    return remote_cli.inquire_team(existing_teams=existing_teams)
 
 
 @train.command(name="push")

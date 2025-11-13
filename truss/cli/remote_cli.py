@@ -82,7 +82,6 @@ def format_available_teams(teams: Dict[str, Dict[str, str]]) -> str:
 
 
 def inquire_team(
-    remote_provider: BasetenRemote,
     existing_teams: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Optional[str]:
     """
