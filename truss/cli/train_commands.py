@@ -111,14 +111,59 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
+def _resolve_team_id(
+    remote_provider: BasetenRemote, provided_team_name: Optional[str]
+) -> Optional[str]:
+    """
+    Resolve team ID from the provided team name or by prompting the user.
+
+    Args:
+        remote_provider: The remote provider to fetch teams from
+        provided_team_name: Optional team name provided via CLI
+
+    Returns:
+        Team ID if resolved, None otherwise
+
+    Raises:
+        click.ClickException: If provided team name doesn't exist
+    """
+    existing_teams = remote_provider.api.get_teams()
+
+    # If team name provided, validate and return team ID
+    if provided_team_name is not None:
+        if provided_team_name not in existing_teams:
+            available_teams_str = remote_cli.format_available_teams(existing_teams)
+            raise click.ClickException(
+                f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
+            )
+        return existing_teams[provided_team_name]["id"]
+
+    # No team specified: default to single existing team or inquire for selection
+    # TODO: Print out to the CLI the team we're deploying to once teams is released.
+    if len(existing_teams) == 1:
+        return next(iter(existing_teams.values()))["id"]
+    return remote_cli.inquire_team(existing_teams=existing_teams)
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
 @common.common_options()
 def push_training_job(
-    config: Path, remote: Optional[str], tail: bool, job_name: Optional[str]
+    config: Path,
+    remote: Optional[str],
+    tail: bool,
+    job_name: Optional[str],
+    provided_team_name: Optional[str],
 ):
     """Run a training job"""
     from truss_train import deployment
@@ -126,12 +171,15 @@ def push_training_job(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
+    # Resolve team before starting spinner to ensure interactive prompts are visible
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    team_id = _resolve_team_id(remote_provider, provided_team_name)
+
     with console.status("Creating training job...", spinner="dots"):
-        remote_provider: BasetenRemote = cast(
-            BasetenRemote, RemoteFactory.create(remote=remote)
-        )
         job_resp = deployment.create_training_job_from_file(
-            remote_provider, config, job_name
+            remote_provider, config, job_name, team_id=team_id
         )
 
     # Note: This post create logic needs to happen outside the context
