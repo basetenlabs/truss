@@ -37,7 +37,7 @@ class TestTeamParameter:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = [{"id": "team1", "name": "Team Alpha"}]
+        mock_api.get_teams.return_value = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
         mock_remote_factory.return_value = mock_remote
 
         mock_create_job.return_value = {
@@ -89,10 +89,10 @@ class TestTeamParameter:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = [
-            {"id": "team1", "name": "Team Alpha"},
-            {"id": "team2", "name": "Team Beta"},
-        ]
+        mock_api.get_teams.return_value = {
+            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
+            "Team Beta": {"id": "team2", "name": "Team Beta"},
+        }
         mock_remote_factory.return_value = mock_remote
 
         mock_inquire_team.return_value = "team2"
@@ -112,7 +112,14 @@ class TestTeamParameter:
         )
 
         assert result.exit_code == 0
-        mock_inquire_team.assert_called_once_with(mock_remote)
+        # inquire_team should be called with remote_provider and teams parameter
+        mock_inquire_team.assert_called_once()
+        call_args = mock_inquire_team.call_args
+        assert call_args[0][0] == mock_remote
+        assert call_args[1]["teams"] == {
+            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
+            "Team Beta": {"id": "team2", "name": "Team Beta"},
+        }
         mock_create_job.assert_called_once()
         call_args = mock_create_job.call_args
         assert call_args[1]["team_id"] == "team2"

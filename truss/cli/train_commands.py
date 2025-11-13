@@ -111,13 +111,57 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
+def _resolve_team_id(
+    remote_provider: BasetenRemote, provided_team_name: Optional[str]
+) -> Optional[str]:
+    """
+    Resolve team ID from the provided team name or by prompting the user.
+
+    Args:
+        remote_provider: The remote provider to fetch teams from
+        provided_team_name: Optional team name provided via CLI
+
+    Returns:
+        Team ID if resolved, None otherwise
+
+    Raises:
+        click.ClickException: If provided team name doesn't exist
+    """
+    # Fetch all teams from the remote provider (returns dict mapping team_name -> team)
+    teams = remote_provider.api.get_teams()
+    team_id = None
+
+    # If no team is specified from the CLI, we need to determine the team to use.
+    if provided_team_name is None:
+        # If user has only one team, default to that team
+        if len(teams) == 1:
+            # Get the single team's ID
+            team_id = next(iter(teams.values()))["id"]
+        else:
+            # Otherwise, inquire for team selection (pass teams to avoid extra query)
+            team_id = remote_cli.inquire_team(remote_provider, teams=teams)
+    else:
+        # Validate team exists if provided and get team_id
+        if provided_team_name not in teams:
+            available_teams_str = remote_cli.format_available_teams(teams)
+            raise click.ClickException(
+                f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
+            )
+        team_id = teams[provided_team_name]["id"]
+    return team_id
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
 @click.option(
-    "--team", type=str, required=False, help="Team name for the training project"
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
 )
 @common.common_options()
 def push_training_job(
@@ -125,7 +169,7 @@ def push_training_job(
     remote: Optional[str],
     tail: bool,
     job_name: Optional[str],
-    team: Optional[str],
+    provided_team_name: Optional[str],
 ):
     """Run a training job"""
     from truss_train import deployment
@@ -137,19 +181,7 @@ def push_training_job(
         remote_provider: BasetenRemote = cast(
             BasetenRemote, RemoteFactory.create(remote=remote)
         )
-        # If team not provided, inquire for team selection
-        team_id = None
-        if team is None:
-            team_id = remote_cli.inquire_team(remote_provider)
-        # Validate team exists if provided and get team_id
-        elif team is not None:
-            teams = remote_provider.api.get_teams()
-            team_id = remote_cli.get_team_id_from_name(teams, team)
-            if not team_id:
-                available_teams_str = remote_cli.format_available_teams(teams)
-                raise click.ClickException(
-                    f"Team '{team}' does not exist. Available teams: {available_teams_str}"
-                )
+        team_id = _resolve_team_id(remote_provider, provided_team_name)
         job_resp = deployment.create_training_job_from_file(
             remote_provider, config, job_name, team_id=team_id
         )

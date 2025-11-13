@@ -918,10 +918,10 @@ class BasetenApi:
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
 
-    def get_teams(self) -> List[Dict[str, str]]:
+    def get_teams(self) -> Dict[str, Dict[str, str]]:
         """
         Get all available teams via GraphQL API.
-        Returns a list of dictionaries with 'id' and 'name' keys.
+        Returns a dictionary mapping team name to team data (with 'id' and 'name' keys).
         """
         query_string = """
         query Teams {
@@ -934,4 +934,5 @@ class BasetenApi:
 
         resp = self._post_graphql_query(query_string)
         teams_data = resp["data"]["teams"]
-        return teams_data
+        # Convert list to dict mapping team_name -> team
+        return {team["name"]: team for team in teams_data}

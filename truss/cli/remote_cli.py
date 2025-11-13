@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
@@ -61,34 +61,36 @@ def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
 
 
-def get_team_id_from_name(teams: List[dict], team_name: str) -> Optional[str]:
+def get_team_id_from_name(teams: Dict[str, Dict[str, str]], team_name: str) -> Optional[str]:
     """
-    Get team ID from team name given a list of teams.
+    Get team ID from team name given a dictionary mapping team name to team data.
     Returns team ID if found, None otherwise.
     """
-    for t in teams:
-        if t["name"] == team_name:
-            return t["id"]
-    return None
+    team = teams.get(team_name)
+    return team["id"] if team else None
 
 
-def format_available_teams(teams: List[dict]) -> str:
+def format_available_teams(teams: Dict[str, Dict[str, str]]) -> str:
     """
-    Format a list of teams into a comma-separated string of team names.
-    Returns "none" if the list is empty.
+    Format a dictionary of teams into a comma-separated string of team names.
+    Returns "none" if the dictionary is empty.
     """
-    team_names = [t["name"] for t in teams]
+    team_names = list(teams.keys())
     return ", ".join(team_names) if team_names else "none"
 
 
-def inquire_team(remote_provider: BasetenRemote) -> Optional[str]:
+def inquire_team(
+    remote_provider: BasetenRemote, teams: Optional[Dict[str, Dict[str, str]]] = None
+) -> Optional[str]:
     """
     Inquire for team selection if multiple teams are available.
     Returns team ID if selected, None otherwise.
+    If teams is provided, uses that dict; otherwise fetches teams from API.
     """
-    teams = remote_provider.api.get_teams()
+    if teams is None:
+        teams = remote_provider.api.get_teams()
     if len(teams) > 1:
-        team_names = [team["name"] for team in teams]
+        team_names = list(teams.keys())
         selected_team_name = inquirer.select(
             "👥 Which team do you want to use?", qmark="", choices=team_names
         ).execute()
