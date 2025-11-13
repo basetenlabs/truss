@@ -4,7 +4,6 @@ from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
 
 from truss.cli.utils.output import console
-from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
