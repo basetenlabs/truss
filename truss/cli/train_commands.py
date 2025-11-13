@@ -127,28 +127,21 @@ def _resolve_team_id(
     Raises:
         click.ClickException: If provided team name doesn't exist
     """
-    # Fetch all teams from the remote provider (returns dict mapping team_name -> team)
-    teams = remote_provider.api.get_teams()
-    team_id = None
+    existing_teams = remote_provider.api.get_teams()
 
-    # If no team is specified from the CLI, we need to determine the team to use.
-    if provided_team_name is None:
-        # If user has only one team, default to that team
-        if len(teams) == 1:
-            # Get the single team's ID
-            team_id = next(iter(teams.values()))["id"]
-        else:
-            # Otherwise, inquire for team selection (pass teams to avoid extra query)
-            team_id = remote_cli.inquire_team(remote_provider, teams=teams)
-    else:
-        # Validate team exists if provided and get team_id
-        if provided_team_name not in teams:
-            available_teams_str = remote_cli.format_available_teams(teams)
+    # If team name provided, validate and return team ID
+    if provided_team_name is not None:
+        if provided_team_name not in existing_teams:
+            available_teams_str = remote_cli.format_available_teams(existing_teams)
             raise click.ClickException(
                 f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
             )
-        team_id = teams[provided_team_name]["id"]
-    return team_id
+        return existing_teams[provided_team_name]["id"]
+
+    # No team specified: default to single team or inquire for selection
+    if len(existing_teams) == 1:
+        return next(iter(existing_teams.values()))["id"]
+    return remote_cli.inquire_team(remote_provider, existing_teams=existing_teams)
 
 
 @train.command(name="push")

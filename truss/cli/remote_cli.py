@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
@@ -61,7 +61,9 @@ def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
 
 
-def get_team_id_from_name(teams: Dict[str, Dict[str, str]], team_name: str) -> Optional[str]:
+def get_team_id_from_name(
+    teams: Dict[str, Dict[str, str]], team_name: str
+) -> Optional[str]:
     """
     Get team ID from team name given a dictionary mapping team name to team data.
     Returns team ID if found, None otherwise.
@@ -80,20 +82,20 @@ def format_available_teams(teams: Dict[str, Dict[str, str]]) -> str:
 
 
 def inquire_team(
-    remote_provider: BasetenRemote, teams: Optional[Dict[str, Dict[str, str]]] = None
+    remote_provider: BasetenRemote,
+    existing_teams: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Optional[str]:
     """
     Inquire for team selection if multiple teams are available.
     Returns team ID if selected, None otherwise.
-    If teams is provided, uses that dict; otherwise fetches teams from API.
+    If existing_teams is provided, uses that dict to avoid re-querying the API;
+    otherwise fetches teams from API.
     """
-    if teams is None:
-        teams = remote_provider.api.get_teams()
-    if len(teams) > 1:
-        team_names = list(teams.keys())
+    if existing_teams is not None:
         selected_team_name = inquirer.select(
-            "👥 Which team do you want to use?", qmark="", choices=team_names
+            "👥 Which team do you want to use?", qmark="", choices=existing_teams.keys()
         ).execute()
-        return get_team_id_from_name(teams, selected_team_name)
-    # If 0 or 1 teams, return None (don't propagate team param)
+        return existing_teams[selected_team_name]["id"]
+
+    # If no existing teams, return None (don't propagate team param)
     return None
