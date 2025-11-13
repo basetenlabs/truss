@@ -93,7 +93,9 @@ def inquire_team(
     """
     if existing_teams is not None:
         selected_team_name = inquirer.select(
-            "👥 Which team do you want to use?", qmark="", choices=existing_teams.keys()
+            "👥 Which team do you want to use?",
+            qmark="",
+            choices=list[str](existing_teams.keys()),
         ).execute()
         return existing_teams[selected_team_name]["id"]
 
