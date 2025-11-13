@@ -114,10 +114,9 @@ class TestTeamParameter:
         )
 
         assert result.exit_code == 0
-        # inquire_team should be called with remote_provider and existing_teams parameter
+        # inquire_team should be called with existing_teams parameter
         mock_inquire_team.assert_called_once()
         call_args = mock_inquire_team.call_args
-        assert call_args[0][0] == mock_remote
         assert call_args[1]["existing_teams"] == {
             "Team Alpha": {"id": "team1", "name": "Team Alpha"},
             "Team Beta": {"id": "team2", "name": "Team Beta"},

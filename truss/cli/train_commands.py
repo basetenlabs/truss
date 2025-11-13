@@ -170,11 +170,13 @@ def push_training_job(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
+    # Resolve team before starting spinner to ensure interactive prompts are visible
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    team_id = _resolve_team_id(remote_provider, provided_team_name)
+
     with console.status("Creating training job...", spinner="dots"):
-        remote_provider: BasetenRemote = cast(
-            BasetenRemote, RemoteFactory.create(remote=remote)
-        )
-        team_id = _resolve_team_id(remote_provider, provided_team_name)
         job_resp = deployment.create_training_job_from_file(
             remote_provider, config, job_name, team_id=team_id
         )
