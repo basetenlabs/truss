@@ -138,7 +138,8 @@ def _resolve_team_id(
             )
         return existing_teams[provided_team_name]["id"]
 
-    # No team specified: default to single team or inquire for selection
+    # No team specified: default to single existing team or inquire for selection
+    # TODO: Print out to the CLI the team we're deploying to once teams is released.
     if len(existing_teams) == 1:
         return next(iter(existing_teams.values()))["id"]
     return remote_cli.inquire_team(existing_teams=existing_teams)

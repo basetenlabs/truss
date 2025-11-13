@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Optional
 
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
@@ -61,7 +61,7 @@ def inquire_model_name() -> str:
 
 
 def get_team_id_from_name(
-    teams: Dict[str, Dict[str, str]], team_name: str
+    teams: dict[str, dict[str, str]], team_name: str
 ) -> Optional[str]:
     """
     Get team ID from team name given a dictionary mapping team name to team data.
@@ -71,7 +71,7 @@ def get_team_id_from_name(
     return team["id"] if team else None
 
 
-def format_available_teams(teams: Dict[str, Dict[str, str]]) -> str:
+def format_available_teams(teams: dict[str, dict[str, str]]) -> str:
     """
     Format a dictionary of teams into a comma-separated string of team names.
     Returns "none" if the dictionary is empty.
@@ -81,7 +81,7 @@ def format_available_teams(teams: Dict[str, Dict[str, str]]) -> str:
 
 
 def inquire_team(
-    existing_teams: Optional[Dict[str, Dict[str, str]]] = None,
+    existing_teams: Optional[dict[str, dict[str, str]]] = None,
 ) -> Optional[str]:
     """
     Inquire for team selection if multiple teams are available.
@@ -91,7 +91,7 @@ def inquire_team(
     """
     if existing_teams is not None:
         selected_team_name = inquirer.select(
-            "👥 Which team do you want to use?",
+            "👥 Which team do you want to push to?",
             qmark="",
             choices=list[str](existing_teams.keys()),
         ).execute()
