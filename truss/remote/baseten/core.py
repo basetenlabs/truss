@@ -133,6 +133,7 @@ def create_chain_atomic(
     original_source_artifact_s3_key: Optional[str] = None,
     allow_truss_download: bool = True,
     deployment_name: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -158,6 +159,7 @@ def create_chain_atomic(
             original_source_artifact_s3_key=original_source_artifact_s3_key,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
+            team_id=team_id,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -174,6 +176,7 @@ def create_chain_atomic(
                 original_source_artifact_s3_key=original_source_artifact_s3_key,
                 allow_truss_download=allow_truss_download,
                 deployment_name=deployment_name,
+                team_id=team_id,
             )
         except ApiError as e:
             if (
@@ -197,6 +200,7 @@ def create_chain_atomic(
             original_source_artifact_s3_key=original_source_artifact_s3_key,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
+            team_id=team_id,
         )
 
     return ChainDeploymentHandleAtomic(
