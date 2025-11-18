@@ -251,6 +251,7 @@ impl PerformanceClientCore {
         let mut indexed_results: Vec<(usize, R, Duration, usize)> =
             Vec::with_capacity(total_requests);
 
+        let max_retries = config.max_retries();
         let mut current_absolute_index = 0;
         for (batch_index, batch) in batches.into_iter().enumerate() {
             let current_batch_absolute_start_index = current_absolute_index;
@@ -275,7 +276,7 @@ impl PerformanceClientCore {
 
                 let request_time_start = Instant::now();
                 let config = SendRequestConfig {
-                    max_retries: MAX_HTTP_RETRIES,
+                    max_retries: max_retries,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                     retry_budget: retry_budget,
                     cancel_token: cancel_token.clone(),
@@ -389,6 +390,7 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         operation_timeout_s: Option<f64>,
+        max_retries: Option<i64>,
     ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
@@ -399,6 +401,7 @@ impl PerformanceClientCore {
             hedge_delay,
             max_chars_per_request,
             operation_timeout_s,
+            max_retries,
         )?;
 
         // Create batches
@@ -450,6 +453,7 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         operation_timeout_s: Option<f64>,
+        max_retries: Option<i64>,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
@@ -460,6 +464,7 @@ impl PerformanceClientCore {
             hedge_delay,
             max_chars_per_request,
             operation_timeout_s,
+            max_retries,
         )?;
 
         // Create batches
@@ -513,6 +518,7 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         operation_timeout_s: Option<f64>,
+        max_retries: Option<i64>,
     ) -> Result<(CoreClassificationResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
@@ -523,6 +529,7 @@ impl PerformanceClientCore {
             hedge_delay,
             max_chars_per_request,
             operation_timeout_s,
+            max_retries,
         )?;
 
         // Create batches

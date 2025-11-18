@@ -23,6 +23,7 @@ pub struct RequestProcessingConfig {
     pub hedge_delay: Option<f64>,
     pub max_chars_per_request: Option<usize>,
     pub operation_timeout_s: Option<f64>,
+    pub max_retries: Option<u32>,
 }
 
 impl RequestProcessingConfig {
@@ -35,6 +36,7 @@ impl RequestProcessingConfig {
         hedge_delay: Option<f64>,
         max_chars_per_request: Option<usize>,
         operation_timeout_s: Option<f64>,
+        max_retries: Option<i64>,
     ) -> Result<Self, crate::errors::ClientError> {
         // Validate timeout
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&timeout_s) {
@@ -82,6 +84,24 @@ impl RequestProcessingConfig {
                 )));
             }
         }
+        // Validate and convert max_retries from i64 to u32
+        let max_retries_u32 = if let Some(retries) = max_retries {
+            if retries < 0 {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "max_retries must be non-negative, got {}",
+                    retries
+                )));
+            }
+            if retries > MAX_HTTP_RETRIES as i64 {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "max_retries {} exceeds maximum allowed retries {}",
+                    retries, MAX_HTTP_RETRIES
+                )));
+            }
+            Some(retries as u32)
+        } else {
+            None
+        };
 
         // Validate concurrency parameters
         if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
@@ -111,6 +131,7 @@ impl RequestProcessingConfig {
             hedge_delay,
             max_chars_per_request,
             operation_timeout_s,
+            max_retries: max_retries_u32,
         })
     }
 
@@ -122,6 +143,11 @@ impl RequestProcessingConfig {
     /// Get operation timeout duration if set
     pub fn operation_timeout_duration(&self) -> Option<std::time::Duration> {
         self.operation_timeout_s.map(|s| std::time::Duration::from_secs_f64(s))
+    }
+
+    /// Get max retries, defaulting to MAX_HTTP_RETRIES if not set
+    pub fn max_retries(&self) -> u32 {
+        self.max_retries.unwrap_or(MAX_HTTP_RETRIES)
     }
 }
 
