@@ -22,6 +22,7 @@ pub struct RequestProcessingConfig {
     pub base_url: String,
     pub hedge_delay: Option<f64>,
     pub max_chars_per_request: Option<usize>,
+    pub operation_timeout_s: Option<f64>,
 }
 
 impl RequestProcessingConfig {
@@ -33,6 +34,7 @@ impl RequestProcessingConfig {
         base_url: String,
         hedge_delay: Option<f64>,
         max_chars_per_request: Option<usize>,
+        operation_timeout_s: Option<f64>,
     ) -> Result<Self, crate::errors::ClientError> {
         // Validate timeout
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&timeout_s) {
@@ -65,6 +67,21 @@ impl RequestProcessingConfig {
                 )));
             }
         }
+        if operation_timeout_s.is_some() {
+            let operation_timeout = operation_timeout_s.unwrap();
+            if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&operation_timeout) {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "Operation timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
+                    operation_timeout, MIN_REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
+                )));
+            }
+            if operation_timeout < timeout_s {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "Operation timeout {:.3}s must be greater than or equal to per-request timeout {:.3}s.",
+                    operation_timeout, timeout_s
+                )));
+            }
+        }
 
         // Validate concurrency parameters
         if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
@@ -93,12 +110,18 @@ impl RequestProcessingConfig {
             base_url,
             hedge_delay,
             max_chars_per_request,
+            operation_timeout_s,
         })
     }
 
     /// Get timeout duration
     pub fn timeout_duration(&self) -> std::time::Duration {
         std::time::Duration::from_secs_f64(self.timeout_s)
+    }
+
+    /// Get operation timeout duration if set
+    pub fn operation_timeout_duration(&self) -> Option<std::time::Duration> {
+        self.operation_timeout_s.map(|s| std::time::Duration::from_secs_f64(s))
     }
 }
 

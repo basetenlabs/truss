@@ -330,7 +330,7 @@ impl PerformanceClient {
         Ok(self.core_client.api_key.clone())
     }
 
-    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, operation_timeout_s = None))]
     fn embed(
         &self,
         py: Python,
@@ -344,6 +344,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> PyResult<OpenAIEmbeddingsResponse> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -368,6 +369,7 @@ impl PerformanceClient {
                         max_chars_per_request,
                         timeout_s,
                         hedge_delay,
+                        operation_timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -395,7 +397,7 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, operation_timeout_s = None))]
     fn async_embed<'py>(
         &self,
         py: Python<'py>,
@@ -409,6 +411,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -429,6 +432,7 @@ impl PerformanceClient {
                     max_chars_per_request,
                     timeout_s,
                     hedge_delay,
+                    operation_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -448,7 +452,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, operation_timeout_s = None))]
     fn rerank(
         &self,
         py: Python,
@@ -463,6 +467,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> PyResult<RerankResponse> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
@@ -489,6 +494,7 @@ impl PerformanceClient {
                         max_chars_per_request,
                         timeout_s,
                         hedge_delay,
+                        operation_timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -516,7 +522,7 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, operation_timeout_s = None))]
     fn async_rerank<'py>(
         &self,
         py: Python<'py>,
@@ -531,6 +537,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
@@ -553,6 +560,7 @@ impl PerformanceClient {
                     max_chars_per_request,
                     timeout_s,
                     hedge_delay,
+                    operation_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -572,7 +580,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, operation_timeout_s = None))]
     fn classify(
         &self,
         py: Python,
@@ -585,6 +593,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> PyResult<ClassificationResponse> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
@@ -609,6 +618,7 @@ impl PerformanceClient {
                         max_chars_per_request,
                         timeout_s,
                         hedge_delay,
+                        operation_timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -636,7 +646,7 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_classify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(name = "async_classify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, operation_timeout_s = None))]
     fn async_classify<'py>(
         &self,
         py: Python<'py>,
@@ -649,6 +659,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
@@ -669,6 +680,7 @@ impl PerformanceClient {
                     max_chars_per_request,
                     timeout_s,
                     hedge_delay,
+                    operation_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;

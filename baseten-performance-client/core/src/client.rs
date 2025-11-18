@@ -305,18 +305,39 @@ impl PerformanceClientCore {
         }
 
         // Process results as they complete with fast-fail cancellation
-        while let Some(task_result) = join_set.join_next().await {
-            match process_joinset_outcome(task_result, &cancel_token) {
-                Ok((response, duration, start_index, batch_index)) => {
-                    indexed_results.push((batch_index, response, duration, start_index));
-                }
-                Err(e) => {
-                    // Cancel all remaining tasks immediately
-                    cancel_token.store(true, Ordering::SeqCst);
-                    join_set.abort_all();
-                    return Err(e);
+        let process_results = async {
+            while let Some(task_result) = join_set.join_next().await {
+                match process_joinset_outcome(task_result, &cancel_token) {
+                    Ok((response, duration, start_index, batch_index)) => {
+                        indexed_results.push((batch_index, response, duration, start_index));
+                    }
+                    Err(e) => {
+                        // Cancel all remaining tasks immediately
+                        cancel_token.store(true, Ordering::SeqCst);
+                        join_set.abort_all();
+                        return Err(e);
+                    }
                 }
             }
+            Ok(())
+        };
+
+        // Apply operation timeout if configured
+        if let Some(operation_timeout) = config.operation_timeout_duration() {
+            match tokio::time::timeout(operation_timeout, process_results).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {
+                    cancel_token.store(true, Ordering::SeqCst);
+                    join_set.abort_all();
+                    return Err(ClientError::Timeout(format!(
+                        "Batch operation timed out after {:.3}s",
+                        operation_timeout.as_secs_f64()
+                    )));
+                }
+            }
+        } else {
+            process_results.await?;
         }
 
         // Sort results by original batch order to preserve ordering
@@ -367,6 +388,7 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
@@ -376,6 +398,7 @@ impl PerformanceClientCore {
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
+            operation_timeout_s,
         )?;
 
         // Create batches
@@ -426,6 +449,7 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
@@ -435,6 +459,7 @@ impl PerformanceClientCore {
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
+            operation_timeout_s,
         )?;
 
         // Create batches
@@ -487,6 +512,7 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        operation_timeout_s: Option<f64>,
     ) -> Result<(CoreClassificationResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
@@ -496,6 +522,7 @@ impl PerformanceClientCore {
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
+            operation_timeout_s,
         )?;
 
         // Create batches
