@@ -603,5 +603,5 @@ class BasetenRemote(TrussRemote):
     ) -> PatchResult:
         return self._patch(watch_path, truss_ignore_patterns, console=None)
 
-    def upsert_training_project(self, training_project):
-        return self._api.upsert_training_project(training_project)
+    def upsert_training_project(self, training_project, team_id=None):
+        return self._api.upsert_training_project(training_project, team_id=team_id)

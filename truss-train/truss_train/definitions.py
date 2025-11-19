@@ -182,6 +182,7 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
+    team_name: Optional[str] = None
 
 
 class Checkpoint(custom_types.ConfigModel, ABC):
