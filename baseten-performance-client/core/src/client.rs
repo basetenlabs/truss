@@ -324,8 +324,8 @@ impl PerformanceClientCore {
         };
 
         // Apply operation timeout if configured
-        if let Some(operation_timeout) = config.operation_timeout_duration() {
-            match tokio::time::timeout(operation_timeout, process_results).await {
+        if let Some(total_timeout) = config.total_timeout_duration() {
+            match tokio::time::timeout(total_timeout, process_results).await {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => return Err(e),
                 Err(_) => {
@@ -333,7 +333,7 @@ impl PerformanceClientCore {
                     join_set.abort_all();
                     return Err(ClientError::Timeout(format!(
                         "Batch operation timed out after {:.3}s",
-                        operation_timeout.as_secs_f64()
+                        total_timeout.as_secs_f64()
                     )));
                 }
             }
@@ -389,7 +389,7 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
-        operation_timeout_s: Option<f64>,
+        total_timeout_s: Option<f64>,
         max_retries: Option<i64>,
     ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
@@ -400,7 +400,7 @@ impl PerformanceClientCore {
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
-            operation_timeout_s,
+            total_timeout_s,
             max_retries,
         )?;
 
@@ -452,7 +452,7 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
-        operation_timeout_s: Option<f64>,
+        total_timeout_s: Option<f64>,
         max_retries: Option<i64>,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
@@ -463,7 +463,7 @@ impl PerformanceClientCore {
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
-            operation_timeout_s,
+            total_timeout_s,
             max_retries,
         )?;
 
@@ -517,7 +517,7 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
-        operation_timeout_s: Option<f64>,
+        total_timeout_s: Option<f64>,
         max_retries: Option<i64>,
     ) -> Result<(CoreClassificationResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
@@ -528,7 +528,7 @@ impl PerformanceClientCore {
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
-            operation_timeout_s,
+            total_timeout_s,
             max_retries,
         )?;
 

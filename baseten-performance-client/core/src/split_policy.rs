@@ -22,7 +22,7 @@ pub struct RequestProcessingConfig {
     pub base_url: String,
     pub hedge_delay: Option<f64>,
     pub max_chars_per_request: Option<usize>,
-    pub operation_timeout_s: Option<f64>,
+    pub total_timeout_s: Option<f64>,
     pub max_retries: Option<u32>,
 }
 
@@ -35,7 +35,7 @@ impl RequestProcessingConfig {
         base_url: String,
         hedge_delay: Option<f64>,
         max_chars_per_request: Option<usize>,
-        operation_timeout_s: Option<f64>,
+        total_timeout_s: Option<f64>,
         max_retries: Option<i64>,
     ) -> Result<Self, crate::errors::ClientError> {
         // Validate timeout
@@ -69,18 +69,18 @@ impl RequestProcessingConfig {
                 )));
             }
         }
-        if operation_timeout_s.is_some() {
-            let operation_timeout = operation_timeout_s.unwrap();
-            if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&operation_timeout) {
+        if total_timeout_s.is_some() {
+            let total_timeout = total_timeout_s.unwrap();
+            if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&total_timeout) {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
-                    "Operation timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
-                    operation_timeout, MIN_REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
+                    "Total timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
+                    total_timeout, MIN_REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
                 )));
             }
-            if operation_timeout < timeout_s {
+            if total_timeout < timeout_s {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
-                    "Operation timeout {:.3}s must be greater than or equal to per-request timeout {:.3}s.",
-                    operation_timeout, timeout_s
+                    "Total timeout {:.3}s must be greater than or equal to per-request timeout {:.3}s.",
+                    total_timeout, timeout_s
                 )));
             }
         }
@@ -130,7 +130,7 @@ impl RequestProcessingConfig {
             base_url,
             hedge_delay,
             max_chars_per_request,
-            operation_timeout_s,
+            total_timeout_s,
             max_retries: max_retries_u32,
         })
     }
@@ -140,9 +140,9 @@ impl RequestProcessingConfig {
         std::time::Duration::from_secs_f64(self.timeout_s)
     }
 
-    /// Get operation timeout duration if set
-    pub fn operation_timeout_duration(&self) -> Option<std::time::Duration> {
-        self.operation_timeout_s.map(|s| std::time::Duration::from_secs_f64(s))
+    /// Get total timeout duration if set
+    pub fn total_timeout_duration(&self) -> Option<std::time::Duration> {
+        self.total_timeout_s.map(|s| std::time::Duration::from_secs_f64(s))
     }
 
     /// Get max retries, defaulting to MAX_HTTP_RETRIES if not set
