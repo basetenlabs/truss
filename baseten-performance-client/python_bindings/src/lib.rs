@@ -725,7 +725,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None))]
+    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None))]
     fn batch_post(
         &self,
         py: Python,
@@ -734,6 +734,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -765,6 +766,7 @@ impl PerformanceClient {
                         max_concurrent_requests,
                         timeout_s,
                         hedge_delay,
+                        total_timeout_s,
                     )
                     .await;
                 let _ = tx.send(res);
@@ -821,7 +823,7 @@ impl PerformanceClient {
         })
     }
 
-    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None))]
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None))]
     fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
@@ -830,6 +832,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -857,6 +860,7 @@ impl PerformanceClient {
                     max_concurrent_requests,
                     timeout_s,
                     hedge_delay,
+                    total_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;

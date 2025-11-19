@@ -368,6 +368,8 @@ impl PerformanceClient {
     payloads: Vec<JsonValue>,
     max_concurrent_requests: Option<u32>,
     timeout_s: Option<f64>,
+    hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
       return Err(create_napi_error("Payloads list cannot be empty"));
@@ -379,7 +381,7 @@ impl PerformanceClient {
 
     let result = self
       .core_client
-      .process_batch_post_requests(url_path, payloads, max_concurrent_requests, timeout_s, None)
+      .process_batch_post_requests(url_path, payloads, max_concurrent_requests, timeout_s, hedge_delay, total_timeout_s)
       .await
       .map_err(convert_core_error_to_napi_error)?;
 

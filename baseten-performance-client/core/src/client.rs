@@ -578,6 +578,7 @@ impl PerformanceClientCore {
         max_concurrent_requests: usize,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> Result<
         (
             Vec<(
@@ -594,6 +595,23 @@ impl PerformanceClientCore {
         // Validate parameters internally (using batch_size of 128 for validation)
         let (validated_concurrency, request_timeout_duration) =
             self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
+        
+        // Validate total_timeout_s if provided
+        if let Some(total_timeout) = total_timeout_s {
+            if !(MIN_TOTAL_TIMEOUT_S..=MAX_TOTAL_TIMEOUT_S).contains(&total_timeout) {
+                return Err(ClientError::InvalidParameter(format!(
+                    "Total timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
+                    total_timeout, MIN_TOTAL_TIMEOUT_S, MAX_TOTAL_TIMEOUT_S
+                )));
+            }
+            if total_timeout < timeout_s {
+                return Err(ClientError::InvalidParameter(format!(
+                    "Total timeout {:.3}s must be greater than or equal to per-request timeout {:.3}s.",
+                    total_timeout, timeout_s
+                )));
+            }
+        }
+        
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let cancel_token = Arc::new(AtomicBool::new(false));
         let total_payloads = payloads_json.len();
@@ -687,18 +705,40 @@ impl PerformanceClientCore {
         }
 
         // Process results as they complete with fast-fail cancellation
-        while let Some(task_result) = join_set.join_next().await {
-            match process_joinset_outcome(task_result, &cancel_token) {
-                Ok(indexed_data) => {
-                    indexed_results.push(indexed_data);
-                }
-                Err(e) => {
-                    // Cancel all remaining tasks immediately
-                    cancel_token.store(true, Ordering::SeqCst);
-                    join_set.abort_all();
-                    return Err(e);
+        let process_results = async {
+            while let Some(task_result) = join_set.join_next().await {
+                match process_joinset_outcome(task_result, &cancel_token) {
+                    Ok(indexed_data) => {
+                        indexed_results.push(indexed_data);
+                    }
+                    Err(e) => {
+                        // Cancel all remaining tasks immediately
+                        cancel_token.store(true, Ordering::SeqCst);
+                        join_set.abort_all();
+                        return Err(e);
+                    }
                 }
             }
+            Ok(())
+        };
+
+        // Apply total timeout if configured
+        if let Some(total_timeout) = total_timeout_s {
+            let total_timeout_duration = Duration::from_secs_f64(total_timeout);
+            match tokio::time::timeout(total_timeout_duration, process_results).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {
+                    cancel_token.store(true, Ordering::SeqCst);
+                    join_set.abort_all();
+                    return Err(ClientError::Timeout(format!(
+                        "Batch post operation timed out after {:.3}s",
+                        total_timeout
+                    )));
+                }
+            }
+        } else {
+            process_results.await?;
         }
 
         indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
