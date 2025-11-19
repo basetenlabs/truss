@@ -294,7 +294,7 @@ class PushOptionsBaseten(PushOptions):
             publish = True
 
         if remote_provider is None and remote and not only_generate_trusses:
-            remote_provider = RemoteFactory.create(remote=remote)
+            remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
         return PushOptionsBaseten(
             remote=remote,
