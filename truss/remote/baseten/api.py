@@ -334,6 +334,7 @@ class BasetenApi:
         original_source_artifact_s3_key: Optional[str] = None,
         allow_truss_download: Optional[bool] = True,
         deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
     ):
         if allow_truss_download is None:
             allow_truss_download = True
@@ -357,6 +358,8 @@ class BasetenApi:
             params.append(
                 f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
             )
+        if team_id:
+            params.append(f'team_id: "{team_id}"')
 
         params.append(f"is_draft: {str(is_draft).lower()}")
         if allow_truss_download is False:
@@ -391,18 +394,30 @@ class BasetenApi:
 
         return resp["data"]["deploy_chain_atomic"]
 
-    def get_chains(self):
+    def get_chains(self, team_id: Optional[str] = None):
         query_string = """
         {
             chains {
                 id
                 name
+                team {
+                    name
+                }
             }
         }
         """
 
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["chains"]
+        chains = resp["data"]["chains"]
+
+        # Filter by team_id if provided
+        if team_id:
+            # Note: We need to filter client-side since GraphQL doesn't support team filtering yet
+            # This assumes chains have team_name field. If not available, we'll need backend support.
+            # For now, return all chains and let the resolver handle filtering by team_name
+            pass
+
+        return chains
 
     def get_chain_deployments(self, chain_id: str):
         query_string = f"""

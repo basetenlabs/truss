@@ -267,6 +267,7 @@ class PushOptionsBaseten(PushOptions):
     working_dir: pathlib.Path
     disable_chain_download: bool = False
     deployment_name: Optional[str] = None
+    team_id: Optional[str] = None
 
     @classmethod
     def create(
@@ -281,6 +282,7 @@ class PushOptionsBaseten(PushOptions):
         environment: Optional[str] = None,
         disable_chain_download: bool = False,
         deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> "PushOptionsBaseten":
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
@@ -296,6 +298,7 @@ class PushOptionsBaseten(PushOptions):
             working_dir=working_dir,
             disable_chain_download=disable_chain_download,
             deployment_name=deployment_name,
+            team_id=team_id,
         )
 
 

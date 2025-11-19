@@ -281,6 +281,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         disable_chain_download: bool = False,
         deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -340,6 +341,7 @@ class BasetenRemote(TrussRemote):
             original_source_artifact_s3_key=raw_chain_s3_key,
             allow_truss_download=not disable_chain_download,
             deployment_name=deployment_name,
+            team_id=team_id,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle
