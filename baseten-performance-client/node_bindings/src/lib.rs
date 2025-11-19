@@ -200,6 +200,8 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
     hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
+    max_retries: Option<i64>,
   ) -> napi::Result<serde_json::Value> {
     if input.is_empty() {
       return Err(create_napi_error("Input list cannot be empty"));
@@ -225,6 +227,8 @@ impl PerformanceClient {
         max_chars_per_request,
         timeout_s,
         hedge_delay,
+        total_timeout_s,
+        max_retries,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
@@ -255,6 +259,8 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
     hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
+    max_retries: Option<i64>,
   ) -> napi::Result<serde_json::Value> {
     if texts.is_empty() {
       return Err(create_napi_error("Texts list cannot be empty"));
@@ -281,6 +287,8 @@ impl PerformanceClient {
         max_chars_per_request,
         timeout_s,
         hedge_delay,
+        total_timeout_s,
+        max_retries,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
@@ -309,6 +317,8 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
     hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
+    max_retries: Option<i64>,
   ) -> napi::Result<serde_json::Value> {
     if inputs.is_empty() {
       return Err(create_napi_error("Inputs list cannot be empty"));
@@ -333,6 +343,8 @@ impl PerformanceClient {
         max_chars_per_request,
         timeout_s,
         hedge_delay,
+        total_timeout_s,
+        max_retries,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
