@@ -531,6 +531,7 @@ def _create_baseten_chain(
         environment=baseten_options.environment,
         progress_bar=progress_bar,
         disable_chain_download=baseten_options.disable_chain_download,
+        deployment_name=baseten_options.deployment_name,
     )
     return BasetenChainService(
         baseten_options.chain_name,

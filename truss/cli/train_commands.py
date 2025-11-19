@@ -12,6 +12,9 @@ from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.resolvers.training_project_team_resolver import (
+    resolve_training_project_team_name,
+)
 from truss.cli.train import common as train_common
 from truss.cli.train import core
 from truss.cli.train.cache import (
@@ -111,28 +114,69 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
+def _resolve_team_name(
+    remote_provider: BasetenRemote,
+    provided_team_name: Optional[str],
+    existing_project_name: Optional[str] = None,
+    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    return resolve_training_project_team_name(
+        remote_provider=remote_provider,
+        provided_team_name=provided_team_name,
+        existing_project_name=existing_project_name,
+        existing_teams=existing_teams,
+    )
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
 @common.common_options()
 def push_training_job(
-    config: Path, remote: Optional[str], tail: bool, job_name: Optional[str]
+    config: Path,
+    remote: Optional[str],
+    tail: bool,
+    job_name: Optional[str],
+    provided_team_name: Optional[str],
 ):
     """Run a training job"""
-    from truss_train import deployment
+    from truss_train import deployment, loader
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    with console.status("Creating training job...", spinner="dots"):
-        remote_provider: BasetenRemote = cast(
-            BasetenRemote, RemoteFactory.create(remote=remote)
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    existing_teams = remote_provider.api.get_teams()
+
+    with loader.import_training_project(config) as training_project:
+        team_name, team_id = _resolve_team_name(
+            remote_provider,
+            provided_team_name,
+            existing_project_name=training_project.name,
+            existing_teams=existing_teams,
         )
-        job_resp = deployment.create_training_job_from_file(
-            remote_provider, config, job_name
-        )
+
+        with console.status("Creating training job...", spinner="dots"):
+            job_resp = deployment.create_training_job(
+                remote_provider,
+                config,
+                training_project,
+                job_name_from_cli=job_name,
+                team_name=team_name,
+                team_id=team_id,
+            )
 
     # Note: This post create logic needs to happen outside the context
     # of the above context manager, as only one console session can be active

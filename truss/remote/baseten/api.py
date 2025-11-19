@@ -333,6 +333,7 @@ class BasetenApi:
         is_draft: bool = False,
         original_source_artifact_s3_key: Optional[str] = None,
         allow_truss_download: Optional[bool] = True,
+        deployment_name: Optional[str] = None,
     ):
         if allow_truss_download is None:
             allow_truss_download = True
@@ -360,6 +361,8 @@ class BasetenApi:
         params.append(f"is_draft: {str(is_draft).lower()}")
         if allow_truss_download is False:
             params.append("allow_truss_download: false")
+        if deployment_name:
+            params.append(f'deployment_name: "{deployment_name}"')
 
         params_str = PARAMS_INDENT.join(params)
 
@@ -653,10 +656,14 @@ class BasetenApi:
             "v1/api_keys", body={"type": api_key_type.value, "name": name}
         )
 
-    def upsert_training_project(self, training_project):
+    def upsert_training_project(self, training_project, team_id: Optional[str] = None):
+        if team_id:
+            endpoint = f"v1/teams/{team_id}/training_projects"
+        else:
+            endpoint = "v1/training_projects"
         resp_json = self._rest_api_client.post(
-            "v1/training_projects",
-            body={"training_project": training_project.model_dump()},
+            endpoint,
+            body={"training_project": training_project.model_dump(exclude_none=True)},
         )
         return resp_json["training_project"]
 
@@ -909,3 +916,22 @@ class BasetenApi:
         return [
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
+
+    def get_teams(self) -> Dict[str, Dict[str, str]]:
+        """
+        Get all available teams via GraphQL API.
+        Returns a dictionary mapping team name to team data (with 'id' and 'name' keys).
+        """
+        query_string = """
+        query Teams {
+            teams {
+                id
+                name
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        teams_data = resp["data"]["teams"]
+        # Convert list to dict mapping team_name -> team
+        return {team["name"]: team for team in teams_data}

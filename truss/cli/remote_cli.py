@@ -1,3 +1,5 @@
+from typing import Optional
+
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
 
@@ -56,3 +58,30 @@ def inquire_remote_name() -> str:
 
 def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
+
+
+def get_team_id_from_name(
+    teams: dict[str, dict[str, str]], team_name: str
+) -> Optional[str]:
+    team = teams.get(team_name)
+    return team["id"] if team else None
+
+
+def format_available_teams(teams: dict[str, dict[str, str]]) -> str:
+    team_names = list(teams.keys())
+    return ", ".join(team_names) if team_names else "none"
+
+
+def inquire_team(
+    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+) -> Optional[str]:
+    if existing_teams is not None:
+        selected_team_name = inquirer.select(
+            "👥 Which team do you want to push to?",
+            qmark="",
+            choices=list[str](existing_teams.keys()),
+        ).execute()
+        return selected_team_name
+
+    # If no existing teams, return None (don't propagate team param)
+    return None
