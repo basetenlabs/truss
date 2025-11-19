@@ -656,11 +656,9 @@ class BasetenApi:
             "v1/api_keys", body={"type": api_key_type.value, "name": name}
         )
 
-    def upsert_training_project(self, training_project):
-        # Use team_id from training_project to determine endpoint
-        # Use team-specific endpoint if team_id is provided, otherwise use default endpoint
-        if training_project.team_id:
-            endpoint = f"v1/teams/{training_project.team_id}/training_projects"
+    def upsert_training_project(self, training_project, team_id: Optional[str] = None):
+        if team_id:
+            endpoint = f"v1/teams/{team_id}/training_projects"
         else:
             endpoint = "v1/training_projects"
         resp_json = self._rest_api_client.post(

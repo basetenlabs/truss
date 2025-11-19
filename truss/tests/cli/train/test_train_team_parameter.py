@@ -72,12 +72,22 @@ class TestTeamParameter:
 
     @staticmethod
     def _assert_training_job_called_with_team(
-        mock_create_job, expected_team_id, training_project
+        mock_create_job, expected_team_name, training_project, expected_teams=None
     ):
         mock_create_job.assert_called_once()
         call_args = mock_create_job.call_args
         assert call_args[0][2] == training_project
-        assert call_args[1]["team_id"] == expected_team_id
+        assert call_args[1]["team_name"] == expected_team_name
+        # Verify team_id is resolved and passed correctly
+        if expected_team_name and expected_teams:
+            expected_team_id = expected_teams[expected_team_name]["id"]
+            assert call_args[1]["team_id"] == expected_team_id
+        elif expected_team_name is None:
+            # If no team_name, team_id should also be None
+            assert call_args[1]["team_id"] is None
+        else:
+            # team_name provided but team_id should be resolved
+            assert "team_id" in call_args[1]
 
     # SCENARIO 1: --team PROVIDED: Valid team name, user has access
     # CLI Command: truss train push /path/to/config.py --team "Team Alpha" --remote baseten_staging
@@ -106,7 +116,7 @@ class TestTeamParameter:
 
         assert result.exit_code == 0
         self._assert_training_job_called_with_team(
-            mock_create_job, "team1", training_project
+            mock_create_job, "Team Alpha", training_project, expected_teams=teams
         )
 
     # SCENARIO 2: --team PROVIDED: Invalid team name (does not exist)
@@ -165,7 +175,7 @@ class TestTeamParameter:
         mock_remote_factory.return_value = mock_remote
         self._setup_mock_status(mock_status)
         self._setup_mock_loader(mock_import_project, training_project)
-        mock_inquire_team.return_value = "team2"
+        mock_inquire_team.return_value = "Team Beta"
         mock_create_job.return_value = job_response
 
         runner = CliRunner()
@@ -176,7 +186,7 @@ class TestTeamParameter:
         mock_inquire_team.assert_called_once()
         assert mock_inquire_team.call_args[1]["existing_teams"] == teams
         self._assert_training_job_called_with_team(
-            mock_create_job, "team2", training_project
+            mock_create_job, "Team Beta", training_project, expected_teams=teams
         )
 
     # SCENARIO 4: --team NOT PROVIDED: User has multiple teams, existing project in exactly one team
@@ -218,7 +228,7 @@ class TestTeamParameter:
 
         assert result.exit_code == 0
         self._assert_training_job_called_with_team(
-            mock_create_job, "team2", training_project
+            mock_create_job, "Team Beta", training_project, expected_teams=teams
         )
         mock_remote.api.list_training_projects.assert_called_once()
 
@@ -258,7 +268,7 @@ class TestTeamParameter:
         mock_remote_factory.return_value = mock_remote
         self._setup_mock_status(mock_status)
         self._setup_mock_loader(mock_import_project, training_project)
-        mock_inquire_team.return_value = "team1"
+        mock_inquire_team.return_value = "Team Alpha"
         mock_create_job.return_value = job_response
 
         runner = CliRunner()
@@ -269,7 +279,7 @@ class TestTeamParameter:
         mock_inquire_team.assert_called_once()
         assert mock_inquire_team.call_args[1]["existing_teams"] == teams
         self._assert_training_job_called_with_team(
-            mock_create_job, "team1", training_project
+            mock_create_job, "Team Alpha", training_project, expected_teams=teams
         )
 
     # SCENARIO 6: --team NOT PROVIDED: User has exactly one team, no existing project
@@ -300,7 +310,7 @@ class TestTeamParameter:
 
         assert result.exit_code == 0
         self._assert_training_job_called_with_team(
-            mock_create_job, "team1", training_project
+            mock_create_job, "Team Alpha", training_project, expected_teams=teams
         )
 
     # SCENARIO 7: --team NOT PROVIDED: User has exactly one team, existing project matches the team
@@ -338,7 +348,7 @@ class TestTeamParameter:
 
         assert result.exit_code == 0
         self._assert_training_job_called_with_team(
-            mock_create_job, "team1", training_project
+            mock_create_job, "Team Alpha", training_project, expected_teams=teams
         )
         mock_remote.api.list_training_projects.assert_called_once()
 
@@ -381,5 +391,5 @@ class TestTeamParameter:
         # that would require backend validation. Current behavior uses the single team.
         assert result.exit_code == 0
         self._assert_training_job_called_with_team(
-            mock_create_job, "team1", training_project
+            mock_create_job, "Team Alpha", training_project, expected_teams=teams
         )

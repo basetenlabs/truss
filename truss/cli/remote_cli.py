@@ -63,19 +63,11 @@ def inquire_model_name() -> str:
 def get_team_id_from_name(
     teams: dict[str, dict[str, str]], team_name: str
 ) -> Optional[str]:
-    """
-    Get team ID from team name given a dictionary mapping team name to team data.
-    Returns team ID if found, None otherwise.
-    """
     team = teams.get(team_name)
     return team["id"] if team else None
 
 
 def format_available_teams(teams: dict[str, dict[str, str]]) -> str:
-    """
-    Format a dictionary of teams into a comma-separated string of team names.
-    Returns "none" if the dictionary is empty.
-    """
     team_names = list(teams.keys())
     return ", ".join(team_names) if team_names else "none"
 
@@ -83,19 +75,13 @@ def format_available_teams(teams: dict[str, dict[str, str]]) -> str:
 def inquire_team(
     existing_teams: Optional[dict[str, dict[str, str]]] = None,
 ) -> Optional[str]:
-    """
-    Inquire for team selection if multiple teams are available.
-    Returns team ID if selected, None otherwise.
-    If existing_teams is provided, uses that dict to avoid re-querying the API;
-    otherwise fetches teams from API.
-    """
     if existing_teams is not None:
         selected_team_name = inquirer.select(
             "👥 Which team do you want to push to?",
             qmark="",
             choices=list[str](existing_teams.keys()),
         ).execute()
-        return existing_teams[selected_team_name]["id"]
+        return selected_team_name
 
     # If no existing teams, return None (don't propagate team param)
     return None

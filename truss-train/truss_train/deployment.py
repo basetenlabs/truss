@@ -52,10 +52,13 @@ def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJo
 
 
 def _upsert_project_and_create_job(
-    remote_provider: BasetenRemote, training_project: TrainingProject, config: Path
+    remote_provider: BasetenRemote,
+    training_project: TrainingProject,
+    config: Path,
+    team_id: Optional[str] = None,
 ) -> dict:
     project_resp = remote_provider.upsert_training_project(
-        training_project=training_project
+        training_project=training_project, team_id=team_id
     )
     prepared_job = prepare_push(remote_provider.api, config, training_project.job)
 
@@ -70,6 +73,7 @@ def create_training_job(
     config: Path,
     training_project: TrainingProject,
     job_name_from_cli: Optional[str] = None,
+    team_name: Optional[str] = None,
     team_id: Optional[str] = None,
 ) -> dict:
     if job_name_from_cli:
@@ -78,13 +82,14 @@ def create_training_job(
                 f"[bold yellow]⚠ Warning:[/bold yellow] name '{training_project.job.name}' provided in config file will be ignored. Using job name '{job_name_from_cli}' provided via --job-name flag."
             )
         training_project.job.name = job_name_from_cli
-    if team_id:
-        training_project.team_id = team_id
+    if team_name:
+        training_project.team_name = team_name
 
     job_resp = _upsert_project_and_create_job(
         remote_provider=remote_provider,
         training_project=training_project,
         config=config,
+        team_id=team_id,
     )
     job_resp["job_object"] = training_project.job
     return job_resp

@@ -13,7 +13,7 @@ from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.resolvers.training_project_team_resolver import (
-    resolve_training_project_team_id,
+    resolve_training_project_team_name,
 )
 from truss.cli.train import common as train_common
 from truss.cli.train import core
@@ -114,16 +114,18 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
-def _resolve_team_id(
+def _resolve_team_name(
     remote_provider: BasetenRemote,
     provided_team_name: Optional[str],
     existing_project_name: Optional[str] = None,
+    existing_teams: Optional[dict[str, dict[str, str]]] = None,
 ) -> Optional[str]:
-    """Resolve team ID for training projects."""
-    return resolve_training_project_team_id(
+    """Resolve team name for training projects."""
+    return resolve_training_project_team_name(
         remote_provider=remote_provider,
         provided_team_name=provided_team_name,
         existing_project_name=existing_project_name,
+        existing_teams=existing_teams,
     )
 
 
@@ -153,21 +155,25 @@ def push_training_job(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    # Resolve team before starting spinner to ensure interactive prompts are visible
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    # Load training project once at the beginning
-    # This is used for both team_id auto-detection and job creation
-    with loader.import_training_project(config) as training_project:
-        existing_project_name = training_project.name
+    existing_teams = remote_provider.api.get_teams()
 
-        team_id = _resolve_team_id(
+    with loader.import_training_project(config) as training_project:
+        team_name = _resolve_team_name(
             remote_provider,
             provided_team_name,
-            existing_project_name=existing_project_name,
+            existing_project_name=training_project.name,
+            existing_teams=existing_teams,
         )
+
+        team_id = None
+        if team_name and existing_teams:
+            team_data = existing_teams.get(team_name)
+            if team_data:
+                team_id = team_data["id"]
 
         with console.status("Creating training job...", spinner="dots"):
             job_resp = deployment.create_training_job(
@@ -175,6 +181,7 @@ def push_training_job(
                 config,
                 training_project,
                 job_name_from_cli=job_name,
+                team_name=team_name,
                 team_id=team_id,
             )
 
