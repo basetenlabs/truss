@@ -5,6 +5,10 @@ pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
 pub const MIN_REQUEST_TIMEOUT_S: f64 = 0.5;
 pub const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 
+// Total timeout constants
+pub const MIN_TOTAL_TIMEOUT_S: f64 = 0.5;
+pub const MAX_TOTAL_TIMEOUT_S: f64 = 3600.0;
+
 // Concurrency constants
 pub const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
 pub const MAX_CONCURRENCY_LOW_BATCH: usize = 512;

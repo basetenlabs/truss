@@ -323,7 +323,7 @@ impl PerformanceClientCore {
             Ok(())
         };
 
-        // Apply operation timeout if configured
+        // Apply total timeout if configured
         if let Some(total_timeout) = config.total_timeout_duration() {
             match tokio::time::timeout(total_timeout, process_results).await {
                 Ok(Ok(())) => {}

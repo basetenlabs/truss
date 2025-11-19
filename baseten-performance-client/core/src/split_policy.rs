@@ -71,10 +71,10 @@ impl RequestProcessingConfig {
         }
         if total_timeout_s.is_some() {
             let total_timeout = total_timeout_s.unwrap();
-            if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&total_timeout) {
+            if !(MIN_TOTAL_TIMEOUT_S..=MAX_TOTAL_TIMEOUT_S).contains(&total_timeout) {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
                     "Total timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
-                    total_timeout, MIN_REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
+                    total_timeout, MIN_TOTAL_TIMEOUT_S, MAX_TOTAL_TIMEOUT_S
                 )));
             }
             if total_timeout < timeout_s {
