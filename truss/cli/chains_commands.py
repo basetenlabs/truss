@@ -1,6 +1,6 @@
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
 import rich
 import rich.live
@@ -308,8 +308,9 @@ def push_chain(
             name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
         )
 
+        remote_provider = None
         if not dryrun and remote:
-            remote_provider: BasetenRemote = RemoteFactory.create(remote=remote)
+            remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
             existing_teams = remote_provider.api.get_teams()
             _, team_id = resolve_chain_team_name(
                 remote_provider,
@@ -330,6 +331,7 @@ def push_chain(
             disable_chain_download=disable_chain_download,
             deployment_name=deployment_name,
             team_id=team_id,
+            remote_provider=remote_provider,
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
