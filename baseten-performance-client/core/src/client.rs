@@ -595,7 +595,7 @@ impl PerformanceClientCore {
         // Validate parameters internally (using batch_size of 128 for validation)
         let (validated_concurrency, request_timeout_duration) =
             self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
-        
+
         // Validate total_timeout_s if provided
         if let Some(total_timeout) = total_timeout_s {
             if !(MIN_TOTAL_TIMEOUT_S..=MAX_TOTAL_TIMEOUT_S).contains(&total_timeout) {
@@ -611,7 +611,7 @@ impl PerformanceClientCore {
                 )));
             }
         }
-        
+
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
         let cancel_token = Arc::new(AtomicBool::new(false));
         let total_payloads = payloads_json.len();
