@@ -119,8 +119,7 @@ def _resolve_team_name(
     provided_team_name: Optional[str],
     existing_project_name: Optional[str] = None,
     existing_teams: Optional[dict[str, dict[str, str]]] = None,
-) -> Optional[str]:
-    """Resolve team name for training projects."""
+) -> tuple[Optional[str], Optional[str]]:
     return resolve_training_project_team_name(
         remote_provider=remote_provider,
         provided_team_name=provided_team_name,
@@ -162,18 +161,12 @@ def push_training_job(
     existing_teams = remote_provider.api.get_teams()
 
     with loader.import_training_project(config) as training_project:
-        team_name = _resolve_team_name(
+        team_name, team_id = _resolve_team_name(
             remote_provider,
             provided_team_name,
             existing_project_name=training_project.name,
             existing_teams=existing_teams,
         )
-
-        team_id = None
-        if team_name and existing_teams:
-            team_data = existing_teams.get(team_name)
-            if team_data:
-                team_id = team_data["id"]
 
         with console.status("Creating training job...", spinner="dots"):
             job_resp = deployment.create_training_job(
