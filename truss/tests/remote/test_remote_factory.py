@@ -75,6 +75,7 @@ def mock_incorrect_service_config():
 def test_create(mock_load_remote_config):
     service_name = "test_service"
     remote = RemoteFactory.create(service_name)
+    
     mock_load_remote_config.assert_called_once_with(service_name)
     assert isinstance(remote, TrussTestRemote)
 
