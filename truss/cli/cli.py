@@ -633,7 +633,7 @@ def push(
     source = Path(target_directory)
     # TODO(Abu): This needs to be refactored to be more generic
     push_kwargs = {
-        "tr": tr,
+        "truss_handle": tr,
         "model_name": model_name,
         "working_dir": source.parent if source.is_file() else source.resolve(),
         "publish": publish,
