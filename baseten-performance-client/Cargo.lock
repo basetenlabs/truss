@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client"
-version = "0.0.12-rc.0"
+version = "0.0.12-rc.1"
 dependencies = [
  "baseten_performance_client_core",
  "futures",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "baseten_performance_client_core"
-version = "0.0.12-rc.0"
+version = "0.0.12-rc.1"
 dependencies = [
  "futures",
  "once_cell",
