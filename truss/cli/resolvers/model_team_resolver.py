@@ -58,13 +58,11 @@ def resolve_model_team_name(
             )
         return (provided_team_name, _get_team_id(provided_team_name))
 
-    # Check if model exists and get its team
     model_team_id = None
     model_team_name = None
     if existing_model_name is not None:
         model_team_id = get_model_team_id(remote_provider.api, existing_model_name)
         if model_team_id:
-            # Find team name from team_id
             for team_name, team_data in existing_teams.items():
                 if team_data["id"] == model_team_id:
                     model_team_name = team_name

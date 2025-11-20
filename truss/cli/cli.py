@@ -631,25 +631,24 @@ def push(
             console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
     source = Path(target_directory)
-    # TODO(Abu): This needs to be refactored to be more generic
-    push_kwargs = {
-        "truss_handle": tr,
-        "model_name": model_name,
-        "working_dir": source.parent if source.is_file() else source.resolve(),
-        "publish": publish,
-        "promote": promote,
-        "preserve_previous_prod_deployment": preserve_previous_production_deployment,
-        "deployment_name": deployment_name,
-        "environment": environment,
-        "disable_truss_download": disable_truss_download,
-        "progress_bar": progress.Progress,
-        "include_git_info": include_git_info,
-        "preserve_env_instance_type": preserve_env_instance_type,
-        "deploy_timeout_minutes": deploy_timeout_minutes,
-    }
-    if isinstance(remote_provider, BasetenRemote):
-        push_kwargs["team_id"] = team_id
-    service = remote_provider.push(**push_kwargs)  # type: ignore
+    working_dir = source.parent if source.is_file() else source.resolve()
+
+    service = remote_provider.push(
+        truss_handle=tr,
+        model_name=model_name,
+        working_dir=working_dir,
+        publish=publish,
+        promote=promote,
+        preserve_previous_prod_deployment=preserve_previous_production_deployment,
+        deployment_name=deployment_name,
+        environment=environment,
+        disable_truss_download=disable_truss_download,
+        progress_bar=progress.Progress,
+        include_git_info=include_git_info,
+        preserve_env_instance_type=preserve_env_instance_type,
+        deploy_timeout_minutes=deploy_timeout_minutes,
+        team_id=team_id,
+    )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 

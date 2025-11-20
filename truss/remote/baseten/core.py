@@ -507,7 +507,6 @@ def create_truss_service(
             environment=environment,
             preserve_env_instance_type=preserve_env_instance_type,
             deploy_timeout_minutes=deploy_timeout_minutes,
-            team_id=team_id,
         )
     except ApiError as e:
         if (
