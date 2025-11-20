@@ -19,6 +19,7 @@ from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
@@ -507,6 +508,7 @@ def run_python(script, target_directory):
     required=False,
     help="Timeout in minutes for the deploy operation.",
 )
+@click.option("--team", type=str, required=False, help="Team name for the model")
 @common.common_options()
 def push(
     target_directory: str,
@@ -525,6 +527,7 @@ def push(
     tail: bool = False,
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
+    team: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -553,6 +556,15 @@ def push(
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = remote_cli.inquire_model_name()
+
+    # Resolve team_id if BasetenRemote
+    team_id = None
+    if isinstance(remote_provider, BasetenRemote):
+        _, team_id = resolve_model_team_name(
+            remote_provider=remote_provider,
+            provided_team_name=team,
+            existing_model_name=model_name,
+        )
 
     if promote and environment:
         raise click.UsageError(
@@ -620,21 +632,24 @@ def push(
 
     source = Path(target_directory)
     # TODO(Abu): This needs to be refactored to be more generic
-    service = remote_provider.push(
-        tr,
-        model_name=model_name,
-        working_dir=source.parent if source.is_file() else source.resolve(),
-        publish=publish,
-        promote=promote,
-        preserve_previous_prod_deployment=preserve_previous_production_deployment,
-        deployment_name=deployment_name,
-        environment=environment,
-        disable_truss_download=disable_truss_download,
-        progress_bar=progress.Progress,
-        include_git_info=include_git_info,
-        preserve_env_instance_type=preserve_env_instance_type,
-        deploy_timeout_minutes=deploy_timeout_minutes,
-    )  # type: ignore
+    push_kwargs = {
+        "tr": tr,
+        "model_name": model_name,
+        "working_dir": source.parent if source.is_file() else source.resolve(),
+        "publish": publish,
+        "promote": promote,
+        "preserve_previous_prod_deployment": preserve_previous_production_deployment,
+        "deployment_name": deployment_name,
+        "environment": environment,
+        "disable_truss_download": disable_truss_download,
+        "progress_bar": progress.Progress,
+        "include_git_info": include_git_info,
+        "preserve_env_instance_type": preserve_env_instance_type,
+        "deploy_timeout_minutes": deploy_timeout_minutes,
+    }
+    if isinstance(remote_provider, BasetenRemote):
+        push_kwargs["team_id"] = team_id
+    service = remote_provider.push(**push_kwargs)  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 

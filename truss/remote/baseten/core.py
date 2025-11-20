@@ -234,6 +234,30 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     return model["model"]["id"]
 
 
+def get_model_team_id(api: BasetenApi, model_name: str) -> Optional[str]:
+    """
+    Get the team_id for an existing model.
+
+    Args:
+        api: BasetenApi instance
+        model_name: Name of the model to check
+
+    Returns:
+        team_id if model exists and has a team, otherwise None
+    """
+    try:
+        model = api.get_model(model_name)
+        team = model["model"].get("team")
+        return team["id"] if team else None
+    except ApiError as e:
+        if (
+            e.graphql_error_code
+            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
+        ):
+            return None
+        raise e
+
+
 def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:
     query_result = api.get_model(model_name.value)["model"]
     return query_result, query_result["versions"]
@@ -402,6 +426,7 @@ def create_truss_service(
     environment: Optional[str] = None,
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
+    team_id: Optional[str] = None,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -430,6 +455,7 @@ def create_truss_service(
             allow_truss_download=allow_truss_download,
             origin=origin,
             deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         return ModelVersionHandle(
@@ -455,6 +481,7 @@ def create_truss_service(
             origin=origin,
             environment=environment,
             deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         return ModelVersionHandle(
@@ -480,6 +507,7 @@ def create_truss_service(
             environment=environment,
             preserve_env_instance_type=preserve_env_instance_type,
             deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
     except ApiError as e:
         if (
