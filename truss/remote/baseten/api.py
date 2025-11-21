@@ -410,13 +410,7 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         chains = resp["data"]["chains"]
 
-        # Filter by team_id if provided
-        if team_id:
-            # Note: We need to filter client-side since GraphQL doesn't support team filtering yet
-            # This assumes chains have team_name field. If not available, we'll need backend support.
-            # For now, return all chains and let the resolver handle filtering by team_name
-            pass
-
+        # TODO(COR-492): Filter by team_id in the backend
         return chains
 
     def get_chain_deployments(self, chain_id: str):

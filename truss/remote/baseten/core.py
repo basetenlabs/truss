@@ -107,13 +107,6 @@ def get_chain_id_by_name(
         chain_id if present, otherwise None
     """
     chains = api.get_chains(team_id=team_id)
-
-    # Filter by team_name if team_id is provided and chains have team_name field
-    if team_id:
-        # Note: This assumes chains have team_name field. If not, we'll need backend filtering.
-        # For now, we'll match by name only and let the resolver handle team filtering.
-        pass
-
     chain_name_id_mapping = {chain["name"]: chain["id"] for chain in chains}
     return chain_name_id_mapping.get(chain_name)
 
