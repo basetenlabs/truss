@@ -187,10 +187,7 @@ class TestModelTeamResolver:
 
     @pytest.mark.parametrize(
         "existing_teams_param,should_call_get_teams",
-        [
-            (None, True),
-            ({"Team Alpha": {"id": "team1", "name": "Team Alpha"}}, False),
-        ],
+        [(None, True), ({"Team Alpha": {"id": "team1", "name": "Team Alpha"}}, False)],
     )
     def test_get_teams_called_when_existing_teams_none(
         self, existing_teams_param, should_call_get_teams
@@ -214,10 +211,7 @@ class TestModelTeamResolver:
 
     @pytest.mark.parametrize(
         "existing_model_name,should_call_get_model_team_id",
-        [
-            (None, False),
-            ("some-model", True),
-        ],
+        [(None, False), ("some-model", True)],
     )
     @patch("truss.cli.resolvers.model_team_resolver.remote_cli.inquire_team")
     def test_existing_model_name_scenarios(
@@ -232,7 +226,8 @@ class TestModelTeamResolver:
         mock_inquire_team.return_value = "Team Beta"
 
         with patch(
-            "truss.cli.resolvers.model_team_resolver.get_model_team_id", return_value=None
+            "truss.cli.resolvers.model_team_resolver.get_model_team_id",
+            return_value=None,
         ) as mock_get_model_team_id:
             team_name, team_id = resolve_model_team_name(
                 remote_provider=mock_remote,
@@ -250,4 +245,3 @@ class TestModelTeamResolver:
             )
         else:
             mock_get_model_team_id.assert_not_called()
-
