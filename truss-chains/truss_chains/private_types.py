@@ -21,6 +21,8 @@ import pydantic
 
 from truss.base import custom_types
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.remote_factory import RemoteFactory
 from truss_chains import public_types, utils
 
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
@@ -267,6 +269,8 @@ class PushOptionsBaseten(PushOptions):
     working_dir: pathlib.Path
     disable_chain_download: bool = False
     deployment_name: Optional[str] = None
+    team_id: Optional[str] = None
+    remote_provider: Optional[BasetenRemote] = None
 
     @classmethod
     def create(
@@ -281,11 +285,17 @@ class PushOptionsBaseten(PushOptions):
         environment: Optional[str] = None,
         disable_chain_download: bool = False,
         deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
+        remote_provider: Optional[BasetenRemote] = None,
     ) -> "PushOptionsBaseten":
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
         if environment:
             publish = True
+
+        if remote_provider is None and remote and not only_generate_trusses:
+            remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
         return PushOptionsBaseten(
             remote=remote,
             chain_name=chain_name,
@@ -296,6 +306,8 @@ class PushOptionsBaseten(PushOptions):
             working_dir=working_dir,
             disable_chain_download=disable_chain_download,
             deployment_name=deployment_name,
+            team_id=team_id,
+            remote_provider=remote_provider,
         )
 
 
