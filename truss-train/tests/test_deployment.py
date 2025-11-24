@@ -4,6 +4,7 @@ from unittest import mock
 import pytest
 
 from truss.base import truss_config
+from truss.remote.baseten import custom_types as b10_types
 from truss_train import deployment
 from truss_train.definitions import CacheConfig, Compute, Image, Runtime, TrainingJob
 
@@ -28,9 +29,22 @@ from truss_train.definitions import CacheConfig, Compute, Image, Runtime, Traini
         ),
     ],
 )
+@pytest.mark.parametrize("truss_user_env", [None, "with_env"])
 def test_prepare_push(
-    get_blob_credentials_mock, multipart_upload_boto3_mock, compute, enable_cache
+    get_blob_credentials_mock,
+    multipart_upload_boto3_mock,
+    compute,
+    enable_cache,
+    truss_user_env,
 ):
+    if truss_user_env == "with_env":
+        truss_user_env = b10_types.TrussUserEnv(
+            truss_client_version="1.0.0",
+            python_version="3.9.0",
+            pydantic_version="2.0.0",
+            mypy_version=None,
+            git_info=None,
+        )
     mock_api = mock.Mock()
     mock_api.get_blob_credentials.return_value = {
         "s3_bucket": "test-s3-bucket",
@@ -50,6 +64,7 @@ def test_prepare_push(
                 )
             ),
         ),
+        truss_user_env=truss_user_env,
     )
     assert len(prepared_job.runtime_artifacts) == 1
     assert prepared_job.runtime_artifacts[0].s3_key == "test-s3-key"
@@ -63,5 +78,6 @@ def test_prepare_push(
         assert prepared_job.compute.accelerator is None
     assert prepared_job.runtime.cache_config.enabled == enable_cache
     assert prepared_job.runtime.cache_config.enable_legacy_hf_mount
+    assert prepared_job.truss_user_env == truss_user_env
     # ensure that serialization works
     prepared_job.model_dump()
