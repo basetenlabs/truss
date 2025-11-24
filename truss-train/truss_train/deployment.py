@@ -21,6 +21,7 @@ class S3Artifact(SafeModel):
 # to the end user via the TrainingJob SDK.
 class PreparedTrainingJob(TrainingJob):
     runtime_artifacts: List[S3Artifact] = []
+    truss_user_env: Optional[b10_types.TrussUserEnv] = None
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -30,7 +31,12 @@ class PreparedTrainingJob(TrainingJob):
         return data
 
 
-def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJob):
+def prepare_push(
+    api: BasetenApi,
+    config: pathlib.Path,
+    training_job: TrainingJob,
+    truss_user_env: Optional[b10_types.TrussUserEnv] = None,
+):
     # Assume config is at the root of the directory.
     archive = archive_dir(config.absolute().parent)
     credentials = api.get_blob_credentials(b10_types.BlobType.TRAIN)
@@ -48,6 +54,7 @@ def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJo
         runtime_artifacts=[
             S3Artifact(s3_key=credentials["s3_key"], s3_bucket=credentials["s3_bucket"])
         ],
+        truss_user_env=truss_user_env,
     )
 
 
@@ -60,7 +67,14 @@ def _upsert_project_and_create_job(
     project_resp = remote_provider.upsert_training_project(
         training_project=training_project, team_id=team_id
     )
-    prepared_job = prepare_push(remote_provider.api, config, training_project.job)
+
+    # Collect TrussUserEnv with git info from the config directory
+    working_dir = config.absolute().parent
+    truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
+
+    prepared_job = prepare_push(
+        remote_provider.api, config, training_project.job, truss_user_env=truss_user_env
+    )
 
     job_resp = remote_provider.api.create_training_job(
         project_id=project_resp["id"], job=prepared_job
