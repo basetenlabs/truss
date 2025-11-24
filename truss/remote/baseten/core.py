@@ -92,19 +92,21 @@ class ModelVersionHandle(NamedTuple):
     instance_type_name: Optional[str] = None
 
 
-def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
+def get_chain_id_by_name(
+    api: BasetenApi, chain_name: str, team_id: Optional[str] = None
+) -> Optional[str]:
     """
     Check if a chain with the given name exists in the Baseten remote.
 
     Args:
         api: BasetenApi instance
         chain_name: Name of the chain to check for existence
+        team_id: Optional team_id to filter chains by team
 
     Returns:
         chain_id if present, otherwise None
     """
-    chains = api.get_chains()
-
+    chains = api.get_chains(team_id=team_id)
     chain_name_id_mapping = {chain["name"]: chain["id"] for chain in chains}
     return chain_name_id_mapping.get(chain_name)
 
@@ -133,6 +135,7 @@ def create_chain_atomic(
     original_source_artifact_s3_key: Optional[str] = None,
     allow_truss_download: bool = True,
     deployment_name: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -141,7 +144,7 @@ def create_chain_atomic(
         )
         is_draft = False
 
-    chain_id = get_chain_id_by_name(api, chain_name)
+    chain_id = get_chain_id_by_name(api, chain_name, team_id=team_id)
 
     # TODO(Tyron): Refactor for better readability:
     # 1. Prepare all arguments for `deploy_chain_atomic`.
@@ -158,6 +161,7 @@ def create_chain_atomic(
             original_source_artifact_s3_key=original_source_artifact_s3_key,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
+            team_id=team_id,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -174,6 +178,7 @@ def create_chain_atomic(
                 original_source_artifact_s3_key=original_source_artifact_s3_key,
                 allow_truss_download=allow_truss_download,
                 deployment_name=deployment_name,
+                team_id=team_id,
             )
         except ApiError as e:
             if (
@@ -197,6 +202,7 @@ def create_chain_atomic(
             original_source_artifact_s3_key=original_source_artifact_s3_key,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
+            team_id=team_id,
         )
 
     return ChainDeploymentHandleAtomic(
