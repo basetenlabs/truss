@@ -566,10 +566,12 @@ def push(
     # Resolve team_id if BasetenRemote
     team_id = None
     if isinstance(remote_provider, BasetenRemote):
+        existing_teams = remote_provider.api.get_teams()
         _, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
             provided_team_name=provided_team_name,
             existing_model_name=model_name,
+            existing_teams=existing_teams,
         )
 
     if promote and environment:

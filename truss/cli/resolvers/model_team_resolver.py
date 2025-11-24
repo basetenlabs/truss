@@ -69,7 +69,6 @@ def resolve_model_team_name(
             )
         return (provided_team_name, _get_team_id(provided_team_name))
 
-    model_team_name = None
     if existing_model_name is not None:
         matching_models = _get_matching_models_in_accessible_teams(existing_model_name)
 
@@ -77,11 +76,11 @@ def resolve_model_team_name(
             # Exactly one model in an accessible team - auto-detect
             team = matching_models[0].get("team", {})
             model_team_name = team.get("name")
+            model_team_id = team.get("id")
+            if model_team_name and model_team_name in existing_teams:
+                return (model_team_name, model_team_id)
         # If len > 1, multiple models exist - fall through to prompt logic
         # If len == 0, no models exist - fall through to prompt logic
-
-    if model_team_name and model_team_name in existing_teams:
-        return (model_team_name, _get_team_id(model_team_name))
 
     if len(existing_teams) == 1:
         single_team_name = list(existing_teams.keys())[0]

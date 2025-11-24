@@ -34,6 +34,7 @@ def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
 ):
     runner = CliRunner()
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
         with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
             result = runner.invoke(
                 truss_cli,
@@ -65,6 +66,7 @@ def test_cli_push_passes_none_deploy_timeout_minutes_when_not_specified(
 ):
     runner = CliRunner()
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
         with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
             result = runner.invoke(
                 truss_cli,
@@ -94,6 +96,7 @@ def test_cli_push_integration_deploy_timeout_minutes_propagated(
 ):
     runner = CliRunner()
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
         with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
             result = runner.invoke(
                 truss_cli,
