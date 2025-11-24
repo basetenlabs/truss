@@ -508,7 +508,13 @@ def run_python(script, target_directory):
     required=False,
     help="Timeout in minutes for the deploy operation.",
 )
-@click.option("--team", type=str, required=False, help="Team name for the model")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the model",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -527,7 +533,7 @@ def push(
     tail: bool = False,
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
-    team: Optional[str] = None,
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -562,7 +568,7 @@ def push(
     if isinstance(remote_provider, BasetenRemote):
         _, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
-            provided_team_name=team,
+            provided_team_name=provided_team_name,
             existing_model_name=model_name,
         )
 

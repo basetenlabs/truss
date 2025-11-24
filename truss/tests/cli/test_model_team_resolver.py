@@ -67,7 +67,7 @@ class TestModelTeamResolver:
             mock_remote.api.get_teams.assert_not_called()
 
     @pytest.mark.parametrize(
-        "scenario_num,teams,model_team_id,existing_model_name,inquire_return,expected_team_name,expected_team_id,should_prompt",
+        "scenario_num,teams,models_response,existing_model_name,inquire_return,expected_team_name,expected_team_id,should_prompt",
         [
             # SCENARIO 3: Multiple teams, no existing model
             (
@@ -77,7 +77,7 @@ class TestModelTeamResolver:
                     "Team Beta": {"id": "team2", "name": "Team Beta"},
                     "Team Gamma": {"id": "team3", "name": "Team Gamma"},
                 },
-                None,
+                {"models": []},  # No models exist
                 "non-existent-model",
                 "Team Beta",
                 "Team Beta",
@@ -92,7 +92,15 @@ class TestModelTeamResolver:
                     "Team Beta": {"id": "team2", "name": "Team Beta"},
                     "Team Gamma": {"id": "team3", "name": "Team Gamma"},
                 },
-                "team2",
+                {
+                    "models": [
+                        {
+                            "id": "model1",
+                            "name": "existing-model",
+                            "team": {"id": "team2", "name": "Team Beta"},
+                        }
+                    ]
+                },
                 "existing-model",
                 None,
                 "Team Beta",
@@ -107,7 +115,20 @@ class TestModelTeamResolver:
                     "Team Beta": {"id": "team2", "name": "Team Beta"},
                     "Team Gamma": {"id": "team3", "name": "Team Gamma"},
                 },
-                None,
+                {
+                    "models": [
+                        {
+                            "id": "model1",
+                            "name": "existing-model",
+                            "team": {"id": "team1", "name": "Team Alpha"},
+                        },
+                        {
+                            "id": "model2",
+                            "name": "existing-model",
+                            "team": {"id": "team2", "name": "Team Beta"},
+                        },
+                    ]
+                },
                 "existing-model",
                 "Team Alpha",
                 "Team Alpha",
@@ -118,7 +139,7 @@ class TestModelTeamResolver:
             (
                 6,
                 {"Team Alpha": {"id": "team1", "name": "Team Alpha"}},
-                None,
+                {"models": []},  # No models exist
                 "non-existent-model",
                 None,
                 "Team Alpha",
@@ -129,7 +150,15 @@ class TestModelTeamResolver:
             (
                 7,
                 {"Team Alpha": {"id": "team1", "name": "Team Alpha"}},
-                "team1",
+                {
+                    "models": [
+                        {
+                            "id": "model1",
+                            "name": "existing-model",
+                            "team": {"id": "team1", "name": "Team Alpha"},
+                        }
+                    ]
+                },
                 "existing-model",
                 None,
                 "Team Alpha",
@@ -140,7 +169,15 @@ class TestModelTeamResolver:
             (
                 8,
                 {"Team Alpha": {"id": "team1", "name": "Team Alpha"}},
-                "team2",
+                {
+                    "models": [
+                        {
+                            "id": "model1",
+                            "name": "existing-model",
+                            "team": {"id": "team2", "name": "Team Other"},
+                        }
+                    ]
+                },
                 "existing-model",
                 None,
                 "Team Alpha",
@@ -155,7 +192,7 @@ class TestModelTeamResolver:
         mock_inquire_team,
         scenario_num,
         teams,
-        model_team_id,
+        models_response,
         existing_model_name,
         inquire_return,
         expected_team_name,
@@ -167,16 +204,14 @@ class TestModelTeamResolver:
         if inquire_return:
             mock_inquire_team.return_value = inquire_return
 
-        with patch(
-            "truss.cli.resolvers.model_team_resolver.get_model_team_id",
-            return_value=model_team_id,
-        ):
-            team_name, team_id = resolve_model_team_name(
-                remote_provider=mock_remote,
-                provided_team_name=None,
-                existing_model_name=existing_model_name,
-                existing_teams=teams,
-            )
+        mock_remote.api.models.return_value = models_response
+
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote,
+            provided_team_name=None,
+            existing_model_name=existing_model_name,
+            existing_teams=teams,
+        )
 
         assert team_name == expected_team_name
         assert team_id == expected_team_id
@@ -184,6 +219,8 @@ class TestModelTeamResolver:
             mock_inquire_team.assert_called_once_with(existing_teams=teams)
         else:
             mock_inquire_team.assert_not_called()
+        if existing_model_name:
+            mock_remote.api.models.assert_called_once()
 
     @pytest.mark.parametrize(
         "existing_teams_param,should_call_get_teams",
@@ -210,12 +247,12 @@ class TestModelTeamResolver:
             mock_remote.api.get_teams.assert_not_called()
 
     @pytest.mark.parametrize(
-        "existing_model_name,should_call_get_model_team_id",
+        "existing_model_name,should_call_models_api",
         [(None, False), ("some-model", True)],
     )
     @patch("truss.cli.resolvers.model_team_resolver.remote_cli.inquire_team")
     def test_existing_model_name_scenarios(
-        self, mock_inquire_team, existing_model_name, should_call_get_model_team_id
+        self, mock_inquire_team, existing_model_name, should_call_models_api
     ):
         """Test behavior with different existing_model_name values."""
         teams = {
@@ -224,24 +261,19 @@ class TestModelTeamResolver:
         }
         mock_remote = self._setup_mock_remote(teams)
         mock_inquire_team.return_value = "Team Beta"
+        mock_remote.api.models.return_value = {"models": []}
 
-        with patch(
-            "truss.cli.resolvers.model_team_resolver.get_model_team_id",
-            return_value=None,
-        ) as mock_get_model_team_id:
-            team_name, team_id = resolve_model_team_name(
-                remote_provider=mock_remote,
-                provided_team_name=None,
-                existing_model_name=existing_model_name,
-                existing_teams=teams,
-            )
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote,
+            provided_team_name=None,
+            existing_model_name=existing_model_name,
+            existing_teams=teams,
+        )
 
         assert team_name == "Team Beta"
         assert team_id == "team2"
         mock_inquire_team.assert_called_once_with(existing_teams=teams)
-        if should_call_get_model_team_id:
-            mock_get_model_team_id.assert_called_once_with(
-                mock_remote.api, existing_model_name
-            )
+        if should_call_models_api:
+            mock_remote.api.models.assert_called_once()
         else:
-            mock_get_model_team_id.assert_not_called()
+            mock_remote.api.models.assert_not_called()

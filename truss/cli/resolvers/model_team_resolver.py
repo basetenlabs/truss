@@ -5,7 +5,6 @@ from typing import Optional
 import click
 
 from truss.cli import remote_cli
-from truss.remote.baseten.core import get_model_team_id
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -50,6 +49,18 @@ def resolve_model_team_name(
             return team_data["id"] if team_data else None
         return None
 
+    def _get_matching_models_in_accessible_teams(model_name: str) -> list[dict]:
+        """Get models matching the name that are in teams the user has access to."""
+        all_models_data = remote_provider.api.models()
+        accessible_team_ids = {team_data["id"] for team_data in existing_teams.values()}
+
+        return [
+            m
+            for m in all_models_data.get("models", [])
+            if m.get("name") == model_name
+            and m.get("team", {}).get("id") in accessible_team_ids
+        ]
+
     if provided_team_name is not None:
         if provided_team_name not in existing_teams:
             available_teams_str = remote_cli.format_available_teams(existing_teams)
@@ -58,15 +69,16 @@ def resolve_model_team_name(
             )
         return (provided_team_name, _get_team_id(provided_team_name))
 
-    model_team_id = None
     model_team_name = None
     if existing_model_name is not None:
-        model_team_id = get_model_team_id(remote_provider.api, existing_model_name)
-        if model_team_id:
-            for team_name, team_data in existing_teams.items():
-                if team_data["id"] == model_team_id:
-                    model_team_name = team_name
-                    break
+        matching_models = _get_matching_models_in_accessible_teams(existing_model_name)
+
+        if len(matching_models) == 1:
+            # Exactly one model in an accessible team - auto-detect
+            team = matching_models[0].get("team", {})
+            model_team_name = team.get("name")
+        # If len > 1, multiple models exist - fall through to prompt logic
+        # If len == 0, no models exist - fall through to prompt logic
 
     if model_team_name and model_team_name in existing_teams:
         return (model_team_name, _get_team_id(model_team_name))

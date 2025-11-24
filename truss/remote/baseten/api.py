@@ -469,6 +469,10 @@ class BasetenApi:
             models {
                 id,
                 name
+                team {
+                    id
+                    name
+                }
                 versions{
                     id,
                     semver,
