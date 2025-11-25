@@ -69,6 +69,7 @@ class FinalPushData(custom_types.OracleData):
     origin: Optional[custom_types.ModelOrigin] = None
     environment: Optional[str] = None
     allow_truss_download: bool
+    team_id: Optional[str] = None
 
 
 class BasetenRemote(TrussRemote):
@@ -128,6 +129,7 @@ class BasetenRemote(TrussRemote):
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
         deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -196,6 +198,7 @@ class BasetenRemote(TrussRemote):
             origin=origin,
             environment=environment,
             allow_truss_download=not disable_truss_download,
+            team_id=team_id,
         )
 
     def push(  # type: ignore
@@ -214,6 +217,7 @@ class BasetenRemote(TrussRemote):
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -227,6 +231,7 @@ class BasetenRemote(TrussRemote):
             environment=environment,
             progress_bar=progress_bar,
             deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         if include_git_info:
@@ -253,6 +258,7 @@ class BasetenRemote(TrussRemote):
             truss_user_env=truss_user_env,
             preserve_env_instance_type=preserve_env_instance_type,
             deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=push_data.team_id,
         )
 
         if model_version_handle.instance_type_name:
@@ -281,6 +287,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         disable_chain_download: bool = False,
         deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -340,6 +347,7 @@ class BasetenRemote(TrussRemote):
             original_source_artifact_s3_key=raw_chain_s3_key,
             allow_truss_download=not disable_chain_download,
             deployment_name=deployment_name,
+            team_id=team_id,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle
