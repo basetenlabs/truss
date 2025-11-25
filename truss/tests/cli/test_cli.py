@@ -34,20 +34,22 @@ def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
 ):
     runner = CliRunner()
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                str(custom_model_truss_dir_with_pre_and_post),
-                "--remote",
-                "baseten",
-                "--model-name",
-                "model_name",
-                "--publish",
-                "--deploy-timeout-minutes",
-                "450",
-            ],
-        )
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "model_name",
+                    "--publish",
+                    "--deploy-timeout-minutes",
+                    "450",
+                ],
+            )
 
     assert result.exit_code == 0
     mock_create_truss_service.assert_called_once()
@@ -64,18 +66,20 @@ def test_cli_push_passes_none_deploy_timeout_minutes_when_not_specified(
 ):
     runner = CliRunner()
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                str(custom_model_truss_dir_with_pre_and_post),
-                "--remote",
-                "baseten",
-                "--model-name",
-                "model_name",
-                "--publish",
-            ],
-        )
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "model_name",
+                    "--publish",
+                ],
+            )
 
     assert result.exit_code == 0
     mock_create_truss_service.assert_called_once()
@@ -92,22 +96,24 @@ def test_cli_push_integration_deploy_timeout_minutes_propagated(
 ):
     runner = CliRunner()
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                str(custom_model_truss_dir_with_pre_and_post),
-                "--remote",
-                "baseten",
-                "--model-name",
-                "model_name",
-                "--publish",
-                "--environment",
-                "staging",
-                "--deploy-timeout-minutes",
-                "750",
-            ],
-        )
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "model_name",
+                    "--publish",
+                    "--environment",
+                    "staging",
+                    "--deploy-timeout-minutes",
+                    "750",
+                ],
+            )
 
     assert result.exit_code == 0
     mock_create_truss_service.assert_called_once()
