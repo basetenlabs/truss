@@ -115,6 +115,7 @@ pub async fn download_file_with_cache(
                 &destination,
                 pointer.size,
                 &pointer.runtime_secret_name,
+                false,
             )
             .await?;
         }

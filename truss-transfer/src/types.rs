@@ -11,6 +11,8 @@ pub enum ResolutionType {
     S3,
     #[serde(rename = "azure")]
     Azure,
+    #[serde(rename = "baseten_training")]
+    BasetenTraining,
 }
 
 impl ToString for ResolutionType {
@@ -20,6 +22,7 @@ impl ToString for ResolutionType {
             ResolutionType::Gcs => "gcs".to_string(),
             ResolutionType::S3 => "s3".to_string(),
             ResolutionType::Azure => "azure".to_string(),
+            ResolutionType::BasetenTraining => "baseten_training".to_string(),
         }
     }
 }
