@@ -30,7 +30,7 @@ requirements: []
 requirements_file: null
 resources:
   accelerator: null
-  cpu: "1"
+  cpu: '1'
   memory: 2Gi
   use_gpu: false
 runtime:
@@ -40,12 +40,17 @@ runtime:
     restart_check_delay_seconds: null
     restart_threshold_seconds: null
     stop_traffic_threshold_seconds: null
+  is_websocket_endpoint: true
   predict_concurrency: 1
   streaming_read_timeout: 60
   transport:
     kind: websocket
+    ping_interval_seconds: null
+    ping_timeout_seconds: null
   truss_server_version_override: null
 secrets: {}
-spec_version: "2.0"
+spec_version: '2.0'
 system_packages: []
+training_checkpoints: null
+trt_llm: null
 use_local_src: false
