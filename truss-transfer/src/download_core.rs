@@ -375,10 +375,11 @@ pub async fn download_s3_to_path(
     path: &Path,
     size: u64,
     runtime_secret_name: &str,
+    use_training_secrets: bool,
 ) -> Result<()> {
     use crate::create::aws_metadata::s3_storage;
 
-    let s3_box = s3_storage(bucket_name, runtime_secret_name)
+    let s3_box = s3_storage(bucket_name, runtime_secret_name, use_training_secrets)
         .map_err(|e| anyhow!("Failed to create S3 client: {}", e))?;
     let s3: Arc<dyn ObjectStore> = Arc::from(s3_box);
     let object_path = object_store::path::Path::from(object_key);

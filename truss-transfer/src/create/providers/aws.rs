@@ -10,11 +10,18 @@ use crate::create::provider::StorageProvider;
 use crate::types::{BasetenPointer, ModelRepo, Resolution, ResolutionType, S3Resolution};
 
 /// AWS S3 implementation of CloudMetadataProvider
-pub struct AwsProvider;
+pub struct AwsProvider {
+    use_training_secrets: bool,
+}
 
 impl AwsProvider {
-    pub fn new() -> Self {
-        Self
+    pub fn new(use_training_secrets: bool) -> Self {
+        Self { use_training_secrets }
+    }
+
+    /// Get the value of use_training_secrets (useful for testing)
+    pub fn use_training_secrets(&self) -> bool {
+        self.use_training_secrets
     }
 }
 
@@ -29,7 +36,7 @@ impl CloudMetadataProvider for AwsProvider {
         bucket: &str,
         runtime_secret_name: &str,
     ) -> Result<Box<dyn ObjectStore>> {
-        let s3 = s3_storage(bucket, runtime_secret_name)?;
+        let s3 = s3_storage(bucket, runtime_secret_name, self.use_training_secrets)?;
         Ok(s3)
     }
 

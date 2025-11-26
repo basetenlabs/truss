@@ -34,7 +34,8 @@ pub fn get_provider_for_repo(repo: &ModelRepo) -> Result<Box<dyn StorageProvider
                 Ok(Box::new(GcsProvider::new()))
             } else if repo.repo_id.starts_with("s3://") {
                 // Handle the case where it's an S3 URI but marked as HTTP
-                Ok(Box::new(AwsProvider::new()))
+                // Baseten Training should use BASETEN_TRAINING resolution type
+                Ok(Box::new(AwsProvider::new(false)))
             } else if repo.repo_id.starts_with("azure://")
                 || repo.repo_id.contains(".blob.core.windows.net")
             {
@@ -46,7 +47,48 @@ pub fn get_provider_for_repo(repo: &ModelRepo) -> Result<Box<dyn StorageProvider
             }
         }
         ResolutionType::Gcs => Ok(Box::new(GcsProvider::new())),
-        ResolutionType::S3 => Ok(Box::new(AwsProvider::new())),
+        ResolutionType::S3 => Ok(Box::new(AwsProvider::new(false))),
         ResolutionType::Azure => Ok(Box::new(AzureProvider::new())),
+        ResolutionType::BasetenTraining => Ok(Box::new(AwsProvider::new(true))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_provider_for_repo;
+    use crate::create::providers::AwsProvider;
+    use crate::types::{ModelRepo, ResolutionType};
+
+    #[test]
+    fn test_baseten_training_produces_aws_provider_with_true() {
+        let repo = ModelRepo {
+            repo_id: "s3://test-bucket/test-path".to_string(),
+            revision: "main".to_string(),
+            allow_patterns: None,
+            ignore_patterns: None,
+            volume_folder: "test_folder".to_string(),
+            runtime_secret_name: "test_secret".to_string(),
+            kind: ResolutionType::BasetenTraining,
+        };
+
+        let provider = get_provider_for_repo(&repo).expect("Should create provider");
+
+        // Verify it's an AWS provider by checking the name
+        assert_eq!(provider.name(), "Amazon S3");
+
+        // To verify use_training_secrets is true, we need to downcast the provider
+        // Since we can't easily downcast Box<dyn StorageProvider>, we use unsafe
+        // pointer casting which is safe here because we know BasetenTraining
+        // always produces an AwsProvider
+        let aws_provider = unsafe {
+            let raw_ptr = provider.as_ref() as *const dyn super::StorageProvider;
+            let aws_ptr = raw_ptr as *const AwsProvider;
+            aws_ptr.as_ref().expect("Provider should be AwsProvider")
+        };
+
+        assert_eq!(aws_provider.use_training_secrets(), true);
+
+        // Verify the provider can handle the repo
+        assert!(provider.can_handle(&repo));
     }
 }

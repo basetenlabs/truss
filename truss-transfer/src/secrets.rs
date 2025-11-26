@@ -5,14 +5,15 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::constants::{HF_TOKEN, SECRETS_BASE_PATH};
+use crate::constants::{HF_TOKEN, SECRETS_BASE_PATH, TRAINING_AWS_SECRETS_BASE_PATH};
 
 static WARNED_SECRETS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
 /// Get secret from file system based on runtime secret name
 /// Returns None if the secret file doesn't exist or can't be read
-pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
-    let secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
+pub fn get_secret_from_file(runtime_secret_name: &str, use_training_secrets: bool) -> Option<String> {
+    let base_path = if use_training_secrets { TRAINING_AWS_SECRETS_BASE_PATH } else { SECRETS_BASE_PATH };
+    let secret_path = Path::new(base_path).join(runtime_secret_name);
     debug!("Attempting to read secret from {:?}", secret_path);
 
     match fs::read_to_string(&secret_path) {
@@ -52,7 +53,7 @@ pub fn get_secret_path(runtime_secret_name: &str) -> String {
 /// 2. Check environment variables: HF_TOKEN or HUGGING_FACE_HUB_TOKEN
 /// 3. Return None if not found
 pub fn get_hf_secret_from_file(hf_token_name: &str) -> Option<String> {
-    if let Some(token) = get_secret_from_file(hf_token_name) {
+    if let Some(token) = get_secret_from_file(hf_token_name, false) {
         Some(token)
     } else {
         (*HF_TOKEN).clone()

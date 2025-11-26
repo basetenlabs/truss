@@ -88,7 +88,7 @@ pub fn azure_storage(
         .with_client_options(get_client_options());
 
     // Read Azure credentials from single file
-    if let Some(credentials_content) = get_secret_from_file(runtime_secret_name) {
+    if let Some(credentials_content) = get_secret_from_file(runtime_secret_name, false) {
         // Try to parse as JSON first
         if let Ok(credentials) = serde_json::from_str::<AzureCredentials>(&credentials_content) {
             builder = builder.with_access_key(credentials.account_key);

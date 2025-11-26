@@ -37,6 +37,7 @@ struct AwsCredentials {
     access_key_id: String,
     secret_access_key: String,
     region: Option<String>,
+    session_token: Option<String>,
 }
 
 /// Create AWS S3 storage client using object_store
@@ -44,6 +45,7 @@ struct AwsCredentials {
 pub fn s3_storage(
     bucket_name: &str,
     runtime_secret_name: &str,
+    use_training_secrets: bool,
 ) -> Result<Box<dyn object_store::ObjectStore>, anyhow::Error> {
     use object_store::aws::{AmazonS3, AmazonS3Builder};
 
@@ -52,12 +54,15 @@ pub fn s3_storage(
         .with_client_options(get_client_options());
 
     // Read AWS credentials from single file
-    if let Some(credentials_content) = get_secret_from_file(runtime_secret_name) {
+    if let Some(credentials_content) = get_secret_from_file(runtime_secret_name, use_training_secrets) {
         // Try to parse as JSON first
         if let Ok(credentials) = serde_json::from_str::<AwsCredentials>(&credentials_content) {
             builder = builder
                 .with_access_key_id(credentials.access_key_id)
                 .with_secret_access_key(credentials.secret_access_key);
+            if let Some(session_token) = credentials.session_token {
+                builder = builder.with_token(session_token);
+            }
 
             if let Some(region) = credentials.region {
                 builder = builder.with_region(region);
