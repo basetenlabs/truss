@@ -2,8 +2,12 @@ use std::time::Duration;
 
 // Request timeout constants
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-pub const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
+pub const MIN_REQUEST_TIMEOUT_S: f64 = 0.1;
 pub const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
+
+// Total timeout constants
+pub const MIN_TOTAL_TIMEOUT_S: f64 = 0.1;
+pub const MAX_TOTAL_TIMEOUT_S: f64 = 3600.0;
 
 // Concurrency constants
 pub const MAX_CONCURRENCY_HIGH_BATCH: usize = 1024;
@@ -14,7 +18,7 @@ pub const MIN_CHARACTERS_PER_REQUEST: usize = 50;
 pub const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
 
 // hedging settings:
-pub const MIN_HEDGE_DELAY_S: f64 = 0.2;
+pub const MIN_HEDGE_DELAY_S: f64 = 0.1;
 pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
 
 // Batch size constants
