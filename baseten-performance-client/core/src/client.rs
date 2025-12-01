@@ -281,7 +281,7 @@ impl PerformanceClientCore {
                 let config = SendRequestConfig {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: retry_budget,
+                    retry_budget,
                     hedge_budget: hedge_config,
                     timeout: request_timeout_duration,
                 };
@@ -628,7 +628,7 @@ impl PerformanceClientCore {
                 let config = SendRequestConfig {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget: retry_budget,
+                    retry_budget,
                     hedge_budget,
                     timeout: individual_request_timeout,
                 };
