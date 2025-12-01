@@ -158,7 +158,6 @@ fn test_send_request_config_hedge_timeout_validation() {
     use std::sync::Arc;
     use std::time::Duration;
 
-    let cancel_token = Arc::new(AtomicBool::new(false));
     let hedge_budget = Arc::new(AtomicUsize::new(100));
     let retry_budget = Arc::new(AtomicUsize::new(100));
 
@@ -167,7 +166,6 @@ fn test_send_request_config_hedge_timeout_validation() {
         3,
         Duration::from_millis(100),
         retry_budget.clone(),
-        cancel_token.clone(),
         Some((hedge_budget.clone(), Duration::from_secs(2))), // hedge timeout = 2s
         Duration::from_secs(1),                               // request timeout = 1s
     );
@@ -181,7 +179,6 @@ fn test_send_request_config_hedge_timeout_validation() {
         3,
         Duration::from_millis(100),
         retry_budget.clone(),
-        cancel_token.clone(),
         Some((hedge_budget.clone(), Duration::from_secs(1))), // hedge timeout = 1s
         Duration::from_secs(1),                               // request timeout = 1s
     );
@@ -195,7 +192,6 @@ fn test_send_request_config_hedge_timeout_validation() {
         3,
         Duration::from_millis(100),
         retry_budget.clone(),
-        cancel_token.clone(),
         Some((hedge_budget.clone(), Duration::from_millis(500))), // hedge timeout = 0.5s
         Duration::from_secs(1),                                   // request timeout = 1s
     );
@@ -209,7 +205,6 @@ fn test_send_request_config_hedge_timeout_validation() {
         3,
         Duration::from_millis(100),
         retry_budget.clone(),
-        cancel_token.clone(),
         None, // no hedge budget
         Duration::from_secs(1),
     );
