@@ -204,8 +204,7 @@ pub async fn send_request_with_retry(
                 }
             }
         };
-        let should_retry = should_retry
-            && retries_done < max_retries;
+        let should_retry = should_retry && retries_done < max_retries;
 
         if !should_retry {
             return match response_result {
@@ -250,7 +249,7 @@ pub async fn send_request_with_hedging(
 
     tokio::select! {
         biased;
-        
+
         // Original request completed before hedge delay
         result = join_set.join_next() => {
             match result {

@@ -21,9 +21,15 @@ pub fn process_joinset_outcome<T>(
             if join_error.is_cancelled() {
                 Err(ClientError::Cancellation("Task was cancelled".to_string()))
             } else if join_error.is_panic() {
-                Err(ClientError::Network(format!("Task panicked: {}", join_error)))
+                Err(ClientError::Network(format!(
+                    "Task panicked: {}",
+                    join_error
+                )))
             } else {
-                Err(ClientError::Network(format!("Task join error: {}", join_error)))
+                Err(ClientError::Network(format!(
+                    "Task join error: {}",
+                    join_error
+                )))
             }
         }
     }

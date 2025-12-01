@@ -4,7 +4,9 @@ use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
 use crate::split_policy::*;
-use crate::utils::{calculate_hedge_budget, calculate_retry_timeout_budget, process_joinset_outcome};
+use crate::utils::{
+    calculate_hedge_budget, calculate_retry_timeout_budget, process_joinset_outcome,
+};
 
 use reqwest::Client;
 use std::ops::Deref;
@@ -231,10 +233,10 @@ impl PerformanceClientCore {
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
             total_requests,
         )));
-        
+
         // Create cancel token for coordinated shutdown
         let cancel_token = CancellationToken::new();
-        
+
         let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| {
             (
                 Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
@@ -269,9 +271,10 @@ impl PerformanceClientCore {
             let url = endpoint_url.clone();
 
             join_set.spawn(async move {
-                let _permit = semaphore.acquire_owned().await.map_err(|e| {
-                    ClientError::Network(format!("Semaphore closed: {}", e))
-                })?;
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| ClientError::Network(format!("Semaphore closed: {}", e)))?;
                 let client = client_wrapper.get_client();
 
                 let request_time_start = Instant::now();
@@ -563,10 +566,10 @@ impl PerformanceClientCore {
         let (validated_concurrency, request_timeout_duration) =
             self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
-        
+
         // Create cancel token for coordinated shutdown
         let cancel_token = CancellationToken::new();
-        
+
         let total_payloads = payloads_json.len();
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
             total_payloads,
@@ -610,9 +613,10 @@ impl PerformanceClientCore {
             let hedge_budget = hedge_budget_delay.clone();
 
             join_set.spawn(async move {
-                let _permit = semaphore.acquire_owned().await.map_err(|e| {
-                    ClientError::Network(format!("Semaphore closed: {}", e))
-                })?;
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| ClientError::Network(format!("Semaphore closed: {}", e)))?;
                 let client = client_wrapper.get_client();
 
                 let full_url = format!(
@@ -642,7 +646,12 @@ impl PerformanceClientCore {
                 let request_time_elapsed = request_time_start.elapsed();
 
                 result_tuple.map(|(response_json_value, headers_map)| {
-                    (index, response_json_value, headers_map, request_time_elapsed)
+                    (
+                        index,
+                        response_json_value,
+                        headers_map,
+                        request_time_elapsed,
+                    )
                 })
             });
         }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 
 /// A cancellation token that can be used to cancel async operations.
-/// 
+///
 /// Clone this token and pass it to functions that should be cancellable.
 /// When `cancel()` is called, all operations checking this token will be cancelled.
 #[derive(Clone, Default)]
@@ -30,7 +30,7 @@ impl CancellationToken {
 }
 
 /// RAII guard that wraps a JoinSet and aborts all tasks when dropped.
-/// 
+///
 /// This ensures that when a future is cancelled (e.g., via tokio::select! or Drop),
 /// all spawned tasks are automatically aborted, preventing resource leaks.
 pub struct JoinSetGuard<T: 'static> {
