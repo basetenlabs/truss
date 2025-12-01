@@ -8,6 +8,7 @@ import time
 from typing import Optional
 
 import fastapi
+import requests
 from baseten_performance_client import PerformanceClient
 from pydantic import BaseModel, Field
 
@@ -302,6 +303,7 @@ def run_client():
         internal_server_error_no_stall: bool = False,
         hedge_delay: Optional[float] = None,
         timeout: float = 360.0,
+        total_timeout_s: Optional[float] = None,
     ):
         """
         Run a scenario where the server stalls for a specified number of requests.
@@ -313,14 +315,22 @@ def run_client():
             stall_for_seconds=stall_for_seconds,
             internal_server_error_no_stall=internal_server_error_no_stall,
         )
-        response = client.embed(
-            model="text-embedding-ada-002",
-            input=[hp.to_string() for hp in hijack_payloads],
-            batch_size=1,
-            max_concurrent_requests=512,
-            hedge_delay=hedge_delay,
-            timeout_s=timeout,
-        )
+        try:
+            response = client.embed(
+                model="text-embedding-ada-002",
+                input=[hp.to_string() for hp in hijack_payloads],
+                batch_size=1,
+                max_concurrent_requests=512,
+                hedge_delay=hedge_delay,
+                timeout_s=timeout,
+                total_timeout_s=total_timeout_s,
+            )
+        except requests.exceptions.Timeout as e:
+            if total_timeout_s is not None and total_timeout_s == timeout and stall_for_seconds > total_timeout_s:
+                assert str(total_timeout_s) in str(e), "Total timeout exception should be raised"                        
+                return
+            else:
+                raise e
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
             "Response should contain `number_of_requests` embeddings"
@@ -356,6 +366,24 @@ def run_client():
         stall_for_seconds=5,
         internal_server_error_no_stall=False,
         timeout=2,
+    )
+
+    scenario_stalled(
+        100,
+        stall_x_many_requests=3,
+        stall_for_seconds=5,
+        internal_server_error_no_stall=False,
+        timeout=2,
+        total_timeout_s=10,
+    )
+
+    scenario_stalled(
+        20,
+        stall_x_many_requests=1,
+        stall_for_seconds=5,
+        internal_server_error_no_stall=False,
+        timeout=2,
+        total_timeout_s=2,
     )
 
 

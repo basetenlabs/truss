@@ -139,11 +139,24 @@ impl PerformanceClientCore {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
+        total_timeout_s: Option<f64>,
     ) -> Result<(usize, Duration), ClientError> {
         let validated_concurrency =
             Self::validate_concurrency_parameters(max_concurrent_requests, batch_size)?;
 
         let validated_timeout = Self::validate_and_get_timeout_duration(timeout_s)?;
+
+        if let Some(total_timeout) = total_timeout_s {
+            let validated_total_timeout =
+                Self::validate_and_get_timeout_duration(total_timeout)?;
+            if validated_total_timeout < validated_timeout {
+                return Err(ClientError::InvalidParameter(format!(
+                    "total_timeout_s ({:.3}s) must be greater than or equal to timeout_s ({:.3}s).",
+                    total_timeout,
+                    timeout_s
+                )));
+            }
+        }
 
         Ok((validated_concurrency, validated_timeout))
     }
@@ -220,6 +233,7 @@ impl PerformanceClientCore {
         create_payload: impl Fn(Vec<String>) -> T + Send + Sync + 'static,
         endpoint_url: Arc<str>,
         adjust_indices: impl Fn(&mut R, usize) + Send + Sync + 'static,
+        total_timeout: Option<Duration>,
     ) -> Result<(R, Vec<Duration>, Duration), ClientError>
     where
         T: serde::Serialize + Send + 'static,
@@ -307,8 +321,33 @@ impl PerformanceClientCore {
             });
         }
 
-        // Process results as they complete with fast-fail cancellation
-        while let Some(task_result) = join_set.join_next().await {
+        // Process results as they complete, racing against total timeout if specified
+        loop {
+            let task_result = if let Some(timeout_duration) = total_timeout {
+                let remaining = timeout_duration.saturating_sub(start_time.elapsed());
+                if remaining.is_zero() {
+                    return Err(ClientError::Timeout(format!(
+                        "Total operation timed out after {:.2}s",
+                        timeout_duration.as_secs_f64()
+                    )));
+                }
+                match tokio::time::timeout(remaining, join_set.join_next()).await {
+                    Ok(Some(result)) => result,
+                    Ok(None) => break, // All tasks completed
+                    Err(_) => {
+                        return Err(ClientError::Timeout(format!(
+                            "Total operation timed out after {:.2}s",
+                            timeout_duration.as_secs_f64()
+                        )));
+                    }
+                }
+            } else {
+                match join_set.join_next().await {
+                    Some(result) => result,
+                    None => break, // All tasks completed
+                }
+            };
+
             match process_joinset_outcome(task_result) {
                 Ok((response, duration, start_index, batch_index)) => {
                     indexed_results.push((batch_index, response, duration, start_index));
@@ -369,23 +408,26 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
             max_concurrent_requests,
             batch_size,
             timeout_s,
+            total_timeout_s,
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
         )?;
-
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
         // Pre-compute endpoint URL
         let endpoint_url: Arc<str> =
             format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
+
+        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
 
         let (mut response, durations, total_time) = self
             .process_batched_requests(
@@ -404,6 +446,7 @@ impl PerformanceClientCore {
                         item.index += start_index;
                     }
                 },
+                total_timeout,
             )
             .await?;
 
@@ -421,6 +464,7 @@ impl PerformanceClientCore {
         query: String,
         texts: Vec<String>,
         raw_scores: bool,
+        model: Option<String>,
         return_text: bool,
         truncate: bool,
         truncation_direction: String,
@@ -429,12 +473,14 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
             max_concurrent_requests,
             batch_size,
             timeout_s,
+            total_timeout_s,
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
@@ -447,6 +493,8 @@ impl PerformanceClientCore {
         let endpoint_url: Arc<str> =
             format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
 
+        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
+
         let (results, durations, total_time) = self
             .process_batched_requests(
                 batches,
@@ -454,6 +502,7 @@ impl PerformanceClientCore {
                 move |batch| CoreRerankRequest {
                     query: query.clone(),
                     texts: batch,
+                    model: model.clone(),
                     raw_scores,
                     return_text,
                     truncate,
@@ -465,6 +514,7 @@ impl PerformanceClientCore {
                         item.index += start_index;
                     }
                 },
+                total_timeout,
             )
             .await?;
 
@@ -483,6 +533,7 @@ impl PerformanceClientCore {
     pub async fn process_classify_requests(
         &self,
         inputs: Vec<String>,
+        model: Option<String>,
         raw_scores: bool,
         truncate: bool,
         truncation_direction: String,
@@ -491,12 +542,14 @@ impl PerformanceClientCore {
         max_chars_per_request: Option<usize>,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> Result<(CoreClassificationResponse, Vec<Duration>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
             max_concurrent_requests,
             batch_size,
             timeout_s,
+            total_timeout_s,
             self.base_url.to_string(),
             hedge_delay,
             max_chars_per_request,
@@ -509,6 +562,8 @@ impl PerformanceClientCore {
         let endpoint_url: Arc<str> =
             format!("{}/predict", config.base_url.trim_end_matches('/')).into();
 
+        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
+
         let (results, durations, total_time) = self
             .process_batched_requests(
                 batches,
@@ -518,6 +573,7 @@ impl PerformanceClientCore {
                     let inputs: Vec<Vec<String>> = batch.into_iter().map(|s| vec![s]).collect();
                     CoreClassifyRequest {
                         inputs,
+                        model: model.clone(),
                         raw_scores,
                         truncate,
                         truncation_direction: truncation_direction.clone(),
@@ -527,6 +583,7 @@ impl PerformanceClientCore {
                 |_results: &mut Vec<Vec<CoreClassificationResult>>, _start_index| {
                     // Classification responses don't have index fields to adjust
                 },
+                total_timeout,
             )
             .await?;
 
@@ -549,6 +606,7 @@ impl PerformanceClientCore {
         max_concurrent_requests: usize,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> Result<
         (
             Vec<(
@@ -561,10 +619,11 @@ impl PerformanceClientCore {
         ClientError,
     > {
         let start_time = std::time::Instant::now();
+        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
 
         // Validate parameters internally (using batch_size of 128 for validation)
         let (validated_concurrency, request_timeout_duration) =
-            self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
+            self.validate_request_parameters(max_concurrent_requests, 128, timeout_s, total_timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
 
         // Create cancel token for coordinated shutdown
@@ -656,8 +715,33 @@ impl PerformanceClientCore {
             });
         }
 
-        // Process results as they complete with fast-fail cancellation
-        while let Some(task_result) = join_set.join_next().await {
+        // Process results as they complete, racing against total timeout if specified
+        loop {
+            let task_result = if let Some(timeout_duration) = total_timeout {
+                let remaining = timeout_duration.saturating_sub(start_time.elapsed());
+                if remaining.is_zero() {
+                    return Err(ClientError::Timeout(format!(
+                        "Total operation timed out after {:.2}s",
+                        timeout_duration.as_secs_f64()
+                    )));
+                }
+                match tokio::time::timeout(remaining, join_set.join_next()).await {
+                    Ok(Some(result)) => result,
+                    Ok(None) => break,
+                    Err(_) => {
+                        return Err(ClientError::Timeout(format!(
+                            "Total operation timed out after {:.2}s",
+                            timeout_duration.as_secs_f64()
+                        )));
+                    }
+                }
+            } else {
+                match join_set.join_next().await {
+                    Some(result) => result,
+                    None => break,
+                }
+            };
+
             match process_joinset_outcome(task_result) {
                 Ok(indexed_data) => {
                     indexed_results.push(indexed_data);
