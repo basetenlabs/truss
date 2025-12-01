@@ -65,7 +65,8 @@ response = client.embed(
     max_concurrent_requests=32,
     timeout_s=360,
     max_chars_per_request=10000,  # Character-based batching (50-256,000)
-    hedge_delay=0.5  # Request hedging delay in seconds (min 0.2s)
+    hedge_delay=0.5,  # Request hedging delay in seconds (min 0.2s)
+    total_timeout_s=600  # Total timeout for all batched requests
 )
 
 # Accessing embedding data
@@ -100,6 +101,7 @@ Note: The embed method is versatile and can be used with any embeddings service,
 
 - **`max_chars_per_request`**: Character-based batching limit (50-256,000 characters). When set, requests are batched by character count rather than just input count, helping optimize for services with character-based pricing or processing limits.
 - **`hedge_delay`**: Request hedging delay in seconds (minimum 0.2s). Enables sending duplicate requests after a delay to improve latency if the original request is slow. Limited by a 5% budget to prevent excessive resource usage.
+- **`total_timeout_s`**: Total timeout for the entire operation in seconds. Unlike `timeout_s` (which is per-request), this sets an upper bound on the total time for all batched requests combined. Must be >= `timeout_s` if both are set.
 
 #### Asynchronous Embedding
 
@@ -317,6 +319,7 @@ async def async_classify():
 The client can raise several types of errors. Here's how to handle common ones:
 
 - **`requests.exceptions.HTTPError`**: This error is raised for HTTP issues, such as authentication failures (e.g., 403 Forbidden if the API key is wrong), server errors (e.g., 5xx), or if the endpoint is not found (404). You can inspect `e.response.status_code` and `e.response.text` (or `e.response.json()` if the body is JSON) for more details.
+- **`requests.exceptions.Timeout`**: This error is raised when a request or the total operation times out (based on `timeout_s` or `total_timeout_s`).
 - **`ValueError`**: This error can occur due to invalid input parameters (e.g., an empty `input` list for `embed`, invalid `batch_size` or `max_concurrent_requests` values). It can also be raised by `response.numpy()` if embeddings are not float vectors or have inconsistent dimensions.
 
 Here's an example demonstrating how to catch these errors for the `embed` method:
