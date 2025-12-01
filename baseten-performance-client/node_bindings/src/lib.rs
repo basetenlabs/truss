@@ -379,7 +379,14 @@ impl PerformanceClient {
 
     let result = self
       .core_client
-      .process_batch_post_requests(url_path, payloads, max_concurrent_requests, timeout_s, hedge_delay, total_timeout_s)
+      .process_batch_post_requests(
+        url_path,
+        payloads,
+        max_concurrent_requests,
+        timeout_s,
+        hedge_delay,
+        total_timeout_s,
+      )
       .await
       .map_err(convert_core_error_to_napi_error)?;
 

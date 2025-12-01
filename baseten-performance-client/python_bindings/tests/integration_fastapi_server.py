@@ -326,8 +326,14 @@ def run_client():
                 total_timeout_s=total_timeout_s,
             )
         except requests.exceptions.Timeout as e:
-            if total_timeout_s is not None and total_timeout_s == timeout and stall_for_seconds > total_timeout_s:
-                assert str(total_timeout_s) in str(e), "Total timeout exception should be raised"                        
+            if (
+                total_timeout_s is not None
+                and total_timeout_s == timeout
+                and stall_for_seconds > total_timeout_s
+            ):
+                assert str(total_timeout_s) in str(e), (
+                    "Total timeout exception should be raised"
+                )
                 return
             else:
                 raise e

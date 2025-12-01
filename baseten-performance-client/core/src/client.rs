@@ -147,13 +147,11 @@ impl PerformanceClientCore {
         let validated_timeout = Self::validate_and_get_timeout_duration(timeout_s)?;
 
         if let Some(total_timeout) = total_timeout_s {
-            let validated_total_timeout =
-                Self::validate_and_get_timeout_duration(total_timeout)?;
+            let validated_total_timeout = Self::validate_and_get_timeout_duration(total_timeout)?;
             if validated_total_timeout < validated_timeout {
                 return Err(ClientError::InvalidParameter(format!(
                     "total_timeout_s ({:.3}s) must be greater than or equal to timeout_s ({:.3}s).",
-                    total_timeout,
-                    timeout_s
+                    total_timeout, timeout_s
                 )));
             }
         }
@@ -622,8 +620,12 @@ impl PerformanceClientCore {
         let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
 
         // Validate parameters internally (using batch_size of 128 for validation)
-        let (validated_concurrency, request_timeout_duration) =
-            self.validate_request_parameters(max_concurrent_requests, 128, timeout_s, total_timeout_s)?;
+        let (validated_concurrency, request_timeout_duration) = self.validate_request_parameters(
+            max_concurrent_requests,
+            128,
+            timeout_s,
+            total_timeout_s,
+        )?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
 
         // Create cancel token for coordinated shutdown
