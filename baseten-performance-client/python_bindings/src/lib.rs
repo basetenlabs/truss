@@ -29,6 +29,35 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     runtime
 });
 
+/// Run a future with Ctrl+C cancellation support.
+/// When Ctrl+C is received, the future is dropped, triggering JoinSetGuard cleanup.
+async fn run_with_ctrl_c<F, T>(future: F) -> Result<T, ClientError>
+where
+    F: std::future::Future<Output = Result<T, ClientError>>,
+{
+    // Reset the flag at the start of each request
+    CTRL_C_RECEIVED.store(false, Ordering::SeqCst);
+
+    tokio::select! {
+        biased;
+
+        // Poll for Ctrl+C signal periodically
+        _ = async {
+            loop {
+                if CTRL_C_RECEIVED.load(Ordering::SeqCst) {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        } => {
+            Err(ClientError::Cancellation("Interrupted by Ctrl+C".to_string()))
+        }
+
+        // Run the actual future
+        result = future => result,
+    }
+}
+
 // Import Python exceptions
 pyo3::import_exception!(requests, HTTPError);
 pyo3::import_exception!(requests, Timeout);
@@ -353,10 +382,8 @@ impl PerformanceClient {
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_embeddings_requests(
                         input,
                         model,
@@ -369,17 +396,9 @@ impl PerformanceClient {
                         timeout_s,
                         hedge_delay,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive result from async task (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (core_response, batch_durations, total_time_val) = result_from_async_task;
@@ -473,10 +492,8 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_rerank_requests(
                         query,
                         texts,
@@ -490,17 +507,9 @@ impl PerformanceClient {
                         timeout_s,
                         hedge_delay,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive rerank result (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (core_response, batch_durations, total_time_val) = result_from_async_task;
@@ -595,10 +604,8 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_classify_requests(
                         inputs,
                         raw_scores,
@@ -610,17 +617,9 @@ impl PerformanceClient {
                         timeout_s,
                         hedge_delay,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive classify result (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (core_response, batch_durations, core_total_time) = result_from_async_task;
@@ -718,10 +717,8 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_batch_post_requests(
                         url_path,
                         payloads_json,
@@ -729,17 +726,9 @@ impl PerformanceClient {
                         timeout_s,
                         hedge_delay,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive batch_post result (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (response_data_with_times_and_headers, total_time) = result_from_async_task;

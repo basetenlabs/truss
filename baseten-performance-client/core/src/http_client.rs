@@ -1,8 +1,9 @@
+use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
 use crate::errors::ClientError;
 use rand::Rng;
 use reqwest::Client;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,7 +11,6 @@ pub struct SendRequestConfig {
     pub max_retries: u32,
     pub initial_backoff: Duration,
     pub retry_budget: Arc<AtomicUsize>,
-    pub cancel_token: Arc<AtomicBool>,
     pub hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
     pub timeout: Duration,
 }
@@ -21,7 +21,6 @@ impl SendRequestConfig {
         max_retries: u32,
         initial_backoff: Duration,
         retry_budget: Arc<AtomicUsize>,
-        cancel_token: Arc<AtomicBool>,
         hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
         timeout: Duration,
     ) -> Result<Self, ClientError> {
@@ -40,7 +39,6 @@ impl SendRequestConfig {
             max_retries,
             initial_backoff,
             retry_budget,
-            cancel_token,
             hedge_budget,
             timeout,
         })
@@ -172,7 +170,6 @@ pub async fn send_request_with_retry(
                     true
                 } else {
                     // For non-retryable client errors (e.g., 400), cancel other requests and propagate the error.
-                    config.cancel_token.store(true, Ordering::SeqCst);
                     false
                 }
             }
@@ -208,7 +205,6 @@ pub async fn send_request_with_retry(
             }
         };
         let should_retry = should_retry
-            && !config.cancel_token.load(Ordering::SeqCst)
             && retries_done < max_retries;
 
         if !should_retry {
@@ -243,56 +239,50 @@ pub async fn send_request_with_hedging(
         ClientError::Network("Failed to clone request builder for hedging".to_string())
     })?;
 
+    // Use JoinSetGuard to ensure all spawned tasks are aborted on drop
+    let mut join_set: JoinSetGuard<Result<reqwest::Response, ClientError>> = JoinSetGuard::new();
+
     // Start the original request
-    let mut original_request =
-        tokio::spawn(async move { request_builder.send().await.map_err(ClientError::from) });
+    join_set.spawn(async move { request_builder.send().await.map_err(ClientError::from) });
 
     // Wait for hedge delay
     let hedge_timer = tokio::time::sleep(*hedge_delay);
 
     tokio::select! {
+        biased;
+        
         // Original request completed before hedge delay
-        result = &mut original_request => {
+        result = join_set.join_next() => {
             match result {
-                Ok(response_result) => response_result.map_err(ClientError::from),
-                Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                Some(Ok(response_result)) => response_result,
+                Some(Err(join_err)) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                None => Err(ClientError::Network("No task result available".to_string())),
             }
         }
         // Hedge delay expired, start hedged request
         _ = hedge_timer => {
             // Decrement hedge budget
             if hedge_budget.fetch_sub(1, Ordering::SeqCst) > 0 {
-                let mut hedge_request = tokio::spawn(async move {
-                    request_builder_hedge.send().await
+                join_set.spawn(async move {
+                    request_builder_hedge.send().await.map_err(ClientError::from)
                 });
 
-                // Race between original and hedged request
-                tokio::select! {
-                    result = &mut original_request => {
-                        // Cancel hedge request if original completes first
-                        hedge_request.abort();
-                        match result {
-                            Ok(response_result) => response_result.map_err(ClientError::from),
-                            Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
-                        }
-                    }
-                    result = &mut hedge_request => {
-                        // Hedge request completed first
-                        original_request.abort();
-                        println!("hedged request completed first, original request cancelled");
-                        match result {
-                            Ok(response_result) => response_result.map_err(ClientError::from),
-                            Err(join_err) => Err(ClientError::Network(format!("Hedge request task failed: {}", join_err))),
-                        }
-                    }
+                // Race between original and hedged request - first to complete wins
+                match join_set.join_next().await {
+                    Some(Ok(response_result)) => response_result,
+                    Some(Err(join_err)) => Err(ClientError::Network(format!("Request task failed: {}", join_err))),
+                    None => Err(ClientError::Network("No task result available".to_string())),
                 }
+                // JoinSetGuard will abort the remaining task on drop
             } else {
                 // No hedge budget left, wait for original request
-                match original_request.await {
-                    Ok(response_result) => response_result.map_err(ClientError::from),
-                    Err(join_err) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                match join_set.join_next().await {
+                    Some(Ok(response_result)) => response_result,
+                    Some(Err(join_err)) => Err(ClientError::Network(format!("Original request task failed: {}", join_err))),
+                    None => Err(ClientError::Network("No task result available".to_string())),
                 }
             }
         }
     }
+    // JoinSetGuard drops here, aborting any remaining tasks
 }

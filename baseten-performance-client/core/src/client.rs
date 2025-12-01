@@ -1,20 +1,17 @@
+use crate::cancellation::{CancellationToken, JoinSetGuard};
 use crate::constants::*;
 use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
 use crate::split_policy::*;
-use crate::utils::{
-    acquire_permit_or_cancel, calculate_hedge_budget, calculate_retry_timeout_budget,
-    process_joinset_outcome,
-};
+use crate::utils::{calculate_hedge_budget, calculate_retry_timeout_budget, process_joinset_outcome};
 
 use reqwest::Client;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
 
 #[derive(Clone)]
 pub enum HttpClientWrapper {
@@ -213,7 +210,7 @@ impl PerformanceClientCore {
 
 impl PerformanceClientCore {
     // Generic batch processing method - handles pre-batched requests for ALL API types
-    // Uses JoinSet for better cancellation and lazy execution
+    // Uses JoinSetGuard for automatic cancellation on drop (RAII pattern)
     async fn process_batched_requests<T, R>(
         &self,
         batches: Vec<Vec<String>>,
@@ -234,7 +231,10 @@ impl PerformanceClientCore {
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
             total_requests,
         )));
-        let cancel_token = Arc::new(AtomicBool::new(false));
+        
+        // Create cancel token for coordinated shutdown
+        let cancel_token = CancellationToken::new();
+        
         let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| {
             (
                 Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
@@ -245,9 +245,10 @@ impl PerformanceClientCore {
         // Calculate expected capacity from original batches for pre-allocation
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
-        // Use JoinSet for better performance and cancellation
-        let mut join_set: JoinSet<Result<(R, Duration, usize, usize), ClientError>> =
-            JoinSet::new();
+        // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
+        // This provides implicit cancellation when the future is dropped
+        let mut join_set: JoinSetGuard<Result<(R, Duration, usize, usize), ClientError>> =
+            JoinSetGuard::with_cancel_token(cancel_token);
         let mut indexed_results: Vec<(usize, R, Duration, usize)> =
             Vec::with_capacity(total_requests);
 
@@ -260,7 +261,6 @@ impl PerformanceClientCore {
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
             let semaphore = Arc::clone(&semaphore);
-            let cancel_token = Arc::clone(&cancel_token);
             let retry_budget = Arc::clone(&retry_budget);
             let hedge_config = hedge_config.clone();
 
@@ -269,8 +269,9 @@ impl PerformanceClientCore {
             let url = endpoint_url.clone();
 
             join_set.spawn(async move {
-                let _permit =
-                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None).await?;
+                let _permit = semaphore.acquire_owned().await.map_err(|e| {
+                    ClientError::Network(format!("Semaphore closed: {}", e))
+                })?;
                 let client = client_wrapper.get_client();
 
                 let request_time_start = Instant::now();
@@ -278,7 +279,6 @@ impl PerformanceClientCore {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                     retry_budget: retry_budget,
-                    cancel_token: cancel_token.clone(),
                     hedge_budget: hedge_config,
                     timeout: request_timeout_duration,
                 };
@@ -306,14 +306,12 @@ impl PerformanceClientCore {
 
         // Process results as they complete with fast-fail cancellation
         while let Some(task_result) = join_set.join_next().await {
-            match process_joinset_outcome(task_result, &cancel_token) {
+            match process_joinset_outcome(task_result) {
                 Ok((response, duration, start_index, batch_index)) => {
                     indexed_results.push((batch_index, response, duration, start_index));
                 }
                 Err(e) => {
-                    // Cancel all remaining tasks immediately
-                    cancel_token.store(true, Ordering::SeqCst);
-                    join_set.abort_all();
+                    // JoinSetGuard::drop will abort remaining tasks automatically
                     return Err(e);
                 }
             }
@@ -355,6 +353,7 @@ impl PerformanceClientCore {
         }
     }
     // Core embeddings processing logic with unified interface
+    // Cancellation: dropping this future will automatically abort all in-flight requests
     pub async fn process_embeddings_requests(
         &self,
         texts: Vec<String>,
@@ -413,6 +412,7 @@ impl PerformanceClientCore {
     }
 
     // Core rerank processing logic with unified interface
+    // Cancellation: dropping this future will automatically abort all in-flight requests
     pub async fn process_rerank_requests(
         &self,
         query: String,
@@ -476,6 +476,7 @@ impl PerformanceClientCore {
     }
 
     // Core classify processing logic with unified interface
+    // Cancellation: dropping this future will automatically abort all in-flight requests
     pub async fn process_classify_requests(
         &self,
         inputs: Vec<String>,
@@ -536,7 +537,8 @@ impl PerformanceClientCore {
         Ok((response, durations, total_time))
     }
 
-    // Core batch post processing - optimized with JoinSet
+    // Core batch post processing - optimized with JoinSetGuard
+    // Cancellation: dropping this future will automatically abort all in-flight requests
     pub async fn process_batch_post_requests(
         &self,
         url_path: String,
@@ -561,7 +563,10 @@ impl PerformanceClientCore {
         let (validated_concurrency, request_timeout_duration) =
             self.validate_request_parameters(max_concurrent_requests, 128, timeout_s)?;
         let semaphore = Arc::new(Semaphore::new(validated_concurrency));
-        let cancel_token = Arc::new(AtomicBool::new(false));
+        
+        // Create cancel token for coordinated shutdown
+        let cancel_token = CancellationToken::new();
+        
         let total_payloads = payloads_json.len();
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
             total_payloads,
@@ -575,8 +580,8 @@ impl PerformanceClientCore {
             )
         });
 
-        // Use JoinSet for better performance and cancellation
-        let mut join_set: JoinSet<
+        // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
+        let mut join_set: JoinSetGuard<
             Result<
                 (
                     usize,
@@ -586,7 +591,7 @@ impl PerformanceClientCore {
                 ),
                 ClientError,
             >,
-        > = JoinSet::new();
+        > = JoinSetGuard::with_cancel_token(cancel_token);
         let mut indexed_results: Vec<(
             usize,
             serde_json::Value,
@@ -599,15 +604,15 @@ impl PerformanceClientCore {
             let api_key = self.api_key.clone();
             let base_url = self.base_url.clone();
             let url_path = url_path.clone();
-            let semaphore = Arc::clone(&semaphore);
-            let cancel_token = Arc::clone(&cancel_token);
+            let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let retry_budget = Arc::clone(&retry_budget);
             let individual_request_timeout = request_timeout_duration;
             let hedge_budget = hedge_budget_delay.clone();
 
             join_set.spawn(async move {
-                let _permit =
-                    acquire_permit_or_cancel(semaphore, cancel_token.clone(), None).await?;
+                let _permit = semaphore.acquire_owned().await.map_err(|e| {
+                    ClientError::Network(format!("Semaphore closed: {}", e))
+                })?;
                 let client = client_wrapper.get_client();
 
                 let full_url = format!(
@@ -620,7 +625,6 @@ impl PerformanceClientCore {
                     max_retries: MAX_HTTP_RETRIES,
                     initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
                     retry_budget: retry_budget,
-                    cancel_token: cancel_token.clone(),
                     hedge_budget,
                     timeout: individual_request_timeout,
                 };
@@ -637,31 +641,20 @@ impl PerformanceClientCore {
 
                 let request_time_elapsed = request_time_start.elapsed();
 
-                match result_tuple {
-                    Ok((response_json_value, headers_map)) => Ok((
-                        index,
-                        response_json_value,
-                        headers_map,
-                        request_time_elapsed,
-                    )),
-                    Err(e) => {
-                        cancel_token.store(true, Ordering::SeqCst);
-                        Err(e)
-                    }
-                }
+                result_tuple.map(|(response_json_value, headers_map)| {
+                    (index, response_json_value, headers_map, request_time_elapsed)
+                })
             });
         }
 
         // Process results as they complete with fast-fail cancellation
         while let Some(task_result) = join_set.join_next().await {
-            match process_joinset_outcome(task_result, &cancel_token) {
+            match process_joinset_outcome(task_result) {
                 Ok(indexed_data) => {
                     indexed_results.push(indexed_data);
                 }
                 Err(e) => {
-                    // Cancel all remaining tasks immediately
-                    cancel_token.store(true, Ordering::SeqCst);
-                    join_set.abort_all();
+                    // JoinSetGuard::drop will abort remaining tasks automatically
                     return Err(e);
                 }
             }
