@@ -367,3 +367,4 @@ if __name__ == "__main__":
     # Keep the main thread alive
     time.sleep(0.5)  # Give the server some time to start
     run_client()
+    print("ALL SCENARIOS PASSED")
