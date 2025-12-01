@@ -22,6 +22,8 @@ pub struct RequestProcessingConfig {
     pub base_url: String,
     pub hedge_delay: Option<f64>,
     pub max_chars_per_request: Option<usize>,
+    pub total_timeout_s: Option<f64>,
+    pub max_retries: Option<u32>,
 }
 
 impl RequestProcessingConfig {
@@ -33,6 +35,8 @@ impl RequestProcessingConfig {
         base_url: String,
         hedge_delay: Option<f64>,
         max_chars_per_request: Option<usize>,
+        total_timeout_s: Option<f64>,
+        max_retries: Option<i64>,
     ) -> Result<Self, crate::errors::ClientError> {
         // Validate timeout
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&timeout_s) {
@@ -65,6 +69,39 @@ impl RequestProcessingConfig {
                 )));
             }
         }
+        if total_timeout_s.is_some() {
+            let total_timeout = total_timeout_s.unwrap();
+            if !(MIN_TOTAL_TIMEOUT_S..=MAX_TOTAL_TIMEOUT_S).contains(&total_timeout) {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "Total timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
+                    total_timeout, MIN_TOTAL_TIMEOUT_S, MAX_TOTAL_TIMEOUT_S
+                )));
+            }
+            if total_timeout < timeout_s {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "Total timeout {:.3}s must be greater than or equal to per-request timeout {:.3}s.",
+                    total_timeout, timeout_s
+                )));
+            }
+        }
+        // Validate and convert max_retries from i64 to u32
+        let max_retries_u32 = if let Some(retries) = max_retries {
+            if retries < 0 {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "max_retries must be non-negative, got {}",
+                    retries
+                )));
+            }
+            if retries > MAX_HTTP_RETRIES as i64 {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "max_retries {} exceeds maximum allowed retries {}",
+                    retries, MAX_HTTP_RETRIES
+                )));
+            }
+            Some(retries as u32)
+        } else {
+            None
+        };
 
         // Validate concurrency parameters
         if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
@@ -93,12 +130,24 @@ impl RequestProcessingConfig {
             base_url,
             hedge_delay,
             max_chars_per_request,
+            total_timeout_s,
+            max_retries: max_retries_u32,
         })
     }
 
     /// Get timeout duration
     pub fn timeout_duration(&self) -> std::time::Duration {
         std::time::Duration::from_secs_f64(self.timeout_s)
+    }
+
+    /// Get total timeout duration if set
+    pub fn total_timeout_duration(&self) -> Option<std::time::Duration> {
+        self.total_timeout_s.map(|s| std::time::Duration::from_secs_f64(s))
+    }
+
+    /// Get max retries, defaulting to MAX_HTTP_RETRIES if not set
+    pub fn max_retries(&self) -> u32 {
+        self.max_retries.unwrap_or(MAX_HTTP_RETRIES)
     }
 }
 
