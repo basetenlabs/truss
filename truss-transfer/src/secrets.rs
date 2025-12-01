@@ -11,7 +11,21 @@ static WARNED_SECRETS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(Ha
 
 /// Check if the full secret path is allowed based on whitelist prefixes
 fn is_secret_path_allowed(path_read: PathBuf) -> bool {
-    let path_str = path_read.to_string_lossy();
+    // Canonicalize the path to resolve any ".." or "." components
+    // This prevents path traversal attacks
+    let canonical_path = match path_read.canonicalize() {
+        Ok(path) => path,
+        Err(_) => {
+            // If canonicalization fails (e.g., file doesn't exist yet),
+            // fall back to manually resolving the path
+            match std::fs::canonicalize(path_read.parent().unwrap_or_else(|| Path::new("/"))) {
+                Ok(parent) => parent.join(path_read.file_name().unwrap_or_default()),
+                Err(_) => return false, // If we can't resolve the path, deny access
+            }
+        }
+    };
+
+    let path_str = canonical_path.to_string_lossy();
     SECRET_PATH_WHITELIST
         .iter()
         .any(|prefix| path_str.starts_with(prefix))
