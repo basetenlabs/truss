@@ -224,6 +224,7 @@ impl PerformanceClientCore {
 impl PerformanceClientCore {
     // Generic batch processing method - handles pre-batched requests for ALL API types
     // Uses JoinSetGuard for automatic cancellation on drop (RAII pattern)
+    #[allow(clippy::too_many_arguments)]
     async fn process_batched_requests<T, R>(
         &self,
         batches: Vec<Vec<String>>,
@@ -394,6 +395,7 @@ impl PerformanceClientCore {
     }
     // Core embeddings processing logic with unified interface
     // Cancellation: dropping this future will automatically abort all in-flight requests
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_embeddings_requests(
         &self,
         texts: Vec<String>,
@@ -457,6 +459,7 @@ impl PerformanceClientCore {
 
     // Core rerank processing logic with unified interface
     // Cancellation: dropping this future will automatically abort all in-flight requests
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_rerank_requests(
         &self,
         query: String,
@@ -528,6 +531,7 @@ impl PerformanceClientCore {
 
     // Core classify processing logic with unified interface
     // Cancellation: dropping this future will automatically abort all in-flight requests
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_classify_requests(
         &self,
         inputs: Vec<String>,

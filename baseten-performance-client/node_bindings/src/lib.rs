@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use baseten_performance_client_core::{
   ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
   CoreRerankResponse, PerformanceClientCore, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY,
@@ -211,7 +213,6 @@ impl PerformanceClient {
     let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
     let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
     let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
-    let hedge_delay = hedge_delay;
 
     let result = self
       .core_client
@@ -269,7 +270,6 @@ impl PerformanceClient {
     let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
     let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
     let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
-    let hedge_delay = hedge_delay;
 
     let result = self
       .core_client
@@ -327,7 +327,6 @@ impl PerformanceClient {
     let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
     let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
     let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
-    let hedge_delay = hedge_delay;
 
     let result = self
       .core_client
