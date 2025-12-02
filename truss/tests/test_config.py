@@ -355,16 +355,16 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
         python_version="py39",
         model_cache=ModelCache(
             [
-                ModelRepo(repo_id="test/model1"),
-                ModelRepo(repo_id="test/model2", revision="not-main2"),
+                ModelRepo(repo_id="test/model1", use_volume=False),
+                ModelRepo(repo_id="test/model2", revision="not-main2", use_volume=False),
             ]
         ),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1"},
-        {"repo_id": "test/model2", "revision": "not-main2"},
+        {"repo_id": "test/model1", "use_volume": False},
+        {"repo_id": "test/model2", "revision": "not-main2", "use_volume": False},
     ]
 
     assert new_config == config.to_dict(verbose=False)
