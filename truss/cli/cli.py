@@ -10,7 +10,7 @@ import rich_click as click
 from rich import progress
 
 import truss
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
@@ -31,6 +31,7 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
+    memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
 from truss.truss_handle.build import cleanup as _cleanup
@@ -590,11 +591,10 @@ def push(
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
 
-        # [aghilan-todo] - remove this after done local dev
-        # if memory_updated_for_trt_llm_builder(tr):
-        #     console.print(
-        #         f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
-        #     )
+        if memory_updated_for_trt_llm_builder(tr):
+            console.print(
+                f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
+            )
         message_oai, raised_message_oai = has_no_tags_trt_llm_builder(tr)
         if message_oai:
             console.print(message_oai, style="yellow")

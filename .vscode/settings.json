@@ -9,9 +9,9 @@
   "[python]": {
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-      "source.fixAll": "never",
-      "source.organizeImports": "never",
-      "source.sortMembers": "never"
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit",
+      "source.sortMembers": "explicit"
     }
   }
 }
