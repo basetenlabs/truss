@@ -331,8 +331,8 @@ def run_client():
                 and total_timeout_s == timeout
                 and stall_for_seconds > total_timeout_s
             ):
-                assert str(total_timeout_s) in str(e), (
-                    "Total timeout exception should be raised"
+                assert f"{total_timeout_s:.2f}" in str(e), (
+                    f"Expected timeout {total_timeout_s:.2f}s in error: {e}"
                 )
                 return
             else:
