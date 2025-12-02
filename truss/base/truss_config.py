@@ -202,8 +202,14 @@ class ModelCache(pydantic.RootModel[list[ModelRepo]]):
             )
 
 
-class CacheInternal(ModelCache):
+class ModelRepoCacheInternal(ModelRepo):
     use_volume: bool = False  # override
+
+
+class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
+    @property
+    def models(self) -> list[ModelRepoCacheInternal]:
+        return self.root
 
 
 class HealthChecks(custom_types.ConfigModel):
