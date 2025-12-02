@@ -101,7 +101,7 @@ Note: The embed method is versatile and can be used with any embeddings service,
 
 - **`max_chars_per_request`**: Character-based batching limit (50-256,000 characters). When set, requests are batched by character count rather than just input count, helping optimize for services with character-based pricing or processing limits.
 - **`hedge_delay`**: Request hedging delay in seconds (minimum 0.2s). Enables sending duplicate requests after a delay to improve latency if the original request is slow. Limited by a 5% budget to prevent excessive resource usage.
-- **`total_timeout_s`**: Total timeout for the entire operation in seconds. Unlike `timeout_s` (which is per-request), this sets an upper bound on the total time for all batched requests combined. Must be >= `timeout_s` if both are set.
+- **`total_timeout_s`**: Total timeout for the entire operation in seconds. Unlike `timeout_s` (which is per-request), this sets an upper bound on the total time for all batched requests combined. Must be >= `timeout_s` if both are set. If not set, there is no upper bound on the total time for all batched requests.
 
 #### Asynchronous Embedding
 
