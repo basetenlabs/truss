@@ -203,7 +203,8 @@ class ModelCache(pydantic.RootModel[list[ModelRepo]]):
 
 
 class CacheInternal(ModelCache):
-    use_volume: bool = False # override
+    use_volume: bool = False  # override
+
 
 class HealthChecks(custom_types.ConfigModel):
     restart_check_delay_seconds: Optional[int] = None

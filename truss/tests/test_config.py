@@ -356,7 +356,9 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
         model_cache=ModelCache(
             [
                 ModelRepo(repo_id="test/model1", use_volume=False),
-                ModelRepo(repo_id="test/model2", revision="not-main2", use_volume=False),
+                ModelRepo(
+                    repo_id="test/model2", revision="not-main2", use_volume=False
+                ),
             ]
         ),
     )
