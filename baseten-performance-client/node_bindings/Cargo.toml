@@ -1,6 +1,6 @@
 [package]
 name = "baseten-performance-client"
-version = "0.0.10"
+version = "0.0.12-rc3"
 edition = "2021"
 
 [lib]

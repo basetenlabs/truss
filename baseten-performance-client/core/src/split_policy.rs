@@ -19,6 +19,7 @@ pub struct RequestProcessingConfig {
     pub max_concurrent_requests: usize,
     pub batch_size: usize,
     pub timeout_s: f64,
+    pub total_timeout_s: Option<f64>,
     pub base_url: String,
     pub hedge_delay: Option<f64>,
     pub max_chars_per_request: Option<usize>,
@@ -30,6 +31,7 @@ impl RequestProcessingConfig {
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
+        total_timeout_s: Option<f64>,
         base_url: String,
         hedge_delay: Option<f64>,
         max_chars_per_request: Option<usize>,
@@ -41,6 +43,15 @@ impl RequestProcessingConfig {
                 timeout_s, MIN_REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
             )));
         }
+        if let Some(total_timeout) = total_timeout_s {
+            if total_timeout < timeout_s {
+                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                    "Total timeout {:.3}s must be greater than or equal to individual request timeout {:.3}s.",
+                    total_timeout, timeout_s
+                )));
+            }
+        }
+
         if hedge_delay.is_some() {
             let hedge_delay = hedge_delay.unwrap();
             if !(MIN_HEDGE_DELAY_S..=MAX_REQUEST_TIMEOUT_S).contains(&hedge_delay) {
@@ -90,6 +101,7 @@ impl RequestProcessingConfig {
             max_concurrent_requests,
             batch_size,
             timeout_s,
+            total_timeout_s,
             base_url,
             hedge_delay,
             max_chars_per_request,
