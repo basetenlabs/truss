@@ -23,6 +23,7 @@ from truss.base.truss_config import (
     HTTPOptions,
     ModelCache,
     ModelRepo,
+    ModelRepoCacheInternal,
     Resources,
     Runtime,
     TransportKind,
@@ -292,7 +293,7 @@ def test_cache_internal_with_models(default_config):
     config = TrussConfig(
         python_version="py39",
         cache_internal=CacheInternal(
-            [ModelRepo(repo_id="test/model"), ModelRepo(repo_id="test/model2")]
+            [ModelRepoCacheInternal(repo_id="test/model"), ModelRepoCacheInternal(repo_id="test/model2")]
         ),
     )
     new_config = default_config
