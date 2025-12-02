@@ -314,7 +314,7 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     )
 
     new_config = default_config
-    new_config["model_cache"] = [{"repo_id": "test/model"}]
+    new_config["model_cache"] = [{"repo_id": "test/model", "use_volume": False}]
 
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
@@ -345,8 +345,8 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1", "revision": "main"},
-        {"repo_id": "test/model2"},
+        {"repo_id": "test/model1", "revision": "main", "use_volume": False},
+        {"repo_id": "test/model2", "use_volume": False},
     ]
 
     assert new_config == config.to_dict(verbose=False)
