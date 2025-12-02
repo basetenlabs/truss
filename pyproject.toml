@@ -93,7 +93,7 @@ dev-server = [
     "prometheus-client>=0.21.1,<0.22",
     "uvicorn>=0.24.0",
     "uvloop>=0.17.0",
-    "websockets>=14.0",
+    "websockets>=14.0,<15.0",
 ]
 
 [tool.uv]
