@@ -147,7 +147,7 @@ class ModelRepo(custom_types.ConfigModel):
     volume_folder: Optional[
         Annotated[str, pydantic.StringConstraints(min_length=1)]
     ] = None
-    use_volume: bool = False
+    use_volume: bool
     kind: ModelRepoSourceKind = ModelRepoSourceKind.HF
     runtime_secret_name: str = "hf_access_token"
 
@@ -163,7 +163,7 @@ class ModelRepo(custom_types.ConfigModel):
             return v
         if v.get("kind") == ModelRepoSourceKind.HF.value and v.get("revision") is None:
             logger.warning(
-                "the key `revision: str` is required for use_volume=True huggingface repos."
+                "the key `revision: str` is required for use_volume=True huggingface repos. For S3/GCS/Azure repos, set it to any non-empty string."
             )
             raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
         if v.get("volume_folder") is None or len(v["volume_folder"]) == 0:
