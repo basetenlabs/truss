@@ -38,9 +38,6 @@ async fn run_with_ctrl_c<F, T>(future: F) -> Result<T, ClientError>
 where
     F: std::future::Future<Output = Result<T, ClientError>>,
 {
-    // Reset the flag at the start of each request
-    CTRL_C_RECEIVED.store(false, Ordering::SeqCst);
-
     tokio::select! {
         biased;
 
