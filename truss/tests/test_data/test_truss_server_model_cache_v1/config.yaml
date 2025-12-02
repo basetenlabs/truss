@@ -8,6 +8,7 @@ requirements:
   - torch
 model_cache:
   - repo_id: julien-c/EsperBERTo-small
+    use_volume: false
     ignore_patterns:
       - "*.bin"
       - "*.msgpack"
