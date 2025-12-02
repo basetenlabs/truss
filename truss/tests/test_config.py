@@ -306,7 +306,7 @@ def test_cache_internal_with_models(default_config):
 
 def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id="test/model")])
+        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id="test/model", use_volume=False)])
     )
 
     new_config = default_config
@@ -320,7 +320,7 @@ def test_huggingface_cache_single_model_non_default_revision_v1():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=ModelCache([ModelRepo(repo_id="test/model", revision="not-main")]),
+        model_cache=ModelCache([ModelRepo(repo_id="test/model", revision="not-main", use_volume=False)]),
     )
 
     assert config.to_dict(verbose=False)["model_cache"][0].get("revision") == "not-main"
@@ -331,8 +331,8 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
         python_version="py39",
         model_cache=ModelCache(
             [
-                ModelRepo(repo_id="test/model1", revision="main"),
-                ModelRepo(repo_id="test/model2"),
+                ModelRepo(repo_id="test/model1", revision="main", use_volume=False),
+                ModelRepo(repo_id="test/model2", use_volume=False),
             ]
         ),
     )
