@@ -498,6 +498,8 @@ class TrussServer:
             log_config=log_config.make_log_config(log_level),
             ws_max_size=WS_MAX_MSG_SZ_BYTES,
             loop="uvloop",
+            # NB(nikhil): https://github.com/Kludex/uvicorn/issues/1908#issuecomment-2999686378
+            ws="websockets-sansio",
             **extra_kwargs,
         )
         server = uvicorn.Server(config=cfg)

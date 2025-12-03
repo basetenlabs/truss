@@ -73,6 +73,8 @@ class ControlServer:
             # of uvicorn.
             http="h11",
             loop="uvloop",
+            # NB(nikhil): https://github.com/Kludex/uvicorn/issues/1908#issuecomment-2999686378
+            ws="websockets-sansio",
             **extra_kwargs,
         )
 
