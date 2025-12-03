@@ -401,7 +401,7 @@ class BasetenApi:
     def get_chains(self, team_id: Optional[str] = None):
         query_string = """
         {
-            chains {
+            chains(all: true) {
                 id
                 name
                 team {
@@ -475,7 +475,7 @@ class BasetenApi:
     def models(self):
         query_string = """
         {
-            models {
+            models(all: true) {
                 id,
                 name
                 team {
