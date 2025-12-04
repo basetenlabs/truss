@@ -399,23 +399,35 @@ class BasetenApi:
         return resp["data"]["deploy_chain_atomic"]
 
     def get_chains(self, team_id: Optional[str] = None):
-        query_string = """
-        {
-            chains {
-                id
-                name
-                team {
+        if team_id:
+            query_string = f"""
+            {{
+                chains(team_id: "{team_id}") {{
+                    id
                     name
+                    team {{
+                        id
+                        name
+                    }}
+                }}
+            }}
+            """
+        else:
+            query_string = """
+            {
+                chains(all: true) {
+                    id
+                    name
+                    team {
+                        id
+                        name
+                    }
                 }
             }
-        }
-        """
+            """
 
         resp = self._post_graphql_query(query_string)
-        chains = resp["data"]["chains"]
-
-        # TODO(COR-492): Filter by team_id in the backend
-        return chains
+        return resp["data"]["chains"]
 
     def get_chain_deployments(self, chain_id: str):
         query_string = f"""
@@ -475,7 +487,7 @@ class BasetenApi:
     def models(self):
         query_string = """
         {
-            models {
+            models(all: true) {
                 id,
                 name
                 team {
