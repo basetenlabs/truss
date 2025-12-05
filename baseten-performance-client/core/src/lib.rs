@@ -1,3 +1,4 @@
+pub mod cancellation;
 pub mod client;
 pub mod constants;
 pub mod errors;
@@ -6,6 +7,7 @@ pub mod http_client;
 pub mod split_policy;
 pub mod utils;
 
+pub use cancellation::JoinSetGuard;
 pub use client::PerformanceClientCore;
 pub use constants::*;
 pub use errors::ClientError;

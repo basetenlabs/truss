@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use baseten_performance_client_core::{
   ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
   CoreRerankResponse, PerformanceClientCore, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY,
@@ -200,6 +202,7 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
     hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
   ) -> napi::Result<serde_json::Value> {
     if input.is_empty() {
       return Err(create_napi_error("Input list cannot be empty"));
@@ -210,7 +213,6 @@ impl PerformanceClient {
     let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
     let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
     let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
-    let hedge_delay = hedge_delay;
 
     let result = self
       .core_client
@@ -225,6 +227,7 @@ impl PerformanceClient {
         max_chars_per_request,
         timeout_s,
         hedge_delay,
+        total_timeout_s,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
@@ -247,6 +250,7 @@ impl PerformanceClient {
     query: String,
     texts: Vec<String>,
     raw_scores: Option<bool>,
+    model: Option<String>,
     return_text: Option<bool>,
     truncate: Option<bool>,
     truncation_direction: Option<String>,
@@ -255,6 +259,7 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
     hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
   ) -> napi::Result<serde_json::Value> {
     if texts.is_empty() {
       return Err(create_napi_error("Texts list cannot be empty"));
@@ -265,7 +270,6 @@ impl PerformanceClient {
     let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
     let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
     let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
-    let hedge_delay = hedge_delay;
 
     let result = self
       .core_client
@@ -273,6 +277,7 @@ impl PerformanceClient {
         query,
         texts,
         raw_scores.unwrap_or(false),
+        model,
         return_text.unwrap_or(false),
         truncate.unwrap_or(false),
         truncation_direction.unwrap_or_else(|| "Right".to_string()),
@@ -281,6 +286,7 @@ impl PerformanceClient {
         max_chars_per_request,
         timeout_s,
         hedge_delay,
+        total_timeout_s,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
@@ -301,6 +307,7 @@ impl PerformanceClient {
   pub async fn classify(
     &self,
     inputs: Vec<String>,
+    model: Option<String>,
     raw_scores: Option<bool>,
     truncate: Option<bool>,
     truncation_direction: Option<String>,
@@ -309,6 +316,7 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     max_chars_per_request: Option<u32>,
     hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
   ) -> napi::Result<serde_json::Value> {
     if inputs.is_empty() {
       return Err(create_napi_error("Inputs list cannot be empty"));
@@ -319,12 +327,12 @@ impl PerformanceClient {
     let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
     let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
     let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
-    let hedge_delay = hedge_delay;
 
     let result = self
       .core_client
       .process_classify_requests(
         inputs,
+        model,
         raw_scores.unwrap_or(false),
         truncate.unwrap_or(false),
         truncation_direction.unwrap_or_else(|| "Right".to_string()),
@@ -333,6 +341,7 @@ impl PerformanceClient {
         max_chars_per_request,
         timeout_s,
         hedge_delay,
+        total_timeout_s,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
@@ -356,6 +365,8 @@ impl PerformanceClient {
     payloads: Vec<JsonValue>,
     max_concurrent_requests: Option<u32>,
     timeout_s: Option<f64>,
+    hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
       return Err(create_napi_error("Payloads list cannot be empty"));
@@ -367,7 +378,14 @@ impl PerformanceClient {
 
     let result = self
       .core_client
-      .process_batch_post_requests(url_path, payloads, max_concurrent_requests, timeout_s, None)
+      .process_batch_post_requests(
+        url_path,
+        payloads,
+        max_concurrent_requests,
+        timeout_s,
+        hedge_delay,
+        total_timeout_s,
+      )
       .await
       .map_err(convert_core_error_to_napi_error)?;
 

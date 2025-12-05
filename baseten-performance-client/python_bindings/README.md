@@ -74,7 +74,8 @@ async def async_embed():
         model="my_model",
         batch_size=2,
         max_concurrent_requests=16,
-        timeout_s=360
+        timeout_s=360,
+        dimensions=None, # MRL dims.
     )
     print("Async embedding response:", response.data)
 

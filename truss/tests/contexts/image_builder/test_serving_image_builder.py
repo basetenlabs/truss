@@ -100,7 +100,8 @@ def flatten_cached_files(local_cache_files):
 def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -137,7 +138,8 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -172,7 +174,8 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -207,7 +210,8 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -246,7 +250,8 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:

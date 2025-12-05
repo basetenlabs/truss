@@ -1,9 +1,12 @@
+#![allow(clippy::too_many_arguments)]
+
 use baseten_performance_client_core::*;
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+#[allow(unused_imports)]
 use pyo3_async_runtimes;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -28,6 +31,32 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     });
     runtime
 });
+
+/// Run a future with Ctrl+C cancellation support.
+/// When Ctrl+C is received, the future is dropped, triggering JoinSetGuard cleanup.
+async fn run_with_ctrl_c<F, T>(future: F) -> Result<T, ClientError>
+where
+    F: std::future::Future<Output = Result<T, ClientError>>,
+{
+    tokio::select! {
+        biased;
+
+        // Poll for Ctrl+C signal periodically
+        _ = async {
+            loop {
+                if CTRL_C_RECEIVED.load(Ordering::SeqCst) {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        } => {
+            Err(ClientError::Cancellation("Interrupted by Ctrl+C".to_string()))
+        }
+
+        // Run the actual future
+        result = future => result,
+    }
+}
 
 // Import Python exceptions
 pyo3::import_exception!(requests, HTTPError);
@@ -330,7 +359,7 @@ impl PerformanceClient {
         Ok(self.core_client.api_key.clone())
     }
 
-    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
     fn embed(
         &self,
         py: Python,
@@ -344,6 +373,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<OpenAIEmbeddingsResponse> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -353,10 +383,8 @@ impl PerformanceClient {
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_embeddings_requests(
                         input,
                         model,
@@ -368,18 +396,11 @@ impl PerformanceClient {
                         max_chars_per_request,
                         timeout_s,
                         hedge_delay,
+                        total_timeout_s,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive result from async task (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (core_response, batch_durations, total_time_val) = result_from_async_task;
@@ -395,7 +416,7 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
     fn async_embed<'py>(
         &self,
         py: Python<'py>,
@@ -409,6 +430,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -429,6 +451,7 @@ impl PerformanceClient {
                     max_chars_per_request,
                     timeout_s,
                     hedge_delay,
+                    total_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -448,13 +471,14 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(signature = (query, texts, raw_scores = false, model = None, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
     fn rerank(
         &self,
         py: Python,
         query: String,
         texts: Vec<String>,
         raw_scores: bool,
+        model: Option<String>,
         return_text: bool,
         truncate: bool,
         truncation_direction: &str,
@@ -463,6 +487,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<RerankResponse> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
@@ -473,14 +498,13 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_rerank_requests(
                         query,
                         texts,
                         raw_scores,
+                        model,
                         return_text,
                         truncate,
                         truncation_direction_owned,
@@ -489,18 +513,11 @@ impl PerformanceClient {
                         max_chars_per_request,
                         timeout_s,
                         hedge_delay,
+                        total_timeout_s,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive rerank result (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (core_response, batch_durations, total_time_val) = result_from_async_task;
@@ -516,13 +533,14 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, model = None, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
     fn async_rerank<'py>(
         &self,
         py: Python<'py>,
         query: String,
         texts: Vec<String>,
         raw_scores: bool,
+        model: Option<String>,
         return_text: bool,
         truncate: bool,
         truncation_direction: &str,
@@ -531,6 +549,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
@@ -545,6 +564,7 @@ impl PerformanceClient {
                     query,
                     texts,
                     raw_scores,
+                    model,
                     return_text,
                     truncate,
                     truncation_direction_owned,
@@ -553,6 +573,7 @@ impl PerformanceClient {
                     max_chars_per_request,
                     timeout_s,
                     hedge_delay,
+                    total_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -572,11 +593,12 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(signature = (inputs, model = None, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
     fn classify(
         &self,
         py: Python,
         inputs: Vec<String>,
+        model: Option<String>,
         raw_scores: bool,
         truncate: bool,
         truncation_direction: &str,
@@ -585,6 +607,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<ClassificationResponse> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
@@ -595,12 +618,11 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_classify_requests(
                         inputs,
+                        model,
                         raw_scores,
                         truncate,
                         truncation_direction_owned,
@@ -609,18 +631,11 @@ impl PerformanceClient {
                         max_chars_per_request,
                         timeout_s,
                         hedge_delay,
+                        total_timeout_s,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive classify result (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (core_response, batch_durations, core_total_time) = result_from_async_task;
@@ -636,11 +651,12 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_classify", signature = (inputs, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None))]
+    #[pyo3(name = "async_classify", signature = (inputs, model = None, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
     fn async_classify<'py>(
         &self,
         py: Python<'py>,
         inputs: Vec<String>,
+        model: Option<String>,
         raw_scores: bool,
         truncate: bool,
         truncation_direction: &str,
@@ -649,6 +665,7 @@ impl PerformanceClient {
         timeout_s: f64,
         max_chars_per_request: Option<usize>,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
@@ -661,6 +678,7 @@ impl PerformanceClient {
             let (core_response, batch_durations, core_total_time) = core_client
                 .process_classify_requests(
                     inputs,
+                    model,
                     raw_scores,
                     truncate,
                     truncation_direction_owned,
@@ -669,6 +687,7 @@ impl PerformanceClient {
                     max_chars_per_request,
                     timeout_s,
                     hedge_delay,
+                    total_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -688,7 +707,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None))]
+    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None))]
     fn batch_post(
         &self,
         py: Python,
@@ -697,6 +716,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -718,28 +738,19 @@ impl PerformanceClient {
         let rt = Arc::clone(&self.runtime);
 
         let result_from_async_task = py.allow_threads(move || {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let res = core_client
+            rt.block_on(run_with_ctrl_c(async move {
+                core_client
                     .process_batch_post_requests(
                         url_path,
                         payloads_json,
                         max_concurrent_requests,
                         timeout_s,
                         hedge_delay,
+                        total_timeout_s,
                     )
-                    .await;
-                let _ = tx.send(res);
-            });
-
-            match rx.recv() {
-                Ok(inner_result) => inner_result.map_err(Self::convert_core_error_to_py_err),
-                Err(e) => Err(PyValueError::new_err(format!(
-                    "Failed to receive batch_post result (channel error): {}",
-                    e
-                ))),
-            }
+                    .await
+            }))
+            .map_err(Self::convert_core_error_to_py_err)
         })?;
 
         let (response_data_with_times_and_headers, total_time) = result_from_async_task;
@@ -784,7 +795,7 @@ impl PerformanceClient {
         })
     }
 
-    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None))]
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None))]
     fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
@@ -793,6 +804,7 @@ impl PerformanceClient {
         max_concurrent_requests: usize,
         timeout_s: f64,
         hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -820,6 +832,7 @@ impl PerformanceClient {
                     max_concurrent_requests,
                     timeout_s,
                     hedge_delay,
+                    total_timeout_s,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;

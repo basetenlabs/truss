@@ -24,6 +24,7 @@ class MistralLLM(chains.ChainletBase):
             cached=[
                 truss_config.ModelRepo(
                     repo_id=MISTRAL_HF_MODEL,
+                    use_volume=False,
                     allow_patterns=["*.json", "*.safetensors", ".model"],
                 )
             ],
