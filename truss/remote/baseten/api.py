@@ -201,6 +201,7 @@ class BasetenApi:
         origin: Optional[b10_types.ModelOrigin] = None,
         environment: Optional[str] = None,
         deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -215,6 +216,7 @@ class BasetenApi:
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    {f'team_id: "{team_id}"' if team_id else ""}
                 ) {{
                     model_version {{
                         id
@@ -291,6 +293,7 @@ class BasetenApi:
         allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
         deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -301,6 +304,7 @@ class BasetenApi:
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    {f'team_id: "{team_id}"' if team_id else ""}
                 ) {{
                     model_version {{
                         id
@@ -395,23 +399,35 @@ class BasetenApi:
         return resp["data"]["deploy_chain_atomic"]
 
     def get_chains(self, team_id: Optional[str] = None):
-        query_string = """
-        {
-            chains {
-                id
-                name
-                team {
+        if team_id:
+            query_string = f"""
+            {{
+                chains(team_id: "{team_id}") {{
+                    id
                     name
+                    team {{
+                        id
+                        name
+                    }}
+                }}
+            }}
+            """
+        else:
+            query_string = """
+            {
+                chains(all: true) {
+                    id
+                    name
+                    team {
+                        id
+                        name
+                    }
                 }
             }
-        }
-        """
+            """
 
         resp = self._post_graphql_query(query_string)
-        chains = resp["data"]["chains"]
-
-        # TODO(COR-492): Filter by team_id in the backend
-        return chains
+        return resp["data"]["chains"]
 
     def get_chain_deployments(self, chain_id: str):
         query_string = f"""
@@ -471,9 +487,13 @@ class BasetenApi:
     def models(self):
         query_string = """
         {
-            models {
+            models(all: true) {
                 id,
                 name
+                team {
+                    id
+                    name
+                }
                 versions{
                     id,
                     semver,
@@ -513,6 +533,10 @@ class BasetenApi:
                 id
                 name
                 hostname
+                team {{
+                    id
+                    name
+                }}
                 versions {{
                     id
                     semver
