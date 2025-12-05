@@ -1,0 +1,65 @@
+# .github/workflows/create-rc-release.yml
+name: Create RC Release
+
+on:
+  workflow_dispatch:
+
+# Prevent multiple simultaneous runs for security purposes
+concurrency:
+  group: create-rc-release
+  cancel-in-progress: false
+
+jobs:
+  publish-rc-only:
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+    steps:
+      - name: Check user permissions
+        run: |
+          # Only allow specific users to trigger (from secret)
+          ALLOWED_USERS="${{ secrets.RC_RELEASE_ALLOWED_USERS }}"
+          if [[ -z "$ALLOWED_USERS" ]]; then
+            echo "❌ RC_RELEASE_ALLOWED_USERS secret not configured"
+            exit 1
+          fi
+          if [[ ! "$ALLOWED_USERS" =~ "${{ github.actor }}" ]]; then
+            echo "❌ User ${{ github.actor }} not authorized for RC releases"
+            exit 1
+          fi
+
+      - name: Validate version consistency
+        run: |
+          # Get version from pyproject.toml
+          VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+rc[0-9]+$ ]]; then
+            echo "❌ Invalid version format in pyproject.toml: $VERSION"
+            echo "✅ Expected format: X.Y.ZrcN (e.g., 0.11.13rc1)"
+            exit 1
+          fi
+
+          # Check uv.lock version matches pyproject.toml
+          UV_LOCK_VERSION=$(grep -A1 'name = "truss"' uv.lock | grep 'version = ' | cut -d'"' -f2)
+          if [[ "$UV_LOCK_VERSION" != "$VERSION" ]]; then
+            echo "❌ Version mismatch between pyproject.toml and uv.lock"
+            echo "   pyproject.toml: $VERSION"
+            echo "   uv.lock: $UV_LOCK_VERSION"
+            echo "   Please run 'uv lock' to update uv.lock"
+            exit 1
+          fi
+
+          echo "✅ Version consistency validated: $VERSION"
+
+      - uses: ./.github/actions/setup-python/
+
+      - name: Install packages
+        run: uv sync --no-dev
+      - name: Build
+        run: uv build
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+          print-hash: true
