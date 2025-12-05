@@ -10,7 +10,10 @@ import rich_click as click
 from rich import progress
 
 import truss
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
+from truss.base.constants import (
+    PRODUCTION_ENVIRONMENT_NAME,
+    TRTLLM_MIN_MEMORY_REQUEST_GI,
+)
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
