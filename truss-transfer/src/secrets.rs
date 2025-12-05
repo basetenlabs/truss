@@ -34,7 +34,10 @@ fn is_secret_path_allowed(path_read: PathBuf) -> bool {
 /// Get secret from file system based on runtime secret name
 /// Returns None if the secret file doesn't exist or can't be read
 pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
-    let secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
+    let mut secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
+    if runtime_secret_name == "aws_secret_json" {
+        secret_path = Path::new("/aws-secrets").join(runtime_secret_name);
+    }
 
     if !is_secret_path_allowed(secret_path.clone()) {
         warn!(
