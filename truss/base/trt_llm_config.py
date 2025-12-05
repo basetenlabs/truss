@@ -113,6 +113,7 @@ class CheckpointSource(str, Enum):
     LOCAL = "LOCAL"
     # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
     REMOTE_URL = "REMOTE_URL"
+    BASETEN_TRAINING = "BASETEN_TRAINING"
 
 
 class CheckpointRepository(PydanticTrTBaseModel):
