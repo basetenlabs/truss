@@ -23,6 +23,8 @@ const MAX_WAIT_TIME: usize = 10_000;
 const HF_CHUNK_SIZE: usize = 10;
 const DEFAULT_CHUNK_SIZE: usize = 16;
 const MB: usize = 1024 * 1024;
+// Write buffer size for vectorized disk writes
+const WRITE_BUF_SIZE: usize = MB;
 
 fn jitter() -> usize {
     rng().random_range(0..=500)
@@ -97,7 +99,7 @@ pub async fn download_async(
             url.split('?').next().unwrap_or(&url)
         );
 
-        // Simple fallback download without ranges
+        // Simple fallback download without ranges, but stream to avoid huge allocations
         let response = client
             .get(&url)
             .headers(headers.clone())
@@ -115,17 +117,23 @@ pub async fn download_async(
             .await
             .map_err(|err| anyhow!("Error while downloading: {err}"))?;
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|err| anyhow!("Error downloading: {err}"))?;
+        let mut total = 0usize;
+        let mut stream = response.bytes_stream();
 
-        file.write_all(&bytes)
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|err| anyhow!("Error downloading: {err}"))?;
+            total += chunk.len();
+            file.write_all(&chunk)
+                .await
+                .map_err(|err| anyhow!("Error writing: {err}"))?;
+        }
+
+        file.sync_all()
             .await
-            .map_err(|err| anyhow!("Error writing: {err}"))?;
+            .map_err(|err| anyhow!("Error syncing file: {err}"))?;
 
         if let Some(ref callback) = callback {
-            callback(bytes.len());
+            callback(total);
         }
 
         return Ok(());
@@ -170,15 +178,25 @@ pub async fn download_async(
         .ok_or(anyhow!("Error while downloading: No size was detected"))?
         .parse()
         .map_err(|err| anyhow!("Error while downloading: {err}"))?;
+
+    // Prepare file: truncate any previous contents and pre-size to the final length
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(&filename)
+            .await
+            .map_err(|err| anyhow!("Error preparing file: {err}"))?;
+        file.set_len(check_file_size)
+            .await
+            .map_err(|err| anyhow!("Error setting file size: {err}"))?;
+    }
+
     let mut handles = FuturesUnordered::new();
     let semaphore = Arc::new(Semaphore::new(max_files));
     let parallel_failures_semaphore = Arc::new(Semaphore::new(parallel_failures));
 
-    // Determine which chunks should be flushed (last 16 or max_files chunks)
-    let total_chunks = length.div_ceil(chunk_size); // equivalent to div_ceil
-    let flush_threshold_chunk = total_chunks.saturating_sub(max_files.min(16));
-
-    let mut chunk_index = 0;
     for start in (0..length).step_by(chunk_size) {
         let url = redirected_url.to_string();
         let filename = filename.clone();
@@ -186,7 +204,6 @@ pub async fn download_async(
         let headers = headers.clone();
 
         let stop = std::cmp::min(start + chunk_size - 1, length - 1);
-        let should_flush = chunk_index >= flush_threshold_chunk;
         let semaphore = semaphore.clone();
         let parallel_failures_semaphore = parallel_failures_semaphore.clone();
         let semaphore_global = semaphore_global.clone();
@@ -198,7 +215,7 @@ pub async fn download_async(
             let permit_global = semaphore_global.acquire_owned().await.map_err(|err| {
                 anyhow!("Failed to acquire global semaphore: {err}")
             })?;
-            let mut chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone(), should_flush).await;
+            let mut chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone()).await;
             let mut i = 0;
             if parallel_failures > 0 {
                 while let Err(dlerr) = chunk {
@@ -216,16 +233,16 @@ pub async fn download_async(
                     let wait_time = exponential_backoff(BASE_WAIT_TIME, i, MAX_WAIT_TIME);
                     sleep(Duration::from_millis(wait_time as u64)).await;
 
-                    chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone(), should_flush).await;
+                    chunk = download_chunk(&client, &url, &filename, start, stop, headers.clone()).await;
                     i += 1;
                     drop(parallel_failure_permit);
                 }
             }
             drop(permit);
             drop(permit_global);
-            chunk.map_err(|e| anyhow!("Downloading error {e}")).and(Ok(stop - start))
+            // Correct size: inclusive range => stop - start + 1
+            chunk.map_err(|e| anyhow!("Downloading error {e}")).and(Ok(stop - start + 1))
         }));
-        chunk_index += 1;
     }
 
     // Output the chained result
@@ -244,6 +261,10 @@ pub async fn download_async(
             }
         }
     }
+
+    let file = OpenOptions::new().write(true).open(&filename).await?;
+    file.sync_all().await?;
+
     Ok(())
 }
 
@@ -252,6 +273,7 @@ enum Error {
     Io(std::io::Error),
     Request(reqwest::Error),
     ToStrError(ToStrError),
+    Protocol(String),
 }
 
 impl From<std::io::Error> for Error {
@@ -278,6 +300,7 @@ impl Display for Error {
             Self::Io(io) => write!(f, "Io: {io}"),
             Self::Request(req) => write!(f, "Request: {req}"),
             Self::ToStrError(req) => write!(f, "Response non ascii: {req}"),
+            Self::Protocol(msg) => write!(f, "Protocol error: {msg}"),
         }
     }
 }
@@ -291,10 +314,14 @@ async fn download_chunk(
     start: usize,
     stop: usize,
     headers: HeaderMap,
-    should_flush: bool,
 ) -> Result<(), Error> {
     // Process each socket concurrently.
     let range = format!("bytes={start}-{stop}");
+    let expected_len = stop
+        .checked_sub(start)
+        .and_then(|v| v.checked_add(1))
+        .ok_or_else(|| Error::Protocol("Invalid range bounds".to_string()))?;
+
     let mut file = OpenOptions::new()
         .write(true)
         .truncate(false)
@@ -302,6 +329,7 @@ async fn download_chunk(
         .open(filename)
         .await?;
     file.seek(SeekFrom::Start(start as u64)).await?;
+
     let response = client
         .get(url)
         .headers(headers)
@@ -309,12 +337,44 @@ async fn download_chunk(
         .send()
         .await?
         .error_for_status()?;
-    let content = response.bytes().await?;
-    file.write_all(&content).await?;
 
-    // Flush only for the last max_files (capped at 16) chunks to ensure data is written to disk
-    if should_flush {
-        file.flush().await?;
+    // Stream response and vectorize writes with a fixed-size buffer
+    let mut stream = response.bytes_stream();
+    let mut buffer = Vec::with_capacity(WRITE_BUF_SIZE);
+    let mut written: usize = 0;
+
+    while let Some(item) = stream.next().await {
+        let mut chunk = item?;
+        // We may need to split a large network chunk into multiple write-buffer fills
+        while !chunk.is_empty() {
+            let space = WRITE_BUF_SIZE - buffer.len();
+            if chunk.len() <= space {
+                buffer.extend_from_slice(&chunk);
+                written = written
+                    .checked_add(chunk.len())
+                    .ok_or_else(|| Error::Protocol("Overflow in written byte count".to_string()))?;
+                break;
+            } else {
+                let (head, tail) = chunk.split_at(space);
+                buffer.extend_from_slice(head);
+                written = written
+                    .checked_add(head.len())
+                    .ok_or_else(|| Error::Protocol("Overflow in written byte count".to_string()))?;
+                file.write_all(&buffer).await?;
+                buffer.clear();
+                chunk = tail;
+            }
+        }
+    }
+
+    if !buffer.is_empty() {
+        file.write_all(&buffer).await?;
+    }
+
+    if written != expected_len {
+        return Err(Error::Protocol(format!(
+            "Chunk length mismatch for {start}-{stop}: expected {expected_len} bytes, wrote {written}"
+        )));
     }
 
     Ok(())
