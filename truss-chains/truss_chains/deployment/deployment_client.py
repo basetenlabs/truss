@@ -502,10 +502,13 @@ def _create_baseten_chain(
         f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
         f"(publish={baseten_options.publish}, environment={baseten_options.environment})."
     )
-    remote_provider = cast(
-        b10_remote.BasetenRemote,
-        remote_factory.RemoteFactory.create(remote=baseten_options.remote),
-    )
+    if baseten_options.remote_provider is not None:
+        remote_provider = baseten_options.remote_provider
+    else:
+        remote_provider = cast(
+            b10_remote.BasetenRemote,
+            remote_factory.RemoteFactory.create(remote=baseten_options.remote),
+        )
 
     if user_config.settings.include_git_info or baseten_options.include_git_info:
         truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
@@ -531,6 +534,8 @@ def _create_baseten_chain(
         environment=baseten_options.environment,
         progress_bar=progress_bar,
         disable_chain_download=baseten_options.disable_chain_download,
+        deployment_name=baseten_options.deployment_name,
+        team_id=baseten_options.team_id,
     )
     return BasetenChainService(
         baseten_options.chain_name,

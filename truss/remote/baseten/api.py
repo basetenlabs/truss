@@ -200,6 +200,8 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -213,6 +215,8 @@ class BasetenApi:
                     {f'version_name: "{deployment_name}"' if deployment_name else ""}
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
+                    {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    {f'team_id: "{team_id}"' if team_id else ""}
                 ) {{
                     model_version {{
                         id
@@ -244,6 +248,7 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
         preserve_env_instance_type: bool = True,
+        deploy_timeout_minutes: Optional[int] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -257,6 +262,7 @@ class BasetenApi:
                     preserve_env_instance_type: {"true" if preserve_env_instance_type else "false"}
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
+                    {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                 ) {{
                     model_version {{
                         id
@@ -286,6 +292,8 @@ class BasetenApi:
         truss_user_env: b10_types.TrussUserEnv,
         allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
+        deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String) {{
@@ -295,6 +303,8 @@ class BasetenApi:
                     truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
+                    {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    {f'team_id: "{team_id}"' if team_id else ""}
                 ) {{
                     model_version {{
                         id
@@ -327,6 +337,8 @@ class BasetenApi:
         is_draft: bool = False,
         original_source_artifact_s3_key: Optional[str] = None,
         allow_truss_download: Optional[bool] = True,
+        deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
     ):
         if allow_truss_download is None:
             allow_truss_download = True
@@ -350,10 +362,14 @@ class BasetenApi:
             params.append(
                 f'original_source_artifact_s3_key: "{original_source_artifact_s3_key}"'
             )
+        if team_id:
+            params.append(f'team_id: "{team_id}"')
 
         params.append(f"is_draft: {str(is_draft).lower()}")
         if allow_truss_download is False:
             params.append("allow_truss_download: false")
+        if deployment_name:
+            params.append(f'deployment_name: "{deployment_name}"')
 
         params_str = PARAMS_INDENT.join(params)
 
@@ -382,15 +398,33 @@ class BasetenApi:
 
         return resp["data"]["deploy_chain_atomic"]
 
-    def get_chains(self):
-        query_string = """
-        {
-            chains {
-                id
-                name
+    def get_chains(self, team_id: Optional[str] = None):
+        if team_id:
+            query_string = f"""
+            {{
+                chains(team_id: "{team_id}") {{
+                    id
+                    name
+                    team {{
+                        id
+                        name
+                    }}
+                }}
+            }}
+            """
+        else:
+            query_string = """
+            {
+                chains(all: true) {
+                    id
+                    name
+                    team {
+                        id
+                        name
+                    }
+                }
             }
-        }
-        """
+            """
 
         resp = self._post_graphql_query(query_string)
         return resp["data"]["chains"]
@@ -453,9 +487,13 @@ class BasetenApi:
     def models(self):
         query_string = """
         {
-            models {
+            models(all: true) {
                 id,
                 name
+                team {
+                    id
+                    name
+                }
                 versions{
                     id,
                     semver,
@@ -495,6 +533,10 @@ class BasetenApi:
                 id
                 name
                 hostname
+                team {{
+                    id
+                    name
+                }}
                 versions {{
                     id
                     semver
@@ -647,10 +689,14 @@ class BasetenApi:
             "v1/api_keys", body={"type": api_key_type.value, "name": name}
         )
 
-    def upsert_training_project(self, training_project):
+    def upsert_training_project(self, training_project, team_id: Optional[str] = None):
+        if team_id:
+            endpoint = f"v1/teams/{team_id}/training_projects"
+        else:
+            endpoint = "v1/training_projects"
         resp_json = self._rest_api_client.post(
-            "v1/training_projects",
-            body={"training_project": training_project.model_dump()},
+            endpoint,
+            body={"training_project": training_project.model_dump(exclude_none=True)},
         )
         return resp_json["training_project"]
 
@@ -903,3 +949,22 @@ class BasetenApi:
         return [
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
+
+    def get_teams(self) -> Dict[str, Dict[str, str]]:
+        """
+        Get all available teams via GraphQL API.
+        Returns a dictionary mapping team name to team data (with 'id' and 'name' keys).
+        """
+        query_string = """
+        query Teams {
+            teams {
+                id
+                name
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        teams_data = resp["data"]["teams"]
+        # Convert list to dict mapping team_name -> team
+        return {team["name"]: team for team in teams_data}

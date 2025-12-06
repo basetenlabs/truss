@@ -26,7 +26,6 @@ brew install asdf
 
 # Install `asdf` managed python and uv
 asdf plugin add uv
-asdf plugin add uv
 asdf install
 
 # Install uv dependencies

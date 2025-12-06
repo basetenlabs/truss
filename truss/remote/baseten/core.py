@@ -92,19 +92,21 @@ class ModelVersionHandle(NamedTuple):
     instance_type_name: Optional[str] = None
 
 
-def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
+def get_chain_id_by_name(
+    api: BasetenApi, chain_name: str, team_id: Optional[str] = None
+) -> Optional[str]:
     """
     Check if a chain with the given name exists in the Baseten remote.
 
     Args:
         api: BasetenApi instance
         chain_name: Name of the chain to check for existence
+        team_id: Optional team_id to filter chains by team
 
     Returns:
         chain_id if present, otherwise None
     """
-    chains = api.get_chains()
-
+    chains = api.get_chains(team_id=team_id)
     chain_name_id_mapping = {chain["name"]: chain["id"] for chain in chains}
     return chain_name_id_mapping.get(chain_name)
 
@@ -132,6 +134,8 @@ def create_chain_atomic(
     environment: Optional[str],
     original_source_artifact_s3_key: Optional[str] = None,
     allow_truss_download: bool = True,
+    deployment_name: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -140,7 +144,7 @@ def create_chain_atomic(
         )
         is_draft = False
 
-    chain_id = get_chain_id_by_name(api, chain_name)
+    chain_id = get_chain_id_by_name(api, chain_name, team_id=team_id)
 
     # TODO(Tyron): Refactor for better readability:
     # 1. Prepare all arguments for `deploy_chain_atomic`.
@@ -156,6 +160,8 @@ def create_chain_atomic(
             truss_user_env=truss_user_env,
             original_source_artifact_s3_key=original_source_artifact_s3_key,
             allow_truss_download=allow_truss_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -171,6 +177,8 @@ def create_chain_atomic(
                 truss_user_env=truss_user_env,
                 original_source_artifact_s3_key=original_source_artifact_s3_key,
                 allow_truss_download=allow_truss_download,
+                deployment_name=deployment_name,
+                team_id=team_id,
             )
         except ApiError as e:
             if (
@@ -193,6 +201,8 @@ def create_chain_atomic(
             truss_user_env=truss_user_env,
             original_source_artifact_s3_key=original_source_artifact_s3_key,
             allow_truss_download=allow_truss_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -397,6 +407,8 @@ def create_truss_service(
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
     preserve_env_instance_type: bool = True,
+    deploy_timeout_minutes: Optional[int] = None,
+    team_id: Optional[str] = None,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -412,6 +424,7 @@ def create_truss_service(
             to zero.
         deployment_name: Name to apply to the created deployment. Not applied to
             development model.
+        team_id: ID of the team to create the model in.
 
     Returns:
         A Model Version handle.
@@ -424,6 +437,8 @@ def create_truss_service(
             truss_user_env,
             allow_truss_download=allow_truss_download,
             origin=origin,
+            deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         return ModelVersionHandle(
@@ -448,6 +463,8 @@ def create_truss_service(
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
+            deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         return ModelVersionHandle(
@@ -472,6 +489,7 @@ def create_truss_service(
             deployment_name=deployment_name,
             environment=environment,
             preserve_env_instance_type=preserve_env_instance_type,
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
     except ApiError as e:
         if (

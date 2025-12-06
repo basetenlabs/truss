@@ -19,6 +19,7 @@ from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
+from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
@@ -462,7 +463,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with '--publish' or '--promote'."
+        "used in combination with --publish or --promote."
     ),
 )
 @click.option(
@@ -501,6 +502,19 @@ def run_python(script, target_directory):
         "Default is --preserve-env-instance-type."
     ),
 )
+@click.option(
+    "--deploy-timeout-minutes",
+    type=int,
+    required=False,
+    help="Timeout in minutes for the deploy operation.",
+)
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the model",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -518,6 +532,8 @@ def push(
     include_git_info: bool = False,
     tail: bool = False,
     preserve_env_instance_type: bool = True,
+    deploy_timeout_minutes: Optional[int] = None,
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -546,6 +562,17 @@ def push(
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = remote_cli.inquire_model_name()
+
+    # Resolve team_id if BasetenRemote
+    team_id = None
+    if isinstance(remote_provider, BasetenRemote):
+        existing_teams = remote_provider.api.get_teams()
+        _, team_id = resolve_model_team_name(
+            remote_provider=remote_provider,
+            provided_team_name=provided_team_name,
+            existing_model_name=model_name,
+            existing_teams=existing_teams,
+        )
 
     if promote and environment:
         raise click.UsageError(
@@ -612,11 +639,12 @@ def push(
             console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
     source = Path(target_directory)
-    # TODO(Abu): This needs to be refactored to be more generic
+    working_dir = source.parent if source.is_file() else source.resolve()
+
     service = remote_provider.push(
-        tr,
+        truss_handle=tr,
         model_name=model_name,
-        working_dir=source.parent if source.is_file() else source.resolve(),
+        working_dir=working_dir,
         publish=publish,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
@@ -626,7 +654,9 @@ def push(
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
-    )  # type: ignore
+        deploy_timeout_minutes=deploy_timeout_minutes,
+        team_id=team_id,
+    )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 

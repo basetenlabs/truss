@@ -99,6 +99,7 @@ class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
+    volume_size_gib: Optional[int] = None
 
 
 class CacheConfig(custom_types.SafeModelNoExtra):
@@ -125,7 +126,7 @@ class Runtime(custom_types.SafeModelNoExtra):
             raise ValueError(
                 "Cannot set both 'enable_cache' and 'cache_config'. "
                 "'enable_cache' is deprecated. Prefer migrating to 'cache_config' with "
-                "`enabled=True` and `enable_legacy_hf_cache=True`."
+                "`enabled=True` and `enable_legacy_hf_mount=True`."
             )
 
         # Migrate enable_cache to cache_config if enable_cache is True
@@ -181,6 +182,7 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
+    team_name: Optional[str] = None
 
 
 class Checkpoint(custom_types.ConfigModel, ABC):
