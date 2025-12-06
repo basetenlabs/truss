@@ -35,7 +35,7 @@ impl CloudMetadataProvider for AzureProvider {
         // Extract account name from bucket (format: "account/container")
         let account = bucket.split('/').next().unwrap_or(bucket);
         let azure = azure_storage(account, runtime_secret_name)?;
-        Ok(azure)
+        Ok(Box::new(azure))
     }
 
     fn create_resolution(&self, bucket: &str, object_path: &str) -> Resolution {

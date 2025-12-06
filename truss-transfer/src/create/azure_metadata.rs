@@ -77,11 +77,12 @@ struct AzureCredentials {
 
 /// Create Azure Blob Storage client using object_store
 /// Reads all Azure configuration from a single file
+/// Returns concrete MicrosoftAzure type to support the Signer trait for pre-signed URLs
 pub fn azure_storage(
     account_name: &str,
     runtime_secret_name: &str,
-) -> Result<Box<dyn object_store::ObjectStore>, anyhow::Error> {
-    use object_store::azure::{MicrosoftAzure, MicrosoftAzureBuilder};
+) -> Result<object_store::azure::MicrosoftAzure, anyhow::Error> {
+    use object_store::azure::MicrosoftAzureBuilder;
 
     let mut builder = MicrosoftAzureBuilder::new()
         .with_account(account_name)
@@ -112,11 +113,9 @@ pub fn azure_storage(
         ));
     }
 
-    let azure: MicrosoftAzure = builder
+    builder
         .build()
-        .map_err(|e| anyhow!("Failed to create Azure client: {}", e))?;
-
-    Ok(Box::new(azure))
+        .map_err(|e| anyhow!("Failed to create Azure client: {}", e))
 }
 
 #[cfg(test)]

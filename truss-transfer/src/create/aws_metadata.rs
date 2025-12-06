@@ -41,11 +41,12 @@ struct AwsCredentials {
 
 /// Create AWS S3 storage client using object_store
 /// Reads all AWS configuration from a single file
+/// Returns concrete AmazonS3 type to support the Signer trait for pre-signed URLs
 pub fn s3_storage(
     bucket_name: &str,
     runtime_secret_name: &str,
-) -> Result<Box<dyn object_store::ObjectStore>, anyhow::Error> {
-    use object_store::aws::{AmazonS3, AmazonS3Builder};
+) -> Result<object_store::aws::AmazonS3, anyhow::Error> {
+    use object_store::aws::AmazonS3Builder;
 
     let mut builder = AmazonS3Builder::new()
         .with_bucket_name(bucket_name)
@@ -72,11 +73,9 @@ pub fn s3_storage(
         ));
     }
 
-    let s3: AmazonS3 = builder
+    builder
         .build()
-        .map_err(|e| anyhow!("Failed to create S3 client: {}", e))?;
-
-    Ok(Box::new(s3))
+        .map_err(|e| anyhow!("Failed to create S3 client: {}", e))
 }
 
 #[cfg(test)]
