@@ -23,8 +23,8 @@ const MAX_WAIT_TIME: usize = 10_000;
 const HF_CHUNK_SIZE: usize = 10;
 const DEFAULT_CHUNK_SIZE: usize = 16;
 const MB: usize = 1024 * 1024;
-// Write buffer size for vectorized disk writes
-const WRITE_BUF_SIZE: usize = MB;
+// // Write buffer size for vectorized disk writes
+// const WRITE_BUF_SIZE: usize = MB;
 
 fn jitter() -> usize {
     rng().random_range(0..=500)
@@ -338,36 +338,16 @@ async fn download_chunk(
         .await?
         .error_for_status()?;
 
-    // Stream response and vectorize writes with a fixed-size buffer
+    // Stream response directly to file
     let mut stream = response.bytes_stream();
-    let mut buffer = Vec::with_capacity(WRITE_BUF_SIZE);
     let mut written: usize = 0;
 
     while let Some(item) = stream.next().await {
-        let mut chunk = item?;
-        // We may need to split a large network chunk into multiple write-buffer fills
-        while !chunk.is_empty() {
-            let space = WRITE_BUF_SIZE - buffer.len();
-            if chunk.len() <= space {
-                buffer.extend_from_slice(&chunk);
-                written = written
-                    .checked_add(chunk.len())
-                    .ok_or_else(|| Error::Protocol("Overflow in written byte count".to_string()))?;
-                break;
-            } else {
-                let head = chunk.split_to(space);
-                buffer.extend_from_slice(&head);
-                written = written
-                    .checked_add(head.len())
-                    .ok_or_else(|| Error::Protocol("Overflow in written byte count".to_string()))?;
-                file.write_all(&buffer).await?;
-                buffer.clear();
-            }
-        }
-    }
-
-    if !buffer.is_empty() {
-        file.write_all(&buffer).await?;
+        let chunk = item?;
+        written = written
+            .checked_add(chunk.len())
+            .ok_or_else(|| Error::Protocol("Overflow in written byte count".to_string()))?;
+        file.write_all(&chunk).await?;
     }
 
     if written != expected_len {
