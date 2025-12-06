@@ -20,8 +20,9 @@ use tokio::time::sleep;
 
 const BASE_WAIT_TIME: usize = 300;
 const MAX_WAIT_TIME: usize = 10_000;
-const HF_CHUNK_SIZE: usize = 10 * 1024 * 1024;
-const DEFAULT_CHUNK_SIZE: usize = 16 * 1024 * 1024;
+const HF_CHUNK_SIZE: usize = 10;
+const DEFAULT_CHUNK_SIZE: usize = 16;
+const MB: usize = 1024 * 1024;
 
 fn jitter() -> usize {
     rng().random_range(0..=500)
@@ -42,22 +43,22 @@ pub async fn download_async(
     callback: Option<Box<dyn Fn(usize) + Send + Sync>>,
     check_file_size: u64,
     semaphore_global: Arc<Semaphore>,
+    chunk_size_opt: Option<usize>,
 ) -> Result<()> {
-    let parsed_url = Url::parse(&url).map_err(|err| anyhow!("failed to parse url: {err}"))?;
-    let is_hf_url = if let Some(host) = parsed_url.host_str() {
-        host == "huggingface.co"
-            || host.ends_with(".huggingface.co")
-            || host == "hf.co"
-            || host.ends_with(".hf.co")
-    } else {
-        false
-    };
-
-    let chunk_size = if is_hf_url {
-        HF_CHUNK_SIZE
-    } else {
+    let chunk_size = MB * chunk_size_opt.unwrap_or_else(|| {
+        if let Ok(parsed_url) = Url::parse(&url) {
+            if let Some(host) = parsed_url.host_str() {
+                if host == "huggingface.co"
+                    || host.ends_with(".huggingface.co")
+                    || host == "hf.co"
+                    || host.ends_with(".hf.co")
+                {
+                    return HF_CHUNK_SIZE;
+                }
+            }
+        }
         DEFAULT_CHUNK_SIZE
-    };
+    });
 
     let client = reqwest::Client::builder()
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526

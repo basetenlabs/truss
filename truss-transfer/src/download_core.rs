@@ -151,6 +151,7 @@ pub async fn download_http_to_path_fast(
             None, // callback
             size,
             semaphore_range_dw,
+            None, // chunk_size
         )
         .await;
 
