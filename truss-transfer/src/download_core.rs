@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
 use crate::constants::{
-    TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS, TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS,
+    TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS,
     TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE, TRUSS_TRANSFER_USE_RANGE_DOWNLOAD,
 };
 use anyhow::{anyhow, Context, Result};

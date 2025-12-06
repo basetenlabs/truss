@@ -156,7 +156,7 @@ pub async fn download_async(
     let parallel_failures_semaphore = Arc::new(Semaphore::new(parallel_failures));
 
     // Determine which chunks should be flushed (last 16 or max_files chunks)
-    let total_chunks = (length + chunk_size - 1) / chunk_size; // equivalent to div_ceil
+    let total_chunks = length.div_ceil(chunk_size); // equivalent to div_ceil
     let flush_threshold_chunk = total_chunks.saturating_sub(max_files.min(16));
 
     let mut chunk_index = 0;
