@@ -20,7 +20,8 @@ use tokio::time::sleep;
 
 const BASE_WAIT_TIME: usize = 300;
 const MAX_WAIT_TIME: usize = 10_000;
-const CHUNK_SIZE: usize = 10 * 1024 * 1024;
+const HF_CHUNK_SIZE: usize = 10 * 1024 * 1024;
+const DEFAULT_CHUNK_SIZE: usize = 16 * 1024 * 1024;
 
 fn jitter() -> usize {
     rng().random_range(0..=500)
@@ -42,16 +43,30 @@ pub async fn download_async(
     check_file_size: u64,
     semaphore_global: Arc<Semaphore>,
 ) -> Result<()> {
+    let parsed_url = Url::parse(&url).map_err(|err| anyhow!("failed to parse url: {err}"))?;
+    let is_hf_url = if let Some(host) = parsed_url.host_str() {
+        host == "huggingface.co"
+            || host.ends_with(".huggingface.co")
+            || host == "hf.co"
+            || host.ends_with(".hf.co")
+    } else {
+        false
+    };
+
+    let chunk_size = if is_hf_url {
+        HF_CHUNK_SIZE
+    } else {
+        DEFAULT_CHUNK_SIZE
+    };
+
     let client = reqwest::Client::builder()
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
         .http2_keep_alive_timeout(Duration::from_secs(15))
         .no_proxy()
-        .http2_initial_stream_window_size(CHUNK_SIZE as u32)
-        .http2_initial_connection_window_size(2 * CHUNK_SIZE as u32)
+        .http2_initial_stream_window_size(chunk_size as u32)
+        .http2_initial_connection_window_size(2 * chunk_size as u32)
         .build()
         .unwrap();
-
-    let chunk_size = CHUNK_SIZE;
     let mut headers = HeaderMap::new();
 
     if let Some(token) = auth_token.as_ref() {
@@ -60,6 +75,8 @@ pub async fn download_async(
             HeaderValue::from_str(&format!("Bearer {token}"))?,
         );
     }
+
+    // TODO: make resolution cache here, so that redirects within 10minutes bypass finding the final URL again
 
     let response = client
         .get(&url)
