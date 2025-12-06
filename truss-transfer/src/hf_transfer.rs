@@ -45,21 +45,21 @@ pub async fn download_async(
     semaphore_global: Arc<Semaphore>,
     chunk_size_opt: Option<usize>,
 ) -> Result<()> {
-    let chunk_size = MB
-        * chunk_size_opt.unwrap_or_else(|| {
-            if let Ok(parsed_url) = Url::parse(&url) {
-                if let Some(host) = parsed_url.host_str() {
-                    if host == "huggingface.co"
-                        || host.ends_with(".huggingface.co")
-                        || host == "hf.co"
-                        || host.ends_with(".hf.co")
-                    {
-                        return HF_CHUNK_SIZE;
-                    }
+    let chunk_size = chunk_size_opt.unwrap_or_else(|| {
+        if let Ok(parsed_url) = Url::parse(&url) {
+            if let Some(host) = parsed_url.host_str() {
+                if host == "huggingface.co"
+                    || host.ends_with(".huggingface.co")
+                    || host == "hf.co"
+                    || host.ends_with(".hf.co")
+                {
+                    return HF_CHUNK_SIZE;
                 }
             }
-            DEFAULT_CHUNK_SIZE
-        });
+        }
+        DEFAULT_CHUNK_SIZE
+    });
+    let chunk_size = chunk_size * MB;
 
     let client = reqwest::Client::builder()
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
