@@ -181,7 +181,7 @@ pub async fn download_async(
 
     // Prepare file: truncate any previous contents and pre-size to the final length
     {
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
@@ -355,14 +355,13 @@ async fn download_chunk(
                     .ok_or_else(|| Error::Protocol("Overflow in written byte count".to_string()))?;
                 break;
             } else {
-                let (head, tail) = chunk.split_at(space);
-                buffer.extend_from_slice(head);
+                let head = chunk.split_to(space);
+                buffer.extend_from_slice(&head);
                 written = written
                     .checked_add(head.len())
                     .ok_or_else(|| Error::Protocol("Overflow in written byte count".to_string()))?;
                 file.write_all(&buffer).await?;
                 buffer.clear();
-                chunk = tail;
             }
         }
     }
