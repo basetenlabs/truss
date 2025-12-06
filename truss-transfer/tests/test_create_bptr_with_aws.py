@@ -105,3 +105,7 @@ def test_dolly_with_download():
     assert Path(
         "/app/model_cache/julien_dummy/rank-0/checkpoint-24/tokenizer_config.json"
     ).exists()
+
+if __name__ == "__main__":
+    test_dolly()
+    test_dolly_with_download()
