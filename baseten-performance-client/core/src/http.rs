@@ -65,6 +65,8 @@ pub struct CoreOpenAIEmbeddingsResponse {
 #[derive(Serialize, Debug)]
 pub struct CoreRerankRequest {
     pub query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     pub raw_scores: bool,
     pub return_text: bool,
     pub texts: Vec<String>,
@@ -111,6 +113,8 @@ impl CoreRerankResponse {
 #[derive(Serialize, Debug)]
 pub struct CoreClassifyRequest {
     pub inputs: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     pub raw_scores: bool,
     pub truncate: bool,
     pub truncation_direction: String,

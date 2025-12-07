@@ -281,6 +281,7 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
         max_chars_per_request: typing.Optional[builtins.int] = None,
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> OpenAIEmbeddingsResponse:
         """
         Sends a list of strings to the embedding endpoint to generate embeddings.
@@ -293,9 +294,10 @@ class PerformanceClient:
             user: Optional user identifier.
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Number of texts per batch.
-            timeout_s: Total timeout in seconds.
+            timeout_s: Per-request timeout in seconds.
             max_chars_per_request: Optional character-based batching limit.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             An OpenAIEmbeddingsResponse object.
@@ -303,6 +305,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the input list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> response = client.embed(["hello", "world"], model="model-id")
@@ -321,6 +324,7 @@ class PerformanceClient:
         query: builtins.str,
         texts: builtins.list[builtins.str],
         raw_scores: builtins.bool = False,
+        model: typing.Optional[builtins.str] = None,
         return_text: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
@@ -329,6 +333,7 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
         max_chars_per_request: typing.Optional[builtins.int] = None,
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> RerankResponse:
         """
         Reranks a set of texts based on the provided query.
@@ -337,14 +342,16 @@ class PerformanceClient:
             query: The query string.
             texts: A list of texts to rerank.
             raw_scores: Whether raw scores should be returned.
+            model: Optional model identifier.
             return_text: Whether to include the original text.
             truncate: Whether to truncate texts.
             truncation_direction: Direction for truncation ('Right' by default).
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
-            timeout_s: Overall timeout in seconds.
+            timeout_s: Per-request timeout in seconds.
             max_chars_per_request: Optional character-based batching limit.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             A RerankResponse object.
@@ -352,6 +359,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the texts list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> response = client.rerank("find", ["doc1", "doc2"])
@@ -363,6 +371,7 @@ class PerformanceClient:
     def classify(
         self,
         inputs: builtins.list[builtins.str],
+        model: typing.Optional[builtins.str] = None,
         raw_scores: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
@@ -371,20 +380,23 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
         max_chars_per_request: typing.Optional[builtins.int] = None,
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> ClassificationResponse:
         """
         Classifies each input text.
 
         Args:
             inputs: A list of texts to classify.
+            model: Optional model identifier.
             raw_scores: Whether raw scores should be returned.
             truncate: Whether to truncate long texts.
             truncation_direction: Truncation direction ('Right' by default).
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
-            timeout_s: Overall timeout in seconds.
+            timeout_s: Per-request timeout in seconds.
             max_chars_per_request: Optional character-based batching limit.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             A ClassificationResponse object.
@@ -392,6 +404,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the inputs list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> response = client.classify(["text1", "text2"])
@@ -408,6 +421,7 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -420,9 +434,9 @@ class PerformanceClient:
             payloads: A list of Python objects that are JSON-serializable.
                       Each object will be the body of a POST request.
             max_concurrent_requests: Maximum number of parallel requests.
-            timeout_s: Total timeout in seconds for the entire batch operation,
-                       also used as the timeout for each individual request.
+            timeout_s: Per-request timeout in seconds.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             A BatchPostResponse object containing the list of responses,
@@ -431,6 +445,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the payloads list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If any of the underlying HTTP requests fail.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
@@ -457,6 +472,7 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,
         max_chars_per_request: typing.Optional[builtins.int] = None,
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> OpenAIEmbeddingsResponse:
         """
         Asynchronously sends a list of texts to the embedding endpoint to generate embeddings.
@@ -469,9 +485,10 @@ class PerformanceClient:
             user: Optional user identifier.
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Number of texts per batch.
-            timeout_s: Total timeout in seconds.
+            timeout_s: Per-request timeout in seconds.
             max_chars_per_request: Optional character-based batching limit.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             An awaitable OpenAIEmbeddingsResponse object.
@@ -479,6 +496,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the input list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> response = await client.async_embed(["hello", "world"], model="model-id")
@@ -491,6 +509,7 @@ class PerformanceClient:
         query: builtins.str,
         texts: builtins.list[builtins.str],
         raw_scores: builtins.bool = False,
+        model: typing.Optional[builtins.str] = None,
         return_text: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
@@ -499,6 +518,7 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,
         max_chars_per_request: typing.Optional[builtins.int] = None,
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> RerankResponse:
         """
         Asynchronously reranks a set of texts based on the provided query.
@@ -507,14 +527,16 @@ class PerformanceClient:
             query: The query string.
             texts: A list of texts to rerank.
             raw_scores: Whether raw scores should be returned.
+            model: Optional model identifier.
             return_text: Whether to include the original text.
             truncate: Whether to truncate texts.
             truncation_direction: Direction for truncation ('Right' by default).
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
-            timeout_s: Overall timeout in seconds.
+            timeout_s: Per-request timeout in seconds.
             max_chars_per_request: Optional character-based batching limit.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             An awaitable RerankResponse object.
@@ -522,6 +544,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the texts list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> response = await client.async_rerank("find", ["doc1", "doc2"])
@@ -533,6 +556,7 @@ class PerformanceClient:
     async def async_classify(
         self,
         inputs: builtins.list[builtins.str],
+        model: typing.Optional[builtins.str] = None,
         raw_scores: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
@@ -541,20 +565,23 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,
         max_chars_per_request: typing.Optional[builtins.int] = None,
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> ClassificationResponse:
         """
         Asynchronously classifies each input text.
 
         Args:
             inputs: A list of texts to classify.
+            model: Optional model identifier.
             raw_scores: Whether raw scores should be returned.
             truncate: Whether to truncate long texts.
             truncation_direction: Truncation direction ('Right' by default).
             max_concurrent_requests: Maximum parallel requests.
             batch_size: Batch size for each request.
-            timeout_s: Overall timeout in seconds.
+            timeout_s: Per-request timeout in seconds.
             max_chars_per_request: Optional character-based batching limit.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             An awaitable ClassificationResponse object.
@@ -562,6 +589,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the inputs list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> response = await client.async_classify(["text1", "text2"])
@@ -578,6 +606,7 @@ class PerformanceClient:
         max_concurrent_requests: builtins.int = 32,
         timeout_s: builtins.float = 3600.0,
         hedge_delay: typing.Optional[builtins.float] = None,
+        total_timeout_s: typing.Optional[builtins.float] = None,
     ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -586,8 +615,9 @@ class PerformanceClient:
             url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
             payloads: A list of Python objects that are JSON-serializable.
             max_concurrent_requests: Maximum number of parallel requests.
-            timeout_s: Total timeout in seconds for the batch operation.
+            timeout_s: Per-request timeout in seconds.
             hedge_delay: Optional request hedging delay in seconds.
+            total_timeout_s: Optional total timeout for the entire operation in seconds.
 
         Returns:
             An awaitable BatchPostResponse object.
@@ -595,6 +625,7 @@ class PerformanceClient:
         Raises:
             ValueError: If the payloads list is empty or parameters are invalid.
             requests.exceptions.HTTPError: If any underlying HTTP requests fail.
+            requests.exceptions.Timeout: If a timeout occurs.
 
         Example:
             >>> response_obj = await client.async_batch_post("/v1/process_item", [{"data": "r1"}, {"data": "r2"}])

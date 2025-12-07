@@ -36,7 +36,8 @@ pub fn parse_s3_uri(uri: &str) -> Result<(String, String)> {
 struct AwsCredentials {
     access_key_id: String,
     secret_access_key: String,
-    region: Option<String>,
+    region: String,
+    session_token: Option<String>,
 }
 
 /// Create AWS S3 storage client using object_store
@@ -58,12 +59,14 @@ pub fn s3_storage(
             builder = builder
                 .with_access_key_id(credentials.access_key_id)
                 .with_secret_access_key(credentials.secret_access_key);
-
-            if let Some(region) = credentials.region {
-                builder = builder.with_region(region);
+            // get Session token if exists, else use access key, else error.
+            if let Some(session_token) = credentials.session_token {
+                builder = builder.with_token(session_token);
             }
+
+            builder = builder.with_region(credentials.region);
         } else {
-            return Err(anyhow!("Failed to parse AWS credentials from JSON. The json needs to be in the format: {{\"access_key_id\": \"...\", \"secret_access_key\": \"...\", \"region\": null | \"...\"}}"));
+            return Err(anyhow!("Failed to parse AWS credentials from JSON. The json needs to be in the format: {{\"access_key_id\": \"...\", \"secret_access_key\": \"...\", \"region\": \"...\"}}"));
         }
     } else {
         return Err(anyhow!(

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 // Request timeout constants
 pub const DEFAULT_REQUEST_TIMEOUT_S: f64 = 3600.0;
-pub const MIN_REQUEST_TIMEOUT_S: f64 = 1.0;
+pub const MIN_REQUEST_TIMEOUT_S: f64 = 0.5;
 pub const MAX_REQUEST_TIMEOUT_S: f64 = 3600.0;
 
 // Concurrency constants
