@@ -478,29 +478,18 @@ def create_truss_service(
             ),
         )
 
-    try:
-        model_version_json = api.create_model_version_from_truss(
-            model_id,
-            s3_key,
-            config,
-            semver_bump,
-            truss_user_env,
-            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
-            deployment_name=deployment_name,
-            environment=environment,
-            preserve_env_instance_type=preserve_env_instance_type,
-            deploy_timeout_minutes=deploy_timeout_minutes,
-        )
-    except ApiError as e:
-        if (
-            e.graphql_error_code
-            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
-        ):
-            raise ValueError(
-                f"Environment `{environment}` does not exist. You can create "
-                "environments in the Baseten UI."
-            ) from e
-        raise e
+    model_version_json = api.create_model_version_from_truss(
+        model_id,
+        s3_key,
+        config,
+        semver_bump,
+        truss_user_env,
+        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+        deployment_name=deployment_name,
+        environment=environment,
+        preserve_env_instance_type=preserve_env_instance_type,
+        deploy_timeout_minutes=deploy_timeout_minutes,
+    )
 
     return ModelVersionHandle(
         version_id=model_version_json["id"],

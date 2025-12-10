@@ -106,6 +106,7 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     enable_legacy_hf_mount: bool = False
     require_cache_affinity: bool = True
+    mount_base_path: str = "/root/.cache"
 
 
 class Runtime(custom_types.SafeModelNoExtra):
