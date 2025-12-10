@@ -103,7 +103,8 @@ HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
 # PORT: knative reserved
 # HOSTNAME: set to the pod name by k8s
-K8S_RESERVED_ENVIRONMENT_VARIABLES = set(["PORT", "HOSTNAME"])
+# PATH: must be baked into the Dockerfile for $PATH expansion to work correctly
+K8S_RESERVED_ENVIRONMENT_VARIABLES = set(["PORT", "HOSTNAME", "PATH"])
 
 
 class RemoteCache(ABC):
