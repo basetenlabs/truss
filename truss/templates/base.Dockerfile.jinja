@@ -11,6 +11,11 @@ ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
 {%- set app_username = "app" %}  {# needed later for USER directive#}
 {% block user_setup %}
+{#
+  NB(nikhil): Assume `root` for various setup that requires permissions; we conditionally switch to
+  `app_username` at the end, if `non_root` behavior is enabled.
+#}
+USER root
 {%- set app_user_uid = 60000 %}
 {%- set control_server_dir = "/control" %}
 {%- set default_owner = "root:root" %}
