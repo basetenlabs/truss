@@ -317,7 +317,7 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     new_config["model_cache"] = [{"repo_id": "test/model", "use_volume": False}]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == ""
 
 
 def test_huggingface_cache_single_model_non_default_revision_v1():
@@ -354,7 +354,7 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
         "model_cache"
     ]
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
-    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == ""
 
 
 def test_huggingface_cache_multiple_models_mixed_revision(default_config):
@@ -377,7 +377,7 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == ""
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
 
 
