@@ -41,9 +41,11 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
 - Use the python executable currently on the path, will respect activated virtual envs.
 #}
 {%- set sys_pip_install_command =
+    "UV_SYSTEM_FLAG=$(ls /usr/lib/python*/EXTERNALLY-MANAGED >/dev/null 2>&1 && echo '--system' || echo ''); " +
     "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
     "uv pip install " +
     "--index-strategy unsafe-best-match " +
+    "$UV_SYSTEM_FLAG " +
     "--python " + python_exec_path
 %}
 
