@@ -1,12 +1,12 @@
 [project]
 name = "truss"
-version = "0.13.3"
+version = "0.11.27rc001"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
     { name = "Phil Howes", email = "no-reply@baseten.co" },
 ]
-requires-python = ">=3.9,<3.15"
+requires-python = ">=3.9,<3.14"
 readme = "README.md"
 license = "MIT"
 keywords = [
@@ -43,7 +43,7 @@ dependencies = [
     "ruff>=0.4.8",
     "tenacity>=8.0.1",
     "watchfiles>=0.19.0,<0.20",
-    "truss-transfer>=0.0.40,<0.0.44",
+    "truss-transfer>=0.0.37,<0.0.40",
 ]
 
 [project.urls]
@@ -139,13 +139,15 @@ markers = [
     "asyncio: marks tests as async.",
 ]
 # specify basetemp because the default `/private/var/...` interferes with truss_ignore, which also has a var/ pattern
-addopts = "--ignore=smoketests --ignore=baseten-performance-client --ignore=integration_tests --basetemp=/tmp/pytest-temp"
+addopts = "--ignore=smoketests --ignore=baseten-performance-client --basetemp=/tmp/pytest-temp"
 # NB(nikhil): Ensures our relative imports work for tests, given non-traditional directory structure.
 pythonpath = [".", "truss-chains", "truss-train"]
 
 [tool.ruff]
 src = [".", "truss-chains", "truss-train"]
-target-version = "py39"
+# Parenthesized context managers are not supported in 3.8 but appear in the `templates` dir
+# which still supports 3.8. Therefore use 3.8 for formatting.
+target-version = "py38"
 line-length = 88
 lint.extend-select = [
     "I", # isort
