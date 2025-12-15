@@ -29,9 +29,9 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --chown= ./base_server_requirements.txt base_server_requirements.txt
-RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r base_server_requirements.txt --no-cache-dir
+RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r base_server_requirements.txt --no-cache-dir
 COPY --chown= ./requirements.txt requirements.txt
-RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
+RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
 WORKDIR $APP_HOME
 COPY --chown= ./data ${APP_HOME}/data
 COPY --chown= ./server ${APP_HOME}

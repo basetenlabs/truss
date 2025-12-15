@@ -44,10 +44,11 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
 - A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
 - We use `unsafe-best-match` since `uv` is stricter about having multiple registries, and we often need to search multiple.
 - Use the python executable currently on the path, will respect activated virtual envs.
+- `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
 #}
 {%- set sys_pip_install_command =
     "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
-    "uv pip install " +
+    "uv pip install --system --break-system-packages " +
     "--index-strategy unsafe-best-match " +
     "--python " + python_exec_path
 %}
