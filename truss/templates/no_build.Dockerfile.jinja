@@ -1,1 +1,17 @@
 FROM {{ config.base_image.image }}
+
+{# Set up environment variables and directories #}
+ENV APP_HOME=/app
+RUN mkdir -p ${APP_HOME}
+
+{# Copy data before code for better caching #}
+{%- if data_dir_exists %}
+COPY --chown=root:root ./{{ config.data_dir }} ${APP_HOME}/data
+{%- endif %} {#- endif data_dir_exists #}
+
+{# Build commands #}
+{%- if build_commands %}
+{% for command in build_commands %}
+RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{ secret }},target={{ path }}{%- endfor %} {{ command }}
+{% endfor %} {#- endfor build_commands #}
+{%- endif %} {#- endif build_commands #}
