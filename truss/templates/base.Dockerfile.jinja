@@ -9,7 +9,7 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
-{%- set app_username = "app" %}  {# needed later for USER directive#}
+{%- set app_username = "app" %}  {# needed later for USER directive #}
 {% block user_setup %}
 {#
   NB(nikhil): Assume `root` for various setup that requires permissions; we conditionally switch to

@@ -2112,3 +2112,16 @@ def test_build_commands_on_model_files(test_data_path):
         response = requests.post(urls.predict_url, json={})
         assert response.status_code == 200
         assert response.json() == "TEST_SECOND_VALUE"
+
+
+@pytest.mark.integration
+def test_switch_build_context_to_root(test_data_path):
+    with ensure_kill_all():
+        truss_dir = test_data_path / "test_non_root_base_image"
+        tr = TrussHandle(truss_dir)
+        container, urls = tr.docker_run_for_test()
+        time.sleep(3)  # Sleeping to allow the load to finish
+
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
