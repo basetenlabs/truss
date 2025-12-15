@@ -1,12 +1,12 @@
 [project]
 name = "truss"
-version = "0.11.27rc500"
+version = "0.11.27rc001"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
     { name = "Phil Howes", email = "no-reply@baseten.co" },
 ]
-requires-python = ">=3.9,<3.14"
+requires-python = ">=3.9,<3.15"
 readme = "README.md"
 license = "MIT"
 keywords = [
