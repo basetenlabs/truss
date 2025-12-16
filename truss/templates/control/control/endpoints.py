@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Callable, Dict, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 import httpx
 from fastapi import APIRouter, WebSocket
@@ -115,13 +115,12 @@ async def proxy_http(request: Request):
 def inference_retries(
     retry_condition: Callable[[RetryCallState], bool] = BASE_RETRY_EXCEPTIONS,
 ):
-    for attempt in Retrying(
+    yield from Retrying(
         retry=retry_condition,
         stop=_custom_stop_strategy,
         wait=wait_fixed(1),
         reraise=True,
-    ):
-        yield attempt
+    )
 
 
 async def _safe_close_ws(
@@ -217,7 +216,7 @@ control_app.add_route("/metrics/", proxy_http, ["GET"])
 
 
 @control_app.post("/control/patch")
-async def patch(request: Request) -> Dict[str, str]:
+async def patch(request: Request) -> dict[str, str]:
     request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
     loop = asyncio.get_event_loop()
@@ -232,20 +231,20 @@ async def patch(request: Request) -> Dict[str, str]:
 
 
 @control_app.get("/control/truss_hash")
-async def truss_hash(request: Request) -> Dict[str, Any]:
+async def truss_hash(request: Request) -> dict[str, Any]:
     t_hash = request.app.state.inference_server_controller.truss_hash()
     return {"result": t_hash}
 
 
 @control_app.post("/control/restart_inference_server")
-async def restart_inference_server(request: Request) -> Dict[str, str]:
+async def restart_inference_server(request: Request) -> dict[str, str]:
     request.app.state.inference_server_controller.restart()
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.get("/control/has_partially_applied_patch")
-async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
+async def has_partially_applied_patch(request: Request) -> dict[str, Any]:
     app_has_partially_applied_patch = (
         request.app.state.inference_server_controller.has_partially_applied_patch()
     )
@@ -253,7 +252,7 @@ async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
 
 
 @control_app.post("/control/stop_inference_server")
-async def stop_inference_server(request: Request) -> Dict[str, str]:
+async def stop_inference_server(request: Request) -> dict[str, str]:
     request.app.state.inference_server_controller.stop()
     return {"msg": "Inference server stopped successfully"}
 

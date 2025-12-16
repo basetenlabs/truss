@@ -126,7 +126,6 @@ def _generate_base_image_variations(
     "base_image, path, expected_fail",
     _generate_base_image_variations()
     + [
-        ("python:3.8-bookworm", "/usr/local/bin/python3", False),
         ("python:3.10-bookworm", "/usr/local/bin/python3", False),
         ("python:3.11-bookworm", "/usr/local/bin/python3", False),
         ("python:3.13-trixie", "/usr/local/bin/python3", False),
@@ -420,8 +419,7 @@ def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.parametrize(
-    "python_version, expected_python_version",
-    [("3.8", "py38"), ("py38", "py38"), ("3.9", "py39"), ("py39", "py39")],
+    "python_version, expected_python_version", [("3.9", "py39"), ("py39", "py39")]
 )
 def test_update_python_version(
     python_version, expected_python_version, custom_model_truss_dir_with_pre_and_post

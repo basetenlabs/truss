@@ -2,13 +2,13 @@ import json
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-JSONType = Union[str, int, float, bool, None, List["JSONType"], Dict[str, "JSONType"]]
+JSONType = Union[str, int, float, bool, None, list["JSONType"], dict[str, "JSONType"]]
 MsgPackType = Union[
     str,
     int,
@@ -22,16 +22,16 @@ MsgPackType = Union[
     timedelta,
     uuid.UUID,
     "NDArray",
-    List["MsgPackType"],
-    Dict[str, "MsgPackType"],
+    list["MsgPackType"],
+    dict[str, "MsgPackType"],
 ]
 
 
 # mostly cribbed from django.core.serializer.DjangoJSONEncoder
 def _truss_msgpack_encoder(
-    obj: Union[Decimal, date, time, timedelta, uuid.UUID, Dict],
+    obj: Union[Decimal, date, time, timedelta, uuid.UUID, dict],
     chain: Optional[Callable] = None,
-) -> Dict:
+) -> dict:
     if isinstance(obj, datetime):
         r = obj.isoformat()
         if r.endswith("+00:00"):

@@ -104,7 +104,6 @@ def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
 @pytest.mark.parametrize(
     "config_python_version, inspected_python_version",
     [
-        ("py38", "3.8"),
         ("py39", "3.9"),
         ("py310", "3.10"),
         ("py311", "3.11"),

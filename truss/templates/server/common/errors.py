@@ -2,9 +2,10 @@ import contextlib
 import logging
 import sys
 import textwrap
+from collections.abc import Generator, Mapping
 from http import HTTPStatus
 from types import TracebackType
-from typing import Generator, Mapping, Optional, Tuple, Type, Union
+from typing import Optional, Union
 
 import fastapi
 import pydantic
@@ -135,7 +136,7 @@ HANDLED_EXCEPTIONS = {
 def filter_traceback(
     model_file_name: str,
 ) -> Union[
-    Tuple[Type[BaseException], BaseException, TracebackType], Tuple[None, None, None]
+    tuple[type[BaseException], BaseException, TracebackType], tuple[None, None, None]
 ]:
     exc_type, exc_value, tb = sys.exc_info()
     if tb is None:
@@ -208,7 +209,7 @@ def intercept_exceptions(
         raise UserCodeError(str(exc))
 
 
-def _loc_to_dot_sep(loc: Tuple[Union[str, int], ...]) -> str:
+def _loc_to_dot_sep(loc: tuple[Union[str, int], ...]) -> str:
     # From https://docs.pydantic.dev/latest/errors/errors/#customize-error-messages.
     # Chained field access is stylized with `.`-notation (corresponding to str parts)
     # and array indexing is stylized with `[i]`-notation (corresponding to int parts).

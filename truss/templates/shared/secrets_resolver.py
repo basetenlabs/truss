@@ -1,7 +1,7 @@
 import os
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 SECRETS_DOC_LINK = "https://truss.baseten.co/guides/secrets"
 
@@ -15,7 +15,7 @@ class SecretsResolver:
     SECRET_ENV_VAR_PREFIX = "TRUSS_SECRET_"
 
     @staticmethod
-    def get_secrets(config: Dict):
+    def get_secrets(config: dict):
         return Secrets(config.get("secrets", {}))
 
     @staticmethod
@@ -36,7 +36,7 @@ class SecretsResolver:
 
 
 class Secrets(Mapping):
-    def __init__(self, base_secrets: Dict[str, str]):
+    def __init__(self, base_secrets: dict[str, str]):
         self._base_secrets = base_secrets
 
     def __getitem__(self, key: str) -> str:

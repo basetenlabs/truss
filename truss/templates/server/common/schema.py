@@ -1,19 +1,12 @@
-from types import MappingProxyType
-from typing import (
-    Any,
+from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
     Awaitable,
     Generator,
     Iterator,
-    List,
-    Optional,
-    Type,
-    Union,
-    cast,
-    get_args,
-    get_origin,
 )
+from types import MappingProxyType
+from typing import Any, Optional, Union, cast, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -24,8 +17,8 @@ class OutputType(BaseModel):
 
 
 class TrussSchema(BaseModel):
-    input_type: Optional[Type[BaseModel]]
-    output_type: Optional[Type[BaseModel]]
+    input_type: Optional[type[BaseModel]]
+    output_type: Optional[type[BaseModel]]
     supports_streaming: Optional[bool]
 
     @classmethod
@@ -136,7 +129,7 @@ def _is_awaitable_type(annotation: Any) -> bool:
 
 def retrieve_base_class_from_awaitable(
     awaitable_annotation: type,
-) -> Optional[Type[BaseModel]]:
+) -> Optional[type[BaseModel]]:
     """
     Returns the base class of an Awaitable type if it is of the form:
     Awaitable[PydanticBaseModel]
@@ -152,7 +145,7 @@ def retrieve_base_class_from_awaitable(
     return None
 
 
-def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
+def _extract_pydantic_base_models(union_args: tuple) -> list[type[BaseModel]]:
     """
     Extracts any pydantic base model arguments from the arms of a Union type.
     The two cases are:
@@ -162,7 +155,7 @@ def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
     """
 
     return [
-        cast(Type[BaseModel], retrieve_base_class_from_awaitable(arg))
+        cast(type[BaseModel], retrieve_base_class_from_awaitable(arg))
         if _is_awaitable_type(arg)
         else arg
         for arg in union_args
@@ -170,7 +163,7 @@ def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
     ]
 
 
-def retrieve_base_class_from_union(union_annotation: type) -> Optional[Type[BaseModel]]:
+def retrieve_base_class_from_union(union_annotation: type) -> Optional[type[BaseModel]]:
     """
     Returns the base class of a Union type if it is of the form:
     Union[PydanticBaseModel, Generator] or in the case of async functions:
