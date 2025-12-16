@@ -114,8 +114,8 @@ impl PyModelRepo {
     #[new]
     #[pyo3(signature = (
         repo_id,
-        revision,
-        volume_folder,
+        revision = "".to_string(),
+        volume_folder = "".to_string(),
         kind = "hf".to_string(),
         allow_patterns = None,
         ignore_patterns = None,

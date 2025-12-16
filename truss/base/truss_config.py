@@ -141,7 +141,7 @@ class ModelRepoSourceKind(str, enum.Enum):
 
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
-    revision: Optional[Annotated[str, pydantic.StringConstraints(min_length=1)]] = None
+    revision: str = ""
     allow_patterns: Optional[list[str]] = None
     ignore_patterns: Optional[list[str]] = None
     volume_folder: Optional[
@@ -150,6 +150,13 @@ class ModelRepo(custom_types.ConfigModel):
     use_volume: bool
     kind: ModelRepoSourceKind = ModelRepoSourceKind.HF
     runtime_secret_name: str = "hf_access_token"
+
+    @pydantic.field_validator("revision")
+    @classmethod
+    def _validate_revision(cls, v: str) -> str:
+        if len(v) == 1:
+            raise ValueError("revision must be empty or at least 2 characters")
+        return v
 
     @property
     def runtime_path(self) -> pathlib.Path:
@@ -161,11 +168,14 @@ class ModelRepo(custom_types.ConfigModel):
         use_volume = v.get("use_volume", False)
         if not use_volume:
             return v
-        if v.get("kind") == ModelRepoSourceKind.HF.value and v.get("revision") is None:
+        revision = v.get("revision") or ""
+        kind = v.get("kind")
+        is_hf = kind is None or kind == ModelRepoSourceKind.HF.value
+        if is_hf and not revision:
             logger.warning(
-                "the key `revision: str` is required for use_volume=True huggingface repos. For S3/GCS/Azure repos, set it to any non-empty string."
+                "the key `revision: str` is required for use_volume=True huggingface repos."
             )
-            raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
+            raise_insufficent_revision(v.get("repo_id"), revision)
         if v.get("volume_folder") is None or len(v["volume_folder"]) == 0:
             raise ValueError(
                 "the key `volume_folder: str` is required for `use_volume=True` repos."
