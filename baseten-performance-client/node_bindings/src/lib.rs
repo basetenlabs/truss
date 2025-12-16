@@ -2,8 +2,8 @@
 
 use baseten_performance_client_core::{
   ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
-  CoreRerankResponse, HttpClientWrapper, PerformanceClientCore, DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+  CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+  DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
 };
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
@@ -176,17 +176,17 @@ pub struct BatchPostResponse {
 }
 
 #[napi]
-pub struct HttpClientWrapperJs {
-  inner: Arc<HttpClientWrapper>,
+pub struct HttpClientWrapper {
+  inner: Arc<HttpClientWrapperRs>,
 }
 
 #[napi]
-impl HttpClientWrapperJs {
+impl HttpClientWrapper {
   #[napi(constructor)]
   pub fn new(http_version: Option<u8>) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
     let inner =
-      HttpClientWrapper::new(http_version).map_err(convert_core_error_to_napi_error)?;
+      HttpClientWrapperRs::new(http_version).map_err(convert_core_error_to_napi_error)?;
     Ok(Self { inner })
   }
 }
@@ -203,7 +203,7 @@ impl PerformanceClient {
     base_url: String,
     api_key: Option<String>,
     http_version: Option<u8>,
-    client_wrapper: Option<&HttpClientWrapperJs>,
+    client_wrapper: Option<&HttpClientWrapper>,
   ) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
     let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
@@ -214,8 +214,8 @@ impl PerformanceClient {
   }
 
   #[napi]
-  pub fn get_client_wrapper(&self) -> HttpClientWrapperJs {
-    HttpClientWrapperJs {
+  pub fn get_client_wrapper(&self) -> HttpClientWrapper {
+    HttpClientWrapper {
       inner: self.core_client.get_client_wrapper(),
     }
   }

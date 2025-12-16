@@ -223,7 +223,7 @@ class BatchPostResponse:
     individual_request_times: builtins.list[builtins.float]
     response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
-class HttpClientWrapperPy:
+class HttpClientWrapper:
     """
     A wrapper around the HTTP client that can be shared between multiple PerformanceClient instances.
 
@@ -231,7 +231,7 @@ class HttpClientWrapperPy:
     when making requests to the same region from multiple PerformanceClient instances.
 
     Example:
-        >>> wrapper = HttpClientWrapperPy(http_version=1)
+        >>> wrapper = HttpClientWrapper(http_version=1)
         >>> client1 = PerformanceClient(base_url="https://api1.example.com", client_wrapper=wrapper)
         >>> client2 = PerformanceClient(base_url="https://api2.example.com", client_wrapper=wrapper)
     """
@@ -266,7 +266,7 @@ class PerformanceClient:
         base_url: builtins.str,
         api_key: typing.Optional[builtins.str] = None,
         http_version: builtins.int = 1,
-        client_wrapper: typing.Optional[HttpClientWrapperPy] = None,
+        client_wrapper: typing.Optional[HttpClientWrapper] = None,
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
@@ -276,25 +276,25 @@ class PerformanceClient:
             api_key: The API key. If not provided, environment variables will be checked.
             http_version: Defaults to 1 for HTTP/1.1. If set to 2, uses HTTP/2.
                 Under high concurrency, HTTP/1.1 delivers better performance and is the better default choice.
-            client_wrapper: Optional HttpClientWrapperPy instance to reuse connection pooling
+            client_wrapper: Optional HttpClientWrapper instance to reuse connection pooling
                 across multiple PerformanceClient instances.
 
         Example:
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key", http_version=1)
             >>> # Or with shared connection pool:
-            >>> wrapper = HttpClientWrapperPy(http_version=1)
+            >>> wrapper = HttpClientWrapper(http_version=1)
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", client_wrapper=wrapper)
         """
         ...
 
-    def get_client_wrapper(self) -> HttpClientWrapperPy:
+    def get_client_wrapper(self) -> HttpClientWrapper:
         """
         Get the HTTP client wrapper used by this client.
 
         This can be passed to other PerformanceClient instances to share connection pooling.
 
         Returns:
-            The HttpClientWrapperPy instance used by this client.
+            The HttpClientWrapper instance used by this client.
 
         Example:
             >>> wrapper = client.get_client_wrapper()

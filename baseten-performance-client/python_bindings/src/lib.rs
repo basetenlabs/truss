@@ -1,6 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
-use baseten_performance_client_core::*;
+use baseten_performance_client_core::{
+    ClientError, CoreClassificationResponse, CoreClassificationResult, CoreEmbeddingVariant,
+    CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse,
+    CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+};
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
@@ -320,10 +325,10 @@ struct BatchPostResponse {
     response_headers: Vec<PyObject>,
 }
 
-#[pyclass]
+#[pyclass(name = "HttpClientWrapper")]
 #[derive(Clone)]
 struct HttpClientWrapperPy {
-    inner: Arc<HttpClientWrapper>,
+    inner: Arc<HttpClientWrapperRs>,
 }
 
 #[pymethods]
@@ -331,7 +336,7 @@ impl HttpClientWrapperPy {
     #[new]
     #[pyo3(signature = (http_version = 1))]
     fn new(http_version: u8) -> PyResult<Self> {
-        let inner = HttpClientWrapper::new(http_version)
+        let inner = HttpClientWrapperRs::new(http_version)
             .map_err(PerformanceClient::convert_core_error_to_py_err)?;
         Ok(HttpClientWrapperPy { inner })
     }
