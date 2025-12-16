@@ -8,7 +8,7 @@ pub mod split_policy;
 pub mod utils;
 
 pub use cancellation::JoinSetGuard;
-pub use client::PerformanceClientCore;
+pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
 pub use errors::ClientError;
 pub use http::*;

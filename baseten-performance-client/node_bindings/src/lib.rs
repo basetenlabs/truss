@@ -2,13 +2,14 @@
 
 use baseten_performance_client_core::{
   ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
-  CoreRerankResponse, PerformanceClientCore, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY,
-  DEFAULT_REQUEST_TIMEOUT_S,
+  CoreRerankResponse, HttpClientWrapper, PerformanceClientCore, DEFAULT_BATCH_SIZE,
+  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
 };
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // Use constants from core crate - no more hardcoded values!
 
@@ -175,6 +176,22 @@ pub struct BatchPostResponse {
 }
 
 #[napi]
+pub struct HttpClientWrapperJs {
+  inner: Arc<HttpClientWrapper>,
+}
+
+#[napi]
+impl HttpClientWrapperJs {
+  #[napi(constructor)]
+  pub fn new(http_version: Option<u8>) -> napi::Result<Self> {
+    let http_version = http_version.unwrap_or(1);
+    let inner =
+      HttpClientWrapper::new(http_version).map_err(convert_core_error_to_napi_error)?;
+    Ok(Self { inner })
+  }
+}
+
+#[napi]
 pub struct PerformanceClient {
   core_client: PerformanceClientCore,
 }
@@ -182,11 +199,25 @@ pub struct PerformanceClient {
 #[napi]
 impl PerformanceClient {
   #[napi(constructor)]
-  pub fn new(base_url: String, api_key: Option<String>) -> napi::Result<Self> {
+  pub fn new(
+    base_url: String,
+    api_key: Option<String>,
+    http_version: Option<u8>,
+    client_wrapper: Option<&HttpClientWrapperJs>,
+  ) -> napi::Result<Self> {
+    let http_version = http_version.unwrap_or(1);
+    let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
     let core_client =
-      PerformanceClientCore::new(base_url, api_key, 2).map_err(convert_core_error_to_napi_error)?;
+      PerformanceClientCore::new(base_url, api_key, http_version, wrapper).map_err(convert_core_error_to_napi_error)?;
 
     Ok(Self { core_client })
+  }
+
+  #[napi]
+  pub fn get_client_wrapper(&self) -> HttpClientWrapperJs {
+    HttpClientWrapperJs {
+      inner: self.core_client.get_client_wrapper(),
+    }
   }
 
   #[napi]

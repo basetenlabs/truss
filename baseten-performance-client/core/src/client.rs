@@ -52,6 +52,21 @@ impl Deref for ClientGuard {
 }
 
 impl HttpClientWrapper {
+    pub fn new(http_version: u8) -> Result<Arc<Self>, ClientError> {
+        let wrapper = if http_version == 2 {
+            let mut pool = Vec::with_capacity(HTTP2_CLIENT_POOL_SIZE);
+            for _ in 0..HTTP2_CLIENT_POOL_SIZE {
+                let client = PerformanceClientCore::get_http_client(2)?;
+                pool.push((Arc::new(AtomicUsize::new(0)), Arc::new(client)));
+            }
+            HttpClientWrapper::Http2(Arc::new(pool))
+        } else {
+            let client = PerformanceClientCore::get_http_client(1)?;
+            HttpClientWrapper::Http1(Arc::new(client))
+        };
+        Ok(Arc::new(wrapper))
+    }
+
     pub fn get_client(&self) -> ClientGuard {
         match self {
             HttpClientWrapper::Http1(client) => ClientGuard::new(client.clone(), None),
@@ -78,10 +93,41 @@ impl HttpClientWrapper {
 pub struct PerformanceClientCore {
     pub api_key: String,
     pub base_url: Arc<str>,
-    pub client_wrapper: HttpClientWrapper,
+    pub client_wrapper: Arc<HttpClientWrapper>,
 }
 
 impl PerformanceClientCore {
+    pub fn new(
+        base_url: String,
+        api_key: Option<String>,
+        http_version: u8,
+        client_wrapper: Option<Arc<HttpClientWrapper>>,
+    ) -> Result<Self, ClientError> {
+        let api_key = Self::get_api_key(api_key)?;
+
+        let client_wrapper = if let Some(wrapper) = client_wrapper {
+            wrapper
+        } else {
+            HttpClientWrapper::new(http_version)?
+        };
+
+        if WARNING_SLOW_PROVIDERS
+            .iter()
+            .any(|&provider| base_url.contains(provider))
+        {
+            eprintln!(
+                "Warning: Using {} as the base URL might be slow. Consider using baseten.com instead.",
+                base_url
+            );
+        }
+
+        Ok(PerformanceClientCore {
+            api_key,
+            base_url: base_url.into(),
+            client_wrapper,
+        })
+    }
+
     pub fn get_api_key(api_key: Option<String>) -> Result<String, ClientError> {
         if let Some(key) = api_key {
             return Ok(key);
@@ -159,6 +205,10 @@ impl PerformanceClientCore {
         Ok((validated_concurrency, validated_timeout))
     }
 
+    pub fn get_client_wrapper(&self) -> Arc<HttpClientWrapper> {
+        Arc::clone(&self.client_wrapper)
+    }
+
     pub fn get_http_client(http_version: u8) -> Result<Client, ClientError> {
         let mut client_builder = Client::builder();
 
@@ -182,42 +232,6 @@ impl PerformanceClientCore {
             ))
             .build()
             .map_err(|e| ClientError::Network(format!("Failed to create HTTP client: {}", e)))
-    }
-
-    pub fn new(
-        base_url: String,
-        api_key: Option<String>,
-        http_version: u8,
-    ) -> Result<Self, ClientError> {
-        let api_key = Self::get_api_key(api_key)?;
-
-        let client_wrapper = if http_version == 2 {
-            let mut pool = Vec::with_capacity(HTTP2_CLIENT_POOL_SIZE);
-            for _ in 0..HTTP2_CLIENT_POOL_SIZE {
-                let client = Self::get_http_client(2)?;
-                pool.push((Arc::new(AtomicUsize::new(0)), Arc::new(client)));
-            }
-            HttpClientWrapper::Http2(Arc::new(pool))
-        } else {
-            let client = Self::get_http_client(1)?;
-            HttpClientWrapper::Http1(Arc::new(client))
-        };
-
-        if WARNING_SLOW_PROVIDERS
-            .iter()
-            .any(|&provider| base_url.contains(provider))
-        {
-            eprintln!(
-                "Warning: Using {} as the base URL might be slow. Consider using baseten.com instead.",
-                base_url
-            );
-        }
-
-        Ok(PerformanceClientCore {
-            api_key,
-            base_url: base_url.into(),
-            client_wrapper,
-        })
     }
 }
 
@@ -609,6 +623,7 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
+        custom_headers: Option<std::collections::HashMap<String, String>>,
     ) -> Result<
         (
             Vec<(
@@ -667,6 +682,8 @@ impl PerformanceClientCore {
             Duration,
         )> = Vec::with_capacity(total_payloads);
 
+        let custom_headers = custom_headers.map(Arc::new);
+
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
@@ -676,6 +693,7 @@ impl PerformanceClientCore {
             let retry_budget = Arc::clone(&retry_budget);
             let individual_request_timeout = request_timeout_duration;
             let hedge_budget = hedge_budget_delay.clone();
+            let custom_headers = custom_headers.clone();
 
             join_set.spawn(async move {
                 let _permit = semaphore
@@ -705,6 +723,7 @@ impl PerformanceClientCore {
                     api_key,
                     individual_request_timeout,
                     &config,
+                    custom_headers.as_deref(),
                 )
                 .await;
 
