@@ -185,8 +185,7 @@ impl HttpClientWrapper {
   #[napi(constructor)]
   pub fn new(http_version: Option<u8>) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
-    let inner =
-      HttpClientWrapperRs::new(http_version).map_err(convert_core_error_to_napi_error)?;
+    let inner = HttpClientWrapperRs::new(http_version).map_err(convert_core_error_to_napi_error)?;
     Ok(Self { inner })
   }
 }
@@ -207,8 +206,8 @@ impl PerformanceClient {
   ) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
     let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
-    let core_client =
-      PerformanceClientCore::new(base_url, api_key, http_version, wrapper).map_err(convert_core_error_to_napi_error)?;
+    let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper)
+      .map_err(convert_core_error_to_napi_error)?;
 
     Ok(Self { core_client })
   }
