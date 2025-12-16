@@ -4,10 +4,10 @@ import logging
 import logging.config
 import os
 import signal
-import sys
+from collections.abc import AsyncGenerator, Awaitable, Generator
 from http import HTTPStatus
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
 import pydantic
 import uvicorn
@@ -42,11 +42,6 @@ from shared import log_config, serialization
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
-
-if sys.version_info >= (3, 9):
-    from typing import AsyncGenerator, Generator
-else:
-    from typing_extensions import AsyncGenerator, Generator
 
 PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
@@ -117,7 +112,7 @@ class BasetenEndpoints:
         self.check_healthy()
         return {}
 
-    async def invocations_ready(self) -> Dict[str, Union[str, bool]]:
+    async def invocations_ready(self) -> dict[str, Union[str, bool]]:
         """
         This method provides compatibility with Sagemaker hosting for the 'ping' endpoint.
         """
@@ -311,7 +306,7 @@ class BasetenEndpoints:
                 response_headers["Content-Type"] = "application/json"
                 return Response(content=content, headers=response_headers)
 
-    async def schema(self, model_name: str) -> Dict:
+    async def schema(self, model_name: str) -> dict:
         if self._model.truss_schema is None:
             # If there is not a TrussSchema, we return a 404.
             if self._model.ready:
@@ -344,7 +339,7 @@ class TrussServer:
 
     _server: Optional[uvicorn.Server]
 
-    def __init__(self, http_port: int, config_or_path: Union[str, Path, Dict]):
+    def __init__(self, http_port: int, config_or_path: Union[str, Path, dict]):
         # This is run before uvicorn is up. Need explicit logging config here.
         logging.config.dictConfig(log_config.make_log_config("INFO"))
 

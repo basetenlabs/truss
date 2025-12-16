@@ -903,7 +903,6 @@ def test_validate_extra_fields(tmp_path):
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
-        ("py38", "py38"),
         ("py39", "py39"),
         ("py310", "py310"),
         ("py311", "py311"),
@@ -920,13 +919,13 @@ def test_map_to_supported_python_version(python_version, expected_python_version
 def test_not_supported_python_minor_versions():
     with pytest.raises(
         ValueError,
-        match="Mapping python version 3.6 to 3.8, "
+        match="Mapping python version 3.6 to 3.9, "
         "the lowest version that Truss currently supports.",
     ):
         _map_to_supported_python_version("py36")
     with pytest.raises(
         ValueError,
-        match="Mapping python version 3.7 to 3.8, "
+        match="Mapping python version 3.7 to 3.9, "
         "the lowest version that Truss currently supports.",
     ):
         _map_to_supported_python_version("py37")

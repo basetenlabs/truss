@@ -2,7 +2,7 @@ import logging
 import subprocess
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from helpers.context_managers import current_directory
 from shared.util import kill_child_processes
@@ -17,13 +17,13 @@ class InferenceServerProcessController:
     _inference_server_port: int
     _inference_server_home: str
     _app_logger: logging.Logger
-    _inference_server_process_args: List[str]
+    _inference_server_process_args: list[str]
     _logged_unrecoverable_since_last_restart: bool
 
     def __init__(
         self,
         inference_server_home: str,
-        inference_server_process_args: List[str],
+        inference_server_process_args: list[str],
         inference_server_port: int,
         app_logger: logging.Logger,
     ) -> None:
