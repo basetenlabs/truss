@@ -109,6 +109,7 @@ def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
         ("py311", "3.11"),
         ("py312", "3.12"),
         ("py313", "3.13"),
+        ("py314", "3.14"),
     ],
 )
 def test_predict_python_versions(config_python_version, inspected_python_version):
@@ -119,8 +120,6 @@ def test_predict_python_versions(config_python_version, inspected_python_version
             version = sys.version_info
             return f"{version.major}.{version.minor}"
     """
-    # config = """base_image:
-    #                   image: baseten/truss-server-base:3.13-marius"""
     config = f"python_version: {config_python_version}"
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
