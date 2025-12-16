@@ -310,6 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { PerformanceClient } = nativeBinding
+const { PerformanceClient, HttpClientWrapper } = nativeBinding
 
 module.exports.PerformanceClient = PerformanceClient
+module.exports.HttpClientWrapper = HttpClientWrapper
