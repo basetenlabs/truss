@@ -84,15 +84,22 @@ pub async fn send_http_request_with_headers<T>(
     api_key: String,
     request_timeout: Duration,
     config: &SendRequestConfig,
+    custom_headers: Option<&std::collections::HashMap<String, String>>,
 ) -> Result<(serde_json::Value, std::collections::HashMap<String, String>), ClientError>
 where
     T: serde::Serialize,
 {
-    let request_builder = client
+    let mut request_builder = client
         .post(&url)
         .bearer_auth(api_key)
         .json(&payload)
         .timeout(request_timeout);
+
+    if let Some(headers) = custom_headers {
+        for (key, value) in headers {
+            request_builder = request_builder.header(key, value);
+        }
+    }
 
     let response = send_request_with_retry(request_builder, config).await?;
     // hedge here with a second workstream, awaiting the first one or time of hedge

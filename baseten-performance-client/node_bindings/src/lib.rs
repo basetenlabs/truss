@@ -398,6 +398,7 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     hedge_delay: Option<f64>,
     total_timeout_s: Option<f64>,
+    custom_headers: Option<std::collections::HashMap<String, String>>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
       return Err(create_napi_error("Payloads list cannot be empty"));
@@ -416,6 +417,7 @@ impl PerformanceClient {
         timeout_s,
         hedge_delay,
         total_timeout_s,
+        custom_headers,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;

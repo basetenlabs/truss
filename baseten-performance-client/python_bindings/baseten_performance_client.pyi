@@ -465,6 +465,7 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
         hedge_delay: typing.Optional[builtins.float] = None,
         total_timeout_s: typing.Optional[builtins.float] = None,
+        custom_headers: typing.Optional[builtins.dict[builtins.str, builtins.str]] = None,
     ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -480,6 +481,7 @@ class PerformanceClient:
             timeout_s: Per-request timeout in seconds.
             hedge_delay: Optional request hedging delay in seconds.
             total_timeout_s: Optional total timeout for the entire operation in seconds.
+            custom_headers: Optional dictionary of custom HTTP headers to include in each request.
 
         Returns:
             A BatchPostResponse object containing the list of responses,
@@ -500,6 +502,8 @@ class PerformanceClient:
             >>> for resp_data in response_obj.data:
             ...     print(resp_data)
             >>> print(f"Total time: {response_obj.total_time}")
+            >>> # With custom headers:
+            >>> response_obj = client.batch_post("/v1/process_item", custom_payloads, custom_headers={"X-Custom-Header": "value"})
         """
         ...
 
@@ -650,6 +654,7 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,
         hedge_delay: typing.Optional[builtins.float] = None,
         total_timeout_s: typing.Optional[builtins.float] = None,
+        custom_headers: typing.Optional[builtins.dict[builtins.str, builtins.str]] = None,
     ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -661,6 +666,7 @@ class PerformanceClient:
             timeout_s: Per-request timeout in seconds.
             hedge_delay: Optional request hedging delay in seconds.
             total_timeout_s: Optional total timeout for the entire operation in seconds.
+            custom_headers: Optional dictionary of custom HTTP headers to include in each request.
 
         Returns:
             An awaitable BatchPostResponse object.
