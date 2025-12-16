@@ -198,7 +198,8 @@ def init(target_directory, backend, name, python_config) -> None:
     if os.path.isdir(target_directory):
         if not click.confirm(
             f"Directory '{target_directory}' already exists. "
-            "Are you okay with overwriting it?"
+            "Files in the directory may be overwritten. "
+            "Are you sure you want to continue?"
         ):
             click.echo("Init aborted.")
             return
