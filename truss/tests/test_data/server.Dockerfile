@@ -13,9 +13,9 @@ RUN /usr/local/bin/python3 -c "import sys; \
     sys.exit(0) \
     if sys.version_info.major == 3 \
     and sys.version_info.minor >= 9 \
-    and sys.version_info.minor <= 13 \
+    and sys.version_info.minor <= 14 \
     else sys.exit(1)" \
-    || { echo "ERROR: Supplied base image does not have 3.9 <= python <= 3.13"; exit 1; }
+    || { echo "ERROR: Supplied base image does not have 3.9 <= python <= 3.14"; exit 1; }
 RUN if ! command -v uv >/dev/null 2>&1; then \
     command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
     curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.8.22/install.sh | sh && \
