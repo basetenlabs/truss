@@ -908,7 +908,7 @@ def test_validate_extra_fields(tmp_path):
         ("py311", "py311"),
         ("py312", "py312"),
         ("py313", "py313"),
-        ("py314", "py313"),
+        ("py314", "py314"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):
