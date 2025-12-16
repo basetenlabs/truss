@@ -47,8 +47,7 @@ def test_get_client_wrapper():
     from baseten_performance_client import PerformanceClient
 
     client = PerformanceClient(
-        base_url="https://api.example.com",
-        api_key="test-api-key",
+        base_url="https://api.example.com", api_key="test-api-key"
     )
     wrapper = client.get_client_wrapper()
     assert wrapper is not None
@@ -80,8 +79,7 @@ def test_get_wrapper_from_client_and_reuse():
     from baseten_performance_client import PerformanceClient
 
     client1 = PerformanceClient(
-        base_url="https://api1.example.com",
-        api_key="test-api-key-1",
+        base_url="https://api1.example.com", api_key="test-api-key-1"
     )
     wrapper = client1.get_client_wrapper()
 

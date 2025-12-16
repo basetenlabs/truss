@@ -465,7 +465,9 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
         hedge_delay: typing.Optional[builtins.float] = None,
         total_timeout_s: typing.Optional[builtins.float] = None,
-        custom_headers: typing.Optional[builtins.dict[builtins.str, builtins.str]] = None,
+        custom_headers: typing.Optional[
+            builtins.dict[builtins.str, builtins.str]
+        ] = None,
     ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
@@ -654,7 +656,9 @@ class PerformanceClient:
         timeout_s: builtins.float = 3600.0,
         hedge_delay: typing.Optional[builtins.float] = None,
         total_timeout_s: typing.Optional[builtins.float] = None,
-        custom_headers: typing.Optional[builtins.dict[builtins.str, builtins.str]] = None,
+        custom_headers: typing.Optional[
+            builtins.dict[builtins.str, builtins.str]
+        ] = None,
     ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
