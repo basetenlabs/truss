@@ -36,10 +36,10 @@ test('client has batchPost method', (t) => {
 test('HttpClientWrapper initialization', (t) => {
   const wrapper = new HttpClientWrapper()
   t.truthy(wrapper, 'HttpClientWrapper should be initialized with default http_version')
-  
+
   const wrapper1 = new HttpClientWrapper(1)
   t.truthy(wrapper1, 'HttpClientWrapper should be initialized with http_version=1')
-  
+
   const wrapper2 = new HttpClientWrapper(2)
   t.truthy(wrapper2, 'HttpClientWrapper should be initialized with http_version=2')
 })
@@ -55,7 +55,7 @@ test('PerformanceClient initialization with HttpClientWrapper', (t) => {
 test('client has getClientWrapper method', (t) => {
   const client = new PerformanceClient('https://api.example.com', 'test-api-key')
   t.is(typeof client.getClientWrapper, 'function', 'getClientWrapper should be a function')
-  
+
   const wrapper = client.getClientWrapper()
   t.truthy(wrapper, 'getClientWrapper should return an HttpClientWrapper')
 })
@@ -63,10 +63,10 @@ test('client has getClientWrapper method', (t) => {
 // Test sharing HttpClientWrapper between clients
 test('HttpClientWrapper can be shared between clients', (t) => {
   const wrapper = new HttpClientWrapper(1)
-  
+
   const client1 = new PerformanceClient('https://api1.example.com', 'test-api-key-1', 1, wrapper)
   const client2 = new PerformanceClient('https://api2.example.com', 'test-api-key-2', 1, wrapper)
-  
+
   t.truthy(client1, 'First client should be initialized')
   t.truthy(client2, 'Second client should be initialized')
 })
@@ -75,7 +75,7 @@ test('HttpClientWrapper can be shared between clients', (t) => {
 test('HttpClientWrapper from one client can be used in another', (t) => {
   const client1 = new PerformanceClient('https://api1.example.com', 'test-api-key-1')
   const wrapper = client1.getClientWrapper()
-  
+
   const client2 = new PerformanceClient('https://api2.example.com', 'test-api-key-2', 1, wrapper)
   t.truthy(client2, 'Second client should be initialized with wrapper from first client')
 })
