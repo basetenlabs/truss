@@ -128,7 +128,14 @@ ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_conf
 {#- default configuration uses port 80, which requires root privileges, so we remove it #}
 RUN rm -f /etc/nginx/sites-enabled/default
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
-{{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run"]) }}
+{%- set base_chown_dirs = ["/var/lib/nginx", "/var/log/nginx", "/run"] %}
+{#- If TRT-LLM v2 inference stack is enabled, we need to chown the workspace and trtllm directories #}
+{%- if config.trt_llm and config.trt_llm.inference_stack == "v2" %}
+{%- set extra_chown_dirs = base_chown_dirs + ["/workspace", "/workspace/trtllm"] %}
+{%- else %}
+{%- set extra_chown_dirs = base_chown_dirs %}
+{%- endif %}
+{{ chown_and_switch_to_regular_user_if_enabled(extra_chown_dirs) }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
