@@ -247,7 +247,7 @@ impl PerformanceClientCore {
         endpoint_url: Arc<str>,
         adjust_indices: impl Fn(&mut R, usize) + Send + Sync + 'static,
         total_timeout: Option<Duration>,
-    ) -> Result<(R, Vec<Duration>, Duration), ClientError>
+    ) -> Result<(R, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError>
     where
         T: serde::Serialize + Send + 'static,
         R: serde::de::DeserializeOwned + Combinable + Send + 'static,
@@ -261,7 +261,6 @@ impl PerformanceClientCore {
             total_requests,
         )));
 
-        // Create cancel token for coordinated shutdown
         let cancel_token = CancellationToken::new();
 
         let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| {
@@ -271,14 +270,12 @@ impl PerformanceClientCore {
             )
         });
 
-        // Calculate expected capacity from original batches for pre-allocation
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
-        // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
-        // This provides implicit cancellation when the future is dropped
-        let mut join_set: JoinSetGuard<Result<(R, Duration, usize, usize), ClientError>> =
-            JoinSetGuard::with_cancel_token(cancel_token);
-        let mut indexed_results: Vec<(usize, R, Duration, usize)> =
+        let mut join_set: JoinSetGuard<
+            Result<(R, Duration, usize, usize, HeaderMap), ClientError>,
+        > = JoinSetGuard::with_cancel_token(cancel_token);
+        let mut indexed_results: Vec<(usize, R, Duration, usize, HeaderMap)> =
             Vec::with_capacity(total_requests);
 
         let mut current_absolute_index = 0;
@@ -314,7 +311,7 @@ impl PerformanceClientCore {
                 };
 
                 // Send request with pre-created payload and URL
-                let response: R = send_http_request_with_retry(
+                let (response, headers): (R, HeaderMap) = send_http_request_with_retry(
                     &client,
                     url.to_string(),
                     payload,
@@ -329,7 +326,8 @@ impl PerformanceClientCore {
                     response,
                     request_time_elapsed,
                     current_batch_absolute_start_index,
-                    batch_index, // Include batch index for ordering
+                    batch_index,
+                    headers,
                 ))
             });
         }
@@ -362,8 +360,8 @@ impl PerformanceClientCore {
             };
 
             match process_joinset_outcome(task_result) {
-                Ok((response, duration, start_index, batch_index)) => {
-                    indexed_results.push((batch_index, response, duration, start_index));
+                Ok((response, duration, start_index, batch_index, headers)) => {
+                    indexed_results.push((batch_index, response, duration, start_index, headers));
                 }
                 Err(e) => {
                     // JoinSetGuard::drop will abort remaining tasks automatically
@@ -373,22 +371,28 @@ impl PerformanceClientCore {
         }
 
         // Sort results by original batch order to preserve ordering
-        indexed_results.sort_by_key(|&(batch_index, _, _, _)| batch_index);
-
+        indexed_results.sort_by_key(|&(batch_index, _, _, _, _)| batch_index);
         // Extract responses and durations in correct order
         let mut responses = Vec::with_capacity(total_requests);
         let mut individual_batch_durations = Vec::with_capacity(total_requests);
+        let mut collected_headers = Vec::with_capacity(total_requests);
 
-        for (_, mut response, duration, start_index) in indexed_results {
+        for (_, mut response, duration, start_index, headers) in indexed_results {
             adjust_indices(&mut response, start_index);
             responses.push(response);
             individual_batch_durations.push(duration);
+            collected_headers.push(headers);
         }
 
         let combined_response = R::combine(responses, expected_capacity);
         let total_time = start_time.elapsed();
 
-        Ok((combined_response, individual_batch_durations, total_time))
+        Ok((
+            combined_response,
+            individual_batch_durations,
+            collected_headers,
+            total_time,
+        ))
     }
 
     // Helper to create batches with policy and config
@@ -423,7 +427,15 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
-    ) -> Result<(CoreOpenAIEmbeddingsResponse, Vec<Duration>, Duration), ClientError> {
+    ) -> Result<
+        (
+            CoreOpenAIEmbeddingsResponse,
+            Vec<Duration>,
+            Vec<HeaderMap>,
+            Duration,
+        ),
+        ClientError,
+    > {
         // Create and validate config
         let config = RequestProcessingConfig::new(
             max_concurrent_requests,
@@ -443,7 +455,7 @@ impl PerformanceClientCore {
 
         let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
 
-        let (mut response, durations, total_time) = self
+        let (mut response, durations, headers, total_time) = self
             .process_batched_requests(
                 batches,
                 &config,
@@ -467,8 +479,9 @@ impl PerformanceClientCore {
         // Set timing information
         response.total_time = total_time.as_secs_f64();
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
+        response.response_headers = headers.clone();
 
-        Ok((response, durations, total_time))
+        Ok((response, durations, headers, total_time))
     }
 
     // Core rerank processing logic with unified interface
@@ -489,7 +502,7 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
-    ) -> Result<(CoreRerankResponse, Vec<Duration>, Duration), ClientError> {
+    ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
         // Create and validate config
         let config = RequestProcessingConfig::new(
             max_concurrent_requests,
@@ -510,7 +523,7 @@ impl PerformanceClientCore {
 
         let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
 
-        let (results, durations, total_time) = self
+        let (results, durations, headers, total_time) = self
             .process_batched_requests(
                 batches,
                 &config,
@@ -539,8 +552,9 @@ impl PerformanceClientCore {
         // Set timing information
         response.total_time = total_time.as_secs_f64();
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
+        response.response_headers = headers.clone();
 
-        Ok((response, durations, total_time))
+        Ok((response, durations, headers, total_time))
     }
 
     // Core classify processing logic with unified interface
@@ -559,7 +573,15 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
-    ) -> Result<(CoreClassificationResponse, Vec<Duration>, Duration), ClientError> {
+    ) -> Result<
+        (
+            CoreClassificationResponse,
+            Vec<Duration>,
+            Vec<HeaderMap>,
+            Duration,
+        ),
+        ClientError,
+    > {
         // Create and validate config
         let config = RequestProcessingConfig::new(
             max_concurrent_requests,
@@ -580,7 +602,7 @@ impl PerformanceClientCore {
 
         let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
 
-        let (results, durations, total_time) = self
+        let (results, durations, headers, total_time) = self
             .process_batched_requests(
                 batches,
                 &config,
@@ -609,8 +631,9 @@ impl PerformanceClientCore {
         // Set timing information
         response.total_time = total_time.as_secs_f64();
         response.individual_request_times = durations.iter().map(|d| d.as_secs_f64()).collect();
+        response.response_headers = headers.clone();
 
-        Ok((response, durations, total_time))
+        Ok((response, durations, headers, total_time))
     }
 
     // Core batch post processing - optimized with JoinSetGuard
@@ -623,18 +646,8 @@ impl PerformanceClientCore {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
-        custom_headers: Option<std::collections::HashMap<String, String>>,
-    ) -> Result<
-        (
-            Vec<(
-                serde_json::Value,
-                std::collections::HashMap<String, String>,
-                Duration,
-            )>,
-            Duration,
-        ),
-        ClientError,
-    > {
+        custom_headers: Option<HeaderMap>,
+    ) -> Result<(Vec<(serde_json::Value, HeaderMap, Duration)>, Duration), ClientError> {
         let start_time = std::time::Instant::now();
         let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
 
@@ -665,22 +678,10 @@ impl PerformanceClientCore {
 
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<
-            Result<
-                (
-                    usize,
-                    serde_json::Value,
-                    std::collections::HashMap<String, String>,
-                    Duration,
-                ),
-                ClientError,
-            >,
+            Result<(usize, serde_json::Value, HeaderMap, Duration), ClientError>,
         > = JoinSetGuard::with_cancel_token(cancel_token);
-        let mut indexed_results: Vec<(
-            usize,
-            serde_json::Value,
-            std::collections::HashMap<String, String>,
-            Duration,
-        )> = Vec::with_capacity(total_payloads);
+        let mut indexed_results: Vec<(usize, serde_json::Value, HeaderMap, Duration)> =
+            Vec::with_capacity(total_payloads);
 
         let custom_headers = custom_headers.map(Arc::new);
 
@@ -780,11 +781,7 @@ impl PerformanceClientCore {
 
         indexed_results.sort_by_key(|&(original_index, _, _, _)| original_index);
 
-        let final_results: Vec<(
-            serde_json::Value,
-            std::collections::HashMap<String, String>,
-            Duration,
-        )> = indexed_results
+        let final_results: Vec<(serde_json::Value, HeaderMap, Duration)> = indexed_results
             .into_iter()
             .map(|(_, val, headers, dur)| (val, headers, dur))
             .collect();
