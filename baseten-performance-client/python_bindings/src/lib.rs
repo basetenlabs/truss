@@ -341,18 +341,18 @@ struct BatchPostResponse {
 
 #[pyclass(name = "HttpClientWrapper")]
 #[derive(Clone)]
-struct HttpClientWrapperPy {
+struct HttpClientWrapper {
     inner: Arc<HttpClientWrapperRs>,
 }
 
 #[pymethods]
-impl HttpClientWrapperPy {
+impl HttpClientWrapper {
     #[new]
     #[pyo3(signature = (http_version = 1))]
     fn new(http_version: u8) -> PyResult<Self> {
         let inner = HttpClientWrapperRs::new(http_version)
             .map_err(PerformanceClient::convert_core_error_to_py_err)?;
-        Ok(HttpClientWrapperPy { inner })
+        Ok(HttpClientWrapper { inner })
     }
 
     fn __repr__(&self) -> String {
@@ -388,7 +388,7 @@ impl PerformanceClient {
         base_url: String,
         api_key: Option<String>,
         http_version: u8,
-        client_wrapper: Option<HttpClientWrapperPy>,
+        client_wrapper: Option<HttpClientWrapper>,
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
         let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper)
@@ -405,8 +405,8 @@ impl PerformanceClient {
         Ok(self.core_client.api_key.clone())
     }
 
-    fn get_client_wrapper(&self) -> HttpClientWrapperPy {
-        HttpClientWrapperPy {
+    fn get_client_wrapper(&self) -> HttpClientWrapper {
+        HttpClientWrapper {
             inner: self.core_client.get_client_wrapper(),
         }
     }
@@ -948,7 +948,7 @@ impl PerformanceClient {
 #[pymodule]
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PerformanceClient>()?;
-    m.add_class::<HttpClientWrapperPy>()?;
+    m.add_class::<HttpClientWrapper>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;
