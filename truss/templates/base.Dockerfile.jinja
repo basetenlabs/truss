@@ -9,8 +9,13 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
-{%- set app_username = "app" %}  {# needed later for USER directive#}
+{%- set app_username = "app" %}  {# needed later for USER directive #}
 {% block user_setup %}
+{#
+  NB(nikhil): Assume `root` for various setup that requires permissions; we conditionally switch to
+  `app_username` at the end, if `non_root` behavior is enabled.
+#}
+USER root
 {%- set app_user_uid = 60000 %}
 {%- set control_server_dir = "/control" %}
 {%- set default_owner = "root:root" %}
@@ -39,10 +44,11 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
 - A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
 - We use `unsafe-best-match` since `uv` is stricter about having multiple registries, and we often need to search multiple.
 - Use the python executable currently on the path, will respect activated virtual envs.
+- `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
 #}
 {%- set sys_pip_install_command =
     "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
-    "uv pip install " +
+    "uv pip install --system --break-system-packages " +
     "--index-strategy unsafe-best-match " +
     "--python " + python_exec_path
 %}

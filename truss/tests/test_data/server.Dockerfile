@@ -2,6 +2,7 @@ ARG PYVERSION=py39
 ARG HOME
 FROM baseten/truss-server-base:3.9-v0.4.3 AS truss_server
 ENV PYTHON_EXECUTABLE="/usr/local/bin/python3"
+USER root
 ENV HOME=${HOME:-/root}
 ENV APP_HOME=/app
 RUN mkdir -p ${APP_HOME} /control
@@ -11,10 +12,10 @@ RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Suppli
 RUN /usr/local/bin/python3 -c "import sys; \
     sys.exit(0) \
     if sys.version_info.major == 3 \
-    and sys.version_info.minor >= 8 \
-    and sys.version_info.minor <= 13 \
+    and sys.version_info.minor >= 9 \
+    and sys.version_info.minor <= 14 \
     else sys.exit(1)" \
-    || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.13"; exit 1; }
+    || { echo "ERROR: Supplied base image does not have 3.9 <= python <= 3.14"; exit 1; }
 RUN if ! command -v uv >/dev/null 2>&1; then \
     command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
     curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.8.22/install.sh | sh && \
@@ -28,9 +29,9 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --chown= ./base_server_requirements.txt base_server_requirements.txt
-RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r base_server_requirements.txt --no-cache-dir
+RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r base_server_requirements.txt --no-cache-dir
 COPY --chown= ./requirements.txt requirements.txt
-RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
+RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
 WORKDIR $APP_HOME
 COPY --chown= ./data ${APP_HOME}/data
 COPY --chown= ./server ${APP_HOME}

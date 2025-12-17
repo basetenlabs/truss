@@ -109,9 +109,10 @@ def test_get_blob_credentials_for_other_types_uses_rest():
     mock_auth_service = Mock()
     mock_auth_service.authenticate.return_value = Mock(value="test-token")
     api = BasetenApi("https://test.baseten.co", mock_auth_service)
-    with patch.object(api, "_rest_api_client") as mock_client, patch.object(
-        api, "_post_graphql_query"
-    ) as mock_graphql:
+    with (
+        patch.object(api, "_rest_api_client") as mock_client,
+        patch.object(api, "_post_graphql_query") as mock_graphql,
+    ):
         mock_client.get.return_value = mock_response
 
         result = api.get_blob_credentials(b10_types.BlobType.MODEL)
