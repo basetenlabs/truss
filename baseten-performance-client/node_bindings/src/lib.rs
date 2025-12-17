@@ -262,13 +262,14 @@ impl PerformanceClient {
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
-    let (core_response, batch_durations, total_time) = result;
+    let (core_response, batch_durations, headers, total_time) = result;
     let mut response = OpenAIEmbeddingsResponse::from(core_response);
     response.total_time = total_time.as_secs_f64();
     response.individual_request_times = batch_durations
       .into_iter()
-      .map(|d| d.as_secs_f64())
+      .map(|d: std::time::Duration| d.as_secs_f64())
       .collect();
+    response.response_headers = headers;
 
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
@@ -321,13 +322,14 @@ impl PerformanceClient {
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
-    let (core_response, batch_durations, total_time) = result;
+    let (core_response, batch_durations, headers, total_time) = result;
     let mut response = RerankResponse::from(core_response);
     response.total_time = total_time.as_secs_f64();
     response.individual_request_times = batch_durations
       .into_iter()
-      .map(|d| d.as_secs_f64())
+      .map(|d: std::time::Duration| d.as_secs_f64())
       .collect();
+    response.response_headers = headers;
 
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
@@ -376,13 +378,14 @@ impl PerformanceClient {
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
-    let (core_response, batch_durations, total_time) = result;
+    let (core_response, batch_durations, headers, total_time) = result;
     let mut response = ClassificationResponse::from(core_response);
     response.total_time = total_time.as_secs_f64();
     response.individual_request_times = batch_durations
       .into_iter()
-      .map(|d| d.as_secs_f64())
+      .map(|d: std::time::Duration| d.as_secs_f64())
       .collect();
+    response.response_headers = headers;
 
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))

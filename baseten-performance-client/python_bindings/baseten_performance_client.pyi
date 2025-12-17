@@ -63,6 +63,8 @@ class OpenAIEmbeddingsResponse:
         usage: Usage details such as token counts.
         total_time: Optional total time taken for the operation in seconds.
         individual_request_times: Optional list of individual batch request times in seconds.
+        response_headers: A list of dictionaries, where each dictionary contains
+                          the response headers for the corresponding batch request.
 
     Methods:
         numpy() -> _NDArrayF32:
@@ -80,6 +82,7 @@ class OpenAIEmbeddingsResponse:
     usage: OpenAIUsage
     total_time: typing.Optional[builtins.float]
     individual_request_times: typing.Optional[builtins.list[builtins.float]]
+    response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
     def numpy(self) -> _NDArrayF32:
         """
@@ -125,6 +128,8 @@ class RerankResponse:
         data: A list of RerankResult objects.
         total_time: Optional total time taken for the operation in seconds.
         individual_request_times: Optional list of individual batch request times in seconds.
+        response_headers: A list of dictionaries, where each dictionary contains
+                          the response headers for the corresponding batch request.
 
     Example:
         >>> response = client.rerank("query", ["doc1", "doc2"])
@@ -137,12 +142,16 @@ class RerankResponse:
     data: builtins.list[RerankResult]
     total_time: typing.Optional[builtins.float]
     individual_request_times: typing.Optional[builtins.list[builtins.float]]
+    response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
     def __init__(
         self,
         data: builtins.list[RerankResult],
         total_time: typing.Optional[builtins.float] = None,
         individual_request_times: typing.Optional[builtins.list[builtins.float]] = None,
+        response_headers: typing.Optional[
+            builtins.list[builtins.dict[builtins.str, builtins.str]]
+        ] = None,
     ) -> None:
         """
         Initializes a RerankResponse.
@@ -151,6 +160,7 @@ class RerankResponse:
             data: A list of RerankResult objects.
             total_time: Optional total time for the operation.
             individual_request_times: Optional list of individual batch request times.
+            response_headers: Optional list of response headers per batch request.
         """
         ...
 
@@ -175,6 +185,8 @@ class ClassificationResponse:
         data: A nested list of ClassificationResult objects.
         total_time: Optional total time taken for the operation in seconds.
         individual_request_times: Optional list of individual batch request times in seconds.
+        response_headers: A list of dictionaries, where each dictionary contains
+                          the response headers for the corresponding batch request.
 
     Example:
         >>> response = client.classify(["text1", "text2"])
@@ -188,12 +200,16 @@ class ClassificationResponse:
     data: builtins.list[builtins.list[ClassificationResult]]
     total_time: typing.Optional[builtins.float]
     individual_request_times: typing.Optional[builtins.list[builtins.float]]
+    response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
     def __init__(
         self,
         data: builtins.list[builtins.list[ClassificationResult]],
         total_time: typing.Optional[builtins.float] = None,
         individual_request_times: typing.Optional[builtins.list[builtins.float]] = None,
+        response_headers: typing.Optional[
+            builtins.list[builtins.dict[builtins.str, builtins.str]]
+        ] = None,
     ) -> None:
         """
         Initializes a ClassificationResponse.
@@ -202,6 +218,7 @@ class ClassificationResponse:
             data: A list where each element is a list of ClassificationResult objects.
             total_time: Optional total time for the operation.
             individual_request_times: Optional list of individual batch request times.
+            response_headers: Optional list of response headers per batch request.
         """
         ...
 
