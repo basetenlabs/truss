@@ -125,8 +125,17 @@ impl CustomerRequestId {
         self.retry_count.map(|count| count > 0).unwrap_or(false)
     }
 
-    /// Generate clean string representation
-    pub fn to_string(&self) -> String {
+
+}
+
+impl Default for CustomerRequestId {
+    fn default() -> Self {
+        Self::new_batch()
+    }
+}
+
+impl std::fmt::Display for CustomerRequestId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Generate string
         let prefix = self.customer_prefix.as_deref().unwrap_or("perfclient");
         let mut result = format!("{}-{}", prefix, self.uuid_suffix);
@@ -141,19 +150,7 @@ impl CustomerRequestId {
             }
         }
 
-        result
-    }
-}
-
-impl Default for CustomerRequestId {
-    fn default() -> Self {
-        Self::new_batch()
-    }
-}
-
-impl std::fmt::Display for CustomerRequestId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", result)
     }
 }
 
