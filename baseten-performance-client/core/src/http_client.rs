@@ -1,5 +1,7 @@
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
+use crate::customer_request_id::CustomerRequestId;
+use crate::errors::classify_timeout_error;
 use crate::errors::ClientError;
 use rand::Rng;
 use reqwest::Client;
@@ -7,26 +9,42 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Convert reqwest error to ClientError with customer request ID context
+fn convert_reqwest_error_with_customer_id(
+    err: reqwest::Error,
+    customer_request_id: CustomerRequestId,
+) -> ClientError {
+    if err.is_timeout() {
+        classify_timeout_error(&err, Some(customer_request_id.to_string()))
+    } else if err.is_connect() {
+        ClientError::Connect(err.to_string())
+    } else {
+        ClientError::Network(err.to_string())
+    }
+}
+
 pub struct SendRequestConfig {
     pub max_retries: u32,
     pub initial_backoff: Duration,
     pub retry_budget: Arc<AtomicUsize>,
     pub hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
     pub timeout: Duration,
+    pub customer_request_id: CustomerRequestId,
 }
 
 impl SendRequestConfig {
-    /// Create a new SendRequestConfig with validation
+    /// Create a new SendRequestConfig with customer request ID
     pub fn new(
         max_retries: u32,
         initial_backoff: Duration,
         retry_budget: Arc<AtomicUsize>,
         hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
         timeout: Duration,
+        customer_request_id: CustomerRequestId,
     ) -> Result<Self, ClientError> {
         // Validate that hedging timeout is higher than request timeout
         if let Some((_, hedge_timeout)) = &hedge_budget {
-            if hedge_timeout <= &timeout {
+            if hedge_timeout >= &timeout {
                 return Err(ClientError::InvalidParameter(format!(
                     "Hedge timeout ({:.3}s) must be higher than request timeout ({:.3}s)",
                     hedge_timeout.as_secs_f64(),
@@ -41,6 +59,7 @@ impl SendRequestConfig {
             retry_budget,
             hedge_budget,
             timeout,
+            customer_request_id,
         })
     }
 }
@@ -58,14 +77,21 @@ where
     T: serde::Serialize,
     R: serde::de::DeserializeOwned,
 {
-    let request_builder = client
+    let mut request_builder = client
         .post(&url)
         .bearer_auth(api_key)
         .json(&payload)
         .timeout(request_timeout);
 
+    // Add customer request ID header
+    request_builder = request_builder.header(
+        "x-baseten-customer-request-id",
+        config.customer_request_id.to_string(),
+    );
+
     let response = send_request_with_retry(request_builder, config).await?;
-    let successful_response = ensure_successful_response(response).await?;
+    let successful_response =
+        ensure_successful_response(response, Some(config.customer_request_id.to_string())).await?;
 
     // Extract headers
     let mut headers_map = std::collections::HashMap::new();
@@ -103,6 +129,12 @@ where
         .json(&payload)
         .timeout(request_timeout);
 
+    // Add customer request ID header
+    request_builder = request_builder.header(
+        "x-baseten-customer-request-id",
+        config.customer_request_id.to_string(),
+    );
+
     if let Some(headers) = custom_headers {
         for (key, value) in headers {
             request_builder = request_builder.header(key, value);
@@ -111,7 +143,8 @@ where
 
     let response = send_request_with_retry(request_builder, config).await?;
     // hedge here with a second workstream, awaiting the first one or time of hedge
-    let successful_response = ensure_successful_response(response).await?;
+    let successful_response =
+        ensure_successful_response(response, Some(config.customer_request_id.to_string())).await?;
 
     // Extract headers
     let mut headers_map = std::collections::HashMap::new();
@@ -130,8 +163,9 @@ where
     Ok((response_json_value, headers_map))
 }
 
-pub async fn ensure_successful_response(
+async fn ensure_successful_response(
     response: reqwest::Response,
+    customer_request_id: Option<String>,
 ) -> Result<reqwest::Response, ClientError> {
     if !response.status().is_success() {
         let status = response.status();
@@ -142,13 +176,14 @@ pub async fn ensure_successful_response(
         Err(ClientError::Http {
             status: status.as_u16(),
             message: format!("API request failed with status {}: {}", status, error_text),
+            customer_request_id,
         })
     } else {
         Ok(response)
     }
 }
 
-pub async fn send_request_with_retry(
+async fn send_request_with_retry(
     request_builder: reqwest::RequestBuilder,
     config: &SendRequestConfig,
 ) -> Result<reqwest::Response, ClientError> {
@@ -167,10 +202,9 @@ pub async fn send_request_with_retry(
         let response_result = if should_hedge {
             send_request_with_hedging(request_builder_clone, config).await
         } else {
-            request_builder_clone
-                .send()
-                .await
-                .map_err(ClientError::from)
+            request_builder_clone.send().await.map_err(|e| {
+                convert_reqwest_error_with_customer_id(e, config.customer_request_id.clone())
+            })
         };
 
         let should_retry = match &response_result {
@@ -191,11 +225,11 @@ pub async fn send_request_with_retry(
             Err(client_error) => {
                 // For network errors, check if we have a retry budget.
                 match client_error {
-                    ClientError::LocalTimeout(_) => {
+                    ClientError::LocalTimeout(_, _) => {
                         println!("client local timeout error: {}", client_error);
                         config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                     }
-                    ClientError::RemoteTimeout(_) => {
+                    ClientError::RemoteTimeout(_, _) => {
                         println!("client remote timeout error: {}", client_error);
                         config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                     }
@@ -227,7 +261,10 @@ pub async fn send_request_with_retry(
 
         if !should_retry {
             return match response_result {
-                Ok(resp) => ensure_successful_response(resp).await,
+                Ok(resp) => {
+                    ensure_successful_response(resp, Some(config.customer_request_id.to_string()))
+                        .await
+                }
                 Err(err) => Err(err),
             };
         }

@@ -153,6 +153,7 @@ fn test_classification_response_combine() {
 
 #[test]
 fn test_send_request_config_hedge_timeout_validation() {
+    use baseten_performance_client_core::customer_request_id::CustomerRequestId;
     use baseten_performance_client_core::http_client::SendRequestConfig;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
@@ -161,43 +162,46 @@ fn test_send_request_config_hedge_timeout_validation() {
     let hedge_budget = Arc::new(AtomicUsize::new(100));
     let retry_budget = Arc::new(AtomicUsize::new(100));
 
-    // Test case 1: hedge timeout higher than request timeout (should succeed)
+    // Test case 1: hedge delay higher than request delay (should fail)
     let result = SendRequestConfig::new(
         3,
         Duration::from_millis(100),
         retry_budget.clone(),
-        Some((hedge_budget.clone(), Duration::from_secs(2))), // hedge timeout = 2s
+        Some((hedge_budget.clone(), Duration::from_secs(2))), // hedge delay = 2s
         Duration::from_secs(1),                               // request timeout = 1s
+        CustomerRequestId::new_batch(),
+    );
+    assert!(
+        result.is_err(),
+        "Should fail when hedge delay > request timeout"
+    );
+
+    // Test case 2: hedge delay equal to request timeout (should fail)
+    let result = SendRequestConfig::new(
+        3,
+        Duration::from_millis(100),
+        retry_budget.clone(),
+        Some((hedge_budget.clone(), Duration::from_secs(1))), // hedge delay = 1s
+        Duration::from_secs(1),                               // request timeout = 1s
+        CustomerRequestId::new_batch(),
+    );
+    assert!(
+        result.is_err(),
+        "Should fail when hedge delay = request timeout"
+    );
+
+    // Test case 3: hedge delay lower than request timeout (should fail)
+    let result = SendRequestConfig::new(
+        3,
+        Duration::from_millis(100),
+        retry_budget.clone(),
+        Some((hedge_budget.clone(), Duration::from_millis(500))), // hedge delay = 0.5s
+        Duration::from_secs(1),                                   // request timeout = 1s
+        CustomerRequestId::new_batch(),
     );
     assert!(
         result.is_ok(),
-        "Should succeed when hedge timeout > request timeout"
-    );
-
-    // Test case 2: hedge timeout equal to request timeout (should fail)
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        retry_budget.clone(),
-        Some((hedge_budget.clone(), Duration::from_secs(1))), // hedge timeout = 1s
-        Duration::from_secs(1),                               // request timeout = 1s
-    );
-    assert!(
-        result.is_err(),
-        "Should fail when hedge timeout = request timeout"
-    );
-
-    // Test case 3: hedge timeout lower than request timeout (should fail)
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        retry_budget.clone(),
-        Some((hedge_budget.clone(), Duration::from_millis(500))), // hedge timeout = 0.5s
-        Duration::from_secs(1),                                   // request timeout = 1s
-    );
-    assert!(
-        result.is_err(),
-        "Should fail when hedge timeout < request timeout"
+        "Should pass when hedge delay < request timeout"
     );
 
     // Test case 4: no hedge budget (should succeed)
@@ -205,8 +209,9 @@ fn test_send_request_config_hedge_timeout_validation() {
         3,
         Duration::from_millis(100),
         retry_budget.clone(),
-        None, // no hedge budget
-        Duration::from_secs(1),
+        None,                   // no hedge budget
+        Duration::from_secs(1), // request timeout = 1s
+        CustomerRequestId::new_batch(),
     );
     assert!(
         result.is_ok(),

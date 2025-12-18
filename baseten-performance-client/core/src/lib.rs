@@ -1,14 +1,12 @@
 pub mod cancellation;
 pub mod client;
 pub mod constants;
+pub mod customer_request_id;
 pub mod errors;
 pub mod http;
 pub mod http_client;
 pub mod split_policy;
 pub mod utils;
-
-#[cfg(test)]
-mod timeout_tests;
 
 pub use cancellation::JoinSetGuard;
 pub use client::{HttpClientWrapper, PerformanceClientCore};

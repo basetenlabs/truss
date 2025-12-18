@@ -3,11 +3,15 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum ClientError {
-    LocalTimeout(String),
-    RemoteTimeout(String),
+    LocalTimeout(String, Option<String>),
+    RemoteTimeout(String, Option<String>),
     Network(String),
     Connect(String),
-    Http { status: u16, message: String },
+    Http {
+        status: u16,
+        message: String,
+        customer_request_id: Option<String>,
+    },
     InvalidParameter(String),
     Serialization(String),
     Cancellation(String),
@@ -16,11 +20,35 @@ pub enum ClientError {
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClientError::LocalTimeout(msg) => write!(f, "Local timeout error: {}", msg),
-            ClientError::RemoteTimeout(msg) => write!(f, "Remote timeout error: {}", msg),
+            ClientError::LocalTimeout(msg, customer_request_id) => {
+                if let Some(ref cid) = customer_request_id {
+                    write!(f, "Local timeout error (Request ID: {}): {}", cid, msg)
+                } else {
+                    write!(f, "Local timeout error: {}", msg)
+                }
+            }
+            ClientError::RemoteTimeout(msg, customer_request_id) => {
+                if let Some(ref cid) = customer_request_id {
+                    write!(f, "Remote timeout error (Request ID: {}): {}", cid, msg)
+                } else {
+                    write!(f, "Remote timeout error: {}", msg)
+                }
+            }
             ClientError::Network(msg) => write!(f, "Network error: {}", msg),
-            ClientError::Http { status, message } => {
-                write!(f, "HTTP {} error: {}", status, message)
+            ClientError::Http {
+                status,
+                message,
+                customer_request_id,
+            } => {
+                if let Some(ref cid) = customer_request_id {
+                    write!(
+                        f,
+                        "HTTP {} error (Request ID: {}): {}",
+                        status, cid, message
+                    )
+                } else {
+                    write!(f, "HTTP {} error: {}", status, message)
+                }
             }
             ClientError::Connect(msg) => write!(f, "Connection error: {}", msg),
             ClientError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
@@ -33,9 +61,13 @@ impl fmt::Display for ClientError {
 impl Error for ClientError {}
 
 /// Classifies timeout errors as local or remote based on error analysis
-fn classify_timeout_error(err: &reqwest::Error) -> ClientError {
+pub fn classify_timeout_error(
+    err: &reqwest::Error,
+    customer_request_id: Option<String>,
+) -> ClientError {
     // Extract URL information
-    let url_info = err.url()
+    let url_info = err
+        .url()
         .map(|u| u.to_string())
         .unwrap_or_else(|| "unknown URL".to_string());
 
@@ -93,9 +125,21 @@ fn classify_timeout_error(err: &reqwest::Error) -> ClientError {
         has_local_timeout_source(err);
 
     if is_local_timeout {
-        ClientError::LocalTimeout(format!("Unable to send request within timeout: {}", enhanced_message))
+        ClientError::LocalTimeout(
+            format!(
+                "Unable to send request within timeout: {}",
+                enhanced_message
+            ),
+            customer_request_id,
+        )
     } else {
-        ClientError::RemoteTimeout(format!("Server did not respond within timeout: {}", enhanced_message))
+        ClientError::RemoteTimeout(
+            format!(
+                "Server did not respond within timeout: {}",
+                enhanced_message
+            ),
+            customer_request_id,
+        )
     }
 }
 
@@ -104,12 +148,13 @@ fn has_local_timeout_source(err: &reqwest::Error) -> bool {
     let mut source = err.source();
     while let Some(e) = source {
         let source_str = e.to_string().to_lowercase();
-        if source_str.contains("connect") ||
-           source_str.contains("dns") ||
-           source_str.contains("resolve") ||
-           source_str.contains("binding") ||
-           source_str.contains("network unreachable") ||
-           source_str.contains("connection refused") {
+        if source_str.contains("connect")
+            || source_str.contains("dns")
+            || source_str.contains("resolve")
+            || source_str.contains("binding")
+            || source_str.contains("network unreachable")
+            || source_str.contains("connection refused")
+        {
             return true;
         }
         source = e.source();
@@ -127,7 +172,7 @@ impl From<reqwest::Error> for ClientError {
         }
 
         if err.is_timeout() {
-            classify_timeout_error(&err)
+            classify_timeout_error(&err, None) // Will be set by caller
         } else if err.is_connect() {
             ClientError::Connect(message)
         } else {
