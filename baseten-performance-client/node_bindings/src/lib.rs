@@ -28,7 +28,8 @@ fn convert_core_error_to_napi_error(error: ClientError) -> napi::Error {
     }
     ClientError::Connect(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
     ClientError::Serialization(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
-    ClientError::Timeout(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
+    ClientError::LocalTimeout(msg) => napi::Error::new(napi::Status::GenericFailure, format!("Local timeout: {}", msg)),
+    ClientError::RemoteTimeout(msg) => napi::Error::new(napi::Status::GenericFailure, format!("Remote timeout: {}", msg)),
     ClientError::Cancellation(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
   }
 }

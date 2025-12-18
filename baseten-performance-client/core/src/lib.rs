@@ -7,6 +7,9 @@ pub mod http_client;
 pub mod split_policy;
 pub mod utils;
 
+#[cfg(test)]
+mod timeout_tests;
+
 pub use cancellation::JoinSetGuard;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;

@@ -337,7 +337,7 @@ impl PerformanceClientCore {
             let task_result = if let Some(timeout_duration) = total_timeout {
                 let remaining = timeout_duration.saturating_sub(start_time.elapsed());
                 if remaining.is_zero() {
-                    return Err(ClientError::Timeout(format!(
+                    return Err(ClientError::LocalTimeout(format!(
                         "Total operation timed out after {:.2}s",
                         timeout_duration.as_secs_f64()
                     )));
@@ -346,7 +346,7 @@ impl PerformanceClientCore {
                     Ok(Some(result)) => result,
                     Ok(None) => break, // All tasks completed
                     Err(_) => {
-                        return Err(ClientError::Timeout(format!(
+                        return Err(ClientError::LocalTimeout(format!(
                             "Total operation timed out after {:.2}s",
                             timeout_duration.as_secs_f64()
                         )));
@@ -746,7 +746,7 @@ impl PerformanceClientCore {
             let task_result = if let Some(timeout_duration) = total_timeout {
                 let remaining = timeout_duration.saturating_sub(start_time.elapsed());
                 if remaining.is_zero() {
-                    return Err(ClientError::Timeout(format!(
+                    return Err(ClientError::LocalTimeout(format!(
                         "Total operation timed out after {:.2}s",
                         timeout_duration.as_secs_f64()
                     )));
@@ -755,7 +755,7 @@ impl PerformanceClientCore {
                     Ok(Some(result)) => result,
                     Ok(None) => break,
                     Err(_) => {
-                        return Err(ClientError::Timeout(format!(
+                        return Err(ClientError::LocalTimeout(format!(
                             "Total operation timed out after {:.2}s",
                             timeout_duration.as_secs_f64()
                         )));

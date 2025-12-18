@@ -369,7 +369,8 @@ struct PerformanceClient {
 impl PerformanceClient {
     fn convert_core_error_to_py_err(err: ClientError) -> PyErr {
         match err {
-            ClientError::Timeout(msg) => PyErr::new::<Timeout, _>((408, msg)),
+            ClientError::LocalTimeout(msg) => PyErr::new::<Timeout, _>((408, format!("Local timeout: {}", msg), "local")),
+            ClientError::RemoteTimeout(msg) => PyErr::new::<Timeout, _>((408, format!("Remote timeout: {}", msg), "remote")),
             ClientError::Http { status, message } => PyErr::new::<HTTPError, _>((status, message)),
             ClientError::InvalidParameter(msg) => PyValueError::new_err(msg),
             ClientError::Serialization(msg) => PyValueError::new_err(msg),
