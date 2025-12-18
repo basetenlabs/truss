@@ -507,10 +507,10 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
-    def get_truss_watch_state(self, model_name: str):
+    def get_truss_watch_state(self, model_id: str):
         query_string = f"""
         {{
-            truss_watch_state(name: "{model_name}") {{
+            truss_watch_state(id: "{model_id}") {{
                 is_container_built_from_push
                 django_patch_state {{
                     current_hash
@@ -596,12 +596,12 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
-    def patch_draft_truss_two_step(self, model_name, patch_request):
+    def patch_draft_truss_two_step(self, model_id: str, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())
         query_string = f"""
         mutation ($trussUserEnv: String) {{
             stage_patch_for_draft_truss(
-                name: "{model_name}"
+                id: "{model_id}"
                 truss_user_env: $trussUserEnv
                 patch: "{patch}"
             ) {{
@@ -624,13 +624,13 @@ class BasetenApi:
             return result
         logging.debug("Succesfully staged patch. Syncing patch to truss...")
 
-        return self.sync_draft_truss(model_name)
+        return self.sync_draft_truss(model_id)
 
-    def sync_draft_truss(self, model_name):
+    def sync_draft_truss(self, model_id: str):
         query_string = f"""
         mutation ($trussUserEnv: String) {{
             sync_draft_truss(
-                name: "{model_name}"
+                id: "{model_id}"
                 truss_user_env: $trussUserEnv
             ) {{
                 id
