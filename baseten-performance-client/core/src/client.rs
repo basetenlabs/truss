@@ -652,6 +652,7 @@ impl PerformanceClientCore {
 
     // Core batch post processing - optimized with JoinSetGuard
     // Cancellation: dropping this future will automatically abort all in-flight requests
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_batch_post_requests(
         &self,
         url_path: String,
