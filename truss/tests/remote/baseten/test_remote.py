@@ -302,11 +302,12 @@ def test_create_chain_with_no_publish(remote):
         }
     }
 
-    with mock.patch.object(
-        remote.api, "get_chains", return_value=[]
-    ) as mock_get_chains, mock.patch.object(
-        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
-    ) as mock_deploy:
+    with (
+        mock.patch.object(remote.api, "get_chains", return_value=[]) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="draft_chain",
@@ -344,11 +345,12 @@ def test_create_chain_no_existing_chain(remote):
         }
     }
 
-    with mock.patch.object(
-        remote.api, "get_chains", return_value=[]
-    ) as mock_get_chains, mock.patch.object(
-        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
-    ) as mock_deploy:
+    with (
+        mock.patch.object(remote.api, "get_chains", return_value=[]) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="new_chain",
@@ -437,13 +439,16 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false(r
         }
     }
 
-    with mock.patch.object(
-        remote.api,
-        "get_chains",
-        return_value=[{"id": "old-chain-id", "name": "old_chain"}],
-    ) as mock_get_chains, mock.patch.object(
-        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
-    ) as mock_deploy:
+    with (
+        mock.patch.object(
+            remote.api,
+            "get_chains",
+            return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+        ) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",
@@ -482,13 +487,16 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
         }
     }
 
-    with mock.patch.object(
-        remote.api,
-        "get_chains",
-        return_value=[{"id": "old-chain-id", "name": "old_chain"}],
-    ) as mock_get_chains, mock.patch.object(
-        remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
-    ) as mock_deploy:
+    with (
+        mock.patch.object(
+            remote.api,
+            "get_chains",
+            return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+        ) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",

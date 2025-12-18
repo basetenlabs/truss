@@ -1,7 +1,8 @@
 import logging
 import os
 import urllib.parse
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from pythonjsonlogger import jsonlogger
 

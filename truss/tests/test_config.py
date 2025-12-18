@@ -317,7 +317,7 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     new_config["model_cache"] = [{"repo_id": "test/model", "use_volume": False}]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == ""
 
 
 def test_huggingface_cache_single_model_non_default_revision_v1():
@@ -354,7 +354,7 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
         "model_cache"
     ]
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
-    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == ""
 
 
 def test_huggingface_cache_multiple_models_mixed_revision(default_config):
@@ -377,7 +377,7 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == ""
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
 
 
@@ -903,13 +903,12 @@ def test_validate_extra_fields(tmp_path):
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
-        ("py38", "py38"),
         ("py39", "py39"),
         ("py310", "py310"),
         ("py311", "py311"),
         ("py312", "py312"),
         ("py313", "py313"),
-        ("py314", "py313"),
+        ("py314", "py314"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):
@@ -920,13 +919,13 @@ def test_map_to_supported_python_version(python_version, expected_python_version
 def test_not_supported_python_minor_versions():
     with pytest.raises(
         ValueError,
-        match="Mapping python version 3.6 to 3.8, "
+        match="Mapping python version 3.6 to 3.9, "
         "the lowest version that Truss currently supports.",
     ):
         _map_to_supported_python_version("py36")
     with pytest.raises(
         ValueError,
-        match="Mapping python version 3.7 to 3.8, "
+        match="Mapping python version 3.7 to 3.9, "
         "the lowest version that Truss currently supports.",
     ):
         _map_to_supported_python_version("py37")

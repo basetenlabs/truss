@@ -1,6 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
-use baseten_performance_client_core::*;
+use baseten_performance_client_core::{
+    ClientError, CoreClassificationResponse, CoreClassificationResult, CoreEmbeddingVariant,
+    CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse,
+    CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+};
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
@@ -122,6 +127,7 @@ struct OpenAIEmbeddingsResponse {
     usage: OpenAIUsage,
     total_time: f64,
     individual_request_times: Vec<f64>,
+    response_headers: Vec<std::collections::HashMap<String, String>>,
 }
 
 impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
@@ -137,6 +143,7 @@ impl From<CoreOpenAIEmbeddingsResponse> for OpenAIEmbeddingsResponse {
             usage: OpenAIUsage::from(core.usage),
             total_time: core.total_time,
             individual_request_times: core.individual_request_times,
+            response_headers: core.response_headers,
         }
     }
 }
@@ -223,6 +230,7 @@ struct RerankResponse {
     data: Vec<RerankResult>,
     total_time: f64,
     individual_request_times: Vec<f64>,
+    response_headers: Vec<std::collections::HashMap<String, String>>,
 }
 
 impl From<CoreRerankResponse> for RerankResponse {
@@ -232,6 +240,7 @@ impl From<CoreRerankResponse> for RerankResponse {
             data: core.data.into_iter().map(RerankResult::from).collect(),
             total_time: core.total_time,
             individual_request_times: core.individual_request_times,
+            response_headers: core.response_headers,
         }
     }
 }
@@ -239,13 +248,19 @@ impl From<CoreRerankResponse> for RerankResponse {
 #[pymethods]
 impl RerankResponse {
     #[new]
-    #[pyo3(signature = (data, total_time, individual_request_times))]
-    fn new(data: Vec<RerankResult>, total_time: f64, individual_request_times: Vec<f64>) -> Self {
+    #[pyo3(signature = (data, total_time, individual_request_times, response_headers = None))]
+    fn new(
+        data: Vec<RerankResult>,
+        total_time: f64,
+        individual_request_times: Vec<f64>,
+        response_headers: Option<Vec<std::collections::HashMap<String, String>>>,
+    ) -> Self {
         RerankResponse {
             object: "list".to_string(),
             data,
             total_time,
             individual_request_times,
+            response_headers: response_headers.unwrap_or_default(),
         }
     }
 }
@@ -276,6 +291,7 @@ struct ClassificationResponse {
     data: Vec<Vec<ClassificationResult>>,
     total_time: f64,
     individual_request_times: Vec<f64>,
+    response_headers: Vec<std::collections::HashMap<String, String>>,
 }
 
 impl From<CoreClassificationResponse> for ClassificationResponse {
@@ -289,6 +305,7 @@ impl From<CoreClassificationResponse> for ClassificationResponse {
                 .collect(),
             total_time: core.total_time,
             individual_request_times: core.individual_request_times,
+            response_headers: core.response_headers,
         }
     }
 }
@@ -296,17 +313,19 @@ impl From<CoreClassificationResponse> for ClassificationResponse {
 #[pymethods]
 impl ClassificationResponse {
     #[new]
-    #[pyo3(signature = (data, total_time, individual_request_times))]
+    #[pyo3(signature = (data, total_time, individual_request_times, response_headers = None))]
     fn new(
         data: Vec<Vec<ClassificationResult>>,
         total_time: f64,
         individual_request_times: Vec<f64>,
+        response_headers: Option<Vec<std::collections::HashMap<String, String>>>,
     ) -> Self {
         ClassificationResponse {
             object: "list".to_string(),
             data,
             total_time,
             individual_request_times,
+            response_headers: response_headers.unwrap_or_default(),
         }
     }
 }
@@ -318,6 +337,27 @@ struct BatchPostResponse {
     total_time: f64,
     individual_request_times: Vec<f64>,
     response_headers: Vec<PyObject>,
+}
+
+#[pyclass(name = "HttpClientWrapper")]
+#[derive(Clone)]
+struct HttpClientWrapper {
+    inner: Arc<HttpClientWrapperRs>,
+}
+
+#[pymethods]
+impl HttpClientWrapper {
+    #[new]
+    #[pyo3(signature = (http_version = 1))]
+    fn new(http_version: u8) -> PyResult<Self> {
+        let inner = HttpClientWrapperRs::new(http_version)
+            .map_err(PerformanceClient::convert_core_error_to_py_err)?;
+        Ok(HttpClientWrapper { inner })
+    }
+
+    fn __repr__(&self) -> String {
+        "HttpClientWrapper(...)".to_string()
+    }
 }
 
 #[pyclass]
@@ -343,9 +383,15 @@ impl PerformanceClient {
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, http_version = 1))]
-    fn new(base_url: String, api_key: Option<String>, http_version: u8) -> PyResult<Self> {
-        let core_client = PerformanceClientCore::new(base_url, api_key, http_version)
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None))]
+    fn new(
+        base_url: String,
+        api_key: Option<String>,
+        http_version: u8,
+        client_wrapper: Option<HttpClientWrapper>,
+    ) -> PyResult<Self> {
+        let wrapper = client_wrapper.map(|w| w.inner);
+        let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper)
             .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {
@@ -357,6 +403,12 @@ impl PerformanceClient {
     #[getter]
     fn api_key(&self) -> PyResult<String> {
         Ok(self.core_client.api_key.clone())
+    }
+
+    fn get_client_wrapper(&self) -> HttpClientWrapper {
+        HttpClientWrapper {
+            inner: self.core_client.get_client_wrapper(),
+        }
     }
 
     #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
@@ -403,7 +455,7 @@ impl PerformanceClient {
             .map_err(Self::convert_core_error_to_py_err)
         })?;
 
-        let (core_response, batch_durations, total_time_val) = result_from_async_task;
+        let (core_response, batch_durations, headers, total_time_val) = result_from_async_task;
         let individual_times_val: Vec<f64> = batch_durations
             .into_iter()
             .map(|d| d.as_secs_f64())
@@ -412,6 +464,7 @@ impl PerformanceClient {
         let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
         api_response.total_time = total_time_val.as_secs_f64();
         api_response.individual_request_times = individual_times_val;
+        api_response.response_headers = headers;
 
         Ok(api_response)
     }
@@ -439,7 +492,7 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
 
         let future = async move {
-            let (core_response, batch_durations, core_total_time) = core_client
+            let (core_response, batch_durations, headers, core_total_time) = core_client
                 .process_embeddings_requests(
                     input,
                     model,
@@ -464,6 +517,7 @@ impl PerformanceClient {
             let mut api_response = OpenAIEmbeddingsResponse::from(core_response);
             api_response.total_time = core_total_time.as_secs_f64();
             api_response.individual_request_times = individual_times_val;
+            api_response.response_headers = headers;
 
             Ok(api_response)
         };
@@ -520,7 +574,7 @@ impl PerformanceClient {
             .map_err(Self::convert_core_error_to_py_err)
         })?;
 
-        let (core_response, batch_durations, total_time_val) = result_from_async_task;
+        let (core_response, batch_durations, headers, total_time_val) = result_from_async_task;
         let individual_times_val: Vec<f64> = batch_durations
             .into_iter()
             .map(|d| d.as_secs_f64())
@@ -529,6 +583,7 @@ impl PerformanceClient {
         let mut api_response = RerankResponse::from(core_response);
         api_response.total_time = total_time_val.as_secs_f64();
         api_response.individual_request_times = individual_times_val;
+        api_response.response_headers = headers;
 
         Ok(api_response)
     }
@@ -559,7 +614,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
-            let (core_response, batch_durations, core_total_time) = core_client
+            let (core_response, batch_durations, headers, core_total_time) = core_client
                 .process_rerank_requests(
                     query,
                     texts,
@@ -586,6 +641,7 @@ impl PerformanceClient {
             let mut api_response = RerankResponse::from(core_response);
             api_response.total_time = core_total_time.as_secs_f64();
             api_response.individual_request_times = individual_times_val;
+            api_response.response_headers = headers;
 
             Ok(api_response)
         };
@@ -638,7 +694,7 @@ impl PerformanceClient {
             .map_err(Self::convert_core_error_to_py_err)
         })?;
 
-        let (core_response, batch_durations, core_total_time) = result_from_async_task;
+        let (core_response, batch_durations, headers, core_total_time) = result_from_async_task;
         let individual_times_val: Vec<f64> = batch_durations
             .into_iter()
             .map(|d| d.as_secs_f64())
@@ -647,6 +703,7 @@ impl PerformanceClient {
         let mut api_response = ClassificationResponse::from(core_response);
         api_response.total_time = core_total_time.as_secs_f64();
         api_response.individual_request_times = individual_times_val;
+        api_response.response_headers = headers;
 
         Ok(api_response)
     }
@@ -675,7 +732,7 @@ impl PerformanceClient {
         let truncation_direction_owned = truncation_direction.to_string();
 
         let future = async move {
-            let (core_response, batch_durations, core_total_time) = core_client
+            let (core_response, batch_durations, headers, core_total_time) = core_client
                 .process_classify_requests(
                     inputs,
                     model,
@@ -700,6 +757,7 @@ impl PerformanceClient {
             let mut api_response = ClassificationResponse::from(core_response);
             api_response.total_time = core_total_time.as_secs_f64();
             api_response.individual_request_times = individual_times_val;
+            api_response.response_headers = headers;
 
             Ok(api_response)
         };
@@ -707,7 +765,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None, custom_headers = None))]
     fn batch_post(
         &self,
         py: Python,
@@ -717,6 +775,7 @@ impl PerformanceClient {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
+        custom_headers: Option<std::collections::HashMap<String, String>>,
     ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -747,6 +806,7 @@ impl PerformanceClient {
                         timeout_s,
                         hedge_delay,
                         total_timeout_s,
+                        custom_headers,
                     )
                     .await
             }))
@@ -795,7 +855,7 @@ impl PerformanceClient {
         })
     }
 
-    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None, custom_headers = None))]
     fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
@@ -805,6 +865,7 @@ impl PerformanceClient {
         timeout_s: f64,
         hedge_delay: Option<f64>,
         total_timeout_s: Option<f64>,
+        custom_headers: Option<std::collections::HashMap<String, String>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -833,6 +894,7 @@ impl PerformanceClient {
                     timeout_s,
                     hedge_delay,
                     total_timeout_s,
+                    custom_headers,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -886,6 +948,7 @@ impl PerformanceClient {
 #[pymodule]
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PerformanceClient>()?;
+    m.add_class::<HttpClientWrapper>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;

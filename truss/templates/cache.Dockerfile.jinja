@@ -20,6 +20,6 @@ COPY ./{{credential}} ${APP_HOME}/{{credential}}
 
 {% for repo, hf_dir in models.items() %}
         {% for file in hf_dir.files %}
-{{ "RUN --mount=type=secret,id=" + hf_access_token_file_name + ",dst=/etc/secrets/" + hf_access_token_file_name if use_hf_secret else "RUN" }} python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
+{{ "RUN --mount=type=secret,id=" + hf_access_token_file_name + ",dst=/etc/secrets/" + hf_access_token_file_name if use_hf_secret else "RUN" }} python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision %}{{hf_dir.revision}}{% endif %}
         {% endfor %}
 {% endfor %}

@@ -1,4 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Type alias for HTTP response headers
+pub type HeaderMap = HashMap<String, String>;
 
 // Default functions for serde
 fn default_total_time() -> f64 {
@@ -9,7 +13,7 @@ fn default_individual_request_times() -> Vec<f64> {
     Vec::new()
 }
 
-fn default_response_headers() -> Vec<std::collections::HashMap<String, String>> {
+fn default_response_headers() -> Vec<HeaderMap> {
     Vec::new()
 }
 
@@ -58,7 +62,7 @@ pub struct CoreOpenAIEmbeddingsResponse {
     #[serde(default = "default_individual_request_times")]
     pub individual_request_times: Vec<f64>,
     #[serde(default = "default_response_headers")]
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }
 
 // --- Core Rerank Structures ---
@@ -90,7 +94,7 @@ pub struct CoreRerankResponse {
     #[serde(default = "default_individual_request_times")]
     pub individual_request_times: Vec<f64>,
     #[serde(default = "default_response_headers")]
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }
 
 impl CoreRerankResponse {
@@ -135,7 +139,7 @@ pub struct CoreClassificationResponse {
     #[serde(default = "default_individual_request_times")]
     pub individual_request_times: Vec<f64>,
     #[serde(default = "default_response_headers")]
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }
 
 impl CoreClassificationResponse {
@@ -159,5 +163,5 @@ pub struct CoreBatchPostResponse {
     pub data: Vec<serde_json::Value>,
     pub total_time: f64,
     pub individual_request_times: Vec<f64>,
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }

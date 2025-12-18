@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Type, Union
+from typing import Optional, Union
 
 
 class PatchType(Enum):
@@ -45,7 +45,7 @@ class ModelCodePatch(PatchBody):
         return {"action": self.action.value, "path": self.path, "content": self.content}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return ModelCodePatch(
             action=Action[action_str],
@@ -64,7 +64,7 @@ class PythonRequirementPatch(PatchBody):
         return {"action": self.action.value, "requirement": self.requirement}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return PythonRequirementPatch(
             action=Action[action_str], requirement=patch_dict["requirement"]
@@ -81,7 +81,7 @@ class SystemPackagePatch(PatchBody):
         return {"action": self.action.value, "package": self.package}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return SystemPackagePatch(
             action=Action[action_str], package=patch_dict["package"]
@@ -97,7 +97,7 @@ class ConfigPatch(PatchBody):
         return {"action": self.action.value, "config": self.config, "path": self.path}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return ConfigPatch(
             action=Action[action_str],
@@ -115,7 +115,7 @@ class DataPatch(PatchBody):
         return {"action": self.action.value, "content": self.content, "path": self.path}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return DataPatch(
             action=Action[action_str],
@@ -133,7 +133,7 @@ class PackagePatch(PatchBody):
         return {"action": self.action.value, "content": self.content, "path": self.path}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return PackagePatch(
             action=Action[action_str],
@@ -150,27 +150,27 @@ class EnvVarPatch(PatchBody):
         return {"action": self.action.value, "item": self.item}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return EnvVarPatch(action=Action[action_str], item=patch_dict["item"])
 
 
 @dataclass
 class ExternalDataPatch(PatchBody):
-    item: Dict[str, str]
+    item: dict[str, str]
 
     def to_dict(self):
         return {"action": self.action.value, "item": self.item}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         action_str = patch_dict["action"]
         return ExternalDataPatch(action=Action[action_str], item=patch_dict["item"])
 
 
-PATCH_BODY_BY_TYPE: Dict[
+PATCH_BODY_BY_TYPE: dict[
     PatchType,
-    Type[
+    type[
         Union[
             ModelCodePatch,
             PythonRequirementPatch,
@@ -205,7 +205,7 @@ class Patch:
         return {"type": self.type.value, "body": self.body.to_dict()}
 
     @staticmethod
-    def from_dict(patch_dict: Dict):
+    def from_dict(patch_dict: dict):
         typ = PatchType(patch_dict["type"])
         body = PATCH_BODY_BY_TYPE[typ].from_dict(patch_dict["body"])
         return Patch(typ, body)

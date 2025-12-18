@@ -247,11 +247,14 @@ def test_get_checkpoint_ids_to_deploy_single_checkpoint():
     checkpoint_options = ["checkpoint-1"]
 
     # Should not call any inquirer functions for single checkpoint
-    with patch(
-        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
-    ) as mock_select, patch(
-        "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
-    ) as mock_checkbox:
+    with (
+        patch(
+            "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.select"
+        ) as mock_select,
+        patch(
+            "truss.cli.train.deploy_checkpoints.deploy_checkpoints.inquirer.checkbox"
+        ) as mock_checkbox,
+    ):
         result = _get_checkpoint_ids_to_deploy(checkpoint_options, response_checkpoints)
 
         # Should not call any inquirer functions

@@ -2,13 +2,14 @@
 
 use baseten_performance_client_core::{
   ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
-  CoreRerankResponse, PerformanceClientCore, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY,
-  DEFAULT_REQUEST_TIMEOUT_S,
+  CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+  DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
 };
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // Use constants from core crate - no more hardcoded values!
 
@@ -175,6 +176,21 @@ pub struct BatchPostResponse {
 }
 
 #[napi]
+pub struct HttpClientWrapper {
+  inner: Arc<HttpClientWrapperRs>,
+}
+
+#[napi]
+impl HttpClientWrapper {
+  #[napi(constructor)]
+  pub fn new(http_version: Option<u8>) -> napi::Result<Self> {
+    let http_version = http_version.unwrap_or(1);
+    let inner = HttpClientWrapperRs::new(http_version).map_err(convert_core_error_to_napi_error)?;
+    Ok(Self { inner })
+  }
+}
+
+#[napi]
 pub struct PerformanceClient {
   core_client: PerformanceClientCore,
 }
@@ -182,11 +198,25 @@ pub struct PerformanceClient {
 #[napi]
 impl PerformanceClient {
   #[napi(constructor)]
-  pub fn new(base_url: String, api_key: Option<String>) -> napi::Result<Self> {
-    let core_client =
-      PerformanceClientCore::new(base_url, api_key, 2).map_err(convert_core_error_to_napi_error)?;
+  pub fn new(
+    base_url: String,
+    api_key: Option<String>,
+    http_version: Option<u8>,
+    client_wrapper: Option<&HttpClientWrapper>,
+  ) -> napi::Result<Self> {
+    let http_version = http_version.unwrap_or(1);
+    let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
+    let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper)
+      .map_err(convert_core_error_to_napi_error)?;
 
     Ok(Self { core_client })
+  }
+
+  #[napi]
+  pub fn get_client_wrapper(&self) -> HttpClientWrapper {
+    HttpClientWrapper {
+      inner: self.core_client.get_client_wrapper(),
+    }
   }
 
   #[napi]
@@ -232,13 +262,14 @@ impl PerformanceClient {
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
-    let (core_response, batch_durations, total_time) = result;
+    let (core_response, batch_durations, headers, total_time) = result;
     let mut response = OpenAIEmbeddingsResponse::from(core_response);
     response.total_time = total_time.as_secs_f64();
     response.individual_request_times = batch_durations
       .into_iter()
-      .map(|d| d.as_secs_f64())
+      .map(|d: std::time::Duration| d.as_secs_f64())
       .collect();
+    response.response_headers = headers;
 
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
@@ -291,13 +322,14 @@ impl PerformanceClient {
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
-    let (core_response, batch_durations, total_time) = result;
+    let (core_response, batch_durations, headers, total_time) = result;
     let mut response = RerankResponse::from(core_response);
     response.total_time = total_time.as_secs_f64();
     response.individual_request_times = batch_durations
       .into_iter()
-      .map(|d| d.as_secs_f64())
+      .map(|d: std::time::Duration| d.as_secs_f64())
       .collect();
+    response.response_headers = headers;
 
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
@@ -346,13 +378,14 @@ impl PerformanceClient {
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
-    let (core_response, batch_durations, total_time) = result;
+    let (core_response, batch_durations, headers, total_time) = result;
     let mut response = ClassificationResponse::from(core_response);
     response.total_time = total_time.as_secs_f64();
     response.individual_request_times = batch_durations
       .into_iter()
-      .map(|d| d.as_secs_f64())
+      .map(|d: std::time::Duration| d.as_secs_f64())
       .collect();
+    response.response_headers = headers;
 
     serde_json::to_value(response)
       .map_err(|e| create_napi_error(&format!("Serialization error: {}", e)))
@@ -367,6 +400,7 @@ impl PerformanceClient {
     timeout_s: Option<f64>,
     hedge_delay: Option<f64>,
     total_timeout_s: Option<f64>,
+    custom_headers: Option<std::collections::HashMap<String, String>>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
       return Err(create_napi_error("Payloads list cannot be empty"));
@@ -385,6 +419,7 @@ impl PerformanceClient {
         timeout_s,
         hedge_delay,
         total_timeout_s,
+        custom_headers,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;

@@ -4,8 +4,9 @@ import logging
 import logging.config
 import re
 import traceback
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import Awaitable, Callable, Dict
+from typing import Callable
 
 import httpx
 from endpoints import control_app
@@ -64,7 +65,7 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
         return f"{type(error).__name__}: {error}"
 
 
-def create_app(base_config: Dict):
+def create_app(base_config: dict):
     app_state = State()
     # TODO(BT-13721): better log setup: app_logger isn't captured and access log
     #   is redundant.

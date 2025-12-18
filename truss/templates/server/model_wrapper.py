@@ -11,12 +11,13 @@ import pathlib
 import sys
 import time
 import weakref
+from collections.abc import AsyncGenerator, Awaitable, Generator
 from contextlib import asynccontextmanager
 from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Optional, Union, cast
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -33,11 +34,6 @@ from shared import dynamic_config_resolver, serialization
 from shared.lazy_data_resolver import LazyDataResolverV2
 from shared.secrets_resolver import SecretsResolver
 
-if sys.version_info >= (3, 9):
-    from typing import AsyncGenerator, Generator
-else:
-    from typing_extensions import AsyncGenerator, Generator
-
 MODEL_BASENAME = "model"
 
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "1"))
@@ -52,7 +48,7 @@ POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
 
 class MethodName(str, enum.Enum):
     def _generate_next_value_(  # type: ignore[override]
-        name: str, start: int, count: int, last_values: List[str]
+        name: str, start: int, count: int, last_values: list[str]
     ) -> str:
         return name.lower()
 
@@ -113,10 +109,10 @@ async def deferred_semaphore_and_span(
 
 
 _ArgsType = Union[
-    Tuple[()],
-    Tuple[Any],
-    Tuple[Any, starlette.requests.Request],
-    Tuple[starlette.requests.Request],
+    tuple[()],
+    tuple[Any],
+    tuple[Any, starlette.requests.Request],
+    tuple[starlette.requests.Request],
 ]
 
 
@@ -364,7 +360,7 @@ class ModelDescriptor:
 
 
 class ModelWrapper:
-    _config: Dict
+    _config: dict
     _tracer: sdk_trace.Tracer
     _maybe_model: Optional[Any]
     _maybe_model_descriptor: Optional[ModelDescriptor]
@@ -380,7 +376,7 @@ class ModelWrapper:
         READY = 2
         FAILED = 3
 
-    def __init__(self, config: Dict, tracer: sdk_trace.Tracer):
+    def __init__(self, config: dict, tracer: sdk_trace.Tracer):
         self._config = config
         self._tracer = tracer
         self._maybe_model = None

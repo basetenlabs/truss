@@ -147,7 +147,11 @@ def build_server():
             app.state.storage["successful_requests"] += 1
 
     @app.post("/v1/embeddings", response_model=OpenAIEmbeddingResponse)
-    async def embeddings(request: OpenAIEmbeddingRequest, fapi: fastapi.Request):
+    async def embeddings(
+        request: OpenAIEmbeddingRequest,
+        fapi: fastapi.Request,
+        response: fastapi.Response,
+    ):
         """
         Handle OpenAI embedding requests.
         """
@@ -160,6 +164,7 @@ def build_server():
         # Simulate a hijack payload
         hijack_payloads = validate_hijack_payload(request.input)
         await action_hijack_payload(hijack_payloads[0], fapi)
+        response.headers["X-Custom-Header"] = "CustomValue"
         return OpenAIEmbeddingResponse(
             model=request.model,
             # uuid_int is used as embedding
@@ -262,6 +267,9 @@ def run_client():
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
             "Response should contain `number_of_requests` embeddings"
+        )
+        assert response.response_headers[0].get(("x-custom-header")) == "CustomValue", (
+            f"Expected custom header 'X-Custom-Header' but got {response.response_headers[0]}"
         )
         assert all(len(embedding.embedding) == 1 for embedding in response.data), (
             "Each embedding should be a list with one element"
