@@ -163,7 +163,7 @@ pub fn convert_reqwest_error_with_customer_id(
 }
 
 /// Classify timeout errors as local or remote (legacy function for backward compatibility)
-pub fn classify_timeout_error(
+fn classify_timeout_error(
     err: &reqwest::Error,
     customer_request_id: Option<String>,
 ) -> ClientError {
