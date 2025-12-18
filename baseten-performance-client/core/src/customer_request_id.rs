@@ -1,26 +1,26 @@
 use std::env;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use uuid::Uuid;
 
-/// Cached environment variable for customer prefix
-static CUSTOMER_PREFIX_CACHE: OnceLock<String> = OnceLock::new();
+/// Cached environment variable for customer prefix (as Arc<str> for efficient sharing)
+static CUSTOMER_PREFIX_CACHE: OnceLock<Arc<str>> = OnceLock::new();
 
 /// Lightweight customer request ID struct with optional components and caching
 #[derive(Debug, Clone)]
 pub struct CustomerRequestId {
-    // Core identifier (lightweight) - last 8 chars of UUID
-    uuid_suffix: String,
+    // Core identifier (lightweight) - last 8 chars of UUID (shared across batch)
+    uuid_suffix: Arc<str>,
 
     // Optional components for flexibility
-    customer_prefix: Option<String>, // From env var or default "perfclient"
-    batch_index: Option<usize>,      // For individual requests in batch
-    retry_count: Option<u32>,        // For retry tracking
-    hedge_id: Option<u32>,           // For hedged requests
+    customer_prefix: Option<Arc<str>>, // From env var or default "perfclient" (shared across batch)
+    batch_index: Option<usize>,         // For individual requests in batch
+    retry_count: Option<u32>,           // For retry tracking
+    hedge_id: Option<u32>,             // For hedged requests
 }
 
 impl CustomerRequestId {
-    /// Get cached customer prefix from environment variable
-    fn get_customer_prefix() -> &'static str {
+    /// Get cached customer prefix from environment variable (as Arc<str>)
+    fn get_customer_prefix() -> &'static Arc<str> {
         CUSTOMER_PREFIX_CACHE.get_or_init(|| {
             let base_name = "perfclient";
             let env_var_name = "PERFORMANCE_CLIENT_REQUEST_ID_PREFIX";
@@ -29,19 +29,19 @@ impl CustomerRequestId {
                 .filter(|s| !s.is_empty())
                 .map(|s| format!("{}{}", base_name, s.to_lowercase().trim()))
                 .unwrap_or_else(|| base_name.to_string());
-            prefix
+            Arc::from(prefix)
         })
     }
 
-    /// Create new batch-level customer request ID
+/// Create new batch-level customer request ID
     pub fn new_batch() -> Self {
         let uuid = Uuid::new_v4();
         let uuid_string = uuid.to_string();
-        let uuid_suffix = uuid_string[uuid_string.len() - 10..].to_string();
+        let uuid_suffix = Arc::from(uuid_string[uuid_string.len() - 10..].to_string());
 
         Self {
             uuid_suffix,
-            customer_prefix: Some(Self::get_customer_prefix().to_string()),
+            customer_prefix: Some(Arc::clone(Self::get_customer_prefix())),
             batch_index: None,
             retry_count: Some(0),
             hedge_id: None,
@@ -52,11 +52,11 @@ impl CustomerRequestId {
     pub fn new_batch_with_prefix(prefix: String) -> Self {
         let uuid = Uuid::new_v4();
         let uuid_string = uuid.to_string();
-        let uuid_suffix = uuid_string[uuid_string.len() - 8..].to_string();
+        let uuid_suffix = Arc::from(uuid_string[uuid_string.len() - 10..].to_string());
 
         Self {
             uuid_suffix,
-            customer_prefix: Some(prefix),
+            customer_prefix: Some(Arc::from(prefix)),
             batch_index: None,
             retry_count: Some(0),
             hedge_id: None,
@@ -66,8 +66,8 @@ impl CustomerRequestId {
     /// Create request-level customer request ID from batch ID
     pub fn new_request(&self, batch_index: usize) -> Self {
         Self {
-            uuid_suffix: self.uuid_suffix.clone(),
-            customer_prefix: self.customer_prefix.clone(),
+            uuid_suffix: Arc::clone(&self.uuid_suffix),
+            customer_prefix: self.customer_prefix.as_ref().map(Arc::clone),
             batch_index: Some(batch_index),
             retry_count: Some(0),
             hedge_id: None,
@@ -155,6 +155,34 @@ impl std::fmt::Display for CustomerRequestId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn test_string_cloning_optimization() {
+        let batch_id = CustomerRequestId::new_batch();
+        let num_requests = 10_000;
+
+        let start = Instant::now();
+        let mut request_ids = Vec::with_capacity(num_requests);
+
+        for i in 0..num_requests {
+            request_ids.push(batch_id.new_request(i));
+        }
+
+        let duration = start.elapsed();
+
+        // Should be very fast due to Arc<str> sharing
+        assert!(duration.as_millis() < 100, "Performance regression detected");
+
+        // Verify all requests share the same UUID suffix (same memory address)
+        let first_uuid_suffix = request_ids[0].uuid_suffix();
+        for request_id in &request_ids {
+            assert_eq!(request_id.uuid_suffix(), first_uuid_suffix);
+        }
+
+        println!("✅ Created {} request IDs in {:?} (optimized with Arc<str>)",
+                num_requests, duration);
+    }
 
     #[test]
     fn test_default_batch_id() {
@@ -163,11 +191,11 @@ mod tests {
 
         // Should have default prefix (from env var or "perfclient")
         let expected_prefix = CustomerRequestId::get_customer_prefix();
-        assert!(id_str.starts_with(&format!("{}-", expected_prefix)));
+        assert!(id_str.starts_with(&format!("{}-", expected_prefix.as_ref())));
 
         // Check the actual prefix
         if let Some(actual_prefix) = id.customer_prefix() {
-            assert_eq!(actual_prefix, expected_prefix);
+            assert_eq!(actual_prefix, expected_prefix.as_ref());
         }
 
         // Should have UUID
@@ -274,6 +302,7 @@ mod tests {
         let prefix = CustomerRequestId::get_customer_prefix();
         // In normal tests, this will be "perfclient" unless env var is set
         assert!(!prefix.is_empty());
+        assert!(!prefix.as_ref().is_empty());
     }
 
     #[test]
