@@ -6,6 +6,7 @@ pub mod errors;
 pub mod http;
 pub mod http_client;
 pub mod split_policy;
+pub mod timeout_test;
 pub mod utils;
 
 pub use cancellation::JoinSetGuard;

@@ -108,21 +108,16 @@ pub fn classify_timeout_error(
         }
     }
 
-    // Enhanced classification using multiple criteria
-    let msg_lower = base_message.to_lowercase();
+    // Simplified classification: local = connection issues, remote = server response issues
     let is_local_timeout =
-        // Message-based indicators
-        msg_lower.contains("sending") ||
-        msg_lower.contains("connect") ||
-        msg_lower.contains("dns") ||
-        msg_lower.contains("connection") ||
-        msg_lower.contains("timeout while") ||
-        msg_lower.contains("unable to send") ||
-        (msg_lower.contains("timed out") && (msg_lower.contains("waiting") || msg_lower.contains("connecting"))) ||
-        // Error kind-based indicators
+        // Connection-level failures (truly local)
         err.is_connect() ||
-        // Source-based indicators (look for specific timeout types in source chain)
-        has_local_timeout_source(err);
+        has_local_timeout_source(err) ||
+        // DNS and network resolution issues
+        base_message.to_lowercase().contains("dns") ||
+        base_message.to_lowercase().contains("resolve") ||
+        base_message.to_lowercase().contains("network unreachable") ||
+        base_message.to_lowercase().contains("connection refused");
 
     if is_local_timeout {
         ClientError::LocalTimeout(
@@ -143,7 +138,7 @@ pub fn classify_timeout_error(
     }
 }
 
-/// Checks if the error source chain indicates a local timeout
+/// Checks if the error source chain indicates a local timeout (connection issues)
 fn has_local_timeout_source(err: &reqwest::Error) -> bool {
     let mut source = err.source();
     while let Some(e) = source {
@@ -151,10 +146,8 @@ fn has_local_timeout_source(err: &reqwest::Error) -> bool {
         if source_str.contains("connect")
             || source_str.contains("dns")
             || source_str.contains("resolve")
-            || source_str.contains("binding")
             || source_str.contains("network unreachable")
-            || source_str.contains("connection refused")
-        {
+            || source_str.contains("connection refused") {
             return true;
         }
         source = e.source();

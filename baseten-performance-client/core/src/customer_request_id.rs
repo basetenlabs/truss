@@ -37,7 +37,7 @@ impl CustomerRequestId {
     pub fn new_batch() -> Self {
         let uuid = Uuid::new_v4();
         let uuid_string = uuid.to_string();
-        let uuid_suffix = uuid_string[uuid_string.len() - 8..].to_string();
+        let uuid_suffix = uuid_string[uuid_string.len() - 10..].to_string();
 
         Self {
             uuid_suffix,
