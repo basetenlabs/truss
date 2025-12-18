@@ -207,11 +207,9 @@ async fn send_request_with_retry(
                 // For network errors, check if we have a retry budget.
                 match client_error {
                     ClientError::LocalTimeout(_, _) => {
-                        println!("client local timeout error: {}", client_error);
                         config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                     }
                     ClientError::RemoteTimeout(_, _) => {
-                        println!("client remote timeout error: {}", client_error);
                         config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                     }
                     // connect can happen if e.g. number of tcp streams in linux is exhausted.
@@ -220,10 +218,6 @@ async fn send_request_with_retry(
                         if retries_done == 0 {
                             true
                         } else {
-                            println!(
-                                "client network error (likely re-use expired http connection): {}",
-                                client_error
-                            );
                             config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
                         }
                     }
