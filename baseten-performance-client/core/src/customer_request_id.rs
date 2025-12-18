@@ -124,8 +124,6 @@ impl CustomerRequestId {
     pub fn is_retried(&self) -> bool {
         self.retry_count.map(|count| count > 0).unwrap_or(false)
     }
-
-
 }
 
 impl Default for CustomerRequestId {

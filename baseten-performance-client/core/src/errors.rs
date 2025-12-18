@@ -147,7 +147,8 @@ fn has_local_timeout_source(err: &reqwest::Error) -> bool {
             || source_str.contains("dns")
             || source_str.contains("resolve")
             || source_str.contains("network unreachable")
-            || source_str.contains("connection refused") {
+            || source_str.contains("connection refused")
+        {
             return true;
         }
         source = e.source();
