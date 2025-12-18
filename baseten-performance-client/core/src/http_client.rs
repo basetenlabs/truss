@@ -1,27 +1,12 @@
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
-use crate::errors::classify_timeout_error;
-use crate::errors::ClientError;
+use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
 use rand::Rng;
 use reqwest::Client;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-
-/// Convert reqwest error to ClientError with customer request ID context
-fn convert_reqwest_error_with_customer_id(
-    err: reqwest::Error,
-    customer_request_id: CustomerRequestId,
-) -> ClientError {
-    if err.is_timeout() {
-        classify_timeout_error(&err, Some(customer_request_id.to_string()))
-    } else if err.is_connect() {
-        ClientError::Connect(err.to_string())
-    } else {
-        ClientError::Network(err.to_string())
-    }
-}
 
 pub struct SendRequestConfig {
     pub max_retries: u32,
@@ -84,10 +69,8 @@ where
         .timeout(request_timeout);
 
     // Add customer request ID header
-    request_builder = request_builder.header(
-        "x-baseten-customer-request-id",
-        config.customer_request_id.to_string(),
-    );
+    request_builder =
+        request_builder.header(CUSTOMER_HEADER_NAME, config.customer_request_id.to_string());
 
     let response = send_request_with_retry(request_builder, config).await?;
     let successful_response =
@@ -130,10 +113,8 @@ where
         .timeout(request_timeout);
 
     // Add customer request ID header
-    request_builder = request_builder.header(
-        "x-baseten-customer-request-id",
-        config.customer_request_id.to_string(),
-    );
+    request_builder =
+        request_builder.header(CUSTOMER_HEADER_NAME, config.customer_request_id.to_string());
 
     if let Some(headers) = custom_headers {
         for (key, value) in headers {

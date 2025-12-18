@@ -13,8 +13,8 @@ pub struct CustomerRequestId {
 
     // Optional components for flexibility
     customer_prefix: Option<Arc<str>>, // From env var or default "perfclient" (shared across batch)
-    batch_index: Option<usize>,         // For individual requests in batch
-    retry_count: Option<u32>,           // For retry tracking
+    batch_index: Option<usize>,        // For individual requests in batch
+    retry_count: Option<u32>,          // For retry tracking
     hedge_id: Option<u32>,             // For hedged requests
 }
 
@@ -33,7 +33,7 @@ impl CustomerRequestId {
         })
     }
 
-/// Create new batch-level customer request ID
+    /// Create new batch-level customer request ID
     pub fn new_batch() -> Self {
         let uuid = Uuid::new_v4();
         let uuid_string = uuid.to_string();
@@ -172,7 +172,10 @@ mod tests {
         let duration = start.elapsed();
 
         // Should be very fast due to Arc<str> sharing
-        assert!(duration.as_millis() < 100, "Performance regression detected");
+        assert!(
+            duration.as_millis() < 100,
+            "Performance regression detected"
+        );
 
         // Verify all requests share the same UUID suffix (same memory address)
         let first_uuid_suffix = request_ids[0].uuid_suffix();
@@ -180,8 +183,10 @@ mod tests {
             assert_eq!(request_id.uuid_suffix(), first_uuid_suffix);
         }
 
-        println!("✅ Created {} request IDs in {:?} (optimized with Arc<str>)",
-                num_requests, duration);
+        println!(
+            "✅ Created {} request IDs in {:?} (optimized with Arc<str>)",
+            num_requests, duration
+        );
     }
 
     #[test]
