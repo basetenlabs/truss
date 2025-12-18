@@ -348,6 +348,8 @@ def run_client():
                 return
             else:
                 raise RuntimeError(f"Unexpected timeout: {e}")
+        finally:
+            reset_message = client.batch_post("/reset", [{}]).data[0]
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
             "Response should contain `number_of_requests` embeddings"
@@ -356,11 +358,10 @@ def run_client():
         assert indexes == list(range(number_of_requests)), (
             "Indexes should match the range of number_of_requests"
         )
-        reset_message = client.batch_post("/reset", [{}]).data[0]
-        assert (
-            reset_message["processed_requests"]
-            == number_of_requests + stall_x_many_requests
-        ), "Processed requests should match the number of requests + stalled requests"
+        processed_requests = reset_message["processed_requests"]
+        assert processed_requests == number_of_requests + stall_x_many_requests, (
+            f"Processed requests should match the number of requests + stalled requests ({processed_requests} != {number_of_requests} + {stall_x_many_requests})"
+        )
         assert reset_message["successful_requests"] == number_of_requests, (
             "Successful requests should match the number of requests"
         )
@@ -402,6 +403,20 @@ def run_client():
         timeout=2,
         total_timeout_s=2,
     )
+    try:
+        scenario_stalled(
+            40,
+            stall_x_many_requests=20,
+            stall_for_seconds=10,
+            internal_server_error_no_stall=False,
+            timeout=4,
+            total_timeout_s=4,
+        )
+        # assert False, "Expected timeout exception was not raised"
+    except AssertionError as e:
+        raise e
+    except Exception as e:
+        print(f"Expected exception caught: {e}, type: {type(e)}")
 
 
 if __name__ == "__main__":

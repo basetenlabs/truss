@@ -267,7 +267,7 @@ impl PerformanceClientCore {
 
         let cancel_token = CancellationToken::new();
 
-        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| {
+        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.filter(|&delay| delay > 0.0).map(|delay| {
             (
                 Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
                 Duration::from_secs_f64(delay),
