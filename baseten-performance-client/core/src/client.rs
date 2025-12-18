@@ -8,6 +8,7 @@ use crate::utils::{
     calculate_hedge_budget, calculate_retry_timeout_budget, process_joinset_outcome,
 };
 
+use crate::customer_request_id::CustomerRequestId;
 use reqwest::Client;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -255,6 +256,9 @@ impl PerformanceClientCore {
         let start_time = std::time::Instant::now();
         let request_timeout_duration = config.timeout_duration();
 
+        // Generate customer request ID for this batch operation
+        let batch_customer_id = CustomerRequestId::new_batch();
+
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
         let total_requests = batches.len();
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
@@ -272,6 +276,7 @@ impl PerformanceClientCore {
 
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
+        #[allow(clippy::type_complexity)]
         let mut join_set: JoinSetGuard<
             Result<(R, Duration, usize, usize, HeaderMap), ClientError>,
         > = JoinSetGuard::with_cancel_token(cancel_token);
@@ -294,6 +299,9 @@ impl PerformanceClientCore {
             let payload = create_payload(batch);
             let url = endpoint_url.clone();
 
+            // Generate individual request ID for this batch
+            let request_customer_id = batch_customer_id.new_request(batch_index);
+
             join_set.spawn(async move {
                 let _permit = semaphore
                     .acquire_owned()
@@ -302,13 +310,14 @@ impl PerformanceClientCore {
                 let client = client_wrapper.get_client();
 
                 let request_time_start = Instant::now();
-                let config = SendRequestConfig {
-                    max_retries: MAX_HTTP_RETRIES,
-                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                let config = SendRequestConfig::new(
+                    MAX_HTTP_RETRIES,
+                    Duration::from_millis(INITIAL_BACKOFF_MS),
                     retry_budget,
-                    hedge_budget: hedge_config,
-                    timeout: request_timeout_duration,
-                };
+                    hedge_config,
+                    request_timeout_duration,
+                    request_customer_id,
+                )?;
 
                 // Send request with pre-created payload and URL
                 let (response, headers): (R, HeaderMap) = send_http_request_with_retry(
@@ -337,19 +346,25 @@ impl PerformanceClientCore {
             let task_result = if let Some(timeout_duration) = total_timeout {
                 let remaining = timeout_duration.saturating_sub(start_time.elapsed());
                 if remaining.is_zero() {
-                    return Err(ClientError::Timeout(format!(
-                        "Total operation timed out after {:.2}s",
-                        timeout_duration.as_secs_f64()
-                    )));
+                    return Err(ClientError::LocalTimeout(
+                        format!(
+                            "Total operation timed out after {:.2}s",
+                            timeout_duration.as_secs_f64()
+                        ),
+                        None,
+                    ));
                 }
                 match tokio::time::timeout(remaining, join_set.join_next()).await {
                     Ok(Some(result)) => result,
                     Ok(None) => break, // All tasks completed
                     Err(_) => {
-                        return Err(ClientError::Timeout(format!(
-                            "Total operation timed out after {:.2}s",
-                            timeout_duration.as_secs_f64()
-                        )));
+                        return Err(ClientError::LocalTimeout(
+                            format!(
+                                "Total operation timed out after {:.2}s",
+                                timeout_duration.as_secs_f64()
+                            ),
+                            Some(batch_customer_id.to_string()),
+                        ));
                     }
                 }
             } else {
@@ -638,6 +653,7 @@ impl PerformanceClientCore {
 
     // Core batch post processing - optimized with JoinSetGuard
     // Cancellation: dropping this future will automatically abort all in-flight requests
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_batch_post_requests(
         &self,
         url_path: String,
@@ -650,6 +666,9 @@ impl PerformanceClientCore {
     ) -> Result<(Vec<(serde_json::Value, HeaderMap, Duration)>, Duration), ClientError> {
         let start_time = std::time::Instant::now();
         let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
+
+        // Generate customer request ID for this batch operation
+        let batch_customer_id = CustomerRequestId::new_batch();
 
         // Validate parameters internally (using batch_size of 128 for validation)
         let (validated_concurrency, request_timeout_duration) = self.validate_request_parameters(
@@ -693,7 +712,11 @@ impl PerformanceClientCore {
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let retry_budget = Arc::clone(&retry_budget);
             let individual_request_timeout = request_timeout_duration;
-            let hedge_budget = hedge_budget_delay.clone();
+            let hedge_config = hedge_budget_delay.clone();
+
+            // Generate individual request ID for this batch
+            let request_customer_id = batch_customer_id.new_request(index);
+            let _hedge_budget = hedge_budget_delay.clone();
             let custom_headers = custom_headers.clone();
 
             join_set.spawn(async move {
@@ -709,13 +732,14 @@ impl PerformanceClientCore {
                     url_path.trim_start_matches('/')
                 );
                 let request_time_start = std::time::Instant::now();
-                let config = SendRequestConfig {
-                    max_retries: MAX_HTTP_RETRIES,
-                    initial_backoff: Duration::from_millis(INITIAL_BACKOFF_MS),
+                let config = SendRequestConfig::new(
+                    MAX_HTTP_RETRIES,
+                    Duration::from_millis(INITIAL_BACKOFF_MS),
                     retry_budget,
-                    hedge_budget,
-                    timeout: individual_request_timeout,
-                };
+                    hedge_config,
+                    request_timeout_duration,
+                    request_customer_id,
+                )?;
 
                 let result_tuple = send_http_request_with_headers(
                     &client,
@@ -746,19 +770,25 @@ impl PerformanceClientCore {
             let task_result = if let Some(timeout_duration) = total_timeout {
                 let remaining = timeout_duration.saturating_sub(start_time.elapsed());
                 if remaining.is_zero() {
-                    return Err(ClientError::Timeout(format!(
-                        "Total operation timed out after {:.2}s",
-                        timeout_duration.as_secs_f64()
-                    )));
+                    return Err(ClientError::LocalTimeout(
+                        format!(
+                            "Total operation timed out after {:.2}s",
+                            timeout_duration.as_secs_f64()
+                        ),
+                        None,
+                    ));
                 }
                 match tokio::time::timeout(remaining, join_set.join_next()).await {
                     Ok(Some(result)) => result,
                     Ok(None) => break,
                     Err(_) => {
-                        return Err(ClientError::Timeout(format!(
-                            "Total operation timed out after {:.2}s",
-                            timeout_duration.as_secs_f64()
-                        )));
+                        return Err(ClientError::LocalTimeout(
+                            format!(
+                                "Total operation timed out after {:.2}s",
+                                timeout_duration.as_secs_f64()
+                            ),
+                            Some(batch_customer_id.to_string()),
+                        ));
                     }
                 }
             } else {

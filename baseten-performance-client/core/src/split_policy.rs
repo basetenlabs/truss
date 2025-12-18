@@ -52,8 +52,7 @@ impl RequestProcessingConfig {
             }
         }
 
-        if hedge_delay.is_some() {
-            let hedge_delay = hedge_delay.unwrap();
+        if let Some(hedge_delay) = hedge_delay {
             if !(MIN_HEDGE_DELAY_S..=MAX_REQUEST_TIMEOUT_S).contains(&hedge_delay) {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
                     "Hedge delay {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
@@ -67,8 +66,7 @@ impl RequestProcessingConfig {
                 )));
             }
         }
-        if max_chars_per_request.is_some() {
-            let max_chars = max_chars_per_request.unwrap();
+        if let Some(max_chars) = max_chars_per_request {
             if !(MIN_CHARACTERS_PER_REQUEST..=MAX_CHARACTERS_PER_REQUEST).contains(&max_chars) {
                 return Err(crate::errors::ClientError::InvalidParameter(format!(
                     "max_chars_per_request must be between {} and {} characters.",

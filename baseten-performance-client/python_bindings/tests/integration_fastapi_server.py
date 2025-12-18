@@ -157,6 +157,9 @@ def build_server():
         """
         # Here you would implement the logic to handle the embedding request
         # For now, we return a dummy response
+        assert fapi.headers.get("x-baseten-customer-request-id", "").startswith(
+            "perf"
+        ), "Missing or invalid customer request ID header"
         if not request.input:
             raise fastapi.HTTPException(
                 status_code=400, detail="Input cannot be empty."
@@ -344,7 +347,7 @@ def run_client():
                 )
                 return
             else:
-                raise e
+                raise RuntimeError(f"Unexpected timeout: {e}")
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
             "Response should contain `number_of_requests` embeddings"
