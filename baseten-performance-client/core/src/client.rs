@@ -276,6 +276,7 @@ impl PerformanceClientCore {
 
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
+        #[allow(clippy::type_complexity)]
         let mut join_set: JoinSetGuard<
             Result<(R, Duration, usize, usize, HeaderMap), ClientError>,
         > = JoinSetGuard::with_cancel_token(cancel_token);

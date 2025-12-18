@@ -77,7 +77,7 @@ fn build_enhanced_error_message(err: &reqwest::Error, customer_request_id: Optio
     }
 
     // Add the main error message (Display format)
-    parts.push(format!("Error: {}", err.to_string()));
+    parts.push(format!("Error: {}", err));
 
     // Add Debug format information (contains "(Connect)" and other details)
     parts.push(format!("Debug: {:?}", err));
