@@ -20,7 +20,12 @@ permissions:
       - "baseten-performance-client/**"
       - ".github/workflows/**"
   pull_request: null
-  workflow_dispatch: null
+  workflow_dispatch:
+    inputs:
+      publish_type:
+        description: 'Publish type (release, next, none)'
+        required: false
+        default: 'none'
 jobs:
   build:
     strategy:
@@ -546,10 +551,24 @@ jobs:
 
       - name: Publish
         run: |
-          if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$"; then
-            npm publish --access public --provenance
-          elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+"; then
-            npm publish --tag next --access public --provenance
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "${{ github.event.inputs.publish_type }}" in
+              release)
+                npm publish --access public --provenance
+                ;;
+              next)
+                npm publish --tag next --access public --provenance
+                ;;
+              *)
+                echo "Manual trigger: Not a release, skipping publish"
+                ;;
+            esac
           else
-            echo "Not a release, skipping publish"
+            if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$"; then
+              npm publish --access public --provenance
+            elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+"; then
+              npm publish --tag next --access public --provenance
+            else
+              echo "Not a release, skipping publish"
+            fi
           fi
