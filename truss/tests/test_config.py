@@ -20,6 +20,7 @@ from truss.base.truss_config import (
     CheckpointList,
     DockerAuthSettings,
     DockerAuthType,
+    DockerServer,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -957,3 +958,109 @@ def test_clear_runtime_fields():
     assert config.python_version == "py39"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
+
+
+def test_docker_server_start_command_single_line_valid():
+    """Single-line start_command should be valid."""
+    docker_server = DockerServer(
+        start_command='sh -c "vllm serve model --port 8000"',
+        server_port=8000,
+        predict_endpoint="/v1/chat/completions",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+    )
+    assert docker_server.start_command == 'sh -c "vllm serve model --port 8000"'
+
+
+def test_docker_server_start_command_with_newline_invalid():
+    """start_command containing newlines should raise a validation error."""
+    multiline_command = "sh -c '\necho hello\n'"
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="docker_server.start_command must not contain newlines",
+    ):
+        DockerServer(
+            start_command=multiline_command,
+            server_port=8000,
+            predict_endpoint="/v1/chat/completions",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+
+
+def test_docker_server_start_command_yaml_literal_block_invalid(tmp_path):
+    """YAML literal block scalar '|' preserves newlines and should be rejected."""
+    yaml_content = """
+docker_server:
+  start_command: |
+    sh -c "export VAR=value"
+  server_port: 8000
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+"""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    with pytest.raises(
+        ValueError, match="docker_server.start_command must not contain newlines"
+    ):
+        TrussConfig.from_yaml(config_path)
+
+
+def test_docker_server_start_command_yaml_folded_block_invalid(tmp_path):
+    """YAML folded block scalar '>' adds trailing newline and should be rejected."""
+    yaml_content = """
+docker_server:
+  start_command: >
+    sh -c /app/server
+  server_port: 8000
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+"""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    with pytest.raises(
+        ValueError, match="docker_server.start_command must not contain newlines"
+    ):
+        TrussConfig.from_yaml(config_path)
+
+
+def test_docker_server_start_command_yaml_folded_chomped_valid(tmp_path):
+    """YAML folded+chomped '>-' folds newlines to spaces and should be valid."""
+    yaml_content = """
+docker_server:
+  start_command: >-
+    sh -c
+    /app/server
+  server_port: 8000
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+"""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert config.docker_server.start_command == "sh -c /app/server"
+
+
+def test_docker_server_start_command_yaml_plain_multiline_valid(tmp_path):
+    """YAML plain multiline (no block indicator) folds to spaces and should be valid."""
+    yaml_content = """
+docker_server:
+  start_command: sh
+    -c
+    /app/server
+  server_port: 8000
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+"""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml_content)
+
+    config = TrussConfig.from_yaml(config_path)
+    assert config.docker_server.start_command == "sh -c /app/server"
