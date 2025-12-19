@@ -409,7 +409,7 @@ def run_client():
         stall_for_seconds=6,
         internal_server_error_no_stall=False,
         timeout=4,
-        total_timeout_s=4,
+        total_timeout_s=5,
         must_timeout=True,  # must raise timeout
     )
 
