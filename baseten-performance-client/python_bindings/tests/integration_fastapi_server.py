@@ -9,7 +9,11 @@ from typing import Optional
 
 import fastapi
 import requests
-from baseten_performance_client import PerformanceClient, __version__
+from baseten_performance_client import (
+    PerformanceClient,
+    RequestProcessingPreference,
+    __version__,
+)
 from pydantic import BaseModel, Field
 
 
@@ -78,7 +82,11 @@ def build_server():
     """
     app = fastapi.FastAPI()
     # add storage to the app state
-    app.state.storage = {"processed_requests": 0, "successful_requests": 0}
+    app.state.storage = {
+        "processed_requests": 0,
+        "successful_requests": 0,
+        "cancelled_requests": 0,
+    }
     app.state.async_lock = asyncio.Lock()
 
     def validate_hijack_payload(inputs: list[str]) -> list[HijackPayload]:
@@ -139,7 +147,11 @@ def build_server():
                     )
                 elif hijack_payload.stall_for_seconds is not None:
                     await asyncio.sleep(hijack_payload.stall_for_seconds)
+
+        # cancellation check ONLY before completing
         if await fapi.is_disconnected():
+            async with app.state.async_lock:
+                app.state.storage["cancelled_requests"] += 1
             raise fastapi.HTTPException(
                 status_code=499, detail="client disconnected, code will not matter."
             )
@@ -158,8 +170,10 @@ def build_server():
         # Here you would implement the logic to handle the embedding request
         # For now, we return a dummy response
         assert fapi.headers.get("x-baseten-customer-request-id", "").startswith(
-            "perf"
-        ), "Missing or invalid customer request ID header"
+            "perfclient"
+        ), (
+            f"Missing or invalid customer request ID header {fapi.headers.get('x-baseten-customer-request-id')}"
+        )
         if not request.input:
             raise fastapi.HTTPException(
                 status_code=400, detail="Input cannot be empty."
@@ -188,11 +202,14 @@ def build_server():
         async with app.state.async_lock:
             processed_requests = app.state.storage.get("processed_requests")
             successful_requests = app.state.storage.get("successful_requests")
+            cancelled_requests = app.state.storage.get("cancelled_requests")
             app.state.storage["processed_requests"] = 0
             app.state.storage["successful_requests"] = 0
+            app.state.storage["cancelled_requests"] = 0
             return {
                 "processed_requests": processed_requests,
                 "successful_requests": successful_requests,
+                "cancelled_requests": cancelled_requests,
             }
 
     return app
@@ -260,12 +277,15 @@ def run_client():
             max_chars_per_request=max_chars_per_request,
             send_429_until_time=resp_429_until_time,
         )
-        response = client.embed(
-            model="text-embedding-ada-002",
-            input=[hp.to_string() for hp in hijack_payloads],
+        preference = RequestProcessingPreference(
             batch_size=4,
             max_concurrent_requests=64,
             max_chars_per_request=max_chars_per_request,
+        )
+        response = client.embed(
+            model="text-embedding-ada-002",
+            input=[hp.to_string() for hp in hijack_payloads],
+            preference=preference,
         )
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
@@ -321,14 +341,17 @@ def run_client():
             internal_server_error_no_stall=internal_server_error_no_stall,
         )
         try:
-            response = client.embed(
-                model="text-embedding-ada-002",
-                input=[hp.to_string() for hp in hijack_payloads],
+            preference = RequestProcessingPreference(
                 batch_size=1,
                 max_concurrent_requests=512,
                 hedge_delay=hedge_delay,
                 timeout_s=timeout,
                 total_timeout_s=total_timeout_s,
+            )
+            response = client.embed(
+                model="text-embedding-ada-002",
+                input=[hp.to_string() for hp in hijack_payloads],
+                preference=preference,
             )
         except requests.exceptions.Timeout as e:
             if must_timeout:
@@ -412,6 +435,66 @@ def run_client():
         total_timeout_s=5,
         must_timeout=True,  # must raise timeout
     )
+
+    # Test cancellation token functionality
+    def scenario_cancellation_token():
+        """Test cancellation token with in-flight request cancellation."""
+        from baseten_performance_client import CancellationToken
+
+        # Create cancellation token
+        token = CancellationToken()
+
+        hijack_payloads = prepare_hijack_payloads(
+            number_of_requests=12,
+            max_batch_size=1,
+            stall_x_many_requests=10,  # Stall first 10 requests
+            stall_for_seconds=3.0,  # Stall for 3 seconds
+        )
+
+        preference = RequestProcessingPreference(
+            batch_size=1, max_concurrent_requests=8, cancel_token=token
+        )
+
+        # Start request in background thread
+        import threading
+        import time
+
+        response_holder = []
+        error_holder = []
+
+        def run_cancellable_request():
+            try:
+                response = client.embed(
+                    model="text-embedding-ada-002",
+                    input=[hp.to_string() for hp in hijack_payloads],
+                    preference=preference,
+                )
+                response_holder.append(response)
+            except Exception as e:
+                error_holder.append(e)
+
+        request_thread = threading.Thread(target=run_cancellable_request)
+        request_thread.start()
+
+        # Wait for requests to start processing, then cancel
+        time.sleep(1.0)
+        token.cancel()
+        time.sleep(0.1)
+
+        # Wait for thread to complete
+        request_thread.join(timeout=10.0)
+
+        # Check cancellation results
+        reset_message = client.batch_post("/reset", [{}]).data[0]
+        assert reset_message["cancelled_requests"] > 8, (
+            f"Expected some requests to be cancelled, but got {reset_message['cancelled_requests']}"
+        )
+        print("error_holder:", error_holder)
+        print(
+            f"Cancellation token scenario: {reset_message['cancelled_requests']} requests cancelled"
+        )
+
+    scenario_cancellation_token()
 
 
 if __name__ == "__main__":

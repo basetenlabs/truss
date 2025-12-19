@@ -1,3 +1,4 @@
+use baseten_performance_client_core::split_policy::{Combinable, SplitPolicy, Splittable};
 use baseten_performance_client_core::*;
 
 #[tokio::test]
@@ -154,68 +155,53 @@ fn test_classification_response_combine() {
 #[test]
 fn test_send_request_config_hedge_timeout_validation() {
     use baseten_performance_client_core::customer_request_id::CustomerRequestId;
-    use baseten_performance_client_core::http_client::SendRequestConfig;
 
     use std::time::Duration;
 
-    let budgets = SharedBudgets::new(100, Some(2.0));
-
     // Test case 1: hedge delay higher than request delay (should fail)
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        budgets,
-        Some(Duration::from_secs(2)), // hedge delay = 2s
-        Duration::from_secs(1),       // request timeout = 1s
-        CustomerRequestId::new_batch(),
-    );
+    // This validation is now done in RequestProcessingConfig, not SendRequestConfig
+    let pref = RequestProcessingPreference::new()
+        .with_timeout_s(1.0)
+        .with_hedge_delay(2.0); // hedge delay higher than timeout - should fail
+
+    let result =
+        pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
     assert!(
         result.is_err(),
         "Should fail when hedge delay > request timeout"
     );
 
     // Test case 2: hedge delay equal to request timeout (should fail)
-    let budgets = SharedBudgets::new(100, Some(1.0));
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        budgets,
-        Some(Duration::from_secs(1)), // hedge delay = 1s
-        Duration::from_secs(1),       // request timeout = 1s
-        CustomerRequestId::new_batch(),
-    );
+    let pref2 = RequestProcessingPreference::new()
+        .with_timeout_s(1.0)
+        .with_hedge_delay(1.0); // hedge delay equal to timeout - should fail
+
+    let result2 =
+        pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
     assert!(
-        result.is_err(),
+        result2.is_err(),
         "Should fail when hedge delay = request timeout"
     );
 
     // Test case 3: hedge delay lower than request timeout (should pass)
-    let budgets = SharedBudgets::new(100, Some(0.5));
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        budgets,
-        Some(Duration::from_millis(500)), // hedge delay = 0.5s
-        Duration::from_secs(1),           // request timeout = 1s
-        CustomerRequestId::new_batch(),
-    );
+    let pref3 = RequestProcessingPreference::new()
+        .with_timeout_s(1.0)
+        .with_hedge_delay(0.5); // hedge delay lower than timeout - should pass
+
+    let result3 =
+        pref3.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
     assert!(
-        result.is_ok(),
+        result3.is_ok(),
         "Should pass when hedge delay < request timeout"
     );
 
     // Test case 4: no hedge budget (should succeed)
-    let budgets = SharedBudgets::new(100, None);
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        budgets,
-        None,                   // no hedge delay
-        Duration::from_secs(1), // request timeout = 1s
-        CustomerRequestId::new_batch(),
-    );
+    let pref4 = RequestProcessingPreference::new().with_timeout_s(1.0); // no hedge delay - should succeed
+
+    let result4 =
+        pref4.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
     assert!(
-        result.is_ok(),
+        result4.is_ok(),
         "Should succeed when no hedge budget is specified"
     );
 }

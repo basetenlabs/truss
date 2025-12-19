@@ -1,9 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 
 use baseten_performance_client_core::{
-  ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
-  CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
-  DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+  CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
+  CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse,
+  HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+  RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
+  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
+  MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
 };
 
 use napi_derive::napi;
@@ -185,6 +188,142 @@ pub struct BatchPostResponse {
   pub total_time: f64,
 }
 
+/// User-facing configuration for request processing with budget percentages.
+/// CancellationToken for cancelling async operations
+#[napi]
+pub struct CancellationToken {
+  inner: CoreCancellationToken,
+}
+
+#[napi]
+impl CancellationToken {
+  /// Create a new cancellation token
+  #[napi(constructor)]
+  pub fn new() -> Self {
+    Self {
+      inner: CoreCancellationToken::new(),
+    }
+  }
+
+  /// Cancel all operations using this token
+  #[napi]
+  pub fn cancel(&self) {
+    self.inner.cancel();
+  }
+
+  /// Check if cancellation has been requested
+  #[napi(getter)]
+  pub fn is_cancelled(&self) -> bool {
+    self.inner.is_cancelled()
+  }
+}
+
+/// Provides sensible defaults and getters for all properties.
+#[napi]
+pub struct RequestProcessingPreference {
+  // Store the complete preference with defaults applied for consistent behavior
+  complete: RustRequestProcessingPreference,
+}
+
+#[napi]
+impl RequestProcessingPreference {
+  #[napi(constructor)]
+  pub fn new(
+    max_concurrent_requests: Option<u32>,
+    batch_size: Option<u32>,
+    timeout_s: Option<f64>,
+    max_chars_per_request: Option<u32>,
+    hedge_delay: Option<f64>,
+    total_timeout_s: Option<f64>,
+    hedge_budget_pct: Option<f64>,
+    retry_budget_pct: Option<f64>,
+    max_retries: Option<u32>,
+    initial_backoff_ms: Option<u32>,
+    cancel_token: Option<&CancellationToken>,
+  ) -> Self {
+    let inner = RustRequestProcessingPreference {
+      max_concurrent_requests: max_concurrent_requests.map(|x| x as usize),
+      batch_size: batch_size.map(|x| x as usize),
+      max_chars_per_request: max_chars_per_request.map(|x| x as usize),
+      timeout_s,
+      hedge_delay,
+      total_timeout_s,
+      hedge_budget_pct,
+      retry_budget_pct,
+      max_retries,
+      initial_backoff_ms: initial_backoff_ms.map(|x| x as u64),
+      cancel_token: cancel_token.map(|token| token.inner.clone()),
+    };
+
+    // Apply defaults using the same method as Rust core
+    let complete = inner.with_defaults();
+
+    RequestProcessingPreference { complete }
+  }
+
+  #[napi(getter)]
+  pub fn max_concurrent_requests(&self) -> u32 {
+    self
+      .complete
+      .max_concurrent_requests
+      .unwrap_or(DEFAULT_CONCURRENCY) as u32
+  }
+
+  #[napi(getter)]
+  pub fn batch_size(&self) -> u32 {
+    self.complete.batch_size.unwrap_or(DEFAULT_BATCH_SIZE) as u32
+  }
+
+  #[napi(getter)]
+  pub fn timeout_s(&self) -> f64 {
+    self.complete.timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S)
+  }
+
+  #[napi(getter)]
+  pub fn max_chars_per_request(&self) -> Option<u32> {
+    self.complete.max_chars_per_request.map(|x| x as u32)
+  }
+
+  #[napi(getter)]
+  pub fn hedge_delay(&self) -> Option<f64> {
+    self.complete.hedge_delay
+  }
+
+  #[napi(getter)]
+  pub fn total_timeout_s(&self) -> Option<f64> {
+    self.complete.total_timeout_s
+  }
+
+  #[napi(getter)]
+  pub fn hedge_budget_pct(&self) -> f64 {
+    self
+      .complete
+      .hedge_budget_pct
+      .unwrap_or(HEDGE_BUDGET_PERCENTAGE)
+  }
+
+  #[napi(getter)]
+  pub fn retry_budget_pct(&self) -> f64 {
+    self
+      .complete
+      .retry_budget_pct
+      .unwrap_or(RETRY_BUDGET_PERCENTAGE)
+  }
+
+  #[napi(getter)]
+  pub fn max_retries(&self) -> u32 {
+    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32
+  }
+
+  #[napi(getter)]
+  pub fn initial_backoff_ms(&self) -> u32 {
+    self
+      .complete
+      .initial_backoff_ms
+      .unwrap_or(INITIAL_BACKOFF_MS) as u32
+  }
+}
+
 #[napi]
 pub struct HttpClientWrapper {
   inner: Arc<HttpClientWrapperRs>,
@@ -237,38 +376,17 @@ impl PerformanceClient {
     encoding_format: Option<String>,
     dimensions: Option<u32>,
     user: Option<String>,
-    max_concurrent_requests: Option<u32>,
-    batch_size: Option<u32>,
-    timeout_s: Option<f64>,
-    max_chars_per_request: Option<u32>,
-    hedge_delay: Option<f64>,
-    total_timeout_s: Option<f64>,
+    preference: Option<&RequestProcessingPreference>,
   ) -> napi::Result<serde_json::Value> {
     if input.is_empty() {
       return Err(create_napi_error("Input list cannot be empty"));
     }
 
-    let max_concurrent_requests =
-      max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
-    let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
-    let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
-    let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
+    let pref = preference.map(|p| p.complete.clone()).unwrap_or_default();
 
     let result = self
       .core_client
-      .process_embeddings_requests(
-        input,
-        model,
-        encoding_format,
-        dimensions,
-        user,
-        max_concurrent_requests,
-        batch_size,
-        max_chars_per_request,
-        timeout_s,
-        hedge_delay,
-        total_timeout_s,
-      )
+      .process_embeddings_requests(input, model, encoding_format, dimensions, user, &pref)
       .await
       .map_err(convert_core_error_to_napi_error)?;
 
@@ -295,22 +413,13 @@ impl PerformanceClient {
     return_text: Option<bool>,
     truncate: Option<bool>,
     truncation_direction: Option<String>,
-    max_concurrent_requests: Option<u32>,
-    batch_size: Option<u32>,
-    timeout_s: Option<f64>,
-    max_chars_per_request: Option<u32>,
-    hedge_delay: Option<f64>,
-    total_timeout_s: Option<f64>,
+    preference: Option<&RequestProcessingPreference>,
   ) -> napi::Result<serde_json::Value> {
     if texts.is_empty() {
       return Err(create_napi_error("Texts list cannot be empty"));
     }
 
-    let max_concurrent_requests =
-      max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
-    let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
-    let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
-    let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
+    let pref = preference.map(|p| p.complete.clone()).unwrap_or_default();
 
     let result = self
       .core_client
@@ -322,12 +431,7 @@ impl PerformanceClient {
         return_text.unwrap_or(false),
         truncate.unwrap_or(false),
         truncation_direction.unwrap_or_else(|| "Right".to_string()),
-        max_concurrent_requests,
-        batch_size,
-        max_chars_per_request,
-        timeout_s,
-        hedge_delay,
-        total_timeout_s,
+        &pref,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
@@ -353,22 +457,13 @@ impl PerformanceClient {
     raw_scores: Option<bool>,
     truncate: Option<bool>,
     truncation_direction: Option<String>,
-    max_concurrent_requests: Option<u32>,
-    batch_size: Option<u32>,
-    timeout_s: Option<f64>,
-    max_chars_per_request: Option<u32>,
-    hedge_delay: Option<f64>,
-    total_timeout_s: Option<f64>,
+    preference: Option<&RequestProcessingPreference>,
   ) -> napi::Result<serde_json::Value> {
     if inputs.is_empty() {
       return Err(create_napi_error("Inputs list cannot be empty"));
     }
 
-    let max_concurrent_requests =
-      max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
-    let batch_size = batch_size.unwrap_or(DEFAULT_BATCH_SIZE as u32) as usize;
-    let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
-    let max_chars_per_request = max_chars_per_request.map(|x| x as usize);
+    let pref = preference.map(|p| p.complete.clone()).unwrap_or_default();
 
     let result = self
       .core_client
@@ -378,12 +473,7 @@ impl PerformanceClient {
         raw_scores.unwrap_or(false),
         truncate.unwrap_or(false),
         truncation_direction.unwrap_or_else(|| "Right".to_string()),
-        max_concurrent_requests,
-        batch_size,
-        max_chars_per_request,
-        timeout_s,
-        hedge_delay,
-        total_timeout_s,
+        &pref,
       )
       .await
       .map_err(convert_core_error_to_napi_error)?;
@@ -406,31 +496,18 @@ impl PerformanceClient {
     &self,
     url_path: String,
     payloads: Vec<JsonValue>,
-    max_concurrent_requests: Option<u32>,
-    timeout_s: Option<f64>,
-    hedge_delay: Option<f64>,
-    total_timeout_s: Option<f64>,
+    preference: Option<&RequestProcessingPreference>,
     custom_headers: Option<std::collections::HashMap<String, String>>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
       return Err(create_napi_error("Payloads list cannot be empty"));
     }
 
-    let max_concurrent_requests =
-      max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY as u32) as usize;
-    let timeout_s = timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S);
+    let pref = preference.map(|p| p.complete.clone()).unwrap_or_default();
 
     let result = self
       .core_client
-      .process_batch_post_requests(
-        url_path,
-        payloads,
-        max_concurrent_requests,
-        timeout_s,
-        hedge_delay,
-        total_timeout_s,
-        custom_headers,
-      )
+      .process_batch_post_requests(url_path, payloads, &pref, custom_headers)
       .await
       .map_err(convert_core_error_to_napi_error)?;
 

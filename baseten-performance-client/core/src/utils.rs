@@ -1,10 +1,10 @@
-use crate::constants::{HEDGE_BUDGET_PERCENTAGE, RETRY_TIMEOUT_BUDGET_PERCENTAGE};
+use crate::constants::{HEDGE_BUDGET_PERCENTAGE, RETRY_BUDGET_PERCENTAGE};
 use crate::errors::ClientError;
 
 /// Calculate retry timeout budget based on total requests
 pub fn calculate_retry_timeout_budget(total_requests: usize) -> usize {
     // if the budget goes from 1->0 the budget is exhaused. So always set it to intially 2.
-    1 + ((total_requests as f64 * RETRY_TIMEOUT_BUDGET_PERCENTAGE).ceil() as usize)
+    1 + ((total_requests as f64 * RETRY_BUDGET_PERCENTAGE).ceil() as usize)
 }
 
 pub fn calculate_hedge_budget(total_requests: usize) -> usize {

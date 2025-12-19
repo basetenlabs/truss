@@ -39,16 +39,26 @@ const advancedClient = new PerformanceClient(baseUrl, apiKey, 2, httpWrapper);
 ```javascript
 const texts = ["Hello world", "Example text", "Another sample"];
 
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
 try {
-    const response = embedClient.embed(
-        texts,
-        "text-embedding-3-small", // model
-        null, // encoding_format
-        null, // dimensions
-        null, // user
+    const preference = new RequestProcessingPreference(
         8,    // max_concurrent_requests
         2,    // batch_size
-        30    // timeout_s
+        undefined, // max_chars_per_request
+        30,   // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
+    );
+    const response = await embedClient.embed(
+        texts,
+        "text-embedding-3-small", // model
+        null, null, null, // encoding_format, dimensions, user
+        preference // preference parameter
     );
 
     console.log(`Model used: ${response.model}`);
@@ -82,17 +92,29 @@ const documents = [
     "Python is popular for data science"
 ];
 
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
 try {
-    const response = rerankClient.rerank(
+    const preference = new RequestProcessingPreference(
+        4,     // max_concurrent_requests
+        2,     // batch_size
+        undefined, // max_chars_per_request
+        30,    // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
+    );
+    const response = await rerankClient.rerank(
         query,
         documents,
         false, // raw_scores
         true,  // return_text
         false, // truncate
         "Right", // truncation_direction
-        4,     // max_concurrent_requests
-        2,     // batch_size
-        30     // timeout_s
+        preference // preference parameter
     );
 
     console.log(`Reranked ${response.data.length} documents`);
@@ -115,15 +137,27 @@ const textsToClassify = [
     "Neutral experience."
 ];
 
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
 try {
-    const response = rerankClient.classify(
+    const preference = new RequestProcessingPreference(
+        4,     // max_concurrent_requests
+        2,     // batch_size
+        undefined, // max_chars_per_request
+        30,    // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
+    );
+    const response = await rerankClient.classify(
         textsToClassify,
         false, // raw_scores
         false, // truncate
         "Right", // truncation_direction
-        4,     // max_concurrent_requests
-        2,     // batch_size
-        30     // timeout_s
+        preference // preference parameter
     );
 
     console.log(`Classified ${response.data.length} texts`);
@@ -150,12 +184,26 @@ const payloads = [
     { "model": "text-embedding-3-small", "input": ["World"] }
 ];
 
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
 try {
-    const response = embedClient.batchPost(
+    const preference = new RequestProcessingPreference(
+        4,  // max_concurrent_requests
+        undefined, // batch_size
+        undefined, // max_chars_per_request
+        30, // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
+    );
+    const response = await embedClient.batchPost(
         "/v1/embeddings", // URL path
         payloads,
-        4,  // max_concurrent_requests
-        30  // timeout_s
+        undefined, // custom headers
+        preference // preference parameter
     );
 
     console.log(`Processed ${response.data.length} batch requests`);
@@ -180,15 +228,88 @@ try {
 
 ### Advanced Features
 
+#### RequestProcessingPreference
+
+The `RequestProcessingPreference` class provides a unified way to configure all request processing parameters. This is the recommended approach for advanced configuration as it provides better type safety and clearer intent.
+
+```javascript
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
+// Create a preference with custom settings
+const preference = new RequestProcessingPreference(
+    64,        // maxConcurrentRequests (default: 128)
+    32,        // batchSize (default: 128)
+    undefined, // maxCharsPerRequest
+    30.0,      // timeoutS (default: 3600.0)
+    0.5,       // hedgeDelay
+    undefined, // totalTimeoutS
+    0.15,      // hedgeBudgetPct (default: 0.10)
+    0.08,      // retryBudgetPct (default: 0.05)
+    3,         // maxRetries (default: 4)
+    250        // initialBackoffMs (default: 125)
+);
+
+// Use with any method
+const response = await embedClient.embed(
+    ["text1", "text2"],
+    "my_model",
+    undefined, undefined, undefined, // encodingFormat, dimensions, user
+    preference // preference parameter
+);
+```
+
+**Budget Percentages:**
+- `hedgeBudgetPct`: Percentage of total requests allocated for hedging (default: 10%)
+- `retryBudgetPct`: Percentage of total requests allocated for retries (default: 5%)
+- Maximum allowed: 300% for both budgets
+
+**Retry Configuration:**
+- `maxRetries`: Maximum number of HTTP retries (default: 4, max: 4)
+- `initialBackoffMs`: Initial backoff duration in milliseconds (default: 125, range: 50-30000)
+- Backoff uses exponential backoff with jitter
+
 #### Request Hedging
 The client supports request hedging for improved latency:
 
 ```javascript
-const response = embedClient.embed(
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
+const preference = new RequestProcessingPreference(
+    8, 2, 100000, 30, 0.5, 60, 0.1, 0.05, 3, 250  // maxConcurrentRequests, batchSize, maxCharsPerRequest, timeoutS, hedgeDelay, totalTimeoutS, hedgeBudgetPct, retryBudgetPct, maxRetries, initialBackoffMs
+);
+const response = await embedClient.embed(
     texts,
     "text-embedding-3-small",
-    null, null, null, 8, 2, 30,  // standard parameters
-    null, 100000, 0.5, 60        // maxCharsPerRequest, hedgeDelay (0.5s), totalTimeoutS
+    null, null, null, // encoding_format, dimensions, user
+    preference // preference parameter
+);
+```
+
+#### Retry Configuration
+Configure retry behavior and backoff settings:
+
+```javascript
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
+// Configure for more aggressive retrying
+const preference = new RequestProcessingPreference(
+    32,        // maxConcurrentRequests
+    16,        // batchSize
+    undefined, // maxCharsPerRequest
+    60.0,      // timeoutS
+    undefined, // hedgeDelay
+    undefined, // totalTimeoutS
+    undefined, // hedgeBudgetPct
+    0.10,      // retryBudgetPct (10% for retries)
+    4,         // maxRetries (maximum allowed)
+    500        // initialBackoffMs (start with 500ms backoff)
+);
+
+const response = await embedClient.embed(
+    texts,
+    "text-embedding-3-small",
+    null, null, null, // encoding_format, dimensions, user
+    preference // preference parameter
 );
 ```
 
@@ -196,11 +317,14 @@ const response = embedClient.embed(
 Use custom headers with batchPost:
 
 ```javascript
-const response = client.batchPost(
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
+const preference = new RequestProcessingPreference(4, undefined, undefined, 30, undefined, undefined, undefined, undefined, undefined, undefined);
+const response = await client.batchPost(
     "/v1/embeddings",
     payloads,
-    4, 30, null, null,           // standard parameters
-    { "x-custom-header": "value" } // custom headers
+    { "x-custom-header": "value" }, // custom headers
+    preference // preference parameter
 );
 ```
 
@@ -217,7 +341,9 @@ const clientHttp2 = new PerformanceClient(baseUrl, apiKey, 2);
 
 ## API Reference
 
-### Constructor
+### Constructors
+
+#### PerformanceClient
 
 ```javascript
 new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
@@ -228,23 +354,35 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
 - `httpVersion` (number, optional): HTTP version to use (1 for HTTP/1.1, 2 for HTTP/2). Default: 2
 - `clientWrapper` (HttpClientWrapper, optional): Custom HTTP client wrapper for advanced configuration
 
+#### RequestProcessingPreference
+
+```javascript
+new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, maxCharsPerRequest?, timeoutS?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?)
+```
+
+- `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 128)
+- `batchSize` (number, optional): Number of items per batch (default: 128)
+- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: undefined)
+- `timeoutS` (number, optional): Per-request timeout in seconds (default: 3600.0)
+- `hedgeDelay` (number, optional): Request hedging delay in seconds (default: undefined)
+- `totalTimeoutS` (number, optional): Total timeout for the entire operation in seconds (default: undefined)
+- `hedgeBudgetPct` (number, optional): Hedge budget percentage (default: 0.10, range: 0.0-3.0)
+- `retryBudgetPct` (number, optional): Retry budget percentage (default: 0.05, range: 0.0-3.0)
+- `maxRetries` (number, optional): Maximum number of HTTP retries (default: 4, max: 4)
+- `initialBackoffMs` (number, optional): Initial backoff duration in milliseconds (default: 125, range: 50-30000)
+
 ### Methods
 
-#### embed(input, model, encodingFormat?, dimensions?, user?, maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, hedgeDelay?, totalTimeoutS?)
+#### embed(input, model, encodingFormat?, dimensions?, user?, preference?)
 
 - `input` (Array<string>): List of texts to embed
 - `model` (string): Model name
 - `encodingFormat` (string, optional): Encoding format
 - `dimensions` (number, optional): Number of dimensions
 - `user` (string, optional): User identifier
-- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
-- `batchSize` (number, optional): Batch size (default: 128)
-- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
-- `maxCharsPerRequest` (number, optional): Maximum characters per request (default: 256000)
-- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
-- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
+- `preference` (RequestProcessingPreference, optional): Advanced configuration preference object
 
-#### rerank(query, texts, rawScores?, model?, returnText?, truncate?, truncationDirection?, maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, hedgeDelay?, totalTimeoutS?)
+#### rerank(query, texts, rawScores?, model?, returnText?, truncate?, truncationDirection?, preference?)
 
 - `query` (string): Query text
 - `texts` (Array<string>): List of texts to rerank
@@ -253,44 +391,34 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
 - `returnText` (boolean, optional): Return text in response (default: false)
 - `truncate` (boolean, optional): Truncate long texts (default: false)
 - `truncationDirection` (string, optional): "Left" or "Right" (default: "Right")
-- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
-- `batchSize` (number, optional): Batch size (default: 128)
-- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
-- `maxCharsPerRequest` (number, optional): Maximum characters per request (default: 256000)
-- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
-- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
+- `preference` (RequestProcessingPreference, optional): Advanced configuration preference object
 
-#### classify(inputs, rawScores?, model?, truncate?, truncationDirection?, maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, hedgeDelay?, totalTimeoutS?)
+#### classify(inputs, rawScores?, model?, truncate?, truncationDirection?, preference?)
 
 - `inputs` (Array<string>): List of texts to classify
 - `rawScores` (boolean, optional): Return raw scores (default: false)
 - `model` (string, optional): Model name for classification
 - `truncate` (boolean, optional): Truncate long texts (default: false)
 - `truncationDirection` (string, optional): "Left" or "Right" (default: "Right")
-- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
-- `batchSize` (number, optional): Batch size (default: 128)
-- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
-- `maxCharsPerRequest` (number, optional): Maximum characters per request (default: 256000)
-- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
-- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
+- `preference` (RequestProcessingPreference, optional): Advanced configuration preference object
 
-#### batchPost(urlPath, payloads, maxConcurrentRequests?, timeoutS?, hedgeDelay?, totalTimeoutS?, customHeaders?)
+#### batchPost(urlPath, payloads, customHeaders?, preference?)
 
 - `urlPath` (string): URL path for the POST request
 - `payloads` (Array<Object>): List of JSON payloads
-- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
-- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
-- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
-- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
 - `customHeaders` (Record<string, string>, optional): Custom headers to include with each request
+- `preference` (RequestProcessingPreference, optional): Advanced configuration preference object
 
 ## Error Handling
 
 The client throws standard JavaScript errors for various failure cases:
 
 ```javascript
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
 try {
-    const response = embedClient.embed(texts, "model");
+    const preference = new RequestProcessingPreference();
+    const response = await embedClient.embed(texts, "model", null, null, null, preference);
 } catch (error) {
     if (error.message.includes('cannot be empty')) {
         console.error('Parameter validation error:', error.message);

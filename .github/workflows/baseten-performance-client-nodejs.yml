@@ -1,21 +1,23 @@
 name: baseten-performance-client-nodejs
+
 defaults:
   run:
     working-directory: baseten-performance-client/node_bindings
+
 env:
   DEBUG: napi:*
   DISABLE_V8_COMPILE_CACHE: 1
   APP_NAME: performance-client
   MACOSX_DEPLOYMENT_TARGET: '10.13'
+
 permissions:
   contents: write
   id-token: write
-'on':
+
+on:
   push:
-    branches:
-      - main
-    tags-ignore:
-      - '**'
+    branches: [main]
+    tags-ignore: ['**']
     paths:
       - "baseten-performance-client/**"
       - ".github/workflows/**"
@@ -23,9 +25,17 @@ permissions:
   workflow_dispatch:
     inputs:
       publish_type:
-        description: 'Publish type (release, next, none)'
+        description: "Publish type (release, next, none)"
         required: false
-        default: 'none'
+        default: "none"
+        type: choice
+        options: ["release", "next", "none"]
+      auth_mode:
+        description: "Auth mode (oidc recommended; token fallback uses secrets.NPM_TOKEN)"
+        required: false
+        default: "oidc"
+        type: choice
+        options: ["oidc", "token"]
 jobs:
   build:
     strategy:
@@ -508,7 +518,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    # Recommended: only publish from tags or manual dispatch
+    # Publish from manual dispatch OR tags (if you enable tag publishing later)
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
     permissions:
       contents: read
@@ -518,6 +528,7 @@ jobs:
       - test-linux-x64-gnu-binding
       - test-linux-x64-musl-binding
       - universal-macOS
+
     steps:
       - uses: actions/checkout@v4
 
@@ -525,14 +536,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
           cache: yarn
           cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
 
       # Trusted publishing requires npm CLI 11.5.1+ (per npm docs)
       - name: Upgrade npm (required for OIDC trusted publishing)
         run: npm i -g npm@^11.5.1
-        working-directory: baseten-performance-client/node_bindings
 
       - name: Install dependencies
         run: yarn install
@@ -553,26 +563,46 @@ jobs:
         run: ls -R ./npm
         shell: bash
 
-      - name: Publish
+      # ---------- Option A: OIDC Trusted Publishing (recommended) ----------
+      - name: Publish (OIDC)
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.auth_mode == 'oidc' }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            case "${{ github.event.inputs.publish_type }}" in
-              release)
-                npm publish --access public
-                ;;
-              next)
-                npm publish --tag next --access public
-                ;;
-              *)
-                echo "Manual trigger: Not a release, skipping publish"
-                ;;
-            esac
+            PUBLISH_TYPE="${{ github.event.inputs.publish_type }}"
           else
-            if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$"; then
-              npm publish --access public
-            elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+"; then
-              npm publish --tag next --access public
-            else
-              echo "Not a release, skipping publish"
-            fi
+            PUBLISH_TYPE="release"
           fi
+
+          case "$PUBLISH_TYPE" in
+            release) TAG="latest" ;;
+            next) TAG="next" ;;
+            *) echo "Not a release, skipping publish"; exit 0 ;;
+          esac
+
+          # publish per-platform packages first
+          for dir in npm/*; do
+            (cd "$dir" && npm publish --ignore-scripts --provenance --tag "$TAG" --access public)
+          done
+
+          # then publish the root package
+          npm publish --ignore-scripts --provenance --tag "$TAG" --access public
+
+      # ---------- Option B: Token fallback (uses secrets.NPM_TOKEN) ----------
+      - name: Publish (token)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.auth_mode == 'token' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          PUBLISH_TYPE="${{ github.event.inputs.publish_type }}"
+
+          case "$PUBLISH_TYPE" in
+            release) TAG="latest" ;;
+            next) TAG="next" ;;
+            *) echo "Not a release, skipping publish"; exit 0 ;;
+          esac
+
+          for dir in npm/*; do
+            (cd "$dir" && npm publish --ignore-scripts --tag "$TAG" --access public)
+          done
+
+          npm publish --ignore-scripts --tag "$TAG" --access public

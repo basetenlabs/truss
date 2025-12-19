@@ -145,7 +145,7 @@ fn is_local_timeout(err: &reqwest::Error) -> bool {
 }
 
 /// Convert reqwest error to ClientError with customer request ID context
-pub fn convert_reqwest_error_with_customer_id(
+pub(crate) fn convert_reqwest_error_with_customer_id(
     err: reqwest::Error,
     customer_request_id: crate::customer_request_id::CustomerRequestId,
 ) -> ClientError {

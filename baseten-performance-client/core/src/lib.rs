@@ -8,13 +8,14 @@ pub mod http_client;
 pub mod split_policy;
 pub mod utils;
 
-pub use cancellation::JoinSetGuard;
+// JoinSetGuard is internal only - not reexported
+pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
-pub use errors::{convert_reqwest_error_with_customer_id, ClientError};
+pub use errors::ClientError;
 pub use http::*;
-pub use http_client::*;
-pub use split_policy::*;
+// http_client is internal only - not reexported
+pub use split_policy::RequestProcessingPreference;
 pub use utils::*;
 
 /// Initialize tracing with default WARN level
