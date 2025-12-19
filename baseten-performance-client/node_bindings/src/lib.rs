@@ -237,10 +237,7 @@ impl RequestProcessingPreference {
 
   #[napi(getter)]
   pub fn batch_size(&self) -> u32 {
-    self
-      .complete
-      .batch_size
-      .unwrap_or(DEFAULT_BATCH_SIZE) as u32
+    self.complete.batch_size.unwrap_or(DEFAULT_BATCH_SIZE) as u32
   }
 
   #[napi(getter)]
