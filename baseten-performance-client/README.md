@@ -581,6 +581,113 @@ const response = await client.batchPost(
 );
 ```
 
+#### Cancellation Support
+The client supports cancellation of long-running operations through `CancellationToken`. This allows you to cancel batch operations that are in progress.
+
+```python
+from baseten_performance_client import CancellationToken, RequestProcessingPreference
+
+# Create a cancellation token
+cancel_token = CancellationToken()
+
+# Configure preference with cancellation token
+preference = RequestProcessingPreference(
+    max_concurrent_requests=32,
+    batch_size=16,
+    timeout_s=360.0,
+    cancellation_token=cancel_token
+)
+
+# Start a long-running operation (in a separate thread or async context)
+import threading
+import time
+
+def long_operation():
+    try:
+        response = client.embed(
+            input=["large batch of texts"] * 1000,
+            model="embedding-model",
+            preference=preference
+        )
+        print("Operation completed successfully")
+    except ValueError as e:
+        if "cancelled" in str(e):
+            print("Operation was cancelled")
+        else:
+            print(f"Error: {e}")
+
+# Start the operation
+operation_thread = threading.Thread(target=long_operation)
+operation_thread.start()
+
+# Cancel after 2 seconds
+time.sleep(2)
+cancel_token.cancel()
+print("Cancellation requested")
+
+operation_thread.join()
+```
+
+```javascript
+const { CancellationToken, RequestProcessingPreference } = require('baseten-performance-client');
+
+// Create a cancellation token
+const cancelToken = new CancellationToken();
+
+// Configure preference with cancellation token
+const preference = new RequestProcessingPreference(
+    32,        // maxConcurrentRequests
+    16,        // batchSize
+    undefined, // maxCharsPerRequest
+    360.0,     // timeoutS
+    undefined, // hedgeDelay
+    undefined, // totalTimeoutS
+    undefined, // hedgeBudgetPct
+    undefined, // retryBudgetPct
+    undefined, // maxRetries
+    undefined, // initialBackoffMs
+    cancelToken  // cancellation token
+);
+
+// Start a long-running operation
+const operation = client.embed(
+    ["large batch of texts"].concat(Array(1000).fill("sample text")),
+    "embedding-model",
+    undefined, undefined, undefined, // encodingFormat, dimensions, user
+    preference
+);
+
+// Cancel after 2 seconds
+setTimeout(() => {
+    cancelToken.cancel();
+    console.log("Cancellation requested");
+}, 2000);
+
+try {
+    const response = await operation;
+    console.log("Operation completed successfully");
+} catch (error) {
+    if (error.message.includes("cancelled")) {
+        console.log("Operation was cancelled");
+    } else {
+        console.log(`Error: ${error.message}`);
+    }
+}
+```
+
+**Key Features:**
+- **Immediate Cancellation**: When `cancel()` is called, all in-flight requests are aborted
+- **Resource Cleanup**: Cancellation triggers automatic cleanup of spawned tasks and connections
+- **Ctrl+C Support**: Python operations automatically respond to Ctrl+C interrupts
+- **Token Sharing**: The same token can be used across multiple operations for coordinated cancellation
+- **Status Checking**: Use `is_cancelled()` to check if cancellation has been requested
+
+**Use Cases:**
+- Timeout-based cancellation for long-running batch operations
+- User-initiated cancellation in interactive applications
+- Coordinated cancellation across multiple concurrent operations
+- Graceful shutdown in server applications
+
 ## Rust
 
 ```rust
