@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client-darwin-arm64",
-  "version": "0.0.17",
+  "version": "0.0.18-rc0",
   "os": [
     "darwin"
   ],
