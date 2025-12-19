@@ -39,3 +39,7 @@ pub const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C";
 // Slow providers where customers have reported issues
 pub const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
 pub const CUSTOMER_HEADER_NAME: &str = "x-baseten-customer-request-id";
+
+// Logging constants
+pub const DEFAULT_LOG_LEVEL: &str = "warn";
+pub const LOG_LEVEL_ENV_VAR: &str = "PERFORMANCE_CLIENT_LOG_LEVEL";
