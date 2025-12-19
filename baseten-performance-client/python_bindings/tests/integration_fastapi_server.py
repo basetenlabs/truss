@@ -452,7 +452,7 @@ def run_client():
         )
 
         preference = RequestProcessingPreference(
-            batch_size=1, max_concurrent_requests=8, cancellation_token=token
+            batch_size=1, max_concurrent_requests=8, cancel_token=token
         )
 
         # Start request in background thread

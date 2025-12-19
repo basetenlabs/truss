@@ -227,7 +227,7 @@ class RequestProcessingPreference:
         retry_budget_pct: Retry budget percentage (default: 0.05).
         max_retries: Maximum number of HTTP retries (default: 4).
         initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
-        cancellation_token: Optional CancellationToken for cancelling operations.
+        cancel_token: Optional CancellationToken for cancelling operations.
 
     Example:
         >>> # Use all defaults
@@ -252,7 +252,7 @@ class RequestProcessingPreference:
         >>> token = CancellationToken()
         >>> preference = RequestProcessingPreference(
         ...     max_concurrent_requests=64,
-        ...     cancellation_token=token
+        ...     cancel_token=token
         ... )
         >>> # Later cancel the operation
         >>> token.cancel()
@@ -270,23 +270,23 @@ class RequestProcessingPreference:
         retry_budget_pct: typing.Optional[float] = None,
         max_retries: typing.Optional[int] = None,
         initial_backoff_ms: typing.Optional[int] = None,
-        cancellation_token: typing.Optional[CancellationToken] = None,
+        cancel_token: typing.Optional[CancellationToken] = None,
     ) -> None:
         """
-        Initialize a RequestProcessingPreference with optional parameters.
+                Initialize a RequestProcessingPreference with optional parameters.
 
-        Args:
-            max_concurrent_requests: Maximum parallel requests (default: 128).
-            batch_size: Number of items per batch (default: 128).
-            max_chars_per_request: Optional character-based batching limit.
-            timeout_s: Per-request timeout in seconds (default: 3600.0).
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
-            hedge_budget_pct: Hedge budget percentage (default: 0.10).
-            retry_budget_pct: Retry budget percentage (default: 0.05).
-            max_retries: Maximum number of HTTP retries (default: 4).
-            initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
-            cancellation_token: Optional CancellationToken for cancelling operations.
+                Args:
+                    max_concurrent_requests: Maximum parallel requests (default: 128).
+                    batch_size: Number of items per batch (default: 128).
+                    max_chars_per_request: Optional character-based batching limit.
+                    timeout_s: Per-request timeout in seconds (default: 3600.0).
+                    hedge_delay: Optional request hedging delay in seconds.
+                    total_timeout_s: Optional total timeout for the entire operation in seconds.
+                    hedge_budget_pct: Hedge budget percentage (default: 0.10).
+                    retry_budget_pct: Retry budget percentage (default: 0.05).
+                    max_retries: Maximum number of HTTP retries (default: 4).
+                    initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
+        cancel_token: Optional CancellationToken for cancelling operations.
         """
 
     # Property definitions with type hints
@@ -300,7 +300,7 @@ class RequestProcessingPreference:
     retry_budget_pct: builtins.float
     max_retries: builtins.int
     initial_backoff_ms: builtins.int
-    cancellation_token: typing.Optional[CancellationToken]
+    cancel_token: typing.Optional[CancellationToken]
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":
@@ -326,7 +326,7 @@ class CancellationToken:
     Example:
         >>> token = CancellationToken()
         >>> # Pass token to RequestProcessingPreference
-        >>> preference = RequestProcessingPreference(cancellation_token=token)
+        >>> preference = RequestProcessingPreference(cancel_token=token)
         >>> # Later cancel the operation
         >>> token.cancel()
     """

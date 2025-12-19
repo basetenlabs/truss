@@ -595,7 +595,7 @@ preference = RequestProcessingPreference(
     max_concurrent_requests=32,
     batch_size=16,
     timeout_s=360.0,
-    cancellation_token=cancel_token
+    cancel_token=cancel_token
 )
 
 # Start a long-running operation (in a separate thread or async context)

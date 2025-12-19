@@ -424,7 +424,7 @@ pub struct RequestProcessingPreference {
     #[pyo3(get, set)]
     pub initial_backoff_ms: u64,
     #[pyo3(get, set)]
-    pub cancellation_token: Option<CancellationToken>,
+    pub cancel_token: Option<CancellationToken>,
     inner: RustRequestProcessingPreference,
 }
 
@@ -442,7 +442,7 @@ impl RequestProcessingPreference {
         retry_budget_pct = None,
         max_retries = None,
         initial_backoff_ms = None,
-        cancellation_token = None
+        cancel_token = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -455,7 +455,7 @@ impl RequestProcessingPreference {
         retry_budget_pct: Option<f64>,
         max_retries: Option<u32>,
         initial_backoff_ms: Option<u64>,
-        cancellation_token: Option<CancellationToken>,
+        cancel_token: Option<CancellationToken>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -468,7 +468,7 @@ impl RequestProcessingPreference {
             retry_budget_pct,
             max_retries,
             initial_backoff_ms,
-            cancel_token: cancellation_token.as_ref().map(|token| token.inner.clone()),
+            cancel_token: cancel_token.as_ref().map(|token| token.inner.clone()),
         };
 
         // Apply defaults using the same method as Rust core
@@ -487,7 +487,7 @@ impl RequestProcessingPreference {
             retry_budget_pct: complete.retry_budget_pct.unwrap_or(RETRY_BUDGET_PERCENTAGE),
             max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
-            cancellation_token,
+            cancel_token,
             inner: rust_pref,
         }
     }
@@ -706,11 +706,11 @@ impl PerformanceClient {
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         // Extract cancellation token if present
-        let cancellation_token = preference.and_then(|p| p.cancellation_token.clone());
+        let cancel_token = preference.and_then(|p| p.cancel_token.clone());
 
         let future = async move {
             // Check for cancellation before starting the request
-            if let Some(ref token) = cancellation_token {
+            if let Some(ref token) = cancel_token {
                 if token.is_cancelled() {
                     return Err(PyValueError::new_err("Operation cancelled by token"));
                 }

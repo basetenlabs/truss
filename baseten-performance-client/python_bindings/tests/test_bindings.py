@@ -124,15 +124,15 @@ def test_performance_client_with_cancellation_token():
 
     token = CancellationToken()
     preference = RequestProcessingPreference(
-        max_concurrent_requests=32, cancellation_token=token
+        max_concurrent_requests=32, cancel_token=token
     )
 
-    assert preference.cancellation_token is not None
-    assert not preference.cancellation_token.is_cancelled()
+    assert preference.cancel_token is not None
+    assert not preference.cancel_token.is_cancelled()
 
     # Test cancellation
-    preference.cancellation_token.cancel()
-    assert preference.cancellation_token.is_cancelled()
+    preference.cancel_token.cancel()
+    assert preference.cancel_token.is_cancelled()
 
 
 def test_http_client_wrapper_initialization():
