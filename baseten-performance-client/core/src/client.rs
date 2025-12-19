@@ -14,13 +14,25 @@ use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use tracing;
 
+/// HTTP client wrapper that supports both HTTP/1.1 and HTTP/2
+///
+/// This enum provides a unified interface for different HTTP client implementations:
+/// - `Http1`: Single HTTP/1.1 client for simple use cases
+/// - `Http2`: Pool of HTTP/2 clients for high-performance concurrent requests
+///
+/// Sharing among multiple baseten-performance-client instances is supported and encouraged via `Arc`.
 #[derive(Clone)]
 pub enum HttpClientWrapper {
     Http1(Arc<Client>),
     Http2(Arc<Vec<(Arc<AtomicUsize>, Arc<Client>)>>),
 }
 
-pub struct ClientGuard {
+/// RAII guard for HTTP client with reference counting
+/// Ensures the client is kept alive as long as any requests are using it
+///
+/// This is an internal implementation detail for managing HTTP client lifetime.
+/// Users typically don't need to interact with this directly.
+pub(crate) struct ClientGuard {
     client: Arc<Client>,
     counter: Option<Arc<AtomicUsize>>,
 }
@@ -66,7 +78,14 @@ impl HttpClientWrapper {
         Ok(Arc::new(wrapper))
     }
 
-    pub fn get_client(&self) -> ClientGuard {
+    /// Get an HTTP client with proper reference counting
+    ///
+    /// This returns a guard that automatically manages client lifetime and
+    /// reference counting. The client is kept alive until the guard is dropped.
+    ///
+    /// This is an internal method used by the core request processing logic.
+    /// External users typically don't need to call this directly.
+    pub(crate) fn get_client(&self) -> ClientGuard {
         match self {
             HttpClientWrapper::Http1(client) => ClientGuard::new(client.clone(), None),
             HttpClientWrapper::Http2(pool) => {
@@ -89,9 +108,63 @@ impl HttpClientWrapper {
 }
 
 #[derive(Clone)]
+/// High-performance client for making concurrent API requests with advanced features
+///
+/// This is the main entry point for using the performance client library. It provides:
+/// - Automatic request batching and concurrency management
+/// - Built-in retry logic with exponential backoff
+/// - Request hedging for improved latency
+/// - Support for multiple API endpoints (embeddings, rerank, classification)
+/// - HTTP/1.1 and HTTP/2 support
+/// - Comprehensive error handling and metrics
+///
+/// # Example
+///
+/// ```rust
+/// use baseten_performance_client_core::{PerformanceClientCore, RequestProcessingPreference};
+///
+/// // Create client with default settings
+/// let client = PerformanceClientCore::new(
+///     "https://api.example.com".to_string(),
+///     Some("your-api-key".to_string()),
+///     2, // HTTP/2
+///     None,
+/// )?;
+///
+/// // Configure processing preferences
+/// let preference = RequestProcessingPreference::new()
+///     .with_max_concurrent_requests(10)
+///     .with_batch_size(5);
+///
+/// // Make requests
+/// let (response, durations, headers, total_time) = client
+///     .process_embeddings_requests(
+///         vec!["text1".to_string(), "text2".to_string()],
+///         "text-embedding-ada-002".to_string(),
+///         None, None, None,
+///         &preference,
+///     )
+///     .await?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct PerformanceClientCore {
+    /// API key for authentication
+    ///
+    /// This can be set during client creation or read from the
+    /// `PERFORMANCE_CLIENT_API_KEY` environment variable.
     pub api_key: String,
+
+    /// Base URL for the API endpoint
+    ///
+    /// Should include the protocol (https://) and domain, but not the
+    /// specific endpoint path.
     pub base_url: Arc<str>,
+
+    /// Internal HTTP client wrapper
+    ///
+    /// This manages the underlying HTTP client(s) and connection pooling.
+    /// It's exposed as public for advanced use cases but typically shouldn't
+    /// be modified directly.
     pub client_wrapper: Arc<HttpClientWrapper>,
 }
 
