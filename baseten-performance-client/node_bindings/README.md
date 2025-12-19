@@ -19,7 +19,7 @@ npm install @basetenlabs/performance-client
 Since different endpoints require different clients, you'll typically need to create separate clients for embeddings and reranking deployments.
 
 ```javascript
-const { PerformanceClient } = require('@basetenlabs/performance-client');
+const { PerformanceClient, RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
 const apiKey = process.env.BASETEN_API_KEY;
 const embedBaseUrl = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
@@ -30,41 +30,82 @@ const embedClient = new PerformanceClient(embedBaseUrl, apiKey);
 const rerankClient = new PerformanceClient(rerankBaseUrl, apiKey);
 ```
 
+## RequestProcessingPreference
+
+All API methods accept an optional `RequestProcessingPreference` object that configures request processing behavior:
+
+```javascript
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
+// Create with defaults
+const pref = new RequestProcessingPreference();
+
+// Or customize all parameters
+const pref = new RequestProcessingPreference(
+    64,     // maxConcurrentRequests (default: 128)
+    32,     // batchSize (default: 128)
+    30.0,   // timeoutS (default: 3600)
+    10000,  // maxCharsPerRequest (optional)
+    0.5,    // hedgeDelay (optional)
+    600.0,  // totalTimeoutS (optional)
+    0.10,   // hedgeBudgetPct (default: 0.10)
+    0.05    // retryBudgetPct (default: 0.05)
+);
+
+// Access properties
+console.log(pref.maxConcurrentRequests);  // 64
+console.log(pref.batchSize);              // 32
+console.log(pref.timeoutS);               // 30.0
+console.log(pref.hedgeBudgetPct);         // 0.10
+```
+
+### Configuration Options
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `maxConcurrentRequests` | 128 | Maximum number of concurrent HTTP requests |
+| `batchSize` | 128 | Number of items per batch/request |
+| `timeoutS` | 3600.0 | Timeout for individual requests in seconds |
+| `maxCharsPerRequest` | null | Character-based batching limit (50-256,000) |
+| `hedgeDelay` | null | Request hedging delay in seconds (min 0.2s) |
+| `totalTimeoutS` | null | Total timeout for all batched requests |
+| `hedgeBudgetPct` | 0.10 | Percentage of total requests that can be hedged |
+| `retryBudgetPct` | 0.05 | Percentage of total requests that can be retried |
+
 ### Embeddings
 
 ```javascript
 const texts = ["Hello world", "Example text", "Another sample"];
 
-try {
-    const response = embedClient.embed(
-        texts,
-        "text-embedding-3-small", // model
-        null, // encoding_format
-        null, // dimensions
-        null, // user
-        8,    // max_concurrent_requests
-        2,    // batch_size
-        30    // timeout_s
-    );
+// Simple usage with defaults
+const response = await embedClient.embed(texts, "text-embedding-3-small");
 
-    console.log(`Model used: ${response.model}`);
-    console.log(`Total tokens used: ${response.usage.total_tokens}`);
-    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+// With custom preferences
+const pref = new RequestProcessingPreference(8, 2, 30);
+const response = await embedClient.embed(
+    texts,
+    "text-embedding-3-small",  // model
+    null,                       // encoding_format
+    null,                       // dimensions
+    null,                       // user
+    pref                        // preference
+);
 
-    if (response.individual_request_times) {
-        response.individual_request_times.forEach((time, i) => {
-            console.log(`  Time for batch ${i}: ${time.toFixed(4)}s`);
-        });
-    }
+console.log(`Model used: ${response.model}`);
+console.log(`Total tokens used: ${response.usage.total_tokens}`);
+console.log(`Total time: ${response.total_time.toFixed(4)}s`);
 
-    response.data.forEach((embedding, i) => {
-        console.log(`Embedding for text ${i} (original input index ${embedding.index}):`);
-        console.log(`  First 3 dimensions: ${embedding.embedding.slice(0, 3)}`);
-        console.log(`  Length: ${embedding.embedding.length}`);
+if (response.individual_request_times) {
+    response.individual_request_times.forEach((time, i) => {
+        console.log(`  Time for batch ${i}: ${time.toFixed(4)}s`);
     });
-} catch (error) {
-    console.error('Embedding failed:', error.message);
 }
+
+response.data.forEach((embedding, i) => {
+    console.log(`Embedding for text ${i} (original input index ${embedding.index}):`);
+    console.log(`  First 3 dimensions: ${embedding.embedding.slice(0, 3)}`);
+    console.log(`  Length: ${embedding.embedding.length}`);
+});
 ```
 
 ### Reranking
@@ -78,28 +119,24 @@ const documents = [
     "Python is popular for data science"
 ];
 
-try {
-    const response = rerankClient.rerank(
-        query,
-        documents,
-        false, // raw_scores
-        true,  // return_text
-        false, // truncate
-        "Right", // truncation_direction
-        4,     // max_concurrent_requests
-        2,     // batch_size
-        30     // timeout_s
-    );
+const pref = new RequestProcessingPreference(4, 2, 30);
+const response = await rerankClient.rerank(
+    query,
+    documents,
+    false,   // raw_scores
+    null,    // model
+    true,    // return_text
+    false,   // truncate
+    "Right", // truncation_direction
+    pref     // preference
+);
 
-    console.log(`Reranked ${response.data.length} documents`);
-    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+console.log(`Reranked ${response.data.length} documents`);
+console.log(`Total time: ${response.total_time.toFixed(4)}s`);
 
-    response.data.forEach((result, i) => {
-        console.log(`${i + 1}. Score: ${result.score.toFixed(3)} - ${result.text?.substring(0, 50)}...`);
-    });
-} catch (error) {
-    console.error('Reranking failed:', error.message);
-}
+response.data.forEach((result, i) => {
+    console.log(`${i + 1}. Score: ${result.score.toFixed(3)} - ${result.text?.substring(0, 50)}...`);
+});
 ```
 
 ### Classification
@@ -111,34 +148,30 @@ const textsToClassify = [
     "Neutral experience."
 ];
 
-try {
-    const response = rerankClient.classify(
-        textsToClassify,
-        false, // raw_scores
-        false, // truncate
-        "Right", // truncation_direction
-        4,     // max_concurrent_requests
-        2,     // batch_size
-        30     // timeout_s
-    );
+const pref = new RequestProcessingPreference(4, 2, 30);
+const response = await rerankClient.classify(
+    textsToClassify,
+    null,    // model
+    false,   // raw_scores
+    false,   // truncate
+    "Right", // truncation_direction
+    pref     // preference
+);
 
-    console.log(`Classified ${response.data.length} texts`);
-    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+console.log(`Classified ${response.data.length} texts`);
+console.log(`Total time: ${response.total_time.toFixed(4)}s`);
 
-    response.data.forEach((group, i) => {
-        console.log(`Text ${i + 1}:`);
-        group.forEach(result => {
-            console.log(`  ${result.label}: ${result.score.toFixed(3)}`);
-        });
+response.data.forEach((group, i) => {
+    console.log(`Text ${i + 1}:`);
+    group.forEach(result => {
+        console.log(`  ${result.label}: ${result.score.toFixed(3)}`);
     });
-} catch (error) {
-    console.error('Classification failed:', error.message);
-}
+});
 ```
 
 ### General Batch POST
 
-The batch_post method is generic and can be used to send POST requests to any URL, not limited to Baseten endpoints:
+The batchPost method is generic and can be used to send POST requests to any URL, not limited to Baseten endpoints:
 
 ```javascript
 const payloads = [
@@ -146,32 +179,28 @@ const payloads = [
     { "model": "text-embedding-3-small", "input": ["World"] }
 ];
 
-try {
-    const response = embedClient.batchPost(
-        "/v1/embeddings", // URL path
-        payloads,
-        4,  // max_concurrent_requests
-        30  // timeout_s
-    );
+const pref = new RequestProcessingPreference(4, null, 30);
+const response = await embedClient.batchPost(
+    "/v1/embeddings",  // URL path
+    payloads,
+    pref               // preference
+);
 
-    console.log(`Processed ${response.data.length} batch requests`);
-    console.log(`Total time: ${response.total_time.toFixed(4)}s`);
+console.log(`Processed ${response.data.length} batch requests`);
+console.log(`Total time: ${response.total_time.toFixed(4)}s`);
 
-    response.data.forEach((result, i) => {
-        console.log(`Request ${i + 1}: ${JSON.stringify(result).substring(0, 100)}...`);
-    });
+response.data.forEach((result, i) => {
+    console.log(`Request ${i + 1}: ${JSON.stringify(result).substring(0, 100)}...`);
+});
 
-    // Access response headers and individual request times
-    response.response_headers.forEach((headers, i) => {
-        console.log(`Response ${i + 1} headers:`, headers);
-    });
+// Access response headers and individual request times
+response.response_headers.forEach((headers, i) => {
+    console.log(`Response ${i + 1} headers:`, headers);
+});
 
-    response.individual_request_times.forEach((time, i) => {
-        console.log(`Request ${i + 1} took: ${time.toFixed(4)}s`);
-    });
-} catch (error) {
-    console.error('Batch POST failed:', error.message);
-}
+response.individual_request_times.forEach((time, i) => {
+    console.log(`Request ${i + 1} took: ${time.toFixed(4)}s`);
+});
 ```
 
 ## API Reference
@@ -185,47 +214,58 @@ new PerformanceClient(baseUrl, apiKey)
 - `baseUrl` (string): The base URL for the API endpoint
 - `apiKey` (string, optional): API key. If not provided, will use `BASETEN_API_KEY` or `OPENAI_API_KEY` environment variables
 
+### RequestProcessingPreference Constructor
+
+```javascript
+new RequestProcessingPreference(
+    maxConcurrentRequests,  // number, optional (default: 128)
+    batchSize,              // number, optional (default: 128)
+    timeoutS,               // number, optional (default: 3600)
+    maxCharsPerRequest,     // number, optional (default: null)
+    hedgeDelay,             // number, optional (default: null)
+    totalTimeoutS,          // number, optional (default: null)
+    hedgeBudgetPct,         // number, optional (default: 0.10)
+    retryBudgetPct          // number, optional (default: 0.05)
+)
+```
+
 ### Methods
 
-#### embed(input, model, encoding_format, dimensions, user, max_concurrent_requests, batch_size, timeout_s)
+#### embed(input, model, encodingFormat, dimensions, user, preference)
 
 - `input` (Array<string>): List of texts to embed
 - `model` (string): Model name
-- `encoding_format` (string, optional): Encoding format
+- `encodingFormat` (string, optional): Encoding format
 - `dimensions` (number, optional): Number of dimensions
 - `user` (string, optional): User identifier
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `batch_size` (number, optional): Batch size (default: 128)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `preference` (RequestProcessingPreference, optional): Processing configuration
 
-#### rerank(query, texts, raw_scores, return_text, truncate, truncation_direction, max_concurrent_requests, batch_size, timeout_s)
+#### rerank(query, texts, rawScores, model, returnText, truncate, truncationDirection, preference)
 
 - `query` (string): Query text
 - `texts` (Array<string>): List of texts to rerank
-- `raw_scores` (boolean, optional): Return raw scores (default: false)
-- `return_text` (boolean, optional): Return text in response (default: false)
+- `rawScores` (boolean, optional): Return raw scores (default: false)
+- `model` (string, optional): Model name
+- `returnText` (boolean, optional): Return text in response (default: false)
 - `truncate` (boolean, optional): Truncate long texts (default: false)
-- `truncation_direction` (string, optional): "Left" or "Right" (default: "Right")
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `batch_size` (number, optional): Batch size (default: 128)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `truncationDirection` (string, optional): "Left" or "Right" (default: "Right")
+- `preference` (RequestProcessingPreference, optional): Processing configuration
 
-#### classify(inputs, raw_scores, truncate, truncation_direction, max_concurrent_requests, batch_size, timeout_s)
+#### classify(inputs, model, rawScores, truncate, truncationDirection, preference)
 
 - `inputs` (Array<string>): List of texts to classify
-- `raw_scores` (boolean, optional): Return raw scores (default: false)
+- `model` (string, optional): Model name
+- `rawScores` (boolean, optional): Return raw scores (default: false)
 - `truncate` (boolean, optional): Truncate long texts (default: false)
-- `truncation_direction` (string, optional): "Left" or "Right" (default: "Right")
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `batch_size` (number, optional): Batch size (default: 128)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `truncationDirection` (string, optional): "Left" or "Right" (default: "Right")
+- `preference` (RequestProcessingPreference, optional): Processing configuration
 
-#### batchPost(url_path, payloads, max_concurrent_requests, timeout_s)
+#### batchPost(urlPath, payloads, preference, customHeaders)
 
-- `url_path` (string): URL path for the POST request
+- `urlPath` (string): URL path for the POST request
 - `payloads` (Array<Object>): List of JSON payloads
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `preference` (RequestProcessingPreference, optional): Processing configuration
+- `customHeaders` (Object, optional): Custom headers to include
 
 ## Error Handling
 
@@ -233,7 +273,8 @@ The client throws standard JavaScript errors for various failure cases:
 
 ```javascript
 try {
-    const response = embedClient.embed(texts, "model");
+    const pref = new RequestProcessingPreference(8, 2, 30);
+    const response = await embedClient.embed(texts, "model", null, null, null, pref);
 } catch (error) {
     if (error.message.includes('cannot be empty')) {
         console.error('Parameter validation error:', error.message);
@@ -279,5 +320,5 @@ Like the Python version, this Node.js client provides significant performance im
 MIT License
 
 ## Acknowledgements:
-Venkatesh Narayan (Clay.com) for the prototpe of this here https://github.com/basetenlabs/truss/pull/1778
-and Suren (Baseten) for getting a PoC and protyping the release pipeline. https://github.com/suren-atoyan/rust-ts-package
+Venkatesh Narayan (Clay.com) for the prototype of this here https://github.com/basetenlabs/truss/pull/1778
+and Suren (Baseten) for getting a PoC and prototyping the release pipeline. https://github.com/suren-atoyan/rust-ts-package

@@ -1,5 +1,122 @@
 use crate::constants::*;
+use crate::errors::ClientError;
 use crate::http::*;
+use crate::http_client::SendRequestConfig;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
+use std::time::Duration;
+
+/// User-facing configuration for request processing with budget percentages.
+/// This is the public API struct that gets validated and converted to RequestProcessingConfig.
+/// All fields are Option<T> with defaults applied during conversion to RequestProcessingConfig.
+#[derive(Debug, Clone)]
+pub struct RequestProcessingPreference {
+    pub max_concurrent_requests: usize,
+    pub batch_size: usize,
+    pub max_chars_per_request: Option<usize>,
+    pub timeout_s: f64,
+    pub hedge_delay: Option<f64>,
+    pub total_timeout_s: Option<f64>,
+    pub hedge_budget_pct: f64,
+    pub retry_budget_pct: f64,
+    pub max_retries: Option<u32>,
+    pub initial_backoff: Option<Duration>,
+}
+
+impl Default for RequestProcessingPreference {
+    fn default() -> Self {
+        Self {
+            max_concurrent_requests: DEFAULT_CONCURRENCY,
+            batch_size: DEFAULT_BATCH_SIZE,
+            max_chars_per_request: None,
+            timeout_s: DEFAULT_REQUEST_TIMEOUT_S,
+            hedge_delay: None,
+            total_timeout_s: None,
+            hedge_budget_pct: DEFAULT_HEDGE_BUDGET_PERCENTAGE,
+            retry_budget_pct: DEFAULT_RETRY_BUDGET_PERCENTAGE,
+            max_retries: None,
+            initial_backoff: None,
+        }
+    }
+}
+
+impl RequestProcessingPreference {
+    /// Create a new preference with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Builder pattern: set max concurrent requests
+    pub fn with_max_concurrent_requests(mut self, value: usize) -> Self {
+        self.max_concurrent_requests = value;
+        self
+    }
+
+    /// Builder pattern: set batch size
+    pub fn with_batch_size(mut self, value: usize) -> Self {
+        self.batch_size = value;
+        self
+    }
+
+    /// Builder pattern: set max chars per request
+    pub fn with_max_chars_per_request(mut self, value: Option<usize>) -> Self {
+        self.max_chars_per_request = value;
+        self
+    }
+
+    /// Builder pattern: set timeout in seconds
+    pub fn with_timeout_s(mut self, value: f64) -> Self {
+        self.timeout_s = value;
+        self
+    }
+
+    /// Builder pattern: set hedge delay in seconds
+    pub fn with_hedge_delay(mut self, value: Option<f64>) -> Self {
+        self.hedge_delay = value;
+        self
+    }
+
+    /// Builder pattern: set total timeout in seconds
+    pub fn with_total_timeout_s(mut self, value: Option<f64>) -> Self {
+        self.total_timeout_s = value;
+        self
+    }
+
+    /// Builder pattern: set hedge budget percentage
+    pub fn with_hedge_budget_pct(mut self, value: f64) -> Self {
+        self.hedge_budget_pct = value;
+        self
+    }
+
+    /// Builder pattern: set retry budget percentage
+    pub fn with_retry_budget_pct(mut self, value: f64) -> Self {
+        self.retry_budget_pct = value;
+        self
+    }
+
+    /// Builder pattern: set max retries
+    pub fn with_max_retries(mut self, value: u32) -> Self {
+        self.max_retries = Some(value);
+        self
+    }
+
+    /// Builder pattern: set initial backoff duration
+    pub fn with_initial_backoff(mut self, value: Duration) -> Self {
+        self.initial_backoff = Some(value);
+        self
+    }
+
+    /// Validate and convert to RequestProcessingConfig for a specific request.
+    /// This pairs the preference with request-specific data (base_url, total_requests)
+    /// and returns a validated config ready for processing.
+    pub fn pair_with_request_validate_and_convert(
+        &self,
+        base_url: String,
+        total_requests: usize,
+    ) -> Result<RequestProcessingConfig, ClientError> {
+        RequestProcessingConfig::new_from_preference(self, base_url, total_requests)
+    }
+}
 
 /// Policy for splitting requests into batches
 #[derive(Debug, Clone)]
@@ -13,7 +130,9 @@ pub enum SplitPolicy {
     },
 }
 
-/// Configuration for request processing with validation
+/// Internal configuration for request processing with computed budgets.
+/// This struct holds validated parameters and pre-computed Arc<AtomicUsize> budgets
+/// ready for use during request processing.
 #[derive(Debug, Clone)]
 pub struct RequestProcessingConfig {
     pub max_concurrent_requests: usize,
@@ -23,54 +142,64 @@ pub struct RequestProcessingConfig {
     pub base_url: String,
     pub hedge_delay: Option<f64>,
     pub max_chars_per_request: Option<usize>,
+    /// Pre-computed retry budget as Arc<AtomicUsize> for concurrent access
+    pub retry_budget: Arc<AtomicUsize>,
+    /// Pre-computed hedge budget as Arc<AtomicUsize> for concurrent access (if hedging enabled)
+    pub hedge_budget: Option<Arc<AtomicUsize>>,
+    /// Budget percentages used for calculation (stored for reference)
+    pub hedge_budget_pct: f64,
+    pub retry_budget_pct: f64,
+    /// Maximum number of HTTP retries per request
+    pub max_retries: u32,
+    /// Initial backoff duration for retry exponential backoff
+    pub initial_backoff: Duration,
 }
 
 impl RequestProcessingConfig {
-    /// Validate and create a new config with adjusted concurrency for baseten staging
-    pub fn new(
+    /// Validate parameters and return error if invalid
+    fn validate_parameters(
         max_concurrent_requests: usize,
         batch_size: usize,
         timeout_s: f64,
         total_timeout_s: Option<f64>,
-        base_url: String,
         hedge_delay: Option<f64>,
         max_chars_per_request: Option<usize>,
-    ) -> Result<Self, crate::errors::ClientError> {
+    ) -> Result<(), ClientError> {
+        // TODO: validate pct ages no more than 300%.
+
         // Validate timeout
         if !(MIN_REQUEST_TIMEOUT_S..=MAX_REQUEST_TIMEOUT_S).contains(&timeout_s) {
-            return Err(crate::errors::ClientError::InvalidParameter(format!(
+            return Err(ClientError::InvalidParameter(format!(
                 "Timeout {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
                 timeout_s, MIN_REQUEST_TIMEOUT_S, MAX_REQUEST_TIMEOUT_S
             )));
         }
         if let Some(total_timeout) = total_timeout_s {
             if total_timeout < timeout_s {
-                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                return Err(ClientError::InvalidParameter(format!(
                     "Total timeout {:.3}s must be greater than or equal to individual request timeout {:.3}s.",
                     total_timeout, timeout_s
                 )));
             }
         }
 
-        if hedge_delay.is_some() {
-            let hedge_delay = hedge_delay.unwrap();
-            if !(MIN_HEDGE_DELAY_S..=MAX_REQUEST_TIMEOUT_S).contains(&hedge_delay) {
-                return Err(crate::errors::ClientError::InvalidParameter(format!(
+        if let Some(delay) = hedge_delay {
+            if !(MIN_HEDGE_DELAY_S..=MAX_REQUEST_TIMEOUT_S).contains(&delay) {
+                return Err(ClientError::InvalidParameter(format!(
                     "Hedge delay {:.3}s is outside the allowed range [{:.3}s, {:.3}s].",
-                    hedge_delay, MIN_HEDGE_DELAY_S, MAX_REQUEST_TIMEOUT_S
+                    delay, MIN_HEDGE_DELAY_S, MAX_REQUEST_TIMEOUT_S
                 )));
             }
-            if hedge_delay >= timeout_s - MIN_HEDGE_DELAY_S {
-                return Err(crate::errors::ClientError::InvalidParameter(format!(
+            if delay >= timeout_s - MIN_HEDGE_DELAY_S {
+                return Err(ClientError::InvalidParameter(format!(
                     "Hedge delay {:.3}s must be less than timeout minus minimum hedge delay ({:.3}s -{:.3}s).",
-                    hedge_delay, timeout_s, MIN_HEDGE_DELAY_S
+                    delay, timeout_s, MIN_HEDGE_DELAY_S
                 )));
             }
         }
-        if max_chars_per_request.is_some() {
-            let max_chars = max_chars_per_request.unwrap();
+        if let Some(max_chars) = max_chars_per_request {
             if !(MIN_CHARACTERS_PER_REQUEST..=MAX_CHARACTERS_PER_REQUEST).contains(&max_chars) {
-                return Err(crate::errors::ClientError::InvalidParameter(format!(
+                return Err(ClientError::InvalidParameter(format!(
                     "max_chars_per_request must be between {} and {} characters.",
                     MIN_CHARACTERS_PER_REQUEST, MAX_CHARACTERS_PER_REQUEST
                 )));
@@ -79,23 +208,99 @@ impl RequestProcessingConfig {
 
         // Validate concurrency parameters
         if max_concurrent_requests == 0 || max_concurrent_requests > MAX_CONCURRENCY_HIGH_BATCH {
-            return Err(crate::errors::ClientError::InvalidParameter(format!(
+            return Err(ClientError::InvalidParameter(format!(
                 "max_concurrent_requests must be greater than 0 and less than or equal to {}",
                 MAX_CONCURRENCY_HIGH_BATCH
             )));
         } else if batch_size == 0 || batch_size > MAX_BATCH_SIZE {
-            return Err(crate::errors::ClientError::InvalidParameter(format!(
+            return Err(ClientError::InvalidParameter(format!(
                 "batch_size must be greater than 0 and less than or equal to {}",
                 MAX_BATCH_SIZE
             )));
         } else if max_concurrent_requests > MAX_CONCURRENCY_LOW_BATCH
             && batch_size < CONCURRENCY_HIGH_BATCH_SWITCH
         {
-            return Err(crate::errors::ClientError::InvalidParameter(format!(
+            return Err(ClientError::InvalidParameter(format!(
                 "max_concurrent_requests must be less than {} when batch_size is less than {}. Please be nice to the server side.",
                 MAX_CONCURRENCY_LOW_BATCH, CONCURRENCY_HIGH_BATCH_SWITCH
             )));
         }
+
+        Ok(())
+    }
+
+    /// Calculate budget based on total requests and percentage
+    fn calculate_budget(total_requests: usize, budget_pct: f64) -> usize {
+        (total_requests as f64 * budget_pct).ceil() as usize
+    }
+
+    /// Validate and create a new config with adjusted concurrency for baseten staging.
+    /// Uses default budget percentages. For custom budgets, use new_from_preference().
+    pub fn new(
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+        total_timeout_s: Option<f64>,
+        base_url: String,
+        hedge_delay: Option<f64>,
+        max_chars_per_request: Option<usize>,
+    ) -> Result<Self, ClientError> {
+        Self::new_with_budgets(
+            max_concurrent_requests,
+            batch_size,
+            timeout_s,
+            total_timeout_s,
+            base_url,
+            hedge_delay,
+            max_chars_per_request,
+            DEFAULT_HEDGE_BUDGET_PERCENTAGE,
+            DEFAULT_RETRY_BUDGET_PERCENTAGE,
+            0, // total_requests not known yet, budgets calculated later
+            None, // use default max_retries
+            None, // use default initial_backoff
+        )
+    }
+
+    /// Create config with custom budget percentages.
+    /// Note: When total_requests is 0, budgets are set to 0 and should be recalculated
+    /// when the actual request count is known.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_budgets(
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
+        total_timeout_s: Option<f64>,
+        base_url: String,
+        hedge_delay: Option<f64>,
+        max_chars_per_request: Option<usize>,
+        hedge_budget_pct: f64,
+        retry_budget_pct: f64,
+        total_requests: usize,
+        max_retries: Option<u32>,
+        initial_backoff: Option<Duration>,
+    ) -> Result<Self, ClientError> {
+        Self::validate_parameters(
+            max_concurrent_requests,
+            batch_size,
+            timeout_s,
+            total_timeout_s,
+            hedge_delay,
+            max_chars_per_request,
+        )?;
+
+        let retry_budget = Arc::new(AtomicUsize::new(Self::calculate_budget(
+            total_requests,
+            retry_budget_pct,
+        )));
+
+        let hedge_budget = if hedge_delay.is_some() {
+            Some(Arc::new(AtomicUsize::new(Self::calculate_budget(
+                total_requests,
+                hedge_budget_pct,
+            ))))
+        } else {
+            None
+        };
 
         Ok(RequestProcessingConfig {
             max_concurrent_requests,
@@ -105,12 +310,87 @@ impl RequestProcessingConfig {
             base_url,
             hedge_delay,
             max_chars_per_request,
+            retry_budget,
+            hedge_budget,
+            hedge_budget_pct,
+            retry_budget_pct,
+            max_retries: max_retries.unwrap_or(MAX_HTTP_RETRIES),
+            initial_backoff: initial_backoff.unwrap_or(Duration::from_millis(INITIAL_BACKOFF_MS)),
         })
     }
 
+    /// Create config from a RequestProcessingPreference.
+    /// This is the main entry point for converting user preferences to internal config.
+    pub fn new_from_preference(
+        preference: &RequestProcessingPreference,
+        base_url: String,
+        total_requests: usize,
+    ) -> Result<Self, ClientError> {
+        Self::new_with_budgets(
+            preference.max_concurrent_requests,
+            preference.batch_size,
+            preference.timeout_s,
+            preference.total_timeout_s,
+            base_url,
+            preference.hedge_delay,
+            preference.max_chars_per_request,
+            preference.hedge_budget_pct,
+            preference.retry_budget_pct,
+            total_requests,
+            preference.max_retries,
+            preference.initial_backoff,
+        )
+    }
+
+    /// Recalculate budgets with a new total request count.
+    /// Returns new Arc<AtomicUsize> instances with the recalculated values.
+    pub fn recalculate_budgets(&self, total_requests: usize) -> (Arc<AtomicUsize>, Option<Arc<AtomicUsize>>) {
+        let retry_budget = Arc::new(AtomicUsize::new(Self::calculate_budget(
+            total_requests,
+            self.retry_budget_pct,
+        )));
+
+        let hedge_budget = if self.hedge_delay.is_some() {
+            Some(Arc::new(AtomicUsize::new(Self::calculate_budget(
+                total_requests,
+                self.hedge_budget_pct,
+            ))))
+        } else {
+            None
+        };
+
+        (retry_budget, hedge_budget)
+    }
+
     /// Get timeout duration
-    pub fn timeout_duration(&self) -> std::time::Duration {
-        std::time::Duration::from_secs_f64(self.timeout_s)
+    pub fn timeout_duration(&self) -> Duration {
+        Duration::from_secs_f64(self.timeout_s)
+    }
+
+    /// Get total timeout duration if set
+    pub fn total_timeout_duration(&self) -> Option<Duration> {
+        self.total_timeout_s.map(Duration::from_secs_f64)
+    }
+
+    /// Get hedge delay duration if set
+    pub fn hedge_delay_duration(&self) -> Option<Duration> {
+        self.hedge_delay.map(Duration::from_secs_f64)
+    }
+
+    /// Create a SendRequestConfig for HTTP requests using this config's settings.
+    /// Takes retry and hedge budgets as parameters since they may be recalculated per batch.
+    pub fn create_send_request_config(
+        &self,
+        retry_budget: Arc<AtomicUsize>,
+        hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
+    ) -> SendRequestConfig {
+        SendRequestConfig {
+            max_retries: self.max_retries,
+            initial_backoff: self.initial_backoff,
+            retry_budget,
+            hedge_budget,
+            timeout: self.timeout_duration(),
+        }
     }
 }
 
@@ -599,5 +879,87 @@ mod tests {
         // Batch 3: The last item is larger than max_chars, so it becomes its own batch.
         assert_eq!(batches[2], vec!["123456789"]);
         // Batch 4: The last item is smaller than max_chars, but previous one was larger so it becomes its own batch.
+    }
+
+    #[test]
+    fn test_request_processing_preference_default() {
+        let pref = RequestProcessingPreference::default();
+        assert_eq!(pref.max_concurrent_requests, DEFAULT_CONCURRENCY);
+        assert_eq!(pref.batch_size, DEFAULT_BATCH_SIZE);
+        assert_eq!(pref.timeout_s, DEFAULT_REQUEST_TIMEOUT_S);
+        assert!(pref.max_chars_per_request.is_none());
+        assert!(pref.hedge_delay.is_none());
+        assert!(pref.total_timeout_s.is_none());
+        assert_eq!(pref.hedge_budget_pct, DEFAULT_HEDGE_BUDGET_PERCENTAGE);
+        assert_eq!(pref.retry_budget_pct, DEFAULT_RETRY_BUDGET_PERCENTAGE);
+    }
+
+    #[test]
+    fn test_request_processing_preference_builder() {
+        let pref = RequestProcessingPreference::new()
+            .with_max_concurrent_requests(64)
+            .with_batch_size(32)
+            .with_timeout_s(30.0)
+            .with_hedge_delay(Some(0.5))
+            .with_total_timeout_s(Some(120.0))
+            .with_hedge_budget_pct(0.15)
+            .with_retry_budget_pct(0.08);
+
+        assert_eq!(pref.max_concurrent_requests, 64);
+        assert_eq!(pref.batch_size, 32);
+        assert_eq!(pref.timeout_s, 30.0);
+        assert_eq!(pref.hedge_delay, Some(0.5));
+        assert_eq!(pref.total_timeout_s, Some(120.0));
+        assert_eq!(pref.hedge_budget_pct, 0.15);
+        assert_eq!(pref.retry_budget_pct, 0.08);
+    }
+
+    #[test]
+    fn test_request_processing_preference_convert_to_config() {
+        let pref = RequestProcessingPreference::new()
+            .with_max_concurrent_requests(64)
+            .with_batch_size(32)
+            .with_timeout_s(30.0)
+            .with_hedge_delay(Some(0.5))
+            .with_hedge_budget_pct(0.20)
+            .with_retry_budget_pct(0.10);
+
+        let config = pref
+            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .expect("Should create valid config");
+
+        assert_eq!(config.max_concurrent_requests, 64);
+        assert_eq!(config.batch_size, 32);
+        assert_eq!(config.timeout_s, 30.0);
+        assert_eq!(config.hedge_delay, Some(0.5));
+        assert_eq!(config.base_url, "https://example.com");
+
+        // Check computed budgets
+        use std::sync::atomic::Ordering;
+        assert_eq!(config.retry_budget.load(Ordering::SeqCst), 10); // 100 * 0.10 = 10
+        assert!(config.hedge_budget.is_some());
+        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 20); // 100 * 0.20 = 20
+    }
+
+    #[test]
+    fn test_request_processing_config_recalculate_budgets() {
+        let pref = RequestProcessingPreference::new()
+            .with_hedge_delay(Some(0.5))
+            .with_hedge_budget_pct(0.10)
+            .with_retry_budget_pct(0.05);
+
+        let config = pref
+            .pair_with_request_validate_and_convert("https://example.com".to_string(), 0)
+            .expect("Should create valid config");
+
+        // Initial budgets should be 0
+        use std::sync::atomic::Ordering;
+        assert_eq!(config.retry_budget.load(Ordering::SeqCst), 0);
+        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 0);
+
+        // Recalculate with 200 requests
+        let (new_retry, new_hedge) = config.recalculate_budgets(200);
+        assert_eq!(new_retry.load(Ordering::SeqCst), 10); // 200 * 0.05 = 10
+        assert_eq!(new_hedge.as_ref().unwrap().load(Ordering::SeqCst), 20); // 200 * 0.10 = 20
     }
 }

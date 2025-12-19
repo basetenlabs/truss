@@ -21,7 +21,7 @@ npm install baseten-performance-client
 cargo add baseten_performance_client_core
 # Or add to your Cargo.toml:
 # [dependencies]
-# baseten_performance_client_core = "0.0.11"
+# baseten_performance_client_core = "0.0.14"
 # tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -33,7 +33,7 @@ cargo add baseten_performance_client_core
 ```python
 import os
 import asyncio
-from baseten_performance_client import PerformanceClient, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
+from baseten_performance_client import PerformanceClient, RequestProcessingPreference, OpenAIEmbeddingsResponse, RerankResponse, ClassificationResponse
 
 api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
@@ -45,7 +45,7 @@ client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 ### Node.js
 
 ```javascript
-const { PerformanceClient } = require('baseten-performance-client');
+const { PerformanceClient, RequestProcessingPreference } = require('baseten-performance-client');
 
 const apiKey = process.env.BASETEN_API_KEY;
 const baseUrlEmbed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
@@ -53,33 +53,94 @@ const baseUrlEmbed = "https://model-yqv4yjjq.api.baseten.co/environments/product
 // const baseUrlEmbed = "https://api.openai.com" or "https://api.mixedbread.com"
 const client = new PerformanceClient(baseUrlEmbed, apiKey);
 ```
+
+## RequestProcessingPreference
+
+All API methods accept an optional `RequestProcessingPreference` object that configures request processing behavior. This provides a clean, reusable way to configure concurrency, timeouts, and retry/hedging budgets.
+
+### Python
+```python
+from baseten_performance_client import RequestProcessingPreference
+
+# Create with defaults
+pref = RequestProcessingPreference()
+
+# Or customize all parameters
+pref = RequestProcessingPreference(
+    max_concurrent_requests=64,   # Max parallel requests (default: 128)
+    batch_size=32,                # Items per batch (default: 128)
+    timeout_s=30.0,               # Per-request timeout in seconds (default: 3600)
+    max_chars_per_request=10000,  # Character-based batching limit (optional)
+    hedge_delay=0.5,              # Request hedging delay in seconds (optional, min 0.2s)
+    total_timeout_s=600.0,        # Total timeout for all requests (optional)
+    hedge_budget_pct=0.10,        # Percentage of requests allowed for hedging (default: 10%)
+    retry_budget_pct=0.05         # Percentage of requests allowed for retries (default: 5%)
+)
+```
+
+### Node.js
+```javascript
+const { RequestProcessingPreference } = require('baseten-performance-client');
+
+// Create with defaults
+const pref = new RequestProcessingPreference();
+
+// Or customize all parameters
+const pref = new RequestProcessingPreference(
+    64,     // maxConcurrentRequests
+    32,     // batchSize
+    30.0,   // timeoutS
+    10000,  // maxCharsPerRequest (optional)
+    0.5,    // hedgeDelay (optional)
+    600.0,  // totalTimeoutS (optional)
+    0.10,   // hedgeBudgetPct
+    0.05    // retryBudgetPct
+);
+```
+
+### Configuration Options
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_concurrent_requests` | 128 | Maximum number of concurrent HTTP requests |
+| `batch_size` | 128 | Number of items per batch/request |
+| `timeout_s` | 3600.0 | Timeout for individual requests in seconds |
+| `max_chars_per_request` | None | Character-based batching limit (50-256,000) |
+| `hedge_delay` | None | Request hedging delay in seconds (min 0.2s) |
+| `total_timeout_s` | None | Total timeout for all batched requests |
+| `hedge_budget_pct` | 0.10 | Percentage of total requests that can be hedged |
+| `retry_budget_pct` | 0.05 | Percentage of total requests that can be retried |
+
 ### Embeddings
 #### Python Embedding
 
 ```python
 texts = ["Hello world", "Example text", "Another sample"]
-response = client.embed(
-    input=texts,
-    model="my_model",
+
+# Simple usage with defaults
+response = client.embed(input=texts, model="my_model")
+
+# With custom preferences
+pref = RequestProcessingPreference(
     batch_size=4,
     max_concurrent_requests=32,
     timeout_s=360,
-    max_chars_per_request=10000,  # Character-based batching (50-256,000)
-    hedge_delay=0.5,  # Request hedging delay in seconds (min 0.2s)
-    total_timeout_s=600  # Total timeout for all batched requests
+    max_chars_per_request=10000,
+    hedge_delay=0.5,
+    total_timeout_s=600
 )
+response = client.embed(input=texts, model="my_model", preference=pref)
 
 # Accessing embedding data
 print(f"Model used: {response.model}")
 print(f"Total tokens used: {response.usage.total_tokens}")
 print(f"Total time: {response.total_time:.4f}s")
-if response.individual_batch_request_times:
-    for i, batch_time in enumerate(response.individual_batch_request_times):
+if response.individual_request_times:
+    for i, batch_time in enumerate(response.individual_request_times):
         print(f"  Time for batch {i}: {batch_time:.4f}s")
 
 for i, embedding_data in enumerate(response.data):
     print(f"Embedding for text {i} (original input index {embedding_data.index}):")
-    # embedding_data.embedding can be List[float] or str (base64)
     if isinstance(embedding_data.embedding, list):
         print(f"  First 3 dimensions: {embedding_data.embedding[:3]}")
         print(f"  Length: {len(embedding_data.embedding)}")
@@ -87,36 +148,23 @@ for i, embedding_data in enumerate(response.data):
 # Using the numpy() method (requires numpy to be installed)
 import numpy as np
 numpy_array = response.numpy()
-print("\nEmbeddings as NumPy array:")
-print(f"  Shape: {numpy_array.shape}")
-print(f"  Data type: {numpy_array.dtype}")
-if numpy_array.shape[0] > 0:
-    print(f"  First 3 dimensions of the first embedding: {numpy_array[0][:3]}")
-
+print(f"Embeddings as NumPy array: {numpy_array.shape}")
 ```
 
 Note: The embed method is versatile and can be used with any embeddings service, e.g. OpenAI API embeddings, not just for Baseten deployments.
-
-#### Advanced Parameters
-
-- **`max_chars_per_request`**: Character-based batching limit (50-256,000 characters). When set, requests are batched by character count rather than just input count, helping optimize for services with character-based pricing or processing limits.
-- **`hedge_delay`**: Request hedging delay in seconds (minimum 0.2s). Enables sending duplicate requests after a delay to improve latency if the original request is slow. Limited by a 5% budget to prevent excessive resource usage.
-- **`total_timeout_s`**: Total timeout for the entire operation in seconds. Unlike `timeout_s` (which is per-request), this sets an upper bound on the total time for all batched requests combined. Must be >= `timeout_s` if both are set. If not set, there is no upper bound on the total time for all batched requests.
 
 #### Asynchronous Embedding
 
 ```python
 async def async_embed():
     texts = ["Async hello", "Async example"]
-    response = await client.async_embed(
-        input=texts,
-        model="my_model",
+    pref = RequestProcessingPreference(
         batch_size=2,
         max_concurrent_requests=16,
         timeout_s=360,
-        max_chars_per_request=8000,
         hedge_delay=1.5
     )
+    response = await client.async_embed(input=texts, model="my_model", preference=pref)
     print("Async embedding response:", response.data)
 
 # To run:
@@ -126,19 +174,20 @@ async def async_embed():
 #### Node.js Embedding
 
 ```javascript
-// All methods in Node.js are async and return Promises
 const texts = ["Hello world", "Example text", "Another sample"];
+
+// Simple usage with defaults
+const response = await client.embed(texts, "my_model");
+
+// With custom preferences
+const pref = new RequestProcessingPreference(32, 4, 360.0, 10000, 0.5);
 const response = await client.embed(
     texts,                      // input
     "my_model",                 // model
     null,                       // encodingFormat
     null,                       // dimensions
     null,                       // user
-    32,                         // maxConcurrentRequests
-    4,                          // batchSize
-    360.0,                      // timeoutS
-    10000,                      // maxCharsPerRequest
-    0.5                         // hedgeDelay
+    pref                        // preference
 );
 
 // Accessing embedding data
@@ -164,7 +213,7 @@ Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `.
 | 131 072                        |           1 024 |                4.63 |           39.07 |    8.44× |
 | 2 097 152                      |          16 384 |               70.92 |          903.68 |   12.74× |
 
-### Gerneral Batch POST
+### General Batch POST
 
 The batch_post method is generic. It can be used to send POST requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON item.
 
@@ -172,11 +221,12 @@ The batch_post method is generic. It can be used to send POST requests to any UR
 ```python
 payload1 = {"model": "my_model", "input": ["Batch request sample 1"]}
 payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
+
+pref = RequestProcessingPreference(max_concurrent_requests=96, timeout_s=360)
 response_obj = client.batch_post(
-    url_path="/v1/embeddings", # Example path, adjust to your needs
+    url_path="/v1/embeddings",
     payloads=[payload1, payload2],
-    max_concurrent_requests=96,
-    timeout_s=360
+    preference=pref
 )
 print(f"Total time for batch POST: {response_obj.total_time:.4f}s")
 for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
@@ -192,18 +242,13 @@ for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, resp
 async def async_batch_post_example():
     payload1 = {"model": "my_model", "input": ["Async batch sample 1"]}
     payload2 = {"model": "my_model", "input": ["Async batch sample 2"]}
+    pref = RequestProcessingPreference(max_concurrent_requests=4, timeout_s=360)
     response_obj = await client.async_batch_post(
         url_path="/v1/embeddings",
         payloads=[payload1, payload2],
-        max_concurrent_requests=4,
-        timeout_s=360
+        preference=pref
     )
     print(f"Async total time for batch POST: {response_obj.total_time:.4f}s")
-    for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
-        print(f"Async Response {i+1}:")
-        print(f"  Data: {resp_data}")
-        print(f"  Headers: {headers}")
-        print(f"  Time taken: {time_taken:.4f}s")
 
 # To run:
 # asyncio.run(async_batch_post_example())
@@ -214,11 +259,12 @@ async def async_batch_post_example():
 ```javascript
 const payload1 = { model: "my_model", input: ["Batch request sample 1"] };
 const payload2 = { model: "my_model", input: ["Batch request sample 2"] };
+
+const pref = new RequestProcessingPreference(96, null, 360.0);
 const responseObj = await client.batchPost(
     "/v1/embeddings",           // urlPath
     [payload1, payload2],       // payloads
-    96,                         // maxConcurrentRequests
-    360.0                       // timeoutS
+    pref                        // preference
 );
 
 console.log(`Total time for batch POST: ${responseObj.total_time.toFixed(4)}s`);
@@ -237,15 +283,19 @@ Reranking compatible with BEI or text-embeddings-inference.
 ```python
 query = "What is the best framework?"
 documents = ["Doc 1 text", "Doc 2 text", "Doc 3 text"]
-rerank_response = client.rerank(
-    query=query,
-    texts=documents,
-    return_text=True,
+
+pref = RequestProcessingPreference(
     batch_size=2,
     max_concurrent_requests=16,
     timeout_s=360,
     max_chars_per_request=5000,
     hedge_delay=1.5
+)
+rerank_response = client.rerank(
+    query=query,
+    texts=documents,
+    return_text=True,
+    preference=pref
 )
 for res in rerank_response.data:
     print(f"Index: {res.index} Score: {res.score}")
@@ -257,13 +307,12 @@ for res in rerank_response.data:
 async def async_rerank():
     query = "Async query sample"
     docs = ["Async doc1", "Async doc2"]
+    pref = RequestProcessingPreference(batch_size=1, max_concurrent_requests=8, timeout_s=360)
     response = await client.async_rerank(
         query=query,
         texts=docs,
         return_text=True,
-        batch_size=1,
-        max_concurrent_requests=8,
-        timeout_s=360
+        preference=pref
     )
     for res in response.data:
         print(f"Async Index: {res.index} Score: {res.score}")
@@ -273,7 +322,7 @@ async def async_rerank():
 ```
 
 ### Classification
-Predicy (classification endpoint) compatible with BEI or text-embeddings-inference.
+Predict (classification endpoint) compatible with BEI or text-embeddings-inference.
 #### Synchronous Classification
 
 ```python
@@ -282,14 +331,15 @@ texts_to_classify = [
     "I did not like it.",
     "Neutral experience."
 ]
-classify_response = client.classify(
-    inputs=texts_to_classify,
+
+pref = RequestProcessingPreference(
     batch_size=2,
     max_concurrent_requests=16,
     timeout_s=360.0,
     max_chars_per_request=6000,
     hedge_delay=10.0
 )
+classify_response = client.classify(inputs=texts_to_classify, preference=pref)
 for group in classify_response.data:
     for result in group:
         print(f"Label: {result.label}, Score: {result.score}")
@@ -299,12 +349,8 @@ for group in classify_response.data:
 ```python
 async def async_classify():
     texts = ["Async positive", "Async negative"]
-    response = await client.async_classify(
-        inputs=texts,
-        batch_size=1,
-        max_concurrent_requests=8,
-        timeout_s=360
-    )
+    pref = RequestProcessingPreference(batch_size=1, max_concurrent_requests=8, timeout_s=360)
+    response = await client.async_classify(inputs=texts, preference=pref)
     for group in response.data:
         for res in group:
             print(f"Async Label: {res.label}, Score: {res.score}")
@@ -331,12 +377,11 @@ import requests
 
 texts_to_embed = ["Hello world", "Another text example"]
 try:
+    pref = RequestProcessingPreference(batch_size=2, max_concurrent_requests=4, timeout_s=60)
     response = client.embed(
         input=texts_to_embed,
-        model="your_embedding_model", # Replace with your actual model name
-        batch_size=2,
-        max_concurrent_requests=4,
-        timeout_s=60 # Timeout in seconds
+        model="your_embedding_model",
+        preference=pref
     )
     # Process successful response
     print(f"Model used: {response.model}")
@@ -356,7 +401,7 @@ For asynchronous methods (`async_embed`, `async_rerank`, `async_classify`, `asyn
 ## Rust
 
 ```rust
-use baseten_performance_client_core::{PerformanceClientCore, ClientError};
+use baseten_performance_client_core::{PerformanceClientCore, RequestProcessingPreference, ClientError};
 use tokio;
 
 #[tokio::main]
@@ -364,22 +409,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("BASETEN_API_KEY").expect("BASETEN_API_KEY not set");
     let base_url = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
 
-    let client = PerformanceClientCore::new(base_url, Some(api_key));
+    let client = PerformanceClientCore::new(base_url.to_string(), Some(api_key), 1, None)?;
+
+    // Create preference with builder pattern
+    let pref = RequestProcessingPreference::new()
+        .with_batch_size(4)
+        .with_max_concurrent_requests(32)
+        .with_timeout_s(360.0)
+        .with_max_chars_per_request(Some(10000))
+        .with_hedge_delay(Some(0.5));
 
     // Embedding example
     let texts = vec!["Hello world".to_string(), "Example text".to_string()];
-    let embedding_response = client.embed(
-        texts,
-        "my_model".to_string(),
-        Some(4),                    // batch_size
-        Some(32),                   // max_concurrent_requests
-        Some(360.0),                // timeout_s
-        Some(10000),                // max_chars_per_request
-        Some(0.5),                  // hedge_delay
-    ).await?;
+    let (embedding_response, durations, headers, total_time) = client
+        .process_embeddings_requests(
+            texts,
+            "my_model".to_string(),
+            None,  // encoding_format
+            None,  // dimensions
+            None,  // user
+            &pref,
+        )
+        .await?;
 
     println!("Model: {}", embedding_response.model);
     println!("Total tokens: {}", embedding_response.usage.total_tokens);
+    println!("Total time: {:.4}s", total_time.as_secs_f64());
 
     // Batch POST example
     let payloads = vec![
@@ -387,14 +442,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::json!({"model": "my_model", "input": ["Rust sample 2"]}),
     ];
 
-    let batch_response = client.batch_post(
-        "/v1/embeddings".to_string(),
-        payloads,
-        Some(32),                   // max_concurrent_requests
-        Some(360.0),                // timeout_s
-    ).await?;
+    let batch_pref = RequestProcessingPreference::new()
+        .with_max_concurrent_requests(32)
+        .with_timeout_s(360.0);
 
-    println!("Batch POST total time: {:.4}s", batch_response.total_time);
+    let (results, batch_total_time) = client
+        .process_batch_post_requests(
+            "/v1/embeddings".to_string(),
+            payloads,
+            &batch_pref,
+            None,  // custom_headers
+        )
+        .await?;
+
+    println!("Batch POST total time: {:.4}s", batch_total_time.as_secs_f64());
 
     Ok(())
 }

@@ -261,7 +261,7 @@ pub async fn send_request_with_hedging(
 
     // Wait for hedge delay
     let hedge_timer = tokio::time::sleep(*hedge_delay);
-
+    // TODO: add option to add multiple hedge waves, currently only a single hedge is supported.
     tokio::select! {
         biased;
 

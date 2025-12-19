@@ -13,5 +13,7 @@ pub use constants::*;
 pub use errors::ClientError;
 pub use http::*;
 pub use http_client::*;
-pub use split_policy::*;
-pub use utils::*;
+pub use split_policy::{
+    Combinable, RequestProcessingConfig, RequestProcessingPreference, SplitPolicy, Splittable,
+};
+pub use utils::process_joinset_outcome;

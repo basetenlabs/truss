@@ -60,17 +60,28 @@ Results are saved to `benchmark_results_nodejs.csv` with columns:
 
 ## API Compatibility
 
-The Node.js PerformanceClient API:
+The Node.js PerformanceClient API uses `RequestProcessingPreference` for configuration:
+
 ```javascript
+const { PerformanceClient, RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
+const client = new PerformanceClient(baseUrl, apiKey);
+
+// Create preference with custom settings
+const pref = new RequestProcessingPreference(
+    512,    // maxConcurrentRequests
+    16,     // batchSize
+    360.0   // timeoutS
+);
+
+// Call embed with preference
 await client.embed(
     texts,                    // Array<string>
     model,                    // string
-    encodingFormat,           // string | null
-    dimensions,               // number | null
-    user,                     // string | null
-    maxConcurrentRequests,    // number
-    batchSize,               // number
-    timeoutS                 // number
+    null,                     // encodingFormat (optional)
+    null,                     // dimensions (optional)
+    null,                     // user (optional)
+    pref                      // RequestProcessingPreference (optional)
 );
 ```
 
