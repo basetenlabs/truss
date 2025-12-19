@@ -110,30 +110,38 @@ fn build_enhanced_error_message(err: &reqwest::Error, customer_request_id: Optio
 
 /// Determine if timeout is local (connection issues) or remote (server response)
 fn is_local_timeout(err: &reqwest::Error) -> bool {
-    err.is_connect()
-        || {
-            let mut source = err.source();
-            while let Some(e) = source {
-                let source_str = e.to_string().to_lowercase();
-                if source_str.contains("connect")
-                    || source_str.contains("dns")
-                    || source_str.contains("resolve")
-                    || source_str.contains("network unreachable")
-                    || source_str.contains("connection refused")
-                {
-                    return true;
-                }
-                source = e.source();
-            }
-            false
+    // If it's both a timeout and connect error, it's a local timeout
+    if err.is_connect() && err.is_timeout() {
+        return true;
+    }
+
+    // Check error chain for connection-specific issues that would cause local timeout
+    let mut source = err.source();
+    while let Some(e) = source {
+        let source_str = e.to_string().to_lowercase();
+        if source_str.contains("connect")
+            || source_str.contains("dns")
+            || source_str.contains("resolve")
+            || source_str.contains("network unreachable")
+            || source_str.contains("connection refused")
+        {
+            return true;
         }
-        || {
-            let base_message = err.to_string().to_lowercase();
-            base_message.contains("dns")
-                || base_message.contains("resolve")
-                || base_message.contains("network unreachable")
-                || base_message.contains("connection refused")
-        }
+        source = e.source();
+    }
+
+    // Check base message for connection-specific issues
+    let base_message = err.to_string().to_lowercase();
+    if base_message.contains("dns")
+        || base_message.contains("resolve")
+        || base_message.contains("network unreachable")
+        || base_message.contains("connection refused")
+    {
+        return true;
+    }
+
+    // If it's a timeout but no connection issues found, it's a remote timeout
+    false
 }
 
 /// Convert reqwest error to ClientError with customer request ID context
@@ -143,7 +151,9 @@ pub fn convert_reqwest_error_with_customer_id(
 ) -> ClientError {
     let message = build_enhanced_error_message(&err, Some(&customer_request_id.to_string()));
 
-    if err.is_timeout() {
+    if err.is_connect() {
+        ClientError::Connect(message)
+    } else if err.is_timeout() {
         if is_local_timeout(&err) {
             ClientError::LocalTimeout(
                 format!("Unable to send request within timeout: {}", message),
@@ -155,8 +165,6 @@ pub fn convert_reqwest_error_with_customer_id(
                 Some(customer_request_id.to_string()),
             )
         }
-    } else if err.is_connect() {
-        ClientError::Connect(message)
     } else {
         ClientError::Network(message)
     }

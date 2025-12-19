@@ -510,6 +510,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Configuration
+
+### Environment Variables
+
+- `BASETEN_API_KEY`: Your Baseten API key (also checks `OPENAI_API_KEY` as fallback)
+- `PERFORMANCE_CLIENT_LOG_LEVEL`: Set the logging level for the performance client (overrides `RUST_LOG`)
+  - Valid values: `trace`, `debug`, `info`, `warn`, `error`
+  - Default: `warn`
+  - Priority: `PERFORMANCE_CLIENT_LOG_LEVEL` > `RUST_LOG` > default
+- `PERFORMANCE_CLIENT_REQUEST_ID_PREFIX`: Custom prefix for request IDs (default: "perfclient")
+
+### Logging Examples
+
+```bash
+# Use info level logging
+PERFORMANCE_CLIENT_LOG_LEVEL=info python your_script.py
+
+# Use debug level logging
+PERFORMANCE_CLIENT_LOG_LEVEL=info cargo run
+
+# Traditional RUST_LOG still works (lower priority)
+RUST_LOG=debug python your_script.py
+
+# PERFORMANCE_CLIENT_LOG_LEVEL takes precedence
+PERFORMANCE_CLIENT_LOG_LEVEL=error RUST_LOG=trace python your_script.py  # Uses error level
+```
+
 ## Development
 
 ```bash

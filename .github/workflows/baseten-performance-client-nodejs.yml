@@ -543,7 +543,11 @@ jobs:
           path: baseten-performance-client/node_bindings/artifacts
 
       - name: Move artifacts
-        run: yarn artifacts
+        run: |
+          # Skip prepublish script which doesn't support OIDC trusted publishing
+          npm config set ignore-scripts true
+          yarn artifacts
+          npm config set ignore-scripts false
 
       - name: List packages
         run: ls -R ./npm
@@ -554,10 +558,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             case "${{ github.event.inputs.publish_type }}" in
               release)
-                npm publish --access public --provenance
+                npm publish --access public
                 ;;
               next)
-                npm publish --tag next --access public --provenance
+                npm publish --tag next --access public
                 ;;
               *)
                 echo "Manual trigger: Not a release, skipping publish"
@@ -565,9 +569,9 @@ jobs:
             esac
           else
             if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$"; then
-              npm publish --access public --provenance
+              npm publish --access public
             elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+"; then
-              npm publish --tag next --access public --provenance
+              npm publish --tag next --access public
             else
               echo "Not a release, skipping publish"
             fi
