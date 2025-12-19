@@ -93,7 +93,9 @@ impl HttpClientWrapper {
                     .iter()
                     .find(|(count, _)| count.load(Ordering::Relaxed) < HTTP2_CLIENT_OPTIMUM_QUEUED)
                 {
-                    // if clients are low load, find the most loaded among them
+                    // return the first client with available high-speed capacity
+                    // assures that open connections are all on first n clients, and others are closed if low
+                    // load. This helps with connection management in networking stack.
                     return ClientGuard::new(client.clone(), Some(count.clone()));
                 }
                 // If all clients are busy, pick the least loaded one

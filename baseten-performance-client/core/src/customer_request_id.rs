@@ -36,7 +36,7 @@ impl CustomerRequestId {
     /// Create new batch-level customer request ID
     pub(crate) fn new_batch() -> Self {
         let uuid = Uuid::new_v4();
-        let uuid_simple = uuid.as_simple().to_string();
+        let uuid_simple = uuid.to_string();
         let uuid_suffix = Arc::from(uuid_simple[uuid_simple.len() - 10..].to_string());
 
         Self {
