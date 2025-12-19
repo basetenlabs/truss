@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client-android-arm64",
-  "version": "0.0.15",
+  "version": "0.0.17",
   "os": [
     "android"
   ],
