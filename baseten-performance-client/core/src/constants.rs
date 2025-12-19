@@ -24,10 +24,12 @@ pub const DEFAULT_BATCH_SIZE: usize = 128;
 // Retry constants
 pub const MAX_HTTP_RETRIES: u32 = 4;
 pub const INITIAL_BACKOFF_MS: u64 = 125;
+pub const MIN_BACKOFF_MS: u64 = 50;
+pub const MAX_BACKOFF_MS: u64 = 30000; // 30 seconds
 pub const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60);
 
-pub const DEFAULT_HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
-pub const DEFAULT_RETRY_BUDGET_PERCENTAGE: f64 = 0.05;
+pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
+pub const RETRY_BUDGET_PERCENTAGE: f64 = 0.05;
 pub const MAX_BUDGET_PERCENTAGE: f64 = 3.0; // 300%
 
 // HTTP/2 constants

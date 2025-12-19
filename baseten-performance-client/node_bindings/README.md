@@ -220,7 +220,9 @@ const preference = new RequestProcessingPreference(
     0.5,       // hedgeDelay
     undefined, // totalTimeoutS
     0.15,      // hedgeBudgetPct (default: 0.10)
-    0.08       // retryBudgetPct (default: 0.05)
+    0.08,      // retryBudgetPct (default: 0.05)
+    3,         // maxRetries (default: 4)
+    250        // initialBackoffMs (default: 125)
 );
 
 // Use with any method
@@ -237,6 +239,11 @@ const response = await embedClient.embed(
 - `retryBudgetPct`: Percentage of total requests allocated for retries (default: 5%)
 - Maximum allowed: 300% for both budgets
 
+**Retry Configuration:**
+- `maxRetries`: Maximum number of HTTP retries (default: 4, max: 4)
+- `initialBackoffMs`: Initial backoff duration in milliseconds (default: 125, range: 50-30000)
+- Backoff uses exponential backoff with jitter
+
 #### Request Hedging
 The client supports request hedging for improved latency:
 
@@ -244,8 +251,36 @@ The client supports request hedging for improved latency:
 const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
 const preference = new RequestProcessingPreference(
-    8, 2, 100000, 30, 0.5, 60  // maxConcurrentRequests, batchSize, maxCharsPerRequest, timeoutS, hedgeDelay, totalTimeoutS
+    8, 2, 100000, 30, 0.5, 60, 0.1, 0.05, 3, 250  // maxConcurrentRequests, batchSize, maxCharsPerRequest, timeoutS, hedgeDelay, totalTimeoutS, hedgeBudgetPct, retryBudgetPct, maxRetries, initialBackoffMs
 );
+const response = await embedClient.embed(
+    texts,
+    "text-embedding-3-small",
+    null, null, null, // encoding_format, dimensions, user
+    preference // preference parameter
+);
+```
+
+#### Retry Configuration
+Configure retry behavior and backoff settings:
+
+```javascript
+const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
+
+// Configure for more aggressive retrying
+const preference = new RequestProcessingPreference(
+    32,        // maxConcurrentRequests
+    16,        // batchSize
+    undefined, // maxCharsPerRequest
+    60.0,      // timeoutS
+    undefined, // hedgeDelay
+    undefined, // totalTimeoutS
+    undefined, // hedgeBudgetPct
+    0.10,      // retryBudgetPct (10% for retries)
+    4,         // maxRetries (maximum allowed)
+    500        // initialBackoffMs (start with 500ms backoff)
+);
+
 const response = await embedClient.embed(
     texts,
     "text-embedding-3-small",

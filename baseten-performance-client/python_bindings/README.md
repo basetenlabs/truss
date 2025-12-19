@@ -314,6 +314,8 @@ preference = RequestProcessingPreference(
     hedge_delay=0.5,                  # Hedging delay (default: None)
     hedge_budget_pct=0.15,            # Hedge budget percentage (default: 0.10)
     retry_budget_pct=0.08,            # Retry budget percentage (default: 0.05)
+    max_retries=3,                    # Maximum HTTP retries (default: 4)
+    initial_backoff_ms=250,           # Initial backoff in milliseconds (default: 125)
     total_timeout_s=300.0              # Total operation timeout (default: None)
 )
 
@@ -332,10 +334,38 @@ response = await client.async_embed(
 )
 ```
 
+**Property-based Configuration:**
+You can also modify preferences after creation using property setters:
+
+```python
+# Create preference and modify properties
+preference = RequestProcessingPreference()
+preference.max_concurrent_requests = 64        # Set parallel requests
+preference.batch_size = 32                     # Set batch size
+preference.timeout_s = 30.0                    # Set timeout
+preference.hedge_delay = 0.5                   # Enable hedging
+preference.hedge_budget_pct = 0.15            # Set hedge budget
+preference.retry_budget_pct = 0.08            # Set retry budget
+preference.max_retries = 3                     # Set max retries
+preference.initial_backoff_ms = 250            # Set backoff
+
+# Use with any method
+response = client.embed(
+    input=["text1", "text2"],
+    model="my_model",
+    preference=preference
+)
+```
+
 **Budget Percentages:**
 - `hedge_budget_pct`: Percentage of total requests allocated for hedging (default: 10%)
 - `retry_budget_pct`: Percentage of total requests allocated for retries (default: 5%)
 - Maximum allowed: 300% for both budgets
+
+**Retry Configuration:**
+- `max_retries`: Maximum number of HTTP retries (default: 4, max: 4)
+- `initial_backoff_ms`: Initial backoff duration in milliseconds (default: 125, range: 50-30000)
+- Backoff uses exponential backoff with jitter
 
 #### Request Hedging
 The client supports request hedging for improved latency by sending duplicate requests after a specified delay:

@@ -5,8 +5,8 @@ use baseten_performance_client_core::{
     CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse,
     CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
     RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-    DEFAULT_CONCURRENCY, DEFAULT_HEDGE_BUDGET_PERCENTAGE, DEFAULT_REQUEST_TIMEOUT_S,
-    DEFAULT_RETRY_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
+    DEFAULT_CONCURRENCY, HEDGE_BUDGET_PERCENTAGE, DEFAULT_REQUEST_TIMEOUT_S,
+    RETRY_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
 };
 
 use ndarray::Array2;
@@ -367,25 +367,25 @@ impl HttpClientWrapper {
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct RequestProcessingPreference {
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub max_concurrent_requests: usize,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub batch_size: usize,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub max_chars_per_request: Option<usize>,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub timeout_s: f64,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub hedge_delay: Option<f64>,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub total_timeout_s: Option<f64>,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub hedge_budget_pct: f64,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub retry_budget_pct: f64,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub max_retries: u32,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub initial_backoff_ms: u64,
     inner: RustRequestProcessingPreference,
 }
@@ -401,7 +401,9 @@ impl RequestProcessingPreference {
         hedge_delay = None,
         total_timeout_s = None,
         hedge_budget_pct = None,
-        retry_budget_pct = None
+        retry_budget_pct = None,
+        max_retries = None,
+        initial_backoff_ms = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -412,6 +414,8 @@ impl RequestProcessingPreference {
         total_timeout_s: Option<f64>,
         hedge_budget_pct: Option<f64>,
         retry_budget_pct: Option<f64>,
+        max_retries: Option<u32>,
+        initial_backoff_ms: Option<u64>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -422,8 +426,8 @@ impl RequestProcessingPreference {
             total_timeout_s,
             hedge_budget_pct,
             retry_budget_pct,
-            max_retries: None,
-            initial_backoff_ms: None,
+            max_retries,
+            initial_backoff_ms,
         };
 
         // Apply defaults using the same method as Rust core
@@ -436,8 +440,8 @@ impl RequestProcessingPreference {
             timeout_s: complete.timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S),
             hedge_delay: complete.hedge_delay,
             total_timeout_s: complete.total_timeout_s,
-            hedge_budget_pct: complete.hedge_budget_pct.unwrap_or(DEFAULT_HEDGE_BUDGET_PERCENTAGE),
-            retry_budget_pct: complete.retry_budget_pct.unwrap_or(DEFAULT_RETRY_BUDGET_PERCENTAGE),
+            hedge_budget_pct: complete.hedge_budget_pct.unwrap_or(HEDGE_BUDGET_PERCENTAGE),
+            retry_budget_pct: complete.retry_budget_pct.unwrap_or(RETRY_BUDGET_PERCENTAGE),
             max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
             inner: rust_pref,
@@ -447,84 +451,24 @@ impl RequestProcessingPreference {
     /// Create a new preference with default values (class method)
     #[classmethod]
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
-        Ok(Self::new(None, None, None, None, None, None, None, None))
+        Ok(Self::new(None, None, None, None, None, None, None, None, None, None))
     }
 
-    /// Builder pattern: set max concurrent requests
-    fn with_max_concurrent_requests(&self, value: usize) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.max_concurrent_requests = Some(value);
-        new_pref.max_concurrent_requests = value;
-        Ok(new_pref)
-    }
 
-    /// Builder pattern: set batch size
-    fn with_batch_size(&self, value: usize) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.batch_size = Some(value);
-        new_pref.batch_size = value;
-        Ok(new_pref)
-    }
-
-    /// Builder pattern: set max chars per request
-    fn with_max_chars_per_request(&self, value: Option<usize>) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.max_chars_per_request = value;
-        new_pref.max_chars_per_request = value;
-        Ok(new_pref)
-    }
-
-    /// Builder pattern: set timeout in seconds
-    fn with_timeout_s(&self, value: f64) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.timeout_s = Some(value);
-        new_pref.timeout_s = value;
-        Ok(new_pref)
-    }
-
-    /// Builder pattern: set hedge delay in seconds
-    fn with_hedge_delay(&self, value: Option<f64>) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.hedge_delay = value;
-        new_pref.hedge_delay = value;
-        Ok(new_pref)
-    }
-
-    /// Builder pattern: set total timeout in seconds
-    fn with_total_timeout_s(&self, value: Option<f64>) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.total_timeout_s = value;
-        new_pref.total_timeout_s = value;
-        Ok(new_pref)
-    }
-
-    /// Builder pattern: set hedge budget percentage
-    fn with_hedge_budget_pct(&self, value: f64) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.hedge_budget_pct = Some(value);
-        new_pref.hedge_budget_pct = value;
-        Ok(new_pref)
-    }
-
-    /// Builder pattern: set retry budget percentage
-    fn with_retry_budget_pct(&self, value: f64) -> PyResult<Self> {
-        let mut new_pref = self.clone();
-        new_pref.inner.retry_budget_pct = Some(value);
-        new_pref.retry_budget_pct = value;
-        Ok(new_pref)
-    }
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3})",
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3}, max_retries={}, initial_backoff_ms={})",
             self.max_concurrent_requests,
             self.batch_size,
             self.timeout_s,
             self.hedge_delay,
             self.total_timeout_s,
             self.hedge_budget_pct,
-            self.retry_budget_pct
+            self.retry_budget_pct,
+            self.max_retries,
+            self.initial_backoff_ms
         ))
     }
 

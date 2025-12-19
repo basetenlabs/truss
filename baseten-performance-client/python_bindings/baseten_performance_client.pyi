@@ -232,17 +232,20 @@ class RequestProcessingPreference:
         >>> # Use all defaults
         >>> preference = RequestProcessingPreference()
         >>>
-        >>> # Custom concurrency and timeout
+        >>> # Custom concurrency and timeout via constructor
         >>> preference = RequestProcessingPreference(
         ...     max_concurrent_requests=64,
         ...     timeout_s=30.0
         ... )
         >>>
-        >>> # Enable hedging with custom budget
-        >>> preference = RequestProcessingPreference(
-        ...     hedge_delay=0.5,
-        ...     hedge_budget_pct=0.15
-        ... )
+        >>> # Or use property setters for more flexibility
+        >>> preference = RequestProcessingPreference()
+        >>> preference.max_concurrent_requests = 64
+        >>> preference.timeout_s = 30.0
+        >>> preference.hedge_delay = 0.5
+        >>> preference.hedge_budget_pct = 0.15
+        >>> preference.max_retries = 3
+        >>> preference.initial_backoff_ms = 250
     """
 
     def __init__(
@@ -274,7 +277,29 @@ class RequestProcessingPreference:
             initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
         """
 
-...
+    # Property definitions with type hints
+    max_concurrent_requests: builtins.int
+    batch_size: builtins.int
+    max_chars_per_request: typing.Optional[builtins.int]
+    timeout_s: builtins.float
+    hedge_delay: typing.Optional[builtins.float]
+    total_timeout_s: typing.Optional[builtins.float]
+    hedge_budget_pct: builtins.float
+    retry_budget_pct: builtins.float
+    max_retries: builtins.int
+    initial_backoff_ms: builtins.int
+
+    @classmethod
+    def default(cls) -> "RequestProcessingPreference":
+        """
+        Create a new preference with default values.
+
+        Returns:
+            RequestProcessingPreference with all default values applied.
+        """
+        ...
+
+    ...
 
 class BatchPostResponse:
     """

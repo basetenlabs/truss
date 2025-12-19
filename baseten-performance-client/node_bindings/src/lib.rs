@@ -4,8 +4,8 @@ use baseten_performance_client_core::{
   ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
   CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY, DEFAULT_HEDGE_BUDGET_PERCENTAGE, DEFAULT_REQUEST_TIMEOUT_S,
-  DEFAULT_RETRY_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
+  DEFAULT_CONCURRENCY, HEDGE_BUDGET_PERCENTAGE, DEFAULT_REQUEST_TIMEOUT_S,
+  RETRY_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
 };
 
 use napi_derive::napi;
@@ -268,7 +268,7 @@ impl RequestProcessingPreference {
     self
       .complete
       .hedge_budget_pct
-      .unwrap_or(DEFAULT_HEDGE_BUDGET_PERCENTAGE)
+      .unwrap_or(HEDGE_BUDGET_PERCENTAGE)
   }
 
   #[napi(getter)]
@@ -276,7 +276,7 @@ impl RequestProcessingPreference {
     self
       .complete
       .retry_budget_pct
-      .unwrap_or(DEFAULT_RETRY_BUDGET_PERCENTAGE)
+      .unwrap_or(RETRY_BUDGET_PERCENTAGE)
   }
 
   #[napi(getter)]
