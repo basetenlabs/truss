@@ -166,7 +166,7 @@ fn test_send_request_config_hedge_timeout_validation() {
         Duration::from_millis(100),
         budgets,
         Some(Duration::from_secs(2)), // hedge delay = 2s
-        Duration::from_secs(1),         // request timeout = 1s
+        Duration::from_secs(1),       // request timeout = 1s
         CustomerRequestId::new_batch(),
     );
     assert!(
@@ -181,7 +181,7 @@ fn test_send_request_config_hedge_timeout_validation() {
         Duration::from_millis(100),
         budgets,
         Some(Duration::from_secs(1)), // hedge delay = 1s
-        Duration::from_secs(1),         // request timeout = 1s
+        Duration::from_secs(1),       // request timeout = 1s
         CustomerRequestId::new_batch(),
     );
     assert!(

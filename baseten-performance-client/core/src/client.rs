@@ -4,9 +4,7 @@ use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
 use crate::split_policy::*;
-use crate::utils::{
-    process_joinset_outcome,
-};
+use crate::utils::process_joinset_outcome;
 
 use crate::customer_request_id::CustomerRequestId;
 use reqwest::Client;
@@ -274,7 +272,11 @@ impl PerformanceClientCore {
 
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
-        tracing::debug!("initial budgets before requests: {:?} {:?}", shared_budgets, batch_customer_id.to_string());
+        tracing::debug!(
+            "initial budgets before requests: {:?} {:?}",
+            shared_budgets,
+            batch_customer_id.to_string()
+        );
 
         #[allow(clippy::type_complexity)]
         let mut join_set: JoinSetGuard<
@@ -388,7 +390,11 @@ impl PerformanceClientCore {
             }
         }
 
-        tracing::debug!("Remaining budgets after requests: {:?} {:?}", shared_budgets, batch_customer_id.to_string());
+        tracing::debug!(
+            "Remaining budgets after requests: {:?} {:?}",
+            shared_budgets,
+            batch_customer_id.to_string()
+        );
 
         // Sort results by original batch order to preserve ordering
         indexed_results.sort_by_key(|&(batch_index, _, _, _, _)| batch_index);

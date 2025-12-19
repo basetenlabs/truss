@@ -3,12 +3,12 @@ use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
 use crate::utils::{calculate_hedge_budget, calculate_retry_timeout_budget};
-use tracing;
 use rand::Rng;
 use reqwest::Client;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tracing;
 
 /// Shared budgets for retry and hedging operations
 #[derive(Debug, Clone)]
@@ -19,18 +19,25 @@ pub struct SharedBudgets {
 
 impl SharedBudgets {
     pub fn new(total_requests: usize, hedge_delay: Option<f64>) -> Self {
-        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
+        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
+            total_requests,
+        )));
 
-        let hedge_budget = hedge_delay
-            .filter(|&delay| delay >= 0.2)
-            .map(|_delay| {
-                let budget = calculate_hedge_budget(total_requests);
-                tracing::debug!("Creating hedge budget with {} requests, budget: {}", total_requests, budget);
-                Arc::new(AtomicUsize::new(budget))
-            });
+        let hedge_budget = hedge_delay.filter(|&delay| delay >= 0.2).map(|_delay| {
+            let budget = calculate_hedge_budget(total_requests);
+            tracing::debug!(
+                "Creating hedge budget with {} requests, budget: {}",
+                total_requests,
+                budget
+            );
+            Arc::new(AtomicUsize::new(budget))
+        });
 
-        Self { retry_budget, hedge_budget }
-}
+        Self {
+            retry_budget,
+            hedge_budget,
+        }
+    }
 }
 
 pub struct SendRequestConfig {
@@ -204,11 +211,12 @@ async fn send_request_with_retry(
         let should_hedge = retries_done <= 1 && config.budgets.hedge_budget.is_some();
 
         if should_hedge {
-            tracing::info!("Hedging request - retries_done: {}, hedge_budget_available: {}",
-                  retries_done, config.budgets.hedge_budget.is_some());
+            tracing::info!(
+                "Hedging request - retries_done: {}, hedge_budget_available: {}",
+                retries_done,
+                config.budgets.hedge_budget.is_some()
+            );
         }
-
-
 
         let response_result = if should_hedge {
             send_request_with_hedging(request_builder_clone, config).await
@@ -237,13 +245,23 @@ async fn send_request_with_retry(
                 // For network errors, check if we have a retry budget.
                 match client_error {
                     ClientError::LocalTimeout(_, _) => {
-                        let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
-                        tracing::debug!("Local timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                        let remaining_budget =
+                            config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        tracing::debug!(
+                            "Local timeout encountered, retrying... Remaining retry budget: {} {}",
+                            remaining_budget,
+                            config.customer_request_id.to_string()
+                        );
                         remaining_budget > 0
                     }
                     ClientError::RemoteTimeout(_, _) => {
-                        let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
-                        tracing::debug!("Remote timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                        let remaining_budget =
+                            config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        tracing::debug!(
+                            "Remote timeout encountered, retrying... Remaining retry budget: {} {}",
+                            remaining_budget,
+                            config.customer_request_id.to_string()
+                        );
                         remaining_budget > 0
                     }
                     // connect can happen if e.g. number of tcp streams in linux is exhausted.
@@ -252,7 +270,8 @@ async fn send_request_with_retry(
                         if retries_done == 0 {
                             true
                         } else {
-                            let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                            let remaining_budget =
+                                config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
                             tracing::debug!("Network error encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
                             remaining_budget > 0
                         }

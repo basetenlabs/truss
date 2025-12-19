@@ -12,8 +12,6 @@ use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-#[allow(unused_imports)]
-use pyo3_async_runtimes;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;

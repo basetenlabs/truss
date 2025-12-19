@@ -8,7 +8,7 @@ pub fn calculate_retry_timeout_budget(total_requests: usize) -> usize {
 }
 
 pub fn calculate_hedge_budget(total_requests: usize) -> usize {
-    1+ ((total_requests as f64 * HEDGE_BUDGET_PERCENTAGE).ceil() as usize)
+    1 + ((total_requests as f64 * HEDGE_BUDGET_PERCENTAGE).ceil() as usize)
 }
 
 /// Process JoinSet task outcome with improved error handling
