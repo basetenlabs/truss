@@ -34,7 +34,7 @@ pub(crate) const MAX_BUDGET_PERCENTAGE: f64 = 3.0; // 300%
 // HTTP/2 constants
 pub(crate) const HTTP2_WINDOW_SIZE: u32 = 2_097_152; // 2 MB
 pub(crate) const HTTP2_CLIENT_POOL_SIZE: usize = 64;
-pub(crate) const HTTP2_CLIENT_MAX_QUEUED: usize = 8;
+pub(crate) const HTTP2_CLIENT_OPTIMUM_QUEUED: usize = 8;
 
 // Error messages
 pub(crate) const CANCELLATION_ERROR_MESSAGE_DETAIL: &str =

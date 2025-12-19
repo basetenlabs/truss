@@ -91,10 +91,12 @@ impl HttpClientWrapper {
             HttpClientWrapper::Http2(pool) => {
                 if let Some((count, client)) = pool
                     .iter()
-                    .find(|(count, _)| count.load(Ordering::Relaxed) < HTTP2_CLIENT_MAX_QUEUED)
+                    .find(|(count, _)| count.load(Ordering::Relaxed) < HTTP2_CLIENT_OPTIMUM_QUEUED)
                 {
+                    // if clients are low load, find the most loaded among them
                     return ClientGuard::new(client.clone(), Some(count.clone()));
                 }
+                // If all clients are busy, pick the least loaded one
 
                 let (count, client) = pool
                     .iter()
