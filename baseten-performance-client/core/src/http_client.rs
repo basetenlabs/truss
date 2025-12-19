@@ -204,7 +204,7 @@ async fn send_request_with_retry(
         let should_hedge = retries_done <= 1 && config.budgets.hedge_budget.is_some();
 
         if should_hedge {
-            info!("Hedging request - retries_done: {}, hedge_budget_available: {}",
+            tracing::info!("Hedging request - retries_done: {}, hedge_budget_available: {}",
                   retries_done, config.budgets.hedge_budget.is_some());
         }
 
