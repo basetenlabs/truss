@@ -335,7 +335,7 @@ let hedge_budget = config.budgets.hedge_budget.as_ref().unwrap();
             if budget_after_decrement > 0 {
                 join_set.spawn(async move {
                     let result = request_builder_hedge.send().await.map_err(ClientError::from);
-                    tracing::tracing::debug!("hedged request faster than original");
+                    tracing::debug!("hedged request faster than original");
                     result
                 });
 

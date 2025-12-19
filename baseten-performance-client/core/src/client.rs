@@ -220,9 +220,9 @@ impl PerformanceClientCore {
                 .http2_initial_stream_window_size(HTTP2_WINDOW_SIZE)
                 .http2_max_frame_size(65_536)
                 .http2_prior_knowledge()
-                .pool_max_idle_per_host(128);
+                .pool_max_idle_per_host(16);
         } else {
-            client_builder = client_builder.http1_only().pool_max_idle_per_host(3072);
+            client_builder = client_builder.http1_only().pool_max_idle_per_host(768);
         }
 
         client_builder
