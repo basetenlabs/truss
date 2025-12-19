@@ -232,7 +232,7 @@ impl RequestProcessingPreference {
     self
       .complete
       .max_concurrent_requests
-      .unwrap_or(DEFAULT_CONCURRENCY as usize) as u32
+      .unwrap_or(DEFAULT_CONCURRENCY) as u32
   }
 
   #[napi(getter)]
@@ -240,7 +240,7 @@ impl RequestProcessingPreference {
     self
       .complete
       .batch_size
-      .unwrap_or(DEFAULT_BATCH_SIZE as usize) as u32
+      .unwrap_or(DEFAULT_BATCH_SIZE) as u32
   }
 
   #[napi(getter)]
@@ -281,7 +281,7 @@ impl RequestProcessingPreference {
 
   #[napi(getter)]
   pub fn max_retries(&self) -> u32 {
-    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32
+    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES)
   }
 
   #[napi(getter)]
