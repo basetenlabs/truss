@@ -124,9 +124,11 @@ impl HttpClientWrapper {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// use baseten_performance_client_core::{PerformanceClientCore, RequestProcessingPreference};
 ///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create client with default settings
 /// let client = PerformanceClientCore::new(
 ///     "https://api.example.com".to_string(),
@@ -149,7 +151,8 @@ impl HttpClientWrapper {
 ///         &preference,
 ///     )
 ///     .await?;
-/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// # Ok(())
+/// # }
 /// ```
 pub struct PerformanceClientCore {
     /// API key for authentication
