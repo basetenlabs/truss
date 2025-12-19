@@ -119,7 +119,7 @@ impl RequestProcessingPreference {
     /// Validate and convert to RequestProcessingConfig for a specific request.
     /// This pairs the preference with request-specific data (base_url, total_requests)
     /// and returns a validated config ready for processing.
-    pub(crate) fn pair_with_request_validate_and_convert(
+    pub fn pair_with_request_validate_and_convert(
         &self,
         base_url: String,
         total_requests: usize,
@@ -130,7 +130,7 @@ impl RequestProcessingPreference {
 
 /// Policy for splitting requests into batches
 #[derive(Debug, Clone)]
-pub(crate) enum SplitPolicy {
+pub enum SplitPolicy {
     /// Split by maximum number of concurrent requests only
     MaxBatchSize(usize),
     /// Split by maximum characters per request, with fallback to concurrency limit
@@ -144,7 +144,7 @@ pub(crate) enum SplitPolicy {
 /// This struct holds validated parameters and pre-computed Arc<AtomicUsize> budgets
 /// ready for use during request processing. Flat structure - no nesting.
 #[derive(Debug, Clone)]
-pub(crate) struct RequestProcessingConfig {
+pub struct RequestProcessingConfig {
     /// Request identification for this batch operation
     pub customer_request_id: CustomerRequestId,
 
@@ -428,12 +428,12 @@ impl RequestProcessingConfig {
 
 impl SplitPolicy {
     /// Create a new max concurrency policy
-    pub(crate) fn max_batch_size(max_concurrent: usize) -> Self {
+    pub fn max_batch_size(max_concurrent: usize) -> Self {
         Self::MaxBatchSize(max_concurrent)
     }
 
     /// Create a new max chars per request policy
-    pub(crate) fn max_chars_per_request(max_chars: usize, max_batch_size: usize) -> Self {
+    pub fn max_chars_per_request(max_chars: usize, max_batch_size: usize) -> Self {
         Self::MaxCharsOrBatchPerRequest {
             max_chars,
             max_batch_size,
@@ -441,7 +441,7 @@ impl SplitPolicy {
     }
 
     /// Get max concurrent requests from policy
-    pub(crate) fn get_max_concurrent_requests(&self) -> usize {
+    pub fn get_max_concurrent_requests(&self) -> usize {
         match self {
             SplitPolicy::MaxBatchSize(max_batch_size) => *max_batch_size,
             SplitPolicy::MaxCharsOrBatchPerRequest { max_batch_size, .. } => *max_batch_size,
@@ -458,7 +458,7 @@ impl SplitPolicy {
 }
 
 /// Trait for types that can be split into batches and combined back
-pub(crate) trait Splittable<T> {
+pub trait Splittable<T> {
     /// Split the input into batches according to the policy
     fn split(&self, policy: &SplitPolicy) -> Vec<Vec<T>>;
 
@@ -467,7 +467,7 @@ pub(crate) trait Splittable<T> {
 }
 
 /// Trait for response types that can be combined from multiple batches
-pub(crate) trait Combinable {
+pub trait Combinable {
     /// Combine multiple responses into one, preserving order
     ///
     /// # Arguments

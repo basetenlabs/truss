@@ -1,4 +1,5 @@
 use baseten_performance_client_core::*;
+use baseten_performance_client_core::split_policy::{SplitPolicy, Combinable, Splittable};
 
 #[tokio::test]
 async fn test_embeddings_with_max_chars_per_request() {
@@ -154,11 +155,8 @@ fn test_classification_response_combine() {
 #[test]
 fn test_send_request_config_hedge_timeout_validation() {
     use baseten_performance_client_core::customer_request_id::CustomerRequestId;
-    use baseten_performance_client_core::http_client::SharedBudgets;
 
     use std::time::Duration;
-
-    let budgets = SharedBudgets::new(100, Some(2.0));
 
     // Test case 1: hedge delay higher than request delay (should fail)
     // This validation is now done in RequestProcessingConfig, not SendRequestConfig

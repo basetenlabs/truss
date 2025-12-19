@@ -597,6 +597,32 @@ impl PerformanceClient {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
 
+        // Validate model string
+        if model.trim().is_empty() {
+            return Err(PyValueError::new_err("Model name cannot be empty"));
+        }
+
+        // Validate dimensions
+        if let Some(dim) = dimensions {
+            if dim == 0 || dim > 1000000 {
+                return Err(PyValueError::new_err("Dimensions must be between 1 and 1000000"));
+            }
+        }
+
+        // Validate user string length
+        if let Some(ref user_str) = user {
+            if user_str.len() > 1000 {
+                return Err(PyValueError::new_err("User string cannot exceed 1000 characters"));
+            }
+        }
+
+        // Validate encoding format
+        if let Some(ref format) = encoding_format {
+            if !matches!(format.as_str(), "float" | "base64") {
+                return Err(PyValueError::new_err("Encoding format must be 'float' or 'base64'"));
+            }
+        }
+
         let core_client = self.core_client.clone();
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
 
@@ -646,6 +672,32 @@ impl PerformanceClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
+        }
+
+        // Validate model string
+        if model.trim().is_empty() {
+            return Err(PyValueError::new_err("Model name cannot be empty"));
+        }
+
+        // Validate dimensions
+        if let Some(dim) = dimensions {
+            if dim == 0 || dim > 1000000 {
+                return Err(PyValueError::new_err("Dimensions must be between 1 and 1000000"));
+            }
+        }
+
+        // Validate user string length
+        if let Some(ref user_str) = user {
+            if user_str.len() > 1000 {
+                return Err(PyValueError::new_err("User string cannot exceed 1000 characters"));
+            }
+        }
+
+        // Validate encoding format
+        if let Some(ref format) = encoding_format {
+            if !matches!(format.as_str(), "float" | "base64") {
+                return Err(PyValueError::new_err("Encoding format must be 'float' or 'base64'"));
+            }
         }
 
         let core_client = self.core_client.clone();

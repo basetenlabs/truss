@@ -1,8 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
 use baseten_performance_client_core::{
-  CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
-  CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+  CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
+  CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse, CoreRerankResponse,
+  HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
   DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
   MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
@@ -249,7 +250,7 @@ impl RequestProcessingPreference {
       total_timeout_s,
       hedge_budget_pct,
       retry_budget_pct,
-      max_retries: max_retries,
+      max_retries,
       initial_backoff_ms: initial_backoff_ms.map(|x| x as u64),
       cancel_token: cancel_token.map(|token| token.inner.clone()),
     };
@@ -311,7 +312,7 @@ impl RequestProcessingPreference {
 
   #[napi(getter)]
   pub fn max_retries(&self) -> u32 {
-    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES)
+    self.complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32
   }
 
   #[napi(getter)]

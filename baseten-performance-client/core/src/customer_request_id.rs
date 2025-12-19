@@ -7,7 +7,7 @@ static CUSTOMER_PREFIX_CACHE: OnceLock<Arc<str>> = OnceLock::new();
 
 /// Lightweight customer request ID struct with optional components and caching
 #[derive(Debug, Clone)]
-pub(crate) struct CustomerRequestId {
+pub struct CustomerRequestId {
     // Core identifier (lightweight) - last 8 chars of UUID (shared across batch)
     uuid_suffix: Arc<str>,
 
