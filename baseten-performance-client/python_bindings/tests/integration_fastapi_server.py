@@ -447,7 +447,7 @@ def run_client():
         hijack_payloads = prepare_hijack_payloads(
             number_of_requests=12,
             max_batch_size=1,
-            stall_x_many_requests=6,  # Stall first 6 requests
+            stall_x_many_requests=10,  # Stall first 10 requests
             stall_for_seconds=3.0,  # Stall for 3 seconds
         )
 
@@ -479,15 +479,17 @@ def run_client():
         # Wait for requests to start processing, then cancel
         time.sleep(1.0)
         token.cancel()
+        time.sleep(0.1)
 
         # Wait for thread to complete
         request_thread.join(timeout=10.0)
 
         # Check cancellation results
         reset_message = client.batch_post("/reset", [{}]).data[0]
-        assert reset_message["cancelled_requests"] > 0, (
+        assert reset_message["cancelled_requests"] > 8, (
             f"Expected some requests to be cancelled, but got {reset_message['cancelled_requests']}"
         )
+        print("error_holder:", error_holder)
         print(
             f"Cancellation token scenario: {reset_message['cancelled_requests']} requests cancelled"
         )
