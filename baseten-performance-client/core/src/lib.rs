@@ -13,7 +13,7 @@ pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
 pub use errors::{convert_reqwest_error_with_customer_id, ClientError};
 pub use http::*;
-pub use http_client::*;
+// http_client is internal only - not reexported
 pub use split_policy::*;
 pub use utils::*;
 

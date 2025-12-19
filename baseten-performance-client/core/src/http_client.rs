@@ -13,28 +13,31 @@ use tracing;
 
 /// Shared budgets for retry and hedging operations
 #[derive(Debug, Clone)]
-pub struct SharedBudgets {
-    pub retry_budget: Arc<AtomicUsize>,
-    pub hedge_budget: Option<Arc<AtomicUsize>>,
+pub(crate) struct SharedBudgets {
+    pub(crate) retry_budget: Arc<AtomicUsize>,
+    pub(crate) hedge_budget: Arc<AtomicUsize>, // No longer optional
 }
 
 impl SharedBudgets {
-    pub fn new(total_requests: usize, hedge_delay: Option<f64>) -> Self {
+    pub(crate) fn new(total_requests: usize, hedge_delay: Option<f64>) -> Self {
         let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
             total_requests,
         )));
 
-        let hedge_budget = hedge_delay
+        let hedge_budget = if hedge_delay
             .filter(|&delay| delay >= MIN_HEDGE_DELAY_S)
-            .map(|_delay| {
-                let budget = calculate_hedge_budget(total_requests);
-                tracing::debug!(
-                    "Creating hedge budget with {} requests, budget: {}",
-                    total_requests,
-                    budget
-                );
-                Arc::new(AtomicUsize::new(budget))
-            });
+            .is_some()
+        {
+            let budget = calculate_hedge_budget(total_requests);
+            tracing::debug!(
+                "Creating hedge budget with {} requests, budget: {}",
+                total_requests,
+                budget
+            );
+            Arc::new(AtomicUsize::new(budget))
+        } else {
+            Arc::new(AtomicUsize::new(0)) // Always present, set to 0 when unused
+        };
 
         Self {
             retry_budget,
@@ -44,7 +47,7 @@ impl SharedBudgets {
 }
 
 // Unified HTTP request helper
-pub async fn send_http_request_with_retry<T, R>(
+pub(crate) async fn send_http_request_with_retry<T, R>(
     client: &Client,
     url: String,
     payload: T,
@@ -88,7 +91,7 @@ where
 }
 
 // Unified HTTP request helper with headers extraction
-pub async fn send_http_request_with_headers<T>(
+pub(crate) async fn send_http_request_with_headers<T>(
     client: &Client,
     url: String,
     payload: T,
@@ -172,13 +175,20 @@ async fn send_request_with_retry(
         })?;
 
         // Only hedge on the first request (retries_done <= 1)
-        let should_hedge = retries_done <= 1 && config.hedge_budget.is_some();
+        let should_hedge = retries_done <= 1
+            && config.hedge_delay.is_some()
+            && config
+                .hedge_budget
+                .load(std::sync::atomic::Ordering::SeqCst)
+                > 0;
 
         if should_hedge {
             tracing::info!(
                 "Hedging request - retries_done: {}, hedge_budget_available: {}",
                 retries_done,
-                config.hedge_budget.is_some()
+                config
+                    .hedge_budget
+                    .load(std::sync::atomic::Ordering::SeqCst)
             );
         }
 
@@ -270,15 +280,12 @@ async fn send_request_with_retry(
     }
 }
 
-pub async fn send_request_with_hedging(
+pub(crate) async fn send_request_with_hedging(
     request_builder: reqwest::RequestBuilder,
     config: &RequestProcessingConfig,
 ) -> Result<reqwest::Response, ClientError> {
-    // Validate that we have both hedge budget and hedge delay
-    let hedge_budget = config.hedge_budget.as_ref().ok_or_else(|| {
-        tracing::warn!("Unreachable: Hedge budget not available for hedging");
-        ClientError::InvalidParameter("Hedge budget not available for hedging".to_string())
-    })?;
+    // Validate that we have hedge budget and hedge delay
+    let hedge_budget = &config.hedge_budget;
     let hedge_delay = config.hedge_delay.ok_or_else(|| {
         tracing::warn!("Unreachable: Hedge delay not configured for hedging");
         ClientError::InvalidParameter("Hedge delay not configured for hedging".to_string())

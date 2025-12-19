@@ -263,7 +263,7 @@ impl PerformanceClientCore {
         config.update_budgets(total_requests);
         let shared_budgets = config.create_shared_budgets(
             Arc::clone(&config.retry_budget),
-            config.hedge_budget.clone(),
+            Arc::clone(&config.hedge_budget),
         );
 
         if config.hedge_delay.is_some() {

@@ -111,7 +111,7 @@ impl RequestProcessingPreference {
     /// Validate and convert to RequestProcessingConfig for a specific request.
     /// This pairs the preference with request-specific data (base_url, total_requests)
     /// and returns a validated config ready for processing.
-    pub fn pair_with_request_validate_and_convert(
+    pub(crate) fn pair_with_request_validate_and_convert(
         &self,
         base_url: String,
         total_requests: usize,
@@ -136,7 +136,7 @@ pub enum SplitPolicy {
 /// This struct holds validated parameters and pre-computed Arc<AtomicUsize> budgets
 /// ready for use during request processing. Flat structure - no nesting.
 #[derive(Debug, Clone)]
-pub struct RequestProcessingConfig {
+pub(crate) struct RequestProcessingConfig {
     /// Request identification for this batch operation
     pub customer_request_id: CustomerRequestId,
 
@@ -157,7 +157,7 @@ pub struct RequestProcessingConfig {
 
     /// Budget management (single source of truth)
     pub retry_budget: Arc<AtomicUsize>,
-    pub hedge_budget: Option<Arc<AtomicUsize>>,
+    pub hedge_budget: Arc<AtomicUsize>,
     pub retry_budget_pct: f64,
     pub hedge_budget_pct: f64,
 }
@@ -343,17 +343,17 @@ impl RequestProcessingConfig {
         )));
 
         let hedge_budget = if let Some(delay) = hedge_delay {
-            // Only create hedge budget if delay is >= MIN_HEDGE_DELAY_S AND hedge_budget_pct > 0
+            // Create hedge budget if delay is >= MIN_HEDGE_DELAY_S AND hedge_budget_pct > 0
             if delay >= MIN_HEDGE_DELAY_S && hedge_budget_pct > 0.0 {
-                Some(Arc::new(AtomicUsize::new(Self::calculate_budget(
+                Arc::new(AtomicUsize::new(Self::calculate_budget(
                     total_requests,
                     hedge_budget_pct,
-                ))))
+                )))
             } else {
-                None
+                Arc::new(AtomicUsize::new(0)) // Always present, but set to 0 when unused
             }
         } else {
-            None
+            Arc::new(AtomicUsize::new(0)) // Always present, but set to 0 when unused
         };
 
         Ok(RequestProcessingConfig {
@@ -374,36 +374,6 @@ impl RequestProcessingConfig {
         })
     }
 
-    /// Recalculate budgets with a new total request count.
-    /// Returns new Arc<AtomicUsize> instances with the recalculated values.
-    pub fn recalculate_budgets(
-        &self,
-        total_requests: usize,
-    ) -> (Arc<AtomicUsize>, Option<Arc<AtomicUsize>>) {
-        let retry_budget = Arc::new(AtomicUsize::new(Self::calculate_budget(
-            total_requests,
-            self.retry_budget_pct,
-        )));
-
-        let hedge_budget = if let Some(hedge_delay) = self.hedge_delay {
-            // Only create hedge budget if delay is >= MIN_HEDGE_DELAY_S AND hedge_budget_pct > 0
-            if hedge_delay >= Duration::from_secs_f64(MIN_HEDGE_DELAY_S)
-                && self.hedge_budget_pct > 0.0
-            {
-                Some(Arc::new(AtomicUsize::new(Self::calculate_budget(
-                    total_requests,
-                    self.hedge_budget_pct,
-                ))))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        (retry_budget, hedge_budget)
-    }
-
     /// Update existing atomic budget values with a new total request count.
     /// This modifies the config's existing Arc<AtomicUsize> instances in-place.
     pub fn update_budgets(&self, total_requests: usize) {
@@ -411,17 +381,20 @@ impl RequestProcessingConfig {
         self.retry_budget
             .store(new_retry_budget, std::sync::atomic::Ordering::SeqCst);
 
-        if let Some(hedge_delay) = self.hedge_delay {
+        // Always update hedge_budget since it's always present
+        let new_hedge_budget = if let Some(hedge_delay) = self.hedge_delay {
             if hedge_delay >= Duration::from_secs_f64(MIN_HEDGE_DELAY_S)
                 && self.hedge_budget_pct > 0.0
             {
-                let new_hedge_budget =
-                    Self::calculate_budget(total_requests, self.hedge_budget_pct);
-                if let Some(ref hedge_budget) = self.hedge_budget {
-                    hedge_budget.store(new_hedge_budget, std::sync::atomic::Ordering::SeqCst);
-                }
+                Self::calculate_budget(total_requests, self.hedge_budget_pct)
+            } else {
+                0 // Set to 0 when hedging is disabled
             }
-        }
+        } else {
+            0 // Set to 0 when no hedge delay is configured
+        };
+        self.hedge_budget
+            .store(new_hedge_budget, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// Get timeout duration
@@ -441,14 +414,14 @@ impl RequestProcessingConfig {
 
     /// Create a SharedBudgets object for HTTP requests using this config's settings.
     /// Takes retry and hedge budgets as parameters since they may be recalculated per batch.
-    pub fn create_shared_budgets(
+    pub(crate) fn create_shared_budgets(
         &self,
         retry_budget: Arc<AtomicUsize>,
-        hedge_budget: Option<Arc<AtomicUsize>>,
+        hedge_budget: Arc<AtomicUsize>,
     ) -> SharedBudgets {
         SharedBudgets {
             retry_budget,
-            hedge_budget,
+            hedge_budget, // Direct assignment, no Option wrapper
         }
     }
 
@@ -1024,36 +997,7 @@ mod tests {
         // Check computed budgets
         use std::sync::atomic::Ordering;
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 11); // 1 + (100 * 0.10) = 11
-        assert!(config.hedge_budget.is_some());
-        assert_eq!(
-            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
-            21
-        ); // 1 + (100 * 0.20) = 21
-    }
-
-    #[test]
-    fn test_request_processing_config_recalculate_budgets() {
-        let pref = RequestProcessingPreference::new()
-            .with_hedge_delay(0.5)
-            .with_hedge_budget_pct(0.10)
-            .with_retry_budget_pct(0.05);
-
-        let config = pref
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 1)
-            .expect("Should create valid config");
-
-        // Initial budgets should be 2 (minimum budget with our new logic)
-        use std::sync::atomic::Ordering;
-        assert_eq!(config.retry_budget.load(Ordering::SeqCst), 2);
-        assert_eq!(
-            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
-            2
-        );
-
-        // Recalculate with 200 requests
-        let (new_retry, new_hedge) = config.recalculate_budgets(200);
-        assert_eq!(new_retry.load(Ordering::SeqCst), 11); // 1 + (200 * 0.05) = 11
-        assert_eq!(new_hedge.as_ref().unwrap().load(Ordering::SeqCst), 21); // 1 + (200 * 0.10) = 21
+        assert_eq!(config.hedge_budget.load(Ordering::SeqCst), 21); // 1 + (100 * 0.20) = 21
     }
 
     #[test]
@@ -1187,30 +1131,21 @@ mod tests {
         // Initial budgets should be 2 (minimum budget with our new logic)
         use std::sync::atomic::Ordering;
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 2);
-        assert_eq!(
-            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
-            2
-        );
+        assert_eq!(config.hedge_budget.load(Ordering::SeqCst), 2);
 
         // Update budgets with 200 requests - should modify existing atomic values
         config.update_budgets(200);
 
         // Verify the same atomic instances were updated
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 11); // 1 + (200 * 0.05) = 11
-        assert_eq!(
-            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
-            21
-        ); // 1 + (200 * 0.10) = 21
+        assert_eq!(config.hedge_budget.load(Ordering::SeqCst), 21); // 1 + (200 * 0.10) = 21
 
         // Update again with different request count
         config.update_budgets(50);
 
         // Verify the same atomic instances were updated again
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 4); // 1 + (50 * 0.05) = 4
-        assert_eq!(
-            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
-            6
-        ); // 1 + (50 * 0.10) = 6
+        assert_eq!(config.hedge_budget.load(Ordering::SeqCst), 6); // 1 + (50 * 0.10) = 6
     }
 
     #[test]
@@ -1227,11 +1162,7 @@ mod tests {
             .expect("Should create valid config");
 
         // Should create hedge budget when delay equals MIN_HEDGE_DELAY_S
-        assert!(config.hedge_budget.is_some());
-        assert_eq!(
-            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
-            11
-        ); // 1 + (100 * 0.10) = 11
+        assert_eq!(config.hedge_budget.load(Ordering::SeqCst), 11); // 1 + (100 * 0.10) = 11
 
         // Test with delay just above MIN_HEDGE_DELAY_S
         let pref2 = RequestProcessingPreference::new()
@@ -1243,24 +1174,16 @@ mod tests {
             .expect("Should create valid config");
 
         // Should create hedge budget when delay is above MIN_HEDGE_DELAY_S
-        assert!(config2.hedge_budget.is_some());
-        assert_eq!(
-            config2
-                .hedge_budget
-                .as_ref()
-                .unwrap()
-                .load(Ordering::SeqCst),
-            11
-        ); // 1 + (100 * 0.10) = 11
+        assert_eq!(config2.hedge_budget.load(Ordering::SeqCst), 11); // 1 + (100 * 0.10) = 11
 
-        // Test with no hedge delay - should not create hedge budget
+        // Test with no hedge delay - should set hedge budget to 0
         let pref3 = RequestProcessingPreference::new().with_hedge_budget_pct(0.10);
 
         let config3 = pref3
             .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
             .expect("Should create valid config");
 
-        // Should NOT create hedge budget when no delay is specified
-        assert!(config3.hedge_budget.is_none());
+        // Should set hedge budget to 0 when no delay is specified
+        assert_eq!(config3.hedge_budget.load(Ordering::SeqCst), 0);
     }
 }
