@@ -293,8 +293,15 @@ pub async fn send_request_with_hedging(
     request_builder: reqwest::RequestBuilder,
     config: &SendRequestConfig,
 ) -> Result<reqwest::Response, ClientError> {
-let hedge_budget = config.budgets.hedge_budget.as_ref().unwrap();
-    let hedge_delay = config.hedge_delay.unwrap();
+    // Validate that we have both hedge budget and hedge delay
+    let hedge_budget = config.budgets.hedge_budget.as_ref().ok_or_else(|| {
+        tracing::warn!("Unreachable: Hedge budget not available for hedging");
+        ClientError::InvalidParameter("Hedge budget not available for hedging".to_string())
+    })?;
+    let hedge_delay = config.hedge_delay.ok_or_else(|| {
+        tracing::warn!("Unreachable: Hedge delay not configured for hedging");
+        ClientError::InvalidParameter("Hedge delay not configured for hedging".to_string())
+    })?;
 
     // Check if we have hedge budget available
     if hedge_budget.load(Ordering::SeqCst) == 0 {
@@ -328,11 +335,12 @@ let hedge_budget = config.budgets.hedge_budget.as_ref().unwrap();
         }
         // Hedge delay expired, start hedged request
         _ = hedge_timer => {
-            // Decrement hedge budget
-            let budget_after_decrement = hedge_budget.fetch_sub(1, Ordering::SeqCst);
-            tracing::debug!("Hedge budget decremented from {} to {}", budget_after_decrement + 1, budget_after_decrement);
+            // Decrement hedge budget and check if we had budget available
+            let budget_before_decrement = hedge_budget.fetch_sub(1, Ordering::SeqCst);
+            tracing::debug!("Hedge budget decremented from {} to {}", budget_before_decrement, budget_before_decrement.saturating_sub(1));
 
-            if budget_after_decrement > 0 {
+            // Allow hedging if we had budget before decrement (budget was > 0)
+            if budget_before_decrement > 0 {
                 join_set.spawn(async move {
                     let result = request_builder_hedge.send().await.map_err(ClientError::from);
                     tracing::debug!("hedged request faster than original");
