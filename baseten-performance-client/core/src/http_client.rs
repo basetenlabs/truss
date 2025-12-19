@@ -3,48 +3,14 @@ use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
 use crate::split_policy::RequestProcessingConfig;
-use crate::utils::{calculate_hedge_budget, calculate_retry_timeout_budget};
+
 use rand::Rng;
 use reqwest::Client;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tracing;
 
-/// Shared budgets for retry and hedging operations
-#[derive(Debug, Clone)]
-pub(crate) struct SharedBudgets {
-    pub(crate) retry_budget: Arc<AtomicUsize>,
-    pub(crate) hedge_budget: Arc<AtomicUsize>, // No longer optional
-}
 
-impl SharedBudgets {
-    pub(crate) fn new(total_requests: usize, hedge_delay: Option<f64>) -> Self {
-        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
-            total_requests,
-        )));
-
-        let hedge_budget = if hedge_delay
-            .filter(|&delay| delay >= MIN_HEDGE_DELAY_S)
-            .is_some()
-        {
-            let budget = calculate_hedge_budget(total_requests);
-            tracing::debug!(
-                "Creating hedge budget with {} requests, budget: {}",
-                total_requests,
-                budget
-            );
-            Arc::new(AtomicUsize::new(budget))
-        } else {
-            Arc::new(AtomicUsize::new(0)) // Always present, set to 0 when unused
-        };
-
-        Self {
-            retry_budget,
-            hedge_budget,
-        }
-    }
-}
 
 // Unified HTTP request helper
 pub(crate) async fn send_http_request_with_retry<T, R>(
@@ -91,6 +57,7 @@ where
 }
 
 // Unified HTTP request helper with headers extraction
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn send_http_request_with_headers<T>(
     client: &Client,
     url: String,

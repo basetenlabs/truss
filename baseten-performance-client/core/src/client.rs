@@ -261,10 +261,6 @@ impl PerformanceClientCore {
 
         // Update budgets with actual total_requests count
         config.update_budgets(total_requests);
-        let shared_budgets = config.create_shared_budgets(
-            Arc::clone(&config.retry_budget),
-            Arc::clone(&config.hedge_budget),
-        );
 
         if config.hedge_delay.is_some() {
             tracing::debug!("Hedging enabled with delay: {:?}", config.hedge_delay);
@@ -273,10 +269,9 @@ impl PerformanceClientCore {
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
         tracing::debug!(
-            "initial budgets before requests: shared_budgets={:?} customer_id={}",
-            shared_budgets
-                .retry_budget
-                .load(std::sync::atomic::Ordering::SeqCst),
+            "initial budgets before requests: retry_budget={} hedge_budget={} customer_id={}",
+            config.retry_budget.load(std::sync::atomic::Ordering::SeqCst),
+            config.hedge_budget.load(std::sync::atomic::Ordering::SeqCst),
             config.customer_request_id.to_string()
         );
 
@@ -383,8 +378,9 @@ impl PerformanceClientCore {
         }
 
         tracing::debug!(
-            "Remaining budgets after requests: {:?} {:?}",
-            shared_budgets,
+            "Remaining budgets after requests: retry_budget={} hedge_budget={} customer_id={}",
+            config.retry_budget.load(std::sync::atomic::Ordering::SeqCst),
+            config.hedge_budget.load(std::sync::atomic::Ordering::SeqCst),
             config.customer_request_id.to_string()
         );
 
@@ -493,6 +489,7 @@ impl PerformanceClientCore {
 
     // Core rerank processing logic with unified interface
     // Cancellation: dropping this future will automatically abort all in-flight requests
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_rerank_requests(
         &self,
         query: String,

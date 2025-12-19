@@ -2,7 +2,6 @@ use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::ClientError;
 use crate::http::*;
-use crate::http_client::SharedBudgets;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -122,7 +121,7 @@ impl RequestProcessingPreference {
 
 /// Policy for splitting requests into batches
 #[derive(Debug, Clone)]
-pub enum SplitPolicy {
+pub(crate) enum SplitPolicy {
     /// Split by maximum number of concurrent requests only
     MaxBatchSize(usize),
     /// Split by maximum characters per request, with fallback to concurrency limit
@@ -164,6 +163,7 @@ pub(crate) struct RequestProcessingConfig {
 
 impl RequestProcessingConfig {
     /// Validate parameters and return error if invalid
+    #[allow(clippy::too_many_arguments)]
     fn validate_parameters(
         max_concurrent_requests: usize,
         batch_size: usize,
@@ -407,23 +407,9 @@ impl RequestProcessingConfig {
         self.total_timeout
     }
 
-    /// Get hedge delay duration if set
-    pub fn hedge_delay_duration(&self) -> Option<Duration> {
-        self.hedge_delay
-    }
 
-    /// Create a SharedBudgets object for HTTP requests using this config's settings.
-    /// Takes retry and hedge budgets as parameters since they may be recalculated per batch.
-    pub(crate) fn create_shared_budgets(
-        &self,
-        retry_budget: Arc<AtomicUsize>,
-        hedge_budget: Arc<AtomicUsize>,
-    ) -> SharedBudgets {
-        SharedBudgets {
-            retry_budget,
-            hedge_budget, // Direct assignment, no Option wrapper
-        }
-    }
+
+
 
     /// Create individual request customer ID for a specific batch index
     pub fn create_request_customer_id(&self, batch_index: usize) -> CustomerRequestId {
@@ -433,12 +419,12 @@ impl RequestProcessingConfig {
 
 impl SplitPolicy {
     /// Create a new max concurrency policy
-    pub fn max_batch_size(max_concurrent: usize) -> Self {
+    pub(crate) fn max_batch_size(max_concurrent: usize) -> Self {
         Self::MaxBatchSize(max_concurrent)
     }
 
     /// Create a new max chars per request policy
-    pub fn max_chars_per_request(max_chars: usize, max_batch_size: usize) -> Self {
+    pub(crate) fn max_chars_per_request(max_chars: usize, max_batch_size: usize) -> Self {
         Self::MaxCharsOrBatchPerRequest {
             max_chars,
             max_batch_size,
@@ -446,7 +432,7 @@ impl SplitPolicy {
     }
 
     /// Get max concurrent requests from policy
-    pub fn get_max_concurrent_requests(&self) -> usize {
+    pub(crate) fn get_max_concurrent_requests(&self) -> usize {
         match self {
             SplitPolicy::MaxBatchSize(max_batch_size) => *max_batch_size,
             SplitPolicy::MaxCharsOrBatchPerRequest { max_batch_size, .. } => *max_batch_size,
@@ -463,7 +449,7 @@ impl SplitPolicy {
 }
 
 /// Trait for types that can be split into batches and combined back
-pub trait Splittable<T> {
+pub(crate) trait Splittable<T> {
     /// Split the input into batches according to the policy
     fn split(&self, policy: &SplitPolicy) -> Vec<Vec<T>>;
 
@@ -472,7 +458,7 @@ pub trait Splittable<T> {
 }
 
 /// Trait for response types that can be combined from multiple batches
-pub trait Combinable {
+pub(crate) trait Combinable {
     /// Combine multiple responses into one, preserving order
     ///
     /// # Arguments

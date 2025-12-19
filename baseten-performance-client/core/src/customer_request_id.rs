@@ -7,7 +7,7 @@ static CUSTOMER_PREFIX_CACHE: OnceLock<Arc<str>> = OnceLock::new();
 
 /// Lightweight customer request ID struct with optional components and caching
 #[derive(Debug, Clone)]
-pub struct CustomerRequestId {
+pub(crate) struct CustomerRequestId {
     // Core identifier (lightweight) - last 8 chars of UUID (shared across batch)
     uuid_suffix: Arc<str>,
 
@@ -34,7 +34,7 @@ impl CustomerRequestId {
     }
 
     /// Create new batch-level customer request ID
-    pub fn new_batch() -> Self {
+    pub(crate) fn new_batch() -> Self {
         let uuid = Uuid::new_v4();
         let uuid_string = uuid.to_string();
         let uuid_suffix = Arc::from(uuid_string[uuid_string.len() - 10..].to_string());
@@ -48,23 +48,8 @@ impl CustomerRequestId {
         }
     }
 
-    /// Create new batch-level customer request ID with custom prefix
-    pub fn new_batch_with_prefix(prefix: String) -> Self {
-        let uuid = Uuid::new_v4();
-        let uuid_string = uuid.to_string();
-        let uuid_suffix = Arc::from(uuid_string[uuid_string.len() - 10..].to_string());
-
-        Self {
-            uuid_suffix,
-            customer_prefix: Some(Arc::from(prefix)),
-            batch_index: None,
-            retry_count: Some(0),
-            hedge_id: None,
-        }
-    }
-
     /// Create request-level customer request ID from batch ID
-    pub fn new_request(&self, batch_index: usize) -> Self {
+    pub(crate) fn new_request(&self, batch_index: usize) -> Self {
         Self {
             uuid_suffix: Arc::clone(&self.uuid_suffix),
             customer_prefix: self.customer_prefix.as_ref().map(Arc::clone),
@@ -75,7 +60,7 @@ impl CustomerRequestId {
     }
 
     /// Increment retry count and clear cache
-    pub fn increment_retry(&mut self) -> &mut Self {
+    pub(crate) fn increment_retry(&mut self) -> &mut Self {
         if let Some(ref mut count) = self.retry_count {
             *count += 1;
         } else {
@@ -85,43 +70,43 @@ impl CustomerRequestId {
     }
 
     /// Set hedge ID and clear cache
-    pub fn set_hedge(&mut self, hedge_id: u32) -> &mut Self {
+    pub(crate) fn set_hedge(&mut self, hedge_id: u32) -> &mut Self {
         self.hedge_id = Some(hedge_id);
         self
     }
 
     /// Get the customer prefix (from env var or default)
-    pub fn customer_prefix(&self) -> Option<&str> {
+    pub(crate) fn customer_prefix(&self) -> Option<&str> {
         self.customer_prefix.as_deref()
     }
 
     /// Get the batch index
-    pub fn batch_index(&self) -> Option<usize> {
+    pub(crate) fn batch_index(&self) -> Option<usize> {
         self.batch_index
     }
 
     /// Get the retry count
-    pub fn retry_count(&self) -> Option<u32> {
+    pub(crate) fn retry_count(&self) -> Option<u32> {
         self.retry_count
     }
 
     /// Get the hedge ID
-    pub fn hedge_id(&self) -> Option<u32> {
+    pub(crate) fn hedge_id(&self) -> Option<u32> {
         self.hedge_id
     }
 
     /// Get the UUID suffix component (last 8 characters)
-    pub fn uuid_suffix(&self) -> &str {
+    pub(crate) fn uuid_suffix(&self) -> &str {
         &self.uuid_suffix
     }
 
     /// Check if this is a hedged request
-    pub fn is_hedged(&self) -> bool {
+    pub(crate) fn is_hedged(&self) -> bool {
         self.hedge_id.is_some()
     }
 
     /// Check if this is a retried request
-    pub fn is_retried(&self) -> bool {
+    pub(crate) fn is_retried(&self) -> bool {
         self.retry_count.map(|count| count > 0).unwrap_or(false)
     }
 }
@@ -271,15 +256,6 @@ mod tests {
 
         let id_str = request_id.to_string();
         assert!(id_str.contains("-hedge-3"));
-    }
-
-    #[test]
-    fn test_custom_prefix() {
-        let id = CustomerRequestId::new_batch_with_prefix("myclient".to_string());
-        let id_str = id.to_string();
-
-        assert!(id_str.starts_with("myclient-"));
-        assert!(id.customer_prefix() == Some("myclient"));
     }
 
     #[test]

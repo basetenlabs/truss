@@ -7,24 +7,24 @@ use tokio::task::JoinSet;
 /// Clone this token and pass it to functions that should be cancellable.
 /// When `cancel()` is called, all operations checking this token will be cancelled.
 #[derive(Clone, Default)]
-pub struct CancellationToken {
+pub(crate) struct CancellationToken {
     cancelled: Arc<AtomicBool>,
 }
 
 impl CancellationToken {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Cancel all operations using this token
-    pub fn cancel(&self) {
+    pub(crate) fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
     }
 
     /// Check if cancellation has been requested
-    pub fn is_cancelled(&self) -> bool {
+    pub(crate) fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
     }
 }
@@ -33,27 +33,27 @@ impl CancellationToken {
 ///
 /// This ensures that when a future is cancelled (e.g., via tokio::select! or Drop),
 /// all spawned tasks are automatically aborted, preventing resource leaks.
-pub struct JoinSetGuard<T: 'static> {
+pub(crate) struct JoinSetGuard<T: 'static> {
     join_set: JoinSet<T>,
     cancel_token: Option<CancellationToken>,
 }
 
 impl<T: 'static> JoinSetGuard<T> {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             join_set: JoinSet::new(),
             cancel_token: None,
         }
     }
 
-    pub fn with_cancel_token(cancel_token: CancellationToken) -> Self {
+    pub(crate) fn with_cancel_token(cancel_token: CancellationToken) -> Self {
         Self {
             join_set: JoinSet::new(),
             cancel_token: Some(cancel_token),
         }
     }
 
-    pub fn spawn<F>(&mut self, task: F)
+    pub(crate) fn spawn<F>(&mut self, task: F)
     where
         F: std::future::Future<Output = T> + Send + 'static,
         T: Send,
@@ -65,18 +65,18 @@ impl<T: 'static> JoinSetGuard<T> {
         self.join_set.join_next().await
     }
 
-    pub fn abort_all(&mut self) {
+    pub(crate) fn abort_all(&mut self) {
         if let Some(ref token) = self.cancel_token {
             token.cancel();
         }
         self.join_set.abort_all();
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.join_set.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.join_set.is_empty()
     }
 }
