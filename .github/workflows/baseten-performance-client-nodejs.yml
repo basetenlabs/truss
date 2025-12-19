@@ -525,6 +525,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          registry-url: 'https://registry.npmjs.org'
           cache: yarn
           cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
 
@@ -553,10 +554,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             case "${{ github.event.inputs.publish_type }}" in
               release)
-                npm publish --access public --provenance
+                npm publish --access public
                 ;;
               next)
-                npm publish --tag next --access public --provenance
+                npm publish --tag next --access public
                 ;;
               *)
                 echo "Manual trigger: Not a release, skipping publish"
@@ -564,9 +565,9 @@ jobs:
             esac
           else
             if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$"; then
-              npm publish --access public --provenance
+              npm publish --access public
             elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+"; then
-              npm publish --tag next --access public --provenance
+              npm publish --tag next --access public
             else
               echo "Not a release, skipping publish"
             fi
