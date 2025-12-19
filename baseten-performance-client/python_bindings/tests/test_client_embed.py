@@ -76,7 +76,7 @@ def test_not_nice_concurrency_settings():
         client.embed(
             ["Hello world", "Hello world 2"], model="my_model", preference=preference
         )
-    assert "must be greater than 0" in str(excinfo.value)
+    assert "must be less than 512 when batch_size is less than 16" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("method", ["embed", "rerank", "classify"])
@@ -84,7 +84,7 @@ def test_wrong_api_key(method):
     client = PerformanceClient(base_url=base_url_embed, api_key="wrong_api_key")
     assert client.api_key == "wrong_api_key"
     preference = RequestProcessingPreference(batch_size=1, max_concurrent_requests=32)
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(requests.exceptions.HTTPError) as excinfo:
         if method == "embed":
             client.embed(
                 ["Hello world", "Hello world 2"] * 32,
