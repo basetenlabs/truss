@@ -543,7 +543,11 @@ jobs:
           path: baseten-performance-client/node_bindings/artifacts
 
       - name: Move artifacts
-        run: yarn artifacts
+        run: |
+          # Skip prepublish script which doesn't support OIDC trusted publishing
+          npm config set ignore-scripts true
+          yarn artifacts
+          npm config set ignore-scripts false
 
       - name: List packages
         run: ls -R ./npm
