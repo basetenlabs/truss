@@ -4,11 +4,15 @@ export declare class HttpClientWrapper {
   constructor(httpVersion?: number | undefined | null)
 }
 
+export declare class RequestProcessingPreference {
+  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, timeoutS?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null)
+}
+
 export declare class PerformanceClient {
   constructor(baseUrl: string, apiKey?: string | undefined | null, httpVersion?: number | undefined | null, clientWrapper?: HttpClientWrapper | undefined | null)
   getClientWrapper(): HttpClientWrapper
-  embed(input: Array<string>, model: string, encodingFormat?: string | undefined | null, dimensions?: number | undefined | null, user?: string | undefined | null, maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null): Promise<any>
-  rerank(query: string, texts: Array<string>, rawScores?: boolean | undefined | null, model?: string | undefined | null, returnText?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null): Promise<any>
-  classify(inputs: Array<string>, model?: string | undefined | null, rawScores?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null): Promise<any>
-  batchPost(urlPath: string, payloads: Array<JsonValue>, maxConcurrentRequests?: number | undefined | null, timeoutS?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, customHeaders?: Record<string, string> | undefined | null): Promise<any>
+  embed(input: Array<string>, model: string, encodingFormat?: string | undefined | null, dimensions?: number | undefined | null, user?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
+  rerank(query: string, texts: Array<string>, rawScores?: boolean | undefined | null, model?: string | undefined | null, returnText?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
+  classify(inputs: Array<string>, model?: string | undefined | null, rawScores?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
+  batchPost(urlPath: string, payloads: Array<JsonValue>, customHeaders?: Record<string, string> | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
 }
