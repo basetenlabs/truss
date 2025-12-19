@@ -222,7 +222,7 @@ impl PerformanceClientCore {
                 .http2_prior_knowledge()
                 .pool_max_idle_per_host(16);
         } else {
-            client_builder = client_builder.http1_only().pool_max_idle_per_host(768);
+            client_builder = client_builder.http1_only().pool_max_idle_per_host(512);
         }
 
         client_builder
