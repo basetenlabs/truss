@@ -5,6 +5,7 @@ use baseten_performance_client_core::{
   CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
 };
+
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -23,9 +24,11 @@ fn convert_core_error_to_napi_error(error: ClientError) -> napi::Error {
   match error {
     ClientError::InvalidParameter(msg) => create_napi_error(&msg),
     ClientError::Network(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
-    ClientError::Http { status: _, message, customer_request_id: _ } => {
-      napi::Error::new(napi::Status::GenericFailure, message)
-    }
+    ClientError::Http {
+      status: _,
+      message,
+      customer_request_id: _,
+    } => napi::Error::new(napi::Status::GenericFailure, message),
     ClientError::Connect(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
     ClientError::Serialization(msg) => napi::Error::new(napi::Status::GenericFailure, msg),
     ClientError::LocalTimeout(msg, _) => napi::Error::new(

@@ -19,7 +19,7 @@ npm install @basetenlabs/performance-client
 Since different endpoints require different clients, you'll typically need to create separate clients for embeddings and reranking deployments.
 
 ```javascript
-const { PerformanceClient } = require('@basetenlabs/performance-client');
+const { PerformanceClient, HttpClientWrapper } = require('@basetenlabs/performance-client');
 
 const apiKey = process.env.BASETEN_API_KEY;
 const embedBaseUrl = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
@@ -28,6 +28,10 @@ const rerankBaseUrl = "https://model-abc123.api.baseten.co/environments/producti
 // Create separate clients for different endpoints
 const embedClient = new PerformanceClient(embedBaseUrl, apiKey);
 const rerankClient = new PerformanceClient(rerankBaseUrl, apiKey);
+
+// Advanced setup with custom HTTP version and client wrapper
+const httpWrapper = new HttpClientWrapper(2); // Use HTTP/2
+const advancedClient = new PerformanceClient(baseUrl, apiKey, 2, httpWrapper);
 ```
 
 ### Embeddings
@@ -174,58 +178,111 @@ try {
 }
 ```
 
+### Advanced Features
+
+#### Request Hedging
+The client supports request hedging for improved latency:
+
+```javascript
+const response = embedClient.embed(
+    texts,
+    "text-embedding-3-small",
+    null, null, null, 8, 2, 30,  // standard parameters
+    null, 100000, 0.5, 60        // maxCharsPerRequest, hedgeDelay (0.5s), totalTimeoutS
+);
+```
+
+#### Custom Headers
+Use custom headers with batchPost:
+
+```javascript
+const response = client.batchPost(
+    "/v1/embeddings",
+    payloads,
+    4, 30, null, null,           // standard parameters
+    { "x-custom-header": "value" } // custom headers
+);
+```
+
+#### HTTP Version Selection
+Choose between HTTP/1.1 and HTTP/2:
+
+```javascript
+// HTTP/1.1 (default for compatibility)
+const clientHttp1 = new PerformanceClient(baseUrl, apiKey, 1);
+
+// HTTP/2 (better performance for multiple requests)
+const clientHttp2 = new PerformanceClient(baseUrl, apiKey, 2);
+```
+
 ## API Reference
 
 ### Constructor
 
 ```javascript
-new PerformanceClient(baseUrl, apiKey)
+new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
 ```
 
 - `baseUrl` (string): The base URL for the API endpoint
 - `apiKey` (string, optional): API key. If not provided, will use `BASETEN_API_KEY` or `OPENAI_API_KEY` environment variables
+- `httpVersion` (number, optional): HTTP version to use (1 for HTTP/1.1, 2 for HTTP/2). Default: 2
+- `clientWrapper` (HttpClientWrapper, optional): Custom HTTP client wrapper for advanced configuration
 
 ### Methods
 
-#### embed(input, model, encoding_format, dimensions, user, max_concurrent_requests, batch_size, timeout_s)
+#### embed(input, model, encodingFormat?, dimensions?, user?, maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, hedgeDelay?, totalTimeoutS?)
 
 - `input` (Array<string>): List of texts to embed
 - `model` (string): Model name
-- `encoding_format` (string, optional): Encoding format
+- `encodingFormat` (string, optional): Encoding format
 - `dimensions` (number, optional): Number of dimensions
 - `user` (string, optional): User identifier
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `batch_size` (number, optional): Batch size (default: 128)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
+- `batchSize` (number, optional): Batch size (default: 128)
+- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
+- `maxCharsPerRequest` (number, optional): Maximum characters per request (default: 256000)
+- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
+- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
 
-#### rerank(query, texts, raw_scores, return_text, truncate, truncation_direction, max_concurrent_requests, batch_size, timeout_s)
+#### rerank(query, texts, rawScores?, model?, returnText?, truncate?, truncationDirection?, maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, hedgeDelay?, totalTimeoutS?)
 
 - `query` (string): Query text
 - `texts` (Array<string>): List of texts to rerank
-- `raw_scores` (boolean, optional): Return raw scores (default: false)
-- `return_text` (boolean, optional): Return text in response (default: false)
+- `rawScores` (boolean, optional): Return raw scores (default: false)
+- `model` (string, optional): Model name for reranking
+- `returnText` (boolean, optional): Return text in response (default: false)
 - `truncate` (boolean, optional): Truncate long texts (default: false)
-- `truncation_direction` (string, optional): "Left" or "Right" (default: "Right")
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `batch_size` (number, optional): Batch size (default: 128)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `truncationDirection` (string, optional): "Left" or "Right" (default: "Right")
+- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
+- `batchSize` (number, optional): Batch size (default: 128)
+- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
+- `maxCharsPerRequest` (number, optional): Maximum characters per request (default: 256000)
+- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
+- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
 
-#### classify(inputs, raw_scores, truncate, truncation_direction, max_concurrent_requests, batch_size, timeout_s)
+#### classify(inputs, rawScores?, model?, truncate?, truncationDirection?, maxConcurrentRequests?, batchSize?, timeoutS?, maxCharsPerRequest?, hedgeDelay?, totalTimeoutS?)
 
 - `inputs` (Array<string>): List of texts to classify
-- `raw_scores` (boolean, optional): Return raw scores (default: false)
+- `rawScores` (boolean, optional): Return raw scores (default: false)
+- `model` (string, optional): Model name for classification
 - `truncate` (boolean, optional): Truncate long texts (default: false)
-- `truncation_direction` (string, optional): "Left" or "Right" (default: "Right")
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `batch_size` (number, optional): Batch size (default: 128)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `truncationDirection` (string, optional): "Left" or "Right" (default: "Right")
+- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
+- `batchSize` (number, optional): Batch size (default: 128)
+- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
+- `maxCharsPerRequest` (number, optional): Maximum characters per request (default: 256000)
+- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
+- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
 
-#### batchPost(url_path, payloads, max_concurrent_requests, timeout_s)
+#### batchPost(urlPath, payloads, maxConcurrentRequests?, timeoutS?, hedgeDelay?, totalTimeoutS?, customHeaders?)
 
-- `url_path` (string): URL path for the POST request
+- `urlPath` (string): URL path for the POST request
 - `payloads` (Array<Object>): List of JSON payloads
-- `max_concurrent_requests` (number, optional): Maximum concurrent requests (default: 32)
-- `timeout_s` (number, optional): Timeout in seconds (default: 3600)
+- `maxConcurrentRequests` (number, optional): Maximum concurrent requests (default: 128)
+- `timeoutS` (number, optional): Timeout in seconds for individual requests (default: 3600)
+- `hedgeDelay` (number, optional): Hedge delay in seconds for request hedging (default: none, min: 0.2)
+- `totalTimeoutS` (number, optional): Total timeout for the entire operation (default: 3600)
+- `customHeaders` (Record<string, string>, optional): Custom headers to include with each request
 
 ## Error Handling
 
@@ -269,6 +326,32 @@ npm run build
 # Build debug version
 npm run build:debug
 ```
+
+## Releasing
+
+To release a new version of the Node.js bindings:
+
+1. **Update the version in `Cargo.toml`** - This is the source of truth for versioning
+2. **Sync versions with NAPI** - Run the version sync command to update `package.json` and regenerate code:
+   ```bash
+   napi version
+   ```
+3. **Build the project** - This regenerates the `index.js` file with the correct version checks:
+   ```bash
+   npm run build
+   ```
+4. **Commit the changes** - Include both `Cargo.toml` and `package.json` updates:
+   ```bash
+   git add Cargo.toml package.json
+   git commit -m "chore: bump version to x.y.z"
+   ```
+5. **Publish** - The CI will automatically publish when run via workflow dispatch and setting "release" or "next" as the publish type
+
+### Important Notes
+- Always update `Cargo.toml` first, then run `napi version` to sync to `package.json`
+- The `napi version` command ensures version consistency between Rust and Node.js
+- Rebuilding after version sync is crucial to update hardcoded version checks in the generated `index.js` file
+- The CI will fail if `package.json` version doesn't match the built-in version checks
 
 ## Benchmarks
 

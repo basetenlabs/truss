@@ -21,7 +21,7 @@ npm install baseten-performance-client
 cargo add baseten_performance_client_core
 # Or add to your Cargo.toml:
 # [dependencies]
-# baseten_performance_client_core = "0.0.11"
+# baseten_performance_client_core = "0.0.16"
 # tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -39,7 +39,18 @@ api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
 # Also works with OpenAI or Mixedbread.
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
+# Basic client setup
 client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
+
+# Advanced setup with HTTP version selection and connection pooling
+from baseten_performance_client import HttpClientWrapper
+http_wrapper = HttpClientWrapper(http_version=1)  # HTTP/1.1 (default)
+advanced_client = PerformanceClient(
+    base_url=base_url_embed,
+    api_key=api_key,
+    http_version=2,  # HTTP/2
+    client_wrapper=http_wrapper  # Share connection pool
+)
 ```
 
 ### Node.js
@@ -51,7 +62,13 @@ const apiKey = process.env.BASETEN_API_KEY;
 const baseUrlEmbed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
 // Also works with OpenAI or Mixedbread.
 // const baseUrlEmbed = "https://api.openai.com" or "https://api.mixedbread.com"
+// Basic client setup
 const client = new PerformanceClient(baseUrlEmbed, apiKey);
+
+// Advanced setup with HTTP version selection and connection pooling
+const { PerformanceClient, HttpClientWrapper } = require('baseten-performance-client');
+const httpWrapper = new HttpClientWrapper(2); // HTTP/2
+const advancedClient = new PerformanceClient(baseUrlEmbed, apiKey, 2, httpWrapper);
 ```
 ### Embeddings
 #### Python Embedding
@@ -164,7 +181,7 @@ Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `.
 | 131 072                        |           1 024 |                4.63 |           39.07 |    8.44× |
 | 2 097 152                      |          16 384 |               70.92 |          903.68 |   12.74× |
 
-### Gerneral Batch POST
+### General Batch POST
 
 The batch_post method is generic. It can be used to send POST requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON item.
 
@@ -175,8 +192,11 @@ payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
 response_obj = client.batch_post(
     url_path="/v1/embeddings", # Example path, adjust to your needs
     payloads=[payload1, payload2],
-    max_concurrent_requests=96,
-    timeout_s=360
+    max_concurrent_requests=32,
+    timeout_s=360,
+    hedge_delay=0.5,  # Enable hedging with 0.5s delay
+    total_timeout_s=360,  # Total operation timeout
+    custom_headers={"x-custom-header": "value"}  # Custom headers
 )
 print(f"Total time for batch POST: {response_obj.total_time:.4f}s")
 for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
@@ -195,8 +215,11 @@ async def async_batch_post_example():
     response_obj = await client.async_batch_post(
         url_path="/v1/embeddings",
         payloads=[payload1, payload2],
-        max_concurrent_requests=4,
-        timeout_s=360
+        max_concurrent_requests=32,
+        timeout_s=360,
+        hedge_delay=0.5,  # Enable hedging with 0.5s delay
+        total_timeout_s=360,  # Total operation timeout
+        custom_headers={"x-custom-header": "value"}  # Custom headers
     )
     print(f"Async total time for batch POST: {response_obj.total_time:.4f}s")
     for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
@@ -217,8 +240,11 @@ const payload2 = { model: "my_model", input: ["Batch request sample 2"] };
 const responseObj = await client.batchPost(
     "/v1/embeddings",           // urlPath
     [payload1, payload2],       // payloads
-    96,                         // maxConcurrentRequests
-    360.0                       // timeoutS
+    32,                         // maxConcurrentRequests
+    360.0,                      // timeoutS
+    0.5,                        // hedgeDelay
+    360.0,                      // totalTimeoutS
+    {"x-custom-header": "value"} // customHeaders
 );
 
 console.log(`Total time for batch POST: ${responseObj.total_time.toFixed(4)}s`);
@@ -240,12 +266,14 @@ documents = ["Doc 1 text", "Doc 2 text", "Doc 3 text"]
 rerank_response = client.rerank(
     query=query,
     texts=documents,
+    model="rerank-model",  # Optional model specification
     return_text=True,
-    batch_size=2,
-    max_concurrent_requests=16,
+    batch_size=16,
+    max_concurrent_requests=32,
     timeout_s=360,
-    max_chars_per_request=5000,
-    hedge_delay=1.5
+    max_chars_per_request=256000,
+    hedge_delay=0.5,
+    total_timeout_s=360
 )
 for res in rerank_response.data:
     print(f"Index: {res.index} Score: {res.score}")
@@ -260,10 +288,14 @@ async def async_rerank():
     response = await client.async_rerank(
         query=query,
         texts=docs,
+        model="rerank-model",  # Optional model specification
         return_text=True,
-        batch_size=1,
-        max_concurrent_requests=8,
-        timeout_s=360
+        batch_size=16,
+        max_concurrent_requests=32,
+        timeout_s=360,
+        max_chars_per_request=256000,
+        hedge_delay=0.5,
+        total_timeout_s=360
     )
     for res in response.data:
         print(f"Async Index: {res.index} Score: {res.score}")
@@ -273,7 +305,7 @@ async def async_rerank():
 ```
 
 ### Classification
-Predicy (classification endpoint) compatible with BEI or text-embeddings-inference.
+Predict (classification endpoint) compatible with BEI or text-embeddings-inference.
 #### Synchronous Classification
 
 ```python
@@ -284,11 +316,13 @@ texts_to_classify = [
 ]
 classify_response = client.classify(
     inputs=texts_to_classify,
-    batch_size=2,
-    max_concurrent_requests=16,
+    model="classification-model",  # Optional model specification
+    batch_size=16,
+    max_concurrent_requests=32,
     timeout_s=360.0,
-    max_chars_per_request=6000,
-    hedge_delay=10.0
+    max_chars_per_request=256000,
+    hedge_delay=0.5,
+    total_timeout_s=360
 )
 for group in classify_response.data:
     for result in group:
@@ -301,9 +335,13 @@ async def async_classify():
     texts = ["Async positive", "Async negative"]
     response = await client.async_classify(
         inputs=texts,
-        batch_size=1,
-        max_concurrent_requests=8,
-        timeout_s=360
+        model="classification-model",  # Optional model specification
+        batch_size=16,
+        max_concurrent_requests=32,
+        timeout_s=360,
+        max_chars_per_request=256000,
+        hedge_delay=0.5,
+        total_timeout_s=360
     )
     for group in response.data:
         for res in group:
@@ -352,6 +390,74 @@ except requests.exceptions.HTTPError as e:
 
 For asynchronous methods (`async_embed`, `async_rerank`, `async_classify`, `async_batch_post`), the same exceptions will be raised by the `await` call and can be caught using a `try...except` block within an `async def` function.
 
+### Advanced Features
+
+#### HTTP Version Selection
+Choose between HTTP/1.1 and HTTP/2 for optimal performance:
+
+```python
+# HTTP/1.1 (default, better for high concurrency)
+client_http1 = PerformanceClient(base_url, api_key, http_version=1)
+
+# HTTP/2 (better for single requests)
+client_http2 = PerformanceClient(base_url, api_key, http_version=2)
+```
+
+```javascript
+// HTTP/1.1 (default)
+const client1 = new PerformanceClient(baseUrl, apiKey, 1);
+
+// HTTP/2
+const client2 = new PerformanceClient(baseUrl, apiKey, 2);
+```
+
+#### Connection Pooling
+Share connection pools across multiple client instances:
+
+```python
+from baseten_performance_client import HttpClientWrapper
+
+# Create shared wrapper
+wrapper = HttpClientWrapper(http_version=1)
+
+# Reuse across multiple clients
+client1 = PerformanceClient(base_url="https://api1.example.com", client_wrapper=wrapper)
+client2 = PerformanceClient(base_url="https://api2.example.com", client_wrapper=wrapper)
+```
+
+```javascript
+const { HttpClientWrapper } = require('baseten-performance-client');
+
+// Create shared wrapper
+const wrapper = new HttpClientWrapper(1);
+
+// Reuse across multiple clients
+const client1 = new PerformanceClient(baseUrl1, apiKey, 1, wrapper);
+const client2 = new PerformanceClient(baseUrl2, apiKey, 1, wrapper);
+```
+
+#### Custom Headers
+Add custom headers to batch requests:
+
+```python
+response = client.batch_post(
+    url_path="/v1/embeddings",
+    payloads=payloads,
+    custom_headers={
+        "x-custom-header": "value",
+        "authorization": "Bearer token"
+    }
+)
+```
+
+```javascript
+const response = await client.batchPost(
+    "/v1/embeddings",
+    payloads,
+    32, 360.0, 0.5, 360.0,
+    {"x-custom-header": "value"}
+);
+```
 
 ## Rust
 
@@ -364,18 +470,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("BASETEN_API_KEY").expect("BASETEN_API_KEY not set");
     let base_url = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
 
-    let client = PerformanceClientCore::new(base_url, Some(api_key));
+    let client = PerformanceClientCore::new(base_url, Some(api_key), None, None); // http_version, client_wrapper
 
     // Embedding example
     let texts = vec!["Hello world".to_string(), "Example text".to_string()];
     let embedding_response = client.embed(
         texts,
         "my_model".to_string(),
-        Some(4),                    // batch_size
+        Some(16),                   // batch_size
         Some(32),                   // max_concurrent_requests
         Some(360.0),                // timeout_s
-        Some(10000),                // max_chars_per_request
+        Some(256000),               // max_chars_per_request
         Some(0.5),                  // hedge_delay
+        Some(360.0),                // total_timeout_s
     ).await?;
 
     println!("Model: {}", embedding_response.model);
@@ -392,6 +499,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         payloads,
         Some(32),                   // max_concurrent_requests
         Some(360.0),                // timeout_s
+        Some(0.5),                  // hedge_delay
+        Some(360.0),                // total_timeout_s
+        None,                       // custom_headers
     ).await?;
 
     println!("Batch POST total time: {:.4}s", batch_response.total_time);

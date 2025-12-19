@@ -4,9 +4,7 @@ use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
 use crate::split_policy::*;
-use crate::utils::{
-    calculate_hedge_budget, calculate_retry_timeout_budget, process_joinset_outcome,
-};
+use crate::utils::process_joinset_outcome;
 
 use crate::customer_request_id::CustomerRequestId;
 use reqwest::Client;
@@ -15,6 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
+use tracing;
 
 #[derive(Clone)]
 pub enum HttpClientWrapper {
@@ -219,9 +218,9 @@ impl PerformanceClientCore {
                 .http2_initial_stream_window_size(HTTP2_WINDOW_SIZE)
                 .http2_max_frame_size(65_536)
                 .http2_prior_knowledge()
-                .pool_max_idle_per_host(128);
+                .pool_max_idle_per_host(16);
         } else {
-            client_builder = client_builder.http1_only().pool_max_idle_per_host(3072);
+            client_builder = client_builder.http1_only().pool_max_idle_per_host(512);
         }
 
         client_builder
@@ -261,20 +260,23 @@ impl PerformanceClientCore {
 
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
         let total_requests = batches.len();
-        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
-            total_requests,
-        )));
 
         let cancel_token = CancellationToken::new();
 
-        let hedge_config: Option<(Arc<AtomicUsize>, Duration)> = config.hedge_delay.map(|delay| {
-            (
-                Arc::new(AtomicUsize::new(calculate_hedge_budget(total_requests))),
-                Duration::from_secs_f64(delay),
-            )
-        });
+        // Create shared budgets using the new encapsulated approach
+        let shared_budgets = SharedBudgets::new(total_requests, config.hedge_delay);
+
+        if config.hedge_delay.is_some() {
+            tracing::debug!("Hedging enabled with delay: {:?}", config.hedge_delay);
+        }
 
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
+
+        tracing::debug!(
+            "initial budgets before requests: {:?} {:?}",
+            shared_budgets,
+            batch_customer_id.to_string()
+        );
 
         #[allow(clippy::type_complexity)]
         let mut join_set: JoinSetGuard<
@@ -292,8 +294,8 @@ impl PerformanceClientCore {
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
             let semaphore = Arc::clone(&semaphore);
-            let retry_budget = Arc::clone(&retry_budget);
-            let hedge_config = hedge_config.clone();
+            let budgets = shared_budgets.clone();
+            let hedge_delay = config.hedge_delay;
 
             // Create payload and URL outside async block
             let payload = create_payload(batch);
@@ -310,11 +312,14 @@ impl PerformanceClientCore {
                 let client = client_wrapper.get_client();
 
                 let request_time_start = Instant::now();
+
+                let hedge_delay_duration = hedge_delay.map(Duration::from_secs_f64);
+
                 let config = SendRequestConfig::new(
                     MAX_HTTP_RETRIES,
                     Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget,
-                    hedge_config,
+                    budgets.clone(),
+                    hedge_delay_duration,
                     request_timeout_duration,
                     request_customer_id,
                 )?;
@@ -384,6 +389,12 @@ impl PerformanceClientCore {
                 }
             }
         }
+
+        tracing::debug!(
+            "Remaining budgets after requests: {:?} {:?}",
+            shared_budgets,
+            batch_customer_id.to_string()
+        );
 
         // Sort results by original batch order to preserve ordering
         indexed_results.sort_by_key(|&(batch_index, _, _, _, _)| batch_index);
@@ -683,17 +694,8 @@ impl PerformanceClientCore {
         let cancel_token = CancellationToken::new();
 
         let total_payloads = payloads_json.len();
-        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
-            total_payloads,
-        )));
-        let hedge_budget_delay: Option<(Arc<AtomicUsize>, Duration)> = hedge_delay.map(|delay| {
-            (
-                Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(
-                    total_payloads,
-                ))),
-                Duration::from_secs_f64(delay),
-            )
-        });
+        // Create shared budgets using the new encapsulated approach for batch_post
+        let shared_budgets = SharedBudgets::new(total_payloads, hedge_delay);
 
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<
@@ -710,13 +712,12 @@ impl PerformanceClientCore {
             let base_url = self.base_url.clone();
             let url_path = url_path.clone();
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
-            let retry_budget = Arc::clone(&retry_budget);
+            let budgets = shared_budgets.clone();
             let individual_request_timeout = request_timeout_duration;
-            let hedge_config = hedge_budget_delay.clone();
+            let hedge_delay = hedge_delay;
 
             // Generate individual request ID for this batch
             let request_customer_id = batch_customer_id.new_request(index);
-            let _hedge_budget = hedge_budget_delay.clone();
             let custom_headers = custom_headers.clone();
 
             join_set.spawn(async move {
@@ -732,11 +733,14 @@ impl PerformanceClientCore {
                     url_path.trim_start_matches('/')
                 );
                 let request_time_start = std::time::Instant::now();
+
+                let hedge_delay_duration = hedge_delay.map(Duration::from_secs_f64);
+
                 let config = SendRequestConfig::new(
                     MAX_HTTP_RETRIES,
                     Duration::from_millis(INITIAL_BACKOFF_MS),
-                    retry_budget,
-                    hedge_config,
+                    budgets.clone(),
+                    hedge_delay_duration,
                     request_timeout_duration,
                     request_customer_id,
                 )?;

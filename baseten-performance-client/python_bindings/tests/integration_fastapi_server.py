@@ -9,7 +9,7 @@ from typing import Optional
 
 import fastapi
 import requests
-from baseten_performance_client import PerformanceClient
+from baseten_performance_client import PerformanceClient, __version__
 from pydantic import BaseModel, Field
 
 
@@ -300,13 +300,6 @@ def run_client():
             )
         print(f"Scenario regular embedding with {number_of_requests} requests passed.")
 
-    scenario_regular_embedding(12)
-    scenario_regular_embedding(1000)
-    scenario_regular_embedding(12, max_chars_per_request=1000)
-    scenario_regular_embedding(1000, max_chars_per_request=1000)
-    scenario_regular_embedding(12, add_429_seconds=0.5)
-    scenario_regular_embedding(200, add_429_seconds=2)
-
     def scenario_stalled(
         number_of_requests: int,
         stall_x_many_requests: int,
@@ -315,6 +308,7 @@ def run_client():
         hedge_delay: Optional[float] = None,
         timeout: float = 360.0,
         total_timeout_s: Optional[float] = None,
+        must_timeout: bool = False,
     ):
         """
         Run a scenario where the server stalls for a specified number of requests.
@@ -337,17 +331,16 @@ def run_client():
                 total_timeout_s=total_timeout_s,
             )
         except requests.exceptions.Timeout as e:
-            if (
-                total_timeout_s is not None
-                and total_timeout_s == timeout
-                and stall_for_seconds > total_timeout_s
-            ):
-                assert f"{total_timeout_s:.2f}" in str(e), (
-                    f"Expected timeout {total_timeout_s:.2f}s in error: {e}"
-                )
+            if must_timeout:
+                print(f"Expected timeout occurred: {e}")
                 return
             else:
                 raise RuntimeError(f"Unexpected timeout: {e}")
+        finally:
+            reset_message = client.batch_post("/reset", [{}]).data[0]
+        assert not must_timeout, (
+            "Expected a timeout but the request completed successfully"
+        )
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
             "Response should contain `number_of_requests` embeddings"
@@ -356,15 +349,21 @@ def run_client():
         assert indexes == list(range(number_of_requests)), (
             "Indexes should match the range of number_of_requests"
         )
-        reset_message = client.batch_post("/reset", [{}]).data[0]
-        assert (
-            reset_message["processed_requests"]
-            == number_of_requests + stall_x_many_requests
-        ), "Processed requests should match the number of requests + stalled requests"
+        processed_requests = reset_message["processed_requests"]
+        assert processed_requests == number_of_requests + stall_x_many_requests, (
+            f"Processed requests should match the number of requests + stalled requests ({processed_requests} != {number_of_requests} + {stall_x_many_requests})"
+        )
         assert reset_message["successful_requests"] == number_of_requests, (
             "Successful requests should match the number of requests"
         )
         print(f"Scenario stalled with {number_of_requests} requests passed.")
+
+    scenario_regular_embedding(12)
+    scenario_regular_embedding(1000)
+    scenario_regular_embedding(12, max_chars_per_request=1000)
+    scenario_regular_embedding(1000, max_chars_per_request=1000)
+    scenario_regular_embedding(12, add_429_seconds=0.5)
+    scenario_regular_embedding(200, add_429_seconds=2)
 
     scenario_stalled(
         100,
@@ -401,6 +400,17 @@ def run_client():
         internal_server_error_no_stall=False,
         timeout=2,
         total_timeout_s=2,
+        must_timeout=True,
+    )
+
+    scenario_stalled(
+        20,
+        stall_x_many_requests=10,
+        stall_for_seconds=6,
+        internal_server_error_no_stall=False,
+        timeout=4,
+        total_timeout_s=4,
+        must_timeout=True,  # must raise timeout
     )
 
 
@@ -410,6 +420,6 @@ if __name__ == "__main__":
     server_thread.start()
 
     # Keep the main thread alive
-    time.sleep(0.5)  # Give the server some time to start
+    time.sleep(0.2)  # Give the server some time to start
     run_client()
-    print("ALL SCENARIOS PASSED")
+    print(f"ALL SCENARIOS PASSED with baseten-performance-client v{__version__}")

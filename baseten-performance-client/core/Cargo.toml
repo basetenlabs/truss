@@ -1,6 +1,6 @@
 [package]
 name = "baseten_performance_client_core"
-version = "0.0.15"
+version = "0.0.16"
 edition = "2021"
 description = "High performance HTTP client for Baseten.co and other APIs"
 license = "MIT"
@@ -20,6 +20,9 @@ futures = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }
 uuid = { version = "1.0", features = ["v4"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+ctor = "0.2"
 
 [features]
 default = ["native-tls"]

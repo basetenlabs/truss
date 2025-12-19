@@ -21,7 +21,19 @@ api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync"
 # Also works with OpenAI or Mixedbread.
 # base_url_embed = "https://api.openai.com" or "https://api.mixedbread.com"
+
+# Basic client setup
 client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
+
+# Advanced setup with HTTP version selection and connection pooling
+from baseten_performance_client import HttpClientWrapper
+http_wrapper = HttpClientWrapper(http_version=1)  # HTTP/1.1 (default)
+advanced_client = PerformanceClient(
+    base_url=base_url_embed,
+    api_key=api_key,
+    http_version=1,  # HTTP/1.1
+    client_wrapper=http_wrapper  # Share connection pool
+)
 ```
 ### Embeddings
 #### Synchronous Embedding
@@ -31,9 +43,12 @@ texts = ["Hello world", "Example text", "Another sample"]
 response = client.embed(
     input=texts,
     model="my_model",
-    batch_size=4,
+    batch_size=16,
     max_concurrent_requests=32,
-    timeout_s=360
+    timeout_s=360,
+    max_chars_per_request=256000,  # Character limit per request
+    hedge_delay=0.5,  # Enable hedging with 0.5s delay
+    total_timeout_s=360  # Total operation timeout
 )
 
 # Accessing embedding data
@@ -72,10 +87,13 @@ async def async_embed():
     response = await client.async_embed(
         input=texts,
         model="my_model",
-        batch_size=2,
-        max_concurrent_requests=16,
+        batch_size=16,
+        max_concurrent_requests=32,
         timeout_s=360,
-        dimensions=None, # MRL dims.
+        dimensions=None,  # MRL dims.
+        max_chars_per_request=256000,  # Character limit per request
+        hedge_delay=0.5,  # Enable hedging with 0.5s delay
+        total_timeout_s=360  # Total operation timeout
     )
     print("Async embedding response:", response.data)
 
@@ -105,8 +123,11 @@ payload2 = {"model": "my_model", "input": ["Batch request sample 2"]}
 response_obj = client.batch_post(
     url_path="/v1/embeddings", # Example path, adjust to your needs
     payloads=[payload1, payload2],
-    max_concurrent_requests=96,
-    timeout_s=360
+    max_concurrent_requests=32,
+    timeout_s=360,
+    hedge_delay=0.5,  # Enable hedging with 0.5s delay
+    total_timeout_s=360,  # Total operation timeout
+    custom_headers={"x-custom-header": "value"}  # Custom headers
 )
 print(f"Total time for batch POST: {response_obj.total_time:.4f}s")
 for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
@@ -125,8 +146,11 @@ async def async_batch_post_example():
     response_obj = await client.async_batch_post(
         url_path="/v1/embeddings",
         payloads=[payload1, payload2],
-        max_concurrent_requests=4,
-        timeout_s=360
+        max_concurrent_requests=32,
+        timeout_s=360,
+        hedge_delay=0.5,  # Enable hedging with 0.5s delay
+        total_timeout_s=360,  # Total operation timeout
+        custom_headers={"x-custom-header": "value"}  # Custom headers
     )
     print(f"Async total time for batch POST: {response_obj.total_time:.4f}s")
     for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
@@ -149,10 +173,14 @@ documents = ["Doc 1 text", "Doc 2 text", "Doc 3 text"]
 rerank_response = client.rerank(
     query=query,
     texts=documents,
+    model="rerank-model",  # Optional model specification
     return_text=True,
-    batch_size=2,
-    max_concurrent_requests=16,
-    timeout_s=360
+    batch_size=16,
+    max_concurrent_requests=32,
+    timeout_s=360,
+    max_chars_per_request=256000,  # Character limit per request
+    hedge_delay=0.5,  # Enable hedging with 0.5s delay
+    total_timeout_s=360  # Total operation timeout
 )
 for res in rerank_response.data:
     print(f"Index: {res.index} Score: {res.score}")
@@ -167,10 +195,14 @@ async def async_rerank():
     response = await client.async_rerank(
         query=query,
         texts=docs,
+        model="rerank-model",  # Optional model specification
         return_text=True,
-        batch_size=1,
-        max_concurrent_requests=8,
-        timeout_s=360
+        batch_size=16,
+        max_concurrent_requests=32,
+        timeout_s=360,
+        max_chars_per_request=256000,  # Character limit per request
+        hedge_delay=0.5,  # Enable hedging with 0.5s delay
+        total_timeout_s=360  # Total operation timeout
     )
     for res in response.data:
         print(f"Async Index: {res.index} Score: {res.score}")
@@ -191,9 +223,13 @@ texts_to_classify = [
 ]
 classify_response = client.classify(
     inputs=texts_to_classify,
-    batch_size=2,
-    max_concurrent_requests=16,
-    timeout_s=360
+    model="classification-model",  # Optional model specification
+    batch_size=16,
+    max_concurrent_requests=32,
+    timeout_s=360,
+    max_chars_per_request=256000,  # Character limit per request
+    hedge_delay=0.5,  # Enable hedging with 0.5s delay
+    total_timeout_s=360  # Total operation timeout
 )
 for group in classify_response.data:
     for result in group:
@@ -206,9 +242,13 @@ async def async_classify():
     texts = ["Async positive", "Async negative"]
     response = await client.async_classify(
         inputs=texts,
-        batch_size=1,
-        max_concurrent_requests=8,
-        timeout_s=360
+        model="classification-model",  # Optional model specification
+        batch_size=16,
+        max_concurrent_requests=32,
+        timeout_s=360,
+        max_chars_per_request=256000,  # Character limit per request
+        hedge_delay=0.5,  # Enable hedging with 0.5s delay
+        total_timeout_s=360  # Total operation timeout
     )
     for group in response.data:
         for res in group:
@@ -218,6 +258,60 @@ async def async_classify():
 # asyncio.run(async_classify())
 ```
 
+### Advanced Features
+
+#### Request Hedging
+The client supports request hedging for improved latency by sending duplicate requests after a specified delay:
+
+```python
+# Enable hedging with 0.5 second delay
+response = client.embed(
+    input=texts,
+    model="my_model",
+    hedge_delay=0.5,  # Send hedge request after 0.5s
+    max_chars_per_request=256000,
+    total_timeout_s=360
+)
+```
+
+#### Custom Headers
+Use custom headers with batch_post:
+
+```python
+response = client.batch_post(
+    url_path="/v1/embeddings",
+    payloads=payloads,
+    custom_headers={
+        "x-custom-header": "value",
+        "authorization": "Bearer token"
+    }
+)
+```
+
+#### HTTP Version Selection
+Choose between HTTP/1.1 and HTTP/2:
+
+```python
+# HTTP/1.1 (default, better for high concurrency)
+client_http1 = PerformanceClient(base_url, api_key, http_version=1)
+
+# HTTP/2 (better for single requests)
+client_http2 = PerformanceClient(base_url, api_key, http_version=2)
+```
+
+#### Connection Pooling
+Share connection pools across multiple clients:
+
+```python
+from baseten_performance_client import HttpClientWrapper
+
+# Create shared wrapper
+wrapper = HttpClientWrapper(http_version=1)
+
+# Reuse across multiple clients
+client1 = PerformanceClient(base_url="https://api1.example.com", client_wrapper=wrapper)
+client2 = PerformanceClient(base_url="https://api2.example.com", client_wrapper=wrapper)
+```
 
 ### Error Handling
 
