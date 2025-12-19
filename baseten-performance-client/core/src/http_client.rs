@@ -2,33 +2,56 @@ use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::{convert_reqwest_error_with_customer_id, ClientError};
+use crate::utils::{calculate_hedge_budget, calculate_retry_timeout_budget};
+use tracing;
 use rand::Rng;
 use reqwest::Client;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Shared budgets for retry and hedging operations
+#[derive(Debug, Clone)]
+pub struct SharedBudgets {
+    pub retry_budget: Arc<AtomicUsize>,
+    pub hedge_budget: Option<Arc<AtomicUsize>>,
+}
+
+impl SharedBudgets {
+    pub fn new(total_requests: usize, hedge_delay: Option<f64>) -> Self {
+        let retry_budget = Arc::new(AtomicUsize::new(calculate_retry_timeout_budget(total_requests)));
+
+        let hedge_budget = hedge_delay
+            .filter(|&delay| delay >= 0.2)
+            .map(|_delay| {
+                let budget = calculate_hedge_budget(total_requests);
+                tracing::info!("Creating hedge budget with {} requests, budget: {}", total_requests, budget);
+                Arc::new(AtomicUsize::new(budget))
+            });
+
+        Self { retry_budget, hedge_budget }
+}
+}
+
 pub struct SendRequestConfig {
     pub max_retries: u32,
     pub initial_backoff: Duration,
-    pub retry_budget: Arc<AtomicUsize>,
-    pub hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
+    pub budgets: SharedBudgets,
+    pub hedge_delay: Option<Duration>,
     pub timeout: Duration,
     pub customer_request_id: CustomerRequestId,
 }
 
 impl SendRequestConfig {
-    /// Create a new SendRequestConfig with customer request ID
     pub fn new(
         max_retries: u32,
         initial_backoff: Duration,
-        retry_budget: Arc<AtomicUsize>,
-        hedge_budget: Option<(Arc<AtomicUsize>, Duration)>,
+        budgets: SharedBudgets,
+        hedge_delay: Option<Duration>,
         timeout: Duration,
         customer_request_id: CustomerRequestId,
     ) -> Result<Self, ClientError> {
-        // Validate that hedging timeout is higher than request timeout
-        if let Some((_, hedge_timeout)) = &hedge_budget {
+        if let Some(hedge_timeout) = &hedge_delay {
             if hedge_timeout >= &timeout {
                 return Err(ClientError::InvalidParameter(format!(
                     "Hedge timeout ({:.3}s) must be higher than request timeout ({:.3}s)",
@@ -41,8 +64,8 @@ impl SendRequestConfig {
         Ok(SendRequestConfig {
             max_retries,
             initial_backoff,
-            retry_budget,
-            hedge_budget,
+            budgets,
+            hedge_delay,
             timeout,
             customer_request_id,
         })
@@ -178,7 +201,14 @@ async fn send_request_with_retry(
         })?;
 
         // Only hedge on the first request (retries_done <= 1)
-        let should_hedge = retries_done <= 1 && config.hedge_budget.is_some();
+        let should_hedge = retries_done <= 1 && config.budgets.hedge_budget.is_some();
+
+        if should_hedge {
+            info!("Hedging request - retries_done: {}, hedge_budget_available: {}",
+                  retries_done, config.budgets.hedge_budget.is_some());
+        }
+
+
 
         let response_result = if should_hedge {
             send_request_with_hedging(request_builder_clone, config).await
@@ -207,10 +237,14 @@ async fn send_request_with_retry(
                 // For network errors, check if we have a retry budget.
                 match client_error {
                     ClientError::LocalTimeout(_, _) => {
-                        config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
+                        let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        tracing::info!("Local timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                        remaining_budget > 0
                     }
                     ClientError::RemoteTimeout(_, _) => {
-                        config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
+                        let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        tracing::info!("Remote timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                        remaining_budget > 0
                     }
                     // connect can happen if e.g. number of tcp streams in linux is exhausted.
                     ClientError::Connect(_) => retries_done <= 1,
@@ -218,7 +252,9 @@ async fn send_request_with_retry(
                         if retries_done == 0 {
                             true
                         } else {
-                            config.retry_budget.fetch_sub(1, Ordering::SeqCst) > 0
+                            let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                            tracing::info!("Network error encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                            remaining_budget > 0
                         }
                     }
                     _ => {
@@ -257,11 +293,12 @@ pub async fn send_request_with_hedging(
     request_builder: reqwest::RequestBuilder,
     config: &SendRequestConfig,
 ) -> Result<reqwest::Response, ClientError> {
-    let (hedge_budget, hedge_delay) = config.hedge_budget.as_ref().unwrap();
+let hedge_budget = config.budgets.hedge_budget.as_ref().unwrap();
+    let hedge_delay = config.hedge_delay.unwrap();
 
     // Check if we have hedge budget available
     if hedge_budget.load(Ordering::SeqCst) == 0 {
-        // No hedge budget, use normal request
+        tracing::info!("No hedge budget available, using normal request");
         return request_builder.send().await.map_err(ClientError::from);
     }
 
@@ -276,7 +313,7 @@ pub async fn send_request_with_hedging(
     join_set.spawn(async move { request_builder.send().await.map_err(ClientError::from) });
 
     // Wait for hedge delay
-    let hedge_timer = tokio::time::sleep(*hedge_delay);
+    let hedge_timer = tokio::time::sleep(hedge_delay);
 
     tokio::select! {
         biased;
@@ -292,9 +329,14 @@ pub async fn send_request_with_hedging(
         // Hedge delay expired, start hedged request
         _ = hedge_timer => {
             // Decrement hedge budget
-            if hedge_budget.fetch_sub(1, Ordering::SeqCst) > 0 {
+            let budget_after_decrement = hedge_budget.fetch_sub(1, Ordering::SeqCst);
+            tracing::info!("Hedge budget decremented from {} to {}", budget_after_decrement + 1, budget_after_decrement);
+
+            if budget_after_decrement > 0 {
                 join_set.spawn(async move {
-                    request_builder_hedge.send().await.map_err(ClientError::from)
+                    let result = request_builder_hedge.send().await.map_err(ClientError::from);
+                    tracing::tracing::info!("hedged request faster than original");
+                    result
                 });
 
                 // Race between original and hedged request - first to complete wins

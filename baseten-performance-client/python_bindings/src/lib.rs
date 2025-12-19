@@ -6,6 +6,7 @@ use baseten_performance_client_core::{
     CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
     DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
 };
+
 use ndarray::Array2;
 use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
@@ -963,6 +964,7 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<OpenAIUsage>()?;
     m.add_class::<RerankResult>()?;
     m.add_class::<RerankResponse>()?;
+
     m.add_class::<ClassificationResult>()?;
     m.add_class::<ClassificationResponse>()?;
     m.add_class::<BatchPostResponse>()?;

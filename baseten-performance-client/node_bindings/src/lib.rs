@@ -5,6 +5,8 @@ use baseten_performance_client_core::{
   CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
 };
+
+
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -181,6 +183,8 @@ pub struct BatchPostResponse {
   pub individual_request_times: Vec<f64>,
   pub total_time: f64,
 }
+
+
 
 #[napi]
 pub struct HttpClientWrapper {

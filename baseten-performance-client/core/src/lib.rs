@@ -16,3 +16,21 @@ pub use http::*;
 pub use http_client::*;
 pub use split_policy::*;
 pub use utils::*;
+
+/// Initialize tracing with default WARN level
+/// This is called automatically when the library is loaded
+#[ctor::ctor]
+fn init_tracing() {
+    // Only set default if RUST_LOG is not already set
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "warn");
+    }
+
+    // Initialize subscriber only once
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    });
+}

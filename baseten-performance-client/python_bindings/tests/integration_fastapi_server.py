@@ -9,7 +9,7 @@ from typing import Optional
 
 import fastapi
 import requests
-from baseten_performance_client import PerformanceClient
+from baseten_performance_client import PerformanceClient, __version__
 from pydantic import BaseModel, Field
 
 
@@ -412,7 +412,8 @@ def run_client():
             timeout=4,
             total_timeout_s=4,
         )
-        # assert False, "Expected timeout exception was not raised"
+        time.sleep(1)
+        assert False, "Expected timeout exception was not raised"
     except AssertionError as e:
         raise e
     except Exception as e:
@@ -425,6 +426,6 @@ if __name__ == "__main__":
     server_thread.start()
 
     # Keep the main thread alive
-    time.sleep(0.5)  # Give the server some time to start
+    time.sleep(0.2)  # Give the server some time to start
     run_client()
-    print("ALL SCENARIOS PASSED")
+    print(f"ALL SCENARIOS PASSED with baseten-performance-client v{__version__}")
