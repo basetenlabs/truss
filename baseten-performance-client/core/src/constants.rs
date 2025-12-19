@@ -15,7 +15,7 @@ pub const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
 
 // hedging settings:
 pub const MIN_HEDGE_DELAY_S: f64 = 0.2;
-pub const HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
+
 
 // Batch size constants
 pub const MAX_BATCH_SIZE: usize = 1024;
@@ -25,7 +25,10 @@ pub const DEFAULT_BATCH_SIZE: usize = 128;
 pub const MAX_HTTP_RETRIES: u32 = 4;
 pub const INITIAL_BACKOFF_MS: u64 = 125;
 pub const MAX_BACKOFF_DURATION: Duration = Duration::from_secs(60);
-pub const RETRY_TIMEOUT_BUDGET_PERCENTAGE: f64 = 0.05;
+
+pub const DEFAULT_HEDGE_BUDGET_PERCENTAGE: f64 = 0.10;
+pub const DEFAULT_RETRY_BUDGET_PERCENTAGE: f64 = 0.05;
+pub const MAX_BUDGET_PERCENTAGE: f64 = 3.0; // 300%
 
 // HTTP/2 constants
 pub const HTTP2_WINDOW_SIZE: u32 = 2_097_152; // 2 MB

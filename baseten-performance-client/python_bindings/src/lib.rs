@@ -4,7 +4,9 @@ use baseten_performance_client_core::{
     ClientError, CoreClassificationResponse, CoreClassificationResult, CoreEmbeddingVariant,
     CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse,
     CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
-    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S,
+    RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
+    DEFAULT_CONCURRENCY, DEFAULT_HEDGE_BUDGET_PERCENTAGE, DEFAULT_REQUEST_TIMEOUT_S,
+    DEFAULT_RETRY_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
 };
 
 use ndarray::Array2;
@@ -12,6 +14,7 @@ use numpy::{IntoPyArray, PyArray2};
 use once_cell::sync::Lazy;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyType;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -359,6 +362,178 @@ impl HttpClientWrapper {
     }
 }
 
+/// User-facing configuration for request processing with budget percentages.
+/// Provides sensible defaults and getters for all properties.
+#[derive(Debug, Clone)]
+#[pyclass]
+pub struct RequestProcessingPreference {
+    #[pyo3(get)]
+    pub max_concurrent_requests: usize,
+    #[pyo3(get)]
+    pub batch_size: usize,
+    #[pyo3(get)]
+    pub max_chars_per_request: Option<usize>,
+    #[pyo3(get)]
+    pub timeout_s: f64,
+    #[pyo3(get)]
+    pub hedge_delay: Option<f64>,
+    #[pyo3(get)]
+    pub total_timeout_s: Option<f64>,
+    #[pyo3(get)]
+    pub hedge_budget_pct: f64,
+    #[pyo3(get)]
+    pub retry_budget_pct: f64,
+    #[pyo3(get)]
+    pub max_retries: u32,
+    #[pyo3(get)]
+    pub initial_backoff_ms: u64,
+    inner: RustRequestProcessingPreference,
+}
+
+#[pymethods]
+impl RequestProcessingPreference {
+    #[new]
+    #[pyo3(signature = (
+        max_concurrent_requests = None,
+        batch_size = None,
+        timeout_s = None,
+        max_chars_per_request = None,
+        hedge_delay = None,
+        total_timeout_s = None,
+        hedge_budget_pct = None,
+        retry_budget_pct = None
+    ))]
+    fn new(
+        max_concurrent_requests: Option<usize>,
+        batch_size: Option<usize>,
+        timeout_s: Option<f64>,
+        max_chars_per_request: Option<usize>,
+        hedge_delay: Option<f64>,
+        total_timeout_s: Option<f64>,
+        hedge_budget_pct: Option<f64>,
+        retry_budget_pct: Option<f64>,
+    ) -> Self {
+        let rust_pref = RustRequestProcessingPreference {
+            max_concurrent_requests,
+            batch_size,
+            max_chars_per_request,
+            timeout_s,
+            hedge_delay,
+            total_timeout_s,
+            hedge_budget_pct,
+            retry_budget_pct,
+            max_retries: None,
+            initial_backoff_ms: None,
+        };
+
+        // Apply defaults using the same method as Rust core
+        let complete = rust_pref.with_defaults();
+
+        RequestProcessingPreference {
+            max_concurrent_requests: complete.max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY),
+            batch_size: complete.batch_size.unwrap_or(DEFAULT_BATCH_SIZE),
+            max_chars_per_request: complete.max_chars_per_request,
+            timeout_s: complete.timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S),
+            hedge_delay: complete.hedge_delay,
+            total_timeout_s: complete.total_timeout_s,
+            hedge_budget_pct: complete.hedge_budget_pct.unwrap_or(DEFAULT_HEDGE_BUDGET_PERCENTAGE),
+            retry_budget_pct: complete.retry_budget_pct.unwrap_or(DEFAULT_RETRY_BUDGET_PERCENTAGE),
+            max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
+            initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
+            inner: rust_pref,
+        }
+    }
+
+    /// Create a new preference with default values (class method)
+    #[classmethod]
+    fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
+        Ok(Self::new(None, None, None, None, None, None, None, None))
+    }
+
+    /// Builder pattern: set max concurrent requests
+    fn with_max_concurrent_requests(&self, value: usize) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.max_concurrent_requests = Some(value);
+        new_pref.max_concurrent_requests = value;
+        Ok(new_pref)
+    }
+
+    /// Builder pattern: set batch size
+    fn with_batch_size(&self, value: usize) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.batch_size = Some(value);
+        new_pref.batch_size = value;
+        Ok(new_pref)
+    }
+
+    /// Builder pattern: set max chars per request
+    fn with_max_chars_per_request(&self, value: Option<usize>) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.max_chars_per_request = value;
+        new_pref.max_chars_per_request = value;
+        Ok(new_pref)
+    }
+
+    /// Builder pattern: set timeout in seconds
+    fn with_timeout_s(&self, value: f64) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.timeout_s = Some(value);
+        new_pref.timeout_s = value;
+        Ok(new_pref)
+    }
+
+    /// Builder pattern: set hedge delay in seconds
+    fn with_hedge_delay(&self, value: Option<f64>) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.hedge_delay = value;
+        new_pref.hedge_delay = value;
+        Ok(new_pref)
+    }
+
+    /// Builder pattern: set total timeout in seconds
+    fn with_total_timeout_s(&self, value: Option<f64>) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.total_timeout_s = value;
+        new_pref.total_timeout_s = value;
+        Ok(new_pref)
+    }
+
+    /// Builder pattern: set hedge budget percentage
+    fn with_hedge_budget_pct(&self, value: f64) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.hedge_budget_pct = Some(value);
+        new_pref.hedge_budget_pct = value;
+        Ok(new_pref)
+    }
+
+    /// Builder pattern: set retry budget percentage
+    fn with_retry_budget_pct(&self, value: f64) -> PyResult<Self> {
+        let mut new_pref = self.clone();
+        new_pref.inner.retry_budget_pct = Some(value);
+        new_pref.retry_budget_pct = value;
+        Ok(new_pref)
+    }
+
+    /// Return a string representation
+    fn __repr__(&self) -> PyResult<String> {
+        Ok(format!(
+            "RequestProcessingPreference(max_concurrent_requests={}, batch_size={}, timeout_s={:.3}, hedge_delay={:?}, total_timeout_s={:?}, hedge_budget_pct={:.3}, retry_budget_pct={:.3})",
+            self.max_concurrent_requests,
+            self.batch_size,
+            self.timeout_s,
+            self.hedge_delay,
+            self.total_timeout_s,
+            self.hedge_budget_pct,
+            self.retry_budget_pct
+        ))
+    }
+
+    /// Return a string representation
+    fn __str__(&self) -> PyResult<String> {
+        self.__repr__()
+    }
+}
+
 #[pyclass]
 struct PerformanceClient {
     core_client: PerformanceClientCore,
@@ -419,7 +594,7 @@ impl PerformanceClient {
         }
     }
 
-    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(signature = (input, model, encoding_format = None, dimensions = None, user = None, preference = None))]
     fn embed(
         &self,
         py: Python,
@@ -428,12 +603,7 @@ impl PerformanceClient {
         encoding_format: Option<String>,
         dimensions: Option<u32>,
         user: Option<String>,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        timeout_s: f64,
-        max_chars_per_request: Option<usize>,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
     ) -> PyResult<OpenAIEmbeddingsResponse> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
@@ -441,6 +611,9 @@ impl PerformanceClient {
 
         let core_client = self.core_client.clone();
         let rt: Arc<Runtime> = Arc::clone(&self.runtime);
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -451,12 +624,7 @@ impl PerformanceClient {
                         encoding_format,
                         dimensions,
                         user,
-                        max_concurrent_requests,
-                        batch_size,
-                        max_chars_per_request,
-                        timeout_s,
-                        hedge_delay,
-                        total_timeout_s,
+                        &rust_preference,
                     )
                     .await
             }))
@@ -477,7 +645,7 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(name = "async_embed", signature = (input, model, encoding_format = None, dimensions = None, user = None, preference = None))]
     fn async_embed<'py>(
         &self,
         py: Python<'py>,
@@ -486,18 +654,16 @@ impl PerformanceClient {
         encoding_format: Option<String>,
         dimensions: Option<u32>,
         user: Option<String>,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        timeout_s: f64,
-        max_chars_per_request: Option<usize>,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if input.is_empty() {
             return Err(PyValueError::new_err("Input list cannot be empty"));
         }
 
         let core_client = self.core_client.clone();
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -507,12 +673,7 @@ impl PerformanceClient {
                     encoding_format,
                     dimensions,
                     user,
-                    max_concurrent_requests,
-                    batch_size,
-                    max_chars_per_request,
-                    timeout_s,
-                    hedge_delay,
-                    total_timeout_s,
+                    &rust_preference,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -533,7 +694,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (query, texts, raw_scores = false, model = None, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(signature = (query, texts, raw_scores = false, model = None, return_text = false, truncate = false, truncation_direction = "Right", preference = None))]
     fn rerank(
         &self,
         py: Python,
@@ -544,12 +705,7 @@ impl PerformanceClient {
         return_text: bool,
         truncate: bool,
         truncation_direction: &str,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        timeout_s: f64,
-        max_chars_per_request: Option<usize>,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
     ) -> PyResult<RerankResponse> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
@@ -558,6 +714,9 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
         let truncation_direction_owned = truncation_direction.to_string();
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -570,12 +729,7 @@ impl PerformanceClient {
                         return_text,
                         truncate,
                         truncation_direction_owned,
-                        max_concurrent_requests,
-                        batch_size,
-                        max_chars_per_request,
-                        timeout_s,
-                        hedge_delay,
-                        total_timeout_s,
+                        &rust_preference,
                     )
                     .await
             }))
@@ -596,7 +750,7 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, model = None, return_text = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(name = "async_rerank", signature = (query, texts, raw_scores = false, model = None, return_text = false, truncate = false, truncation_direction = "Right", preference = None))]
     fn async_rerank<'py>(
         &self,
         py: Python<'py>,
@@ -607,12 +761,7 @@ impl PerformanceClient {
         return_text: bool,
         truncate: bool,
         truncation_direction: &str,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        timeout_s: f64,
-        max_chars_per_request: Option<usize>,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if texts.is_empty() {
             return Err(PyValueError::new_err("Texts list cannot be empty"));
@@ -620,6 +769,9 @@ impl PerformanceClient {
 
         let core_client = self.core_client.clone();
         let truncation_direction_owned = truncation_direction.to_string();
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -631,12 +783,7 @@ impl PerformanceClient {
                     return_text,
                     truncate,
                     truncation_direction_owned,
-                    max_concurrent_requests,
-                    batch_size,
-                    max_chars_per_request,
-                    timeout_s,
-                    hedge_delay,
-                    total_timeout_s,
+                    &rust_preference,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -657,7 +804,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (inputs, model = None, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(signature = (inputs, model = None, raw_scores = false, truncate = false, truncation_direction = "Right", preference = None))]
     fn classify(
         &self,
         py: Python,
@@ -666,12 +813,7 @@ impl PerformanceClient {
         raw_scores: bool,
         truncate: bool,
         truncation_direction: &str,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        timeout_s: f64,
-        max_chars_per_request: Option<usize>,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
     ) -> PyResult<ClassificationResponse> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
@@ -680,6 +822,9 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
         let truncation_direction_owned = truncation_direction.to_string();
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -690,12 +835,7 @@ impl PerformanceClient {
                         raw_scores,
                         truncate,
                         truncation_direction_owned,
-                        max_concurrent_requests,
-                        batch_size,
-                        max_chars_per_request,
-                        timeout_s,
-                        hedge_delay,
-                        total_timeout_s,
+                        &rust_preference,
                     )
                     .await
             }))
@@ -716,7 +856,7 @@ impl PerformanceClient {
         Ok(api_response)
     }
 
-    #[pyo3(name = "async_classify", signature = (inputs, model = None, raw_scores = false, truncate = false, truncation_direction = "Right", max_concurrent_requests = DEFAULT_CONCURRENCY, batch_size = DEFAULT_BATCH_SIZE, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, max_chars_per_request = None, hedge_delay = None, total_timeout_s = None))]
+    #[pyo3(name = "async_classify", signature = (inputs, model = None, raw_scores = false, truncate = false, truncation_direction = "Right", preference = None))]
     fn async_classify<'py>(
         &self,
         py: Python<'py>,
@@ -725,12 +865,7 @@ impl PerformanceClient {
         raw_scores: bool,
         truncate: bool,
         truncation_direction: &str,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        timeout_s: f64,
-        max_chars_per_request: Option<usize>,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if inputs.is_empty() {
             return Err(PyValueError::new_err("Inputs list cannot be empty"));
@@ -738,6 +873,9 @@ impl PerformanceClient {
 
         let core_client = self.core_client.clone();
         let truncation_direction_owned = truncation_direction.to_string();
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         let future = async move {
             let (core_response, batch_durations, headers, core_total_time) = core_client
@@ -747,12 +885,7 @@ impl PerformanceClient {
                     raw_scores,
                     truncate,
                     truncation_direction_owned,
-                    max_concurrent_requests,
-                    batch_size,
-                    max_chars_per_request,
-                    timeout_s,
-                    hedge_delay,
-                    total_timeout_s,
+                    &rust_preference,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
@@ -773,16 +906,13 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None, custom_headers = None))]
+    #[pyo3(signature = (url_path, payloads, preference = None, custom_headers = None))]
     fn batch_post(
         &self,
         py: Python,
         url_path: String,
         payloads: Vec<PyObject>,
-        max_concurrent_requests: usize,
-        timeout_s: f64,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
         custom_headers: Option<std::collections::HashMap<String, String>>,
     ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
@@ -804,16 +934,16 @@ impl PerformanceClient {
         let core_client = self.core_client.clone();
         let rt = Arc::clone(&self.runtime);
 
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
                 core_client
                     .process_batch_post_requests(
                         url_path,
                         payloads_json,
-                        max_concurrent_requests,
-                        timeout_s,
-                        hedge_delay,
-                        total_timeout_s,
+                        &rust_preference,
                         custom_headers,
                     )
                     .await
@@ -863,16 +993,13 @@ impl PerformanceClient {
         })
     }
 
-    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, max_concurrent_requests = DEFAULT_CONCURRENCY, timeout_s = DEFAULT_REQUEST_TIMEOUT_S, hedge_delay = None, total_timeout_s = None, custom_headers = None))]
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, custom_headers = None))]
     fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
         url_path: String,
         payloads: Vec<PyObject>,
-        max_concurrent_requests: usize,
-        timeout_s: f64,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: Option<&RequestProcessingPreference>,
         custom_headers: Option<std::collections::HashMap<String, String>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if payloads.is_empty() {
@@ -893,15 +1020,15 @@ impl PerformanceClient {
 
         let core_client = self.core_client.clone();
 
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+
         let future = async move {
             let (response_data_with_times_and_headers, total_time) = core_client
                 .process_batch_post_requests(
                     url_path,
                     payloads_json,
-                    max_concurrent_requests,
-                    timeout_s,
-                    hedge_delay,
-                    total_timeout_s,
+                    &rust_preference,
                     custom_headers,
                 )
                 .await
@@ -957,6 +1084,7 @@ impl PerformanceClient {
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PerformanceClient>()?;
     m.add_class::<HttpClientWrapper>()?;
+    m.add_class::<RequestProcessingPreference>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;

@@ -6,7 +6,6 @@ use crate::http_client::*;
 use crate::split_policy::*;
 use crate::utils::process_joinset_outcome;
 
-use crate::customer_request_id::CustomerRequestId;
 use reqwest::Client;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -255,16 +254,17 @@ impl PerformanceClientCore {
         let start_time = std::time::Instant::now();
         let request_timeout_duration = config.timeout_duration();
 
-        // Generate customer request ID for this batch operation
-        let batch_customer_id = CustomerRequestId::new_batch();
-
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
         let total_requests = batches.len();
 
         let cancel_token = CancellationToken::new();
 
-        // Create shared budgets using the new encapsulated approach
-        let shared_budgets = SharedBudgets::new(total_requests, config.hedge_delay);
+        // Update budgets with actual total_requests count
+        config.update_budgets(total_requests);
+        let shared_budgets = config.create_shared_budgets(
+            Arc::clone(&config.retry_budget),
+            config.hedge_budget.clone(),
+        );
 
         if config.hedge_delay.is_some() {
             tracing::debug!("Hedging enabled with delay: {:?}", config.hedge_delay);
@@ -273,9 +273,9 @@ impl PerformanceClientCore {
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
         tracing::debug!(
-            "initial budgets before requests: {:?} {:?}",
-            shared_budgets,
-            batch_customer_id.to_string()
+            "initial budgets before requests: shared_budgets={:?} customer_id={}",
+            shared_budgets.retry_budget.load(std::sync::atomic::Ordering::SeqCst),
+            config.customer_request_id.to_string()
         );
 
         #[allow(clippy::type_complexity)]
@@ -287,6 +287,8 @@ impl PerformanceClientCore {
 
         let mut current_absolute_index = 0;
         for (batch_index, batch) in batches.into_iter().enumerate() {
+            // Clone config for this iteration
+            let config_clone = config.clone();
             let current_batch_absolute_start_index = current_absolute_index;
             current_absolute_index += batch.len();
 
@@ -294,15 +296,13 @@ impl PerformanceClientCore {
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
             let semaphore = Arc::clone(&semaphore);
-            let budgets = shared_budgets.clone();
-            let hedge_delay = config.hedge_delay;
 
             // Create payload and URL outside async block
             let payload = create_payload(batch);
             let url = endpoint_url.clone();
 
             // Generate individual request ID for this batch
-            let request_customer_id = batch_customer_id.new_request(batch_index);
+            let request_customer_id = config_clone.create_request_customer_id(batch_index);
 
             join_set.spawn(async move {
                 let _permit = semaphore
@@ -313,17 +313,6 @@ impl PerformanceClientCore {
 
                 let request_time_start = Instant::now();
 
-                let hedge_delay_duration = hedge_delay.map(Duration::from_secs_f64);
-
-                let config = SendRequestConfig::new(
-                    MAX_HTTP_RETRIES,
-                    Duration::from_millis(INITIAL_BACKOFF_MS),
-                    budgets.clone(),
-                    hedge_delay_duration,
-                    request_timeout_duration,
-                    request_customer_id,
-                )?;
-
                 // Send request with pre-created payload and URL
                 let (response, headers): (R, HeaderMap) = send_http_request_with_retry(
                     &client,
@@ -331,7 +320,8 @@ impl PerformanceClientCore {
                     payload,
                     api_key,
                     request_timeout_duration,
-                    &config,
+                    &config_clone,
+                    request_customer_id,
                 )
                 .await?;
 
@@ -368,7 +358,7 @@ impl PerformanceClientCore {
                                 "Total operation timed out after {:.2}s",
                                 timeout_duration.as_secs_f64()
                             ),
-                            Some(batch_customer_id.to_string()),
+                            Some(config.customer_request_id.to_string()),
                         ));
                     }
                 }
@@ -393,7 +383,7 @@ impl PerformanceClientCore {
         tracing::debug!(
             "Remaining budgets after requests: {:?} {:?}",
             shared_budgets,
-            batch_customer_id.to_string()
+            config.customer_request_id.to_string()
         );
 
         // Sort results by original batch order to preserve ordering
@@ -439,7 +429,6 @@ impl PerformanceClientCore {
     }
     // Core embeddings processing logic with unified interface
     // Cancellation: dropping this future will automatically abort all in-flight requests
-    #[allow(clippy::too_many_arguments)]
     pub async fn process_embeddings_requests(
         &self,
         texts: Vec<String>,
@@ -447,12 +436,7 @@ impl PerformanceClientCore {
         encoding_format: Option<String>,
         dimensions: Option<u32>,
         user: Option<String>,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        max_chars_per_request: Option<usize>,
-        timeout_s: f64,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: &RequestProcessingPreference,
     ) -> Result<
         (
             CoreOpenAIEmbeddingsResponse,
@@ -462,15 +446,10 @@ impl PerformanceClientCore {
         ),
         ClientError,
     > {
-        // Create and validate config
-        let config = RequestProcessingConfig::new(
-            max_concurrent_requests,
-            batch_size,
-            timeout_s,
-            total_timeout_s,
+        // Create and validate config from preference
+        let config = preference.pair_with_request_validate_and_convert(
             self.base_url.to_string(),
-            hedge_delay,
-            max_chars_per_request,
+            0, // total_requests calculated after batching
         )?;
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -479,7 +458,7 @@ impl PerformanceClientCore {
         let endpoint_url: Arc<str> =
             format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
 
-        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
+        let total_timeout = config.total_timeout_duration();
 
         let (mut response, durations, headers, total_time) = self
             .process_batched_requests(
@@ -512,7 +491,6 @@ impl PerformanceClientCore {
 
     // Core rerank processing logic with unified interface
     // Cancellation: dropping this future will automatically abort all in-flight requests
-    #[allow(clippy::too_many_arguments)]
     pub async fn process_rerank_requests(
         &self,
         query: String,
@@ -522,22 +500,12 @@ impl PerformanceClientCore {
         return_text: bool,
         truncate: bool,
         truncation_direction: String,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        max_chars_per_request: Option<usize>,
-        timeout_s: f64,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: &RequestProcessingPreference,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
-        // Create and validate config
-        let config = RequestProcessingConfig::new(
-            max_concurrent_requests,
-            batch_size,
-            timeout_s,
-            total_timeout_s,
+        // Create and validate config from preference
+        let config = preference.pair_with_request_validate_and_convert(
             self.base_url.to_string(),
-            hedge_delay,
-            max_chars_per_request,
+            0, // total_requests calculated after batching
         )?;
 
         // Create batches
@@ -547,7 +515,7 @@ impl PerformanceClientCore {
         let endpoint_url: Arc<str> =
             format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
 
-        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
+        let total_timeout = config.total_timeout_duration();
 
         let (results, durations, headers, total_time) = self
             .process_batched_requests(
@@ -585,7 +553,6 @@ impl PerformanceClientCore {
 
     // Core classify processing logic with unified interface
     // Cancellation: dropping this future will automatically abort all in-flight requests
-    #[allow(clippy::too_many_arguments)]
     pub async fn process_classify_requests(
         &self,
         inputs: Vec<String>,
@@ -593,12 +560,7 @@ impl PerformanceClientCore {
         raw_scores: bool,
         truncate: bool,
         truncation_direction: String,
-        max_concurrent_requests: usize,
-        batch_size: usize,
-        max_chars_per_request: Option<usize>,
-        timeout_s: f64,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: &RequestProcessingPreference,
     ) -> Result<
         (
             CoreClassificationResponse,
@@ -608,15 +570,10 @@ impl PerformanceClientCore {
         ),
         ClientError,
     > {
-        // Create and validate config
-        let config = RequestProcessingConfig::new(
-            max_concurrent_requests,
-            batch_size,
-            timeout_s,
-            total_timeout_s,
+        // Create and validate config from preference
+        let config = preference.pair_with_request_validate_and_convert(
             self.base_url.to_string(),
-            hedge_delay,
-            max_chars_per_request,
+            0, // total_requests calculated after batching
         )?;
 
         // Create batches
@@ -626,7 +583,7 @@ impl PerformanceClientCore {
         let endpoint_url: Arc<str> =
             format!("{}/predict", config.base_url.trim_end_matches('/')).into();
 
-        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
+        let total_timeout = config.total_timeout_duration();
 
         let (results, durations, headers, total_time) = self
             .process_batched_requests(
@@ -664,38 +621,31 @@ impl PerformanceClientCore {
 
     // Core batch post processing - optimized with JoinSetGuard
     // Cancellation: dropping this future will automatically abort all in-flight requests
-    #[allow(clippy::too_many_arguments)]
     pub async fn process_batch_post_requests(
         &self,
         url_path: String,
         payloads_json: Vec<serde_json::Value>,
-        max_concurrent_requests: usize,
-        timeout_s: f64,
-        hedge_delay: Option<f64>,
-        total_timeout_s: Option<f64>,
+        preference: &RequestProcessingPreference,
         custom_headers: Option<HeaderMap>,
     ) -> Result<(Vec<(serde_json::Value, HeaderMap, Duration)>, Duration), ClientError> {
         let start_time = std::time::Instant::now();
-        let total_timeout = total_timeout_s.map(Duration::from_secs_f64);
+        let total_payloads = payloads_json.len();
 
-        // Generate customer request ID for this batch operation
-        let batch_customer_id = CustomerRequestId::new_batch();
-
-        // Validate parameters internally (using batch_size of 128 for validation)
-        let (validated_concurrency, request_timeout_duration) = self.validate_request_parameters(
-            max_concurrent_requests,
-            128,
-            timeout_s,
-            total_timeout_s,
+        // Create and validate config from preference
+        let config = preference.pair_with_request_validate_and_convert(
+            self.base_url.to_string(),
+            total_payloads,
         )?;
-        let semaphore = Arc::new(Semaphore::new(validated_concurrency));
+
+        let total_timeout = config.total_timeout_duration();
+        let request_timeout_duration = config.timeout_duration();
+        let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
+
+
 
         // Create cancel token for coordinated shutdown
         let cancel_token = CancellationToken::new();
 
-        let total_payloads = payloads_json.len();
-        // Create shared budgets using the new encapsulated approach for batch_post
-        let shared_budgets = SharedBudgets::new(total_payloads, hedge_delay);
 
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<
@@ -707,18 +657,18 @@ impl PerformanceClientCore {
         let custom_headers = custom_headers.map(Arc::new);
 
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
+            // Clone config for this iteration
+            let config_clone = config.clone();
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
             let base_url = self.base_url.clone();
             let url_path = url_path.clone();
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
-            let budgets = shared_budgets.clone();
             let individual_request_timeout = request_timeout_duration;
-            let hedge_delay = hedge_delay;
+            let custom_headers = custom_headers.clone();
 
             // Generate individual request ID for this batch
-            let request_customer_id = batch_customer_id.new_request(index);
-            let custom_headers = custom_headers.clone();
+            let request_customer_id = config.create_request_customer_id(index);
 
             join_set.spawn(async move {
                 let _permit = semaphore
@@ -734,24 +684,14 @@ impl PerformanceClientCore {
                 );
                 let request_time_start = std::time::Instant::now();
 
-                let hedge_delay_duration = hedge_delay.map(Duration::from_secs_f64);
-
-                let config = SendRequestConfig::new(
-                    MAX_HTTP_RETRIES,
-                    Duration::from_millis(INITIAL_BACKOFF_MS),
-                    budgets.clone(),
-                    hedge_delay_duration,
-                    request_timeout_duration,
-                    request_customer_id,
-                )?;
-
                 let result_tuple = send_http_request_with_headers(
                     &client,
                     full_url,
                     payload_item_json,
                     api_key,
                     individual_request_timeout,
-                    &config,
+                    &config_clone,
+                    request_customer_id,
                     custom_headers.as_deref(),
                 )
                 .await;
@@ -791,7 +731,7 @@ impl PerformanceClientCore {
                                 "Total operation timed out after {:.2}s",
                                 timeout_duration.as_secs_f64()
                             ),
-                            Some(batch_customer_id.to_string()),
+                            Some(config.customer_request_id.to_string()),
                         ));
                     }
                 }
