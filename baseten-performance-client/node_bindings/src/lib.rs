@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use baseten_performance_client_core::{
-  ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
+  CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
   CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
   DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
@@ -188,6 +188,35 @@ pub struct BatchPostResponse {
 }
 
 /// User-facing configuration for request processing with budget percentages.
+/// CancellationToken for cancelling async operations
+#[napi]
+pub struct CancellationToken {
+  inner: CoreCancellationToken,
+}
+
+#[napi]
+impl CancellationToken {
+  /// Create a new cancellation token
+  #[napi(constructor)]
+  pub fn new() -> Self {
+    Self {
+      inner: CoreCancellationToken::new(),
+    }
+  }
+
+  /// Cancel all operations using this token
+  #[napi]
+  pub fn cancel(&self) {
+    self.inner.cancel();
+  }
+
+  /// Check if cancellation has been requested
+  #[napi(getter)]
+  pub fn is_cancelled(&self) -> bool {
+    self.inner.is_cancelled()
+  }
+}
+
 /// Provides sensible defaults and getters for all properties.
 #[napi]
 pub struct RequestProcessingPreference {
@@ -207,6 +236,9 @@ impl RequestProcessingPreference {
     total_timeout_s: Option<f64>,
     hedge_budget_pct: Option<f64>,
     retry_budget_pct: Option<f64>,
+    max_retries: Option<u32>,
+    initial_backoff_ms: Option<u32>,
+    cancel_token: Option<&CancellationToken>,
   ) -> Self {
     let inner = RustRequestProcessingPreference {
       max_concurrent_requests: max_concurrent_requests.map(|x| x as usize),
@@ -217,8 +249,9 @@ impl RequestProcessingPreference {
       total_timeout_s,
       hedge_budget_pct,
       retry_budget_pct,
-      max_retries: None,
-      initial_backoff_ms: None,
+      max_retries: max_retries,
+      initial_backoff_ms: initial_backoff_ms.map(|x| x as u64),
+      cancel_token: cancel_token.map(|token| token.inner.clone()),
     };
 
     // Apply defaults using the same method as Rust core

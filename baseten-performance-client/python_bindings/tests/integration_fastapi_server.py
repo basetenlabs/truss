@@ -9,7 +9,11 @@ from typing import Optional
 
 import fastapi
 import requests
-from baseten_performance_client import PerformanceClient, __version__
+from baseten_performance_client import (
+    PerformanceClient,
+    RequestProcessingPreference,
+    __version__,
+)
 from pydantic import BaseModel, Field
 
 
@@ -158,8 +162,10 @@ def build_server():
         # Here you would implement the logic to handle the embedding request
         # For now, we return a dummy response
         assert fapi.headers.get("x-baseten-customer-request-id", "").startswith(
-            "perf"
-        ), "Missing or invalid customer request ID header"
+            "perfclient"
+        ), (
+            f"Missing or invalid customer request ID header {fapi.headers.get('x-baseten-customer-request-id')}"
+        )
         if not request.input:
             raise fastapi.HTTPException(
                 status_code=400, detail="Input cannot be empty."
@@ -260,12 +266,15 @@ def run_client():
             max_chars_per_request=max_chars_per_request,
             send_429_until_time=resp_429_until_time,
         )
-        response = client.embed(
-            model="text-embedding-ada-002",
-            input=[hp.to_string() for hp in hijack_payloads],
+        preference = RequestProcessingPreference(
             batch_size=4,
             max_concurrent_requests=64,
             max_chars_per_request=max_chars_per_request,
+        )
+        response = client.embed(
+            model="text-embedding-ada-002",
+            input=[hp.to_string() for hp in hijack_payloads],
+            preference=preference,
         )
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
@@ -321,14 +330,17 @@ def run_client():
             internal_server_error_no_stall=internal_server_error_no_stall,
         )
         try:
-            response = client.embed(
-                model="text-embedding-ada-002",
-                input=[hp.to_string() for hp in hijack_payloads],
+            preference = RequestProcessingPreference(
                 batch_size=1,
                 max_concurrent_requests=512,
                 hedge_delay=hedge_delay,
                 timeout_s=timeout,
                 total_timeout_s=total_timeout_s,
+            )
+            response = client.embed(
+                model="text-embedding-ada-002",
+                input=[hp.to_string() for hp in hijack_payloads],
+                preference=preference,
             )
         except requests.exceptions.Timeout as e:
             if must_timeout:

@@ -37,7 +37,8 @@ pub(crate) const HTTP2_CLIENT_POOL_SIZE: usize = 64;
 pub(crate) const HTTP2_CLIENT_MAX_QUEUED: usize = 8;
 
 // Error messages
-pub(crate) const CANCELLATION_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled due to a previous error";
+pub(crate) const CANCELLATION_ERROR_MESSAGE_DETAIL: &str =
+    "Operation cancelled due to a previous error";
 pub(crate) const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C";
 
 // Slow providers where customers have reported issues

@@ -10,8 +10,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tracing;
 
-
-
 // Unified HTTP request helper
 pub(crate) async fn send_http_request_with_retry<T, R>(
     client: &Client,
@@ -174,7 +172,7 @@ async fn send_request_with_retry(
                     return Ok(response_result.unwrap());
                 }
 
-                let is_retryable_status = status.as_u16() == 429 || status.is_server_error();
+                let is_retryable_status = is_retryable_status(status.as_u16());
                 if is_retryable_status {
                     true
                 } else {
@@ -320,4 +318,25 @@ pub(crate) async fn send_request_with_hedging(
         }
     }
     // JoinSetGuard drops here, aborting any remaining tasks
+}
+
+/// Determine if an HTTP status code is retryable
+fn is_retryable_status(status: u16) -> bool {
+    match status {
+        // Rate limiting
+        429 => true,
+        // Server errors (5xx)
+        500..=599 => true,
+        // Request timeout
+        408 => true,
+        // Some client errors that might be transient
+        409 => true,  // Conflict
+        422 => false, // Unprocessable Entity - not retryable
+        423 => false, // Locked - not retryable
+        425 => false, // Too Early - not retryable
+        // All other client errors (4xx except above) - not retryable
+        400..=499 => false,
+        // Unexpected status codes
+        _ => false,
+    }
 }

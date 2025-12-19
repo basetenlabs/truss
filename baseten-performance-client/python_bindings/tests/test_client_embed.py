@@ -8,9 +8,9 @@ from baseten_performance_client import (
     ClassificationResponse,
     OpenAIEmbeddingsResponse,
     PerformanceClient,
+    RequestProcessingPreference,
     RerankResponse,
 )
-from requests.exceptions import HTTPError
 
 api_key = os.environ.get("BASETEN_API_KEY")
 base_url_embed = "https://model-lqzx40k3.api.baseten.co/environments/production/sync"
@@ -58,12 +58,12 @@ CLASSIFY_REACHABLE = RERANK_REACHABLE
 def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
     client = PerformanceClient(base_url=base_url_fake, api_key=api_key)
     assert client.api_key == api_key
+    preference = RequestProcessingPreference(
+        batch_size=batch_size, max_concurrent_requests=max_concurrent_requests
+    )
     with pytest.raises(ValueError) as excinfo:
         client.embed(
-            ["Hello world", "Hello world 2"],
-            model="my_model",
-            batch_size=batch_size,
-            max_concurrent_requests=max_concurrent_requests,
+            ["Hello world", "Hello world 2"], model="my_model", preference=preference
         )
     assert "must be greater" in str(excinfo.value)
 
@@ -71,40 +71,35 @@ def test_invalid_concurrency_settings_test(batch_size, max_concurrent_requests):
 def test_not_nice_concurrency_settings():
     client = PerformanceClient(base_url=base_url_fake, api_key=api_key)
     assert client.api_key == api_key
+    preference = RequestProcessingPreference(batch_size=1, max_concurrent_requests=700)
     with pytest.raises(ValueError) as excinfo:
         client.embed(
-            ["Hello world", "Hello world 2"],
-            model="my_model",
-            batch_size=1,
-            max_concurrent_requests=700,
+            ["Hello world", "Hello world 2"], model="my_model", preference=preference
         )
-    assert "be nice" in str(excinfo.value)
+    assert "must be greater than 0" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("method", ["embed", "rerank", "classify"])
 def test_wrong_api_key(method):
     client = PerformanceClient(base_url=base_url_embed, api_key="wrong_api_key")
     assert client.api_key == "wrong_api_key"
-    with pytest.raises(HTTPError) as excinfo:
+    preference = RequestProcessingPreference(batch_size=1, max_concurrent_requests=32)
+    with pytest.raises(ValueError) as excinfo:
         if method == "embed":
             client.embed(
                 ["Hello world", "Hello world 2"] * 32,
                 model="my_model",
-                batch_size=1,
-                max_concurrent_requests=32,
+                preference=preference,
             )
         elif method == "rerank":
             client.rerank(
                 query="Who let the dogs out?",
                 texts=["who, who?", "Paris france"] * 32,
-                batch_size=1,
-                max_concurrent_requests=32,
+                preference=preference,
             )
         elif method == "classify":
             client.classify(
-                inputs=["who, who?", "Paris france"] * 32,
-                batch_size=1,
-                max_concurrent_requests=32,
+                inputs=["who, who?", "Paris france"] * 32, preference=preference
             )
     assert "403 Forbidden" in str(excinfo.value)
     assert excinfo.value.args[0] == 403
@@ -118,11 +113,9 @@ def test_baseten_performance_client_embeddings_test(try_numpy):
     client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 
     assert client.api_key == api_key
+    preference = RequestProcessingPreference(batch_size=1, max_concurrent_requests=2)
     response = client.embed(
-        ["Hello world", "Hello world 2"],
-        model="my_model",
-        batch_size=1,
-        max_concurrent_requests=2,
+        ["Hello world", "Hello world 2"], model="my_model", preference=preference
     )
     assert response is not None
     assert isinstance(response, OpenAIEmbeddingsResponse)
@@ -145,11 +138,11 @@ def test_baseten_performance_client_rerank():
     client = PerformanceClient(base_url=base_url_rerank, api_key=api_key)
 
     assert client.api_key == api_key
+    preference = RequestProcessingPreference(batch_size=2, max_concurrent_requests=2)
     response = client.rerank(
         query="Who let the dogs out?",
         texts=["who, who?", "Paris france"],
-        batch_size=2,
-        max_concurrent_requests=2,
+        preference=preference,
     )
     assert response is not None
     assert response.total_time >= 0
@@ -164,10 +157,9 @@ def test_baseten_performance_client_predict():
     client = PerformanceClient(base_url=base_url_rerank, api_key=api_key)
 
     assert client.api_key == api_key
+    preference = RequestProcessingPreference(batch_size=2, max_concurrent_requests=2)
     response = client.classify(
-        inputs=["who, who?", "Paris france", "hi", "who"],
-        batch_size=2,
-        max_concurrent_requests=2,
+        inputs=["who, who?", "Paris france", "hi", "who"], preference=preference
     )
     assert response is not None
     assert isinstance(response, ClassificationResponse)
@@ -181,11 +173,9 @@ def test_embedding_high_volume():
 
     assert client.api_key == api_key
     n_requests = 253
+    preference = RequestProcessingPreference(batch_size=3, max_concurrent_requests=37)
     response = client.embed(
-        ["Hello world"] * n_requests,
-        model="my_model",
-        batch_size=3,
-        max_concurrent_requests=37,
+        ["Hello world"] * n_requests, model="my_model", preference=preference
     )
     assert response is not None
     assert isinstance(response, OpenAIEmbeddingsResponse)
@@ -204,13 +194,9 @@ def test_embedding_high_volume_return_instant():
 
     assert client.api_key == api_key
     t_0 = time.time()
+    preference = RequestProcessingPreference(batch_size=1, max_concurrent_requests=1)
     with pytest.raises(Exception) as excinfo:
-        client.embed(
-            ["Hello world"] * 1000,
-            model="my_model",
-            batch_size=1,
-            max_concurrent_requests=1,
-        )
+        client.embed(["Hello world"] * 1000, model="my_model", preference=preference)
     assert "(Connect)" in str(excinfo.value)
     assert time.time() - t_0 < 5, (
         "Request took too long to fail seems like you didn't implement drop on first error"
@@ -227,10 +213,11 @@ def test_batch_post():
 
     openai_request_embed = {"model": "my_model", "input": ["Hello world"]}
     length = 4
+    preference = RequestProcessingPreference(max_concurrent_requests=1)
     response = client.batch_post(
         url_path="/v1/embeddings",
         payloads=[openai_request_embed] * length,
-        max_concurrent_requests=1,
+        preference=preference,
     )
     data = response.data
     assert data is not None
@@ -251,11 +238,11 @@ def test_embed_gil_release():
 
     def embed_job(start_time):
         time.sleep(0.01)
+        preference = RequestProcessingPreference(
+            batch_size=1, max_concurrent_requests=1
+        )
         client_embed.embed(
-            ["Hello world"] * 16,
-            model="my_model",
-            batch_size=1,
-            max_concurrent_requests=1,
+            ["Hello world"] * 16, model="my_model", preference=preference
         )
         return time.time() - start_time - 0.01
 
@@ -283,11 +270,9 @@ def test_embed_gil_release():
 async def test_embed_async():
     client = PerformanceClient(base_url=base_url_embed, api_key=api_key)
 
+    preference = RequestProcessingPreference(batch_size=1, max_concurrent_requests=2)
     response = await client.async_embed(
-        ["Hello world", "Hello world 2"],
-        model="my_model",
-        batch_size=1,
-        max_concurrent_requests=2,
+        ["Hello world", "Hello world 2"], model="my_model", preference=preference
     )
     assert response is not None
     assert isinstance(response, OpenAIEmbeddingsResponse)
@@ -305,8 +290,9 @@ async def test_embed_async():
 async def test_classify_async():
     client = PerformanceClient(base_url=base_url_rerank, api_key=api_key)
 
+    preference = RequestProcessingPreference(batch_size=2, max_concurrent_requests=2)
     response = await client.async_classify(
-        inputs=["who, who?", "Paris france"], batch_size=2, max_concurrent_requests=2
+        inputs=["who, who?", "Paris france"], preference=preference
     )
     assert response is not None
     assert isinstance(response, ClassificationResponse)
@@ -323,11 +309,11 @@ async def test_classify_async():
 async def test_rerank_async():
     client = PerformanceClient(base_url=base_url_rerank, api_key=api_key)
 
+    preference = RequestProcessingPreference(batch_size=2, max_concurrent_requests=2)
     response = await client.async_rerank(
         query="Who let the dogs out?",
         texts=["who, who?", "Paris france"],
-        batch_size=2,
-        max_concurrent_requests=2,
+        preference=preference,
     )
     assert response is not None
     assert isinstance(response, RerankResponse)

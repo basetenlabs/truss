@@ -9,6 +9,7 @@ pub mod split_policy;
 pub mod utils;
 
 // JoinSetGuard is internal only - not reexported
+pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
 pub use errors::ClientError;

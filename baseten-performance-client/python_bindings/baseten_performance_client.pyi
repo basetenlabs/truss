@@ -227,6 +227,7 @@ class RequestProcessingPreference:
         retry_budget_pct: Retry budget percentage (default: 0.05).
         max_retries: Maximum number of HTTP retries (default: 4).
         initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
+        cancellation_token: Optional CancellationToken for cancelling operations.
 
     Example:
         >>> # Use all defaults
@@ -246,6 +247,15 @@ class RequestProcessingPreference:
         >>> preference.hedge_budget_pct = 0.15
         >>> preference.max_retries = 3
         >>> preference.initial_backoff_ms = 250
+        >>>
+        >>> # With cancellation token
+        >>> token = CancellationToken()
+        >>> preference = RequestProcessingPreference(
+        ...     max_concurrent_requests=64,
+        ...     cancellation_token=token
+        ... )
+        >>> # Later cancel the operation
+        >>> token.cancel()
     """
 
     def __init__(
@@ -260,6 +270,7 @@ class RequestProcessingPreference:
         retry_budget_pct: typing.Optional[float] = None,
         max_retries: typing.Optional[int] = None,
         initial_backoff_ms: typing.Optional[int] = None,
+        cancellation_token: typing.Optional[CancellationToken] = None,
     ) -> None:
         """
         Initialize a RequestProcessingPreference with optional parameters.
@@ -275,6 +286,7 @@ class RequestProcessingPreference:
             retry_budget_pct: Retry budget percentage (default: 0.05).
             max_retries: Maximum number of HTTP retries (default: 4).
             initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
+            cancellation_token: Optional CancellationToken for cancelling operations.
         """
 
     # Property definitions with type hints
@@ -288,6 +300,7 @@ class RequestProcessingPreference:
     retry_budget_pct: builtins.float
     max_retries: builtins.int
     initial_backoff_ms: builtins.int
+    cancellation_token: typing.Optional[CancellationToken]
 
     @classmethod
     def default(cls) -> "RequestProcessingPreference":
@@ -300,6 +313,47 @@ class RequestProcessingPreference:
         ...
 
     ...
+
+class CancellationToken:
+    """
+    CancellationToken for cancelling async operations.
+
+    This token can be used to cancel long-running operations.
+
+    Attributes:
+        (No public attributes, only methods)
+
+    Example:
+        >>> token = CancellationToken()
+        >>> # Pass token to RequestProcessingPreference
+        >>> preference = RequestProcessingPreference(cancellation_token=token)
+        >>> # Later cancel the operation
+        >>> token.cancel()
+    """
+
+    def __init__(self) -> None:
+        """
+        Create a new cancellation token.
+        """
+        ...
+
+    def cancel(self) -> None:
+        """
+        Cancel all operations using this token.
+
+        Once cancelled, the token cannot be un-cancelled.
+        Any operation checking this token will see the cancelled state.
+        """
+        ...
+
+    def is_cancelled(self) -> builtins.bool:
+        """
+        Check if cancellation has been requested.
+
+        Returns:
+            True if the token has been cancelled, False otherwise.
+        """
+        ...
 
 class BatchPostResponse:
     """

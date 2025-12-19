@@ -11,6 +11,130 @@ def test_baseten_performance_client_bindings_basic_test():
     PerformanceClient.async_batch_post
 
 
+def test_request_processing_preference_basic():
+    """Test RequestProcessingPreference basic functionality."""
+    from baseten_performance_client import RequestProcessingPreference
+
+    # Test default creation
+    preference = RequestProcessingPreference()
+    assert preference is not None
+    assert preference.max_concurrent_requests > 0
+    assert preference.batch_size > 0
+    assert preference.timeout_s > 0
+
+    # Test class method default
+    default_preference = RequestProcessingPreference.default()
+    assert default_preference is not None
+    assert default_preference.max_concurrent_requests > 0
+
+    # Test custom parameters
+    custom_preference = RequestProcessingPreference(
+        max_concurrent_requests=64,
+        batch_size=32,
+        timeout_s=30.0,
+        hedge_delay=0.5,
+        total_timeout_s=60.0,
+    )
+    assert custom_preference.max_concurrent_requests == 64
+    assert custom_preference.batch_size == 32
+    assert custom_preference.timeout_s == 30.0
+    assert custom_preference.hedge_delay == 0.5
+    assert custom_preference.total_timeout_s == 60.0
+
+
+def test_request_processing_preference_property_setters():
+    """Test RequestProcessingPreference property setters."""
+    from baseten_performance_client import RequestProcessingPreference
+
+    preference = RequestProcessingPreference()
+
+    # Test property setters
+    preference.max_concurrent_requests = 128
+    preference.batch_size = 64
+    preference.timeout_s = 45.0
+    preference.hedge_delay = 1.0
+    preference.total_timeout_s = 90.0
+    preference.hedge_budget_pct = 0.15
+    preference.retry_budget_pct = 0.10
+    preference.max_retries = 5
+    preference.initial_backoff_ms = 250
+
+    assert preference.max_concurrent_requests == 128
+    assert preference.batch_size == 64
+    assert preference.timeout_s == 45.0
+    assert preference.hedge_delay == 1.0
+    assert preference.total_timeout_s == 90.0
+    assert preference.hedge_budget_pct == 0.15
+    assert preference.retry_budget_pct == 0.10
+    assert preference.max_retries == 5
+    assert preference.initial_backoff_ms == 250
+
+
+def test_cancellation_token_basic():
+    """Test CancellationToken basic functionality."""
+    from baseten_performance_client import CancellationToken
+
+    # Test creation
+    token = CancellationToken()
+    assert token is not None
+    assert not token.is_cancelled()
+
+    # Test cancellation
+    token.cancel()
+    assert token.is_cancelled()
+
+
+def test_performance_client_with_preference():
+    """Test PerformanceClient methods with RequestProcessingPreference."""
+    from baseten_performance_client import (
+        PerformanceClient,
+        RequestProcessingPreference,
+    )
+
+    client = PerformanceClient(
+        base_url="https://api.example.com", api_key="test-api-key"
+    )
+
+    _preference = RequestProcessingPreference(
+        max_concurrent_requests=32, batch_size=16, timeout_s=60.0
+    )
+
+    # Test that methods accept preference parameter (without making actual requests)
+    assert hasattr(client, "embed")
+    assert hasattr(client, "async_embed")
+    assert hasattr(client, "rerank")
+    assert hasattr(client, "async_rerank")
+    assert hasattr(client, "classify")
+    assert hasattr(client, "async_classify")
+    assert hasattr(client, "batch_post")
+    assert hasattr(client, "async_batch_post")
+
+
+def test_performance_client_with_cancellation_token():
+    """Test PerformanceClient with CancellationToken in preference."""
+    from baseten_performance_client import (
+        CancellationToken,
+        PerformanceClient,
+        RequestProcessingPreference,
+    )
+
+    _client = PerformanceClient(
+        base_url="https://api.example.com", api_key="test-api-key"
+    )
+
+    token = CancellationToken()
+    preference = RequestProcessingPreference(
+        max_concurrent_requests=32, cancellation_token=token
+    )
+
+    assert preference.cancellation_token is not None
+    assert not preference.cancellation_token.is_cancelled()
+
+    # Test cancellation
+    preference.cancellation_token.cancel()
+    assert preference.cancellation_token.is_cancelled()
+
+
 def test_http_client_wrapper_initialization():
     """Test that HttpClientWrapper can be initialized with different http_version values."""
     from baseten_performance_client import HttpClientWrapper

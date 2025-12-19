@@ -1,3 +1,4 @@
+use crate::cancellation::CancellationToken;
 use crate::constants::*;
 use crate::customer_request_id::CustomerRequestId;
 use crate::errors::ClientError;
@@ -21,6 +22,7 @@ pub struct RequestProcessingPreference {
     pub retry_budget_pct: Option<f64>,
     pub max_retries: Option<u32>,
     pub initial_backoff_ms: Option<u64>,
+    pub cancel_token: Option<CancellationToken>,
 }
 
 impl RequestProcessingPreference {
@@ -42,6 +44,7 @@ impl RequestProcessingPreference {
             retry_budget_pct: self.retry_budget_pct.or(Some(RETRY_BUDGET_PERCENTAGE)),
             max_retries: self.max_retries.or(Some(MAX_HTTP_RETRIES)),
             initial_backoff_ms: self.initial_backoff_ms.or(Some(INITIAL_BACKOFF_MS)),
+            cancel_token: self.cancel_token.clone(),
         }
     }
 }
@@ -107,6 +110,12 @@ impl RequestProcessingPreference {
         self
     }
 
+    /// Builder pattern: set cancellation token
+    pub fn with_cancel_token(mut self, token: CancellationToken) -> Self {
+        self.cancel_token = Some(token);
+        self
+    }
+
     /// Validate and convert to RequestProcessingConfig for a specific request.
     /// This pairs the preference with request-specific data (base_url, total_requests)
     /// and returns a validated config ready for processing.
@@ -159,6 +168,9 @@ pub(crate) struct RequestProcessingConfig {
     pub hedge_budget: Arc<AtomicUsize>,
     pub retry_budget_pct: f64,
     pub hedge_budget_pct: f64,
+
+    /// Cancellation token for coordinated shutdown
+    pub cancel_token: CancellationToken,
 }
 
 impl RequestProcessingConfig {
@@ -371,6 +383,7 @@ impl RequestProcessingConfig {
             hedge_budget,
             retry_budget_pct,
             hedge_budget_pct,
+            cancel_token: pref.cancel_token.unwrap_or_else(CancellationToken::new),
         })
     }
 
@@ -406,10 +419,6 @@ impl RequestProcessingConfig {
     pub fn total_timeout_duration(&self) -> Option<Duration> {
         self.total_timeout
     }
-
-
-
-
 
     /// Create individual request customer ID for a specific batch index
     pub fn create_request_customer_id(&self, batch_index: usize) -> CustomerRequestId {

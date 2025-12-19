@@ -1,4 +1,4 @@
-use crate::cancellation::{CancellationToken, JoinSetGuard};
+use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
 use crate::errors::ClientError;
 use crate::http::*;
@@ -330,8 +330,6 @@ impl PerformanceClientCore {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
         let total_requests = batches.len();
 
-        let cancel_token = CancellationToken::new();
-
         // Update budgets with actual total_requests count
         config.update_budgets(total_requests);
 
@@ -343,15 +341,19 @@ impl PerformanceClientCore {
 
         tracing::debug!(
             "initial budgets before requests: retry_budget={} hedge_budget={} customer_id={}",
-            config.retry_budget.load(std::sync::atomic::Ordering::SeqCst),
-            config.hedge_budget.load(std::sync::atomic::Ordering::SeqCst),
+            config
+                .retry_budget
+                .load(std::sync::atomic::Ordering::SeqCst),
+            config
+                .hedge_budget
+                .load(std::sync::atomic::Ordering::SeqCst),
             config.customer_request_id.to_string()
         );
 
         #[allow(clippy::type_complexity)]
         let mut join_set: JoinSetGuard<
             Result<(R, Duration, usize, usize, HeaderMap), ClientError>,
-        > = JoinSetGuard::with_cancel_token(cancel_token);
+        > = JoinSetGuard::with_cancel_token(config.cancel_token.clone());
         let mut indexed_results: Vec<(usize, R, Duration, usize, HeaderMap)> =
             Vec::with_capacity(total_requests);
 
@@ -452,8 +454,12 @@ impl PerformanceClientCore {
 
         tracing::debug!(
             "Remaining budgets after requests: retry_budget={} hedge_budget={} customer_id={}",
-            config.retry_budget.load(std::sync::atomic::Ordering::SeqCst),
-            config.hedge_budget.load(std::sync::atomic::Ordering::SeqCst),
+            config
+                .retry_budget
+                .load(std::sync::atomic::Ordering::SeqCst),
+            config
+                .hedge_budget
+                .load(std::sync::atomic::Ordering::SeqCst),
             config.customer_request_id.to_string()
         );
 
@@ -520,7 +526,7 @@ impl PerformanceClientCore {
         // Create and validate config from preference
         let config = preference.pair_with_request_validate_and_convert(
             self.base_url.to_string(),
-            0, // total_requests calculated after batching
+            texts.len(),
         )?;
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -574,10 +580,10 @@ impl PerformanceClientCore {
         truncation_direction: String,
         preference: &RequestProcessingPreference,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
-        // Create and validate config from preference
+// Create and validate config from preference
         let config = preference.pair_with_request_validate_and_convert(
             self.base_url.to_string(),
-            0, // total_requests calculated after batching
+            texts.len(),
         )?;
 
         // Create batches
@@ -642,10 +648,10 @@ impl PerformanceClientCore {
         ),
         ClientError,
     > {
-        // Create and validate config from preference
+// Create and validate config from preference
         let config = preference.pair_with_request_validate_and_convert(
             self.base_url.to_string(),
-            0, // total_requests calculated after batching
+            inputs.len(),
         )?;
 
         // Create batches
@@ -711,13 +717,10 @@ impl PerformanceClientCore {
         let request_timeout_duration = config.timeout_duration();
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
 
-        // Create cancel token for coordinated shutdown
-        let cancel_token = CancellationToken::new();
-
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<
             Result<(usize, serde_json::Value, HeaderMap, Duration), ClientError>,
-        > = JoinSetGuard::with_cancel_token(cancel_token);
+        > = JoinSetGuard::with_cancel_token(config.cancel_token.clone());
         let mut indexed_results: Vec<(usize, serde_json::Value, HeaderMap, Duration)> =
             Vec::with_capacity(total_payloads);
 

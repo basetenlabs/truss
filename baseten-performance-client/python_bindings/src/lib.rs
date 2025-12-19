@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use baseten_performance_client_core::{
-    ClientError, CoreClassificationResponse, CoreClassificationResult, CoreEmbeddingVariant,
+    CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse, CoreClassificationResult, CoreEmbeddingVariant,
     CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse,
     CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
     RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
@@ -18,6 +18,14 @@ use pyo3::types::PyType;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+
+
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // --- Global Tokio Runtime (Python-specific) ---
 static CTRL_C_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -363,6 +371,34 @@ impl HttpClientWrapper {
 }
 
 /// User-facing configuration for request processing with budget percentages.
+/// CancellationToken for cancelling async operations
+#[derive(Debug, Clone)]
+#[pyclass]
+pub struct CancellationToken {
+    inner: CoreCancellationToken,
+}
+
+#[pymethods]
+impl CancellationToken {
+    /// Create a new cancellation token
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: CoreCancellationToken::new(),
+        }
+    }
+
+    /// Cancel all operations using this token
+    pub fn cancel(&self) {
+        self.inner.cancel();
+    }
+
+    /// Check if cancellation has been requested
+    pub fn is_cancelled(&self) -> bool {
+        self.inner.is_cancelled()
+    }
+}
+
 /// Provides sensible defaults and getters for all properties.
 #[derive(Debug, Clone)]
 #[pyclass]
@@ -387,6 +423,8 @@ pub struct RequestProcessingPreference {
     pub max_retries: u32,
     #[pyo3(get, set)]
     pub initial_backoff_ms: u64,
+    #[pyo3(get, set)]
+    pub cancellation_token: Option<CancellationToken>,
     inner: RustRequestProcessingPreference,
 }
 
@@ -403,7 +441,8 @@ impl RequestProcessingPreference {
         hedge_budget_pct = None,
         retry_budget_pct = None,
         max_retries = None,
-        initial_backoff_ms = None
+        initial_backoff_ms = None,
+        cancellation_token = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -416,6 +455,7 @@ impl RequestProcessingPreference {
         retry_budget_pct: Option<f64>,
         max_retries: Option<u32>,
         initial_backoff_ms: Option<u64>,
+        cancellation_token: Option<CancellationToken>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -428,6 +468,7 @@ impl RequestProcessingPreference {
             retry_budget_pct,
             max_retries,
             initial_backoff_ms,
+            cancel_token: cancellation_token.as_ref().map(|token| token.inner.clone()),
         };
 
         // Apply defaults using the same method as Rust core
@@ -446,6 +487,7 @@ impl RequestProcessingPreference {
             retry_budget_pct: complete.retry_budget_pct.unwrap_or(RETRY_BUDGET_PERCENTAGE),
             max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
+            cancellation_token,
             inner: rust_pref,
         }
     }
@@ -454,7 +496,7 @@ impl RequestProcessingPreference {
     #[classmethod]
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
-            None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None,
         ))
     }
 
@@ -608,10 +650,20 @@ impl PerformanceClient {
 
         let core_client = self.core_client.clone();
 
-        // Use provided preference or create default
+// Use provided preference or create default
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
+        // Extract cancellation token if present
+        let cancellation_token = preference.and_then(|p| p.cancellation_token.clone());
+
         let future = async move {
+            // Check for cancellation before starting the request
+            if let Some(ref token) = cancellation_token {
+                if token.is_cancelled() {
+                    return Err(PyValueError::new_err("Operation cancelled by token"));
+                }
+            }
+
             let (core_response, batch_durations, headers, core_total_time) = core_client
                 .process_embeddings_requests(
                     input,
@@ -1031,6 +1083,7 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<PerformanceClient>()?;
     m.add_class::<HttpClientWrapper>()?;
     m.add_class::<RequestProcessingPreference>()?;
+    m.add_class::<CancellationToken>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
     m.add_class::<OpenAIEmbeddingData>()?;
     m.add_class::<OpenAIUsage>()?;

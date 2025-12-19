@@ -6,25 +6,25 @@ use tokio::task::JoinSet;
 ///
 /// Clone this token and pass it to functions that should be cancellable.
 /// When `cancel()` is called, all operations checking this token will be cancelled.
-#[derive(Clone, Default)]
-pub(crate) struct CancellationToken {
+#[derive(Debug, Clone, Default)]
+pub struct CancellationToken {
     cancelled: Arc<AtomicBool>,
 }
 
 impl CancellationToken {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Cancel all operations using this token
-    pub(crate) fn cancel(&self) {
+    pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
     }
 
     /// Check if cancellation has been requested
-    pub(crate) fn is_cancelled(&self) -> bool {
+    pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
     }
 }
