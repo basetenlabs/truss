@@ -270,6 +270,32 @@ npm run build
 npm run build:debug
 ```
 
+## Releasing
+
+To release a new version of the Node.js bindings:
+
+1. **Update the version in `Cargo.toml`** - This is the source of truth for versioning
+2. **Sync versions with NAPI** - Run the version sync command to update `package.json` and regenerate code:
+   ```bash
+   napi version
+   ```
+3. **Build the project** - This regenerates the `index.js` file with the correct version checks:
+   ```bash
+   npm run build
+   ```
+4. **Commit the changes** - Include both `Cargo.toml` and `package.json` updates:
+   ```bash
+   git add Cargo.toml package.json
+   git commit -m "chore: bump version to x.y.z"
+   ```
+5. **Publish** - The CI will automatically publish when run via workflow dispatch and setting "release or next"
+
+### Important Notes
+- Always update `Cargo.toml` first, then run `napi version` to sync to `package.json`
+- The `napi version` command ensures version consistency between Rust and Node.js
+- Rebuilding after version sync is crucial to update hardcoded version checks in the generated `index.js` file
+- The CI will fail if `package.json` version doesn't match the built-in version checks
+
 ## Benchmarks
 
 Like the Python version, this Node.js client provides significant performance improvements over standard HTTP clients, especially for high-throughput embedding and reranking workloads.
