@@ -558,10 +558,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             case "${{ github.event.inputs.publish_type }}" in
               release)
-                npm publish --access public
+                npm publish --ignore-scripts --provenance --access public
                 ;;
               next)
-                npm publish --tag next --access public
+                npm publish --ignore-scripts --provenance --tag next --access public
                 ;;
               *)
                 echo "Manual trigger: Not a release, skipping publish"
@@ -569,9 +569,9 @@ jobs:
             esac
           else
             if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$"; then
-              npm publish --access public
+              npm publish --ignore-scripts --provenance --access public
             elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+"; then
-              npm publish --tag next --access public
+              npm publish --ignore-scripts --provenance --tag next --access public
             else
               echo "Not a release, skipping publish"
             fi
