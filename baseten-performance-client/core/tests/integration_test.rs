@@ -1,5 +1,5 @@
+use baseten_performance_client_core::split_policy::{Combinable, SplitPolicy, Splittable};
 use baseten_performance_client_core::*;
-use baseten_performance_client_core::split_policy::{SplitPolicy, Combinable, Splittable};
 
 #[tokio::test]
 async fn test_embeddings_with_max_chars_per_request() {

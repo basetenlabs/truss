@@ -528,10 +528,8 @@ impl PerformanceClientCore {
         ClientError,
     > {
         // Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            texts.len(),
-        )?;
+        let config = preference
+            .pair_with_request_validate_and_convert(self.base_url.to_string(), texts.len())?;
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
@@ -584,11 +582,9 @@ impl PerformanceClientCore {
         truncation_direction: String,
         preference: &RequestProcessingPreference,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
-// Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            texts.len(),
-        )?;
+        // Create and validate config from preference
+        let config = preference
+            .pair_with_request_validate_and_convert(self.base_url.to_string(), texts.len())?;
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -652,11 +648,9 @@ impl PerformanceClientCore {
         ),
         ClientError,
     > {
-// Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            inputs.len(),
-        )?;
+        // Create and validate config from preference
+        let config = preference
+            .pair_with_request_validate_and_convert(self.base_url.to_string(), inputs.len())?;
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);

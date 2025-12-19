@@ -1,9 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
 use baseten_performance_client_core::{
-    CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse, CoreClassificationResult, CoreEmbeddingVariant,
-    CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse,
-    CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
+    CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
+    CoreClassificationResult, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
+    CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse, CoreRerankResult,
+    HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
     RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
     DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
     MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
@@ -18,8 +19,6 @@ use pyo3::types::PyType;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-
-
 
 impl Default for CancellationToken {
     fn default() -> Self {
@@ -605,21 +604,27 @@ impl PerformanceClient {
         // Validate dimensions
         if let Some(dim) = dimensions {
             if dim == 0 || dim > 1000000 {
-                return Err(PyValueError::new_err("Dimensions must be between 1 and 1000000"));
+                return Err(PyValueError::new_err(
+                    "Dimensions must be between 1 and 1000000",
+                ));
             }
         }
 
         // Validate user string length
         if let Some(ref user_str) = user {
             if user_str.len() > 1000 {
-                return Err(PyValueError::new_err("User string cannot exceed 1000 characters"));
+                return Err(PyValueError::new_err(
+                    "User string cannot exceed 1000 characters",
+                ));
             }
         }
 
         // Validate encoding format
         if let Some(ref format) = encoding_format {
             if !matches!(format.as_str(), "float" | "base64") {
-                return Err(PyValueError::new_err("Encoding format must be 'float' or 'base64'"));
+                return Err(PyValueError::new_err(
+                    "Encoding format must be 'float' or 'base64'",
+                ));
             }
         }
 
@@ -682,27 +687,33 @@ impl PerformanceClient {
         // Validate dimensions
         if let Some(dim) = dimensions {
             if dim == 0 || dim > 1000000 {
-                return Err(PyValueError::new_err("Dimensions must be between 1 and 1000000"));
+                return Err(PyValueError::new_err(
+                    "Dimensions must be between 1 and 1000000",
+                ));
             }
         }
 
         // Validate user string length
         if let Some(ref user_str) = user {
             if user_str.len() > 1000 {
-                return Err(PyValueError::new_err("User string cannot exceed 1000 characters"));
+                return Err(PyValueError::new_err(
+                    "User string cannot exceed 1000 characters",
+                ));
             }
         }
 
         // Validate encoding format
         if let Some(ref format) = encoding_format {
             if !matches!(format.as_str(), "float" | "base64") {
-                return Err(PyValueError::new_err("Encoding format must be 'float' or 'base64'"));
+                return Err(PyValueError::new_err(
+                    "Encoding format must be 'float' or 'base64'",
+                ));
             }
         }
 
         let core_client = self.core_client.clone();
 
-// Use provided preference or create default
+        // Use provided preference or create default
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         // Extract cancellation token if present
