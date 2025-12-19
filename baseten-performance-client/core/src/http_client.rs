@@ -25,7 +25,7 @@ impl SharedBudgets {
             .filter(|&delay| delay >= 0.2)
             .map(|_delay| {
                 let budget = calculate_hedge_budget(total_requests);
-                tracing::info!("Creating hedge budget with {} requests, budget: {}", total_requests, budget);
+                tracing::debug!("Creating hedge budget with {} requests, budget: {}", total_requests, budget);
                 Arc::new(AtomicUsize::new(budget))
             });
 
@@ -238,12 +238,12 @@ async fn send_request_with_retry(
                 match client_error {
                     ClientError::LocalTimeout(_, _) => {
                         let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
-                        tracing::info!("Local timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                        tracing::debug!("Local timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
                         remaining_budget > 0
                     }
                     ClientError::RemoteTimeout(_, _) => {
                         let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
-                        tracing::info!("Remote timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                        tracing::debug!("Remote timeout encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
                         remaining_budget > 0
                     }
                     // connect can happen if e.g. number of tcp streams in linux is exhausted.
@@ -253,7 +253,7 @@ async fn send_request_with_retry(
                             true
                         } else {
                             let remaining_budget = config.budgets.retry_budget.fetch_sub(1, Ordering::SeqCst);
-                            tracing::info!("Network error encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                            tracing::debug!("Network error encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
                             remaining_budget > 0
                         }
                     }
@@ -298,7 +298,7 @@ let hedge_budget = config.budgets.hedge_budget.as_ref().unwrap();
 
     // Check if we have hedge budget available
     if hedge_budget.load(Ordering::SeqCst) == 0 {
-        tracing::info!("No hedge budget available, using normal request");
+        tracing::debug!("No hedge budget available, using normal request");
         return request_builder.send().await.map_err(ClientError::from);
     }
 
@@ -330,12 +330,12 @@ let hedge_budget = config.budgets.hedge_budget.as_ref().unwrap();
         _ = hedge_timer => {
             // Decrement hedge budget
             let budget_after_decrement = hedge_budget.fetch_sub(1, Ordering::SeqCst);
-            tracing::info!("Hedge budget decremented from {} to {}", budget_after_decrement + 1, budget_after_decrement);
+            tracing::debug!("Hedge budget decremented from {} to {}", budget_after_decrement + 1, budget_after_decrement);
 
             if budget_after_decrement > 0 {
                 join_set.spawn(async move {
                     let result = request_builder_hedge.send().await.map_err(ClientError::from);
-                    tracing::tracing::info!("hedged request faster than original");
+                    tracing::tracing::debug!("hedged request faster than original");
                     result
                 });
 

@@ -269,12 +269,12 @@ impl PerformanceClientCore {
         let shared_budgets = SharedBudgets::new(total_requests, config.hedge_delay);
 
         if config.hedge_delay.is_some() {
-            tracing::info!("Hedging enabled with delay: {:?}", config.hedge_delay);
+            tracing::debug!("Hedging enabled with delay: {:?}", config.hedge_delay);
         }
 
         let expected_capacity: usize = batches.iter().map(|batch| batch.len()).sum();
 
-        tracing::info!("initial budgets before requests: {:?} {:?}", shared_budgets, batch_customer_id.to_string());
+        tracing::debug!("initial budgets before requests: {:?} {:?}", shared_budgets, batch_customer_id.to_string());
 
         #[allow(clippy::type_complexity)]
         let mut join_set: JoinSetGuard<
@@ -388,7 +388,7 @@ impl PerformanceClientCore {
             }
         }
 
-        tracing::info!("Remaining budgets after requests: {:?} {:?}", shared_budgets, batch_customer_id.to_string());
+        tracing::debug!("Remaining budgets after requests: {:?} {:?}", shared_budgets, batch_customer_id.to_string());
 
         // Sort results by original batch order to preserve ordering
         indexed_results.sort_by_key(|&(batch_index, _, _, _, _)| batch_index);

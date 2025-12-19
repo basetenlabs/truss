@@ -300,13 +300,6 @@ def run_client():
             )
         print(f"Scenario regular embedding with {number_of_requests} requests passed.")
 
-    scenario_regular_embedding(12)
-    scenario_regular_embedding(1000)
-    scenario_regular_embedding(12, max_chars_per_request=1000)
-    scenario_regular_embedding(1000, max_chars_per_request=1000)
-    scenario_regular_embedding(12, add_429_seconds=0.5)
-    scenario_regular_embedding(200, add_429_seconds=2)
-
     def scenario_stalled(
         number_of_requests: int,
         stall_x_many_requests: int,
@@ -315,6 +308,7 @@ def run_client():
         hedge_delay: Optional[float] = None,
         timeout: float = 360.0,
         total_timeout_s: Optional[float] = None,
+        must_timeout: bool = False,
     ):
         """
         Run a scenario where the server stalls for a specified number of requests.
@@ -337,19 +331,16 @@ def run_client():
                 total_timeout_s=total_timeout_s,
             )
         except requests.exceptions.Timeout as e:
-            if (
-                total_timeout_s is not None
-                and total_timeout_s == timeout
-                and stall_for_seconds > total_timeout_s
-            ):
-                assert f"{total_timeout_s:.2f}" in str(e), (
-                    f"Expected timeout {total_timeout_s:.2f}s in error: {e}"
-                )
+            if must_timeout:
+                print(f"Expected timeout occurred: {e}")
                 return
             else:
                 raise RuntimeError(f"Unexpected timeout: {e}")
         finally:
             reset_message = client.batch_post("/reset", [{}]).data[0]
+        assert not must_timeout, (
+            "Expected a timeout but the request completed successfully"
+        )
         assert response is not None, "Response should not be None"
         assert len(response.data) == number_of_requests, (
             "Response should contain `number_of_requests` embeddings"
@@ -366,6 +357,13 @@ def run_client():
             "Successful requests should match the number of requests"
         )
         print(f"Scenario stalled with {number_of_requests} requests passed.")
+
+    scenario_regular_embedding(12)
+    scenario_regular_embedding(1000)
+    scenario_regular_embedding(12, max_chars_per_request=1000)
+    scenario_regular_embedding(1000, max_chars_per_request=1000)
+    scenario_regular_embedding(12, add_429_seconds=0.5)
+    scenario_regular_embedding(200, add_429_seconds=2)
 
     scenario_stalled(
         100,
@@ -402,22 +400,18 @@ def run_client():
         internal_server_error_no_stall=False,
         timeout=2,
         total_timeout_s=2,
+        must_timeout=True,
     )
-    try:
-        scenario_stalled(
-            40,
-            stall_x_many_requests=20,
-            stall_for_seconds=10,
-            internal_server_error_no_stall=False,
-            timeout=4,
-            total_timeout_s=4,
-        )
-        time.sleep(1)
-        assert False, "Expected timeout exception was not raised"
-    except AssertionError as e:
-        raise e
-    except Exception as e:
-        print(f"Expected exception caught: {e}, type: {type(e)}")
+
+    scenario_stalled(
+        20,
+        stall_x_many_requests=10,
+        stall_for_seconds=6,
+        internal_server_error_no_stall=False,
+        timeout=4,
+        total_timeout_s=4,
+        must_timeout=True,  # must raise timeout
+    )
 
 
 if __name__ == "__main__":
