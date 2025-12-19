@@ -151,7 +151,9 @@ pub fn convert_reqwest_error_with_customer_id(
 ) -> ClientError {
     let message = build_enhanced_error_message(&err, Some(&customer_request_id.to_string()));
 
-    if err.is_timeout() {
+    if err.is_connect() {
+        ClientError::Connect(message)
+    } else if err.is_timeout() {
         if is_local_timeout(&err) {
             ClientError::LocalTimeout(
                 format!("Unable to send request within timeout: {}", message),
@@ -163,8 +165,6 @@ pub fn convert_reqwest_error_with_customer_id(
                 Some(customer_request_id.to_string()),
             )
         }
-    } else if err.is_connect() {
-        ClientError::Connect(message)
     } else {
         ClientError::Network(message)
     }
