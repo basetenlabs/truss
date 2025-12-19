@@ -5,8 +5,8 @@ use baseten_performance_client_core::{
     CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse,
     CoreRerankResult, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
     RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-    DEFAULT_CONCURRENCY, HEDGE_BUDGET_PERCENTAGE, DEFAULT_REQUEST_TIMEOUT_S,
-    RETRY_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
+    DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
+    MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
 };
 
 use ndarray::Array2;
@@ -434,7 +434,9 @@ impl RequestProcessingPreference {
         let complete = rust_pref.with_defaults();
 
         RequestProcessingPreference {
-            max_concurrent_requests: complete.max_concurrent_requests.unwrap_or(DEFAULT_CONCURRENCY),
+            max_concurrent_requests: complete
+                .max_concurrent_requests
+                .unwrap_or(DEFAULT_CONCURRENCY),
             batch_size: complete.batch_size.unwrap_or(DEFAULT_BATCH_SIZE),
             max_chars_per_request: complete.max_chars_per_request,
             timeout_s: complete.timeout_s.unwrap_or(DEFAULT_REQUEST_TIMEOUT_S),
@@ -451,10 +453,10 @@ impl RequestProcessingPreference {
     /// Create a new preference with default values (class method)
     #[classmethod]
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
-        Ok(Self::new(None, None, None, None, None, None, None, None, None, None))
+        Ok(Self::new(
+            None, None, None, None, None, None, None, None, None, None,
+        ))
     }
-
-
 
     /// Return a string representation
     fn __repr__(&self) -> PyResult<String> {

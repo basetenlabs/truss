@@ -16,7 +16,6 @@ pub const MAX_CHARACTERS_PER_REQUEST: usize = 256000;
 // hedging settings:
 pub const MIN_HEDGE_DELAY_S: f64 = 0.2;
 
-
 // Batch size constants
 pub const MAX_BATCH_SIZE: usize = 1024;
 pub const DEFAULT_BATCH_SIZE: usize = 128;

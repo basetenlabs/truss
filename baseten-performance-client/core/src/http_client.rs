@@ -24,15 +24,17 @@ impl SharedBudgets {
             total_requests,
         )));
 
-        let hedge_budget = hedge_delay.filter(|&delay| delay >= MIN_HEDGE_DELAY_S).map(|_delay| {
-            let budget = calculate_hedge_budget(total_requests);
-            tracing::debug!(
-                "Creating hedge budget with {} requests, budget: {}",
-                total_requests,
-                budget
-            );
-            Arc::new(AtomicUsize::new(budget))
-        });
+        let hedge_budget = hedge_delay
+            .filter(|&delay| delay >= MIN_HEDGE_DELAY_S)
+            .map(|_delay| {
+                let budget = calculate_hedge_budget(total_requests);
+                tracing::debug!(
+                    "Creating hedge budget with {} requests, budget: {}",
+                    total_requests,
+                    budget
+                );
+                Arc::new(AtomicUsize::new(budget))
+            });
 
         Self {
             retry_budget,
@@ -40,8 +42,6 @@ impl SharedBudgets {
         }
     }
 }
-
-
 
 // Unified HTTP request helper
 pub async fn send_http_request_with_retry<T, R>(
@@ -64,8 +64,7 @@ where
         .timeout(request_timeout);
 
     // Add customer request ID header
-    request_builder =
-        request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
+    request_builder = request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
 
     let response = send_request_with_retry(request_builder, config).await?;
     let successful_response =
@@ -109,8 +108,7 @@ where
         .timeout(request_timeout);
 
     // Add customer request ID header
-    request_builder =
-        request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
+    request_builder = request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
 
     if let Some(headers) = custom_headers {
         for (key, value) in headers {
@@ -211,8 +209,7 @@ async fn send_request_with_retry(
                 // For network errors, check if we have a retry budget.
                 match client_error {
                     ClientError::LocalTimeout(_, _) => {
-                        let remaining_budget =
-                            config.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        let remaining_budget = config.retry_budget.fetch_sub(1, Ordering::SeqCst);
                         tracing::debug!(
                             "Local timeout encountered, retrying... Remaining retry budget: {} {}",
                             remaining_budget,
@@ -221,8 +218,7 @@ async fn send_request_with_retry(
                         remaining_budget > 0
                     }
                     ClientError::RemoteTimeout(_, _) => {
-                        let remaining_budget =
-                            config.retry_budget.fetch_sub(1, Ordering::SeqCst);
+                        let remaining_budget = config.retry_budget.fetch_sub(1, Ordering::SeqCst);
                         tracing::debug!(
                             "Remote timeout encountered, retrying... Remaining retry budget: {} {}",
                             remaining_budget,

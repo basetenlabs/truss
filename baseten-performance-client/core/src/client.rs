@@ -274,7 +274,9 @@ impl PerformanceClientCore {
 
         tracing::debug!(
             "initial budgets before requests: shared_budgets={:?} customer_id={}",
-            shared_budgets.retry_budget.load(std::sync::atomic::Ordering::SeqCst),
+            shared_budgets
+                .retry_budget
+                .load(std::sync::atomic::Ordering::SeqCst),
             config.customer_request_id.to_string()
         );
 
@@ -632,20 +634,15 @@ impl PerformanceClientCore {
         let total_payloads = payloads_json.len();
 
         // Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            total_payloads,
-        )?;
+        let config = preference
+            .pair_with_request_validate_and_convert(self.base_url.to_string(), total_payloads)?;
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests));
 
-
-
         // Create cancel token for coordinated shutdown
         let cancel_token = CancellationToken::new();
-
 
         // JoinSetGuard automatically aborts all tasks and sets cancel_token on drop
         let mut join_set: JoinSetGuard<

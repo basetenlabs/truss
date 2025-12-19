@@ -4,8 +4,8 @@ use baseten_performance_client_core::{
   ClientError, CoreClassificationResponse, CoreEmbeddingVariant, CoreOpenAIEmbeddingsResponse,
   CoreRerankResponse, HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
   RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY, HEDGE_BUDGET_PERCENTAGE, DEFAULT_REQUEST_TIMEOUT_S,
-  RETRY_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES,
+  DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
+  MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
 };
 
 use napi_derive::napi;

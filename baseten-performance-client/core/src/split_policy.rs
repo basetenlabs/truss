@@ -180,7 +180,7 @@ impl RequestProcessingConfig {
         // Validate total_requests
         if total_requests == 0 {
             return Err(ClientError::InvalidParameter(
-                "total_requests must be greater than 0".to_string()
+                "total_requests must be greater than 0".to_string(),
             ));
         }
         // Validate timeout
@@ -245,30 +245,35 @@ impl RequestProcessingConfig {
         // Validate budget percentages
         if hedge_budget_pct < 0.0 {
             return Err(ClientError::InvalidParameter(
-                "hedge_budget_pct cannot be negative".to_string()
+                "hedge_budget_pct cannot be negative".to_string(),
             ));
         }
         if hedge_budget_pct > MAX_BUDGET_PERCENTAGE {
-            return Err(ClientError::InvalidParameter(
-                format!("hedge_budget_pct cannot exceed {} ({}%)", MAX_BUDGET_PERCENTAGE, (MAX_BUDGET_PERCENTAGE * 100.0) as i32)
-            ));
+            return Err(ClientError::InvalidParameter(format!(
+                "hedge_budget_pct cannot exceed {} ({}%)",
+                MAX_BUDGET_PERCENTAGE,
+                (MAX_BUDGET_PERCENTAGE * 100.0) as i32
+            )));
         }
 
         if retry_budget_pct < 0.0 {
             return Err(ClientError::InvalidParameter(
-                "retry_budget_pct cannot be negative".to_string()
+                "retry_budget_pct cannot be negative".to_string(),
             ));
         }
         if retry_budget_pct > MAX_BUDGET_PERCENTAGE {
-            return Err(ClientError::InvalidParameter(
-                format!("retry_budget_pct cannot exceed {} ({}%)", MAX_BUDGET_PERCENTAGE, (MAX_BUDGET_PERCENTAGE * 100.0) as i32)
-            ));
+            return Err(ClientError::InvalidParameter(format!(
+                "retry_budget_pct cannot exceed {} ({}%)",
+                MAX_BUDGET_PERCENTAGE,
+                (MAX_BUDGET_PERCENTAGE * 100.0) as i32
+            )));
         }
 
         // Validate retry parameters
         if max_retries > MAX_HTTP_RETRIES {
             return Err(ClientError::InvalidParameter(format!(
-                "max_retries cannot exceed {}", MAX_HTTP_RETRIES
+                "max_retries cannot exceed {}",
+                MAX_HTTP_RETRIES
             )));
         }
 
@@ -291,8 +296,6 @@ impl RequestProcessingConfig {
         let calculated = (total_requests as f64 * budget_pct).ceil() as usize;
         std::cmp::max(2, 1 + calculated)
     }
-
-
 
     /// Create config from a RequestProcessingPreference.
     /// This is the main entry point for converting user preferences to internal config.
@@ -373,7 +376,10 @@ impl RequestProcessingConfig {
 
     /// Recalculate budgets with a new total request count.
     /// Returns new Arc<AtomicUsize> instances with the recalculated values.
-    pub fn recalculate_budgets(&self, total_requests: usize) -> (Arc<AtomicUsize>, Option<Arc<AtomicUsize>>) {
+    pub fn recalculate_budgets(
+        &self,
+        total_requests: usize,
+    ) -> (Arc<AtomicUsize>, Option<Arc<AtomicUsize>>) {
         let retry_budget = Arc::new(AtomicUsize::new(Self::calculate_budget(
             total_requests,
             self.retry_budget_pct,
@@ -381,7 +387,9 @@ impl RequestProcessingConfig {
 
         let hedge_budget = if let Some(hedge_delay) = self.hedge_delay {
             // Only create hedge budget if delay is >= MIN_HEDGE_DELAY_S AND hedge_budget_pct > 0
-            if hedge_delay >= Duration::from_secs_f64(MIN_HEDGE_DELAY_S) && self.hedge_budget_pct > 0.0 {
+            if hedge_delay >= Duration::from_secs_f64(MIN_HEDGE_DELAY_S)
+                && self.hedge_budget_pct > 0.0
+            {
                 Some(Arc::new(AtomicUsize::new(Self::calculate_budget(
                     total_requests,
                     self.hedge_budget_pct,
@@ -400,11 +408,15 @@ impl RequestProcessingConfig {
     /// This modifies the config's existing Arc<AtomicUsize> instances in-place.
     pub fn update_budgets(&self, total_requests: usize) {
         let new_retry_budget = Self::calculate_budget(total_requests, self.retry_budget_pct);
-        self.retry_budget.store(new_retry_budget, std::sync::atomic::Ordering::SeqCst);
+        self.retry_budget
+            .store(new_retry_budget, std::sync::atomic::Ordering::SeqCst);
 
         if let Some(hedge_delay) = self.hedge_delay {
-            if hedge_delay >= Duration::from_secs_f64(MIN_HEDGE_DELAY_S) && self.hedge_budget_pct > 0.0 {
-                let new_hedge_budget = Self::calculate_budget(total_requests, self.hedge_budget_pct);
+            if hedge_delay >= Duration::from_secs_f64(MIN_HEDGE_DELAY_S)
+                && self.hedge_budget_pct > 0.0
+            {
+                let new_hedge_budget =
+                    Self::calculate_budget(total_requests, self.hedge_budget_pct);
                 if let Some(ref hedge_budget) = self.hedge_budget {
                     hedge_budget.store(new_hedge_budget, std::sync::atomic::Ordering::SeqCst);
                 }
@@ -947,14 +959,26 @@ mod tests {
 
         // Test that with_defaults() applies the expected defaults
         let pref_with_defaults = pref.with_defaults();
-        assert_eq!(pref_with_defaults.max_concurrent_requests, Some(DEFAULT_CONCURRENCY));
+        assert_eq!(
+            pref_with_defaults.max_concurrent_requests,
+            Some(DEFAULT_CONCURRENCY)
+        );
         assert_eq!(pref_with_defaults.batch_size, Some(DEFAULT_BATCH_SIZE));
-        assert_eq!(pref_with_defaults.timeout_s, Some(DEFAULT_REQUEST_TIMEOUT_S));
+        assert_eq!(
+            pref_with_defaults.timeout_s,
+            Some(DEFAULT_REQUEST_TIMEOUT_S)
+        );
         assert!(pref_with_defaults.max_chars_per_request.is_none());
         assert!(pref_with_defaults.hedge_delay.is_none());
         assert!(pref_with_defaults.total_timeout_s.is_none());
-        assert_eq!(pref_with_defaults.hedge_budget_pct, Some(HEDGE_BUDGET_PERCENTAGE));
-        assert_eq!(pref_with_defaults.retry_budget_pct, Some(RETRY_BUDGET_PERCENTAGE));
+        assert_eq!(
+            pref_with_defaults.hedge_budget_pct,
+            Some(HEDGE_BUDGET_PERCENTAGE)
+        );
+        assert_eq!(
+            pref_with_defaults.retry_budget_pct,
+            Some(RETRY_BUDGET_PERCENTAGE)
+        );
     }
 
     #[test]
@@ -1001,7 +1025,10 @@ mod tests {
         use std::sync::atomic::Ordering;
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 11); // 1 + (100 * 0.10) = 11
         assert!(config.hedge_budget.is_some());
-        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 21); // 1 + (100 * 0.20) = 21
+        assert_eq!(
+            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
+            21
+        ); // 1 + (100 * 0.20) = 21
     }
 
     #[test]
@@ -1018,7 +1045,10 @@ mod tests {
         // Initial budgets should be 2 (minimum budget with our new logic)
         use std::sync::atomic::Ordering;
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 2);
-        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 2);
+        assert_eq!(
+            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
+            2
+        );
 
         // Recalculate with 200 requests
         let (new_retry, new_hedge) = config.recalculate_budgets(200);
@@ -1028,10 +1058,10 @@ mod tests {
 
     #[test]
     fn test_negative_budget_percentages_validation() {
-        let pref = RequestProcessingPreference::new()
-            .with_hedge_budget_pct(-0.1);
+        let pref = RequestProcessingPreference::new().with_hedge_budget_pct(-0.1);
 
-        let result = pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result =
+            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1040,10 +1070,10 @@ mod tests {
             _ => panic!("Expected InvalidParameter error"),
         }
 
-        let pref2 = RequestProcessingPreference::new()
-            .with_retry_budget_pct(-0.05);
+        let pref2 = RequestProcessingPreference::new().with_retry_budget_pct(-0.05);
 
-        let result2 = pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 =
+            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1055,10 +1085,10 @@ mod tests {
 
     #[test]
     fn test_maximum_budget_percentages_validation() {
-        let pref = RequestProcessingPreference::new()
-            .with_hedge_budget_pct(4.0); // 400% exceeds MAX_BUDGET_PERCENTAGE (300%)
+        let pref = RequestProcessingPreference::new().with_hedge_budget_pct(4.0); // 400% exceeds MAX_BUDGET_PERCENTAGE (300%)
 
-        let result = pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result =
+            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1068,10 +1098,10 @@ mod tests {
             _ => panic!("Expected InvalidParameter error"),
         }
 
-        let pref2 = RequestProcessingPreference::new()
-            .with_retry_budget_pct(3.5); // 350% exceeds MAX_BUDGET_PERCENTAGE (300%)
+        let pref2 = RequestProcessingPreference::new().with_retry_budget_pct(3.5); // 350% exceeds MAX_BUDGET_PERCENTAGE (300%)
 
-        let result2 = pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 =
+            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1085,10 +1115,10 @@ mod tests {
     #[test]
     fn test_backoff_validation() {
         // Test initial_backoff_ms validation
-        let pref = RequestProcessingPreference::new()
-            .with_initial_backoff_ms(25); // Below MIN_BACKOFF_MS (50)
+        let pref = RequestProcessingPreference::new().with_initial_backoff_ms(25); // Below MIN_BACKOFF_MS (50)
 
-        let result = pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result =
+            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1098,10 +1128,10 @@ mod tests {
             _ => panic!("Expected InvalidParameter error"),
         }
 
-        let pref2 = RequestProcessingPreference::new()
-            .with_initial_backoff_ms(35000); // Above MAX_BACKOFF_MS (30000)
+        let pref2 = RequestProcessingPreference::new().with_initial_backoff_ms(35000); // Above MAX_BACKOFF_MS (30000)
 
-        let result2 = pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 =
+            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1112,20 +1142,20 @@ mod tests {
         }
 
         // Test valid backoff values
-        let pref3 = RequestProcessingPreference::new()
-            .with_initial_backoff_ms(125); // Valid default value
+        let pref3 = RequestProcessingPreference::new().with_initial_backoff_ms(125); // Valid default value
 
-        let result3 = pref3.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result3 =
+            pref3.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result3.is_ok());
     }
 
     #[test]
     fn test_max_retries_validation() {
         // Test max_retries validation
-        let pref = RequestProcessingPreference::new()
-            .with_max_retries(5); // Above MAX_HTTP_RETRIES (4)
+        let pref = RequestProcessingPreference::new().with_max_retries(5); // Above MAX_HTTP_RETRIES (4)
 
-        let result = pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result =
+            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1136,10 +1166,10 @@ mod tests {
         }
 
         // Test valid max_retries values
-        let pref2 = RequestProcessingPreference::new()
-            .with_max_retries(3); // Valid value
+        let pref2 = RequestProcessingPreference::new().with_max_retries(3); // Valid value
 
-        let result2 = pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 =
+            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
         assert!(result2.is_ok());
     }
 
@@ -1157,21 +1187,30 @@ mod tests {
         // Initial budgets should be 2 (minimum budget with our new logic)
         use std::sync::atomic::Ordering;
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 2);
-        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 2);
+        assert_eq!(
+            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
+            2
+        );
 
         // Update budgets with 200 requests - should modify existing atomic values
         config.update_budgets(200);
 
         // Verify the same atomic instances were updated
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 11); // 1 + (200 * 0.05) = 11
-        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 21); // 1 + (200 * 0.10) = 21
+        assert_eq!(
+            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
+            21
+        ); // 1 + (200 * 0.10) = 21
 
         // Update again with different request count
         config.update_budgets(50);
 
         // Verify the same atomic instances were updated again
         assert_eq!(config.retry_budget.load(Ordering::SeqCst), 4); // 1 + (50 * 0.05) = 4
-        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 6); // 1 + (50 * 0.10) = 6
+        assert_eq!(
+            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
+            6
+        ); // 1 + (50 * 0.10) = 6
     }
 
     #[test]
@@ -1189,7 +1228,10 @@ mod tests {
 
         // Should create hedge budget when delay equals MIN_HEDGE_DELAY_S
         assert!(config.hedge_budget.is_some());
-        assert_eq!(config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 11); // 1 + (100 * 0.10) = 11
+        assert_eq!(
+            config.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst),
+            11
+        ); // 1 + (100 * 0.10) = 11
 
         // Test with delay just above MIN_HEDGE_DELAY_S
         let pref2 = RequestProcessingPreference::new()
@@ -1202,11 +1244,17 @@ mod tests {
 
         // Should create hedge budget when delay is above MIN_HEDGE_DELAY_S
         assert!(config2.hedge_budget.is_some());
-        assert_eq!(config2.hedge_budget.as_ref().unwrap().load(Ordering::SeqCst), 11); // 1 + (100 * 0.10) = 11
+        assert_eq!(
+            config2
+                .hedge_budget
+                .as_ref()
+                .unwrap()
+                .load(Ordering::SeqCst),
+            11
+        ); // 1 + (100 * 0.10) = 11
 
         // Test with no hedge delay - should not create hedge budget
-        let pref3 = RequestProcessingPreference::new()
-            .with_hedge_budget_pct(0.10);
+        let pref3 = RequestProcessingPreference::new().with_hedge_budget_pct(0.10);
 
         let config3 = pref3
             .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)

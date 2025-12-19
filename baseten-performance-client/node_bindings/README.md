@@ -46,7 +46,13 @@ try {
         8,    // max_concurrent_requests
         2,    // batch_size
         undefined, // max_chars_per_request
-        30    // timeout_s
+        30,   // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
     );
     const response = await embedClient.embed(
         texts,
@@ -93,7 +99,13 @@ try {
         4,     // max_concurrent_requests
         2,     // batch_size
         undefined, // max_chars_per_request
-        30     // timeout_s
+        30,    // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
     );
     const response = await rerankClient.rerank(
         query,
@@ -132,7 +144,13 @@ try {
         4,     // max_concurrent_requests
         2,     // batch_size
         undefined, // max_chars_per_request
-        30     // timeout_s
+        30,    // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
     );
     const response = await rerankClient.classify(
         textsToClassify,
@@ -173,7 +191,13 @@ try {
         4,  // max_concurrent_requests
         undefined, // batch_size
         undefined, // max_chars_per_request
-        30  // timeout_s
+        30, // timeout_s
+        undefined, // hedge_delay
+        undefined, // total_timeout_s
+        undefined, // hedge_budget_pct
+        undefined, // retry_budget_pct
+        undefined, // max_retries
+        undefined  // initial_backoff_ms
     );
     const response = await embedClient.batchPost(
         "/v1/embeddings", // URL path
@@ -295,7 +319,7 @@ Use custom headers with batchPost:
 ```javascript
 const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
-const preference = new RequestProcessingPreference(4, undefined, undefined, 30);
+const preference = new RequestProcessingPreference(4, undefined, undefined, 30, undefined, undefined, undefined, undefined, undefined, undefined);
 const response = await client.batchPost(
     "/v1/embeddings",
     payloads,
@@ -317,7 +341,9 @@ const clientHttp2 = new PerformanceClient(baseUrl, apiKey, 2);
 
 ## API Reference
 
-### Constructor
+### Constructors
+
+#### PerformanceClient
 
 ```javascript
 new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
@@ -327,6 +353,23 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
 - `apiKey` (string, optional): API key. If not provided, will use `BASETEN_API_KEY` or `OPENAI_API_KEY` environment variables
 - `httpVersion` (number, optional): HTTP version to use (1 for HTTP/1.1, 2 for HTTP/2). Default: 2
 - `clientWrapper` (HttpClientWrapper, optional): Custom HTTP client wrapper for advanced configuration
+
+#### RequestProcessingPreference
+
+```javascript
+new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, maxCharsPerRequest?, timeoutS?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?)
+```
+
+- `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 128)
+- `batchSize` (number, optional): Number of items per batch (default: 128)
+- `maxCharsPerRequest` (number, optional): Character-based batching limit (default: undefined)
+- `timeoutS` (number, optional): Per-request timeout in seconds (default: 3600.0)
+- `hedgeDelay` (number, optional): Request hedging delay in seconds (default: undefined)
+- `totalTimeoutS` (number, optional): Total timeout for the entire operation in seconds (default: undefined)
+- `hedgeBudgetPct` (number, optional): Hedge budget percentage (default: 0.10, range: 0.0-3.0)
+- `retryBudgetPct` (number, optional): Retry budget percentage (default: 0.05, range: 0.0-3.0)
+- `maxRetries` (number, optional): Maximum number of HTTP retries (default: 4, max: 4)
+- `initialBackoffMs` (number, optional): Initial backoff duration in milliseconds (default: 125, range: 50-30000)
 
 ### Methods
 
