@@ -1,11 +1,11 @@
-const { PerformanceClient } = require('../performance-client.node');
+const { PerformanceClient } = require('@basetenlabs/performance-client');
 
 // Tests requiring valid API keys and endpoints
 // These tests are not run automatically in CI but can be run manually
 
 const BASETEN_API_KEY = process.env.BASETEN_API_KEY;
-const EMBED_URL = process.env.EMBED_URL || "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
-const RERANK_URL = process.env.RERANK_URL || "https://model-abc123.api.baseten.co/environments/production/sync";
+const EMBED_URL = process.env.EMBED_URL || "https://model-lqzx40k3.api.baseten.co/environments/production/sync";
+const RERANK_URL = process.env.RERANK_URL || "https://model-e3mx5vzq.api.baseten.co/environments/production/sync";
 
 // Simple test framework
 class TestRunner {
@@ -124,14 +124,14 @@ runner.test('Real classification test', async () => {
     const client = new PerformanceClient(RERANK_URL, BASETEN_API_KEY);
     const texts = ["This is great!", "I hate this", "It's okay"];
 
+    const preference = new RequestProcessingPreference(2, 1, 30);
     const response = await client.classify(
         texts,
+        null,  // model
         false, // raw_scores
         false, // truncate
         "Right", // truncation_direction
-        2,     // max_concurrent_requests
-        1,     // batch_size
-        30     // timeout_s
+        preference
     );
 
     assert(response.data && response.data.length === 3, 'Should return 3 classification results');
@@ -157,11 +157,11 @@ runner.test('Real batch post test', async () => {
         { "model": "text-embedding-3-small", "input": ["World"] }
     ];
 
+    const preference = new RequestProcessingPreference(2, null, 30);
     const response = await client.batchPost(
         "/v1/embeddings",
         payloads,
-        2,  // max_concurrent_requests
-        30  // timeout_s
+        preference
     );
 
     assert(response.data && response.data.length === 2, 'Should return 2 batch results');
