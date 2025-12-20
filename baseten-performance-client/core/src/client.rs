@@ -312,6 +312,8 @@ impl PerformanceClientCore {
             .build()
             .map_err(|e| ClientError::Network(format!("Failed to create HTTP client: {}", e)))
     }
+
+
 }
 
 impl PerformanceClientCore {

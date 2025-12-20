@@ -7,6 +7,7 @@ pub mod http;
 pub mod http_client;
 pub mod split_policy;
 pub mod utils;
+pub mod streaming;
 
 // JoinSetGuard is internal only - not reexported
 pub use cancellation::CancellationToken;
@@ -17,6 +18,8 @@ pub use http::*;
 // http_client is internal only - not reexported
 pub use split_policy::RequestProcessingPreference;
 pub use utils::*;
+// Export streaming types and traits
+pub use streaming::{SSEEvent, ConnectionDetails, StreamingResponse, StreamingClientExt};
 
 /// Initialize tracing with default WARN level
 /// This is called automatically when the library is loaded
