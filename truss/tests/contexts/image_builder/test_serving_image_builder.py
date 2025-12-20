@@ -557,3 +557,72 @@ def test_hash_dir_sanitization(custom_model_truss_dir):
         image_builder.prepare_image_build_dir(tmp_path)
         truss_config = TrussConfig.from_yaml(tmp_path / "build_hash" / "config.yaml")
         assert truss_config.environment_variables == {}
+
+
+def test_docker_server_supervisord_single_line_command(tmp_path):
+    """Test that single-line start_command works correctly."""
+    import configparser
+
+    from truss.contexts.image_builder.serving_image_builder import (
+        generate_docker_server_supervisord_config,
+    )
+
+    class MockDockerServer:
+        start_command = 'sh -c "vllm serve model --port 8000"'
+
+    class MockConfig:
+        docker_server = MockDockerServer()
+
+    generate_docker_server_supervisord_config(tmp_path, MockConfig())
+
+    cfg = configparser.RawConfigParser()
+    cfg.read(tmp_path / "supervisord.conf")
+
+    command = cfg.get("program:model-server", "command")
+    assert command == 'sh -c "vllm serve model --port 8000"'
+
+
+def test_docker_server_supervisord_multiline_command(tmp_path):
+    """Test that multiline start_command is correctly written to supervisord.conf.
+
+    Uses configparser which properly handles multiline values by indenting
+    continuation lines, which supervisord's INI parser interprets correctly.
+    """
+    import configparser
+
+    from truss.contexts.image_builder.serving_image_builder import (
+        generate_docker_server_supervisord_config,
+    )
+
+    # Create a mock config with multiline start_command
+    class MockDockerServer:
+        start_command = """sh -c "
+export HF_TOKEN=$(cat /secrets/hf_access_token)
+vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct --port 8000
+"
+"""
+
+    class MockConfig:
+        docker_server = MockDockerServer()
+
+    # Generate the supervisord.conf
+    generate_docker_server_supervisord_config(tmp_path, MockConfig())
+
+    # Verify the file was created
+    supervisord_conf = tmp_path / "supervisord.conf"
+    assert supervisord_conf.exists()
+
+    # Read it back with configparser (same as supervisord does)
+    cfg = configparser.RawConfigParser()
+    cfg.read(supervisord_conf)
+
+    # Verify the multiline command was preserved correctly
+    command = cfg.get("program:model-server", "command")
+    assert "export HF_TOKEN" in command
+    assert "vllm serve" in command
+    assert "\n" in command  # Newlines should be preserved
+
+    # Verify other sections exist
+    assert cfg.has_section("supervisord")
+    assert cfg.has_section("program:nginx")
+    assert cfg.has_section("eventlistener:quit_on_failure")
