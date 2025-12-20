@@ -559,70 +559,228 @@ def test_hash_dir_sanitization(custom_model_truss_dir):
         assert truss_config.environment_variables == {}
 
 
-def test_docker_server_supervisord_single_line_command(tmp_path):
-    """Test that single-line start_command works correctly."""
-    import configparser
-
-    from truss.contexts.image_builder.serving_image_builder import (
-        generate_docker_server_supervisord_config,
-    )
-
-    class MockDockerServer:
-        start_command = 'sh -c "vllm serve model --port 8000"'
-
-    class MockConfig:
-        docker_server = MockDockerServer()
-
-    generate_docker_server_supervisord_config(tmp_path, MockConfig())
-
-    cfg = configparser.RawConfigParser()
-    cfg.read(tmp_path / "supervisord.conf")
-
-    command = cfg.get("program:model-server", "command")
-    assert command == 'sh -c "vllm serve model --port 8000"'
-
-
-def test_docker_server_supervisord_multiline_command(tmp_path):
-    """Test that multiline start_command is correctly written to supervisord.conf.
+class TestDockerServerSupervisordConfig:
+    """Tests for supervisord.conf generation with various start_command patterns.
 
     Uses configparser which properly handles multiline values by indenting
     continuation lines, which supervisord's INI parser interprets correctly.
     """
-    import configparser
 
-    from truss.contexts.image_builder.serving_image_builder import (
-        generate_docker_server_supervisord_config,
+    @pytest.mark.parametrize(
+        "test_id,start_command",
+        [
+            # Simple single-line commands
+            ("simple", "python main.py"),
+            ("with_args", "python -u main.py --port 8000"),
+            ("sh_wrapper", 'sh -c "vllm serve model --port 8000"'),
+            # Single-line with special characters
+            ("env_var_inline", "HF_TOKEN=secret python main.py"),
+            ("pipe", "echo hello | tee /tmp/log"),
+            ("redirect", "python main.py > /tmp/out 2>&1"),
+            ("subshell", 'sh -c "echo $(date) starting"'),
+            ("command_chain_and", "cd /app && python main.py"),
+            ("command_chain_or", "python main.py || echo failed"),
+            ("semicolon_chain", "export FOO=bar; python main.py"),
+        ],
     )
+    def test_single_line_commands(self, tmp_path, test_id, start_command):
+        """Test various single-line start_command patterns."""
+        import configparser
 
-    # Create a mock config with multiline start_command
-    class MockDockerServer:
-        start_command = """sh -c "
+        from truss.contexts.image_builder.serving_image_builder import (
+            generate_docker_server_supervisord_config,
+        )
+
+        class MockDockerServer:
+            pass
+
+        MockDockerServer.start_command = start_command
+
+        class MockConfig:
+            docker_server = MockDockerServer()
+
+        generate_docker_server_supervisord_config(tmp_path, MockConfig())
+
+        cfg = configparser.RawConfigParser()
+        cfg.read(tmp_path / "supervisord.conf")
+
+        command = cfg.get("program:model-server", "command")
+        assert command == start_command, f"Command mismatch for {test_id}"
+
+    @pytest.mark.parametrize(
+        "test_id,start_command,expected_substrings",
+        [
+            # Environment variable exports
+            (
+                "env_exports",
+                """sh -c "
 export HF_TOKEN=$(cat /secrets/hf_access_token)
-vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct --port 8000
+export CUDA_VISIBLE_DEVICES=0
+vllm serve model --port 8000
 "
-"""
+""",
+                ["export HF_TOKEN", "export CUDA_VISIBLE_DEVICES", "vllm serve"],
+            ),
+            # If/then/else conditional
+            (
+                "if_then_else",
+                """sh -c "
+if [ -f /config/custom.yaml ]; then
+    python main.py --config /config/custom.yaml
+else
+    python main.py --config /defaults.yaml
+fi
+"
+""",
+                ["if [", "then", "else", "fi"],
+            ),
+            # For loop
+            (
+                "for_loop",
+                """sh -c "
+for i in 1 2 3; do
+    echo 'Attempt $i'
+    python main.py && break
+    sleep 5
+done
+"
+""",
+                ["for i in", "do", "done", "sleep"],
+            ),
+            # While loop with retry logic
+            (
+                "while_retry",
+                """sh -c "
+while ! curl -s localhost:8080/health; do
+    echo 'Waiting for service...'
+    sleep 2
+done
+python main.py
+"
+""",
+                ["while", "curl", "sleep", "done"],
+            ),
+            # Function definition
+            (
+                "function_def",
+                """sh -c "
+setup() {
+    export PATH=/opt/bin:$PATH
+    export LD_LIBRARY_PATH=/opt/lib
+}
+setup
+python main.py
+"
+""",
+                ["setup()", "export PATH", "setup\n"],
+            ),
+            # Here-string (simple form)
+            (
+                "here_string",
+                """sh -c "
+cat > /tmp/config.json << 'EOF'
+{\"model\": \"llama\", \"port\": 8000}
+EOF
+python main.py
+"
+""",
+                ["cat >", "EOF", '{"model"'],
+            ),
+            # Trap for signal handling
+            (
+                "trap_signals",
+                """sh -c "
+trap 'echo Caught signal; exit 1' SIGTERM SIGINT
+python main.py &
+wait
+"
+""",
+                ["trap", "SIGTERM", "wait"],
+            ),
+            # Complex real-world vLLM example
+            (
+                "vllm_full",
+                """sh -c "
+export HF_TOKEN=$(cat /secrets/hf_access_token)
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
-    class MockConfig:
-        docker_server = MockDockerServer()
+# Wait for GPU to be ready
+sleep 5
 
-    # Generate the supervisord.conf
-    generate_docker_server_supervisord_config(tmp_path, MockConfig())
+vllm serve meta-llama/Meta-Llama-3.1-70B-Instruct \\
+    --port 8000 \\
+    --tensor-parallel-size 4 \\
+    --max-model-len 8192
+"
+""",
+                ["export HF_TOKEN", "CUDA_VISIBLE_DEVICES", "tensor-parallel-size"],
+            ),
+            # Case statement
+            (
+                "case_statement",
+                """sh -c "
+case $MODEL_SIZE in
+    small) python main.py --size 7b ;;
+    medium) python main.py --size 13b ;;
+    large) python main.py --size 70b ;;
+    *) echo 'Unknown size'; exit 1 ;;
+esac
+"
+""",
+                ["case", "small)", "esac"],
+            ),
+            # Arithmetic and test expressions
+            (
+                "arithmetic",
+                """sh -c "
+GPU_COUNT=$(nvidia-smi -L | wc -l)
+if [ $GPU_COUNT -ge 4 ]; then
+    PARALLEL=4
+else
+    PARALLEL=$GPU_COUNT
+fi
+python main.py --gpus $PARALLEL
+"
+""",
+                ["GPU_COUNT=", "nvidia-smi", "-ge 4"],
+            ),
+        ],
+    )
+    def test_multiline_commands(
+        self, tmp_path, test_id, start_command, expected_substrings
+    ):
+        """Test various multiline start_command patterns with shell constructs."""
+        import configparser
 
-    # Verify the file was created
-    supervisord_conf = tmp_path / "supervisord.conf"
-    assert supervisord_conf.exists()
+        from truss.contexts.image_builder.serving_image_builder import (
+            generate_docker_server_supervisord_config,
+        )
 
-    # Read it back with configparser (same as supervisord does)
-    cfg = configparser.RawConfigParser()
-    cfg.read(supervisord_conf)
+        class MockDockerServer:
+            pass
 
-    # Verify the multiline command was preserved correctly
-    command = cfg.get("program:model-server", "command")
-    assert "export HF_TOKEN" in command
-    assert "vllm serve" in command
-    assert "\n" in command  # Newlines should be preserved
+        MockDockerServer.start_command = start_command
 
-    # Verify other sections exist
-    assert cfg.has_section("supervisord")
-    assert cfg.has_section("program:nginx")
-    assert cfg.has_section("eventlistener:quit_on_failure")
+        class MockConfig:
+            docker_server = MockDockerServer()
+
+        generate_docker_server_supervisord_config(tmp_path, MockConfig())
+
+        cfg = configparser.RawConfigParser()
+        cfg.read(tmp_path / "supervisord.conf")
+
+        command = cfg.get("program:model-server", "command")
+
+        # Verify newlines are preserved
+        assert "\n" in command, f"Newlines not preserved for {test_id}"
+
+        # Verify expected substrings are present
+        for substring in expected_substrings:
+            assert substring in command, (
+                f"Expected '{substring}' not found in {test_id}"
+            )
+
+        # Verify all sections exist
+        assert cfg.has_section("supervisord")
+        assert cfg.has_section("program:nginx")
+        assert cfg.has_section("eventlistener:quit_on_failure")
