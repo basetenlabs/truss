@@ -1,4 +1,4 @@
-const { PerformanceClient } = require('@basetenlabs/performance-client');
+const { PerformanceClient } = require('..//performance_client.node');
 
 // Tests requiring valid API keys and endpoints
 // These tests are not run automatically in CI but can be run manually
