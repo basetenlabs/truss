@@ -20,6 +20,7 @@ from truss.base.truss_config import (
     CheckpointList,
     DockerAuthSettings,
     DockerAuthType,
+    DockerServer,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -957,3 +958,69 @@ def test_clear_runtime_fields():
     assert config.python_version == "py39"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
+
+
+def test_docker_server_start_command_single_line_valid():
+    """Single-line start_command should be valid."""
+    docker_server = DockerServer(
+        start_command='sh -c "vllm serve model --port 8000"',
+        server_port=8000,
+        predict_endpoint="/v1/chat/completions",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+    )
+    assert docker_server.start_command == 'sh -c "vllm serve model --port 8000"'
+
+
+def test_docker_server_start_command_with_newline_invalid():
+    """start_command containing newlines should raise a validation error."""
+    multiline_command = "sh -c '\necho hello\n'"
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="docker_server.start_command must not contain newlines",
+    ):
+        DockerServer(
+            start_command=multiline_command,
+            server_port=8000,
+            predict_endpoint="/v1/chat/completions",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+
+
+@pytest.mark.parametrize(
+    "yaml_file, description",
+    [
+        ("literal_block.yaml", "YAML literal block '|' preserves newlines"),
+        ("folded_block.yaml", "YAML folded block '>' adds trailing newline"),
+    ],
+)
+def test_docker_server_start_command_yaml_with_newlines_invalid(
+    test_data_path, yaml_file, description
+):
+    """YAML syntaxes that preserve/add newlines should be rejected."""
+    config_path = test_data_path / "docker_server_start_command" / yaml_file
+
+    with pytest.raises(
+        ValueError, match="docker_server.start_command must not contain newlines"
+    ):
+        TrussConfig.from_yaml(config_path)
+
+
+@pytest.mark.parametrize(
+    "yaml_file, expected_command",
+    [
+        ("folded_chomped.yaml", "sh -c /app/server"),
+        ("plain_multiline.yaml", "sh -c /app/server"),
+        ("backslash_continuation.yaml", "sh -c \\ /app/minimal-server"),
+    ],
+)
+def test_docker_server_start_command_yaml_without_newlines_valid(
+    test_data_path, yaml_file, expected_command
+):
+    """YAML syntaxes that fold newlines to spaces should be valid."""
+    config_path = test_data_path / "docker_server_start_command" / yaml_file
+
+    config = TrussConfig.from_yaml(config_path)
+    assert "\n" not in config.docker_server.start_command
+    assert config.docker_server.start_command == expected_command
