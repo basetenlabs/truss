@@ -988,19 +988,9 @@ def test_docker_server_start_command_with_newline_invalid():
         )
 
 
-def test_docker_server_start_command_yaml_literal_block_invalid(tmp_path):
+def test_docker_server_start_command_yaml_literal_block_invalid(test_data_path):
     """YAML literal block scalar '|' preserves newlines and should be rejected."""
-    yaml_content = """
-docker_server:
-  start_command: |
-    sh -c "export VAR=value"
-  server_port: 8000
-  predict_endpoint: /v1/chat/completions
-  readiness_endpoint: /health
-  liveness_endpoint: /health
-"""
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml_content)
+    config_path = test_data_path / "docker_server_start_command" / "literal_block.yaml"
 
     with pytest.raises(
         ValueError, match="docker_server.start_command must not contain newlines"
@@ -1008,19 +998,9 @@ docker_server:
         TrussConfig.from_yaml(config_path)
 
 
-def test_docker_server_start_command_yaml_folded_block_invalid(tmp_path):
+def test_docker_server_start_command_yaml_folded_block_invalid(test_data_path):
     """YAML folded block scalar '>' adds trailing newline and should be rejected."""
-    yaml_content = """
-docker_server:
-  start_command: >
-    sh -c /app/server
-  server_port: 8000
-  predict_endpoint: /v1/chat/completions
-  readiness_endpoint: /health
-  liveness_endpoint: /health
-"""
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml_content)
+    config_path = test_data_path / "docker_server_start_command" / "folded_block.yaml"
 
     with pytest.raises(
         ValueError, match="docker_server.start_command must not contain newlines"
@@ -1028,39 +1008,32 @@ docker_server:
         TrussConfig.from_yaml(config_path)
 
 
-def test_docker_server_start_command_yaml_folded_chomped_valid(tmp_path):
+def test_docker_server_start_command_yaml_folded_chomped_valid(test_data_path):
     """YAML folded+chomped '>-' folds newlines to spaces and should be valid."""
-    yaml_content = """
-docker_server:
-  start_command: >-
-    sh -c
-    /app/server
-  server_port: 8000
-  predict_endpoint: /v1/chat/completions
-  readiness_endpoint: /health
-  liveness_endpoint: /health
-"""
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml_content)
+    config_path = test_data_path / "docker_server_start_command" / "folded_chomped.yaml"
 
     config = TrussConfig.from_yaml(config_path)
     assert config.docker_server.start_command == "sh -c /app/server"
 
 
-def test_docker_server_start_command_yaml_plain_multiline_valid(tmp_path):
+def test_docker_server_start_command_yaml_plain_multiline_valid(test_data_path):
     """YAML plain multiline (no block indicator) folds to spaces and should be valid."""
-    yaml_content = """
-docker_server:
-  start_command: sh
-    -c
-    /app/server
-  server_port: 8000
-  predict_endpoint: /v1/chat/completions
-  readiness_endpoint: /health
-  liveness_endpoint: /health
-"""
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml_content)
+    config_path = (
+        test_data_path / "docker_server_start_command" / "plain_multiline.yaml"
+    )
 
     config = TrussConfig.from_yaml(config_path)
     assert config.docker_server.start_command == "sh -c /app/server"
+
+
+def test_docker_server_start_command_yaml_backslash_continuation_valid(test_data_path):
+    """YAML backslash line continuation should be valid."""
+    config_path = (
+        test_data_path / "docker_server_start_command" / "backslash_continuation.yaml"
+    )
+
+    config = TrussConfig.from_yaml(config_path)
+    # Backslash continuation results in extra spaces but no newlines
+    assert "\n" not in config.docker_server.start_command
+    assert "sh -c" in config.docker_server.start_command
+    assert "/app/minimal-server" in config.docker_server.start_command
