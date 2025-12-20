@@ -160,7 +160,9 @@ async fn send_request_with_retry(
             })
         };
 
-        // By-value match so we can consume resp when draining
+        // Decide retry exactly once per iteration.
+        let mut should_retry_iteration = false;
+
         match response_result {
             Ok(resp) => {
                 let status = resp.status();
@@ -169,11 +171,10 @@ async fn send_request_with_retry(
                     return Ok(resp);
                 }
 
-                let is_retryable = is_retryable_status(status.as_u16());
-                let can_retry = is_retryable && retries_done < max_retries;
+                let retryable = is_retryable_status(status.as_u16());
+                should_retry_iteration = retryable && retries_done < max_retries;
 
-                if !can_retry {
-                    // Non-retryable (or out of retries): propagate detailed HTTP error
+                if !should_retry_iteration {
                     return ensure_successful_response(
                         resp,
                         Some(config.customer_request_id.to_string()),
@@ -181,14 +182,12 @@ async fn send_request_with_retry(
                     .await;
                 }
 
-                // Retryable status: drain body so connection can be reused
+                // Retryable status: drain the body so the connection can be reused.
                 let _ = resp.bytes().await;
-                // fall through to backoff + retry
             }
 
             Err(client_error) => {
-                // For network errors, check if we have a retry budget.
-                let should_retry = match &client_error {
+                should_retry_iteration = match &client_error {
                     ClientError::LocalTimeout(_, _) => {
                         let remaining_budget = config.retry_budget.fetch_sub(1, Ordering::SeqCst);
                         tracing::debug!(
@@ -224,24 +223,21 @@ async fn send_request_with_retry(
                         }
                     }
                     _ => {
-                        // For other errors, we do not retry.
-                        eprintln!(
+                        tracing::warn!(
                             "unexpected client error, no retry: this should not happen: {}",
                             client_error
                         );
                         false
                     }
-                };
+                } && retries_done < max_retries;
 
-                let should_retry = should_retry && retries_done < max_retries;
-                if !should_retry {
+                if !should_retry_iteration {
                     return Err(client_error);
                 }
-
-                // fall through to backoff + retry
             }
         }
 
+        // If we got here, we are retrying this iteration.
         retries_done += 1;
         let jitter = rand::rng().random_range(0..100);
         let backoff_duration =
