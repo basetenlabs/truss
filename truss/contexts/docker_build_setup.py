@@ -49,7 +49,8 @@ def _fill_trt_llm_versions(
             tr.spec.config.trt_llm.build.base_model
             == trt_llm_config.TrussTRTLLMModel.ENCODER_BERT
         ):
-            pass  # not override
+            print("Using BEI-BERT image with pinned version")
+            # tr.set_base_image(image_versions.bei_bert_image, "/usr/bin/python3")
         else:
             print(f"Using Briton image: {image_versions.briton_image}")
             tr.set_base_image(
