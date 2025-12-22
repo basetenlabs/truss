@@ -579,7 +579,8 @@ class ServingImageBuilder(ImageBuilder):
         assert (
             config.trt_llm
             and config.trt_llm.build
-            and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+            and config.trt_llm.build.base_model
+            not in [TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT]
         ), (
             "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
         )
