@@ -496,6 +496,83 @@ class ServingImageBuilder(ImageBuilder):
                 image=BEI_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
             )
 
+    def prepare_trtllm_bert_encoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
+        config = self._spec.config
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT
+        ), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER_BERT tensorrt-llm model"
+        )
+        assert isinstance(config.trt_llm.root, TRTLLMConfigurationV1), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for inference_stack v1 tensorrt-llm model"
+        )
+        trt_llm_config: TRTLLMConfigurationV1 = config.trt_llm.root
+        # TRTLLM has performance degradation with batch size >> 1024, so we limit the runtime settings
+        # runtime batch size may not be higher than what the build settings of the model allow
+        # to 1024 even if the engine.rank0 allows for higher batch_size
+        runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 1024)
+        # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
+        runtime_max_batch_tokens = max(
+            trt_llm_config.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
+        )
+        port = 7997
+        start_command = " ".join(
+            [
+                "truss-transfer-cli && text-embeddings-router",
+                f"--port {port}",
+                # assert the max_batch_size is within trt-engine limits
+                f"--max-batch-requests {runtime_max_batch_size}",
+                # assert the max_num_tokens is within trt-engine limits
+                f"--max-batch-tokens {runtime_max_batch_tokens}",
+                # how many sentences can be in a single json payload.
+                # limited default to improve request based autoscaling.
+                f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
+                # how many concurrent requests can be handled by the server until 429 is returned.
+                # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
+                # 2048 is a safe max value for the server
+                f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
+            ]
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command=f"/bin/sh -c '{start_command}'",
+            server_port=port,
+            # mount the following predict endpoint location
+            predict_endpoint=trt_llm_config.runtime.webserver_default_route
+            or "/v1/embeddings",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+
+        # Flex builds fill in the latest image during `docker_build_setup` on the
+        # baseten backend. So only the image is not set, we use the constant
+        # `BEI_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
+        # builds, we can remove the constant and setting the image here.
+        from truss.base.truss_config import Accelerator
+
+        version = "1.8.3"
+        accelerator = config.resources.accelerator.accelerator
+        docker_image = {
+            Accelerator.L4: f"baseten/text-embeddings-inference-mirror:89-{version}",
+            Accelerator.A100: f"baseten/text-embeddings-inference-mirror:{version}",
+            Accelerator.H100: f"baseten/text-embeddings-inference-mirror:hopper-{version}",
+            Accelerator.H100_40GB: f"baseten/text-embeddings-inference-mirror:hopper-{version}",
+            Accelerator.A10G: f"baseten/text-embeddings-inference-mirror:86-{version}",
+            Accelerator.T4: f"baseten/text-embeddings-inference-mirror:turing-{version}",
+            Accelerator.H200: f"baseten/text-embeddings-inference-mirror:hopper-{version}",
+            Accelerator.V100: f"baseten/text-embeddings-inference-mirror:{version}",
+            None: "unsupported none please upgrade truss",
+        }.get(accelerator, f"unsupported {accelerator} please upgrade truss")
+        if docker_image.startswith("unsupported"):
+            raise ValueError(docker_image)
+        if not (config.base_image):
+            config.base_image = BaseImage(
+                image=docker_image, python_executable_path="/usr/bin/python3"
+            )
+
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
         config = self._spec.config

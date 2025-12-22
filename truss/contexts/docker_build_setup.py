@@ -45,6 +45,11 @@ def _fill_trt_llm_versions(
         ):
             print(f"Using BEI image: {image_versions.bei_image}")
             tr.set_base_image(image_versions.bei_image, "/usr/bin/python3")
+        elif (
+            tr.spec.config.trt_llm.build.base_model
+            == trt_llm_config.TrussTRTLLMModel.ENCODER_BERT
+        ):
+            pass  # not override
         else:
             print(f"Using Briton image: {image_versions.briton_image}")
             tr.set_base_image(

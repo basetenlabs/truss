@@ -41,6 +41,7 @@ except ImportError:
 
 class TrussTRTLLMModel(str, Enum):
     ENCODER = "encoder"
+    ENCODER_BERT = "encoder_bert"
     DECODER = "decoder"
     # auto migrated settings
     PALMYRA = "palmyra"
@@ -521,7 +522,10 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
         """Post-initialization validation and adjustments."""
         if (
             self.runtime.enable_chunked_context
-            and (self.build.base_model != TrussTRTLLMModel.ENCODER)
+            and (
+                self.build.base_model
+                not in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT)
+            )
             and not (
                 self.build.plugin_configuration.use_paged_context_fmha
                 and self.build.plugin_configuration.paged_kv_cache
@@ -533,9 +537,11 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
 
         if (
             self.runtime.webserver_default_route is None
-            and self.build.base_model == TrussTRTLLMModel.ENCODER
+            and self.build.base_model
+            in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT)
             and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
         ):
+            hf_cfg = None
             # attemp to set the best possible default route client side.
             try:
                 from transformers import AutoConfig
@@ -545,6 +551,11 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                     revision=self.build.checkpoint_repository.revision,
                 )
                 # simple heuristic to set the default route
+            except Exception:
+                # access error, or any other issue
+                pass
+            if hf_cfg is not None:
+                arch = hf_cfg.architectures[0]
                 is_sequence_classification = (
                     "ForSequenceClassification" in hf_cfg.architectures[0]
                 )
@@ -560,9 +571,14 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                         else "Embeddings model."
                     )
                 )
-            except Exception:
-                # access error, or any other issue
-                pass
+                if (
+                    "bert" in arch.lower()
+                    and self.build.base_model != TrussTRTLLMModel.ENCODER_BERT
+                ):
+                    logger.warning(
+                        f"Your model architecture {arch} indicates a BERT-like based model. "
+                        f"Consider setting `trt_llm.build.base_model` to `encoder_bert` for better performance and compatibility."
+                    )
 
 
 class TRTLLMConfigurationV2(PydanticTrTBaseModel):
@@ -746,7 +762,10 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
     )
 
     trt_llm_config_v1: "TRTLLMConfigurationV1" = config.trt_llm.root
-    if trt_llm_config_v1.build.base_model != TrussTRTLLMModel.ENCODER:
+    if trt_llm_config_v1.build.base_model not in [
+        TrussTRTLLMModel.ENCODER,
+        TrussTRTLLMModel.ENCODER_BERT,
+    ]:
         current_tags = config.model_metadata.get("tags", [])
         if (
             constants.OPENAI_COMPATIBLE_TAG in current_tags
