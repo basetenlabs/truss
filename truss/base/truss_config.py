@@ -222,6 +222,76 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
         return self.root
 
 
+# URI prefixes for cloud storage sources
+_CLOUD_STORAGE_PREFIXES = ("s3://", "gs://", "azure://")
+
+
+class WeightsSource(custom_types.ConfigModel):
+    """Configuration for a weights source in the new weights API.
+
+    Uses a URI-based `source` field where the source type is inferred from the URI prefix:
+    - No prefix or hf:// -> HuggingFace (e.g., "meta-llama/Llama-2-7b")
+    - s3:// -> AWS S3 (e.g., "s3://bucket/path")
+    - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
+    - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+    """
+
+    source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ...,
+        description="URI or HuggingFace repo ID. Use s3://, gs://, azure:// prefixes for cloud storage.",
+    )
+    revision: Optional[str] = pydantic.Field(
+        default=None,
+        description="Git revision (branch, tag, or commit SHA). Only valid for HuggingFace sources.",
+    )
+    mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
+        pydantic.Field(
+            ..., description="Absolute path where weights will be mounted at runtime."
+        )
+    )
+    runtime_secret_name: str = pydantic.Field(
+        default="hf_access_token",
+        description="Baseten secret name containing credentials for accessing the source.",
+    )
+    allow_patterns: Optional[list[str]] = pydantic.Field(
+        default=None, description="File patterns to include (e.g., ['*.safetensors'])."
+    )
+    ignore_patterns: Optional[list[str]] = pydantic.Field(
+        default=None, description="File patterns to exclude (e.g., ['*.md'])."
+    )
+
+    @property
+    def is_huggingface(self) -> bool:
+        """Check if this source is a HuggingFace repository."""
+        return not any(self.source.startswith(p) for p in _CLOUD_STORAGE_PREFIXES)
+
+    @pydantic.field_validator("mount_location")
+    @classmethod
+    def _validate_mount_location(cls, v: str) -> str:
+        if not v.startswith("/"):
+            raise ValueError(
+                f"mount_location must be an absolute path (start with /), got: {v}"
+            )
+        return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_revision_only_for_hf(self) -> "WeightsSource":
+        if self.revision and not self.is_huggingface:
+            raise ValueError(
+                f"revision is only valid for HuggingFace sources. "
+                f"Source '{self.source}' appears to be cloud storage (has s3://, gs://, or azure:// prefix)."
+            )
+        return self
+
+
+class Weights(pydantic.RootModel[list[WeightsSource]]):
+    """List of weights sources for the new weights API."""
+
+    @property
+    def sources(self) -> list[WeightsSource]:
+        return self.root
+
+
 class HealthChecks(custom_types.ConfigModel):
     restart_check_delay_seconds: Optional[int] = None
     restart_threshold_seconds: Optional[int] = None
@@ -635,6 +705,7 @@ class TrussConfig(custom_types.ConfigModel):
     build_commands: list[str] = pydantic.Field(default_factory=list)
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
+    weights: Weights = pydantic.Field(default_factory=lambda: Weights([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
 
     # deploying from checkpoint
@@ -738,6 +809,10 @@ class TrussConfig(custom_types.ConfigModel):
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
+            )
+        if self.model_cache.models and self.weights.sources:
+            raise ValueError(
+                "Please ensure that only one of `model_cache` and `weights` is specified"
             )
         return self
 

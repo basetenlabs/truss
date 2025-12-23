@@ -30,6 +30,8 @@ from truss.base.truss_config import (
     TransportKind,
     TrussConfig,
     WebsocketOptions,
+    Weights,
+    WeightsSource,
     _map_to_supported_python_version,
 )
 from truss.truss_handle.truss_handle import TrussHandle
@@ -1024,3 +1026,240 @@ def test_docker_server_start_command_yaml_without_newlines_valid(
     config = TrussConfig.from_yaml(config_path)
     assert "\n" not in config.docker_server.start_command
     assert config.docker_server.start_command == expected_command
+
+
+# =============================================================================
+# Weights Configuration Tests
+# =============================================================================
+
+
+class TestWeightsSource:
+    """Tests for the new WeightsSource model."""
+
+    def test_huggingface_source_basic(self):
+        """HuggingFace source with revision should work."""
+        source = WeightsSource(
+            source="meta-llama/Llama-2-7b",
+            revision="main",
+            mount_location="/models/llama",
+        )
+        assert source.source == "meta-llama/Llama-2-7b"
+        assert source.revision == "main"
+        assert source.mount_location == "/models/llama"
+        assert source.is_huggingface is True
+        assert source.runtime_secret_name == "hf_access_token"
+
+    def test_huggingface_source_with_patterns(self):
+        """HuggingFace source with allow/ignore patterns."""
+        source = WeightsSource(
+            source="meta-llama/Llama-2-7b",
+            revision="main",
+            mount_location="/models/llama",
+            allow_patterns=["*.safetensors", "config.json"],
+            ignore_patterns=["*.md"],
+        )
+        assert source.allow_patterns == ["*.safetensors", "config.json"]
+        assert source.ignore_patterns == ["*.md"]
+
+    def test_s3_source_basic(self):
+        """S3 source should work without revision."""
+        source = WeightsSource(
+            source="s3://my-bucket/models/llama",
+            mount_location="/models/llama",
+            runtime_secret_name="aws_credentials",
+        )
+        assert source.source == "s3://my-bucket/models/llama"
+        assert source.revision == ""
+        assert source.is_huggingface is False
+
+    def test_gcs_source_basic(self):
+        """GCS source should work without revision."""
+        source = WeightsSource(
+            source="gs://my-bucket/models/llama",
+            mount_location="/models/llama",
+            runtime_secret_name="gcp_service_account",
+        )
+        assert source.source == "gs://my-bucket/models/llama"
+        assert source.is_huggingface is False
+
+    def test_azure_source_basic(self):
+        """Azure source should work without revision."""
+        source = WeightsSource(
+            source="azure://myaccount/container/llama",
+            mount_location="/models/llama",
+            runtime_secret_name="azure_credentials",
+        )
+        assert source.source == "azure://myaccount/container/llama"
+        assert source.is_huggingface is False
+
+    def test_mount_location_must_be_absolute(self):
+        """mount_location must be an absolute path."""
+        with pytest.raises(pydantic.ValidationError, match="must be an absolute path"):
+            WeightsSource(
+                source="meta-llama/Llama-2-7b",
+                revision="main",
+                mount_location="models/llama",  # Relative path - should fail
+            )
+
+    def test_revision_not_allowed_for_s3(self):
+        """revision should error when set for S3 sources."""
+        with pytest.raises(
+            pydantic.ValidationError, match="revision is only valid for HuggingFace"
+        ):
+            WeightsSource(
+                source="s3://my-bucket/models/llama",
+                revision="main",  # Should fail for S3
+                mount_location="/models/llama",
+            )
+
+    def test_revision_not_allowed_for_gcs(self):
+        """revision should error when set for GCS sources."""
+        with pytest.raises(
+            pydantic.ValidationError, match="revision is only valid for HuggingFace"
+        ):
+            WeightsSource(
+                source="gs://my-bucket/models/llama",
+                revision="main",  # Should fail for GCS
+                mount_location="/models/llama",
+            )
+
+    def test_revision_not_allowed_for_azure(self):
+        """revision should error when set for Azure sources."""
+        with pytest.raises(
+            pydantic.ValidationError, match="revision is only valid for HuggingFace"
+        ):
+            WeightsSource(
+                source="azure://myaccount/container/path",
+                revision="main",  # Should fail for Azure
+                mount_location="/models/llama",
+            )
+
+    def test_revision_must_be_at_least_2_chars(self):
+        """revision must be empty or at least 2 characters."""
+        with pytest.raises(pydantic.ValidationError, match="at least 2 characters"):
+            WeightsSource(
+                source="meta-llama/Llama-2-7b",
+                revision="m",  # Single char - should fail
+                mount_location="/models/llama",
+            )
+
+    def test_source_cannot_be_empty(self):
+        """source must have at least 1 character."""
+        with pytest.raises(pydantic.ValidationError):
+            WeightsSource(source="", mount_location="/models/llama")
+
+
+class TestWeights:
+    """Tests for the Weights model (list of WeightsSource)."""
+
+    def test_empty_weights(self):
+        """Empty weights list should work."""
+        weights = Weights([])
+        assert weights.sources == []
+
+    def test_single_hf_source(self):
+        """Single HuggingFace source."""
+        weights = Weights(
+            [
+                WeightsSource(
+                    source="meta-llama/Llama-2-7b",
+                    revision="main",
+                    mount_location="/models/llama",
+                )
+            ]
+        )
+        assert len(weights.sources) == 1
+        assert weights.sources[0].is_huggingface is True
+
+    def test_multi_source_weights(self):
+        """Multiple sources from different providers."""
+        weights = Weights(
+            [
+                WeightsSource(
+                    source="meta-llama/Llama-2-7b",
+                    revision="main",
+                    mount_location="/models/base",
+                ),
+                WeightsSource(
+                    source="s3://my-bucket/adapters/lora",
+                    mount_location="/models/adapter",
+                    runtime_secret_name="aws_credentials",
+                ),
+            ]
+        )
+        assert len(weights.sources) == 2
+        assert weights.sources[0].is_huggingface is True
+        assert weights.sources[1].is_huggingface is False
+
+
+class TestTrussConfigWeights:
+    """Tests for weights field in TrussConfig."""
+
+    def test_empty_weights_config(self, default_config):
+        """Empty weights should work."""
+        config = TrussConfig(python_version="py39")
+        assert config.weights.sources == []
+
+    def test_weights_from_yaml(self, tmp_path):
+        """Weights should be parsed from YAML."""
+        yaml_content = """
+        weights:
+          - source: "meta-llama/Llama-2-7b"
+            revision: "main"
+            mount_location: "/models/llama"
+          - source: "s3://my-bucket/models/adapter"
+            mount_location: "/models/adapter"
+            runtime_secret_name: "aws_credentials"
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+        assert len(config.weights.sources) == 2
+        assert config.weights.sources[0].source == "meta-llama/Llama-2-7b"
+        assert config.weights.sources[0].revision == "main"
+        assert config.weights.sources[1].source == "s3://my-bucket/models/adapter"
+        assert config.weights.sources[1].revision == ""
+
+    def test_cannot_use_both_model_cache_and_weights(self, tmp_path):
+        """Should error if both model_cache and weights are specified."""
+        yaml_content = """
+        model_cache:
+          - repo_id: "test/model"
+            use_volume: false
+        weights:
+          - source: "meta-llama/Llama-2-7b"
+            revision: "main"
+            mount_location: "/models/llama"
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        with pytest.raises(ValueError, match="only one of `model_cache` and `weights`"):
+            TrussConfig.from_yaml(config_path)
+
+    def test_weights_serialization_roundtrip(self, tmp_path):
+        """Weights should serialize and deserialize correctly."""
+        config = TrussConfig(
+            python_version="py39",
+            weights=Weights(
+                [
+                    WeightsSource(
+                        source="meta-llama/Llama-2-7b",
+                        revision="main",
+                        mount_location="/models/llama",
+                        allow_patterns=["*.safetensors"],
+                    )
+                ]
+            ),
+        )
+
+        out_path = tmp_path / "out.yaml"
+        config.write_to_yaml_file(out_path, verbose=True)
+
+        config_new = TrussConfig.from_yaml(out_path)
+        assert len(config_new.weights.sources) == 1
+        assert config_new.weights.sources[0].source == "meta-llama/Llama-2-7b"
+        assert config_new.weights.sources[0].revision == "main"
+        assert config_new.weights.sources[0].mount_location == "/models/llama"
+        assert config_new.weights.sources[0].allow_patterns == ["*.safetensors"]
