@@ -71,6 +71,7 @@ def _fill_trt_llm_versions(
                 f"{base_image_prefix}:{docker_image_suffix}{base_image_version}"
             )
             print(f"Using BEI BERT image: {bei_bert_image_with_accelerator}")
+            tr.set_base_image(bei_bert_image_with_accelerator, "/usr/bin/python3")
         else:
             print(f"Using Briton image: {image_versions.briton_image}")
             tr.set_base_image(
