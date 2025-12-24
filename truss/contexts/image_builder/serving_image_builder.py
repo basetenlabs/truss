@@ -906,6 +906,8 @@ class ServingImageBuilder(ImageBuilder):
             credentials_to_cache=get_credentials_to_cache(data_dir),
             model_cache_v1=config.model_cache.is_v1,
             model_cache_v2=config.model_cache.is_v2,
+            copy_truss_transfer_cli=config.model_cache.is_v2
+            or config.trt_llm is not None,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
