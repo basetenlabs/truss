@@ -24,7 +24,6 @@ from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
-    BEI_TRTLLM_BASE_IMAGE,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
@@ -42,9 +41,7 @@ from truss.base.constants import (
     SUPPORTED_PYTHON_VERSIONS,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
-    TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     TRUSS_BASE_IMAGE_NAME,
     TRUSS_CODE_DIR,
@@ -58,7 +55,6 @@ from truss.base.trt_llm_config import (
 )
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
-    BaseImage,
     DockerServer,
     TrussConfig,
 )
@@ -485,17 +481,6 @@ class ServingImageBuilder(ImageBuilder):
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `BEI_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        if not (
-            config.base_image and config.base_image.image.startswith("baseten/bei")
-        ):
-            config.base_image = BaseImage(
-                image=BEI_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
-            )
-
     def prepare_trtllm_bert_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
         config = self._spec.config
@@ -547,32 +532,6 @@ class ServingImageBuilder(ImageBuilder):
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `BEI_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        from truss.base.truss_config import Accelerator
-
-        version = "1.8.3"
-        accelerator = config.resources.accelerator.accelerator
-        docker_image = {
-            Accelerator.L4: f"baseten/text-embeddings-inference-mirror:89-{version}",
-            Accelerator.A100: f"baseten/text-embeddings-inference-mirror:{version}",
-            Accelerator.H100: f"baseten/text-embeddings-inference-mirror:hopper-{version}",
-            Accelerator.H100_40GB: f"baseten/text-embeddings-inference-mirror:hopper-{version}",
-            Accelerator.A10G: f"baseten/text-embeddings-inference-mirror:86-{version}",
-            Accelerator.T4: f"baseten/text-embeddings-inference-mirror:turing-{version}",
-            Accelerator.H200: f"baseten/text-embeddings-inference-mirror:hopper-{version}",
-            Accelerator.V100: f"baseten/text-embeddings-inference-mirror:{version}",
-            None: "unsupported none please upgrade truss",
-        }.get(accelerator, f"unsupported {accelerator} please upgrade truss")
-        if docker_image.startswith("unsupported"):
-            raise ValueError(docker_image)
-        if not (config.base_image):
-            config.base_image = BaseImage(
-                image=docker_image, python_executable_path="/usr/bin/python3"
-            )
-
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
         config = self._spec.config
@@ -606,17 +565,6 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        if not (
-            config.base_image
-            and config.base_image.image.startswith("baseten/briton-server:")
-        ):
-            config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
-            )
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False

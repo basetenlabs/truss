@@ -504,10 +504,9 @@ class ImageVersions(PydanticTrTBaseModel):
     # from the backend. The inserted values are full image references, resolved using
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
     bei_image: str
+    beibert_image: str = "baseten/text-embeddings-inference-mirror:1.8.3"
     briton_image: str
-    v2_llm_image: str = (
-        "baseten/dynamo-cache-aware-routing:trtllm-gpu-ea9f7cb-725b8f2-eff071c4a5"
-    )
+    v2_llm_image: str
 
 
 class TRTLLMConfigurationV1(PydanticTrTBaseModel):
@@ -534,6 +533,19 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
             raise ValueError(
                 "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
             )
+        hf_cfg = None
+        # attemp to set the best possible default route client side.
+        try:
+            from transformers import AutoConfig
+
+            hf_cfg = AutoConfig.from_pretrained(
+                self.build.checkpoint_repository.repo,
+                revision=self.build.checkpoint_repository.revision,
+            )
+            # simple heuristic to set the default route
+        except Exception:
+            # access error, or any other issue
+            pass
 
         if (
             self.runtime.webserver_default_route is None
@@ -541,19 +553,6 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
             in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT)
             and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
         ):
-            hf_cfg = None
-            # attemp to set the best possible default route client side.
-            try:
-                from transformers import AutoConfig
-
-                hf_cfg = AutoConfig.from_pretrained(
-                    self.build.checkpoint_repository.repo,
-                    revision=self.build.checkpoint_repository.revision,
-                )
-                # simple heuristic to set the default route
-            except Exception:
-                # access error, or any other issue
-                pass
             if hf_cfg is not None:
                 arch = hf_cfg.architectures[0]
                 is_sequence_classification = (
@@ -571,13 +570,41 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                         else "Embeddings model."
                     )
                 )
-                if (
-                    "bert" in arch.lower()
-                    and self.build.base_model != TrussTRTLLMModel.ENCODER_BERT
+        if hf_cfg is not None:
+            arch = hf_cfg.architectures[0]
+            if (
+                "bert" in arch.lower()
+                and self.build.base_model != TrussTRTLLMModel.ENCODER_BERT
+            ):
+                logger.warning(
+                    f"Your model architecture {arch} indicates a BERT-like based model. "
+                    f"Consider setting `trt_llm.build.base_model` to `encoder_bert` for better performance and compatibility."
+                )
+                if self.build.base_model == TrussTRTLLMModel.DECODER:
+                    raise ValueError(
+                        f"Your model architecture {arch} indicates a BERT-like based model, "
+                        f"but you set `trt_llm.build.base_model` to `decoder`. "
+                        f"Please set it to `encoder_bert`."
+                    )
+            if (
+                "ForCausalLM" in arch
+                and self.build.base_model != TrussTRTLLMModel.DECODER
+            ):
+                logger.warning(
+                    f"Your model architecture {arch} indicates a CausalLM based model. "
+                    f"Consider setting `trt_llm.build.base_model` to `decoder` for better performance and compatibility."
+                )
+                if self.build.base_model in (
+                    TrussTRTLLMModel.ENCODER,
+                    TrussTRTLLMModel.ENCODER_BERT,
                 ):
-                    logger.warning(
-                        f"Your model architecture {arch} indicates a BERT-like based model. "
-                        f"Consider setting `trt_llm.build.base_model` to `encoder_bert` for better performance and compatibility."
+                    raise ValueError(
+                        f"Your model architecture {arch} indicates a CausalLM based model, "
+                        f"but you set `trt_llm.build.base_model` to `encoder` or `encoder_bert`. "
+                        " Deploy it as `decoder` model instead, if you want to use it for text-generation. (most likley this is what you do)"
+                        " In the rare event you want to use it for Sequence classification via the first logit only:"
+                        " Please covert the CausalLM head using this script: "
+                        " https://github.com/michaelfeil/infinity/blob/c030718f3bf163237caa8898ee59cd53ba213124/docs/lm_head_to_classifier/convert_lm.py"
                     )
 
 
