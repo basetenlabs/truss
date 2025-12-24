@@ -459,7 +459,7 @@ class ServingImageBuilder(ImageBuilder):
         port = 7997
         start_command = " ".join(
             [
-                "truss-transfer-cli /tmp/bei-model && text-embeddings-router --model-id /tmp/bei-model",
+                "truss-transfer-cli && text-embeddings-router",
                 f"--port {port}",
                 # assert the max_batch_size is within trt-engine limits
                 f"--max-batch-requests {runtime_max_batch_size}",
@@ -521,7 +521,7 @@ class ServingImageBuilder(ImageBuilder):
         port = 7997
         start_command = " ".join(
             [
-                "truss-transfer-cli && text-embeddings-router",
+                "truss-transfer-cli /tmp/bei-model && text-embeddings-router --model-id /tmp/bei-model",
                 f"--port {port}",
                 # assert the max_batch_size is within trt-engine limits
                 f"--max-batch-requests {runtime_max_batch_size}",
