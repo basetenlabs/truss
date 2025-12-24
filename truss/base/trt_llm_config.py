@@ -606,6 +606,15 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                         " Please covert the CausalLM head using this script: "
                         " https://github.com/michaelfeil/infinity/blob/c030718f3bf163237caa8898ee59cd53ba213124/docs/lm_head_to_classifier/convert_lm.py"
                     )
+            if (
+                "ForSequenceClassification" in arch
+                and self.build.base_model == TrussTRTLLMModel.DECODER
+            ):
+                raise ValueError(
+                    f"Your model architecture {arch} indicates a SequenceClassification based model, "
+                    f"but you set `trt_llm.build.base_model` to `decoder`. "
+                    f"Please set it to `encoder` or `encoder_bert`."
+                )
 
 
 class TRTLLMConfigurationV2(PydanticTrTBaseModel):
