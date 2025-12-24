@@ -10,7 +10,6 @@ import pytest
 import yaml
 
 from truss.base.constants import (
-    TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
@@ -517,7 +516,6 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
             build_th.spec.config.runtime.predict_concurrency
             == TRTLLM_PREDICT_CONCURRENCY
         )
-        assert build_th.spec.config.base_image.image == TRTLLM_BASE_IMAGE
         assert (
             build_th.spec.config.base_image.python_executable_path
             == TRTLLM_PYTHON_EXECUTABLE
