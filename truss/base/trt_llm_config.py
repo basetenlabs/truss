@@ -504,7 +504,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # from the backend. The inserted values are full image references, resolved using
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
     bei_image: str
-    beibert_image: str = "baseten/text-embeddings-inference-mirror:1.8.3"
+    beibert_image: str = "baseten/text-embeddings-inference-mirror:1.8.3"  # once wired up in core-product, this can be removed
     briton_image: str
     v2_llm_image: str
 

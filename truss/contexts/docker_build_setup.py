@@ -51,7 +51,7 @@ def _fill_trt_llm_versions(
             == trt_llm_config.TrussTRTLLMModel.ENCODER_BERT
         ):
             accelerator = tr.spec.config.resources.accelerator.accelerator
-            docker_image_suffix = {
+            docker_image_suffix = {  # not ideal, but build may fail if version is not pushed.
                 Accelerator.L4: "89-",
                 Accelerator.A100: "",
                 Accelerator.H100: "hopper-",
