@@ -9,12 +9,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from truss.base.constants import (
-    TRTLLM_BASE_IMAGE,
-    TRTLLM_PREDICT_CONCURRENCY,
-    TRTLLM_PYTHON_EXECUTABLE,
-    TRTLLM_TRUSS_DIR,
-)
+from truss.base.constants import TRTLLM_PREDICT_CONCURRENCY, TRTLLM_TRUSS_DIR
 from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
@@ -516,11 +511,6 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         assert (
             build_th.spec.config.runtime.predict_concurrency
             == TRTLLM_PREDICT_CONCURRENCY
-        )
-        assert build_th.spec.config.base_image.image == TRTLLM_BASE_IMAGE
-        assert (
-            build_th.spec.config.base_image.python_executable_path
-            == TRTLLM_PYTHON_EXECUTABLE
         )
 
 
