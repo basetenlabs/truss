@@ -750,11 +750,12 @@ def trt_llm_common_validation(config: "TrussConfig"):
         truss_config.Accelerator.T4,
         truss_config.Accelerator.V100,
     ]:
-        if not (
-            hasattr(trt_llm_config.build, "base_model")
-            and trt_llm_config.build.base_model not in [TrussTRTLLMModel.ENCODER_BERT]
-        ):
+        if hasattr(
+            trt_llm_config.build, "base_model"
+        ) and trt_llm_config.build.base_model in [TrussTRTLLMModel.ENCODER_BERT]:
             # ENCODER_BERT runs fine on T4 + Bert backend.
+            pass
+        else:
             raise ValueError(
                 "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs. \n"
                 "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
