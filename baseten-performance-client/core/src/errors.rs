@@ -198,10 +198,10 @@ impl From<reqwest::Error> for ClientError {
     fn from(err: reqwest::Error) -> Self {
         let message = build_enhanced_error_message(&err, None);
 
-        if err.is_timeout() {
-            classify_timeout_error(&err, None)
-        } else if err.is_connect() {
+        if err.is_connect() {
             ClientError::Connect(message)
+        } else if err.is_timeout() {
+            classify_timeout_error(&err, None)
         } else {
             ClientError::Network(message)
         }

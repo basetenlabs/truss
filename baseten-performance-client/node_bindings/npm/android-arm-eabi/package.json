@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client-android-arm-eabi",
-  "version": "0.1.0",
+  "version": "0.1.1rc0",
   "os": [
     "android"
   ],
