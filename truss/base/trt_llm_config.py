@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from truss.base.truss_config import TrussConfig
 
 logger = logging.getLogger(__name__)
-# Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
+# Suppress Pydantic V1 warnings, because  we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
 ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
