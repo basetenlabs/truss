@@ -24,7 +24,6 @@ from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
-    BEI_TRTLLM_BASE_IMAGE,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
@@ -42,9 +41,7 @@ from truss.base.constants import (
     SUPPORTED_PYTHON_VERSIONS,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
-    TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     TRUSS_BASE_IMAGE_NAME,
     TRUSS_CODE_DIR,
@@ -58,7 +55,6 @@ from truss.base.trt_llm_config import (
 )
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
-    BaseImage,
     DockerServer,
     TrussConfig,
 )
@@ -485,16 +481,56 @@ class ServingImageBuilder(ImageBuilder):
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `BEI_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        if not (
-            config.base_image and config.base_image.image.startswith("baseten/bei")
-        ):
-            config.base_image = BaseImage(
-                image=BEI_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
-            )
+    def prepare_trtllm_bert_encoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
+        config = self._spec.config
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT
+        ), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER_BERT tensorrt-llm model"
+        )
+        assert isinstance(config.trt_llm.root, TRTLLMConfigurationV1), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for inference_stack v1 tensorrt-llm model"
+        )
+        trt_llm_config: TRTLLMConfigurationV1 = config.trt_llm.root
+        # TRTLLM has performance degradation with batch size >> 1024, so we limit the runtime settings
+        # runtime batch size may not be higher than what the build settings of the model allow
+        # to 1024 even if the engine.rank0 allows for higher batch_size
+        runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 1024)
+        # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
+        runtime_max_batch_tokens = max(
+            trt_llm_config.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
+        )
+        port = 7997
+        start_command = " ".join(
+            [
+                "truss-transfer-cli /tmp/bei-model && text-embeddings-router --model-id /tmp/bei-model",
+                f"--port {port}",
+                # assert the max_batch_size is within trt-engine limits
+                f"--max-batch-requests {runtime_max_batch_size}",
+                # assert the max_num_tokens is within trt-engine limits
+                f"--max-batch-tokens {runtime_max_batch_tokens}",
+                # how many sentences can be in a single json payload.
+                # limited default to improve request based autoscaling.
+                f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
+                # how many concurrent requests can be handled by the server until 429 is returned.
+                # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
+                # 2048 is a safe max value for the server
+                f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
+            ]
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command=f"/bin/sh -c '{start_command}'",
+            server_port=port,
+            # mount the following predict endpoint location
+            predict_endpoint=trt_llm_config.runtime.webserver_default_route
+            or "/v1/embeddings",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
@@ -502,7 +538,8 @@ class ServingImageBuilder(ImageBuilder):
         assert (
             config.trt_llm
             and config.trt_llm.build
-            and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+            and config.trt_llm.build.base_model
+            not in [TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT]
         ), (
             "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
         )
@@ -528,17 +565,6 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        if not (
-            config.base_image
-            and config.base_image.image.startswith("baseten/briton-server:")
-        ):
-            config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
-            )
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
@@ -575,6 +601,9 @@ class ServingImageBuilder(ImageBuilder):
                 if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
                     # Run the specific encoder build
                     self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
+                elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT:
+                    # Run the specific encoder_bert build
+                    self.prepare_trtllm_bert_encoder_build_dir(build_dir=build_dir)
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
@@ -825,6 +854,8 @@ class ServingImageBuilder(ImageBuilder):
             credentials_to_cache=get_credentials_to_cache(data_dir),
             model_cache_v1=config.model_cache.is_v1,
             model_cache_v2=config.model_cache.is_v2,
+            copy_truss_transfer_cli=config.model_cache.is_v2
+            or config.trt_llm is not None,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
