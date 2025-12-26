@@ -738,6 +738,11 @@ def trt_llm_common_validation(config: "TrussConfig"):
 
     assert config.trt_llm, "TRT-LLM configuration is required for TRT-LLM models"
     trt_llm_config: TRTLLMConfigurationV1 | TRTLLMConfigurationV2 = config.trt_llm.root
+    base_model = (
+        trt_llm_config.build.base_model
+        if hasattr(trt_llm_config.build, "base_model")
+        else None
+    )
     if (
         trt_llm_config.build.quantization_type
         is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
@@ -746,13 +751,35 @@ def trt_llm_common_validation(config: "TrussConfig"):
         logger.warning(
             "Weight only int8 quantization on A100 accelerators is not recommended."
         )
+    if base_model in [TrussTRTLLMModel.ENCODER_BERT]:
+        logger.warning(
+            "Using `encoder_bert` as base_model is a new feature. This means, we are still iterating and we are renaming a couple of things in the config.yaml. "
+            "While the `encoder_bert` usage is encouraged and stable (the deployed model will be very stable), "
+            "the config field names may still change in future releases, and you might need to upgrade your truss version if you encounter a issue pushing with this release of truss. "
+            "If you do, please reach out via Slack to us, and we'll help you out."
+        )
+    if base_model in [
+        TrussTRTLLMModel.PALMYRA,
+        TrussTRTLLMModel.QWEN,
+        TrussTRTLLMModel.LLAMA,
+        TrussTRTLLMModel.MISTRAL,
+        TrussTRTLLMModel.DEEPSEEK,
+    ]:
+        raise ValueError(
+            f"{base_model} has been renamed to `decoder` in trt_llm.build.base_model. "
+            " The decoder base_model now automatically detects the model architecture (e.g. Qwen, Llama, Mistral, etc.) from the checkpoint repository. "
+            " The functionality remains the same, only the name has changed to better reflect the usage of the base_model field."
+        )
+    if base_model == TrussTRTLLMModel.WHISPER:
+        raise ValueError(
+            "Whisper models has been refactored to a Chain's version. "
+            " Please send us a message on Slack or Support if you want to deploy a Whisper model with truss."
+        )
     if config.resources.accelerator.accelerator in [
         truss_config.Accelerator.T4,
         truss_config.Accelerator.V100,
     ]:
-        if hasattr(
-            trt_llm_config.build, "base_model"
-        ) and trt_llm_config.build.base_model in [TrussTRTLLMModel.ENCODER_BERT]:
+        if base_model in [TrussTRTLLMModel.ENCODER_BERT]:
             # ENCODER_BERT runs fine on T4 + Bert backend.
             pass
         else:
@@ -764,13 +791,17 @@ def trt_llm_common_validation(config: "TrussConfig"):
         TrussTRTLLMQuantizationType.FP8,
         TrussTRTLLMQuantizationType.FP8_KV,
         TrussTRTLLMQuantizationType.FP4,
+        TrussTRTLLMQuantizationType.FP4_KV,
+        TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.A10G,
         truss_config.Accelerator.A100,
         truss_config.Accelerator.A100_40GB,
+        truss_config.Accelerator.T4,
+        truss_config.Accelerator.V100,
     ]:
         raise ValueError(
-            "FP8 quantization is only supported on L4, H100, H200 "
+            "FP8 quantization is only supported on L4, H100, H200, B200 "
             "accelerators or newer (CUDA_COMPUTE>=89)"
         )
     elif trt_llm_config.build.quantization_type in [
