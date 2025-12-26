@@ -382,7 +382,7 @@ def custom_model_trt_llm(tmp_path):
         with _modify_yaml(h.spec.config_path) as content:
             content["trt_llm"] = {
                 "build": {
-                    "base_model": "llama",
+                    "base_model": "decoder",
                     "max_seq_len": 2048,
                     "max_batch_size": 512,
                     "checkpoint_repository": {
@@ -754,7 +754,7 @@ def trtllm_config(default_config) -> Dict[str, Any]:
     }
     trtllm_config["trt_llm"] = {
         "build": {
-            "base_model": "llama",
+            "base_model": "decoder",
             "max_seq_len": 2048,
             "max_batch_size": 512,
             "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
@@ -822,7 +822,7 @@ def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
     }
     trtllm_config["trt_llm"] = {
         "build": {
-            "base_model": "llama",
+            "base_model": "decoder",
             "max_seq_len": 2048,
             "max_batch_size": 512,
             "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
@@ -844,7 +844,7 @@ def trtllm_spec_dec_config_lookahead_v1(trtllm_config) -> Dict[str, Any]:
     spec_dec_config = copy.deepcopy(trtllm_config)
     spec_dec_config["trt_llm"] = {
         "build": {
-            "base_model": "llama",
+            "base_model": "decoder",
             "max_seq_len": 2048,
             "max_batch_size": 512,
             "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
