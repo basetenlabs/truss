@@ -23,6 +23,10 @@ uuid = { version = "1.0", features = ["v4"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 ctor = "0.2"
+# Streaming dependencies (from workspace)
+async-stream = { workspace = true }
+tokio-stream = { workspace = true }
+pin-project = { workspace = true }
 
 [features]
 default = ["native-tls"]

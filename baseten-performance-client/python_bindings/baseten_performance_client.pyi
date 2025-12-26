@@ -373,6 +373,48 @@ class BatchPostResponse:
     individual_request_times: builtins.list[builtins.float]
     response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
+class EventStreamIter:
+    """
+    An iterator for handling Server-Sent Events (SSE) from a streaming endpoint.
+    This object is returned by `PerformanceClient.stream` and `PerformanceClient.async_stream`.
+    It can be used in both synchronous (`for event in stream:`) and asynchronous
+    (`async for event in stream:`) loops.
+    The iterator yields either a dictionary (for JSON data) or a string (for plain text).
+    """
+
+    def abort(self) -> None:
+        """
+        Immediately aborts the background network task fetching the stream.
+        The iterator will yield no further items after this is called.
+        """
+        ...
+
+    def __iter__(self) -> "EventStreamIter": ...
+    def __next__(self) -> typing.Union[typing.Dict[str, typing.Any], str]:
+        """
+        Get the next event from the stream (synchronous iteration).
+
+        Returns:
+            Either a dictionary (for JSON events) or a string (for text events).
+
+        Raises:
+            StopIteration: When the stream ends.
+        """
+        ...
+
+    def __aiter__(self) -> "EventStreamIter": ...
+    async def __anext__(self) -> typing.Union[typing.Dict[str, typing.Any], str]:
+        """
+        Get the next event from the stream (asynchronous iteration).
+
+        Returns:
+            Either a dictionary (for JSON events) or a string (for text events).
+
+        Raises:
+            StopAsyncIteration: When the stream ends.
+        """
+        ...
+
 class HttpClientWrapper:
     """
     A wrapper around the HTTP client that can be shared between multiple PerformanceClient instances.
@@ -782,6 +824,81 @@ class PerformanceClient:
             >>> for resp_data in response_obj.data:
             ...     print(resp_data)
             >>> print(f"Total time: {response_obj.total_time}")
+        """
+        ...
+
+    def stream(
+        self,
+        endpoint: builtins.str,
+        payload: typing.Dict[str, typing.Any],
+        method: typing.Optional[builtins.str] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
+    ) -> EventStreamIter:
+        """
+        Starts a synchronous stream of Server-Sent Events (SSE) from a given endpoint.
+        This method sends a request and returns an iterator that yields events as they
+        arrive from the server.
+
+        Args:
+            endpoint: The API endpoint to stream from (e.g., "/v1/chat/completions").
+            payload: JSON payload for the request.
+            method: HTTP method (defaults to POST if None).
+            preference: Optional RequestProcessingPreference for configuration.
+
+        Returns:
+            An EventStreamIter that yields events as they arrive.
+
+        Raises:
+            ValueError: If the payload is invalid or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
+
+        Example:
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> payload = {"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}], "stream": True}
+            >>> stream = client.stream("/v1/chat/completions", payload)
+            >>> for event in stream:
+            ...     if isinstance(event, dict):
+            ...         print(f"JSON event: {event}")
+            ...     else:
+            ...         print(f"Text event: {event}")
+        """
+        ...
+
+    async def async_stream(
+        self,
+        endpoint: builtins.str,
+        payload: typing.Dict[str, typing.Any],
+        method: typing.Optional[builtins.str] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
+    ) -> EventStreamIter:
+        """
+        Starts an asynchronous stream of Server-Sent Events (SSE) from a given endpoint.
+        This method sends a request and returns an async iterator that yields events as they
+        arrive from the server.
+
+        Args:
+            endpoint: The API endpoint to stream from (e.g., "/v1/chat/completions").
+            payload: JSON payload for the request.
+            method: HTTP method (defaults to POST if None).
+            preference: Optional RequestProcessingPreference for configuration.
+
+        Returns:
+            An EventStreamIter that yields events asynchronously as they arrive.
+
+        Raises:
+            ValueError: If the payload is invalid or parameters are invalid.
+            requests.exceptions.HTTPError: If the request fails.
+            requests.exceptions.Timeout: If a timeout occurs.
+
+        Example:
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key")
+            >>> payload = {"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}], "stream": True}
+            >>> async for event in await client.async_stream("/v1/chat/completions", payload):
+            ...     if isinstance(event, dict):
+            ...         print(f"JSON event: {event}")
+            ...     else:
+            ...         print(f"Text event: {event}")
         """
         ...
 

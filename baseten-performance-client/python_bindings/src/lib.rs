@@ -5,7 +5,7 @@ use baseten_performance_client_core::{
     CoreClassificationResult, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
     CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse, CoreRerankResult,
     HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
-    RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
+    RequestProcessingPreference as RustRequestProcessingPreference, StreamingClientExt, DEFAULT_BATCH_SIZE,
     DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
     MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
 };
@@ -19,6 +19,11 @@ use pyo3::types::PyType;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use pyo3_async_runtimes;
+
+
+mod streaming;
+pub use streaming::EventStreamIter;
 
 impl Default for CancellationToken {
     fn default() -> Self {
@@ -45,6 +50,8 @@ static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     });
     runtime
 });
+
+
 
 /// Run a future with Ctrl+C cancellation support.
 /// When Ctrl+C is received, the future is dropped, triggering JoinSetGuard cleanup.
@@ -1139,6 +1146,92 @@ impl PerformanceClient {
 
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
+
+    #[pyo3(signature = (endpoint, payload, method = None, preference = None))]
+    fn stream(
+        &self,
+        py: Python,
+        endpoint: String,
+        payload: PyObject,
+        method: Option<String>,
+        preference: Option<&RequestProcessingPreference>,
+    ) -> PyResult<EventStreamIter> {
+        let core_client = self.core_client.clone();
+        let rt = Arc::clone(&self.runtime);
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+
+        // Clone values for the closure
+        let rt_clone = rt.clone();
+
+        // Convert PyObject payload (Python dict) to serde_json::Value first
+        let payload_json: serde_json::Value = Python::with_gil(|py| {
+            let bound_obj = payload.bind(py);
+            pythonize::depythonize(bound_obj)
+                .map_err(|e| PyValueError::new_err(format!("Invalid payload: {}", e)))
+        })?;
+
+        // Release GIL immediately and do all processing without it
+        let (rx, handle) = py.allow_threads(move || {
+            // Since stream is sync but needs a runtime, we use block_on inside allow_threads.
+            rt_clone.block_on(async {
+                core_client.stream(endpoint, payload_json, method, &rust_preference).await
+            })
+                .map_err(Self::convert_core_error_to_py_err)
+        })?;
+
+        // Return a new EventStreamIter instance with the receiver side of the channel
+        Ok(EventStreamIter::new(rx, handle, rt))
+    }
+
+    /// Start streaming SSE events from the given endpoint (async version)
+    #[pyo3(name = "async_stream", signature = (endpoint, payload, method = None, preference = None))]
+    fn async_stream<'py>(
+        &self,
+        py: Python<'py>,
+        endpoint: String,
+        payload: PyObject,
+        method: Option<String>,
+        preference: Option<&RequestProcessingPreference>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let core_client = self.core_client.clone();
+        let rt = Arc::clone(&self.runtime);
+
+        // Use provided preference or create default
+        let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
+
+        let rt_clone = rt.clone();
+        let future = async move {
+            // Convert PyObject payload (Python dict) to serde_json::Value
+            let payload_json: serde_json::Value = Python::with_gil(|py| {
+                let bound_obj = payload.bind(py);
+                pythonize::depythonize(bound_obj)
+                    .map_err(|e| PyValueError::new_err(format!("Invalid payload: {}", e)))
+            })?;
+
+            // Clone runtime for use after spawn_blocking
+            let rt_for_iter = rt_clone.clone();
+
+            // Use spawn_blocking to avoid runtime nesting issues
+            let (rx, handle) = tokio::task::spawn_blocking(move || {
+                rt_clone.block_on(async {
+                    core_client.stream(endpoint, payload_json, method, &rust_preference).await
+                })
+            }).await
+                .map_err(|e| PyValueError::new_err(format!("Spawn blocking error: {}", e)))?
+                .map_err(PerformanceClient::convert_core_error_to_py_err)?;
+
+            // Return a new EventStreamIter instance with the receiver side of the channel
+            Python::with_gil(|_py| {
+                Ok(EventStreamIter::new(rx, handle, rt_for_iter))
+            })
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
+    }
+
+
 }
 
 #[pymodule]
@@ -1156,6 +1249,7 @@ fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_class::<ClassificationResult>()?;
     m.add_class::<ClassificationResponse>()?;
     m.add_class::<BatchPostResponse>()?;
+    m.add_class::<EventStreamIter>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
