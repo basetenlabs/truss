@@ -541,6 +541,7 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
             hf_cfg = AutoConfig.from_pretrained(
                 self.build.checkpoint_repository.repo,
                 revision=self.build.checkpoint_repository.revision,
+                trust_remote_code=False,
             )
             # simple heuristic to set the default route
         except Exception:
@@ -581,8 +582,8 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                     f"Consider setting `trt_llm.build.base_model` to `encoder_bert` for better performance and compatibility."
                 )
                 if self.build.base_model == TrussTRTLLMModel.DECODER:
-                    raise ValueError(
-                        f"Your model architecture {arch} indicates a BERT-like based model, "
+                    logger.error(
+                        f"Your model architecture {arch} indicates a BERT-like based model. "
                         f"but you set `trt_llm.build.base_model` to `decoder`. "
                         f"Please set it to `encoder_bert`."
                     )
@@ -598,8 +599,8 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                     TrussTRTLLMModel.ENCODER,
                     TrussTRTLLMModel.ENCODER_BERT,
                 ):
-                    raise ValueError(
-                        f"Your model architecture {arch} indicates a CausalLM based model, "
+                    logger.error(
+                        f"Your model architecture {arch} indicates a CausalLM based model. "
                         f"but you set `trt_llm.build.base_model` to `encoder` or `encoder_bert`. "
                         " Deploy it as `decoder` model instead, if you want to use it for text-generation. (most likley this is what you do)"
                         " In the rare event you want to use it for Sequence classification via the first logit only:"
@@ -610,7 +611,7 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                 "ForSequenceClassification" in arch
                 and self.build.base_model == TrussTRTLLMModel.DECODER
             ):
-                raise ValueError(
+                logger.error(
                     f"Your model architecture {arch} indicates a SequenceClassification based model, "
                     f"but you set `trt_llm.build.base_model` to `decoder`. "
                     f"Please set it to `encoder` or `encoder_bert`."
