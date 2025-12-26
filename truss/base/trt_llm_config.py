@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -533,20 +534,10 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
             raise ValueError(
                 "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
             )
-        hf_cfg = None
-        # attemp to set the best possible default route client side.
-        try:
-            from transformers import AutoConfig
-
-            hf_cfg = AutoConfig.from_pretrained(
-                self.build.checkpoint_repository.repo,
-                revision=self.build.checkpoint_repository.revision,
-                trust_remote_code=False,
-            )
-            # simple heuristic to set the default route
-        except Exception:
-            # access error, or any other issue
-            pass
+        hf_cfg = get_hf_config(
+            repo=self.build.checkpoint_repository.repo,
+            revision=self.build.checkpoint_repository.revision,
+        )
 
         if (
             self.runtime.webserver_default_route is None
@@ -616,6 +607,19 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                     f"but you set `trt_llm.build.base_model` to `decoder`. "
                     f"Please set it to `encoder` or `encoder_bert`."
                 )
+
+
+@functools.lru_cache(maxsize=4)
+def get_hf_config(repo: str, revision: Optional[str]) -> Optional[Any]:
+    try:
+        from transformers import AutoConfig
+
+        hf_cfg = AutoConfig.from_pretrained(
+            repo, revision=revision, trust_remote_code=False
+        )
+        return hf_cfg
+    except Exception:
+        return None
 
 
 class TRTLLMConfigurationV2(PydanticTrTBaseModel):
