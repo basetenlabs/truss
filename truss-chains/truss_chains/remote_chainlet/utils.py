@@ -354,6 +354,9 @@ class ThreadSemaphoreWrapper(
 _trace_parent_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "trace_parent", default=None
 )
+_request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "request_id", default=None
+)
 
 
 @contextlib.contextmanager
@@ -368,6 +371,15 @@ def _trace_parent(headers: Mapping[str, str]) -> Iterator[None]:
 
 
 @contextlib.contextmanager
+def _request_id(headers: Mapping[str, str]) -> Iterator[None]:
+    token = _request_id_context.set(headers.get("x-baseten-request-id"))
+    try:
+        yield
+    finally:
+        _request_id_context.reset(token)
+
+
+@contextlib.contextmanager
 def trace_parent_raw(trace_parent: str) -> Iterator[None]:
     token = _trace_parent_context.set(trace_parent)
     try:
@@ -378,6 +390,10 @@ def trace_parent_raw(trace_parent: str) -> Iterator[None]:
 
 def get_trace_parent() -> Optional[str]:
     return _trace_parent_context.get()
+
+
+def get_request_id() -> Optional[str]:
+    return _request_id_context.get()
 
 
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
@@ -438,6 +454,7 @@ def _handle_exception(exception: Exception) -> NoReturn:
         exception_module_name=exception_module_name,
         exception_message=str(exception),
         user_stack_trace=list(stack),
+        request_id=get_request_id(),
     )
     if isinstance(exception, fastapi.HTTPException):
         status_code = exception.status_code
@@ -586,7 +603,7 @@ async def async_response_raise_errors(
 
 @contextlib.contextmanager
 def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
-    with _trace_parent(headers):
+    with _trace_parent(headers), _request_id(headers):
         try:
             yield
         except Exception as e:

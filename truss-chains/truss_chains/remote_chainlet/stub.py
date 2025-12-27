@@ -295,6 +295,8 @@ class StubBase(BasetenSession, abc.ABC):
         headers = {}
         if trace_parent := utils.get_trace_parent():
             headers[private_types.OTEL_TRACE_PARENT_HEADER_KEY] = trace_parent
+        if request_id := utils.get_request_id():
+            headers["x-baseten-original-request-id"] = request_id
 
         if isinstance(inputs, pydantic.BaseModel):
             if self._service_descriptor.options.use_binary:
@@ -416,15 +418,22 @@ class StubBase(BasetenSession, abc.ABC):
                 await utils.async_response_raise_errors(response, self.name)
                 return response.content.iter_any()
 
-        try:
-            return await retry(_rpc)
-        except asyncio.TimeoutError:
-            msg = (
-                f"Timeout calling remote Chainlet `{self.name}` "
-                f"({self._service_descriptor.options.timeout_sec} seconds limit)."
-            )
-            logging.warning(msg)
-            raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
+        async def _stream_with_error_handling() -> AsyncIterator[bytes]:
+            try:
+                stream = await retry(_rpc)
+                async for chunk in stream:
+                    yield chunk
+            except asyncio.CancelledError:
+                raise
+            except asyncio.TimeoutError:
+                msg = (
+                    f"Timeout calling remote Chainlet `{self.name}` "
+                    f"({self._service_descriptor.options.timeout_sec} seconds limit)."
+                )
+                logging.warning(msg)
+                raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
+
+        return _stream_with_error_handling()
 
 
 StubT = TypeVar("StubT", bound=StubBase)

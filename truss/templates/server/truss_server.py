@@ -178,10 +178,13 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         request_id = request.headers.get("x-baseten-request-id")
-
-        logging.debug(
-            f"[DEBUG] Request received - {request.method} /{method.__name__} "
-            f", Request ID: {request_id}"
+        original_request_id = request.headers.get("x-baseten-original-request-id")
+        logging.info(
+            "Request received - %s /%s, Request ID: %s, Original Request ID: %s",
+            request.method,
+            method.__name__,
+            request_id or "<missing>",
+            original_request_id or "<missing>",
         )
         self.check_healthy()
         trace_ctx = otel_propagate.extract(request.headers) or None

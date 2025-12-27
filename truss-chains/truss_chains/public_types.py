@@ -105,6 +105,7 @@ class RemoteErrorDetail(custom_types.SafeModel):
     exception_module_name: Optional[str]
     exception_message: str
     user_stack_trace: list[StackFrame]
+    request_id: Optional[str] = None
 
     def _to_stack_summary(self) -> traceback.StackSummary:
         return traceback.StackSummary.from_list(
@@ -124,6 +125,8 @@ class RemoteErrorDetail(custom_types.SafeModel):
             f"Chainlet-Traceback (most recent call last):\n"
             f"{stack}{self.exception_cls_name}: {self.exception_message}{exc_info}"
         )
+        if self.request_id:
+            error = f"{error}\nRequest ID={self.request_id}"
         return error
 
 
