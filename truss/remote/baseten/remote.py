@@ -467,8 +467,22 @@ class BasetenRemote(TrussRemote):
         console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
         self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
-        console.print(f"👀 Watching for changes to truss at '{watch_path}'...")
-        for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
+        # Prepare watch paths including external package directories
+        truss_handle = TrussHandle(watch_path)
+        watch_paths = [watch_path]
+
+        # Add external package directories to watch list for seamless live development
+        if not truss_handle.no_external_packages:
+            external_dirs = truss_handle.spec.external_package_dirs_paths
+            watch_paths.extend(external_dirs)
+            console.print(
+                f"👀 Watching for changes to truss at '{watch_path}' "
+                f"and {len(external_dirs)} external package director{'y' if len(external_dirs) == 1 else 'ies'}..."
+            )
+        else:
+            console.print(f"👀 Watching for changes to truss at '{watch_path}'...")
+
+        for _ in watch(*watch_paths, watch_filter=watch_filter, raise_interrupt=False):
             console.print("Changes detected, creating patch...")
             self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
