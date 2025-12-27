@@ -489,7 +489,12 @@ class BasetenRemote(TrussRemote):
             )
 
         model_name = truss_handle.spec.config.model_name
-        dev_version = get_dev_version(self._api, model_name)  # type: ignore
+        try:
+            model, versions = get_model_and_versions(self._api, ModelName(model_name))  # type: ignore
+        except ApiError:
+            return PatchResult(PatchStatus.FAILED, f"Model not found: {model_name}.")
+        model_id = model["id"]
+        dev_version = get_dev_version_from_versions(versions)
         if not dev_version:
             return PatchResult(
                 PatchStatus.FAILED,
@@ -508,7 +513,7 @@ class BasetenRemote(TrussRemote):
                 ),
             )
 
-        truss_watch_state = get_truss_watch_state(self._api, model_name)  # type: ignore
+        truss_watch_state = get_truss_watch_state(self._api, model_id)
         # Make sure the patches are calculated against the current django patch state, if it exists.
         # This is important to ensure that the sequence of patches for a given sesion forms a
         # valid patch sequence (via a linked list)
@@ -552,9 +557,9 @@ class BasetenRemote(TrussRemote):
 
         def do_patch():
             if should_create_patch:
-                resp = self._api.patch_draft_truss_two_step(model_name, patch_request)
+                resp = self._api.patch_draft_truss_two_step(model_id, patch_request)
             else:
-                resp = self._api.sync_draft_truss(model_name)
+                resp = self._api.sync_draft_truss(model_id)
             return resp
 
         try:
