@@ -376,16 +376,56 @@ def generate_docker_server_nginx_config(build_dir, config):
 
 
 def generate_docker_server_supervisord_config(build_dir, config):
-    supervisord_template = read_template_from_fs(
-        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
-    )
+    """Generate supervisord.conf for docker_server deployments.
+
+    Uses configparser to properly handle multiline commands - configparser
+    automatically formats continuation lines with leading whitespace, which
+    supervisord's INI parser correctly interprets as multiline values.
+    """
+    import configparser
+
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
-    start_command = config.docker_server.start_command
-    supervisord_contents = supervisord_template.render(start_command=start_command)
+
+    cfg = configparser.ConfigParser()
+
+    cfg["supervisord"] = {
+        "pidfile": "/tmp/supervisord.pid",
+        "nodaemon": "true",
+        "logfile": "/dev/null",
+        "logfile_maxbytes": "0",
+    }
+
+    cfg["program:model-server"] = {
+        "command": config.docker_server.start_command,
+        "startsecs": "30",
+        "startretries": "0",
+        "autostart": "true",
+        "autorestart": "false",
+        "stdout_logfile": "/dev/fd/1",
+        "stdout_logfile_maxbytes": "0",
+        "redirect_stderr": "true",
+    }
+
+    cfg["program:nginx"] = {
+        "command": 'nginx -g "daemon off;"',
+        "startsecs": "0",
+        "autostart": "true",
+        "autorestart": "true",
+        "stdout_logfile": "/dev/fd/1",
+        "stdout_logfile_maxbytes": "0",
+        "redirect_stderr": "true",
+    }
+
+    cfg["eventlistener:quit_on_failure"] = {
+        "events": "PROCESS_STATE_FATAL",
+        "command": """sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'""",
+    }
+
     supervisord_filepath = build_dir / "supervisord.conf"
-    supervisord_filepath.write_text(supervisord_contents)
+    with open(supervisord_filepath, "w") as f:
+        cfg.write(f)
 
 
 class ServingImageBuilderContext(TrussContext):
