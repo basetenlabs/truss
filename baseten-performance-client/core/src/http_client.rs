@@ -142,22 +142,17 @@ async fn send_request_with_retry(
         // Only hedge on the first request (retries_done <= 1)
         let should_hedge = retries_done <= 1
             && config.hedge_delay.is_some()
-            && config
-                .hedge_budget
-                .load(std::sync::atomic::Ordering::SeqCst)
-                > 0;
+            && config.hedge_budget.load(Ordering::SeqCst) > 0;
 
         if should_hedge {
             tracing::info!(
                 "Hedging request - retries_done: {}, hedge_budget_available: {}",
                 retries_done,
-                config
-                    .hedge_budget
-                    .load(std::sync::atomic::Ordering::SeqCst)
+                config.hedge_budget.load(Ordering::SeqCst)
             );
         }
 
-        let response_result = if should_hedge {
+        let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
             send_request_with_hedging(request_builder_clone, config).await
         } else {
             request_builder_clone.send().await.map_err(|e| {
@@ -165,24 +160,34 @@ async fn send_request_with_retry(
             })
         };
 
-        let should_retry = match &response_result {
+        // Decide retry exactly once per iteration.
+        let mut should_retry_iteration = false;
+
+        match response_result {
             Ok(resp) => {
                 let status = resp.status();
+
                 if status.is_success() {
-                    return Ok(response_result.unwrap());
+                    return Ok(resp);
                 }
 
-                let is_retryable_status = is_retryable_status(status.as_u16());
-                if is_retryable_status {
-                    true
-                } else {
-                    // For non-retryable client errors (e.g., 400), cancel other requests and propagate the error.
-                    false
+                let retryable = is_retryable_status(status.as_u16());
+                should_retry_iteration = retryable && retries_done < max_retries;
+
+                if !should_retry_iteration {
+                    return ensure_successful_response(
+                        resp,
+                        Some(config.customer_request_id.to_string()),
+                    )
+                    .await;
                 }
+
+                // Retryable status: drain the body so the connection can be reused.
+                let _ = resp.bytes().await;
             }
+
             Err(client_error) => {
-                // For network errors, check if we have a retry budget.
-                match client_error {
+                should_retry_iteration = match &client_error {
                     ClientError::LocalTimeout(_, _) => {
                         let remaining_budget = config.retry_budget.fetch_sub(1, Ordering::SeqCst);
                         tracing::debug!(
@@ -209,33 +214,30 @@ async fn send_request_with_retry(
                         } else {
                             let remaining_budget =
                                 config.retry_budget.fetch_sub(1, Ordering::SeqCst);
-                            tracing::debug!("Network error encountered, retrying... Remaining retry budget: {} {}", remaining_budget, config.customer_request_id.to_string());
+                            tracing::debug!(
+                                "Network error encountered, retrying... Remaining retry budget: {} {}",
+                                remaining_budget,
+                                config.customer_request_id.to_string()
+                            );
                             remaining_budget > 0
                         }
                     }
                     _ => {
-                        // For other errors, we do not retry.
-                        eprintln!(
+                        tracing::warn!(
                             "unexpected client error, no retry: this should not happen: {}",
                             client_error
                         );
                         false
                     }
+                } && retries_done < max_retries;
+
+                if !should_retry_iteration {
+                    return Err(client_error);
                 }
             }
-        };
-        let should_retry = should_retry && retries_done < max_retries;
-
-        if !should_retry {
-            return match response_result {
-                Ok(resp) => {
-                    ensure_successful_response(resp, Some(config.customer_request_id.to_string()))
-                        .await
-                }
-                Err(err) => Err(err),
-            };
         }
 
+        // If we got here, we are retrying this iteration.
         retries_done += 1;
         let jitter = rand::rng().random_range(0..100);
         let backoff_duration =

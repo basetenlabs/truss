@@ -61,10 +61,12 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 COPY --chown={{ default_owner }} ./{{ config.data_dir }} ${APP_HOME}/data
 {%- endif %} {#- endif data_dir_exists #}
 
-{%- if model_cache_v2 %}
+{%- if copy_truss_transfer_cli %}
 {# v0.0.9, keep synced with server_requirements.txt #}
 RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.11.13rc3/truss-transfer-cli-v0.11.13rc3-linux-x86_64-unknown-linux-musl
 RUN chmod +x /usr/local/bin/truss-transfer-cli
+{%- endif %} {#- endif copy_truss_transfer_cli #}
+{%- if model_cache_v2 %}
 RUN mkdir /static-bptr
 RUN echo "hash {{model_cache_hash}}"
 COPY --chown={{ default_owner }} ./bptr-manifest /static-bptr/static-bptr-manifest.json
