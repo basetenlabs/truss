@@ -375,17 +375,20 @@ def generate_docker_server_nginx_config(build_dir, config):
     nginx_filepath.write_text(nginx_content)
 
 
-def generate_docker_server_supervisord_config(build_dir, config):
-    supervisord_template = read_template_from_fs(
-        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
+def generate_docker_server_wrapper_script(build_dir, config):
+    wrapper_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "server_wrapper.sh"
     )
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
     start_command = config.docker_server.start_command
-    supervisord_contents = supervisord_template.render(start_command=start_command)
-    supervisord_filepath = build_dir / "supervisord.conf"
-    supervisord_filepath.write_text(supervisord_contents)
+    server_port = config.docker_server.server_port
+    wrapper_contents = wrapper_template.render(
+        start_command=start_command, server_port=server_port
+    )
+    wrapper_filepath = build_dir / "server_wrapper.sh"
+    wrapper_filepath.write_text(wrapper_contents)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -619,7 +622,7 @@ class ServingImageBuilder(ImageBuilder):
 
             generate_docker_server_nginx_config(build_dir, config)
 
-            generate_docker_server_supervisord_config(build_dir, config)
+            generate_docker_server_wrapper_script(build_dir, config)
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
