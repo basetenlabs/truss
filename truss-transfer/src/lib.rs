@@ -5,7 +5,6 @@
 // Module declarations
 mod bindings;
 mod cache;
-mod cloud_range_download;
 mod constants;
 mod core;
 mod create;
