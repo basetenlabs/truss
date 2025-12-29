@@ -1,3 +1,4 @@
+import contextvars
 import logging
 import os
 import urllib.parse
@@ -7,6 +8,10 @@ from typing import Any
 from pythonjsonlogger import jsonlogger
 
 LOCAL_DATE_FORMAT = "%H:%M:%S"
+# Request ID stored in a contextvar so it can be set per request in middleware.
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default="-"
+)
 
 
 def _disable_json_logging() -> bool:
@@ -36,6 +41,13 @@ class _WebsocketOpenFilter(logging.Filter):
 class _MetricsFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return "/metrics" not in record.getMessage()
+
+
+class _RequestIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Ensure `request_id` is always present for formatters.
+        record.request_id = request_id_var.get("-")
+        return True
 
 
 class _AccessJsonFormatter(jsonlogger.JsonFormatter):
@@ -75,12 +87,12 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
     formatters = (
         {
             "default_formatter": {
-                "format": "%(asctime)s.%(msecs)04d %(levelname)s %(message)s",
+                "format": "%(asctime)s.%(msecs)04d %(levelname)s [%(request_id)s] %(message)s",
                 "datefmt": LOCAL_DATE_FORMAT,
             },
             "access_formatter": {
                 "()": _AccessFormatter,
-                "format": "%(asctime)s.%(msecs)04d %(levelname)s %(message)s",
+                "format": "%(asctime)s.%(msecs)04d %(levelname)s [%(request_id)s] %(message)s",
                 "datefmt": LOCAL_DATE_FORMAT,
             },
         }
@@ -88,11 +100,11 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
         else {
             "default_formatter": {
                 "()": jsonlogger.JsonFormatter,
-                "format": "%(asctime)s %(levelname)s %(message)s",
+                "format": "%(asctime)s %(levelname)s [%(request_id)s] %(message)s",
             },
             "access_formatter": {
                 "()": _AccessJsonFormatter,
-                "format": "%(asctime)s %(levelname)s %(message)s",
+                "format": "%(asctime)s %(levelname)s [%(request_id)s] %(message)s",
             },
         }
     )
@@ -104,6 +116,7 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
             "health_check_filter": {"()": _HealthCheckFilter},
             "websocket_filter": {"()": _WebsocketOpenFilter},
             "metrics_filter": {"()": _MetricsFilter},
+            "request_id_filter": {"()": _RequestIdFilter},
         },
         "formatters": formatters,
         "handlers": {
@@ -123,28 +136,37 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
                 "handlers": ["default_handler"],
                 "level": log_level,
                 "propagate": False,
+                "filters": ["request_id_filter"],
             },
             "uvicorn.error": {
                 "handlers": ["default_handler"],
                 "level": "INFO",
                 "propagate": False,
                 # For some reason websockets use error logger.
-                "filters": ["websocket_filter"],
+                "filters": ["websocket_filter", "request_id_filter"],
             },
             "uvicorn.access": {
                 "handlers": ["access_handler"],
                 "level": "INFO",
                 "propagate": False,
-                "filters": ["health_check_filter", "metrics_filter"],
+                "filters": [
+                    "health_check_filter",
+                    "metrics_filter",
+                    "request_id_filter",
+                ],
             },
             "httpx": {
                 "handlers": ["default_handler"],
                 "level": "INFO",
                 "propagate": False,
-                "filters": ["metrics_filter"],
+                "filters": ["metrics_filter", "request_id_filter"],
             },
         },
         # Catch-all for module loggers
-        "root": {"handlers": ["default_handler"], "level": log_level},
+        "root": {
+            "handlers": ["default_handler"],
+            "level": log_level,
+            "filters": ["request_id_filter"],
+        },
     }
     return log_config
