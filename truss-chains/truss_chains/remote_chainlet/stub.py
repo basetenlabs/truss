@@ -419,12 +419,36 @@ class StubBase(BasetenSession, abc.ABC):
                 return response.content.iter_any()
 
         async def _stream_with_error_handling() -> AsyncIterator[bytes]:
+            import aiohttp
+
+            timeout_retry = tenacity.AsyncRetrying(
+                stop=tenacity.stop_after_attempt(
+                   3 
+                ),
+                retry=tenacity.retry_if_exception_type(
+                    (aiohttp.ConnectionTimeoutError, aiohttp.SocketTimeoutError)
+                ),
+                reraise=True,
+            )
+
+            async def _rpc_with_general_retry() -> AsyncIterator[bytes]:
+                return await retry(_rpc)
+
             try:
-                stream = await retry(_rpc)
+                # Retry connection/socket timeouts explicitly and preserve the
+                # original retry behavior for other exceptions.
+                stream = await timeout_retry(_rpc_with_general_retry)
                 async for chunk in stream:
                     yield chunk
             except asyncio.CancelledError:
                 raise
+            except (aiohttp.ConnectionTimeoutError, aiohttp.SocketTimeoutError):
+                msg = (
+                    f"Timeout calling remote Chainlet `{self.name}` "
+                    "(internal connection error)."
+                )
+                logging.warning(msg)
+                raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
             except asyncio.TimeoutError:
                 msg = (
                     f"Timeout calling remote Chainlet `{self.name}` "
