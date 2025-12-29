@@ -39,6 +39,7 @@ from prometheus_client import (
 )
 from pydantic import BaseModel
 from shared import log_config, serialization
+from shared.log_config import request_id_var
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
@@ -236,6 +237,11 @@ class BasetenEndpoints:
         )
 
     async def websocket(self, ws: WebSocket) -> None:
+        token = request_id_var.set(
+            ws.headers.get("x-baseten-request-id")
+            or ws.headers.get("x-request-id")
+            or "-"
+        )
         self.check_healthy()
         trace_ctx = otel_propagate.extract(ws.headers) or None
         # We don't go through the typical execute_request path, since we don't need
@@ -273,6 +279,7 @@ class BasetenEndpoints:
                         reason=errors.MODEL_ERROR_MESSAGE,
                     )
                     raise  # Re raise to let `intercept_exceptions` deal with it.
+        request_id_var.reset(token)
 
     def _serialize_result(
         self, result: "OutputType", is_binary: bool, span: trace.Span
@@ -459,6 +466,18 @@ class TrussServer:
         # Add prometheus asgi middleware to route /metrics requests
         metrics_app = make_asgi_app()
         app.mount("/metrics", metrics_app)
+
+        @app.middleware("http")
+        async def attach_request_id(request: Request, call_next):
+            token = request_id_var.set(
+                request.headers.get("x-baseten-request-id")
+                or request.headers.get("x-request-id")
+                or "-"
+            )
+            try:
+                return await call_next(request)
+            finally:
+                request_id_var.reset(token)
 
         return app
 
