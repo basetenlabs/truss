@@ -498,6 +498,7 @@ impl PerformanceClient {
     payloads: Vec<JsonValue>,
     preference: Option<&RequestProcessingPreference>,
     custom_headers: Option<std::collections::HashMap<String, String>>,
+    method: Option<String>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
       return Err(create_napi_error("Payloads list cannot be empty"));
@@ -505,9 +506,13 @@ impl PerformanceClient {
 
     let pref = preference.map(|p| p.complete.clone()).unwrap_or_default();
 
+    // Parse method parameter using core function
+    let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+      .map_err(|e| create_napi_error(&e))?;
+
     let result = self
       .core_client
-      .process_batch_post_requests(url_path, payloads, &pref, custom_headers)
+      .process_batch_post_requests(url_path, payloads, &pref, custom_headers, http_method)
       .await
       .map_err(convert_core_error_to_napi_error)?;
 

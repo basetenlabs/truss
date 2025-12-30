@@ -65,15 +65,20 @@ pub(crate) async fn send_http_request_with_headers<T>(
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
     custom_headers: Option<&std::collections::HashMap<String, String>>,
+    method: crate::http::HttpMethod,
 ) -> Result<(serde_json::Value, std::collections::HashMap<String, String>), ClientError>
 where
     T: serde::Serialize,
 {
     let mut request_builder = client
-        .post(&url)
+        .request(method.into(), &url)
         .bearer_auth(api_key)
-        .json(&payload)
         .timeout(request_timeout);
+
+    // Only add JSON body for methods that support it
+    if method.has_body() {
+        request_builder = request_builder.json(&payload);
+    }
 
     // Add customer request ID header
     request_builder = request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
@@ -98,10 +103,14 @@ where
         );
     }
 
-    let response_json_value: serde_json::Value = successful_response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))?;
+    let response_json_value: serde_json::Value = if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
+        successful_response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))?
+    } else {
+        serde_json::Value::Object(serde_json::Map::new())
+    };
 
     Ok((response_json_value, headers_map))
 }
