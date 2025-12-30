@@ -967,7 +967,7 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (url_path, payloads, preference = None, custom_headers = None))]
+    #[pyo3(signature = (url_path, payloads, preference = None, custom_headers = None, method = None))]
     fn batch_post(
         &self,
         py: Python,
@@ -975,6 +975,7 @@ impl PerformanceClient {
         payloads: Vec<PyObject>,
         preference: Option<&RequestProcessingPreference>,
         custom_headers: Option<std::collections::HashMap<String, String>>,
+        method: Option<String>,
     ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -998,6 +999,10 @@ impl PerformanceClient {
         // Use provided preference or create default
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
+        // Parse method parameter using core function
+        let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+            .map_err(|e| PyValueError::new_err(e))?;
+
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
                 core_client
@@ -1006,6 +1011,7 @@ impl PerformanceClient {
                         payloads_json,
                         &rust_preference,
                         custom_headers,
+                        http_method,
                     )
                     .await
             }))
@@ -1054,7 +1060,7 @@ impl PerformanceClient {
         })
     }
 
-    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, custom_headers = None))]
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, custom_headers = None, method = None))]
     fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
@@ -1062,6 +1068,7 @@ impl PerformanceClient {
         payloads: Vec<PyObject>,
         preference: Option<&RequestProcessingPreference>,
         custom_headers: Option<std::collections::HashMap<String, String>>,
+        method: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if payloads.is_empty() {
             return Err(PyValueError::new_err("Payloads list cannot be empty"));
@@ -1084,6 +1091,10 @@ impl PerformanceClient {
         // Use provided preference or create default
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
+        // Parse method parameter using core function
+        let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+            .map_err(|e| PyValueError::new_err(e))?;
+
         let future = async move {
             let (response_data_with_times_and_headers, total_time) = core_client
                 .process_batch_post_requests(
@@ -1091,6 +1102,7 @@ impl PerformanceClient {
                     payloads_json,
                     &rust_preference,
                     custom_headers,
+                    http_method,
                 )
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;

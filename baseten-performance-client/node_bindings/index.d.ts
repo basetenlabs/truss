@@ -23,7 +23,7 @@ export declare class PerformanceClient {
   embed(input: Array<string>, model: string, encodingFormat?: string | undefined | null, dimensions?: number | undefined | null, user?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
   rerank(query: string, texts: Array<string>, rawScores?: boolean | undefined | null, model?: string | undefined | null, returnText?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
   classify(inputs: Array<string>, model?: string | undefined | null, rawScores?: boolean | undefined | null, truncate?: boolean | undefined | null, truncationDirection?: string | undefined | null, preference?: RequestProcessingPreference | undefined | null): Promise<any>
-  batchPost(urlPath: string, payloads: Array<JsonValue>, preference?: RequestProcessingPreference | undefined | null, customHeaders?: Record<string, string> | undefined | null): Promise<any>
+  batchPost(urlPath: string, payloads: Array<JsonValue>, preference?: RequestProcessingPreference | undefined | null, customHeaders?: Record<string, string> | undefined | null, method?: string | undefined | null): Promise<any>
 }
 
 /** Provides sensible defaults and getters for all properties. */
