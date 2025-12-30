@@ -1,1 +1,1 @@
-supervisor==4.2.5
+# Shell script wrapper replaces supervisord for process management
