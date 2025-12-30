@@ -611,7 +611,7 @@ class PerformanceClient:
                       Each object will be the body of the request (ignored for GET requests).
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
             preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
-            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE".
+            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
 
         Returns:
             A BatchPostResponse object containing the list of responses,
@@ -772,7 +772,7 @@ class PerformanceClient:
                       Each object will be the body of the request (ignored for GET requests).
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
             preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
-            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE".
+            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
 
         Returns:
             An awaitable BatchPostResponse object.

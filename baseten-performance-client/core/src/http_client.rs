@@ -76,7 +76,7 @@ where
         .timeout(request_timeout);
 
     // Only add JSON body for methods that support it
-    if method != crate::http::HttpMethod::GET {
+    if method.has_body() {
         request_builder = request_builder.json(&payload);
     }
 
@@ -103,10 +103,14 @@ where
         );
     }
 
-    let response_json_value: serde_json::Value = successful_response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))?;
+    let response_json_value: serde_json::Value = if method.has_body() || matches!(method, crate::http::HttpMethod::GET) {
+        successful_response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))?
+    } else {
+        serde_json::Value::Object(serde_json::Map::new())
+    };
 
     Ok((response_json_value, headers_map))
 }

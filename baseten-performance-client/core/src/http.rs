@@ -13,6 +13,8 @@ pub enum HttpMethod {
     PATCH,
     DELETE,
     GET,
+    HEAD,
+    OPTIONS,
 }
 
 impl From<HttpMethod> for reqwest::Method {
@@ -23,6 +25,8 @@ impl From<HttpMethod> for reqwest::Method {
             HttpMethod::PATCH => reqwest::Method::PATCH,
             HttpMethod::DELETE => reqwest::Method::DELETE,
             HttpMethod::GET => reqwest::Method::GET,
+            HttpMethod::HEAD => reqwest::Method::HEAD,
+            HttpMethod::OPTIONS => reqwest::Method::OPTIONS,
         }
     }
 }
@@ -35,11 +39,21 @@ impl HttpMethod {
             Some("PUT") => Ok(HttpMethod::PUT),
             Some("PATCH") => Ok(HttpMethod::PATCH),
             Some("DELETE") => Ok(HttpMethod::DELETE),
+            Some("HEAD") => Ok(HttpMethod::HEAD),
+            Some("OPTIONS") => Ok(HttpMethod::OPTIONS),
             Some("POST") | None => Ok(HttpMethod::POST),
             Some(invalid) => Err(format!(
-                "Invalid HTTP method '{}'. Supported methods: GET, POST, PUT, PATCH, DELETE",
+                "Invalid HTTP method '{}'. Supported methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS",
                 invalid
             )),
+        }
+    }
+
+    /// Returns true if this HTTP method typically has a request body
+    pub fn has_body(&self) -> bool {
+        match self { // pattern helps when extending in future
+            HttpMethod::POST | HttpMethod::PUT | HttpMethod::PATCH => true,
+            HttpMethod::GET | HttpMethod::DELETE | HttpMethod::HEAD | HttpMethod::OPTIONS => false,
         }
     }
 }

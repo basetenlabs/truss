@@ -15,6 +15,8 @@ from baseten_performance_client import PerformanceClient
         ("PUT", "/put"),
         ("PATCH", "/patch"),
         ("DELETE", "/delete"),
+        ("HEAD", "/get"),  # HEAD to /get returns headers only
+        ("OPTIONS", "/"),  # OPTIONS to root returns CORS headers
         (None, "/post"),  # Default to POST
     ],
 )
