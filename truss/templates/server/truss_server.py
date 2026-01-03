@@ -39,6 +39,7 @@ from prometheus_client import (
 )
 from pydantic import BaseModel
 from shared import log_config, serialization
+from shared.log_config import request_id_var
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
@@ -177,39 +178,52 @@ class BasetenEndpoints:
         """
         Executes a predictive endpoint
         """
-        request_id = request.headers.get("x-baseten-request-id")
-
-        logging.debug(
-            f"[DEBUG] Request received - {request.method} /{method.__name__} "
-            f", Request ID: {request_id}"
+        request_id = (
+            request.headers.get("x-baseten-request-id")
+            or request.headers.get("x-request-id")
+            or "-"
+        )
+        original_request_id = request.headers.get("x-baseten-original-request-id")
+        token = request_id_var.set(request_id)
+        logging.info(
+            "Request received - %s /%s, Request ID: %s, Original Request ID: %s",
+            request.method,
+            method.__name__,
+            request_id or "<missing>",
+            original_request_id or "<missing>",
         )
         self.check_healthy()
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
-        with self._tracer.start_as_current_span(
-            f"{method.__name__}-endpoint", context=trace_ctx
-        ) as span:
-            inputs: Optional["InputType"]
-            if self._model.skip_input_parsing:
-                inputs = None
-            else:
-                inputs = await self._parse_body(
-                    request, body_raw, self._model.truss_schema, span
-                )
-            with tracing.section_as_event(span, "model-call"):
-                result: "OutputType" = await method(inputs, request)
+        try:
+            with self._tracer.start_as_current_span(
+                f"{method.__name__}-endpoint", context=trace_ctx
+            ) as span:
+                inputs: Optional["InputType"]
+                if self._model.skip_input_parsing:
+                    inputs = None
+                else:
+                    inputs = await self._parse_body(
+                        request, body_raw, self._model.truss_schema, span
+                    )
+                with tracing.section_as_event(span, "model-call"):
+                    result: "OutputType" = await method(inputs, request)
 
-            # In the case that the model returns a Generator object, return a
-            # StreamingResponse instead.
-            if isinstance(result, (AsyncGenerator, Generator)):
-                # media_type in StreamingResponse sets the Content-Type header
-                return StreamingResponse(result, media_type="application/octet-stream")
-            elif isinstance(result, Response):
-                if result.status_code >= HTTPStatus.MULTIPLE_CHOICES.value:
-                    errors.add_error_headers_to_user_response(result)
-                return result
-            return self._serialize_result(result, self.is_binary(request), span)
+                # In the case that the model returns a Generator object, return a
+                # StreamingResponse instead.
+                if isinstance(result, (AsyncGenerator, Generator)):
+                    # media_type in StreamingResponse sets the Content-Type header
+                    return StreamingResponse(
+                        result, media_type="application/octet-stream"
+                    )
+                elif isinstance(result, Response):
+                    if result.status_code >= HTTPStatus.MULTIPLE_CHOICES.value:
+                        errors.add_error_headers_to_user_response(result)
+                    return result
+                return self._serialize_result(result, self.is_binary(request), span)
+        finally:
+            request_id_var.reset(token)
 
     async def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
@@ -233,43 +247,51 @@ class BasetenEndpoints:
         )
 
     async def websocket(self, ws: WebSocket) -> None:
+        token = request_id_var.set(
+            ws.headers.get("x-baseten-request-id")
+            or ws.headers.get("x-request-id")
+            or "-"
+        )
         self.check_healthy()
         trace_ctx = otel_propagate.extract(ws.headers) or None
         # We don't go through the typical execute_request path, since we don't need
         # to parse request body or attempt to serialize results.
-        with self._tracer.start_as_current_span("websocket", context=trace_ctx):
-            if not self._model.model_descriptor.websocket:
-                msg = "WebSocket is not implemented on this deployment."
-                logging.error(msg)
-                # Ideally we would send a response before accepting the WS, but it is
-                # hard to customize the denied upgrade request, so
-                # instead we go the clumsy way of sending the error response through
-                # accepted WS itself.
-                try:
-                    await ws.accept()
-                    await ws.close(code=1003, reason=msg)
-                    return
-                except WebSocketDisconnect:
-                    return
+        try:
+            with self._tracer.start_as_current_span("websocket", context=trace_ctx):
+                if not self._model.model_descriptor.websocket:
+                    msg = "WebSocket is not implemented on this deployment."
+                    logging.error(msg)
+                    # Ideally we would send a response before accepting the WS, but it is
+                    # hard to customize the denied upgrade request, so
+                    # instead we go the clumsy way of sending the error response through
+                    # accepted WS itself.
+                    try:
+                        await ws.accept()
+                        await ws.close(code=1003, reason=msg)
+                        return
+                    except WebSocketDisconnect:
+                        return
 
-            with errors.intercept_exceptions(
-                logging.getLogger(), self._model.model_file_name
-            ):
-                try:
-                    await ws.accept()
-                    await self._model.websocket(ws)
-                    await _safe_close_websocket(ws, status_code=1000, reason=None)
-                except WebSocketDisconnect as ws_error:
-                    logging.info(
-                        f"Client terminated websocket connection: `{ws_error}`."
-                    )
-                except Exception:
-                    await _safe_close_websocket(
-                        ws,
-                        status_code=errors.WEBSOCKET_SERVER_ERROR_CODE,
-                        reason=errors.MODEL_ERROR_MESSAGE,
-                    )
-                    raise  # Re raise to let `intercept_exceptions` deal with it.
+                with errors.intercept_exceptions(
+                    logging.getLogger(), self._model.model_file_name
+                ):
+                    try:
+                        await ws.accept()
+                        await self._model.websocket(ws)
+                        await _safe_close_websocket(ws, status_code=1000, reason=None)
+                    except WebSocketDisconnect as ws_error:
+                        logging.info(
+                            f"Client terminated websocket connection: `{ws_error}`."
+                        )
+                    except Exception:
+                        await _safe_close_websocket(
+                            ws,
+                            status_code=errors.WEBSOCKET_SERVER_ERROR_CODE,
+                            reason=errors.MODEL_ERROR_MESSAGE,
+                        )
+                        raise  # Re raise to let `intercept_exceptions` deal with it.
+        finally:
+            request_id_var.reset(token)
 
     def _serialize_result(
         self, result: "OutputType", is_binary: bool, span: trace.Span
@@ -456,6 +478,18 @@ class TrussServer:
         # Add prometheus asgi middleware to route /metrics requests
         metrics_app = make_asgi_app()
         app.mount("/metrics", metrics_app)
+
+        @app.middleware("http")
+        async def attach_request_id(request: Request, call_next):
+            token = request_id_var.set(
+                request.headers.get("x-baseten-request-id")
+                or request.headers.get("x-request-id")
+                or "-"
+            )
+            try:
+                return await call_next(request)
+            finally:
+                request_id_var.reset(token)
 
         return app
 
