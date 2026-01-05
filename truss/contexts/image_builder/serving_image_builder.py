@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import configparser
 import json
 import logging
 import os
@@ -382,8 +383,6 @@ def generate_docker_server_supervisord_config(build_dir, config):
     automatically formats continuation lines with leading whitespace, which
     supervisord's INI parser correctly interprets as multiline values.
     """
-    import configparser
-
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
