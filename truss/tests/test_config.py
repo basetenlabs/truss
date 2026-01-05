@@ -972,39 +972,29 @@ def test_docker_server_start_command_single_line_valid():
     assert docker_server.start_command == 'sh -c "vllm serve model --port 8000"'
 
 
-def test_docker_server_start_command_with_newline_invalid():
-    """start_command containing newlines should raise a validation error."""
+def test_docker_server_start_command_with_newline_valid():
+    """start_command containing newlines should be valid (handled by configparser)."""
     multiline_command = "sh -c '\necho hello\n'"
-    with pytest.raises(
-        pydantic.ValidationError,
-        match="docker_server.start_command must not contain newlines",
-    ):
-        DockerServer(
-            start_command=multiline_command,
-            server_port=8000,
-            predict_endpoint="/v1/chat/completions",
-            readiness_endpoint="/health",
-            liveness_endpoint="/health",
-        )
+    docker_server = DockerServer(
+        start_command=multiline_command,
+        server_port=8000,
+        predict_endpoint="/v1/chat/completions",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+    )
+    assert docker_server.start_command == multiline_command
 
 
-@pytest.mark.parametrize(
-    "yaml_file, description",
-    [
-        ("literal_block.yaml", "YAML literal block '|' preserves newlines"),
-        ("folded_block.yaml", "YAML folded block '>' adds trailing newline"),
-    ],
-)
-def test_docker_server_start_command_yaml_with_newlines_invalid(
-    test_data_path, yaml_file, description
+@pytest.mark.parametrize("yaml_file", ["literal_block.yaml", "folded_block.yaml"])
+def test_docker_server_start_command_yaml_with_newlines_valid(
+    test_data_path, yaml_file
 ):
-    """YAML syntaxes that preserve/add newlines should be rejected."""
+    """YAML syntaxes that preserve/add newlines (| and >) are now valid."""
     config_path = test_data_path / "docker_server_start_command" / yaml_file
 
-    with pytest.raises(
-        ValueError, match="docker_server.start_command must not contain newlines"
-    ):
-        TrussConfig.from_yaml(config_path)
+    config = TrussConfig.from_yaml(config_path)
+    # These YAML syntaxes preserve newlines, which is now supported
+    assert "\n" in config.docker_server.start_command
 
 
 @pytest.mark.parametrize(
@@ -1015,10 +1005,10 @@ def test_docker_server_start_command_yaml_with_newlines_invalid(
         ("backslash_continuation.yaml", "sh -c \\ /app/minimal-server"),
     ],
 )
-def test_docker_server_start_command_yaml_without_newlines_valid(
+def test_docker_server_start_command_yaml_folding(
     test_data_path, yaml_file, expected_command
 ):
-    """YAML syntaxes that fold newlines to spaces should be valid."""
+    """YAML syntaxes like >- and plain multiline fold newlines to spaces."""
     config_path = test_data_path / "docker_server_start_command" / yaml_file
 
     config = TrussConfig.from_yaml(config_path)
