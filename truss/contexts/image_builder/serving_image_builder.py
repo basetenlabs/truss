@@ -495,14 +495,10 @@ class ServingImageBuilder(ImageBuilder):
             "prepare_trtllm_bei_encoder_build_dir should only be called for inference_stack v1 tensorrt-llm model"
         )
         trt_llm_config: TRTLLMConfigurationV1 = config.trt_llm.root
-        # TRTLLM has performance degradation with batch size >> 1024, so we limit the runtime settings
-        # runtime batch size may not be higher than what the build settings of the model allow
-        # to 1024 even if the engine.rank0 allows for higher batch_size
+        # limit to 1024 as server can go OOM at unlimited batch sizes
         runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 1024)
-        # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
-        runtime_max_batch_tokens = max(
-            trt_llm_config.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
-        )
+        # make sure the user gets good performance, enforcing max_num_tokens here
+        runtime_max_batch_tokens = max(trt_llm_config.build.max_num_tokens, 1024)
         port = 7997
         start_command = " ".join(
             [
@@ -513,7 +509,7 @@ class ServingImageBuilder(ImageBuilder):
                 # assert the max_num_tokens is within trt-engine limits
                 f"--max-batch-tokens {runtime_max_batch_tokens}",
                 # how many sentences can be in a single json payload.
-                # limited default to improve request based autoscaling.
+                # limited default to improve/enforce request based autoscaling.
                 f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
                 # how many concurrent requests can be handled by the server until 429 is returned.
                 # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
