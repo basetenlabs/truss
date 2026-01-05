@@ -7,7 +7,6 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {# on shell expansion to do so if `python_executable_path` is not provided. This expansion doesn't work for certain #}
 {# docker commands (ENV, ENTRYPPOINT), so we point that to `python3` as a default. #}
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
-ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
 {%- set app_username = "app" %}  {# needed later for USER directive #}
 {% block user_setup %}
@@ -39,29 +38,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 
 {%- set UV_VERSION = "0.8.22" %}
-{#
-NB(nikhil): We use a semi-complex uv installation command across the board:
-- A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
-- We use `unsafe-best-match` since `uv` is stricter about having multiple registries, and we often need to search multiple.
-- Use the python executable currently on the path, will respect activated virtual envs.
-- `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
-#}
-{%- set sys_pip_install_command =
-    "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
-    "uv pip install --system --break-system-packages " +
-    "--index-strategy unsafe-best-match " +
-    "--python " + python_exec_path
-%}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN {{ python_exec_path }} -c "import sys; \
-    sys.exit(0) \
-    if sys.version_info.major == {{ supported_python_major_version_in_custom_base_image }} \
-    and sys.version_info.minor >= {{ min_supported_python_minor_version_in_custom_base_image }} \
-    and sys.version_info.minor <= {{ max_supported_python_minor_version_in_custom_base_image }} \
-    else sys.exit(1)" \
-    || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
 {% block install_uv %}
@@ -75,6 +54,59 @@ fi
 {# Add the user's local bin to the path, used by uv. #}
 ENV PATH=${PATH}:${HOME}/.local/bin
 {% endblock %}
+
+{% block install_python %}
+{# Check if Python exists, and if not, install it using uv #}
+{%- if not config.base_image.python_executable_path %}
+RUN if ! command -v python3 >/dev/null 2>&1; then \
+    echo "Python not found in base image, installing Python {{ python_version }} using uv..." && \
+    uv python install {{ python_version }} && \
+    UV_PYTHON_PATH=$(uv python find {{ python_version }}) && \
+    ln -sf $UV_PYTHON_PATH /usr/local/bin/python3 && \
+    ln -sf /usr/local/bin/python3 /usr/local/bin/python && \
+    echo "Python installed at: $(which python3)"; \
+fi
+{%- endif %}
+{% endblock %}
+
+{# Set PYTHON_EXECUTABLE after potentially installing Python #}
+ENV PYTHON_EXECUTABLE="{{ python_executable }}"
+
+{% block validate_python %}
+{# Only validate Python version if it was expected to exist in the base image #}
+{%- if config.base_image.python_executable_path %}
+RUN {{ python_exec_path }} -c "import sys; \
+    sys.exit(0) \
+    if sys.version_info.major == {{ supported_python_major_version_in_custom_base_image }} \
+    and sys.version_info.minor >= {{ min_supported_python_minor_version_in_custom_base_image }} \
+    and sys.version_info.minor <= {{ max_supported_python_minor_version_in_custom_base_image }} \
+    else sys.exit(1)" \
+    || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
+{%- else %}
+{# If no explicit python path was provided, we either found it or installed it via uv - just validate it exists and is in supported range #}
+RUN python3 -c "import sys; \
+    sys.exit(0) \
+    if sys.version_info.major == {{ supported_python_major_version_in_custom_base_image }} \
+    and sys.version_info.minor >= {{ min_supported_python_minor_version_in_custom_base_image }} \
+    and sys.version_info.minor <= {{ max_supported_python_minor_version_in_custom_base_image }} \
+    else sys.exit(1)" \
+    || { echo "ERROR: Python version is not in supported range: {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
+{%- endif %}
+{% endblock %}
+
+{#
+NB(nikhil): We use a semi-complex uv installation command across the board:
+- A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
+- We use `unsafe-best-match` since `uv` is stricter about having multiple registries, and we often need to search multiple.
+- Use the python executable currently on the path, will respect activated virtual envs.
+- `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
+#}
+{%- set sys_pip_install_command =
+    "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
+    "uv pip install --system --break-system-packages " +
+    "--index-strategy unsafe-best-match " +
+    "--python python3"
+%}
 
 {% block base_image_patch %}
 {% endblock %}
@@ -135,4 +167,4 @@ ENV {{ env_var_name }}="{{ env_var_value }}"
 {% endfor %}
 
 {% block run %}
-{% endblock %}
+{% endblock %
