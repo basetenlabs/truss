@@ -390,35 +390,36 @@ def generate_docker_server_supervisord_config(build_dir, config):
     cfg = configparser.ConfigParser()
 
     cfg["supervisord"] = {
-        "pidfile": "/tmp/supervisord.pid",
-        "nodaemon": "true",
-        "logfile": "/dev/null",
-        "logfile_maxbytes": "0",
+        "pidfile": "/tmp/supervisord.pid",  # PID file in /tmp to be writable by non-root user
+        "nodaemon": "true",  # Run in foreground (required for containers)
+        "logfile": "/dev/null",  # Disable file logging
+        "logfile_maxbytes": "0",  # No size limit (logging disabled)
     }
 
     cfg["program:model-server"] = {
-        "command": config.docker_server.start_command,
-        "startsecs": "30",
-        "startretries": "0",
-        "autostart": "true",
-        "autorestart": "false",
-        "stdout_logfile": "/dev/fd/1",
-        "stdout_logfile_maxbytes": "0",
-        "redirect_stderr": "true",
+        "command": config.docker_server.start_command,  # Command to start the model server
+        "startsecs": "30",  # Wait 30s before assuming server is running
+        "startretries": "0",  # Don't retry if server fails to start
+        "autostart": "true",  # Start automatically with supervisord
+        "autorestart": "false",  # Don't restart on exit
+        "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
+        "stdout_logfile_maxbytes": "0",  # No size limit on stdout
+        "redirect_stderr": "true",  # Combine stderr into stdout
     }
 
     cfg["program:nginx"] = {
-        "command": 'nginx -g "daemon off;"',
-        "startsecs": "0",
-        "autostart": "true",
-        "autorestart": "true",
-        "stdout_logfile": "/dev/fd/1",
-        "stdout_logfile_maxbytes": "0",
-        "redirect_stderr": "true",
+        "command": 'nginx -g "daemon off;"',  # Run nginx in foreground
+        "startsecs": "0",  # Assume nginx starts immediately
+        "autostart": "true",  # Start automatically with supervisord
+        "autorestart": "true",  # Always restart nginx on exit
+        "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
+        "stdout_logfile_maxbytes": "0",  # No size limit on stdout
+        "redirect_stderr": "true",  # Combine stderr into stdout
     }
 
     cfg["eventlistener:quit_on_failure"] = {
-        "events": "PROCESS_STATE_FATAL",
+        "events": "PROCESS_STATE_FATAL",  # Listen for fatal process events
+        # Stop supervisord (SIGTERM to PID 1) on fatal event
         "command": """sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'""",
     }
 
