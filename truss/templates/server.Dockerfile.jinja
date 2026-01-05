@@ -61,10 +61,12 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 COPY --chown={{ default_owner }} ./{{ config.data_dir }} ${APP_HOME}/data
 {%- endif %} {#- endif data_dir_exists #}
 
-{%- if model_cache_v2 %}
+{%- if copy_truss_transfer_cli %}
 {# v0.0.9, keep synced with server_requirements.txt #}
 RUN curl -sSL --fail --retry 5 --retry-delay 2 -o /usr/local/bin/truss-transfer-cli https://github.com/basetenlabs/truss/releases/download/v0.11.13rc3/truss-transfer-cli-v0.11.13rc3-linux-x86_64-unknown-linux-musl
 RUN chmod +x /usr/local/bin/truss-transfer-cli
+{%- endif %} {#- endif copy_truss_transfer_cli #}
+{%- if model_cache_v2 %}
 RUN mkdir /static-bptr
 RUN echo "hash {{model_cache_hash}}"
 COPY --chown={{ default_owner }} ./bptr-manifest /static-bptr/static-bptr-manifest.json
@@ -98,7 +100,10 @@ COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/mod
 {# Macro to change ownership of directories and switch to regular user #}
 {%- macro chown_and_switch_to_regular_user_if_enabled(additional_chown_dirs=[]) -%}
 {%- if non_root_user %}
-RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME} {{ packages_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
+{#- /workspace is used by TRT-LLM v2 inference stack, but we create and chown it unconditionally #}
+{%- set workspace_dir = "/workspace" %}
+RUN mkdir -p {{ workspace_dir }}
+RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME} {{ packages_dir }} {{ workspace_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
 USER {{ app_username }}
 {%- endif %} {#- endif non_root_user #}
 {%- endmacro -%}

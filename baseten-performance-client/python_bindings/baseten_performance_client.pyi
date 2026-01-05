@@ -4,20 +4,6 @@
 import builtins
 import typing
 
-try:
-    import numpy
-    import numpy.typing as npt
-
-    _NDArrayF32 = npt.NDArray[numpy.float32]
-    _NDArrayAny = npt.NDArray[
-        typing.Any
-    ]  # For a more general ndarray if dtype is not float32
-except ImportError:
-    _NDArrayF32 = (
-        typing.Any
-    )  # Fallback if numpy is not available for type checking environment
-    _NDArrayAny = typing.Any
-
 class OpenAIEmbeddingData:
     """
     Represents a single embedding object.
@@ -84,7 +70,7 @@ class OpenAIEmbeddingsResponse:
     individual_request_times: typing.Optional[builtins.list[builtins.float]]
     response_headers: builtins.list[builtins.dict[builtins.str, builtins.str]]
 
-    def numpy(self) -> _NDArrayF32:
+    def numpy(self) -> typing.Any:
         """
         Converts the embeddings data into a 2D NumPy array.
 
@@ -222,6 +208,153 @@ class ClassificationResponse:
         """
         ...
 
+class RequestProcessingPreference:
+    """
+    Configuration for request processing with user-defined preferences.
+
+    This class allows you to specify custom parameters for request processing,
+    including concurrency limits, timeouts, hedging behavior, and budget percentages.
+    All parameters are optional - defaults will be applied during processing.
+
+    Attributes:
+        max_concurrent_requests: Maximum number of parallel requests (default: 128).
+        batch_size: Number of items per batch (default: 128).
+        max_chars_per_request: Optional character-based batching limit.
+        timeout_s: Per-request timeout in seconds (default: 3600.0).
+        hedge_delay: Optional request hedging delay in seconds.
+        total_timeout_s: Optional total timeout for the entire operation in seconds.
+        hedge_budget_pct: Hedge budget percentage (default: 0.10).
+        retry_budget_pct: Retry budget percentage (default: 0.05).
+        max_retries: Maximum number of HTTP retries (default: 4).
+        initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
+        cancel_token: Optional CancellationToken for cancelling operations.
+
+    Example:
+        >>> # Use all defaults
+        >>> preference = RequestProcessingPreference()
+        >>>
+        >>> # Custom concurrency and timeout via constructor
+        >>> preference = RequestProcessingPreference(
+        ...     max_concurrent_requests=64,
+        ...     timeout_s=30.0
+        ... )
+        >>>
+        >>> # Or use property setters for more flexibility
+        >>> preference = RequestProcessingPreference()
+        >>> preference.max_concurrent_requests = 64
+        >>> preference.timeout_s = 30.0
+        >>> preference.hedge_delay = 0.5
+        >>> preference.hedge_budget_pct = 0.15
+        >>> preference.max_retries = 3
+        >>> preference.initial_backoff_ms = 250
+        >>>
+        >>> # With cancellation token
+        >>> token = CancellationToken()
+        >>> preference = RequestProcessingPreference(
+        ...     max_concurrent_requests=64,
+        ...     cancel_token=token
+        ... )
+        >>> # Later cancel the operation
+        >>> token.cancel()
+    """
+
+    def __init__(
+        self,
+        max_concurrent_requests: typing.Optional[int] = None,
+        batch_size: typing.Optional[int] = None,
+        max_chars_per_request: typing.Optional[int] = None,
+        timeout_s: typing.Optional[float] = None,
+        hedge_delay: typing.Optional[float] = None,
+        total_timeout_s: typing.Optional[float] = None,
+        hedge_budget_pct: typing.Optional[float] = None,
+        retry_budget_pct: typing.Optional[float] = None,
+        max_retries: typing.Optional[int] = None,
+        initial_backoff_ms: typing.Optional[int] = None,
+        cancel_token: typing.Optional[CancellationToken] = None,
+    ) -> None:
+        """
+                Initialize a RequestProcessingPreference with optional parameters.
+
+                Args:
+                    max_concurrent_requests: Maximum parallel requests (default: 128).
+                    batch_size: Number of items per batch (default: 128).
+                    max_chars_per_request: Optional character-based batching limit.
+                    timeout_s: Per-request timeout in seconds (default: 3600.0).
+                    hedge_delay: Optional request hedging delay in seconds.
+                    total_timeout_s: Optional total timeout for the entire operation in seconds.
+                    hedge_budget_pct: Hedge budget percentage (default: 0.10).
+                    retry_budget_pct: Retry budget percentage (default: 0.05).
+                    max_retries: Maximum number of HTTP retries (default: 4).
+                    initial_backoff_ms: Initial backoff duration in milliseconds (default: 125).
+        cancel_token: Optional CancellationToken for cancelling operations.
+        """
+
+    # Property definitions with type hints
+    max_concurrent_requests: builtins.int
+    batch_size: builtins.int
+    max_chars_per_request: typing.Optional[builtins.int]
+    timeout_s: builtins.float
+    hedge_delay: typing.Optional[builtins.float]
+    total_timeout_s: typing.Optional[builtins.float]
+    hedge_budget_pct: builtins.float
+    retry_budget_pct: builtins.float
+    max_retries: builtins.int
+    initial_backoff_ms: builtins.int
+    cancel_token: typing.Optional[CancellationToken]
+
+    @classmethod
+    def default(cls) -> "RequestProcessingPreference":
+        """
+        Create a new preference with default values.
+
+        Returns:
+            RequestProcessingPreference with all default values applied.
+        """
+        ...
+
+    ...
+
+class CancellationToken:
+    """
+    CancellationToken for cancelling async operations.
+
+    This token can be used to cancel long-running operations.
+
+    Attributes:
+        (No public attributes, only methods)
+
+    Example:
+        >>> token = CancellationToken()
+        >>> # Pass token to RequestProcessingPreference
+        >>> preference = RequestProcessingPreference(cancel_token=token)
+        >>> # Later cancel the operation
+        >>> token.cancel()
+    """
+
+    def __init__(self) -> None:
+        """
+        Create a new cancellation token.
+        """
+        ...
+
+    def cancel(self) -> None:
+        """
+        Cancel all operations using this token.
+
+        Once cancelled, the token cannot be un-cancelled.
+        Any operation checking this token will see the cancelled state.
+        """
+        ...
+
+    def is_cancelled(self) -> builtins.bool:
+        """
+        Check if cancellation has been requested.
+
+        Returns:
+            True if the token has been cancelled, False otherwise.
+        """
+        ...
+
 class BatchPostResponse:
     """
     Represents the response from a batch_post or async_batch_post operation.
@@ -336,12 +469,7 @@ class PerformanceClient:
         encoding_format: typing.Optional[builtins.str] = None,
         dimensions: typing.Optional[builtins.int] = None,
         user: typing.Optional[builtins.str] = None,
-        max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
-        batch_size: builtins.int = 16,  # DEFAULT_BATCH_SIZE
-        timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
-        max_chars_per_request: typing.Optional[builtins.int] = None,
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
     ) -> OpenAIEmbeddingsResponse:
         """
         Sends a list of strings to the embedding endpoint to generate embeddings.
@@ -352,12 +480,7 @@ class PerformanceClient:
             encoding_format: Optional encoding format.
             dimensions: Optional dimension size of the embeddings.
             user: Optional user identifier.
-            max_concurrent_requests: Maximum parallel requests.
-            batch_size: Number of texts per batch.
-            timeout_s: Per-request timeout in seconds.
-            max_chars_per_request: Optional character-based batching limit.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
 
         Returns:
             An OpenAIEmbeddingsResponse object.
@@ -370,6 +493,10 @@ class PerformanceClient:
         Example:
             >>> response = client.embed(["hello", "world"], model="model-id")
             >>> print(response.data[0].embedding)
+
+        Example with preference:
+            >>> preference = RequestProcessingPreference(max_concurrent_requests=64, timeout_s=30.0)
+            >>> response = client.embed(["hello", "world"], model="model-id", preference=preference)
 
         Example with error handling:
             >>> try:
@@ -388,12 +515,7 @@ class PerformanceClient:
         return_text: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
-        max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
-        batch_size: builtins.int = 16,  # DEFAULT_BATCH_SIZE
-        timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
-        max_chars_per_request: typing.Optional[builtins.int] = None,
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
     ) -> RerankResponse:
         """
         Reranks a set of texts based on the provided query.
@@ -406,12 +528,7 @@ class PerformanceClient:
             return_text: Whether to include the original text.
             truncate: Whether to truncate texts.
             truncation_direction: Direction for truncation ('Right' by default).
-            max_concurrent_requests: Maximum parallel requests.
-            batch_size: Batch size for each request.
-            timeout_s: Per-request timeout in seconds.
-            max_chars_per_request: Optional character-based batching limit.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
 
         Returns:
             A RerankResponse object.
@@ -425,6 +542,10 @@ class PerformanceClient:
             >>> response = client.rerank("find", ["doc1", "doc2"])
             >>> for result in response.data:
             ...     print(result.index, result.score)
+
+        Example with preference:
+            >>> preference = RequestProcessingPreference(max_concurrent_requests=64, hedge_delay=0.5)
+            >>> response = client.rerank("find", ["doc1", "doc2"], preference=preference)
         """
         ...
 
@@ -435,12 +556,7 @@ class PerformanceClient:
         raw_scores: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
-        max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
-        batch_size: builtins.int = 16,  # DEFAULT_BATCH_SIZE
-        timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
-        max_chars_per_request: typing.Optional[builtins.int] = None,
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
     ) -> ClassificationResponse:
         """
         Classifies each input text.
@@ -451,12 +567,7 @@ class PerformanceClient:
             raw_scores: Whether raw scores should be returned.
             truncate: Whether to truncate long texts.
             truncation_direction: Truncation direction ('Right' by default).
-            max_concurrent_requests: Maximum parallel requests.
-            batch_size: Batch size for each request.
-            timeout_s: Per-request timeout in seconds.
-            max_chars_per_request: Optional character-based batching limit.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
 
         Returns:
             A ClassificationResponse object.
@@ -470,7 +581,11 @@ class PerformanceClient:
             >>> response = client.classify(["text1", "text2"])
             >>> for group in response.data:
             ...     for result in group:
-            ...         print(result.label, result.score)
+            ...                 print(result.label, result.score)
+
+        Example with preference:
+            >>> preference = RequestProcessingPreference(batch_size=64, timeout_s=30.0)
+            >>> response = client.classify(["text1", "text2"], preference=preference)
         """
         ...
 
@@ -478,29 +593,25 @@ class PerformanceClient:
         self,
         url_path: builtins.str,
         payloads: builtins.list[typing.Any],
-        max_concurrent_requests: builtins.int = 32,  # DEFAULT_CONCURRENCY
-        timeout_s: builtins.float = 3600.0,  # DEFAULT_REQUEST_TIMEOUT_S
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
         custom_headers: typing.Optional[
             builtins.dict[builtins.str, builtins.str]
         ] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
+        method: typing.Optional[builtins.str] = None,
     ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
 
-        Each payload is sent as an individual POST request. The responses are
+        Each payload is sent as an individual HTTP request using the specified method. The responses are
         returned as a BatchPostResponse object.
 
         Args:
-            url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
+            url_path: The specific API path to send requests to (e.g., "/v1/custom_endpoint").
             payloads: A list of Python objects that are JSON-serializable.
-                      Each object will be the body of a POST request.
-            max_concurrent_requests: Maximum number of parallel requests.
-            timeout_s: Per-request timeout in seconds.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+                      Each object will be the body of the request (ignored for GET requests).
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
+            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
 
         Returns:
             A BatchPostResponse object containing the list of responses,
@@ -523,6 +634,9 @@ class PerformanceClient:
             >>> print(f"Total time: {response_obj.total_time}")
             >>> # With custom headers:
             >>> response_obj = client.batch_post("/v1/process_item", custom_payloads, custom_headers={"X-Custom-Header": "value"})
+            >>> # With preference:
+            >>> preference = RequestProcessingPreference(max_concurrent_requests=64, timeout_s=30.0)
+            >>> response_obj = client.batch_post("/v1/process_item", custom_payloads, preference=preference)
         """
         ...
 
@@ -533,12 +647,7 @@ class PerformanceClient:
         encoding_format: typing.Optional[builtins.str] = None,
         dimensions: typing.Optional[builtins.int] = None,
         user: typing.Optional[builtins.str] = None,
-        max_concurrent_requests: builtins.int = 32,
-        batch_size: builtins.int = 16,
-        timeout_s: builtins.float = 3600.0,
-        max_chars_per_request: typing.Optional[builtins.int] = None,
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
     ) -> OpenAIEmbeddingsResponse:
         """
         Asynchronously sends a list of texts to the embedding endpoint to generate embeddings.
@@ -549,12 +658,7 @@ class PerformanceClient:
             encoding_format: Optional encoding format.
             dimensions: Optional dimension size of the embeddings.
             user: Optional user identifier.
-            max_concurrent_requests: Maximum parallel requests.
-            batch_size: Number of texts per batch.
-            timeout_s: Per-request timeout in seconds.
-            max_chars_per_request: Optional character-based batching limit.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
 
         Returns:
             An awaitable OpenAIEmbeddingsResponse object.
@@ -567,6 +671,10 @@ class PerformanceClient:
         Example:
             >>> response = await client.async_embed(["hello", "world"], model="model-id")
             >>> print(response.data[0].embedding)
+
+        Example with preference:
+            >>> preference = RequestProcessingPreference(max_concurrent_requests=64, timeout_s=30.0)
+            >>> response = await client.async_embed(["hello", "world"], model="model-id", preference=preference)
         """
         ...
 
@@ -579,12 +687,7 @@ class PerformanceClient:
         return_text: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
-        max_concurrent_requests: builtins.int = 32,
-        batch_size: builtins.int = 16,
-        timeout_s: builtins.float = 3600.0,
-        max_chars_per_request: typing.Optional[builtins.int] = None,
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
     ) -> RerankResponse:
         """
         Asynchronously reranks a set of texts based on the provided query.
@@ -597,12 +700,7 @@ class PerformanceClient:
             return_text: Whether to include the original text.
             truncate: Whether to truncate texts.
             truncation_direction: Direction for truncation ('Right' by default).
-            max_concurrent_requests: Maximum parallel requests.
-            batch_size: Batch size for each request.
-            timeout_s: Per-request timeout in seconds.
-            max_chars_per_request: Optional character-based batching limit.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
 
         Returns:
             An awaitable RerankResponse object.
@@ -626,12 +724,7 @@ class PerformanceClient:
         raw_scores: builtins.bool = False,
         truncate: builtins.bool = False,
         truncation_direction: builtins.str = "Right",
-        max_concurrent_requests: builtins.int = 32,
-        batch_size: builtins.int = 16,
-        timeout_s: builtins.float = 3600.0,
-        max_chars_per_request: typing.Optional[builtins.int] = None,
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
     ) -> ClassificationResponse:
         """
         Asynchronously classifies each input text.
@@ -642,12 +735,7 @@ class PerformanceClient:
             raw_scores: Whether raw scores should be returned.
             truncate: Whether to truncate long texts.
             truncation_direction: Truncation direction ('Right' by default).
-            max_concurrent_requests: Maximum parallel requests.
-            batch_size: Batch size for each request.
-            timeout_s: Per-request timeout in seconds.
-            max_chars_per_request: Optional character-based batching limit.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
 
         Returns:
             An awaitable ClassificationResponse object.
@@ -669,25 +757,22 @@ class PerformanceClient:
         self,
         url_path: builtins.str,
         payloads: builtins.list[typing.Any],
-        max_concurrent_requests: builtins.int = 32,
-        timeout_s: builtins.float = 3600.0,
-        hedge_delay: typing.Optional[builtins.float] = None,
-        total_timeout_s: typing.Optional[builtins.float] = None,
         custom_headers: typing.Optional[
             builtins.dict[builtins.str, builtins.str]
         ] = None,
+        preference: typing.Optional[RequestProcessingPreference] = None,
+        method: typing.Optional[builtins.str] = None,
     ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
 
         Args:
-            url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
+            url_path: The specific API path to send requests to (e.g., "/v1/custom_endpoint").
             payloads: A list of Python objects that are JSON-serializable.
-            max_concurrent_requests: Maximum number of parallel requests.
-            timeout_s: Per-request timeout in seconds.
-            hedge_delay: Optional request hedging delay in seconds.
-            total_timeout_s: Optional total timeout for the entire operation in seconds.
+                      Each object will be the body of the request (ignored for GET requests).
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
+            preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
+            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
 
         Returns:
             An awaitable BatchPostResponse object.
