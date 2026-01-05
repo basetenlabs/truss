@@ -570,14 +570,6 @@ class DockerServer(custom_types.ConfigModel):
     def _validate_start_command(self) -> "DockerServer":
         if not self.no_build and self.start_command is None:
             raise ValueError("start_command is required when no_build is not true")
-        if self.start_command is not None and "\n" in self.start_command:
-            raise ValueError(
-                "docker_server.start_command must not contain newlines. "
-                "YAML block scalars '|' and '>' preserve or add newlines. "
-                "Use '>-' (folded + chomped) or plain multiline syntax instead, "
-                "or semicolons to chain commands: "
-                "'sh -c \"cmd1; cmd2\"'"
-            )
         return self
 
 
