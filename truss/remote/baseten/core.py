@@ -503,7 +503,7 @@ def create_truss_service(
     )
 
 
-def validate_truss_config_against_backend(api: BasetenApi, config: str):
+def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
     """
     Validate a truss config as well as the truss version.
 
@@ -511,12 +511,16 @@ def validate_truss_config_against_backend(api: BasetenApi, config: str):
         api: BasetenApi instance
         config: Base64 encoded JSON string of the Truss config
 
-    Returns:
-        None if the config is valid, otherwise raises an error message
+    Raises:
+        ValidationError if config is invalid.
     """
     valid_config = api.validate_truss(config)
+    details = json.loads(valid_config.get("details") or "{}")
+
+    for warning in details.get("warnings", []):
+        logger.warning(f"Server validation warning: {warning}")
+
     if not valid_config.get("success"):
-        details = json.loads(valid_config.get("details"))
         errors = details.get("errors", [])
         if errors:
             error_messages = "\n".join(textwrap.indent(error, "  ") for error in errors)

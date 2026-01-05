@@ -255,6 +255,41 @@ def test_validate_truss_config():
         core.validate_truss_config_against_backend(api, {"should_error": "hi"})
 
 
+def test_validate_truss_config_with_warnings(caplog):
+    api = MagicMock()
+
+    api.validate_truss.return_value = {
+        "success": True,
+        "details": json.dumps(
+            {"warnings": ["Deprecation: field X will be removed in v2.0"]}
+        ),
+    }
+    core.validate_truss_config_against_backend(api, {})
+    assert (
+        "Server validation warning: Deprecation: field X will be removed" in caplog.text
+    )
+
+    caplog.clear()
+    api.validate_truss.return_value = {
+        "success": True,
+        "details": json.dumps({"warnings": ["warning1", "warning2"]}),
+    }
+    core.validate_truss_config_against_backend(api, {})
+    assert "Server validation warning: warning1" in caplog.text
+    assert "Server validation warning: warning2" in caplog.text
+
+    caplog.clear()
+    api.validate_truss.return_value = {
+        "success": False,
+        "details": json.dumps(
+            {"errors": ["some error"], "warnings": ["warning despite error"]}
+        ),
+    }
+    with pytest.raises(ValidationError, match="some error"):
+        core.validate_truss_config_against_backend(api, {})
+    assert "Server validation warning: warning despite error" in caplog.text
+
+
 def test_get_training_job_logs_with_pagination_single_batch(baseten_api):
     """Test pagination when all logs fit in a single batch"""
     # Mock logs data
