@@ -515,6 +515,7 @@ class ServingImageBuilder(ImageBuilder):
                 # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
                 # 2048 is a safe max value for the server
                 f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
+                "--auto-truncate",
             ]
         )
         self._spec.config.docker_server = DockerServer(

@@ -706,6 +706,7 @@ impl PerformanceClientCore {
         payloads_json: Vec<serde_json::Value>,
         preference: &RequestProcessingPreference,
         custom_headers: Option<HeaderMap>,
+        method: crate::http::HttpMethod,
     ) -> Result<(Vec<(serde_json::Value, HeaderMap, Duration)>, Duration), ClientError> {
         let start_time = std::time::Instant::now();
         let total_payloads = payloads_json.len();
@@ -737,6 +738,7 @@ impl PerformanceClientCore {
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;
             let custom_headers = custom_headers.clone();
+            let method = method;
 
             // Generate individual request ID for this batch
             let request_customer_id = config.create_request_customer_id(index);
@@ -764,6 +766,7 @@ impl PerformanceClientCore {
                     &config_clone,
                     request_customer_id,
                     custom_headers.as_deref(),
+                    method,
                 )
                 .await;
 

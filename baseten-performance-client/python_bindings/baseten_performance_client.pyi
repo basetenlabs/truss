@@ -597,19 +597,21 @@ class PerformanceClient:
             builtins.dict[builtins.str, builtins.str]
         ] = None,
         preference: typing.Optional[RequestProcessingPreference] = None,
+        method: typing.Optional[builtins.str] = None,
     ) -> BatchPostResponse:
         """
         Sends a list of generic JSON payloads to a specified URL path concurrently.
 
-        Each payload is sent as an individual POST request. The responses are
+        Each payload is sent as an individual HTTP request using the specified method. The responses are
         returned as a BatchPostResponse object.
 
         Args:
-            url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
+            url_path: The specific API path to send requests to (e.g., "/v1/custom_endpoint").
             payloads: A list of Python objects that are JSON-serializable.
-                      Each object will be the body of a POST request.
+                      Each object will be the body of the request (ignored for GET requests).
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
             preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
+            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
 
         Returns:
             A BatchPostResponse object containing the list of responses,
@@ -759,15 +761,18 @@ class PerformanceClient:
             builtins.dict[builtins.str, builtins.str]
         ] = None,
         preference: typing.Optional[RequestProcessingPreference] = None,
+        method: typing.Optional[builtins.str] = None,
     ) -> BatchPostResponse:
         """
         Asynchronously sends a list of generic JSON payloads to a specified URL path concurrently.
 
         Args:
-            url_path: The specific API path to post to (e.g., "/v1/custom_endpoint").
+            url_path: The specific API path to send requests to (e.g., "/v1/custom_endpoint").
             payloads: A list of Python objects that are JSON-serializable.
+                      Each object will be the body of the request (ignored for GET requests).
             custom_headers: Optional dictionary of custom HTTP headers to include in each request.
             preference: Optional RequestProcessingPreference for configuration. If not provided, defaults will be used.
+            method: Optional HTTP method to use. Defaults to "POST". Supported methods: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS".
 
         Returns:
             An awaitable BatchPostResponse object.

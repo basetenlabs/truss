@@ -4,6 +4,60 @@ use std::collections::HashMap;
 /// Type alias for HTTP response headers
 pub type HeaderMap = HashMap<String, String>;
 
+/// HTTP methods supported by the batch client
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HttpMethod {
+    #[default]
+    POST,
+    PUT,
+    PATCH,
+    DELETE,
+    GET,
+    HEAD,
+    OPTIONS,
+}
+
+impl From<HttpMethod> for reqwest::Method {
+    fn from(method: HttpMethod) -> Self {
+        match method {
+            HttpMethod::POST => reqwest::Method::POST,
+            HttpMethod::PUT => reqwest::Method::PUT,
+            HttpMethod::PATCH => reqwest::Method::PATCH,
+            HttpMethod::DELETE => reqwest::Method::DELETE,
+            HttpMethod::GET => reqwest::Method::GET,
+            HttpMethod::HEAD => reqwest::Method::HEAD,
+            HttpMethod::OPTIONS => reqwest::Method::OPTIONS,
+        }
+    }
+}
+
+impl HttpMethod {
+    /// Parse a string into an HttpMethod, defaulting to POST for None or empty strings
+    pub fn from_str(method: Option<&str>) -> Result<Self, String> {
+        match method {
+            Some("GET") => Ok(HttpMethod::GET),
+            Some("PUT") => Ok(HttpMethod::PUT),
+            Some("PATCH") => Ok(HttpMethod::PATCH),
+            Some("DELETE") => Ok(HttpMethod::DELETE),
+            Some("HEAD") => Ok(HttpMethod::HEAD),
+            Some("OPTIONS") => Ok(HttpMethod::OPTIONS),
+            Some("POST") | None => Ok(HttpMethod::POST),
+            Some(invalid) => Err(format!(
+                "Invalid HTTP method '{}'. Supported methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS",
+                invalid
+            )),
+        }
+    }
+
+    /// Returns true if this HTTP method typically has a request body
+    pub fn has_body(&self) -> bool {
+        match self { // pattern helps when extending in future
+            HttpMethod::POST | HttpMethod::PUT | HttpMethod::PATCH => true,
+            HttpMethod::GET | HttpMethod::DELETE | HttpMethod::HEAD | HttpMethod::OPTIONS => false,
+        }
+    }
+}
+
 // Default functions for serde
 fn default_total_time() -> f64 {
     -1.0

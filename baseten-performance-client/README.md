@@ -198,7 +198,7 @@ Comparison against `pip install openai` for `/v1/embeddings`. Tested with the `.
 
 ### General Batch POST
 
-The batch_post method is generic. It can be used to send POST requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON item.
+The batch_post method is generic. It can be used to send HTTP requests to any URL, not limited to Baseten endpoints. The input and output can be any JSON item. Supports multiple HTTP methods (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) with the `method` parameter.
 
 #### Synchronous Batch POST
 ```python
@@ -216,7 +216,8 @@ response_obj = client.batch_post(
     url_path="/v1/embeddings", # Example path, adjust to your needs
     payloads=[payload1, payload2],
     custom_headers={"x-custom-header": "value"},  # Custom headers
-    preference=preference
+    preference=preference,
+    method="POST"  # HTTP method: GET, POST, PUT, PATCH, DELETE (default: POST)
 )
 print(f"Total time for batch POST: {response_obj.total_time:.4f}s")
 for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
@@ -240,12 +241,13 @@ async def async_batch_post_example():
         hedge_delay=0.5,  # Enable hedging with 0.5s delay
         total_timeout_s=360  # Total operation timeout
     )
-    response_obj = await client.async_batch_post(
-        url_path="/v1/embeddings",
-        payloads=[payload1, payload2],
-        custom_headers={"x-custom-header": "value"},  # Custom headers
-        preference=preference
-    )
+response_obj = await client.async_batch_post(
+    url_path="/v1/embeddings",
+    payloads=[payload1, payload2],
+    custom_headers={"x-custom-header": "value"},  # Custom headers
+    preference=preference,
+    method="POST"  # HTTP method: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS (default: POST)
+)
     print(f"Async total time for batch POST: {response_obj.total_time:.4f}s")
     for i, (resp_data, headers, time_taken) in enumerate(zip(response_obj.data, response_obj.response_headers, response_obj.individual_request_times)):
         print(f"Async Response {i+1}:")
@@ -275,8 +277,9 @@ const preference = new RequestProcessingPreference(
 const responseObj = await client.batchPost(
     "/v1/embeddings",           // urlPath
     [payload1, payload2],       // payloads
+    preference,                 // preference parameter
     {"x-custom-header": "value"}, // custom headers
-    preference                  // preference parameter
+    "POST"                      // HTTP method: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS (default: POST)
 );
 const responseObj = await client.batchPost(
     "/v1/embeddings",           // urlPath
