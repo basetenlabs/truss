@@ -19,7 +19,10 @@ from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
-from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
+from truss.cli.resolvers.model_team_resolver import (
+    resolve_model_for_watch,
+    resolve_model_team_name,
+)
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
@@ -29,6 +32,7 @@ from truss.remote.baseten.core import (
     ModelIdentifier,
     ModelName,
     ModelVersionId,
+    get_dev_version_from_versions,
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
@@ -758,8 +762,17 @@ def model_logs(
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the model to watch",
+)
 @common.common_options()
-def watch(target_directory: str, remote: str) -> None:
+def watch(
+    target_directory: str, remote: str, provided_team_name: Optional[str] = None
+) -> None:
     """
     Seamless remote development with truss
 
@@ -769,7 +782,7 @@ def watch(target_directory: str, remote: str) -> None:
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    remote_provider = RemoteFactory.create(remote=remote)
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
     tr = _get_truss_from_directory(target_directory=target_directory)
     model_name = tr.spec.config.model_name
@@ -780,14 +793,28 @@ def watch(target_directory: str, remote: str) -> None:
         )
         sys.exit(1)
 
-    service = remote_provider.get_service(model_identifier=ModelName(model_name))
+    # Resolve the model once with team disambiguation (prompts only once if needed)
+    resolved_model, versions = resolve_model_for_watch(
+        remote_provider, model_name, provided_team_name=provided_team_name
+    )
+    model_id = resolved_model["id"]
+
+    # Verify dev version exists
+    dev_version = get_dev_version_from_versions(versions)
+    if not dev_version:
+        console.print("❌ No development model found. Run `truss push` then try again.")
+        sys.exit(1)
+
+    # Use model_id to get service (no additional resolution needed)
+    service = remote_provider.get_service(model_identifier=ModelId(model_id))
     console.print(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
 
     if not os.path.isfile(target_directory):
-        remote_provider.sync_truss_to_dev_version_by_name(
-            model_name, target_directory, console, error_console
+        # Pass the resolved model to avoid re-resolution
+        remote_provider.sync_truss_to_dev_version_with_model(
+            resolved_model, versions, target_directory, console, error_console
         )
     else:
         # These imports are delayed, to handle pydantic v1 envs gracefully.

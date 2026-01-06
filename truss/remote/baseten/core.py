@@ -241,11 +241,6 @@ def exists_model(
     return None
 
 
-def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:
-    query_result = api.get_model(model_name.value)["model"]
-    return query_result, query_result["versions"]
-
-
 def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
     """Given a list of model version dicts, returns the development version.
 

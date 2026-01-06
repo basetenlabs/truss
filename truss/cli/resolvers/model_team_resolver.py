@@ -8,6 +8,107 @@ from truss.cli import remote_cli
 from truss.remote.baseten.remote import BasetenRemote
 
 
+def resolve_model_for_watch(
+    remote_provider: BasetenRemote,
+    model_name: str,
+    provided_team_name: Optional[str] = None,
+    prompt: str = "👥 Multiple models with this name exist. Which team's model do you want to watch?",
+) -> tuple[dict, list]:
+    """Resolve a model by name for watch operations, handling team disambiguation.
+
+    This function fetches models with full version info and handles cases where
+    multiple models have the same name across different teams.
+
+    Args:
+        remote_provider: BasetenRemote instance
+        model_name: Name of the model to resolve
+        provided_team_name: Optional team name to filter by (skips disambiguation prompt)
+        prompt: Custom prompt message for team selection (when disambiguation needed)
+
+    Returns:
+        Tuple of (model_dict, versions_list) for the resolved model.
+
+    Raises:
+        click.ClickException: If no model found or if disambiguation fails.
+
+    Resolution logic:
+        - If team is provided: validates team and returns model from that team
+        - If exactly one model matches: returns it directly
+        - If multiple models match: prompts user to select which team's model
+        - If no models match: raises an error
+    """
+    existing_teams = remote_provider.api.get_teams()
+
+    # If team is provided, validate it and filter by that team
+    if provided_team_name is not None:
+        if provided_team_name not in existing_teams:
+            available_teams_str = remote_cli.format_available_teams(existing_teams)
+            raise click.ClickException(
+                f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
+            )
+        team_id = existing_teams[provided_team_name]["id"]
+        models_data = remote_provider.api.get_models_for_watch(team_id=team_id)
+        matching_models = [
+            m for m in models_data.get("models", []) if m.get("name") == model_name
+        ]
+        if not matching_models:
+            raise click.ClickException(
+                f"Model '{model_name}' not found in team '{provided_team_name}'."
+            )
+        model = matching_models[0]
+        return model, model.get("versions", [])
+
+    def _get_matching_models_in_accessible_teams() -> list[dict]:
+        """Get models matching the name that are in teams the user has access to."""
+        all_models_data = remote_provider.api.get_models_for_watch()
+        accessible_team_ids = {team_data["id"] for team_data in existing_teams.values()}
+
+        return [
+            m
+            for m in all_models_data.get("models", [])
+            if m.get("name") == model_name
+            and m.get("team", {}).get("id") in accessible_team_ids
+        ]
+
+    matching_models = _get_matching_models_in_accessible_teams()
+
+    if not matching_models:
+        raise click.ClickException(f"Model '{model_name}' not found.")
+
+    if len(matching_models) == 1:
+        model = matching_models[0]
+        return model, model.get("versions", [])
+
+    # Multiple models with same name - need disambiguation
+    # Build a map of team_name -> model for selection
+    team_name_to_model = {
+        m.get("team", {}).get("name", "Unknown"): m for m in matching_models
+    }
+
+    # Filter existing_teams to only teams that have this model (for the prompt)
+    teams_with_this_model = {
+        team_name: existing_teams[team_name]
+        for team_name in team_name_to_model
+        if team_name in existing_teams
+    }
+
+    if not teams_with_this_model:
+        raise click.ClickException(
+            f"Model '{model_name}' exists but you don't have access to any team that owns it."
+        )
+
+    # Reuse inquire_team for selection with custom prompt
+    selected_team_name = remote_cli.inquire_team(
+        existing_teams=teams_with_this_model, prompt=prompt
+    )
+
+    if not selected_team_name or selected_team_name not in team_name_to_model:
+        raise click.ClickException("No team selected.")
+
+    model = team_name_to_model[selected_team_name]
+    return model, model.get("versions", [])
+
+
 def resolve_model_team_name(
     remote_provider: BasetenRemote,
     provided_team_name: Optional[str],
