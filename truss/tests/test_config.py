@@ -1039,8 +1039,7 @@ class TestWeightsSource:
     def test_huggingface_source_basic(self):
         """HuggingFace source with revision in URI should work."""
         source = WeightsSource(
-            source="hf://meta-llama/Llama-2-7b@main",
-            mount_location="/models/llama",
+            source="hf://meta-llama/Llama-2-7b@main", mount_location="/models/llama"
         )
         assert source.source == "hf://meta-llama/Llama-2-7b@main"
         assert source.mount_location == "/models/llama"
@@ -1099,21 +1098,24 @@ class TestWeightsSource:
     def test_cloud_storage_rejects_at_symbol(self):
         """Cloud storage sources should reject @ revision syntax."""
         with pytest.raises(
-            pydantic.ValidationError, match="@ revision syntax is only valid for HuggingFace"
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
         ):
             WeightsSource(
                 source="s3://my-bucket/models/llama@main",
                 mount_location="/models/llama",
             )
         with pytest.raises(
-            pydantic.ValidationError, match="@ revision syntax is only valid for HuggingFace"
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
         ):
             WeightsSource(
                 source="gs://my-bucket/models/llama@main",
                 mount_location="/models/llama",
             )
         with pytest.raises(
-            pydantic.ValidationError, match="@ revision syntax is only valid for HuggingFace"
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
         ):
             WeightsSource(
                 source="azure://myaccount/container/path@main",
