@@ -234,18 +234,19 @@ class WeightsSource(custom_types.ConfigModel):
     """Configuration for a weights source in the new weights API.
 
     Uses a URI-based `source` field with a required scheme prefix:
-    - hf:// -> HuggingFace (e.g., "hf://meta-llama/Llama-2-7b")
+    - hf:// -> HuggingFace (e.g., "hf://meta-llama/Llama-2-7b" or "hf://meta-llama/Llama-2-7b@main")
     - s3:// -> AWS S3 (e.g., "s3://bucket/path")
     - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
     - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+
+    For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
+    using the @{rev} suffix: "hf://owner/repo@revision"
     """
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
-        ..., description="URI with scheme prefix. Use hf://, s3://, gs://, or azure://."
-    )
-    revision: Optional[str] = pydantic.Field(
-        default=None,
-        description="Git revision (branch, tag, or commit SHA). Only valid for HuggingFace sources.",
+        ...,
+        description="URI with scheme prefix. Use hf://, s3://, gs://, or azure://. "
+        "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
     )
     mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
         pydantic.Field(
@@ -297,6 +298,12 @@ class WeightsSource(custom_types.ConfigModel):
                     f"Invalid {scheme[:-3].upper()} URI format: '{v}'. "
                     f"Expected format: {scheme}bucket/path"
                 )
+            # Reject @ revision syntax for cloud storage (HF-only feature)
+            if "@" in path_part:
+                raise ValueError(
+                    f"The @ revision syntax is only valid for HuggingFace sources (hf://). "
+                    f"Source '{v}' uses {scheme[:-3].upper()} which does not support revisions."
+                )
 
         # Validate hf:// format
         if scheme == _HF_PREFIX:
@@ -317,15 +324,6 @@ class WeightsSource(custom_types.ConfigModel):
                 f"mount_location must be an absolute path (start with /), got: {v}"
             )
         return v
-
-    @pydantic.model_validator(mode="after")
-    def _validate_revision_only_for_hf(self) -> "WeightsSource":
-        if self.revision and not self.is_huggingface:
-            raise ValueError(
-                f"revision is only valid for HuggingFace sources. "
-                f"Source '{self.source}' appears to be cloud storage (has s3://, gs://, or azure:// prefix)."
-            )
-        return self
 
 
 class Weights(pydantic.RootModel[list[WeightsSource]]):
