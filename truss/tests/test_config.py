@@ -1142,20 +1142,16 @@ class TestWeightsSource:
     def test_hf_prefix_without_revision(self):
         """HuggingFace source should work without revision."""
         source = WeightsSource(
-            source="hf://meta-llama/Llama-2-7b",
-            mount_location="/models/llama",
+            source="hf://meta-llama/Llama-2-7b", mount_location="/models/llama"
         )
         assert source.is_huggingface is True
         assert source.revision is None
 
     def test_source_missing_scheme(self):
         """Source without URI scheme should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="missing a URI scheme"
-        ):
+        with pytest.raises(pydantic.ValidationError, match="missing a URI scheme"):
             WeightsSource(
-                source="meta-llama/Llama-2-7b",
-                mount_location="/models/llama",
+                source="meta-llama/Llama-2-7b", mount_location="/models/llama"
             )
 
     def test_unsupported_uri_scheme(self):
@@ -1164,49 +1160,30 @@ class TestWeightsSource:
             pydantic.ValidationError, match="Unsupported source scheme 'ftp://'"
         ):
             WeightsSource(
-                source="ftp://server/models/llama",
-                mount_location="/models/llama",
+                source="ftp://server/models/llama", mount_location="/models/llama"
             )
 
     def test_invalid_s3_uri_format(self):
         """S3 URI without bucket should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="Invalid S3 URI format"
-        ):
-            WeightsSource(
-                source="s3://",
-                mount_location="/models/llama",
-            )
+        with pytest.raises(pydantic.ValidationError, match="Invalid S3 URI format"):
+            WeightsSource(source="s3://", mount_location="/models/llama")
 
     def test_invalid_gs_uri_format(self):
         """GCS URI without bucket should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="Invalid GS URI format"
-        ):
-            WeightsSource(
-                source="gs://",
-                mount_location="/models/llama",
-            )
+        with pytest.raises(pydantic.ValidationError, match="Invalid GS URI format"):
+            WeightsSource(source="gs://", mount_location="/models/llama")
 
     def test_invalid_azure_uri_format(self):
         """Azure URI without account should error."""
-        with pytest.raises(
-            pydantic.ValidationError, match="Invalid AZURE URI format"
-        ):
-            WeightsSource(
-                source="azure://",
-                mount_location="/models/llama",
-            )
+        with pytest.raises(pydantic.ValidationError, match="Invalid AZURE URI format"):
+            WeightsSource(source="azure://", mount_location="/models/llama")
 
     def test_invalid_hf_uri_format(self):
         """HuggingFace URI without repo should error."""
         with pytest.raises(
             pydantic.ValidationError, match="Invalid HuggingFace URI format"
         ):
-            WeightsSource(
-                source="hf://",
-                mount_location="/models/llama",
-            )
+            WeightsSource(source="hf://", mount_location="/models/llama")
 
 
 class TestWeights:

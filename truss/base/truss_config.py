@@ -241,8 +241,7 @@ class WeightsSource(custom_types.ConfigModel):
     """
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
-        ...,
-        description="URI with scheme prefix. Use hf://, s3://, gs://, or azure://.",
+        ..., description="URI with scheme prefix. Use hf://, s3://, gs://, or azure://."
     )
     revision: Optional[str] = pydantic.Field(
         default=None,
