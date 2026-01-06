@@ -223,14 +223,18 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
 
 
 # URI prefixes for cloud storage sources
-_CLOUD_STORAGE_PREFIXES = ("s3://", "gs://", "azure://")
+_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://"})
+# HuggingFace prefix
+_HF_PREFIX = "hf://"
+# All supported URI schemes (cloud storage + HuggingFace)
+_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX}
 
 
 class WeightsSource(custom_types.ConfigModel):
     """Configuration for a weights source in the new weights API.
 
-    Uses a URI-based `source` field where the source type is inferred from the URI prefix:
-    - No prefix or hf:// -> HuggingFace (e.g., "meta-llama/Llama-2-7b")
+    Uses a URI-based `source` field with a required scheme prefix:
+    - hf:// -> HuggingFace (e.g., "hf://meta-llama/Llama-2-7b")
     - s3:// -> AWS S3 (e.g., "s3://bucket/path")
     - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
     - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
@@ -238,7 +242,7 @@ class WeightsSource(custom_types.ConfigModel):
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="URI or HuggingFace repo ID. Use s3://, gs://, azure:// prefixes for cloud storage.",
+        description="URI with scheme prefix. Use hf://, s3://, gs://, or azure://.",
     )
     revision: Optional[str] = pydantic.Field(
         default=None,
@@ -249,8 +253,8 @@ class WeightsSource(custom_types.ConfigModel):
             ..., description="Absolute path where weights will be mounted at runtime."
         )
     )
-    runtime_secret_name: str = pydantic.Field(
-        default="hf_access_token",
+    auth_secret_name: Optional[str] = pydantic.Field(
+        default=None,
         description="Baseten secret name containing credentials for accessing the source.",
     )
     allow_patterns: Optional[list[str]] = pydantic.Field(
@@ -263,7 +267,48 @@ class WeightsSource(custom_types.ConfigModel):
     @property
     def is_huggingface(self) -> bool:
         """Check if this source is a HuggingFace repository."""
-        return not any(self.source.startswith(p) for p in _CLOUD_STORAGE_PREFIXES)
+        return self.source.startswith(_HF_PREFIX)
+
+    @pydantic.field_validator("source")
+    @classmethod
+    def _validate_source(cls, v: str) -> str:
+        supported_schemes_str = ", ".join(sorted(_SUPPORTED_SCHEMES))
+
+        # URI scheme prefix is required
+        if "://" not in v:
+            raise ValueError(
+                f"Source '{v}' is missing a URI scheme. "
+                f"Supported schemes: {supported_schemes_str}"
+            )
+
+        scheme = v.split("://")[0] + "://"
+
+        # Check for unsupported URI schemes
+        if scheme not in _SUPPORTED_SCHEMES:
+            raise ValueError(
+                f"Unsupported source scheme '{scheme}'. "
+                f"Supported schemes: {supported_schemes_str}"
+            )
+
+        # Validate URI format for cloud storage
+        if scheme in _CLOUD_STORAGE_PREFIXES:
+            path_part = v[len(scheme) :]
+            if not path_part or path_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid {scheme[:-3].upper()} URI format: '{v}'. "
+                    f"Expected format: {scheme}bucket/path"
+                )
+
+        # Validate hf:// format
+        if scheme == _HF_PREFIX:
+            repo_part = v[len(_HF_PREFIX) :]
+            if not repo_part or repo_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid HuggingFace URI format: '{v}'. "
+                    f"Expected format: hf://owner/repo"
+                )
+
+        return v
 
     @pydantic.field_validator("mount_location")
     @classmethod
@@ -290,6 +335,19 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
     @property
     def sources(self) -> list[WeightsSource]:
         return self.root
+
+    @pydantic.model_validator(mode="after")
+    def _validate_unique_mount_locations(self) -> "Weights":
+        """Ensure all mount_location values are unique."""
+        mount_locations: list[str] = []
+        for source in self.root:
+            if source.mount_location in mount_locations:
+                raise ValueError(
+                    f"Duplicate mount_location '{source.mount_location}' - "
+                    f"each weights source must have a unique mount path."
+                )
+            mount_locations.append(source.mount_location)
+        return self
 
 
 class HealthChecks(custom_types.ConfigModel):
