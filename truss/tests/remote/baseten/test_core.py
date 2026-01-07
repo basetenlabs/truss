@@ -102,6 +102,35 @@ def test_exists_model_with_team_id():
     assert core.exists_model(api, "other-model", team_id="team2") is None
 
 
+def test_exists_model_name_in_different_team():
+    """Test that exists_model returns None when model exists in a different team.
+
+    This verifies that querying for a model name in team1 returns None even if
+    a model with that name exists in team2.
+    """
+    api = MagicMock()
+
+    # Model "shared-name" exists in team2, but not in team1
+    team1_models = {
+        "models": [
+            {"id": "model-a", "name": "team1-only-model", "team": {"id": "team1"}}
+        ]
+    }
+    team2_models = {
+        "models": [{"id": "model-b", "name": "shared-name", "team": {"id": "team2"}}]
+    }
+
+    # Query team1 for "shared-name" - should return None (model is in team2)
+    api.models.return_value = team1_models
+    assert core.exists_model(api, "shared-name", team_id="team1") is None
+    api.models.assert_called_with(team_id="team1")
+
+    # Query team2 for "shared-name" - should return model-b
+    api.models.return_value = team2_models
+    assert core.exists_model(api, "shared-name", team_id="team2") == "model-b"
+    api.models.assert_called_with(team_id="team2")
+
+
 def test_upload_truss():
     api = MagicMock()
     api.model_s3_upload_credentials.return_value = {
