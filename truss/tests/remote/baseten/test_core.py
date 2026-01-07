@@ -10,34 +10,96 @@ from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.errors import ValidationError
 from truss.remote.baseten import core
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import (
     MAX_BATCH_SIZE,
     create_truss_service,
     get_training_job_logs_with_pagination,
 )
-from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.time import iso_to_millis
 
 
 def test_exists_model():
-    def mock_get_model(model_name):
-        if model_name == "first model":
-            return {"model": {"id": "1"}}
-        elif model_name == "second model":
-            return {"model": {"id": "2"}}
-        else:
-            raise ApiError(
-                "Oracle not found",
-                BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value,
-            )
-
+    """Test exists_model with client-side filtering."""
     api = MagicMock()
-    api.get_model.side_effect = mock_get_model
+    api.models.return_value = {
+        "models": [
+            {
+                "id": "1",
+                "name": "first model",
+                "team": {"id": "team1", "name": "Team 1"},
+            },
+            {
+                "id": "2",
+                "name": "second model",
+                "team": {"id": "team1", "name": "Team 1"},
+            },
+        ]
+    }
 
-    assert core.exists_model(api, "first model")
-    assert core.exists_model(api, "second model")
-    assert not core.exists_model(api, "third model")
+    assert core.exists_model(api, "first model") == "1"
+    assert core.exists_model(api, "second model") == "2"
+    assert core.exists_model(api, "third model") is None
+
+    # Verify models() was called without team_id
+    api.models.assert_called_with(team_id=None)
+
+
+def test_exists_model_with_team_id():
+    """Test exists_model with team_id filtering.
+
+    When team_id is provided, it should be passed to api.models() to filter
+    at the GraphQL level, then filter client-side by model name.
+    """
+    api = MagicMock()
+
+    # Simulate team1 models response
+    team1_models = {
+        "models": [
+            {
+                "id": "model1",
+                "name": "my-model",
+                "team": {"id": "team1", "name": "Team Alpha"},
+            },
+            {
+                "id": "model3",
+                "name": "other-model",
+                "team": {"id": "team1", "name": "Team Alpha"},
+            },
+        ]
+    }
+
+    # Simulate team2 models response
+    team2_models = {
+        "models": [
+            {
+                "id": "model2",
+                "name": "my-model",
+                "team": {"id": "team2", "name": "Team Beta"},
+            }
+        ]
+    }
+
+    # Simulate empty team response
+    empty_models = {"models": []}
+
+    # Test with team1
+    api.models.return_value = team1_models
+    assert core.exists_model(api, "my-model", team_id="team1") == "model1"
+    api.models.assert_called_with(team_id="team1")
+
+    # Test with team2
+    api.models.return_value = team2_models
+    assert core.exists_model(api, "my-model", team_id="team2") == "model2"
+    api.models.assert_called_with(team_id="team2")
+
+    # Test with non-existent team (empty response)
+    api.models.return_value = empty_models
+    assert core.exists_model(api, "my-model", team_id="team3") is None
+    api.models.assert_called_with(team_id="team3")
+
+    # Test model that doesn't exist in the team
+    api.models.return_value = team2_models
+    assert core.exists_model(api, "other-model", team_id="team2") is None
 
 
 def test_upload_truss():

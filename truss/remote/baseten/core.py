@@ -215,29 +215,30 @@ def create_chain_atomic(
     )
 
 
-def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
+def exists_model(
+    api: BasetenApi, model_name: str, team_id: Optional[str] = None
+) -> Optional[str]:
     """
     Check if a model with the given name exists in the Baseten remote.
+
+    Uses the models() API with optional team_id filter, then filters
+    client-side by model name.
 
     Args:
         api: BasetenApi instance
         model_name: Name of the model to check for existence
+        team_id: Optional team ID to filter models by team (more efficient)
 
     Returns:
         model_id if present, otherwise None
     """
-    try:
-        model = api.get_model(model_name)
-    except ApiError as e:
-        if (
-            e.graphql_error_code
-            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
-        ):
-            return None
-
-        raise e
-
-    return model["model"]["id"]
+    # If team_id is provided, query only that team's models (more efficient)
+    # Otherwise, query all models the user has access to
+    models_response = api.models(team_id=team_id)
+    for model in models_response.get("models", []):
+        if model.get("name") == model_name:
+            return model["id"]
+    return None
 
 
 def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:

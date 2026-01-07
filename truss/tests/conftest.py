@@ -918,6 +918,23 @@ def setup_push_mocks(model_response, remote_graphql_path):
             json=model_response,
             additional_matcher=lambda req: "model(name" in req.json().get("query", ""),
         )
+        # Mock for models() query - used by exists_model for client-side filtering
+        m.post(
+            remote_graphql_path,
+            json={
+                "data": {
+                    "models": [
+                        {
+                            "id": "model_id",
+                            "name": "model_name",
+                            "team": {"id": "team_id", "name": "Team Name"},
+                            "versions": [],
+                        }
+                    ]
+                }
+            },
+            additional_matcher=lambda req: "models(" in req.json().get("query", ""),
+        )
         # Mock for validate_truss query - matches queries containing "truss_validation"
         m.post(
             remote_graphql_path,
