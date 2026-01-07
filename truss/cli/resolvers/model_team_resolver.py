@@ -102,9 +102,31 @@ def resolve_model_team_name(
     existing_model_name: Optional[str] = None,
     existing_teams: Optional[dict[str, dict[str, str]]] = None,
 ) -> tuple[Optional[str], Optional[str]]:
-    """Resolve team name and team_id for push operations.
+    """Resolve team name and team_id from provided team name or by prompting the user.
+    Returns a tuple of (team_name, team_id).
+    This function handles 8 distinct scenarios organized into 3 high-level categories:
 
-    Returns tuple of (team_name, team_id).
+    HIGH-LEVEL SCENARIO 1: --team PROVIDED
+        SCENARIO 1: Valid team name, user has access
+            → Returns (team_name, team_id) for that team (no prompt, no error)
+        SCENARIO 2: Invalid team name (does not exist)
+            → Raises ClickException with error message listing available teams
+
+    HIGH-LEVEL SCENARIO 2: --team NOT PROVIDED, Model does not exist
+        SCENARIO 3: User has multiple teams, no existing model
+            → Prompts user to select a team via inquire_team()
+        SCENARIO 6: User has exactly one team, no existing model
+            → Returns (team_name, team_id) for the single team automatically (no prompt)
+
+    HIGH-LEVEL SCENARIO 3: --team NOT PROVIDED, Model exists
+        SCENARIO 4: User has multiple teams, existing model in exactly one team
+            → Auto-detects and returns (team_name, team_id) for that team (no prompt)
+        SCENARIO 5: User has multiple teams, existing model exists in multiple teams
+            → Prompts user to select a team via inquire_team()
+        SCENARIO 7: User has exactly one team, existing model matches the team
+            → Auto-detects and returns (team_name, team_id) for the single team (no prompt)
+        SCENARIO 8: User has exactly one team, existing model exists in different team
+            → Returns (team_name, team_id) for the single team automatically (no prompt, uses user's only team)
     """
     if existing_teams is None:
         existing_teams = remote_provider.api.get_teams()
