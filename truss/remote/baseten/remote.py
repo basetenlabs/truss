@@ -174,7 +174,7 @@ class BasetenRemote(TrussRemote):
                 "deploy-timeout-minutes must be between 10 minutes and 1440 minutes (24 hours)"
             )
 
-        model_id = exists_model(self._api, model_name)
+        model_id = exists_model(self._api, model_name, team_id=team_id)
 
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")

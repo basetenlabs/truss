@@ -530,17 +530,32 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
 def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
     publish, custom_model_truss_dir_with_pre_and_post, remote
 ):
-    model_response = {
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "primary_version": {"id": "version_id"},
-            }
+            "models": [
+                {
+                    "id": "model_id",
+                    "name": "model_name",
+                    "team": {"id": "team_id", "name": "Team Name"},
+                    "versions": [],
+                }
+            ]
         }
     }
+    validation_response = {
+        "data": {"truss_validation": {"success": True, "details": "{}"}}
+    }
+
+    def response_callback(request, context):
+        query = request.json().get("query", "")
+        if "models(" in query:
+            return models_response
+        elif "truss_validation" in query:
+            return validation_response
+        return {"data": {}}
+
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=response_callback)
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
         with pytest.raises(
