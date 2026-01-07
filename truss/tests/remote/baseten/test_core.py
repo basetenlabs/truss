@@ -346,6 +346,46 @@ def test_validate_truss_config():
         core.validate_truss_config_against_backend(api, {"should_error": "hi"})
 
 
+def test_validate_truss_config_with_warnings():
+    api = MagicMock()
+
+    with mock.patch("truss.remote.baseten.core.console") as mock_console:
+        api.validate_truss.return_value = {
+            "success": True,
+            "details": json.dumps(
+                {"warnings": ["Deprecation: field X will be removed in v2.0"]}
+            ),
+        }
+        core.validate_truss_config_against_backend(api, {})
+        mock_console.print.assert_called_once()
+        assert (
+            "Deprecation: field X will be removed" in mock_console.print.call_args[0][0]
+        )
+
+    with mock.patch("truss.remote.baseten.core.console") as mock_console:
+        api.validate_truss.return_value = {
+            "success": True,
+            "details": json.dumps({"warnings": ["warning1", "warning2"]}),
+        }
+        core.validate_truss_config_against_backend(api, {})
+        assert mock_console.print.call_count == 2
+        calls = [call[0][0] for call in mock_console.print.call_args_list]
+        assert any("warning1" in c for c in calls)
+        assert any("warning2" in c for c in calls)
+
+    with mock.patch("truss.remote.baseten.core.console") as mock_console:
+        api.validate_truss.return_value = {
+            "success": False,
+            "details": json.dumps(
+                {"errors": ["some error"], "warnings": ["warning despite error"]}
+            ),
+        }
+        with pytest.raises(ValidationError, match="some error"):
+            core.validate_truss_config_against_backend(api, {})
+        mock_console.print.assert_called_once()
+        assert "warning despite error" in mock_console.print.call_args[0][0]
+
+
 def test_get_training_job_logs_with_pagination_single_batch(baseten_api):
     """Test pagination when all logs fit in a single batch"""
     # Mock logs data
