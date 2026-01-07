@@ -8,6 +8,7 @@ from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tup
 import requests
 
 from truss.base.errors import ValidationError
+from truss.cli.utils.output import console
 from truss.util.error_utils import handle_client_error
 
 if TYPE_CHECKING:
@@ -215,29 +216,30 @@ def create_chain_atomic(
     )
 
 
-def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
+def exists_model(
+    api: BasetenApi, model_name: str, team_id: Optional[str] = None
+) -> Optional[str]:
     """
     Check if a model with the given name exists in the Baseten remote.
+
+    Uses the models() API with optional team_id filter, then filters
+    client-side by model name.
 
     Args:
         api: BasetenApi instance
         model_name: Name of the model to check for existence
+        team_id: Optional team ID to filter models by team (more efficient)
 
     Returns:
         model_id if present, otherwise None
     """
-    try:
-        model = api.get_model(model_name)
-    except ApiError as e:
-        if (
-            e.graphql_error_code
-            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
-        ):
-            return None
-
-        raise e
-
-    return model["model"]["id"]
+    # If team_id is provided, query only that team's models (more efficient)
+    # Otherwise, query all models the user has access to
+    models_response = api.models(team_id=team_id)
+    for model in models_response.get("models", []):
+        if model.get("name") == model_name:
+            return model["id"]
+    return None
 
 
 def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:
@@ -277,8 +279,8 @@ def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
     return get_dev_version_from_versions(versions)
 
 
-def get_truss_watch_state(api: BasetenApi, model_name: str) -> TrussWatchState:
-    response = api.get_truss_watch_state(model_name)["truss_watch_state"]
+def get_truss_watch_state(api: BasetenApi, model_id: str) -> TrussWatchState:
+    response = api.get_truss_watch_state(model_id)["truss_watch_state"]
     django_patch_state = (
         None
         if response["django_patch_state"] is None
@@ -503,7 +505,7 @@ def create_truss_service(
     )
 
 
-def validate_truss_config_against_backend(api: BasetenApi, config: str):
+def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
     """
     Validate a truss config as well as the truss version.
 
@@ -511,12 +513,16 @@ def validate_truss_config_against_backend(api: BasetenApi, config: str):
         api: BasetenApi instance
         config: Base64 encoded JSON string of the Truss config
 
-    Returns:
-        None if the config is valid, otherwise raises an error message
+    Raises:
+        ValidationError if config is invalid.
     """
     valid_config = api.validate_truss(config)
+    details = json.loads(valid_config.get("details") or "{}")
+
+    for warning in details.get("warnings", []):
+        console.print(f"[bold yellow]⚠ Warning:[/bold yellow] {warning}")
+
     if not valid_config.get("success"):
-        details = json.loads(valid_config.get("details"))
         errors = details.get("errors", [])
         if errors:
             error_messages = "\n".join(textwrap.indent(error, "  ") for error in errors)
