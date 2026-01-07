@@ -8,6 +8,7 @@ from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tup
 import requests
 
 from truss.base.errors import ValidationError
+from truss.cli.utils.output import console
 from truss.util.error_utils import handle_client_error
 
 if TYPE_CHECKING:
@@ -518,7 +519,7 @@ def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
     details = json.loads(valid_config.get("details") or "{}")
 
     for warning in details.get("warnings", []):
-        logger.warning(f"Server validation warning: {warning}")
+        console.print(f"[bold yellow]⚠ Warning:[/bold yellow] {warning}")
 
     if not valid_config.get("success"):
         errors = details.get("errors", [])
