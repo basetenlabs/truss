@@ -104,7 +104,7 @@ COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/mod
 {%- set workspace_dir = "/workspace" %}
 RUN mkdir -p {{ workspace_dir }}
 RUN chown -R {{ app_user_uid }}:{{ app_user_uid }} ${HOME} ${APP_HOME} {{ packages_dir }} {{ workspace_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
-USER {{ app_username }}
+USER {{ app_user_uid }}
 {%- endif %} {#- endif non_root_user or has_custom_run_as_user #}
 {%- endmacro -%}
 
