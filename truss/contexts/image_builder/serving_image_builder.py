@@ -871,6 +871,7 @@ class ServingImageBuilder(ImageBuilder):
         if has_custom_run_as_user and docker_server:
             run_as_user_id = docker_server.run_as_user_id
         else:
+            # Default non-root user (only meaningful when non_root_user is True)
             run_as_user_id = 60000
 
         dockerfile_contents = dockerfile_template.render(
