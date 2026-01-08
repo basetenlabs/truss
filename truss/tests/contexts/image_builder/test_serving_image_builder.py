@@ -466,7 +466,7 @@ def test_model_cache_dockerfile_v2(test_data_path):
             print(gen_docker_file)
             assert "truss-transfer" in gen_docker_file
             assert (
-                "COPY --chown= ./bptr-manifest /static-bptr/static-bptr-manifest.json"
+                "COPY --chown=root:root ./bptr-manifest /static-bptr/static-bptr-manifest.json"
                 in gen_docker_file
             ), "bptr-manifest copy not found in Dockerfile"
             assert "cache_warmer.py" not in gen_docker_file
