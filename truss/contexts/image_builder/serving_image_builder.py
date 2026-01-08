@@ -864,6 +864,22 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
+        docker_server = config.docker_server
+        has_custom_run_as_user = (
+            docker_server is not None
+            and docker_server.run_as_user_id is not None
+            and docker_server.run_as_user_name is not None
+        )
+        # These values are always passed to the template, but only used when
+        # non_root_user or has_custom_run_as_user is True.
+        if has_custom_run_as_user and docker_server:
+            run_as_user_id = docker_server.run_as_user_id
+            run_as_user_name = docker_server.run_as_user_name
+        else:
+            # Default non-root user (only meaningful when non_root_user is True)
+            run_as_user_id = 60000
+            run_as_user_name = "app"
+
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -900,6 +916,9 @@ class ServingImageBuilder(ImageBuilder):
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
             non_root_user=non_root_user,
+            run_as_user_id=run_as_user_id,
+            run_as_user_name=run_as_user_name,
+            has_custom_run_as_user=has_custom_run_as_user,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.

@@ -9,17 +9,18 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
-{%- set app_username = "app" %}  {# needed later for USER directive #}
+{# declare some variables up-top that will be used in server.Dockerfile.jinja #}
+{%- set app_username = run_as_user_name %}
+{%- set app_user_uid = run_as_user_id %}
+{%- set default_owner = "root:root" %}
 {% block user_setup %}
 {#
   NB(nikhil): Assume `root` for various setup that requires permissions; we conditionally switch to
   `app_username` at the end, if `non_root` behavior is enabled.
 #}
 USER root
-{%- set app_user_uid = 60000 %}
 {%- set control_server_dir = "/control" %}
-{%- set default_owner = "root:root" %}
-{%- if non_root_user %}
+{%- if non_root_user or has_custom_run_as_user %}
 {# The non-root user's home directory. #}
 {# uv will use $HOME to install packages. #}
 ENV HOME=${HOME:-/home/{{ app_username }}}
@@ -27,11 +28,14 @@ ENV HOME=${HOME:-/home/{{ app_username }}}
 {# This is the default, but we use this variable later so ... setting it here too.#}
 ENV HOME=${HOME:-/root}
 {%- endif %} {#- endif non_root_user #}
-{# Directory containing inference server code. #}
-ENV APP_HOME=/{{ app_username }}
+{# Directory containing inference server code - always /app regardless of username #}
+ENV APP_HOME=/app
 RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
-{# Create a non-root user to run model containers. #}
+{# if run_as_user is provided, assume it already exists and don't create a new user #}
+{%- if not has_custom_run_as_user %}
+{# otherwise, create a non-root user to run model containers. #}
 RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
+{%- endif %}
 {% endblock %} {#- endblock user_setup #}
 
 {#- at the very beginning, set non-interactive mode for apt #}
