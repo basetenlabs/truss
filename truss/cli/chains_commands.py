@@ -303,6 +303,7 @@ def push_chain(
 
     # Resolve team if not in dryrun mode
     team_id = None
+    resolved_team_name = provided_team_name
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
             name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
@@ -312,7 +313,7 @@ def push_chain(
         if not dryrun and remote:
             remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
             existing_teams = remote_provider.api.get_teams()
-            _, team_id = resolve_chain_team_name(
+            resolved_team_name, team_id = resolve_chain_team_name(
                 remote_provider,
                 provided_team_name,
                 existing_chain_name=chain_name,
@@ -402,6 +403,7 @@ def push_chain(
                     output.error_console,
                     show_stack_trace=not common.is_human_log_level(ctx),
                     included_chainlets=included_chainlets,
+                    provided_team_name=resolved_team_name,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -439,6 +441,13 @@ def push_chain(
         "and refer to docs."
     ),
 )
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the chain to watch",
+)
 @click.pass_context
 @common.common_options()
 def watch_chains(
@@ -448,6 +457,7 @@ def watch_chains(
     name: Optional[str],
     remote: Optional[str],
     experimental_chainlet_names: Optional[str],
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Watches the chains source code and applies live patches to a development deployment.
@@ -479,6 +489,7 @@ def watch_chains(
         output.error_console,
         show_stack_trace=not common.is_human_log_level(ctx),
         included_chainlets=included_chainlets,
+        provided_team_name=provided_team_name,
     )
 
 

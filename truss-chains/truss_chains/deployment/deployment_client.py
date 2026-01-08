@@ -700,7 +700,10 @@ class _Watcher:
         error_console: "rich_console.Console",
         show_stack_trace: bool,
         included_chainlets: Optional[list[str]],
+        provided_team_name: Optional[str] = None,
     ) -> None:
+        from truss.cli.resolvers.chain_team_resolver import resolve_chain_for_watch
+
         self._source = source
         self._entrypoint = entrypoint
         self._console = console
@@ -731,13 +734,10 @@ class _Watcher:
         else:
             self._included_chainlets = chainlet_names
 
-        chain_id = b10_core.get_chain_id_by_name(
-            self._remote_provider.api, self._deployed_chain_name
+        resolved_chain = resolve_chain_for_watch(
+            self._remote_provider, self._deployed_chain_name, provided_team_name
         )
-        if not chain_id:
-            raise public_types.ChainsDeploymentError(
-                f"Chain `{self._deployed_chain_name}` was not found."
-            )
+        chain_id = resolved_chain["id"]
         self._status_page_url = b10_service.URLConfig.status_page_url(
             self._remote_provider.remote_url, b10_service.URLConfig.CHAIN, chain_id
         )
@@ -924,6 +924,7 @@ def watch(
     error_console: "rich_console.Console",
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
+    provided_team_name: Optional[str] = None,
 ) -> None:
     console.print(
         (
@@ -941,6 +942,7 @@ def watch(
         error_console,
         show_stack_trace,
         included_chainlets,
+        provided_team_name,
     )
     patcher.watch()
 
