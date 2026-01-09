@@ -691,6 +691,15 @@ class DockerServer(custom_types.ConfigModel):
     run_as_user_id: Optional[int] = None
     no_build: Optional[bool] = None
 
+    @pydantic.field_validator("run_as_user_id")
+    @classmethod
+    def _validate_run_as_user_id(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v == 0:
+            raise ValueError(
+                "run_as_user_id cannot be 0 (root). Use a non-root user ID."
+            )
+        return v
+
     @pydantic.model_validator(mode="after")
     def _validate_start_command(self) -> "DockerServer":
         if not self.no_build and self.start_command is None:
