@@ -105,6 +105,8 @@ pub async fn download_file_with_cache(
                 &destination,
                 pointer.size,
                 &pointer.runtime_secret_name,
+                num_workers,
+                semaphore_range_dw.clone(),
             )
             .await?;
         }
@@ -115,6 +117,8 @@ pub async fn download_file_with_cache(
                 &destination,
                 pointer.size,
                 &pointer.runtime_secret_name,
+                num_workers,
+                semaphore_range_dw.clone(),
             )
             .await?;
         }
@@ -126,6 +130,8 @@ pub async fn download_file_with_cache(
                 &destination,
                 pointer.size,
                 &pointer.runtime_secret_name,
+                num_workers,
+                semaphore_range_dw.clone(),
             )
             .await?;
         }
