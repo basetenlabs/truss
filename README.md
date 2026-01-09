@@ -5,9 +5,7 @@
 [![PyPI version](https://badge.fury.io/py/truss.svg)](https://badge.fury.io/py/truss)
 [![ci_status](https://github.com/basetenlabs/truss/actions/workflows/release.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/release.yml)
 
-Truss is an open-source framework for packaging and deploying ML models. Write
-your model's serving logic in Python, and Truss handles containerization,
-dependency management, and GPU configuration.
+Truss is the CLI for deploying and serving ML models on Baseten. Package your model's serving logic in Python, launch training jobs, and deploy to production—Truss handles containerization, dependency management, and GPU configuration.
 
 Deploy models from any framework: `transformers`, `diffusers`, PyTorch, TensorFlow, vLLM, SGLang, TensorRT-LLM, and more:
 
