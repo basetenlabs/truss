@@ -9,15 +9,16 @@
 
 * **Write once, run anywhere:** Package and test model code, weights, and dependencies with a model server that behaves the same in development and production.
 * **Fast developer loop:** Implement your model with fast feedback from a live reload server, and skip Docker and Kubernetes configuration with a batteries-included model serving environment.
-* **Support for all Python frameworks**: From `transformers` and `diffusers` to `PyTorch` and `TensorFlow` to `TensorRT` and `Triton`, Truss supports models created and served with any framework.
+* **Support for all Python frameworks**: From `transformers` and `diffusers` to PyTorch and TensorFlow to vLLM, SGLang, and TensorRT-LLM, Truss supports models created and served with any framework.
 
 See Trusses for popular models including:
 
-* 🦙 [Llama 2 7B](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-2-7b-chat) ([13B](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-2-13b-chat)) ([70B](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-2-70b-chat))
-* 🎨 [Stable Diffusion XL](https://github.com/basetenlabs/truss-examples/tree/main/stable-diffusion/stable-diffusion-xl-1.0)
-* 🗣 [Whisper](https://github.com/basetenlabs/truss-examples/tree/main/whisper/whisper-truss)
+* 🦙 [Llama 4 Scout](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-4-scout-17b-16e-instruct-bf16-vllm) · [Llama 3](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-8b-instruct) ([70B](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-70b-instruct))
+* 🧠 [DeepSeek R1](https://github.com/basetenlabs/truss-examples/tree/main/deepseek) — reasoning models
+* 🎨 [FLUX.1](https://github.com/basetenlabs/truss-examples/tree/main/flux) — image generation
+* 🗣 [Whisper v3](https://github.com/basetenlabs/truss-examples/tree/main/whisper/whisper-v3-truss) — speech recognition
 
-and [dozens more examples](https://github.com/basetenlabs/truss-examples/).
+and [many more examples](https://github.com/basetenlabs/truss-examples/).
 
 ## Installation
 
