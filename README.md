@@ -5,20 +5,25 @@
 [![PyPI version](https://badge.fury.io/py/truss.svg)](https://badge.fury.io/py/truss)
 [![ci_status](https://github.com/basetenlabs/truss/actions/workflows/release.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/release.yml)
 
-## Why Truss?
+Truss is an open-source framework for packaging and deploying ML models. Write
+your model's serving logic in Python, and Truss handles containerization,
+dependency management, and GPU configuration.
 
-* **Write once, run anywhere:** Package and test model code, weights, and dependencies with a model server that behaves the same in development and production.
-* **Fast developer loop:** Implement your model with fast feedback from a live reload server, and skip Docker and Kubernetes configuration with a batteries-included model serving environment.
-* **Support for all Python frameworks**: From `transformers` and `diffusers` to PyTorch and TensorFlow to vLLM, SGLang, and TensorRT-LLM, Truss supports models created and served with any framework.
-
-See Trusses for popular models including:
+Deploy models from any framework: `transformers`, `diffusers`, PyTorch, TensorFlow, vLLM, SGLang, TensorRT-LLM, and more:
 
 * 🦙 [Llama 4 Scout](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-4-scout-17b-16e-instruct-bf16-vllm) · [Llama 3](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-8b-instruct) ([70B](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-70b-instruct))
 * 🧠 [DeepSeek R1](https://github.com/basetenlabs/truss-examples/tree/main/deepseek) — reasoning models
 * 🎨 [FLUX.1](https://github.com/basetenlabs/truss-examples/tree/main/flux) — image generation
 * 🗣 [Whisper v3](https://github.com/basetenlabs/truss-examples/tree/main/whisper/whisper-v3-truss) — speech recognition
 
-and [many more examples](https://github.com/basetenlabs/truss-examples/).
+**[Get started](https://docs.baseten.co/examples/deploy-your-first-model)** | [100+ examples](https://github.com/basetenlabs/truss-examples/) | [Documentation](https://docs.baseten.co)
+
+## Why Truss?
+
+* **Write once, run anywhere:** Package model code, weights, and dependencies with a model server that behaves the same in development and production.
+* **Fast developer loop:** Iterate with live reload, skip Docker and Kubernetes configuration, and use a batteries-included serving environment.
+* **Support for all Python frameworks:** From `transformers` and `diffusers` to PyTorch and TensorFlow to vLLM, SGLang, and TensorRT-LLM, Truss supports models created and served with any framework.
+* **Production-ready:** Built-in support for GPUs, secrets, caching, and autoscaling when deployed to [Baseten](https://baseten.co) or your own infrastructure.
 
 ## Installation
 
@@ -92,17 +97,21 @@ No other configuration is needed.
 
 ## Deployment
 
-Truss is maintained by [Baseten](https://baseten.co), which provides infrastructure for running ML models in production. We'll use Baseten as the remote host for your model.
-
-Other remotes are coming soon, starting with AWS SageMaker.
+Truss is maintained by [Baseten](https://baseten.co), which provides
+infrastructure for running ML models in production.
 
 ### Get an API key
 
-To set up the Baseten remote, you'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys). If you don't have a Baseten account, no worries, just [sign up for an account](https://app.baseten.co/signup/) and you'll be issued plenty of free credits to get you started.
+To set up the Baseten remote, you'll need a
+[Baseten API key](https://app.baseten.co/settings/account/api_keys). If you
+don't have a Baseten account, no worries, just
+[sign up for an account](https://app.baseten.co/signup/) and you'll be issued
+plenty of free credits to get you started.
 
 ### Run `truss push`
 
-With your Baseten API key ready to paste when prompted, you can deploy your model:
+With your Baseten API key ready to paste when prompted, you can deploy your
+model:
 
 ```sh
 truss push
@@ -133,6 +142,12 @@ truss predict -d '"Truss is awesome!"'
 
 ## Truss contributors
 
-Truss is backed by Baseten and built in collaboration with ML engineers worldwide. Special thanks to [Stephan Auerhahn](https://github.com/palp) @ [stability.ai](https://stability.ai/) and [Daniel Sarfati](https://github.com/dsarfati) @ [Salad Technologies](https://salad.com/) for their contributions.
+Truss is backed by Baseten and built in collaboration with ML engineers
+worldwide. Special thanks to [Stephan Auerhahn](https://github.com/palp) @
+[stability.ai](https://stability.ai/) and
+[Daniel Sarfati](https://github.com/dsarfati) @
+[Salad Technologies](https://salad.com/) for their contributions.
 
-We enthusiastically welcome contributions in accordance with our [contributors' guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md).
+We enthusiastically welcome contributions in accordance with our
+[contributors' guide](CONTRIBUTING.md) and
+[code of conduct](CODE_OF_CONDUCT.md).
