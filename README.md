@@ -97,8 +97,7 @@ No other configuration is needed.
 
 ## Deployment
 
-Truss is maintained by [Baseten](https://baseten.co), which provides
-infrastructure for running ML models in production.
+Truss is maintained by [Baseten](https://baseten.co) and deploys to the [Baseten Inference Stack](https://www.baseten.co/resources/guide/the-baseten-inference-stack/), which combines optimized inference runtimes with production infrastructure for autoscaling, multi-cloud reliability, and fast cold starts.
 
 ### Get an API key
 
