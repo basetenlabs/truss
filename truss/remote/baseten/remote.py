@@ -26,9 +26,7 @@ from truss.remote.baseten.core import (
     create_chain_atomic,
     create_truss_service,
     exists_model,
-    get_dev_version,
     get_dev_version_from_versions,
-    get_model_and_versions,
     get_prod_version_from_versions,
     get_truss_watch_state,
     upload_chain_artifact,
@@ -371,9 +369,8 @@ class BasetenRemote(TrussRemote):
             )
         return prod_version
 
-    @staticmethod
     def _get_service_url_path_and_model_ids(
-        api: BasetenApi, model_identifier: ModelIdentifier, published: bool
+        self, api: BasetenApi, model_identifier: ModelIdentifier, published: bool
     ) -> Tuple[str, ModelVersionHandle]:
         if isinstance(model_identifier, ModelVersionId):
             try:
@@ -390,7 +387,13 @@ class BasetenRemote(TrussRemote):
             )
 
         if isinstance(model_identifier, ModelName):
-            model, model_versions = get_model_and_versions(api, model_identifier)
+            # Use resolve_model_for_watch to handle team disambiguation
+            # Import here to avoid circular import
+            from truss.cli.resolvers.model_team_resolver import resolve_model_for_watch
+
+            model, model_versions = resolve_model_for_watch(
+                self, model_identifier.value
+            )
             model_version = BasetenRemote._get_matching_version(
                 model_versions, published
             )
@@ -448,8 +451,25 @@ class BasetenRemote(TrussRemote):
         console: "rich_console.Console",
         error_console: "rich_console.Console",
     ) -> None:
-        # verify that development deployment exists for given model name
-        dev_version = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
+        # Resolve model with team disambiguation and verify development deployment exists
+        # Import here to avoid circular import
+        from truss.cli.resolvers.model_team_resolver import resolve_model_for_watch
+
+        model, versions = resolve_model_for_watch(self, model_name)
+        self.sync_truss_to_dev_version_with_model(
+            model, versions, target_directory, console, error_console
+        )
+
+    def sync_truss_to_dev_version_with_model(
+        self,
+        resolved_model: dict,
+        resolved_versions: List[dict],
+        target_directory: str,
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ) -> None:
+        """Sync truss to dev version using pre-resolved model (no team re-prompting)."""
+        dev_version = get_dev_version_from_versions(resolved_versions)
         if not dev_version:
             raise RemoteError(
                 "No development model found. Run `truss push` then try again."
@@ -465,7 +485,14 @@ class BasetenRemote(TrussRemote):
         logging.getLogger("watchfiles.main").disabled = True
 
         console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        self.patch(watch_path, truss_ignore_patterns, console, error_console)
+        self._patch_with_model(
+            watch_path,
+            truss_ignore_patterns,
+            resolved_model,
+            resolved_versions,
+            console,
+            error_console,
+        )
 
         # Prepare watch paths including external package directories
         truss_handle = TrussHandle(watch_path)
@@ -484,13 +511,22 @@ class BasetenRemote(TrussRemote):
 
         for _ in watch(*watch_paths, watch_filter=watch_filter, raise_interrupt=False):
             console.print("Changes detected, creating patch...")
-            self.patch(watch_path, truss_ignore_patterns, console, error_console)
+            self._patch_with_model(
+                watch_path,
+                truss_ignore_patterns,
+                resolved_model,
+                resolved_versions,
+                console,
+                error_console,
+            )
 
     def _patch(
         self,
         watch_path: Path,
         truss_ignore_patterns: List[str],
         console: Optional["rich_console.Console"] = None,
+        resolved_model: Optional[dict] = None,
+        resolved_versions: Optional[List[dict]] = None,
     ) -> PatchResult:
         try:
             truss_handle = TrussHandle(watch_path)
@@ -503,10 +539,29 @@ class BasetenRemote(TrussRemote):
             )
 
         model_name = truss_handle.spec.config.model_name
-        try:
-            model, versions = get_model_and_versions(self._api, ModelName(model_name))  # type: ignore
-        except ApiError:
-            return PatchResult(PatchStatus.FAILED, f"Model not found: {model_name}.")
+        if not model_name:
+            return PatchResult(
+                PatchStatus.FAILED, "Truss config is missing a model name."
+            )
+
+        # Use pre-resolved model if provided to avoid re-prompting for team selection
+        if resolved_model is not None and resolved_versions is not None:
+            model = resolved_model
+            versions = resolved_versions
+        else:
+            try:
+                # Use resolve_model_for_watch to handle team disambiguation
+                # Import here to avoid circular import
+                from truss.cli.resolvers.model_team_resolver import (
+                    resolve_model_for_watch,
+                )
+
+                model, versions = resolve_model_for_watch(self, model_name)
+            except Exception as e:
+                return PatchResult(
+                    PatchStatus.FAILED, f"Model not found: {model_name}. {e}"
+                )
+
         model_id = model["id"]
         dev_version = get_dev_version_from_versions(versions)
         if not dev_version:
@@ -629,6 +684,28 @@ class BasetenRemote(TrussRemote):
         self, watch_path: Path, truss_ignore_patterns: List[str]
     ) -> PatchResult:
         return self._patch(watch_path, truss_ignore_patterns, console=None)
+
+    def _patch_with_model(
+        self,
+        watch_path: Path,
+        truss_ignore_patterns: List[str],
+        resolved_model: dict,
+        resolved_versions: List[dict],
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ):
+        """Patch with pre-resolved model (no team re-prompting)."""
+        result = self._patch(
+            watch_path,
+            truss_ignore_patterns,
+            console=console,
+            resolved_model=resolved_model,
+            resolved_versions=resolved_versions,
+        )
+        if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
+            console.print(result.message, style="green")
+        else:
+            error_console.print(result.message)
 
     def upsert_training_project(self, training_project, team_id=None):
         return self._api.upsert_training_project(training_project, team_id=team_id)

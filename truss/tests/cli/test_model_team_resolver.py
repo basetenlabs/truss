@@ -1,4 +1,4 @@
-"""Tests for team parameter in model push.
+"""Tests for team parameter in model push and watch.
 
 This test suite covers all 8 scenarios for team resolution in truss push:
 1. --team PROVIDED: Valid team name, user has access
@@ -9,6 +9,11 @@ This test suite covers all 8 scenarios for team resolution in truss push:
 6. --team NOT PROVIDED: User has exactly one team, no existing model
 7. --team NOT PROVIDED: User has exactly one team, existing model matches the team
 8. --team NOT PROVIDED: User has exactly one team, existing model exists in different team
+
+And scenarios for resolve_model_for_watch:
+- Single model found: returns it directly
+- Multiple models with same name: prompts user to select team
+- No model found: raises error
 """
 
 from unittest.mock import Mock, patch
@@ -16,7 +21,10 @@ from unittest.mock import Mock, patch
 import click
 import pytest
 
-from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
+from truss.cli.resolvers.model_team_resolver import (
+    resolve_model_for_watch,
+    resolve_model_team_name,
+)
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -277,3 +285,169 @@ class TestModelTeamResolver:
             mock_remote.api.models.assert_called_once()
         else:
             mock_remote.api.models.assert_not_called()
+
+
+class TestResolveModelForWatch:
+    """Test model resolution for watch operations with team disambiguation."""
+
+    @staticmethod
+    def _setup_mock_remote(teams, models):
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = teams
+        mock_api.get_models_for_watch.return_value = {"models": models}
+        return mock_remote
+
+    def test_single_model_found(self):
+        """Test that single model is returned directly without prompting."""
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        models = [
+            {
+                "name": "my-model",
+                "id": "model1",
+                "hostname": "host.baseten.co",
+                "team": {"id": "team1", "name": "Team Alpha"},
+                "versions": [{"id": "v1", "is_draft": True, "is_primary": False}],
+            }
+        ]
+        mock_remote = self._setup_mock_remote(teams, models)
+
+        model, versions = resolve_model_for_watch(mock_remote, "my-model")
+
+        assert model["id"] == "model1"
+        assert model["hostname"] == "host.baseten.co"
+        assert len(versions) == 1
+        assert versions[0]["id"] == "v1"
+
+    def test_no_model_found(self):
+        """Test that error is raised when no model is found."""
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        models = []
+        mock_remote = self._setup_mock_remote(teams, models)
+
+        with pytest.raises(click.ClickException) as exc_info:
+            resolve_model_for_watch(mock_remote, "nonexistent-model")
+
+        assert "not found" in str(exc_info.value)
+
+    @patch("truss.cli.resolvers.model_team_resolver.remote_cli.inquire_team")
+    def test_multiple_models_prompts_for_team(self, mock_inquire_team):
+        """Test that user is prompted when multiple models have the same name."""
+        teams = {
+            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
+            "Team Beta": {"id": "team2", "name": "Team Beta"},
+        }
+        models = [
+            {
+                "name": "shared-model",
+                "id": "model1",
+                "hostname": "host1.baseten.co",
+                "team": {"id": "team1", "name": "Team Alpha"},
+                "versions": [{"id": "v1", "is_draft": True}],
+            },
+            {
+                "name": "shared-model",
+                "id": "model2",
+                "hostname": "host2.baseten.co",
+                "team": {"id": "team2", "name": "Team Beta"},
+                "versions": [{"id": "v2", "is_draft": True}],
+            },
+        ]
+        mock_remote = self._setup_mock_remote(teams, models)
+        mock_inquire_team.return_value = "Team Beta"
+
+        model, versions = resolve_model_for_watch(mock_remote, "shared-model")
+
+        assert model["id"] == "model2"
+        assert model["hostname"] == "host2.baseten.co"
+        mock_inquire_team.assert_called_once()
+        # Verify that only teams with this model are in the prompt
+        call_args = mock_inquire_team.call_args
+        teams_in_prompt = call_args[1]["existing_teams"]
+        assert "Team Alpha" in teams_in_prompt
+        assert "Team Beta" in teams_in_prompt
+
+    def test_model_in_inaccessible_team(self):
+        """Test that models in inaccessible teams are filtered out."""
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        models = [
+            {
+                "name": "other-model",
+                "id": "model1",
+                "hostname": "host.baseten.co",
+                "team": {"id": "team2", "name": "Team Beta"},  # Not in user's teams
+                "versions": [{"id": "v1", "is_draft": True}],
+            }
+        ]
+        mock_remote = self._setup_mock_remote(teams, models)
+
+        with pytest.raises(click.ClickException) as exc_info:
+            resolve_model_for_watch(mock_remote, "other-model")
+
+        assert "not found" in str(exc_info.value)
+
+    def test_provided_team_name_valid(self):
+        """Test that providing a valid team name filters to that team's model."""
+        teams = {
+            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
+            "Team Beta": {"id": "team2", "name": "Team Beta"},
+        }
+        models_team1 = [
+            {
+                "name": "my-model",
+                "id": "model1",
+                "hostname": "host1.baseten.co",
+                "team": {"id": "team1", "name": "Team Alpha"},
+                "versions": [{"id": "v1", "is_draft": True}],
+            }
+        ]
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = teams
+        mock_api.get_models_for_watch.return_value = {"models": models_team1}
+
+        model, versions = resolve_model_for_watch(
+            mock_remote, "my-model", provided_team_name="Team Alpha"
+        )
+
+        assert model["id"] == "model1"
+        # Verify get_models_for_watch was called with team_id
+        mock_api.get_models_for_watch.assert_called_once_with(team_id="team1")
+
+    def test_provided_team_name_invalid(self):
+        """Test that providing an invalid team name raises an error."""
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = teams
+
+        with pytest.raises(click.ClickException) as exc_info:
+            resolve_model_for_watch(
+                mock_remote, "my-model", provided_team_name="NonExistent"
+            )
+
+        assert "does not exist" in str(exc_info.value)
+
+    def test_provided_team_name_model_not_in_team(self):
+        """Test that error is raised when model doesn't exist in provided team."""
+        teams = {
+            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
+            "Team Beta": {"id": "team2", "name": "Team Beta"},
+        }
+        # Model exists in team2, but we're querying team1
+        models_team1 = []  # No models in team1
+        mock_remote = Mock(spec=BasetenRemote)
+        mock_api = Mock()
+        mock_remote.api = mock_api
+        mock_api.get_teams.return_value = teams
+        mock_api.get_models_for_watch.return_value = {"models": models_team1}
+
+        with pytest.raises(click.ClickException) as exc_info:
+            resolve_model_for_watch(
+                mock_remote, "my-model", provided_team_name="Team Alpha"
+            )
+
+        assert "not found in team" in str(exc_info.value)
