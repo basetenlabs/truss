@@ -139,12 +139,6 @@ truss predict -d '"Truss is awesome!"'
 
 ## Truss contributors
 
-Truss is backed by Baseten and built in collaboration with ML engineers
-worldwide. Special thanks to [Stephan Auerhahn](https://github.com/palp) @
-[stability.ai](https://stability.ai/) and
-[Daniel Sarfati](https://github.com/dsarfati) @
-[Salad Technologies](https://salad.com/) for their contributions.
-
 We enthusiastically welcome contributions in accordance with our
 [contributors' guide](CONTRIBUTING.md) and
 [code of conduct](CODE_OF_CONDUCT.md).
