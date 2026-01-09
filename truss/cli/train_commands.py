@@ -214,6 +214,9 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
+@click.option(
+    "--team", type=str, required=False, help="Team name to filter projects by."
+)
 @common.common_options()
 def get_job_logs(
     remote: Optional[str],
@@ -221,6 +224,7 @@ def get_job_logs(
     project: Optional[str],
     job_id: Optional[str],
     tail: bool,
+    team: Optional[str],
 ):
     """Fetch logs for a training job"""
 
@@ -231,7 +235,7 @@ def get_job_logs(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
+        remote_provider, project_id=project_id, project=project, team=team
     )
 
     project_id, job_id = train_common.get_most_recent_job(
@@ -256,6 +260,9 @@ def get_job_logs(
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--team", type=str, required=False, help="Team name to filter projects by."
+)
 @common.common_options()
 def stop_job(
     project_id: Optional[str],
@@ -263,6 +270,7 @@ def stop_job(
     job_id: Optional[str],
     all: bool,
     remote: Optional[str],
+    team: Optional[str],
 ):
     """Stop a training job"""
 
@@ -273,7 +281,7 @@ def stop_job(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
+        remote_provider, project_id=project_id, project=project, team=team
     )
     if all:
         train_cli.stop_all_jobs(remote_provider, project_id)
@@ -294,12 +302,16 @@ def stop_job(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--team", type=str, required=False, help="Team name to filter projects by."
+)
 @common.common_options()
 def view_training(
     project_id: Optional[str],
     project: Optional[str],
     job_id: Optional[str],
     remote: Optional[str],
+    team: Optional[str],
 ):
     """List all training jobs for a project"""
 
@@ -310,7 +322,7 @@ def view_training(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
+        remote_provider, project_id=project_id, project=project, team=team
     )
 
     train_cli.view_training_details(remote_provider, project_id, job_id)
@@ -321,12 +333,16 @@ def view_training(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--team", type=str, required=False, help="Team name to filter projects by."
+)
 @common.common_options()
 def get_job_metrics(
     project_id: Optional[str],
     project: Optional[str],
     job_id: Optional[str],
     remote: Optional[str],
+    team: Optional[str],
 ):
     """Get metrics for a training job"""
 
@@ -337,7 +353,7 @@ def get_job_metrics(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
+        remote_provider, project_id=project_id, project=project, team=team
     )
     train_cli.view_training_job_metrics(remote_provider, project_id, job_id)
 
@@ -362,6 +378,9 @@ def get_job_metrics(
     help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--team", type=str, required=False, help="Team name to filter projects by."
+)
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
@@ -371,6 +390,7 @@ def deploy_checkpoints(
     remote: Optional[str],
     dry_run: bool,
     truss_config_output_dir: Optional[str],
+    team: Optional[str],
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -383,7 +403,7 @@ def deploy_checkpoints(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     project_id = _maybe_resolve_project_id_from_id_or_name(
-        remote_provider, project_id=project_id, project=project
+        remote_provider, project_id=project_id, project=project, team=team
     )
     result = train_cli.create_model_version_from_inference_template(
         remote_provider,
@@ -610,9 +630,17 @@ def cache():
     default=OUTPUT_FORMAT_CLI_TABLE,
     help="Output format: cli-table (default), csv, or json.",
 )
+@click.option(
+    "--team", type=str, required=False, help="Team name to filter projects by."
+)
 @common.common_options()
 def view_cache_summary(
-    project: str, remote: Optional[str], sort: str, order: str, output_format: str
+    project: str,
+    remote: Optional[str],
+    sort: str,
+    order: str,
+    output_format: str,
+    team: Optional[str],
 ):
     """View cache summary for a training project"""
     if not remote:
@@ -623,12 +651,15 @@ def view_cache_summary(
     )
 
     train_cli.view_cache_summary_by_project(
-        remote_provider, project, sort, order, output_format
+        remote_provider, project, sort, order, output_format, team_name=team
     )
 
 
 def _maybe_resolve_project_id_from_id_or_name(
-    remote_provider: BasetenRemote, project_id: Optional[str], project: Optional[str]
+    remote_provider: BasetenRemote,
+    project_id: Optional[str],
+    project: Optional[str],
+    team: Optional[str] = None,
 ) -> Optional[str]:
     """resolve the project_id or project. `project` can be name or id"""
     if project and project_id:
@@ -636,4 +667,6 @@ def _maybe_resolve_project_id_from_id_or_name(
     project_str = project or project_id
     if not project_str:
         return None
-    return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]
+    return train_cli.fetch_project_by_name_or_id(
+        remote_provider, project_str, team_name=team
+    )["id"]

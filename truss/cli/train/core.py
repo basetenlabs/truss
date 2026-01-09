@@ -583,13 +583,17 @@ def download_git_directory(
 
 
 def fetch_project_by_name_or_id(
-    remote_provider: BasetenRemote, project_identifier: str
+    remote_provider: BasetenRemote,
+    project_identifier: str,
+    team_name: Optional[str] = None,
 ) -> dict:
     """Fetch a training project by name or ID.
 
     Args:
         remote_provider: The remote provider instance
         project_identifier: Either a project ID or project name
+        team_name: Optional team name to filter projects by. If not provided and
+            multiple projects match the name, the user will be prompted to select a team.
 
     Returns:
         The project object as a dictionary
@@ -599,17 +603,47 @@ def fetch_project_by_name_or_id(
     """
     try:
         projects = remote_provider.api.list_training_projects()
-        projects_by_name = {project.get("name"): project for project in projects}
+
+        # First check if project_identifier is a project ID (exact match)
         projects_by_id = {project.get("id"): project for project in projects}
         if project_identifier in projects_by_id:
             return projects_by_id[project_identifier]
-        if project_identifier in projects_by_name:
-            return projects_by_name[project_identifier]
+
+        # Look for projects matching by name
+        matching_projects = [p for p in projects if p.get("name") == project_identifier]
+
+        # If no team specified and multiple projects found, prompt user to select
+        if not team_name and len(matching_projects) > 1:
+            team_to_project = {p.get("team_name"): p for p in matching_projects}
+            available_teams = list(team_to_project.keys())
+            console.print(
+                f"Multiple projects found with name '{project_identifier}' in different teams.",
+                style="yellow",
+            )
+            selected_team = inquirer.select(
+                "👥 Which team's project do you want to use?",
+                qmark="",
+                choices=available_teams,
+            ).execute()
+            return team_to_project[selected_team]
+
+        # Filter by team if specified
+        if team_name:
+            matching_projects = [
+                p for p in matching_projects if p.get("team_name") == team_name
+            ]
+
+        if len(matching_projects) == 1:
+            return matching_projects[0]
+
+        # No matching projects found
+        team_filter_msg = f" in team '{team_name}'" if team_name else ""
+        # Show all projects (not filtered) for helpful error message
         valid_project_ids_and_names = ", ".join(
             [f"{project.get('id')} ({project.get('name')})" for project in projects]
         )
         raise click.ClickException(
-            f"Project '{project_identifier}' not found. Valid project IDs and names: {valid_project_ids_and_names}"
+            f"Project '{project_identifier}' not found{team_filter_msg}. Valid project IDs and names: {valid_project_ids_and_names}"
         )
     except click.ClickException:
         raise
@@ -623,6 +657,7 @@ def view_cache_summary_by_project(
     sort_by: Optional[str] = None,
     order: Optional[str] = None,
     output_format: Optional[str] = None,
+    team_name: Optional[str] = None,
 ):
     """View cache summary for a training project by ID or name."""
     from truss.cli.train.cache import (
@@ -640,5 +675,7 @@ def view_cache_summary_by_project(
     if output_format is None:
         output_format = OUTPUT_FORMAT_CLI_TABLE
 
-    project = fetch_project_by_name_or_id(remote_provider, project_identifier)
+    project = fetch_project_by_name_or_id(
+        remote_provider, project_identifier, team_name=team_name
+    )
     view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
