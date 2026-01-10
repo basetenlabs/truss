@@ -1,10 +1,32 @@
 {% if use_gpu %}
-FROM nvidia/cuda:12.2.2-base-ubuntu22.04
+ARG BUILD_CUDA_FLAVOR=base       # base | devel
+ARG RUNTIME_CUDA_FLAVOR=base     # base | devel
+
+# --- build stage (optional compile, e.g., CUDA ops via pip) ---
+FROM nvidia/cuda:12.2.2-${BUILD_CUDA_FLAVOR}-ubuntu20.04 AS build
+ENV PYTHONUNBUFFERED="True"
+ENV DEBIAN_FRONTEND="noninteractive"
+# Minimal Python toolchain just to build wheels
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        bash git curl ca-certificates software-properties-common \
+        python{{python_version}} python{{python_version}}-venv python{{python_version}}-dev && \
+    rm -rf /var/lib/apt/lists/*
+RUN ln -sf /usr/bin/python{{python_version}} /usr/bin/python3 && \
+    curl https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && \
+    python3 /tmp/get-pip.py && \
+    python3 -m pip install --no-cache-dir --upgrade pip
+COPY ./requirements.txt /tmp/requirements.txt
+# Build wheels here (CUDA extensions will use nvcc if BUILD_CUDA_FLAVOR=devel)
+RUN python3 -m pip wheel --no-deps -r /tmp/requirements.txt -w /wheelhouse
+
+# --- runtime stage (what you actually run) ---
+FROM nvidia/cuda:12.2.2-${RUNTIME_CUDA_FLAVOR}-ubuntu20.04
 ENV CUDNN_VERSION="8.9.5.29"
 ENV CUDA="12.2"
 ENV LD_LIBRARY_PATH="/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub && \
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub && \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         cuda-command-line-tools-12-2 \
@@ -57,5 +79,13 @@ RUN pip install --no-cache-dir --upgrade pip \
     && rm -rf /root/.cache/pip
 
 COPY ./requirements.txt requirements.txt
+{% if use_gpu %}
+# Prefer prebuilt wheels (from build stage); fall back to source if not present.
+COPY --from=build /wheelhouse /opt/wheelhouse
+RUN (ls -1 /opt/wheelhouse/*.whl >/dev/null 2>&1 && pip install --no-cache-dir /opt/wheelhouse/*.whl) || \
+    pip install --no-cache-dir -r requirements.txt \
+    && rm -rf /root/.cache/pip
+{% else %}
 RUN pip install --no-cache-dir -r requirements.txt \
     && rm -rf /root/.cache/pip
+{% endif %}
