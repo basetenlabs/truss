@@ -1,6 +1,7 @@
 from typing import Optional
 
 from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
 from InquirerPy.validator import ValidationError, Validator
 
 from truss.cli.utils.output import console
@@ -82,17 +83,21 @@ def inquire_team(
             key=lambda item: (not item[1].default, item[0].lower()),
         )
 
-        # Create choices with "(default)" suffix
+        # Create Choice objects with colored "(default)" suffix for display
+        # ANSI escape codes: \033[91m = bright red, \033[0m = reset
         choices = [
-            f"{name} (default)" if team.default else name for name, team in sorted_teams
+            Choice(
+                value=name,
+                name=f"{name} \033[91m(default)\033[0m" if team.default else name,
+            )
+            for name, team in sorted_teams
         ]
 
         selected_team_name = inquirer.select(
             prompt, qmark="", choices=choices
         ).execute()
 
-        # Extract actual team name (remove "(default)" suffix if present)
-        return selected_team_name.replace(" (default)", "")
+        return selected_team_name
 
     # If no existing teams, return None (don't propagate team param)
     return None
