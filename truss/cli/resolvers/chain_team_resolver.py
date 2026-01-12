@@ -1,11 +1,96 @@
 """Team resolution logic for chains."""
 
-from typing import Optional
+from typing import Callable, Optional
 
 import click
 
 from truss.cli import remote_cli
 from truss.remote.baseten.remote import BasetenRemote
+
+
+def _validate_provided_team(
+    provided_team_name: str, existing_teams: dict[str, dict[str, str]]
+) -> str:
+    """Validate provided team name exists and return team_id."""
+    if provided_team_name not in existing_teams:
+        available_teams_str = remote_cli.format_available_teams(existing_teams)
+        raise click.ClickException(
+            f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
+        )
+    return existing_teams[provided_team_name]["id"]
+
+
+def _get_matching_chains(
+    chain_name: str,
+    existing_teams: dict[str, dict[str, str]],
+    fetch_chains: Callable[[], list],
+) -> list[dict]:
+    """Get chains matching name that are in accessible teams."""
+    all_chains = fetch_chains()
+    accessible_team_ids = {team_data["id"] for team_data in existing_teams.values()}
+    return [
+        c
+        for c in all_chains
+        if c.get("name") == chain_name
+        and c.get("team", {}).get("id") in accessible_team_ids
+    ]
+
+
+def _prompt_for_team_from_chains(
+    matching_chains: list[dict], existing_teams: dict[str, dict[str, str]], prompt: str
+) -> dict:
+    """Prompt user to select team when multiple chains match, return selected chain."""
+    team_name_to_chain = {
+        c.get("team", {}).get("name", "Unknown"): c for c in matching_chains
+    }
+    teams_with_chain = {
+        name: existing_teams[name]
+        for name in team_name_to_chain
+        if name in existing_teams
+    }
+    if not teams_with_chain:
+        raise click.ClickException(
+            "Chain exists but you don't have access to any team that owns it."
+        )
+    selected = remote_cli.inquire_team(existing_teams=teams_with_chain, prompt=prompt)
+    if not selected or selected not in team_name_to_chain:
+        raise click.ClickException("No team selected.")
+    return team_name_to_chain[selected]
+
+
+def resolve_chain_for_watch(
+    remote_provider: BasetenRemote,
+    chain_name: str,
+    provided_team_name: Optional[str] = None,
+    prompt: str = "Multiple chains with this name exist. Which team's chain do you want to watch?",
+) -> dict:
+    """Resolve a chain by name for watch, handling team disambiguation.
+
+    Returns chain dict with 'id', 'name', and 'team' info.
+    """
+    existing_teams = remote_provider.api.get_teams()
+
+    if provided_team_name is not None:
+        team_id = _validate_provided_team(provided_team_name, existing_teams)
+        chains = remote_provider.api.get_chains(team_id=team_id)
+        matching = [c for c in chains if c.get("name") == chain_name]
+        if not matching:
+            raise click.ClickException(
+                f"Chain '{chain_name}' not found in team '{provided_team_name}'."
+            )
+        return matching[0]
+
+    matching_chains = _get_matching_chains(
+        chain_name, existing_teams, remote_provider.api.get_chains
+    )
+
+    if not matching_chains:
+        raise click.ClickException(f"Chain '{chain_name}' not found.")
+
+    if len(matching_chains) == 1:
+        return matching_chains[0]
+
+    return _prompt_for_team_from_chains(matching_chains, existing_teams, prompt)
 
 
 def resolve_chain_team_name(

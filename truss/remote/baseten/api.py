@@ -513,6 +513,41 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
+    def get_models_for_watch(self, team_id: Optional[str] = None):
+        """Get models with full version info needed for watch disambiguation."""
+        # If team_id is provided, filter by team; otherwise get all models
+        if team_id:
+            filter_arg = f'team_id: "{team_id}"'
+        else:
+            filter_arg = "all: true"
+
+        query_string = f"""
+        {{
+            models({filter_arg}) {{
+                id
+                name
+                hostname
+                team {{
+                    id
+                    name
+                }}
+                versions {{
+                    id
+                    semver
+                    truss_hash
+                    truss_signature
+                    is_draft
+                    is_primary
+                    current_model_deployment_status {{
+                        status
+                    }}
+                }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
     def get_truss_watch_state(self, model_id: str):
         query_string = f"""
         {{

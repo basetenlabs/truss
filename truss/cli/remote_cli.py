@@ -74,12 +74,11 @@ def format_available_teams(teams: dict[str, dict[str, str]]) -> str:
 
 def inquire_team(
     existing_teams: Optional[dict[str, dict[str, str]]] = None,
+    prompt: str = "👥 Which team do you want to push to?",
 ) -> Optional[str]:
     if existing_teams is not None:
         selected_team_name = inquirer.select(
-            "👥 Which team do you want to push to?",
-            qmark="",
-            choices=list[str](existing_teams.keys()),
+            prompt, qmark="", choices=list[str](existing_teams.keys())
         ).execute()
         return selected_team_name
 
