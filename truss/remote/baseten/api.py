@@ -991,16 +991,17 @@ class BasetenApi:
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
 
-    def get_teams(self) -> Dict[str, Dict[str, str]]:
+    def get_teams(self) -> Dict[str, Dict[str, Any]]:
         """
         Get all available teams via GraphQL API.
-        Returns a dictionary mapping team name to team data (with 'id' and 'name' keys).
+        Returns a dictionary mapping team name to team data (with 'id', 'name', and 'default' keys).
         """
         query_string = """
         query Teams {
             teams {
                 id
                 name
+                default
             }
         }
         """

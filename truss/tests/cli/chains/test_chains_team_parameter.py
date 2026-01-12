@@ -139,7 +139,7 @@ class TestChain(Chainlet[str, str]):
         When: User runs chains push with --team "Team Alpha"
         Then: Chain is deployed with team_id="team1" and exit code 0
         """
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chainlet = self._given_mock_chainlet()
         chain_service = self._given_mock_chain_service()
 
@@ -176,9 +176,9 @@ class TestChain(Chainlet[str, str]):
         Then: Chain is deployed with team_id="team1" and exit code 0
         """
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         chainlet = self._given_mock_chainlet()
         chain_service = self._given_mock_chain_service()
@@ -214,7 +214,7 @@ class TestChain(Chainlet[str, str]):
         When: User runs chains push with --team "NonExistentTeam"
         Then: Command fails with exit code 1 and error message about team not existing
         """
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chainlet = self._given_mock_chainlet()
 
         mock_remote = self._given_mock_remote(teams)
@@ -244,9 +244,9 @@ class TestChain(Chainlet[str, str]):
         Then: Chain is deployed with team_id="team2" and exit code 0
         """
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         chainlet = self._given_mock_chainlet()
         chain_service = self._given_mock_chain_service()
@@ -287,9 +287,9 @@ class TestChain(Chainlet[str, str]):
         Then: Chain is deployed with team_id="team1" and exit code 0
         """
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         existing_chains = [
             {"id": "chain123", "name": "TestChain", "team": {"name": "Team Alpha"}},
@@ -333,9 +333,9 @@ class TestChain(Chainlet[str, str]):
         Then: Chain is deployed with team_id="team2" (auto-inferred) and exit code 0
         """
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         existing_chain = {
             "id": "chain123",
@@ -377,7 +377,7 @@ class TestChain(Chainlet[str, str]):
         When: User runs chains push without --team
         Then: Chain is deployed with team_id="team1" (auto-inferred) and exit code 0
         """
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chainlet = self._given_mock_chainlet()
         chain_service = self._given_mock_chain_service()
 
@@ -412,7 +412,7 @@ class TestChain(Chainlet[str, str]):
         When: User runs chains push without --team
         Then: Chain is deployed with team_id="team1" (auto-inferred) and exit code 0
         """
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         existing_chain = {
             "id": "chain123",
             "name": "TestChain",

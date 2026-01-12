@@ -30,7 +30,7 @@ class TestResolveChainForWatch:
 
     def test_single_chain_found(self):
         """Test that single chain is returned directly without prompting."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chains = [
             {
                 "name": "my-chain",
@@ -47,7 +47,7 @@ class TestResolveChainForWatch:
 
     def test_no_chain_found(self):
         """Test that error is raised when no chain is found."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chains = []
         mock_remote = self._setup_mock_remote(teams, chains)
 
@@ -60,8 +60,8 @@ class TestResolveChainForWatch:
     def test_multiple_chains_prompts_for_team(self, mock_inquire_team):
         """Test that user is prompted when multiple chains have the same name."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         chains = [
             {
@@ -90,7 +90,7 @@ class TestResolveChainForWatch:
 
     def test_chain_in_inaccessible_team(self):
         """Test that chains in inaccessible teams are filtered out."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chains = [
             {
                 "name": "other-chain",
@@ -108,8 +108,8 @@ class TestResolveChainForWatch:
     def test_provided_team_name_valid(self):
         """Test that providing a valid team name filters to that team's chain."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         chains_team1 = [
             {
@@ -134,7 +134,7 @@ class TestResolveChainForWatch:
 
     def test_provided_team_name_invalid(self):
         """Test that providing an invalid team name raises an error."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
@@ -150,8 +150,8 @@ class TestResolveChainForWatch:
     def test_provided_team_name_chain_not_in_team(self):
         """Test that error is raised when chain doesn't exist in provided team."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         # Chain exists in team2, but we're querying team1
         chains_team1 = []  # No chains in team1

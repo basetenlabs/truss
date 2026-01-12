@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
@@ -61,26 +61,40 @@ def inquire_model_name() -> str:
 
 
 def get_team_id_from_name(
-    teams: dict[str, dict[str, str]], team_name: str
+    teams: dict[str, dict[str, Any]], team_name: str
 ) -> Optional[str]:
     team = teams.get(team_name)
     return team["id"] if team else None
 
 
-def format_available_teams(teams: dict[str, dict[str, str]]) -> str:
+def format_available_teams(teams: dict[str, dict[str, Any]]) -> str:
     team_names = list(teams.keys())
     return ", ".join(team_names) if team_names else "none"
 
 
 def inquire_team(
-    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+    existing_teams: Optional[dict[str, dict[str, Any]]] = None,
     prompt: str = "👥 Which team do you want to push to?",
 ) -> Optional[str]:
     if existing_teams is not None:
+        # Sort with default team first, then alphanumerically (case-insensitive)
+        sorted_teams = sorted(
+            existing_teams.items(),
+            key=lambda item: (not item[1].get("default", False), item[0].lower()),
+        )
+
+        # Create choices with "(default)" suffix
+        choices = [
+            f"{name} (default)" if team.get("default") else name
+            for name, team in sorted_teams
+        ]
+
         selected_team_name = inquirer.select(
-            prompt, qmark="", choices=list[str](existing_teams.keys())
+            prompt, qmark="", choices=choices
         ).execute()
-        return selected_team_name
+
+        # Extract actual team name (remove "(default)" suffix if present)
+        return selected_team_name.replace(" (default)", "")
 
     # If no existing teams, return None (don't propagate team param)
     return None

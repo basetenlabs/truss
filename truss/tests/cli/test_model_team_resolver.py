@@ -52,7 +52,7 @@ class TestModelTeamResolver:
         self, provided_team_name, expected_team_name, expected_team_id, should_raise
     ):
         """Test scenarios when --team is provided."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         mock_remote = self._setup_mock_remote(teams)
 
         if should_raise:
@@ -81,9 +81,17 @@ class TestModelTeamResolver:
             (
                 3,
                 {
-                    "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-                    "Team Beta": {"id": "team2", "name": "Team Beta"},
-                    "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+                    "Team Alpha": {
+                        "id": "team1",
+                        "name": "Team Alpha",
+                        "default": True,
+                    },
+                    "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+                    "Team Gamma": {
+                        "id": "team3",
+                        "name": "Team Gamma",
+                        "default": False,
+                    },
                 },
                 {"models": []},  # No models exist
                 "non-existent-model",
@@ -96,9 +104,17 @@ class TestModelTeamResolver:
             (
                 4,
                 {
-                    "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-                    "Team Beta": {"id": "team2", "name": "Team Beta"},
-                    "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+                    "Team Alpha": {
+                        "id": "team1",
+                        "name": "Team Alpha",
+                        "default": True,
+                    },
+                    "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+                    "Team Gamma": {
+                        "id": "team3",
+                        "name": "Team Gamma",
+                        "default": False,
+                    },
                 },
                 {
                     "models": [
@@ -119,9 +135,17 @@ class TestModelTeamResolver:
             (
                 5,
                 {
-                    "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-                    "Team Beta": {"id": "team2", "name": "Team Beta"},
-                    "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+                    "Team Alpha": {
+                        "id": "team1",
+                        "name": "Team Alpha",
+                        "default": True,
+                    },
+                    "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+                    "Team Gamma": {
+                        "id": "team3",
+                        "name": "Team Gamma",
+                        "default": False,
+                    },
                 },
                 {
                     "models": [
@@ -146,7 +170,7 @@ class TestModelTeamResolver:
             # SCENARIO 6: Single team, no existing model
             (
                 6,
-                {"Team Alpha": {"id": "team1", "name": "Team Alpha"}},
+                {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}},
                 {"models": []},  # No models exist
                 "non-existent-model",
                 None,
@@ -157,7 +181,7 @@ class TestModelTeamResolver:
             # SCENARIO 7: Single team, existing model matches the team
             (
                 7,
-                {"Team Alpha": {"id": "team1", "name": "Team Alpha"}},
+                {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}},
                 {
                     "models": [
                         {
@@ -176,7 +200,7 @@ class TestModelTeamResolver:
             # SCENARIO 8: Single team, existing model in different team
             (
                 8,
-                {"Team Alpha": {"id": "team1", "name": "Team Alpha"}},
+                {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}},
                 {
                     "models": [
                         {
@@ -232,13 +256,19 @@ class TestModelTeamResolver:
 
     @pytest.mark.parametrize(
         "existing_teams_param,should_call_get_teams",
-        [(None, True), ({"Team Alpha": {"id": "team1", "name": "Team Alpha"}}, False)],
+        [
+            (None, True),
+            (
+                {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}},
+                False,
+            ),
+        ],
     )
     def test_get_teams_called_when_existing_teams_none(
         self, existing_teams_param, should_call_get_teams
     ):
         """Test that get_teams is called when existing_teams is not provided."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         mock_remote = self._setup_mock_remote(teams)
 
         team_name, team_id = resolve_model_team_name(
@@ -264,8 +294,8 @@ class TestModelTeamResolver:
     ):
         """Test behavior with different existing_model_name values."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         mock_remote = self._setup_mock_remote(teams)
         mock_inquire_team.return_value = "Team Beta"
@@ -286,6 +316,39 @@ class TestModelTeamResolver:
         else:
             mock_remote.api.models.assert_not_called()
 
+    @patch("truss.cli.resolvers.model_team_resolver.remote_cli.inquire_team")
+    def test_default_team_sorted_first_and_displayed_with_suffix(
+        self, mock_inquire_team
+    ):
+        """Test that default team is sorted first and non-default teams are sorted alphanumerically."""
+        teams = {
+            "team3": {"id": "team3", "name": "team3", "default": False},
+            "team1": {"id": "team1", "name": "team1", "default": True},
+            "team2": {"id": "team2", "name": "team2", "default": False},
+        }
+        mock_remote = self._setup_mock_remote(teams)
+        mock_inquire_team.return_value = "team1"
+        mock_remote.api.models.return_value = {"models": []}
+
+        team_name, team_id = resolve_model_team_name(
+            remote_provider=mock_remote,
+            provided_team_name=None,
+            existing_model_name=None,
+            existing_teams=teams,
+        )
+
+        assert team_name == "team1"
+        assert team_id == "team1"
+        mock_inquire_team.assert_called_once()
+        # Verify that teams are passed to inquire_team with default team first
+        call_args = mock_inquire_team.call_args
+        teams_in_prompt = call_args[1]["existing_teams"]
+        # Check that the teams dict has the correct structure with default field
+        assert "team1" in teams_in_prompt
+        assert teams_in_prompt["team1"]["default"] is True
+        assert teams_in_prompt["team2"]["default"] is False
+        assert teams_in_prompt["team3"]["default"] is False
+
 
 class TestResolveModelForWatch:
     """Test model resolution for watch operations with team disambiguation."""
@@ -301,7 +364,7 @@ class TestResolveModelForWatch:
 
     def test_single_model_found(self):
         """Test that single model is returned directly without prompting."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         models = [
             {
                 "name": "my-model",
@@ -322,7 +385,7 @@ class TestResolveModelForWatch:
 
     def test_no_model_found(self):
         """Test that error is raised when no model is found."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         models = []
         mock_remote = self._setup_mock_remote(teams, models)
 
@@ -335,8 +398,8 @@ class TestResolveModelForWatch:
     def test_multiple_models_prompts_for_team(self, mock_inquire_team):
         """Test that user is prompted when multiple models have the same name."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         models = [
             {
@@ -370,7 +433,7 @@ class TestResolveModelForWatch:
 
     def test_model_in_inaccessible_team(self):
         """Test that models in inaccessible teams are filtered out."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         models = [
             {
                 "name": "other-model",
@@ -390,8 +453,8 @@ class TestResolveModelForWatch:
     def test_provided_team_name_valid(self):
         """Test that providing a valid team name filters to that team's model."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         models_team1 = [
             {
@@ -418,7 +481,7 @@ class TestResolveModelForWatch:
 
     def test_provided_team_name_invalid(self):
         """Test that providing an invalid team name raises an error."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
@@ -434,8 +497,8 @@ class TestResolveModelForWatch:
     def test_provided_team_name_model_not_in_team(self):
         """Test that error is raised when model doesn't exist in provided team."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         # Model exists in team2, but we're querying team1
         models_team1 = []  # No models in team1

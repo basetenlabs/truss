@@ -100,7 +100,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 1: --team PROVIDED with valid team name, user has access."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         training_project = self._create_mock_training_project()
         job_response = self._create_mock_job_response()
 
@@ -128,7 +128,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_remote_factory
     ):
         """Scenario 2: --team PROVIDED with invalid team name that does not exist."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         training_project = self._create_mock_training_project()
 
         mock_remote = self._setup_mock_remote(teams)
@@ -163,9 +163,9 @@ class TestTeamParameter:
     ):
         """Scenario 3: --team NOT PROVIDED, user has multiple teams, no existing project."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         training_project = self._create_mock_training_project()
         job_response = self._create_mock_job_response()
@@ -201,9 +201,9 @@ class TestTeamParameter:
     ):
         """Scenario 4: --team NOT PROVIDED, multiple teams, existing project in exactly one team."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         existing_project = {
             "id": "project123",
@@ -250,9 +250,9 @@ class TestTeamParameter:
     ):
         """Scenario 5: --team NOT PROVIDED, multiple teams, existing project in multiple teams."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         existing_projects = [
             {"id": "project123", "name": "existing-project", "team_name": "Team Alpha"},
@@ -293,7 +293,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 6: --team NOT PROVIDED, user has exactly one team, no existing project."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         training_project = self._create_mock_training_project()
         job_response = self._create_mock_job_response()
 
@@ -324,7 +324,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 7: --team NOT PROVIDED, single team, existing project matches the team."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         existing_project = {
             "id": "project123",
             "name": "existing-project",
@@ -364,7 +364,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 8: --team NOT PROVIDED, single team, existing project in different team."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         existing_project = {
             "id": "project123",
             "name": "existing-project",
