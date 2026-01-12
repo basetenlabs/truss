@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -29,7 +30,11 @@ class TestChainsTeamParameter:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         return mock_remote
 
     @staticmethod
@@ -269,7 +274,11 @@ class TestChain(Chainlet[str, str]):
                 f"Expected exit code 0, got {result.exit_code}. Output: {result.output}"
             )
             mock_inquire_team.assert_called_once()
-            assert mock_inquire_team.call_args[1]["existing_teams"] == teams
+            # Convert teams to TeamType objects for comparison
+            teams_with_type = {
+                name: TeamType(**team_data) for name, team_data in teams.items()
+            }
+            assert mock_inquire_team.call_args[1]["existing_teams"] == teams_with_type
             self._then_assert_push_called_with_team(mock_push, "team2", "TestChain")
         finally:
             self._restore_isinstance(original_isinstance)
@@ -316,7 +325,11 @@ class TestChain(Chainlet[str, str]):
                 f"Expected exit code 0, got {result.exit_code}. Output: {result.output}"
             )
             mock_inquire_team.assert_called_once()
-            assert mock_inquire_team.call_args[1]["existing_teams"] == teams
+            # Convert teams to TeamType objects for comparison
+            teams_with_type = {
+                name: TeamType(**team_data) for name, team_data in teams.items()
+            }
+            assert mock_inquire_team.call_args[1]["existing_teams"] == teams_with_type
             self._then_assert_push_called_with_team(mock_push, "team1", "TestChain")
         finally:
             self._restore_isinstance(original_isinstance)

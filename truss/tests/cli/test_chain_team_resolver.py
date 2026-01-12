@@ -13,6 +13,7 @@ import click
 import pytest
 
 from truss.cli.resolvers.chain_team_resolver import resolve_chain_for_watch
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -24,7 +25,11 @@ class TestResolveChainForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_chains.return_value = chains
         return mock_remote
 
@@ -121,7 +126,11 @@ class TestResolveChainForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_chains.return_value = chains_team1
 
         resolved_chain = resolve_chain_for_watch(
@@ -138,7 +147,11 @@ class TestResolveChainForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
 
         with pytest.raises(click.ClickException) as exc_info:
             resolve_chain_for_watch(
@@ -158,7 +171,11 @@ class TestResolveChainForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_chains.return_value = chains_team1
 
         with pytest.raises(click.ClickException) as exc_info:

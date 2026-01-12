@@ -25,6 +25,7 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_for_watch,
     resolve_model_team_name,
 )
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -36,7 +37,11 @@ class TestModelTeamResolver:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         return mock_remote
 
     @pytest.mark.parametrize(
@@ -53,6 +58,10 @@ class TestModelTeamResolver:
     ):
         """Test scenarios when --team is provided."""
         teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
+        # Convert to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         mock_remote = self._setup_mock_remote(teams)
 
         if should_raise:
@@ -60,7 +69,7 @@ class TestModelTeamResolver:
                 resolve_model_team_name(
                     remote_provider=mock_remote,
                     provided_team_name=provided_team_name,
-                    existing_teams=teams,
+                    existing_teams=teams_with_type,
                 )
             assert "does not exist" in str(exc_info.value)
             assert provided_team_name in str(exc_info.value)
@@ -68,7 +77,7 @@ class TestModelTeamResolver:
             team_name, team_id = resolve_model_team_name(
                 remote_provider=mock_remote,
                 provided_team_name=provided_team_name,
-                existing_teams=teams,
+                existing_teams=teams_with_type,
             )
             assert team_name == expected_team_name
             assert team_id == expected_team_id
@@ -232,6 +241,10 @@ class TestModelTeamResolver:
         should_prompt,
     ):
         """Test scenarios when --team is NOT provided."""
+        # Convert to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         mock_remote = self._setup_mock_remote(teams)
         if inquire_return:
             mock_inquire_team.return_value = inquire_return
@@ -242,13 +255,13 @@ class TestModelTeamResolver:
             remote_provider=mock_remote,
             provided_team_name=None,
             existing_model_name=existing_model_name,
-            existing_teams=teams,
+            existing_teams=teams_with_type,
         )
 
         assert team_name == expected_team_name
         assert team_id == expected_team_id
         if should_prompt:
-            mock_inquire_team.assert_called_once_with(existing_teams=teams)
+            mock_inquire_team.assert_called_once_with(existing_teams=teams_with_type)
         else:
             mock_inquire_team.assert_not_called()
         if existing_model_name:
@@ -271,10 +284,18 @@ class TestModelTeamResolver:
         teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         mock_remote = self._setup_mock_remote(teams)
 
+        # Convert existing_teams_param to TeamType objects if provided
+        existing_teams_with_type = None
+        if existing_teams_param is not None:
+            existing_teams_with_type = {
+                name: TeamType(**team_data)
+                for name, team_data in existing_teams_param.items()
+            }
+
         team_name, team_id = resolve_model_team_name(
             remote_provider=mock_remote,
             provided_team_name="Team Alpha",
-            existing_teams=existing_teams_param,
+            existing_teams=existing_teams_with_type,
         )
 
         assert team_name == "Team Alpha"
@@ -297,6 +318,10 @@ class TestModelTeamResolver:
             "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
             "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
+        # Convert to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         mock_remote = self._setup_mock_remote(teams)
         mock_inquire_team.return_value = "Team Beta"
         mock_remote.api.models.return_value = {"models": []}
@@ -305,12 +330,12 @@ class TestModelTeamResolver:
             remote_provider=mock_remote,
             provided_team_name=None,
             existing_model_name=existing_model_name,
-            existing_teams=teams,
+            existing_teams=teams_with_type,
         )
 
         assert team_name == "Team Beta"
         assert team_id == "team2"
-        mock_inquire_team.assert_called_once_with(existing_teams=teams)
+        mock_inquire_team.assert_called_once_with(existing_teams=teams_with_type)
         if should_call_models_api:
             mock_remote.api.models.assert_called_once()
         else:
@@ -326,6 +351,10 @@ class TestModelTeamResolver:
             "team1": {"id": "team1", "name": "team1", "default": True},
             "team2": {"id": "team2", "name": "team2", "default": False},
         }
+        # Convert to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         mock_remote = self._setup_mock_remote(teams)
         mock_inquire_team.return_value = "team1"
         mock_remote.api.models.return_value = {"models": []}
@@ -334,7 +363,7 @@ class TestModelTeamResolver:
             remote_provider=mock_remote,
             provided_team_name=None,
             existing_model_name=None,
-            existing_teams=teams,
+            existing_teams=teams_with_type,
         )
 
         assert team_name == "team1"
@@ -345,9 +374,9 @@ class TestModelTeamResolver:
         teams_in_prompt = call_args[1]["existing_teams"]
         # Check that the teams dict has the correct structure with default field
         assert "team1" in teams_in_prompt
-        assert teams_in_prompt["team1"]["default"] is True
-        assert teams_in_prompt["team2"]["default"] is False
-        assert teams_in_prompt["team3"]["default"] is False
+        assert teams_in_prompt["team1"].default is True
+        assert teams_in_prompt["team2"].default is False
+        assert teams_in_prompt["team3"].default is False
 
 
 class TestResolveModelForWatch:
@@ -358,7 +387,11 @@ class TestResolveModelForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_models_for_watch.return_value = {"models": models}
         return mock_remote
 
@@ -468,7 +501,11 @@ class TestResolveModelForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_models_for_watch.return_value = {"models": models_team1}
 
         model, versions = resolve_model_for_watch(
@@ -485,7 +522,11 @@ class TestResolveModelForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
 
         with pytest.raises(click.ClickException) as exc_info:
             resolve_model_for_watch(
@@ -505,7 +546,11 @@ class TestResolveModelForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_models_for_watch.return_value = {"models": models_team1}
 
         with pytest.raises(click.ClickException) as exc_info:
