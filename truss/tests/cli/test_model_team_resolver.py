@@ -21,6 +21,7 @@ from unittest.mock import Mock, patch
 import click
 import pytest
 
+from truss.cli.remote_cli import inquire_team
 from truss.cli.resolvers.model_team_resolver import (
     resolve_model_for_watch,
     resolve_model_team_name,
@@ -559,3 +560,56 @@ class TestResolveModelForWatch:
             )
 
         assert "not found in team" in str(exc_info.value)
+
+
+class TestInquireTeamEdgeCases:
+    """Test edge cases for inquire_team with team names containing '(default)'."""
+
+    @patch("truss.cli.remote_cli.inquirer.select")
+    def test_team_name_containing_default_not_default_team(self, mock_select):
+        """Team named 'My Team (default)' that is NOT the default should return exact name."""
+        teams = {
+            "My Team (default)": TeamType(
+                id="team1", name="My Team (default)", default=False
+            ),
+            "Other Team": TeamType(id="team2", name="Other Team", default=True),
+        }
+
+        # Simulate user selecting "My Team (default)" (not the default team)
+        mock_select.return_value.execute.return_value = "My Team (default)"
+
+        result = inquire_team(existing_teams=teams)
+
+        assert result == "My Team (default)"
+
+    @patch("truss.cli.remote_cli.inquirer.select")
+    def test_team_name_containing_default_is_default_team(self, mock_select):
+        """Team named 'My Team (default)' that IS the default should return exact name."""
+        teams = {
+            "My Team (default)": TeamType(
+                id="team1", name="My Team (default)", default=True
+            ),
+            "Other Team": TeamType(id="team2", name="Other Team", default=False),
+        }
+
+        # Simulate user selecting "My Team (default)" (which is the default team)
+        mock_select.return_value.execute.return_value = "My Team (default)"
+
+        result = inquire_team(existing_teams=teams)
+
+        assert result == "My Team (default)"
+
+    @patch("truss.cli.remote_cli.inquirer.select")
+    def test_regular_default_team_returns_clean_name(self, mock_select):
+        """Regular team that is default should return clean name without suffix."""
+        teams = {
+            "Team Alpha": TeamType(id="team1", name="Team Alpha", default=True),
+            "Team Beta": TeamType(id="team2", name="Team Beta", default=False),
+        }
+
+        # Simulate user selecting "Team Alpha" (the default team)
+        mock_select.return_value.execute.return_value = "Team Alpha"
+
+        result = inquire_team(existing_teams=teams)
+
+        assert result == "Team Alpha"

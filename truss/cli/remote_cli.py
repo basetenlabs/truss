@@ -83,21 +83,15 @@ def inquire_team(
             key=lambda item: (not item[1].default, item[0].lower()),
         )
 
-        # Create Choice objects with colored "(default)" suffix for display
-        # ANSI escape codes: \033[91m = bright red, \033[0m = reset
+        # Create Choice objects: value is the actual team name, name is for display
+        # This avoids issues with team names that contain "(default)"
         choices = [
-            Choice(
-                value=name,
-                name=f"{name} \033[91m(default)\033[0m" if team.default else name,
-            )
+            Choice(value=name, name=f"{name} (default)" if team.default else name)
             for name, team in sorted_teams
         ]
 
-        selected_team_name = inquirer.select(
-            prompt, qmark="", choices=choices
-        ).execute()
-
-        return selected_team_name
+        # execute() returns the Choice.value (actual team name), not Choice.name
+        return inquirer.select(prompt, qmark="", choices=choices).execute()
 
     # If no existing teams, return None (don't propagate team param)
     return None
