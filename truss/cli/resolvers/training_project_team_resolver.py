@@ -5,6 +5,7 @@ from typing import Optional
 import click
 
 from truss.cli import remote_cli
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -12,7 +13,7 @@ def resolve_training_project_team_name(
     remote_provider: BasetenRemote,
     provided_team_name: Optional[str],
     existing_project_name: Optional[str] = None,
-    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     """Resolve team name and team_id from provided team name or by prompting the user.
     Returns a tuple of (team_name, team_id).
@@ -46,7 +47,7 @@ def resolve_training_project_team_name(
     def _get_team_id(team_name: Optional[str]) -> Optional[str]:
         if team_name and existing_teams:
             team_data = existing_teams.get(team_name)
-            return team_data["id"] if team_data else None
+            return team_data.id if team_data else None
         return None
 
     if provided_team_name is not None:

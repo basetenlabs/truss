@@ -65,7 +65,9 @@ def test_get_service_by_model_name(remote):
     ]
 
     # Mock responses for the new team disambiguation flow
-    teams_response = {"data": {"teams": [{"id": "team1", "name": "Team Alpha"}]}}
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
     models_response = {
         "data": {
             "models": [
@@ -110,7 +112,9 @@ def test_get_service_by_model_name_no_dev_version(remote):
     versions = [{"id": "1", "is_draft": False, "is_primary": True}]
 
     # Mock responses for the new team disambiguation flow
-    teams_response = {"data": {"teams": [{"id": "team1", "name": "Team Alpha"}]}}
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
     models_response = {
         "data": {
             "models": [
@@ -155,7 +159,9 @@ def test_get_service_by_model_name_no_prod_version(remote):
     versions = [{"id": "1", "is_draft": True, "is_primary": False}]
 
     # Mock responses for the new team disambiguation flow
-    teams_response = {"data": {"teams": [{"id": "team1", "name": "Team Alpha"}]}}
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
     models_response = {
         "data": {
             "models": [

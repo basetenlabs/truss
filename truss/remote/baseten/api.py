@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
-from truss.remote.baseten.custom_types import APIKeyCategory
+from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -991,16 +991,17 @@ class BasetenApi:
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
 
-    def get_teams(self) -> Dict[str, Dict[str, str]]:
+    def get_teams(self) -> Dict[str, TeamType]:
         """
         Get all available teams via GraphQL API.
-        Returns a dictionary mapping team name to team data (with 'id' and 'name' keys).
+        Returns a dictionary mapping team name to team data.
         """
         query_string = """
         query Teams {
             teams {
                 id
                 name
+                default
             }
         }
         """
@@ -1008,4 +1009,4 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         teams_data = resp["data"]["teams"]
         # Convert list to dict mapping team_name -> team
-        return {team["name"]: team for team in teams_data}
+        return {team["name"]: TeamType(**team) for team in teams_data}
