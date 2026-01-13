@@ -79,8 +79,7 @@ server {
     client_max_body_size {{client_max_body_size}};
     proxy_buffering off;
 
-    # Liveness endpoint override
-    location = / {
+    location / {
         proxy_redirect off;
         proxy_read_timeout 18030s;
 
