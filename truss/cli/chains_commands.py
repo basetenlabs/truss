@@ -304,10 +304,8 @@ def push_chain(
     # Resolve team if not in dryrun mode
     team_id = None
     # Use config team as fallback if --team not provided
-    effective_team_name = (
-        provided_team_name or RemoteFactory.get_remote_team(remote)
-        if remote
-        else provided_team_name
+    effective_team_name = provided_team_name or (
+        RemoteFactory.get_remote_team(remote) if remote else None
     )
     resolved_team_name = effective_team_name
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
