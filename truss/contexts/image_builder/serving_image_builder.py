@@ -28,6 +28,7 @@ from truss.base.constants import (
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
+    DEFAULT_NON_ROOT_USER_ID,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_CACHE_PATH,
@@ -868,11 +869,13 @@ class ServingImageBuilder(ImageBuilder):
         has_custom_run_as_user = (
             docker_server is not None and docker_server.run_as_user_id is not None
         )
-        if has_custom_run_as_user and docker_server:
+        if has_custom_run_as_user:
+            # Without this assert, mypy complains docker_server could be None.
+            assert docker_server is not None
             run_as_user_id = docker_server.run_as_user_id
         else:
             # Default non-root user (only meaningful when non_root_user is True)
-            run_as_user_id = 60000
+            run_as_user_id = DEFAULT_NON_ROOT_USER_ID
 
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,

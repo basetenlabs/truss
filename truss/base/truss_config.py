@@ -694,7 +694,7 @@ class DockerServer(custom_types.ConfigModel):
     @pydantic.field_validator("run_as_user_id")
     @classmethod
     def _validate_run_as_user_id(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and v == 0:
+        if v == 0:
             raise ValueError(
                 "run_as_user_id cannot be 0 (root). Use a non-root user ID."
             )
