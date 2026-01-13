@@ -1,155 +1,109 @@
-import logging
 import os
 import pathlib
-import shutil
 import subprocess
 import sys
+from typing import Optional
 
-from InquirerPy import inquirer
-
-from truss.cli.utils.output import console, error_console
+from truss.cli.utils.output import console
 from truss.util import user_config
 
 
-def _run_upgrade(command: str) -> bool:
-    console.print(f"Running: '{command}'", style="bold")
-    returncode = subprocess.run(command, shell=True).returncode
-    if returncode == 0:
-        console.print("✅ Upgrade complete. Please re-run your command.", style="green")
-        return True
-    else:
-        error_console.print(
-            f"😤 Command failed with exit code {returncode}. Try upgrading manually."
+def detect_installation_method() -> Optional[tuple[str, str, str]]:
+    """Returns (method_name, base_command, version_format) or None.
+
+    version_format uses {version} as a placeholder.
+    """
+    prefix = sys.prefix
+
+    # Check for conda environment - use pip since truss isn't on conda channels
+    if os.environ.get("CONDA_PREFIX") == prefix:
+        return (
+            "conda",
+            f"{sys.executable} -m pip install --upgrade truss",
+            "=={version}",
         )
-        return False
+
+    pyvenv_cfg = pathlib.Path(prefix) / "pyvenv.cfg"
+    if pyvenv_cfg.exists():
+        cfg_text = pyvenv_cfg.read_text().lower()
+        if "uv" in cfg_text:
+            # uv venvs don't have pip, use uv pip instead
+            return ("uv", "uv pip install --upgrade truss", "=={version}")
+        return (
+            "pip",
+            f"{sys.executable} -m pip install --upgrade truss",
+            "=={version}",
+        )
+
+    return None
 
 
-def _is_uv_project() -> bool:
-    """Check if we're in a uv project (has uv.lock or pyproject.toml with uv config)"""
-    current_dir = pathlib.Path.cwd()
+def run_upgrade(target_version: Optional[str] = None) -> None:
+    result = detect_installation_method()
 
-    # Check for uv.lock in current directory or parents
-    for path in [current_dir] + list(current_dir.parents):
-        if (path / "uv.lock").exists():
-            return True
-        pyproject_path = path / "pyproject.toml"
-        if pyproject_path.exists():
-            try:
-                import tomlkit
-
-                content = tomlkit.parse(pyproject_path.read_text()).unwrap()
-                if "tool" in content and "uv" in content["tool"]:
-                    return True
-            except Exception:
-                pass
-    return False
-
-
-def _is_uv_venv() -> bool:
-    """Check if current venv was created by uv"""
-    venv_cfg_path = pathlib.Path(sys.prefix) / "pyvenv.cfg"
-    if not venv_cfg_path.exists():
-        return False
-
-    text = venv_cfg_path.read_text().lower()
-    return "uv" in text
-
-
-def _make_upgrade_command_candidates(latest_version: str) -> list[tuple[str, str]]:
-    candidates = []
-    if "CONDA_PREFIX" in os.environ:
-        candidates.append(("conda", f"conda install truss={latest_version}"))
-    if shutil.which("pipx"):
-        candidates.append(("pipx", "pipx upgrade truss"))
-    if shutil.which("uv"):
-        if _is_uv_project():
-            candidates.append(("uv", f"uv add truss@{latest_version}"))
-        elif _is_uv_venv():
-            candidates.append(
-                ("uv", f"uv pip install --upgrade truss=={latest_version}")
-            )
-        else:
-            candidates.append(
-                ("uv", f"uv pip install --upgrade truss=={latest_version}")
-            )
-    # Pip fallback.
-    candidates.append(
-        ("pip", f"python -m pip install --upgrade truss=={latest_version}")
-    )
-    if shutil.which("pipenv"):
-        candidates.append(("pipenv", "pipenv update truss"))
-    if shutil.which("pdm"):
-        candidates.append(("pdm", f"pdm add truss=={latest_version}"))
-    if shutil.which("hatch"):
-        candidates.append(("hatch", f"hatch dep add truss@{latest_version}"))
-    if shutil.which("rye"):
-        candidates.append(("rye", f"rye add truss@{latest_version}"))
-    return candidates
-
-
-def upgrade_dialogue(current_version: str) -> None:
-    settings = user_config.settings
-    update_info = user_config.state.should_upgrade(current_version)
-    latest_version = str(update_info.latest_version)
-    logging.debug(f"Truss package update info: {update_info}")
-    if not update_info.upgrade_recommended:
-        return
-
-    if auto_upgrade_command_template := settings.auto_upgrade_command_template:
+    if result is None:
         console.print(
-            f"🪄 Automatically upgrading truss to '{latest_version}'.",
-            style="bold yellow",
+            "Could not detect how truss was installed. Please upgrade manually:",
+            style="yellow",
         )
-        command = auto_upgrade_command_template.format(
-            version=update_info.latest_version
-        )
-        if _run_upgrade(command):
-            sys.exit(0)
-        else:
-            console.print(
-                f"🖊️  You can edit or remove 'auto_upgrade_command_template' in '{settings.path()}'",
-                style="bold",
-            )
-            sys.exit(1)
+        console.print("  pip install --upgrade truss")
+        sys.exit(1)
 
-    console.print(
-        f"⬆️  Please upgrade truss. {update_info.reason} → new version "
-        f"✨'{latest_version}'✨.",
-        style="bold yellow",
-    )
+    method, base_cmd, version_fmt = result
 
-    candidates = _make_upgrade_command_candidates(latest_version)
-    do_nothing_cmd = "Do nothing."
-    candidates.append(("🫥", do_nothing_cmd))
-    options = [f"[{env}] {cmd}" for env, cmd in candidates]
+    if target_version:
+        cmd = base_cmd + version_fmt.format(version=target_version)
+    else:
+        cmd = base_cmd
 
-    selection = inquirer.select(
-        message="Pick a command for upgrading (you can edit before running):",
-        choices=options,
-        default=options[0],
-    ).execute()
+    console.print(f"Detected installation method: {method}")
+    console.print(f"Will run: {cmd}")
 
-    selected_cmd = next(cmd for label, cmd in candidates if f"[{label}]" in selection)
-    if selected_cmd == do_nothing_cmd:
+    response = console.input("Proceed with upgrade? [Y/n] ")
+    if response.lower() not in ("", "y", "yes"):
+        console.print("Upgrade cancelled.")
         return
 
-    edited_cmd = inquirer.text(
-        message="🖊️  Optionally edit:", default=selected_cmd
-    ).execute()
+    returncode = subprocess.run(cmd, shell=True).returncode
+    if returncode == 0:
+        console.print("✅ Upgrade complete.", style="green")
+    else:
+        console.print(f"❌ Upgrade failed (exit code {returncode})", style="red")
+        sys.exit(1)
 
-    if inquirer.confirm(
-        message="▶️  Run command in this shell?", default=True
-    ).execute():
-        if _run_upgrade(edited_cmd):
-            template = edited_cmd.replace(f"{latest_version}", "{version}")
-            if inquirer.confirm(
-                message="💾 We can remember your choice and automatically upgrade next "
-                f"time, using:\n  '{template}' (and filling in a version).\n  You can edit or "
-                f"remove this command in '{settings.path()}'.\n  Would you like to enable "
-                "automatic upgrades?",
-                default=True,
-            ).execute():
-                settings.auto_upgrade_command_template = template
-            sys.exit(0)
-        else:
-            sys.exit(1)
+
+def notify_if_outdated(current_version: str) -> None:
+    update_info = user_config.state.should_notify_upgrade(current_version)
+    if not update_info:
+        return
+
+    latest = update_info.latest_version
+    console.print(
+        f"A newer truss version {latest} is available. You're on {current_version}."
+    )
+    user_config.state.mark_notified(latest)
+
+
+def prompt_upgrade_if_outdated(current_version: str) -> None:
+    update_info = user_config.state.should_notify_upgrade(current_version)
+    if not update_info:
+        return
+
+    latest = update_info.latest_version
+
+    if detect_installation_method() is None:
+        console.print(
+            f"A newer truss version {latest} is available. You're on {current_version}."
+        )
+        user_config.state.mark_notified(latest)
+        return
+
+    response = console.input(
+        f"A newer truss version {latest} is available. "
+        f"You're on {current_version}. Upgrade now? [Y/n] "
+    )
+
+    user_config.state.mark_notified(latest)
+
+    if response.lower() in ("", "y", "yes"):
+        os.execvp("truss", ["truss", "upgrade"])

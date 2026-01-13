@@ -23,7 +23,7 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_for_watch,
     resolve_model_team_name,
 )
-from truss.cli.utils import common
+from truss.cli.utils import common, self_upgrade
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -120,6 +120,14 @@ def login(api_key: Optional[str]):
         RemoteFactory.update_remote_config(remote_config)
     else:
         login(api_key)
+
+
+@truss_cli.command()
+@click.argument("version", required=False)
+@common.common_options()
+def upgrade(version: Optional[str]) -> None:
+    """Upgrade truss to the latest (or specified) version."""
+    self_upgrade.run_upgrade(version)
 
 
 @truss_cli.command()

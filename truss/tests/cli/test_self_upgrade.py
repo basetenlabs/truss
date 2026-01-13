@@ -1,0 +1,405 @@
+import datetime
+import sys
+from pathlib import Path
+from unittest import mock
+
+import pytest
+
+from truss.cli.utils import self_upgrade
+from truss.util import user_config
+
+
+class TestDetectInstallationMethod:
+    @pytest.mark.parametrize(
+        "prefix,pyvenv_cfg_content,conda_prefix,expected",
+        [
+            # conda installation
+            (
+                "/home/user/miniconda3/envs/myenv",
+                None,
+                "/home/user/miniconda3/envs/myenv",
+                ("conda", "conda install truss", "={version}"),
+            ),
+            # uv venv
+            (
+                "/home/user/project/.venv",
+                "home = /home/user/.local/share/uv/python\nimplementation = CPython",
+                None,
+                (
+                    "uv",
+                    f"{sys.executable} -m pip install --upgrade truss",
+                    "=={version}",
+                ),
+            ),
+            # pip venv (pyvenv.cfg without uv)
+            (
+                "/home/user/project/.venv",
+                "home = /usr/bin\nimplementation = CPython",
+                None,
+                (
+                    "pip",
+                    f"{sys.executable} -m pip install --upgrade truss",
+                    "=={version}",
+                ),
+            ),
+        ],
+        ids=["conda", "uv_venv", "pip_venv"],
+    )
+    def test_detection_scenarios(
+        self, prefix, pyvenv_cfg_content, conda_prefix, expected, tmp_path, monkeypatch
+    ):
+        fake_prefix = tmp_path / "fake_prefix"
+        fake_prefix.mkdir()
+        actual_prefix = str(fake_prefix)
+
+        monkeypatch.setattr(sys, "prefix", actual_prefix)
+
+        if conda_prefix:
+            monkeypatch.setenv("CONDA_PREFIX", actual_prefix)
+        else:
+            monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        if pyvenv_cfg_content:
+            pyvenv_cfg = Path(actual_prefix) / "pyvenv.cfg"
+            pyvenv_cfg.write_text(pyvenv_cfg_content)
+
+        result = self_upgrade.detect_installation_method()
+
+        if expected is None:
+            assert result is None
+        else:
+            assert result is not None
+            method, cmd, version_fmt = result
+            assert method == expected[0]
+            assert version_fmt == expected[2]
+            if expected[0] in ("uv", "pip"):
+                assert "pip install --upgrade truss" in cmd
+            else:
+                assert cmd == expected[1]
+
+    def test_detection_fails_when_no_indicators(self, tmp_path, monkeypatch):
+        fake_prefix = tmp_path / "unknown_env"
+        fake_prefix.mkdir()
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        result = self_upgrade.detect_installation_method()
+        assert result is None
+
+
+class TestRunUpgrade:
+    def test_run_upgrade_success(self, tmp_path, monkeypatch, capsys):
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        with mock.patch.object(self_upgrade.console, "input", return_value="y"):
+            with mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = mock.Mock(returncode=0)
+                self_upgrade.run_upgrade()
+
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args
+        assert "pip install --upgrade truss" in call_args[0][0]
+
+    def test_run_upgrade_with_version_pip(self, tmp_path, monkeypatch):
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        with mock.patch.object(self_upgrade.console, "input", return_value="y"):
+            with mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = mock.Mock(returncode=0)
+                self_upgrade.run_upgrade("0.12.3")
+
+        call_args = mock_run.call_args
+        assert "truss==0.12.3" in call_args[0][0]
+
+    def test_run_upgrade_with_version_conda(self, tmp_path, monkeypatch):
+        fake_prefix = tmp_path / "conda_env"
+        fake_prefix.mkdir()
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.setenv("CONDA_PREFIX", str(fake_prefix))
+
+        with mock.patch.object(self_upgrade.console, "input", return_value="y"):
+            with mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = mock.Mock(returncode=0)
+                self_upgrade.run_upgrade("0.12.3")
+
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+        assert "conda install truss=0.12.3" in cmd
+        assert "==" not in cmd
+
+    def test_run_upgrade_cancelled(self, tmp_path, monkeypatch, capsys):
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        with mock.patch.object(self_upgrade.console, "input", return_value="n"):
+            with mock.patch("subprocess.run") as mock_run:
+                self_upgrade.run_upgrade()
+
+        mock_run.assert_not_called()
+        captured = capsys.readouterr()
+        assert "cancelled" in captured.out.lower()
+
+    def test_run_upgrade_detection_fails(self, tmp_path, monkeypatch):
+        fake_prefix = tmp_path / "unknown"
+        fake_prefix.mkdir()
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        with pytest.raises(SystemExit) as exc_info:
+            self_upgrade.run_upgrade()
+
+        assert exc_info.value.code == 1
+
+    def test_run_upgrade_subprocess_fails(self, tmp_path, monkeypatch):
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        with mock.patch.object(self_upgrade.console, "input", return_value="y"):
+            with mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = mock.Mock(returncode=1)
+                with pytest.raises(SystemExit) as exc_info:
+                    self_upgrade.run_upgrade()
+
+        assert exc_info.value.code == 1
+
+
+class TestNotifyIfOutdated:
+    def test_notifies_when_outdated(self, monkeypatch, capsys):
+        mock_update_info = user_config.UpdateInfo(
+            upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+        )
+        mock_state = mock.Mock()
+        mock_state.should_notify_upgrade.return_value = mock_update_info
+        mock_state.mark_notified = mock.Mock()
+
+        monkeypatch.setattr(user_config, "state", mock_state)
+
+        self_upgrade.notify_if_outdated("0.11.0")
+
+        captured = capsys.readouterr()
+        assert "0.12.3" in captured.out
+        assert "0.11.0" in captured.out
+        mock_state.mark_notified.assert_called_once_with("0.12.3")
+
+    def test_no_notification_when_up_to_date(self, monkeypatch, capsys):
+        mock_state = mock.Mock()
+        mock_state.should_notify_upgrade.return_value = None
+
+        monkeypatch.setattr(user_config, "state", mock_state)
+
+        self_upgrade.notify_if_outdated("0.12.3")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_raises_on_exception(self, monkeypatch):
+        mock_state = mock.Mock()
+        mock_state.should_notify_upgrade.side_effect = Exception("Network error")
+
+        monkeypatch.setattr(user_config, "state", mock_state)
+
+        # Exception handling moved to upgrade_dialogue() in common.py
+        with pytest.raises(Exception, match="Network error"):
+            self_upgrade.notify_if_outdated("0.11.0")
+
+
+class TestPromptUpgradeIfOutdated:
+    def test_prompts_when_outdated_and_detection_succeeds(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Setup detection to succeed
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        mock_update_info = user_config.UpdateInfo(
+            upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+        )
+        mock_state = mock.Mock()
+        mock_state.should_notify_upgrade.return_value = mock_update_info
+        mock_state.mark_notified = mock.Mock()
+        monkeypatch.setattr(user_config, "state", mock_state)
+
+        # Mock console.input to return "n"
+        with mock.patch.object(
+            self_upgrade.console, "input", return_value="n"
+        ) as mock_input:
+            self_upgrade.prompt_upgrade_if_outdated("0.11.0")
+
+        mock_input.assert_called_once()
+        assert "0.12.3" in mock_input.call_args[0][0]
+        mock_state.mark_notified.assert_called_once_with("0.12.3")
+
+    def test_executes_upgrade_on_yes(self, tmp_path, monkeypatch):
+        # Setup detection to succeed
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        mock_update_info = user_config.UpdateInfo(
+            upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+        )
+        mock_state = mock.Mock()
+        mock_state.should_notify_upgrade.return_value = mock_update_info
+        mock_state.mark_notified = mock.Mock()
+        monkeypatch.setattr(user_config, "state", mock_state)
+
+        with mock.patch.object(self_upgrade.console, "input", return_value="y"):
+            with mock.patch("os.execvp") as mock_exec:
+                self_upgrade.prompt_upgrade_if_outdated("0.11.0")
+
+        mock_exec.assert_called_once_with("truss", ["truss", "upgrade"])
+
+    def test_falls_back_to_notification_when_detection_fails(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Setup detection to fail
+        fake_prefix = tmp_path / "unknown"
+        fake_prefix.mkdir()
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+
+        mock_update_info = user_config.UpdateInfo(
+            upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+        )
+        mock_state = mock.Mock()
+        mock_state.should_notify_upgrade.return_value = mock_update_info
+        mock_state.mark_notified = mock.Mock()
+        monkeypatch.setattr(user_config, "state", mock_state)
+
+        # Should not prompt, just notify
+        with mock.patch.object(self_upgrade.console, "input") as mock_input:
+            self_upgrade.prompt_upgrade_if_outdated("0.11.0")
+
+        mock_input.assert_not_called()
+        # Should still mark as notified via notify_if_outdated
+        mock_state.mark_notified.assert_called()
+
+    def test_no_prompt_when_up_to_date(self, monkeypatch):
+        mock_state = mock.Mock()
+        mock_state.should_notify_upgrade.return_value = None
+        monkeypatch.setattr(user_config, "state", mock_state)
+
+        with mock.patch.object(self_upgrade.console, "input") as mock_input:
+            self_upgrade.prompt_upgrade_if_outdated("0.12.3")
+
+        mock_input.assert_not_called()
+
+
+class TestShouldNotifyUpgrade:
+    def test_returns_update_info_when_outdated_and_not_notified(self, tmp_path):
+        state = user_config.State(
+            version_info=user_config.VersionInfo(
+                latest_version="0.12.3", last_check=datetime.datetime.now()
+            ),
+            notified_for_version=None,
+            last_notification=datetime.datetime.min,
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
+            mock_should_upgrade.return_value = user_config.UpdateInfo(
+                upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+            )
+            result = wrapper.should_notify_upgrade("0.11.0")
+
+        assert result is not None
+        assert result.latest_version == "0.12.3"
+
+    def test_returns_none_when_already_notified_for_version(self, tmp_path):
+        state = user_config.State(
+            version_info=user_config.VersionInfo(
+                latest_version="0.12.3", last_check=datetime.datetime.now()
+            ),
+            notified_for_version="0.12.3",
+            last_notification=datetime.datetime.now() - datetime.timedelta(hours=2),
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
+            mock_should_upgrade.return_value = user_config.UpdateInfo(
+                upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+            )
+            result = wrapper.should_notify_upgrade("0.11.0")
+
+        assert result is None
+
+    def test_returns_none_when_notified_within_24_hours(self, tmp_path):
+        state = user_config.State(
+            version_info=user_config.VersionInfo(
+                latest_version="0.12.3", last_check=datetime.datetime.now()
+            ),
+            notified_for_version="0.12.2",  # Different version
+            last_notification=datetime.datetime.now() - datetime.timedelta(hours=12),
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
+            mock_should_upgrade.return_value = user_config.UpdateInfo(
+                upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+            )
+            result = wrapper.should_notify_upgrade("0.11.0")
+
+        assert result is None
+
+    def test_returns_update_info_when_new_version_after_24_hours(self, tmp_path):
+        state = user_config.State(
+            version_info=user_config.VersionInfo(
+                latest_version="0.12.3", last_check=datetime.datetime.now()
+            ),
+            notified_for_version="0.12.2",  # Different version
+            last_notification=datetime.datetime.now() - datetime.timedelta(hours=25),
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
+            mock_should_upgrade.return_value = user_config.UpdateInfo(
+                upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
+            )
+            result = wrapper.should_notify_upgrade("0.11.0")
+
+        assert result is not None
+        assert result.latest_version == "0.12.3"
+
+    def test_returns_none_when_upgrade_not_recommended(self, tmp_path):
+        state = user_config.State()
+        wrapper = user_config._StateWrapper(state)
+
+        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
+            mock_should_upgrade.return_value = user_config.UpdateInfo(
+                upgrade_recommended=False, reason="up to date", latest_version="0.12.3"
+            )
+            result = wrapper.should_notify_upgrade("0.12.3")
+
+        assert result is None
+
+
+class TestMarkNotified:
+    def test_updates_state(self, tmp_path):
+        state = user_config.State()
+        wrapper = user_config._StateWrapper(state)
+
+        # Mock _write to avoid file I/O
+        with mock.patch.object(wrapper, "_write"):
+            wrapper.mark_notified("0.12.3")
+
+        assert wrapper._state.notified_for_version == "0.12.3"
+        assert wrapper._state.last_notification > datetime.datetime.min
