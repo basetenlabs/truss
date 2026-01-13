@@ -8,6 +8,7 @@ map $http_connection $connection_header {
     ''             '';
 }
 
+{% if transport_kind != "grpc" %}
 server {
     # We use the proxy_read_timeout directive here (instead of proxy_send_timeout) as it sets the timeout for reading a response from the proxied server vs. setting a timeout for sending a request to the proxied server.
     listen 8080;
@@ -71,3 +72,19 @@ server {
     }
 
 }
+{% else %}
+server {
+    # We use the proxy_read_timeout directive here (instead of proxy_send_timeout) as it sets the timeout for reading a response from the proxied server vs. setting a timeout for sending a request to the proxied server.
+    listen 8080 http2;
+    client_max_body_size {{client_max_body_size}};
+    proxy_buffering off;
+
+    # Liveness endpoint override
+    location = / {
+        proxy_redirect off;
+        proxy_read_timeout 18030s;
+
+        grpc_pass grpc://127.0.0.1:{{server_port}};
+    }
+}
+{% endif %}
