@@ -163,3 +163,11 @@ class APIKeyCategory(Enum):
     WORKSPACE_MANAGE_ALL = "WORKSPACE_MANAGE_ALL"
     WORKSPACE_EXPORT_METRICS = "WORKSPACE_EXPORT_METRICS"
     WORKSPACE_INVOKE = "WORKSPACE_INVOKE"
+
+
+class TeamType(pydantic.BaseModel):
+    """Represents a team from the Baseten API."""
+
+    id: str = pydantic.Field(description="Team identifier")
+    name: str = pydantic.Field(description="Team display name")
+    default: bool = pydantic.Field(description="Whether this is the default team")
