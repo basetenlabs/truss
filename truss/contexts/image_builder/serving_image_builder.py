@@ -864,18 +864,13 @@ class ServingImageBuilder(ImageBuilder):
             config
         )
 
-        non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
         docker_server = config.docker_server
-        has_custom_run_as_user = (
-            docker_server is not None and docker_server.run_as_user_id is not None
-        )
-        if has_custom_run_as_user:
-            # Without this assert, mypy complains docker_server could be None.
-            assert docker_server is not None
+        if docker_server and docker_server.run_as_user_id:
             run_as_user_id = docker_server.run_as_user_id
-        else:
-            # Default non-root user (only meaningful when non_root_user is True)
+        elif os.getenv("BT_USE_NON_ROOT_USER", False):
             run_as_user_id = DEFAULT_NON_ROOT_USER_ID
+        else:
+            run_as_user_id = 0
 
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
@@ -912,9 +907,7 @@ class ServingImageBuilder(ImageBuilder):
             build_commands=build_commands,
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
-            non_root_user=non_root_user,
             run_as_user_id=run_as_user_id,
-            has_custom_run_as_user=has_custom_run_as_user,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
