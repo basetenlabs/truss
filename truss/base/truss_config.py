@@ -698,6 +698,11 @@ class DockerServer(custom_types.ConfigModel):
             raise ValueError(
                 "run_as_user_id cannot be 0 (root). Use a non-root user ID."
             )
+        if v == constants.DEFAULT_NON_ROOT_USER_ID:
+            raise ValueError(
+                f"run_as_user_id cannot be {constants.DEFAULT_NON_ROOT_USER_ID} "
+                "(reserved platform default). Use a different user ID."
+            )
         return v
 
     @pydantic.model_validator(mode="after")

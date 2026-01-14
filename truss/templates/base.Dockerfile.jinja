@@ -9,8 +9,15 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
-{%- set app_user_uid = run_as_user_id %}
 {%- set default_owner = "root:root" %}
+{%- set ROOT_USER_ID = 0 %}
+{%- set NONROOT_DEFAULT_USER_ID = 60000 %}
+{#
+  run_as_user_id encoding:
+  - ROOT_USER_ID = root (non-root disabled)
+  - NONROOT_DEFAULT_USER_ID = platform default "app" user (non-root enabled, create user)
+  - any other = custom UID (user-specified, don't create user)
+#}
 {% block user_setup %}
 {#
   NB(nikhil): Assume `root` for various setup that requires permissions; we conditionally switch to
@@ -19,21 +26,22 @@ ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 USER root
 {%- set app_username = "app" %}
 {%- set control_server_dir = "/control" %}
-{%- if non_root_user %}
-{# The non-root user's home directory. #}
+{%- if run_as_user_id == NONROOT_DEFAULT_USER_ID %}
+{# Platform-managed non-root user's home directory. #}
 {# uv will use $HOME to install packages. #}
 ENV HOME=${HOME:-/home/{{ app_username }}}
 {%- else %}
 {# For root or custom run_as_user, use /root during build (we switch user at the end). #}
+{# For custom UIDs, we don't know the username and its corresponding $HOME, so /root. We still switch user at the end. #}
 ENV HOME=${HOME:-/root}
-{%- endif %} {#- endif non_root_user #}
+{%- endif %}
 {# Directory containing inference server code - always /app regardless of username #}
 ENV APP_HOME=/{{ app_username }}
 RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
-{# if run_as_user is provided, assume it already exists and don't create a new user #}
-{%- if not has_custom_run_as_user %}
-{# otherwise, create a non-root user to run model containers. #}
-RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
+{%- if run_as_user_id == ROOT_USER_ID or run_as_user_id == NONROOT_DEFAULT_USER_ID %}
+{# Create platform-managed non-root user to run model containers. #}
+{# For custom UIDs, assume the user already exists and don't create. #}
+RUN useradd -u {{ NONROOT_DEFAULT_USER_ID }} -ms /bin/bash {{ app_username }}
 {%- endif %}
 {% endblock %} {#- endblock user_setup #}
 
