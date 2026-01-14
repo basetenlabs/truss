@@ -13,23 +13,19 @@ class TestDetectInstallationMethod:
     @pytest.mark.parametrize(
         "prefix,pyvenv_cfg_content,conda_prefix,expected",
         [
-            # conda installation
+            # conda installation (uses pip since truss isn't on conda channels)
             (
                 "/home/user/miniconda3/envs/myenv",
                 None,
                 "/home/user/miniconda3/envs/myenv",
-                ("conda", "conda install truss", "={version}"),
+                ("conda", "pip install --upgrade truss", "=={version}"),
             ),
             # uv venv
             (
                 "/home/user/project/.venv",
                 "home = /home/user/.local/share/uv/python\nimplementation = CPython",
                 None,
-                (
-                    "uv",
-                    f"{sys.executable} -m pip install --upgrade truss",
-                    "=={version}",
-                ),
+                ("uv", "uv pip install --upgrade truss", "=={version}"),
             ),
             # pip venv (pyvenv.cfg without uv)
             (
@@ -72,10 +68,7 @@ class TestDetectInstallationMethod:
             method, cmd, version_fmt = result
             assert method == expected[0]
             assert version_fmt == expected[2]
-            if expected[0] in ("uv", "pip"):
-                assert "pip install --upgrade truss" in cmd
-            else:
-                assert cmd == expected[1]
+            assert expected[1] in cmd
 
     def test_detection_fails_when_no_indicators(self, tmp_path, monkeypatch):
         fake_prefix = tmp_path / "unknown_env"
@@ -132,8 +125,7 @@ class TestRunUpgrade:
 
         call_args = mock_run.call_args
         cmd = call_args[0][0]
-        assert "conda install truss=0.12.3" in cmd
-        assert "==" not in cmd
+        assert "pip install --upgrade truss==0.12.3" in cmd
 
     def test_run_upgrade_cancelled(self, tmp_path, monkeypatch, capsys):
         fake_prefix = tmp_path / "venv"
@@ -263,10 +255,12 @@ class TestPromptUpgradeIfOutdated:
         monkeypatch.setattr(user_config, "state", mock_state)
 
         with mock.patch.object(self_upgrade.console, "input", return_value="y"):
-            with mock.patch("os.execvp") as mock_exec:
-                self_upgrade.prompt_upgrade_if_outdated("0.11.0")
+            with mock.patch.object(self_upgrade, "run_upgrade") as mock_upgrade:
+                with pytest.raises(SystemExit) as exc_info:
+                    self_upgrade.prompt_upgrade_if_outdated("0.11.0")
 
-        mock_exec.assert_called_once_with("truss", ["truss", "upgrade"])
+        mock_upgrade.assert_called_once_with()
+        assert exc_info.value.code == 0
 
     def test_falls_back_to_notification_when_detection_fails(
         self, tmp_path, monkeypatch, capsys

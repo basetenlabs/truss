@@ -23,18 +23,23 @@ def detect_installation_method() -> Optional[tuple[str, str, str]]:
             "=={version}",
         )
 
+    # Check for venv environment...
     pyvenv_cfg = pathlib.Path(prefix) / "pyvenv.cfg"
     if pyvenv_cfg.exists():
         cfg_text = pyvenv_cfg.read_text().lower()
+        # ... with uv
         if "uv" in cfg_text:
             # uv venvs don't have pip, use uv pip instead
             return ("uv", "uv pip install --upgrade truss", "=={version}")
+        # ... with pip
         return (
             "pip",
             f"{sys.executable} -m pip install --upgrade truss",
             "=={version}",
         )
 
+    # Can be: system python, homebrew python, pyenv without venv, pipx, etc.
+    # We can't confidently upgrade these, so return None.
     return None
 
 
@@ -51,6 +56,7 @@ def run_upgrade(target_version: Optional[str] = None) -> None:
 
     method, base_cmd, version_fmt = result
 
+    # We optionally allow specifying a version to upgrade to.
     if target_version:
         cmd = base_cmd + version_fmt.format(version=target_version)
     else:
@@ -106,4 +112,9 @@ def prompt_upgrade_if_outdated(current_version: str) -> None:
     user_config.state.mark_notified(latest)
 
     if response.lower() in ("", "y", "yes"):
-        os.execvp("truss", ["truss", "upgrade"])
+        # Note: we run upgrade and then exit.
+        # user will have to re-run their original command
+        run_upgrade()
+        # Note: reached only if upgrade was successful
+        # but we want to exit the old process now
+        sys.exit(0)
