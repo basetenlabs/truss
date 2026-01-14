@@ -28,17 +28,17 @@ RUN apt update && \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
-COPY --chown= ./base_server_requirements.txt base_server_requirements.txt
+COPY --chown=root:root ./base_server_requirements.txt base_server_requirements.txt
 RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r base_server_requirements.txt --no-cache-dir
-COPY --chown= ./requirements.txt requirements.txt
+COPY --chown=root:root ./requirements.txt requirements.txt
 RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
 WORKDIR $APP_HOME
-COPY --chown= ./data ${APP_HOME}/data
-COPY --chown= ./server ${APP_HOME}
-COPY --chown= ./config.yaml ${APP_HOME}/config.yaml
-COPY --chown= ./model ${APP_HOME}/model
+COPY --chown=root:root ./data ${APP_HOME}/data
+COPY --chown=root:root ./server ${APP_HOME}
+COPY --chown=root:root ./config.yaml ${APP_HOME}/config.yaml
+COPY --chown=root:root ./model ${APP_HOME}/model
 RUN mkdir -p /packages
-COPY --chown= ./packages /packages
+COPY --chown=root:root ./packages /packages
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="/usr/local/bin/python3 /app/main.py"
 ENTRYPOINT ["/usr/local/bin/python3", "/app/main.py"]

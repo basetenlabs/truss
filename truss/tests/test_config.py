@@ -954,12 +954,21 @@ def test_clear_runtime_fields():
             download_folder="/tmp", checkpoints=[], artifact_references=[]
         ),
         environment_variables={"FOO": "BAR"},
+        weights=Weights(
+            [
+                WeightsSource(
+                    source="hf://meta-llama/Llama-3.1-8B@main",
+                    mount_location="/app/weights",
+                )
+            ]
+        ),
     )
 
     config.clear_runtime_fields()
     assert config.python_version == "py39"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
+    assert config.weights == Weights([])
 
 
 def test_docker_server_start_command_single_line_valid():
@@ -1016,6 +1025,32 @@ def test_docker_server_start_command_yaml_folding(
     config = TrussConfig.from_yaml(config_path)
     assert "\n" not in config.docker_server.start_command
     assert config.docker_server.start_command == expected_command
+
+
+@pytest.mark.parametrize(
+    "run_as_user_id,expected,raises",
+    [
+        pytest.param(1000, 1000, does_not_raise(), id="valid_nonzero"),
+        pytest.param(None, None, does_not_raise(), id="default_none"),
+        pytest.param(
+            0,
+            None,
+            pytest.raises(pydantic.ValidationError, match="run_as_user_id cannot be 0"),
+            id="zero_rejected",
+        ),
+    ],
+)
+def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
+    with raises:
+        docker_server = DockerServer(
+            start_command="python main.py",
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+            run_as_user_id=run_as_user_id,
+        )
+        assert docker_server.run_as_user_id == expected
 
 
 # =============================================================================
@@ -1076,6 +1111,33 @@ class TestWeightsSource:
         )
         assert source.source == "azure://myaccount/container/llama"
         assert source.is_huggingface is False
+
+    def test_https_source_basic(self):
+        """HTTPS source should work for direct URL downloads."""
+        source = WeightsSource(
+            source="https://example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+        )
+        assert source.source == "https://example.com/models/weights.bin"
+        assert source.is_huggingface is False
+
+    def test_https_source_with_auth(self):
+        """HTTPS source with auth secret should work."""
+        source = WeightsSource(
+            source="https://private.example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+            auth_secret_name="http_auth_token",
+        )
+        assert source.source == "https://private.example.com/models/weights.bin"
+        assert source.auth_secret_name == "http_auth_token"
+
+    def test_https_source_invalid_format(self):
+        """HTTPS source with invalid format should fail."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid HTTPS URL format"):
+            WeightsSource(
+                source="https:///path/only",  # Missing hostname
+                mount_location="/models/weights.bin",
+            )
 
     def test_mount_location_must_be_absolute(self):
         """mount_location must be an absolute path."""

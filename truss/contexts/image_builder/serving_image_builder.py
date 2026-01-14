@@ -28,6 +28,7 @@ from truss.base.constants import (
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
+    DEFAULT_NON_ROOT_USER_ID,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_CACHE_PATH,
@@ -863,7 +864,14 @@ class ServingImageBuilder(ImageBuilder):
             config
         )
 
-        non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
+        docker_server = config.docker_server
+        if docker_server and docker_server.run_as_user_id:
+            run_as_user_id = docker_server.run_as_user_id
+        elif os.getenv("BT_USE_NON_ROOT_USER", False):
+            run_as_user_id = DEFAULT_NON_ROOT_USER_ID
+        else:
+            run_as_user_id = 0
+
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -899,7 +907,7 @@ class ServingImageBuilder(ImageBuilder):
             build_commands=build_commands,
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
-            non_root_user=non_root_user,
+            run_as_user_id=run_as_user_id,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
