@@ -305,7 +305,6 @@ class TestShouldNotifyUpgrade:
                 latest_version="0.12.3", last_check=datetime.datetime.now()
             ),
             notified_for_version=None,
-            last_notification=datetime.datetime.min,
         )
         wrapper = user_config._StateWrapper(state)
 
@@ -324,7 +323,6 @@ class TestShouldNotifyUpgrade:
                 latest_version="0.12.3", last_check=datetime.datetime.now()
             ),
             notified_for_version="0.12.3",
-            last_notification=datetime.datetime.now() - datetime.timedelta(hours=2),
         )
         wrapper = user_config._StateWrapper(state)
 
@@ -336,31 +334,12 @@ class TestShouldNotifyUpgrade:
 
         assert result is None
 
-    def test_returns_none_when_notified_within_24_hours(self, tmp_path):
+    def test_returns_update_info_when_new_version_available(self, tmp_path):
         state = user_config.State(
             version_info=user_config.VersionInfo(
                 latest_version="0.12.3", last_check=datetime.datetime.now()
             ),
-            notified_for_version="0.12.2",  # Different version
-            last_notification=datetime.datetime.now() - datetime.timedelta(hours=12),
-        )
-        wrapper = user_config._StateWrapper(state)
-
-        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
-            mock_should_upgrade.return_value = user_config.UpdateInfo(
-                upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
-            )
-            result = wrapper.should_notify_upgrade("0.11.0")
-
-        assert result is None
-
-    def test_returns_update_info_when_new_version_after_24_hours(self, tmp_path):
-        state = user_config.State(
-            version_info=user_config.VersionInfo(
-                latest_version="0.12.3", last_check=datetime.datetime.now()
-            ),
-            notified_for_version="0.12.2",  # Different version
-            last_notification=datetime.datetime.now() - datetime.timedelta(hours=25),
+            notified_for_version="0.12.2",
         )
         wrapper = user_config._StateWrapper(state)
 
@@ -396,4 +375,3 @@ class TestMarkNotified:
             wrapper.mark_notified("0.12.3")
 
         assert wrapper._state.notified_for_version == "0.12.3"
-        assert wrapper._state.last_notification > datetime.datetime.min
