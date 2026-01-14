@@ -954,12 +954,21 @@ def test_clear_runtime_fields():
             download_folder="/tmp", checkpoints=[], artifact_references=[]
         ),
         environment_variables={"FOO": "BAR"},
+        weights=Weights(
+            [
+                WeightsSource(
+                    source="hf://meta-llama/Llama-3.1-8B@main",
+                    mount_location="/app/weights",
+                )
+            ]
+        ),
     )
 
     config.clear_runtime_fields()
     assert config.python_version == "py39"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
+    assert config.weights == Weights([])
 
 
 def test_docker_server_start_command_single_line_valid():
@@ -1102,6 +1111,33 @@ class TestWeightsSource:
         )
         assert source.source == "azure://myaccount/container/llama"
         assert source.is_huggingface is False
+
+    def test_https_source_basic(self):
+        """HTTPS source should work for direct URL downloads."""
+        source = WeightsSource(
+            source="https://example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+        )
+        assert source.source == "https://example.com/models/weights.bin"
+        assert source.is_huggingface is False
+
+    def test_https_source_with_auth(self):
+        """HTTPS source with auth secret should work."""
+        source = WeightsSource(
+            source="https://private.example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+            auth_secret_name="http_auth_token",
+        )
+        assert source.source == "https://private.example.com/models/weights.bin"
+        assert source.auth_secret_name == "http_auth_token"
+
+    def test_https_source_invalid_format(self):
+        """HTTPS source with invalid format should fail."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid HTTPS URL format"):
+            WeightsSource(
+                source="https:///path/only",  # Missing hostname
+                mount_location="/models/weights.bin",
+            )
 
     def test_mount_location_must_be_absolute(self):
         """mount_location must be an absolute path."""
