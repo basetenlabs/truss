@@ -13,6 +13,7 @@ import click
 import pytest
 
 from truss.cli.resolvers.chain_team_resolver import resolve_chain_for_watch
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -24,13 +25,17 @@ class TestResolveChainForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_chains.return_value = chains
         return mock_remote
 
     def test_single_chain_found(self):
         """Test that single chain is returned directly without prompting."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chains = [
             {
                 "name": "my-chain",
@@ -47,7 +52,7 @@ class TestResolveChainForWatch:
 
     def test_no_chain_found(self):
         """Test that error is raised when no chain is found."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chains = []
         mock_remote = self._setup_mock_remote(teams, chains)
 
@@ -60,8 +65,8 @@ class TestResolveChainForWatch:
     def test_multiple_chains_prompts_for_team(self, mock_inquire_team):
         """Test that user is prompted when multiple chains have the same name."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         chains = [
             {
@@ -90,7 +95,7 @@ class TestResolveChainForWatch:
 
     def test_chain_in_inaccessible_team(self):
         """Test that chains in inaccessible teams are filtered out."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         chains = [
             {
                 "name": "other-chain",
@@ -108,8 +113,8 @@ class TestResolveChainForWatch:
     def test_provided_team_name_valid(self):
         """Test that providing a valid team name filters to that team's chain."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         chains_team1 = [
             {
@@ -121,7 +126,11 @@ class TestResolveChainForWatch:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_chains.return_value = chains_team1
 
         resolved_chain = resolve_chain_for_watch(
@@ -134,11 +143,15 @@ class TestResolveChainForWatch:
 
     def test_provided_team_name_invalid(self):
         """Test that providing an invalid team name raises an error."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
 
         with pytest.raises(click.ClickException) as exc_info:
             resolve_chain_for_watch(
@@ -150,15 +163,19 @@ class TestResolveChainForWatch:
     def test_provided_team_name_chain_not_in_team(self):
         """Test that error is raised when chain doesn't exist in provided team."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
         }
         # Chain exists in team2, but we're querying team1
         chains_team1 = []  # No chains in team1
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         mock_api.get_chains.return_value = chains_team1
 
         with pytest.raises(click.ClickException) as exc_info:

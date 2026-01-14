@@ -579,9 +579,13 @@ def push(
     team_id = None
     if isinstance(remote_provider, BasetenRemote):
         existing_teams = remote_provider.api.get_teams()
+        # Use config team as fallback if --team not provided
+        effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
+            remote
+        )
         _, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
-            provided_team_name=provided_team_name,
+            provided_team_name=effective_team_name,
             existing_model_name=model_name,
             existing_teams=existing_teams,
         )
@@ -802,8 +806,10 @@ def watch(
         sys.exit(1)
 
     # Resolve the model once with team disambiguation (prompts only once if needed)
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
     resolved_model, versions = resolve_model_for_watch(
-        remote_provider, model_name, provided_team_name=provided_team_name
+        remote_provider, model_name, provided_team_name=effective_team_name
     )
     model_id = resolved_model["id"]
 

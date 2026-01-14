@@ -33,6 +33,7 @@ from truss.cli.train.types import DeploySuccessResult
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
@@ -118,7 +119,7 @@ def _resolve_team_name(
     remote_provider: BasetenRemote,
     provided_team_name: Optional[str],
     existing_project_name: Optional[str] = None,
-    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     return resolve_training_project_team_name(
         remote_provider=remote_provider,
@@ -159,11 +160,13 @@ def push_training_job(
     )
 
     existing_teams = remote_provider.api.get_teams()
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
 
     with loader.import_training_project(config) as training_project:
         team_name, team_id = _resolve_team_name(
             remote_provider,
-            provided_team_name,
+            effective_team_name,
             existing_project_name=training_project.name,
             existing_teams=existing_teams,
         )

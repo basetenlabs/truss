@@ -5,11 +5,12 @@ from typing import Callable, Optional
 import click
 
 from truss.cli import remote_cli
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 
 
 def _validate_provided_team(
-    provided_team_name: str, existing_teams: dict[str, dict[str, str]]
+    provided_team_name: str, existing_teams: dict[str, TeamType]
 ) -> str:
     """Validate provided team name exists and return team_id."""
     if provided_team_name not in existing_teams:
@@ -17,17 +18,17 @@ def _validate_provided_team(
         raise click.ClickException(
             f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
         )
-    return existing_teams[provided_team_name]["id"]
+    return existing_teams[provided_team_name].id
 
 
 def _get_matching_chains(
     chain_name: str,
-    existing_teams: dict[str, dict[str, str]],
+    existing_teams: dict[str, TeamType],
     fetch_chains: Callable[[], list],
 ) -> list[dict]:
     """Get chains matching name that are in accessible teams."""
     all_chains = fetch_chains()
-    accessible_team_ids = {team_data["id"] for team_data in existing_teams.values()}
+    accessible_team_ids = {team_data.id for team_data in existing_teams.values()}
     return [
         c
         for c in all_chains
@@ -37,7 +38,7 @@ def _get_matching_chains(
 
 
 def _prompt_for_team_from_chains(
-    matching_chains: list[dict], existing_teams: dict[str, dict[str, str]], prompt: str
+    matching_chains: list[dict], existing_teams: dict[str, TeamType], prompt: str
 ) -> dict:
     """Prompt user to select team when multiple chains match, return selected chain."""
     team_name_to_chain = {
@@ -97,7 +98,7 @@ def resolve_chain_team_name(
     remote_provider: BasetenRemote,
     provided_team_name: Optional[str],
     existing_chain_name: Optional[str] = None,
-    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     """Resolve team name and team_id from provided team name or by prompting the user.
     Returns a tuple of (team_name, team_id).
@@ -131,7 +132,7 @@ def resolve_chain_team_name(
     def _get_team_id(team_name: Optional[str]) -> Optional[str]:
         if team_name and existing_teams:
             team_data = existing_teams.get(team_name)
-            return team_data["id"] if team_data else None
+            return team_data.id if team_data else None
         return None
 
     if provided_team_name is not None:

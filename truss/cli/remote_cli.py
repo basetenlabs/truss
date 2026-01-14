@@ -1,9 +1,11 @@
 from typing import Optional
 
 from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
 from InquirerPy.validator import ValidationError, Validator
 
 from truss.cli.utils.output import console
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
@@ -60,27 +62,36 @@ def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
 
 
-def get_team_id_from_name(
-    teams: dict[str, dict[str, str]], team_name: str
-) -> Optional[str]:
+def get_team_id_from_name(teams: dict[str, TeamType], team_name: str) -> Optional[str]:
     team = teams.get(team_name)
-    return team["id"] if team else None
+    return team.id if team else None
 
 
-def format_available_teams(teams: dict[str, dict[str, str]]) -> str:
+def format_available_teams(teams: dict[str, TeamType]) -> str:
     team_names = list(teams.keys())
     return ", ".join(team_names) if team_names else "none"
 
 
 def inquire_team(
-    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
     prompt: str = "👥 Which team do you want to push to?",
 ) -> Optional[str]:
     if existing_teams is not None:
-        selected_team_name = inquirer.select(
-            prompt, qmark="", choices=list[str](existing_teams.keys())
-        ).execute()
-        return selected_team_name
+        # Sort with default team first, then alphanumerically (case-insensitive)
+        sorted_teams = sorted(
+            existing_teams.items(),
+            key=lambda item: (not item[1].default, item[0].lower()),
+        )
+
+        # Create Choice objects: value is the actual team name, name is for display
+        # This avoids issues with team names that contain "(default)"
+        choices = [
+            Choice(value=name, name=f"{name} (default)" if team.default else name)
+            for name, team in sorted_teams
+        ]
+
+        # execute() returns the Choice.value (actual team name), not Choice.name
+        return inquirer.select(prompt, qmark="", choices=choices).execute()
 
     # If no existing teams, return None (don't propagate team param)
     return None
