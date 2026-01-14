@@ -899,6 +899,7 @@ class TrussConfig(custom_types.ConfigModel):
     def clear_runtime_fields(self) -> None:
         self.training_checkpoints = None
         self.environment_variables = {}
+        self.weights = Weights([])
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

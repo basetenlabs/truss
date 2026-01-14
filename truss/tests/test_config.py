@@ -954,12 +954,21 @@ def test_clear_runtime_fields():
             download_folder="/tmp", checkpoints=[], artifact_references=[]
         ),
         environment_variables={"FOO": "BAR"},
+        weights=Weights(
+            [
+                WeightsSource(
+                    source="hf://meta-llama/Llama-3.1-8B@main",
+                    mount_location="/app/weights",
+                )
+            ]
+        ),
     )
 
     config.clear_runtime_fields()
     assert config.python_version == "py39"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
+    assert config.weights == Weights([])
 
 
 def test_docker_server_start_command_single_line_valid():
