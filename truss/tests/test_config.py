@@ -1027,6 +1027,32 @@ def test_docker_server_start_command_yaml_folding(
     assert config.docker_server.start_command == expected_command
 
 
+@pytest.mark.parametrize(
+    "run_as_user_id,expected,raises",
+    [
+        pytest.param(1000, 1000, does_not_raise(), id="valid_nonzero"),
+        pytest.param(None, None, does_not_raise(), id="default_none"),
+        pytest.param(
+            0,
+            None,
+            pytest.raises(pydantic.ValidationError, match="run_as_user_id cannot be 0"),
+            id="zero_rejected",
+        ),
+    ],
+)
+def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
+    with raises:
+        docker_server = DockerServer(
+            start_command="python main.py",
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+            run_as_user_id=run_as_user_id,
+        )
+        assert docker_server.run_as_user_id == expected
+
+
 # =============================================================================
 # Weights Configuration Tests
 # =============================================================================
