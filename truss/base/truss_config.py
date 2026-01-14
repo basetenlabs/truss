@@ -226,8 +226,10 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
 _CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://"})
 # HuggingFace prefix
 _HF_PREFIX = "hf://"
-# All supported URI schemes (cloud storage + HuggingFace)
-_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX}
+# HTTPS prefix for direct URL downloads
+_HTTPS_PREFIX = "https://"
+# All supported URI schemes (cloud storage + HuggingFace + HTTPS)
+_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX, _HTTPS_PREFIX}
 
 
 class WeightsSource(custom_types.ConfigModel):
@@ -238,6 +240,7 @@ class WeightsSource(custom_types.ConfigModel):
     - s3:// -> AWS S3 (e.g., "s3://bucket/path")
     - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
     - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+    - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
 
     For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
     using the @{rev} suffix: "hf://owner/repo@revision"
@@ -245,7 +248,7 @@ class WeightsSource(custom_types.ConfigModel):
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="URI with scheme prefix. Use hf://, s3://, gs://, or azure://. "
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, or https://. "
         "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
     )
     mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
@@ -303,6 +306,15 @@ class WeightsSource(custom_types.ConfigModel):
                 raise ValueError(
                     f"The @ revision syntax is only valid for HuggingFace sources (hf://). "
                     f"Source '{v}' uses {scheme[:-3].upper()} which does not support revisions."
+                )
+
+        # Validate https:// format
+        if scheme == _HTTPS_PREFIX:
+            url_part = v[len(_HTTPS_PREFIX) :]
+            if not url_part or url_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid HTTPS URL format: '{v}'. "
+                    f"Expected format: https://hostname/path"
                 )
 
         # Validate hf:// format
