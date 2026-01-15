@@ -524,6 +524,13 @@ class Resources(custom_types.ConfigModel):
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
+    instance_type: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Full SKU name for the instance type (e.g., 'L4:8x32'). "
+            "When specified, cpu, memory, and accelerator fields are ignored."
+        ),
+    )
     node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -559,12 +566,38 @@ class Resources(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="before")
     @classmethod
-    def strip_use_gpu(cls, data: Any) -> Any:
+    def _preprocess_resources(cls, data: Any) -> Any:
         # We want `use_gpu` to be serialized, but don't allow extra inputs when parsing,
         # so we have to drop it here to allow roundtrips.
         if isinstance(data, dict):
             data = data.copy()
             data.pop("use_gpu", None)
+
+            # Warn if instance_type is specified alongside individual resource fields
+            instance_type = data.get("instance_type")
+            if instance_type is not None:
+                has_custom_cpu = "cpu" in data and data["cpu"] != DEFAULT_CPU
+                has_custom_memory = (
+                    "memory" in data and data["memory"] != DEFAULT_MEMORY
+                )
+                has_accelerator = (
+                    "accelerator" in data and data["accelerator"] is not None
+                )
+
+                if has_custom_cpu or has_custom_memory or has_accelerator:
+                    conflicting = []
+                    if has_custom_cpu:
+                        conflicting.append("cpu")
+                    if has_custom_memory:
+                        conflicting.append("memory")
+                    if has_accelerator:
+                        conflicting.append("accelerator")
+                    logger.warning(
+                        f"Both 'instance_type' and individual resource fields "
+                        f"({', '.join(conflicting)}) are specified. The 'instance_type' "
+                        f"value '{instance_type}' will take precedence and override "
+                        f"the individual resource settings."
+                    )
         return data
 
     @pydantic.field_validator("cpu")
@@ -597,10 +630,12 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` if at default."""
+        """Custom omission of `node_count` and `instance_type` if at default."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
+        if not self.instance_type:
+            result.pop("instance_type", None)
         return result
 
 

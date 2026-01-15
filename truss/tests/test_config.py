@@ -114,6 +114,88 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
 
 
 @pytest.mark.parametrize(
+    "input_dict, expect_resources, output_dict",
+    [
+        (
+            {"instance_type": "L4:8x32"},
+            Resources(instance_type="L4:8x32"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "L4:8x32",
+            },
+        ),
+        (
+            {"instance_type": "H100:8x80"},
+            Resources(instance_type="H100:8x80"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "H100:8x80",
+            },
+        ),
+        (
+            {"instance_type": "CPU:4x16"},
+            Resources(instance_type="CPU:4x16"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "CPU:4x16",
+            },
+        ),
+    ],
+)
+def test_parse_resources_with_instance_type(input_dict, expect_resources, output_dict):
+    parsed_result = Resources.model_validate(input_dict)
+    assert parsed_result == expect_resources
+    assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_instance_type_not_serialized_when_none():
+    """Test that instance_type is omitted from serialization when not set."""
+    resources = Resources()
+    result = resources.to_dict(verbose=True)
+    assert "instance_type" not in result
+
+
+def test_instance_type_warning_with_conflicting_fields(caplog):
+    """Test that a warning is logged when instance_type conflicts with other fields."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        Resources.model_validate(
+            {
+                "instance_type": "L4:8x32",
+                "accelerator": "L4",
+                "cpu": "4",
+                "memory": "16Gi",
+            }
+        )
+
+    assert "instance_type" in caplog.text
+    assert "will take precedence" in caplog.text
+    assert "cpu" in caplog.text
+    assert "memory" in caplog.text
+    assert "accelerator" in caplog.text
+
+
+def test_instance_type_no_warning_with_defaults(caplog):
+    """Test that no warning is logged when only instance_type is specified."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        Resources.model_validate({"instance_type": "L4:8x32"})
+
+    assert "will take precedence" not in caplog.text
+
+
+@pytest.mark.parametrize(
     "cpu_spec, expected_valid",
     [
         (None, False),
