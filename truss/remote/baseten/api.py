@@ -206,7 +206,7 @@ class BasetenApi:
         metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $metadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
                 create_model_from_truss(
                     name: "{model_name}"
                     s3_key: "{s3_key}"
@@ -219,7 +219,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
-                    metadata: $metadata
+                    user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
                         id
@@ -239,7 +239,7 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "metadata": json.dumps(metadata) if metadata else None,
+                "userDeployMetadata": json.dumps(metadata) if metadata else None,
             },
         )
         return resp["data"]["create_model_from_truss"]["model_version"]
@@ -259,7 +259,7 @@ class BasetenApi:
         metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $metadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
                 create_model_version_from_truss(
                     model_id: "{model_id}"
                     s3_key: "{s3_key}"
@@ -271,7 +271,7 @@ class BasetenApi:
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
-                    metadata: $metadata
+                    user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
                         id
@@ -292,7 +292,7 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "metadata": json.dumps(metadata) if metadata else None,
+                "userDeployMetadata": json.dumps(metadata) if metadata else None,
             },
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
@@ -310,7 +310,7 @@ class BasetenApi:
         metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $metadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
                 deploy_draft_truss(name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
@@ -319,7 +319,7 @@ class BasetenApi:
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
-                    metadata: $metadata
+                    user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
                         id
@@ -340,7 +340,7 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "metadata": json.dumps(metadata) if metadata else None,
+                "userDeployMetadata": json.dumps(metadata) if metadata else None,
             },
         )
         return resp["data"]["deploy_draft_truss"]["model_version"]
