@@ -638,3 +638,61 @@ def _maybe_resolve_project_id_from_id_or_name(
     if not project_str:
         return None
     return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]
+
+
+@train.command(name="update_session")
+@click.argument("job_id", type=str, required=True)
+@click.option(
+    "--trigger",
+    type=click.Choice(["immediate", "on_failure", "manual"], case_sensitive=False),
+    required=False,
+    help="When to create the interactive session: 'immediate' creates on job start, 'on_failure' creates on job failure, 'manual' disables automatic session creation.",
+)
+@click.option(
+    "--timeout-hours",
+    type=int,
+    required=False,
+    help="Number of hours before the interactive session times out.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def update_session(
+    job_id: str,
+    trigger: Optional[str],
+    timeout_hours: Optional[int],
+    remote: Optional[str],
+):
+    """Update interactive session configuration for a training job."""
+
+    if trigger is None and timeout_hours is None:
+        error_console.print(
+            "At least one of --trigger or --timeout-hours must be provided."
+        )
+        sys.exit(1)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        remote_provider.api.update_interactive_session(
+            project_id=project_id,
+            job_id=job_id,
+            trigger=trigger,
+            timeout_hours=timeout_hours,
+        )
+        console.print("Interactive session configuration updated.", style="green")
+    except Exception as e:
+        error_console.print(f"Failed to update interactive session: {str(e)}")
+        sys.exit(1)
