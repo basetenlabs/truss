@@ -223,7 +223,7 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
 
 
 # URI prefixes for cloud storage sources
-_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://"})
+_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://"})
 # HuggingFace prefix
 _HF_PREFIX = "hf://"
 # HTTPS prefix for direct URL downloads
@@ -240,6 +240,7 @@ class WeightsSource(custom_types.ConfigModel):
     - s3:// -> AWS S3 (e.g., "s3://bucket/path")
     - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
     - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+    - r2:// -> CloudFlare R2 Storage (e.g., "r2://account_id.bucket/path")
     - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
 
     For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
@@ -248,7 +249,7 @@ class WeightsSource(custom_types.ConfigModel):
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, or https://. "
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, or https://. "
         "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
     )
     mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (

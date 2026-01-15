@@ -1112,6 +1112,16 @@ class TestWeightsSource:
         assert source.source == "azure://myaccount/container/llama"
         assert source.is_huggingface is False
 
+    def test_r2_source_basic(self):
+        """R2 source should work without revision."""
+        source = WeightsSource(
+            source="r2://account_id.bucket/models/llama",
+            mount_location="/models/llama",
+            auth_secret_name="r2_credentials",
+        )
+        assert source.source == "r2://account_id.bucket/models/llama"
+        assert source.is_huggingface is False
+
     def test_https_source_basic(self):
         """HTTPS source should work for direct URL downloads."""
         source = WeightsSource(
@@ -1173,6 +1183,14 @@ class TestWeightsSource:
                 source="azure://myaccount/container/path@main",
                 mount_location="/models/llama",
             )
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
+        ):
+            WeightsSource(
+                source="r2://account_id.bucket/path@main",
+                mount_location="/models/llama",
+            )
 
     def test_source_cannot_be_empty(self):
         """source must have at least 1 character."""
@@ -1217,6 +1235,11 @@ class TestWeightsSource:
         """Azure URI without account should error."""
         with pytest.raises(pydantic.ValidationError, match="Invalid AZURE URI format"):
             WeightsSource(source="azure://", mount_location="/models/llama")
+
+    def test_invalid_r2_uri_format(self):
+        """R2 URI without bucket should error."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid R2 URI format"):
+            WeightsSource(source="r2://", mount_location="/models/llama")
 
     def test_invalid_hf_uri_format(self):
         """HuggingFace URI without repo should error."""
