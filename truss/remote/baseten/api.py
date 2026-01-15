@@ -239,7 +239,9 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "userDeployMetadata": json.dumps(metadata) if metadata else None,
+                "userDeployMetadata": json.dumps(metadata)
+                if metadata is not None
+                else None,
             },
         )
         return resp["data"]["create_model_from_truss"]["model_version"]
@@ -292,7 +294,9 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "userDeployMetadata": json.dumps(metadata) if metadata else None,
+                "userDeployMetadata": json.dumps(metadata)
+                if metadata is not None
+                else None,
             },
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
@@ -340,7 +344,9 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "userDeployMetadata": json.dumps(metadata) if metadata else None,
+                "userDeployMetadata": json.dumps(metadata)
+                if metadata is not None
+                else None,
             },
         )
         return resp["data"]["deploy_draft_truss"]["model_version"]
