@@ -66,26 +66,23 @@ server {
         proxy_pass http://127.0.0.1:{{server_port}};
     }
 
-    {% if transport_kind != "grpc" %}
     # Forward all other paths
     location / {
         proxy_redirect off;
         proxy_read_timeout 18030s;
+
+        {% if transport_kind != "grpc" %}
+        {# gRPC requires HTTP2, other protocols will expect 1.1. #}
         proxy_http_version 1.1;
+        {% endif %}
 
         proxy_set_header Upgrade $upgrade_header;
         proxy_set_header Connection $connection_header;
 
+        {% if transport_kind != "grpc" %}
         proxy_pass http://127.0.0.1:{{server_port}};
-    }
-    {% else %}
-    {# For gRPC, use the grpc_pass option in NGINX. #}
-    {# This catches all gRPC traffic, because the path is used in gRPC to hold the service and method. #}
-    location / {
-        proxy_redirect off;
-        proxy_read_timeout 18030s;
-
+        {% else %}
         grpc_pass grpc://127.0.0.1:{{server_port}};
+        {% endif %}
     }
-    {% endif %}
 }
