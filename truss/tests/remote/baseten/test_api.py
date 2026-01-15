@@ -176,7 +176,8 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
@@ -206,7 +207,8 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert " name: " not in gql_mutation
@@ -238,7 +240,8 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: false" in gql_mutation
     assert " name: " not in gql_mutation
@@ -269,7 +272,8 @@ def test_create_model_version_from_truss_with_deploy_timeout_minutes(
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
@@ -314,7 +318,8 @@ def test_create_model_from_truss(mock_post, baseten_api):
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert 'version_name: "deployment_name"' in gql_mutation
 
@@ -338,7 +343,8 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "version_name: " not in gql_mutation
 
@@ -360,7 +366,8 @@ def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_ap
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
 
@@ -382,7 +389,8 @@ def test_create_development_model_from_truss_with_allow_truss_download(
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
     assert "deploy_timeout_minutes: " not in gql_mutation
@@ -406,7 +414,8 @@ def test_create_development_model_from_truss_with_deploy_timeout_minutes(
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert {
-        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json(),
+        "metadata": None,
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
     assert "deploy_timeout_minutes: 300" in gql_mutation
