@@ -519,6 +519,19 @@ def run_python(script, target_directory):
     required=False,
     help="Team name for the model",
 )
+@click.option(
+    "--metadata",
+    "metadata_list",
+    type=str,
+    multiple=True,
+    help="Key-value metadata pair (key=value). Can be specified multiple times.",
+)
+@click.option(
+    "--metadata-json",
+    type=str,
+    required=False,
+    help="JSON string of metadata key-value pairs.",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -538,6 +551,8 @@ def push(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
+    metadata_list: tuple = (),
+    metadata_json: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -615,6 +630,26 @@ def push(
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
+    # Parse metadata from CLI options
+    metadata: Optional[dict] = None
+    if metadata_list or metadata_json:
+        metadata = {}
+        for item in metadata_list:
+            if "=" not in item:
+                raise click.UsageError(
+                    f"Invalid metadata format: '{item}'. Expected 'key=value'."
+                )
+            key, value = item.split("=", 1)
+            metadata[key] = value
+        if metadata_json:
+            try:
+                json_metadata = json.loads(metadata_json)
+                if not isinstance(json_metadata, dict):
+                    raise click.UsageError("--metadata-json must be a JSON object.")
+                metadata.update(json_metadata)
+            except json.JSONDecodeError as e:
+                raise click.UsageError(f"Invalid JSON in --metadata-json: {e}")
+
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
         if not publish:
@@ -664,6 +699,7 @@ def push(
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
+        metadata=metadata,
     )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")

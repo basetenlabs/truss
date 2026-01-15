@@ -1,3 +1,4 @@
+import json
 import logging
 from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
@@ -202,9 +203,10 @@ class BasetenApi:
         environment: Optional[str] = None,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String) {{
+            mutation ($trussUserEnv: String, $metadata: JSONString) {{
                 create_model_from_truss(
                     name: "{model_name}"
                     s3_key: "{s3_key}"
@@ -217,6 +219,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
+                    metadata: $metadata
                 ) {{
                     model_version {{
                         id
@@ -233,7 +236,11 @@ class BasetenApi:
             }}
         """
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": truss_user_env.json()}
+            query_string,
+            variables={
+                "trussUserEnv": truss_user_env.json(),
+                "metadata": json.dumps(metadata) if metadata else None,
+            },
         )
         return resp["data"]["create_model_from_truss"]["model_version"]
 
@@ -249,9 +256,10 @@ class BasetenApi:
         environment: Optional[str] = None,
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
+        metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String) {{
+            mutation ($trussUserEnv: String, $metadata: JSONString) {{
                 create_model_version_from_truss(
                     model_id: "{model_id}"
                     s3_key: "{s3_key}"
@@ -263,6 +271,7 @@ class BasetenApi:
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    metadata: $metadata
                 ) {{
                     model_version {{
                         id
@@ -280,7 +289,11 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": truss_user_env.json()}
+            query_string,
+            variables={
+                "trussUserEnv": truss_user_env.json(),
+                "metadata": json.dumps(metadata) if metadata else None,
+            },
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
 
@@ -294,9 +307,10 @@ class BasetenApi:
         origin: Optional[b10_types.ModelOrigin] = None,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String) {{
+            mutation ($trussUserEnv: String, $metadata: JSONString) {{
                 deploy_draft_truss(name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
@@ -305,6 +319,7 @@ class BasetenApi:
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
+                    metadata: $metadata
                 ) {{
                     model_version {{
                         id
@@ -322,7 +337,11 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": truss_user_env.json()}
+            query_string,
+            variables={
+                "trussUserEnv": truss_user_env.json(),
+                "metadata": json.dumps(metadata) if metadata else None,
+            },
         )
         return resp["data"]["deploy_draft_truss"]["model_version"]
 
