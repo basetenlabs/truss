@@ -164,35 +164,35 @@ def test_instance_type_not_serialized_when_none():
     assert "instance_type" not in result
 
 
-def test_instance_type_warning_with_conflicting_fields(caplog):
-    """Test that a warning is logged when instance_type conflicts with other fields."""
-    import logging
+def test_instance_type_conflict_warning_with_conflicting_fields():
+    """Test that get_instance_type_conflict_warning returns a warning when fields conflict."""
+    resources = Resources.model_validate(
+        {"instance_type": "L4:8x32", "accelerator": "L4", "cpu": "4", "memory": "16Gi"}
+    )
 
-    with caplog.at_level(logging.WARNING):
-        Resources.model_validate(
-            {
-                "instance_type": "L4:8x32",
-                "accelerator": "L4",
-                "cpu": "4",
-                "memory": "16Gi",
-            }
-        )
-
-    assert "instance_type" in caplog.text
-    assert "will take precedence" in caplog.text
-    assert "cpu" in caplog.text
-    assert "memory" in caplog.text
-    assert "accelerator" in caplog.text
+    warning = resources.get_instance_type_conflict_warning()
+    assert warning is not None
+    assert "instance_type" in warning
+    assert "will take precedence" in warning
+    assert "cpu" in warning
+    assert "memory" in warning
+    assert "accelerator" in warning
 
 
-def test_instance_type_no_warning_with_defaults(caplog):
-    """Test that no warning is logged when only instance_type is specified."""
-    import logging
+def test_instance_type_conflict_warning_with_defaults():
+    """Test that get_instance_type_conflict_warning returns None when only instance_type is specified."""
+    resources = Resources.model_validate({"instance_type": "L4:8x32"})
 
-    with caplog.at_level(logging.WARNING):
-        Resources.model_validate({"instance_type": "L4:8x32"})
+    warning = resources.get_instance_type_conflict_warning()
+    assert warning is None
 
-    assert "will take precedence" not in caplog.text
+
+def test_instance_type_conflict_warning_without_instance_type():
+    """Test that get_instance_type_conflict_warning returns None when instance_type is not set."""
+    resources = Resources.model_validate({"accelerator": "L4", "cpu": "4"})
+
+    warning = resources.get_instance_type_conflict_warning()
+    assert warning is None
 
 
 @pytest.mark.parametrize(

@@ -572,32 +572,6 @@ class Resources(custom_types.ConfigModel):
         if isinstance(data, dict):
             data = data.copy()
             data.pop("use_gpu", None)
-
-            # Warn if instance_type is specified alongside individual resource fields
-            instance_type = data.get("instance_type")
-            if instance_type is not None:
-                has_custom_cpu = "cpu" in data and data["cpu"] != DEFAULT_CPU
-                has_custom_memory = (
-                    "memory" in data and data["memory"] != DEFAULT_MEMORY
-                )
-                has_accelerator = (
-                    "accelerator" in data and data["accelerator"] is not None
-                )
-
-                if has_custom_cpu or has_custom_memory or has_accelerator:
-                    conflicting = []
-                    if has_custom_cpu:
-                        conflicting.append("cpu")
-                    if has_custom_memory:
-                        conflicting.append("memory")
-                    if has_accelerator:
-                        conflicting.append("accelerator")
-                    logger.warning(
-                        f"Both 'instance_type' and individual resource fields "
-                        f"({', '.join(conflicting)}) are specified. The 'instance_type' "
-                        f"value '{instance_type}' will take precedence and override "
-                        f"the individual resource settings."
-                    )
         return data
 
     @pydantic.field_validator("cpu")
@@ -637,6 +611,32 @@ class Resources(custom_types.ConfigModel):
         if not self.instance_type:
             result.pop("instance_type", None)
         return result
+
+    def get_instance_type_conflict_warning(self) -> Optional[str]:
+        """Return a warning message if instance_type conflicts with other fields.
+
+        Returns None if there are no conflicts.
+        """
+        if self.instance_type is None:
+            return None
+
+        conflicting = []
+        if self.cpu != DEFAULT_CPU:
+            conflicting.append("cpu")
+        if self.memory != DEFAULT_MEMORY:
+            conflicting.append("memory")
+        if self.accelerator.accelerator is not None:
+            conflicting.append("accelerator")
+
+        if not conflicting:
+            return None
+
+        return (
+            f"Both 'instance_type' and individual resource fields "
+            f"({', '.join(conflicting)}) are specified. The 'instance_type' "
+            f"value '{self.instance_type}' will take precedence and override "
+            f"the individual resource settings."
+        )
 
 
 class ExternalDataItem(custom_types.ConfigModel):
