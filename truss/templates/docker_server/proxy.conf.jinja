@@ -10,7 +10,15 @@ map $http_connection $connection_header {
 
 server {
     # We use the proxy_read_timeout directive here (instead of proxy_send_timeout) as it sets the timeout for reading a response from the proxied server vs. setting a timeout for sending a request to the proxied server.
+
+    {% if transport_kind != "grpc" %}
     listen 8080;
+    {% else %}
+    {# Use deprecated http2 setting on listen for gRPC. #}
+    {# TODO Unfortunately it seems the proper 'http2 on' does not work with our use-case, likely because NGINX is confused that we don't have SSL enabled. #}
+    listen 8080 http2;
+    {% endif %}
+
     client_max_body_size {{client_max_body_size}};
     proxy_buffering off;
 
@@ -62,12 +70,19 @@ server {
     location / {
         proxy_redirect off;
         proxy_read_timeout 18030s;
+
+        {% if transport_kind != "grpc" %}
+        {# gRPC requires HTTP2, other protocols will expect 1.1. #}
         proxy_http_version 1.1;
+        {% endif %}
 
         proxy_set_header Upgrade $upgrade_header;
         proxy_set_header Connection $connection_header;
 
+        {% if transport_kind != "grpc" %}
         proxy_pass http://127.0.0.1:{{server_port}};
+        {% else %}
+        grpc_pass grpc://127.0.0.1:{{server_port}};
+        {% endif %}
     }
-
 }
