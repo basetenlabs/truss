@@ -775,6 +775,8 @@ def _gen_truss_config(
         )
     config.model_cache = truss_config.ModelCache(assets.cached)
     config.external_data = truss_config.ExternalData(assets.external_data)
+    if assets.weights:
+        config.weights = truss_config.Weights(assets.weights)
     config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
         private_types.TrussMetadata(
             chainlet_to_service=chainlet_to_service
