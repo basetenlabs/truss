@@ -527,6 +527,7 @@ class BasetenRemote(TrussRemote):
         console: Optional["rich_console.Console"] = None,
         resolved_model: Optional[dict] = None,
         resolved_versions: Optional[List[dict]] = None,
+        chainlets_only: bool = False,
     ) -> PatchResult:
         try:
             truss_handle = TrussHandle(watch_path)
@@ -556,7 +557,9 @@ class BasetenRemote(TrussRemote):
                     resolve_model_for_watch,
                 )
 
-                model, versions = resolve_model_for_watch(self, model_name)
+                model, versions = resolve_model_for_watch(
+                    self, model_name, chainlets_only=chainlets_only
+                )
             except Exception as e:
                 return PatchResult(
                     PatchStatus.FAILED, f"Model not found: {model_name}. {e}"
@@ -683,7 +686,11 @@ class BasetenRemote(TrussRemote):
     def patch_for_chainlet(
         self, watch_path: Path, truss_ignore_patterns: List[str]
     ) -> PatchResult:
-        return self._patch(watch_path, truss_ignore_patterns, console=None)
+        # Use chainlets_only=True to query chainlet oracles (origin=CHAINS)
+        # instead of regular models (origin=BASETEN)
+        return self._patch(
+            watch_path, truss_ignore_patterns, console=None, chainlets_only=True
+        )
 
     def _patch_with_model(
         self,
