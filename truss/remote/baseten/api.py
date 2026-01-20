@@ -513,7 +513,9 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
-    def get_models_for_watch(self, team_id: Optional[str] = None):
+    def get_models_for_watch(
+        self, team_id: Optional[str] = None, chainlets_only: bool = False
+    ):
         """Get models with full version info needed for watch disambiguation."""
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:
@@ -521,9 +523,13 @@ class BasetenApi:
         else:
             filter_arg = "all: true"
 
+        # Add chainlets_only filter to query chainlet oracles (origin=CHAINS)
+        # instead of regular models (origin=BASETEN)
+        chainlets_only_arg = "true" if chainlets_only else "false"
+
         query_string = f"""
         {{
-            models({filter_arg}) {{
+            models({filter_arg}, chainlets_only: {chainlets_only_arg}) {{
                 id
                 name
                 hostname
