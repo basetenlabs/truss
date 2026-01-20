@@ -584,7 +584,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # INTERNAL
     bei_image: str
     beibert_image: str = (
-        "baseten/bei_bert:1.8.4"  # once wired up in core-product, this can be removed
+        "baseten/bei_bert:1.8.5"  # once wired up in core-product, this can be removed
     )
     briton_image: str
     v2_llm_image: str
@@ -894,6 +894,8 @@ def trt_llm_common_validation(config: "TrussConfig"):
         TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.H100,
+        truss_config.Accelerator.H100_40GB,
+        truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
         truss_config.Accelerator.A100_40GB,
     ]:
