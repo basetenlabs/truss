@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import (
+    AliasChoices,
     BaseModel,
     Discriminator,
     Field,
@@ -233,7 +234,8 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     served_model_name: Optional[str] = None
     # only for V2 inference stack, advanced use.
     patch_kwargs: Dict[str, Union[str, int, float, dict, list, None]] = Field(
-        default_factory=dict
+        default_factory=dict,
+        validation_alias=AliasChoices("patch_kwargs", "gated_features"),
     )
 
     @field_validator("patch_kwargs", mode="after")
