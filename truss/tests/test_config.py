@@ -474,6 +474,23 @@ resources:
         TrussConfig.from_yaml(yaml_path)
 
 
+def test_from_yaml_same_key_at_different_nesting_levels():
+    yaml_content = """
+model_name: test-model
+resources:
+  cpu: "1"
+  memory: "2Gi"
+build:
+  model_name: build-model-name
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.model_name == "test-model"
+
+
 def test_from_yaml_secrets_as_list():
     data = {"description": "this is a test", "secrets": ["foo", "bar"]}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
