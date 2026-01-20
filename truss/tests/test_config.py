@@ -455,8 +455,9 @@ description: second description
         f.write(yaml_content)
         yaml_path = Path(f.name)
 
-    with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key"):
-        TrussConfig.from_yaml(yaml_path)
+    with pytest.warns(UserWarning, match="Detected duplicate key `description`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.description == "second description"
 
 
 def test_from_yaml_duplicate_nested_keys():
@@ -470,8 +471,9 @@ resources:
         f.write(yaml_content)
         yaml_path = Path(f.name)
 
-    with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key"):
-        TrussConfig.from_yaml(yaml_path)
+    with pytest.warns(UserWarning, match="Detected duplicate key `cpu`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.resources.cpu == "2"
 
 
 def test_from_yaml_same_key_at_different_nesting_levels():
