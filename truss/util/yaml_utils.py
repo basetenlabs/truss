@@ -11,7 +11,9 @@ class _SafeLoaderWarnDuplicateKeys(yaml.SafeLoader):
             key = self.construct_object(key_node, deep=deep)
             # TODO around ~7/2026: Change this to an error once we've given users time to fix their configs.
             if key in keys:
-                warnings.warn(f"Detected duplicate key `{key}`, will use the last one")
+                warnings.warn(
+                    f"Detected duplicate key `{key}`, will use the last entry but could cause unexpected behavior"
+                )
             keys.add(key)
         return super().construct_mapping(node, deep)
 
