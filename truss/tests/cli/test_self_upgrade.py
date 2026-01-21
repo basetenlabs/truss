@@ -20,13 +20,6 @@ class TestDetectInstallationMethod:
                 "/home/user/miniconda3/envs/myenv",
                 ("conda", "pip install --upgrade truss", "=={version}"),
             ),
-            # uv venv
-            (
-                "/home/user/project/.venv",
-                "home = /home/user/.local/share/uv/python\nimplementation = CPython",
-                None,
-                ("uv", "uv pip install --upgrade truss", "=={version}"),
-            ),
             # pip venv (pyvenv.cfg without uv)
             (
                 "/home/user/project/.venv",
@@ -39,7 +32,7 @@ class TestDetectInstallationMethod:
                 ),
             ),
         ],
-        ids=["conda", "uv_venv", "pip_venv"],
+        ids=["conda", "pip_venv"],
     )
     def test_detection_scenarios(
         self, prefix, pyvenv_cfg_content, conda_prefix, expected, tmp_path, monkeypatch
@@ -49,6 +42,7 @@ class TestDetectInstallationMethod:
         actual_prefix = str(fake_prefix)
 
         monkeypatch.setattr(sys, "prefix", actual_prefix)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         if conda_prefix:
             monkeypatch.setenv("CONDA_PREFIX", actual_prefix)
@@ -70,11 +64,83 @@ class TestDetectInstallationMethod:
             assert version_fmt == expected[2]
             assert expected[1] in cmd
 
+    @pytest.mark.parametrize(
+        "installer,dist_path,expected_method,expected_cmd",
+        [
+            (
+                "uv",
+                "/home/user/.local/share/uv/tools/truss",
+                "uv",
+                "uv tool upgrade truss",
+            ),
+            (
+                "uv",
+                "/home/user/project/.venv/lib/python3.11/site-packages",
+                "uv",
+                "uv pip install --upgrade truss",
+            ),
+            (
+                "pipx",
+                "/home/user/.local/pipx/venvs/truss",
+                "pipx",
+                "pipx upgrade truss",
+            ),
+            (
+                "pip",
+                "/home/user/.local/share/pipx/venvs/truss",
+                "pipx",
+                "pipx upgrade truss",
+            ),
+        ],
+        ids=["uv_tool", "uv_venv", "pipx_installer", "pipx_path"],
+    )
+    def test_detection_via_installer_metadata(
+        self, installer, dist_path, expected_method, expected_cmd, tmp_path, monkeypatch
+    ):
+        fake_prefix = tmp_path / "fake_prefix"
+        fake_prefix.mkdir()
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(
+            self_upgrade, "_get_installer_info", lambda: (installer, Path(dist_path))
+        )
+
+        result = self_upgrade.detect_installation_method()
+
+        assert result is not None
+        method, cmd, version_fmt = result
+        assert method == expected_method
+        assert expected_cmd in cmd
+        assert version_fmt == "=={version}"
+
+    def test_pip_installer_falls_through_to_pyvenv_check(self, tmp_path, monkeypatch):
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(
+            self_upgrade,
+            "_get_installer_info",
+            lambda: (
+                "pip",
+                Path("/home/user/project/.venv/lib/python3.11/site-packages"),
+            ),
+        )
+
+        result = self_upgrade.detect_installation_method()
+
+        assert result is not None
+        method, cmd, version_fmt = result
+        assert method == "pip"
+        assert "pip install --upgrade truss" in cmd
+
     def test_detection_fails_when_no_indicators(self, tmp_path, monkeypatch):
         fake_prefix = tmp_path / "unknown_env"
         fake_prefix.mkdir()
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         result = self_upgrade.detect_installation_method()
         assert result is None
@@ -87,6 +153,7 @@ class TestRunUpgrade:
         (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         with mock.patch.object(self_upgrade.console, "input", return_value="y"):
             with mock.patch("subprocess.run") as mock_run:
@@ -103,6 +170,7 @@ class TestRunUpgrade:
         (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         with mock.patch.object(self_upgrade.console, "input", return_value="y"):
             with mock.patch("subprocess.run") as mock_run:
@@ -117,6 +185,7 @@ class TestRunUpgrade:
         fake_prefix.mkdir()
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         monkeypatch.setenv("CONDA_PREFIX", str(fake_prefix))
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         with mock.patch.object(self_upgrade.console, "input", return_value="y"):
             with mock.patch("subprocess.run") as mock_run:
@@ -133,6 +202,7 @@ class TestRunUpgrade:
         (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         with mock.patch.object(self_upgrade.console, "input", return_value="n"):
             with mock.patch("subprocess.run") as mock_run:
@@ -147,6 +217,7 @@ class TestRunUpgrade:
         fake_prefix.mkdir()
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         with pytest.raises(SystemExit) as exc_info:
             self_upgrade.run_upgrade()
@@ -159,6 +230,7 @@ class TestRunUpgrade:
         (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
 
         with mock.patch.object(self_upgrade.console, "input", return_value="y"):
             with mock.patch("subprocess.run") as mock_run:
@@ -335,7 +407,19 @@ class TestCheckForUpdatesSetting:
         wrapper = user_config._SettingsWrapper.read_or_create()
         assert wrapper.check_for_updates is False
 
-    def test_default_when_not_set_in_file(self, tmp_path, monkeypatch):
+    def test_does_not_write_when_setting_already_present(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(user_config, "_get_dir", lambda: tmp_path)
+
+        settings_file = tmp_path / "settings.toml"
+        original_content = "[preferences]\ncheck_for_updates = false\n# user comment\n"
+        settings_file.write_text(original_content)
+        original_mtime = settings_file.stat().st_mtime
+
+        user_config._SettingsWrapper.read_or_create()
+
+        assert settings_file.stat().st_mtime == original_mtime
+
+    def test_default_when_not_set_in_file_writes_it(self, tmp_path, monkeypatch):
         monkeypatch.setattr(user_config, "_get_dir", lambda: tmp_path)
 
         settings_file = tmp_path / "settings.toml"
@@ -343,6 +427,9 @@ class TestCheckForUpdatesSetting:
 
         wrapper = user_config._SettingsWrapper.read_or_create()
         assert wrapper.check_for_updates is True
+
+        content = settings_file.read_text()
+        assert "check_for_updates = true" in content
 
     def test_writes_default_when_file_created(self, tmp_path, monkeypatch):
         monkeypatch.setattr(user_config, "_get_dir", lambda: tmp_path)

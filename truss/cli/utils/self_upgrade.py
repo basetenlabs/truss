@@ -2,17 +2,25 @@ import os
 import pathlib
 import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError, distribution
+from pathlib import Path
 from typing import Optional
 
 from truss.cli.utils.output import console
 from truss.util import user_config
 
 
-def detect_installation_method() -> Optional[tuple[str, str, str]]:
-    """Returns (method_name, base_command, version_format) or None.
+def _get_installer_info() -> Optional[tuple[str, Path]]:
+    try:
+        dist = distribution("truss")
+        installer = (dist.read_text("INSTALLER") or "pip").strip().lower()
+        dist_path = Path(str(dist.locate_file(""))).resolve()
+        return (installer, dist_path)
+    except PackageNotFoundError:
+        return None
 
-    version_format uses {version} as a placeholder.
-    """
+
+def detect_installation_method() -> Optional[tuple[str, str, str]]:
     prefix = sys.prefix
 
     # Check for conda environment - use pip since truss isn't on conda channels
@@ -23,22 +31,30 @@ def detect_installation_method() -> Optional[tuple[str, str, str]]:
             "=={version}",
         )
 
+    installer_info = _get_installer_info()
+    if installer_info:
+        installer, dist_path = installer_info
+
+        # UV: check installer metadata
+        if installer == "uv":
+            if "tool" in str(dist_path).lower():
+                return ("uv", "uv tool upgrade truss", "=={version}")
+            return ("uv", "uv pip install --upgrade truss", "=={version}")
+
+        # PIPX: check installer metadata or path
+        if installer == "pipx" or "pipx" in str(dist_path).lower():
+            return ("pipx", "pipx upgrade truss", "=={version}")
+
     # Check for venv environment...
     pyvenv_cfg = pathlib.Path(prefix) / "pyvenv.cfg"
     if pyvenv_cfg.exists():
-        cfg_text = pyvenv_cfg.read_text().lower()
-        # ... with uv
-        if "uv" in cfg_text:
-            # uv venvs don't have pip, use uv pip instead
-            return ("uv", "uv pip install --upgrade truss", "=={version}")
-        # ... with pip
         return (
             "pip",
             f"{sys.executable} -m pip install --upgrade truss",
             "=={version}",
         )
 
-    # Can be: system python, homebrew python, pyenv without venv, pipx, etc.
+    # Can be: system python, homebrew python, pyenv without venv, etc.
     # We can't confidently upgrade these, so return None.
     return None
 
