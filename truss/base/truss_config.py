@@ -566,7 +566,7 @@ class Resources(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="before")
     @classmethod
-    def _preprocess_resources(cls, data: Any) -> Any:
+    def strip_use_gpu(cls, data: Any) -> Any:
         # We want `use_gpu` to be serialized, but don't allow extra inputs when parsing,
         # so we have to drop it here to allow roundtrips.
         if isinstance(data, dict):
@@ -611,32 +611,6 @@ class Resources(custom_types.ConfigModel):
         if not self.instance_type:
             result.pop("instance_type", None)
         return result
-
-    def get_instance_type_conflict_warning(self) -> Optional[str]:
-        """Return a warning message if instance_type conflicts with other fields.
-
-        Returns None if there are no conflicts.
-        """
-        if self.instance_type is None:
-            return None
-
-        conflicting = []
-        if self.cpu != DEFAULT_CPU:
-            conflicting.append("cpu")
-        if self.memory != DEFAULT_MEMORY:
-            conflicting.append("memory")
-        if self.accelerator.accelerator is not None:
-            conflicting.append("accelerator")
-
-        if not conflicting:
-            return None
-
-        return (
-            f"Both 'instance_type' and individual resource fields "
-            f"({', '.join(conflicting)}) are specified. The 'instance_type' "
-            f"value '{self.instance_type}' will take precedence and override "
-            f"the individual resource settings."
-        )
 
 
 class ExternalDataItem(custom_types.ConfigModel):

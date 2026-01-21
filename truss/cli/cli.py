@@ -547,12 +547,11 @@ def push(
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
 
-    # Warn if instance_type conflicts with individual resource fields
-    instance_type_warning = (
-        tr.spec.config.resources.get_instance_type_conflict_warning()
-    )
-    if instance_type_warning:
-        console.print(instance_type_warning, style="yellow")
+    if tr.spec.config.resources.instance_type:
+        console.print(
+            "Field 'instance_type' specified - ignoring 'cpu', 'memory', and 'accelerator' fields...",
+            style="yellow",
+        )
 
     if (
         tr.spec.config.runtime.transport.kind == TransportKind.GRPC
