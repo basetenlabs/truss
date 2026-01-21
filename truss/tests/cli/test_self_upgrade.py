@@ -286,3 +286,61 @@ class TestMarkNotified:
             wrapper.mark_notified("0.12.3")
 
         assert wrapper._state.notified_for_version == "0.12.3"
+
+
+class TestPyPICheckBackoff:
+    @pytest.mark.parametrize(
+        "check_count,expected_days",
+        [(0, 1), (1, 2), (2, 4), (3, 7), (4, 7), (10, 7)],
+        ids=[
+            "first_check_1d",
+            "second_check_2d",
+            "third_check_4d",
+            "fourth_check_7d",
+            "fifth_check_stays_7d",
+            "many_checks_stays_7d",
+        ],
+    )
+    def test_backoff_schedule(self, check_count, expected_days):
+        now = datetime.datetime.now()
+        state = user_config.State(
+            version_info=user_config.VersionInfo(
+                latest_version="0.12.3", last_check=now, check_count=check_count
+            )
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        assert not wrapper._should_check_for_updates()
+
+        state.version_info.last_check = now - datetime.timedelta(
+            days=expected_days, seconds=1
+        )
+        assert wrapper._should_check_for_updates()
+
+        state.version_info.last_check = now - datetime.timedelta(
+            days=expected_days - 0.5
+        )
+        assert not wrapper._should_check_for_updates()
+
+    def test_check_count_increments_on_update(self):
+        state = user_config.State(
+            version_info=user_config.VersionInfo(
+                latest_version="0.12.3",
+                last_check=datetime.datetime.now(),
+                check_count=2,
+            )
+        )
+        wrapper = user_config._StateWrapper(state)
+
+        mock_response = mock.Mock()
+        mock_response.json.return_value = {
+            "info": {"version": "0.12.4"},
+            "releases": {},
+        }
+
+        with mock.patch("requests.get", return_value=mock_response):
+            with mock.patch.object(wrapper, "_write"):
+                wrapper._update_version_info()
+
+        assert wrapper._state.version_info.check_count == 3
+        assert str(wrapper._state.version_info.latest_version) == "0.12.4"
