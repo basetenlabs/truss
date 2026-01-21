@@ -212,6 +212,22 @@ class TestRunUpgrade:
         captured = capsys.readouterr()
         assert "cancelled" in captured.out.lower()
 
+    def test_run_upgrade_non_interactive(self, tmp_path, monkeypatch):
+        fake_prefix = tmp_path / "venv"
+        fake_prefix.mkdir()
+        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
+        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
+        monkeypatch.delenv("CONDA_PREFIX", raising=False)
+        monkeypatch.setattr(self_upgrade, "_get_installer_info", lambda: None)
+
+        with mock.patch.object(self_upgrade.console, "input") as mock_input:
+            with mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = mock.Mock(returncode=0)
+                self_upgrade.run_upgrade(interactive=False)
+
+        mock_input.assert_not_called()
+        mock_run.assert_called_once()
+
     def test_run_upgrade_detection_fails(self, tmp_path, monkeypatch):
         fake_prefix = tmp_path / "unknown"
         fake_prefix.mkdir()

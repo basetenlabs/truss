@@ -125,9 +125,11 @@ def login(api_key: Optional[str]):
 @truss_cli.command()
 @click.argument("version", required=False)
 @common.common_options()
-def upgrade(version: Optional[str]) -> None:
+@click.pass_context
+def upgrade(ctx: click.Context, version: Optional[str]) -> None:
     """Upgrade truss to the latest (or specified) version."""
-    self_upgrade.run_upgrade(version)
+    interactive = not ctx.obj.get("non_interactive", False)
+    self_upgrade.run_upgrade(version, interactive=interactive)
 
 
 @truss_cli.command()

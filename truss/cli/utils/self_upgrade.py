@@ -59,7 +59,7 @@ def detect_installation_method() -> Optional[tuple[str, str, str]]:
     return None
 
 
-def run_upgrade(target_version: Optional[str] = None) -> None:
+def run_upgrade(target_version: Optional[str] = None, interactive: bool = True) -> None:
     result = detect_installation_method()
 
     if result is None:
@@ -81,10 +81,11 @@ def run_upgrade(target_version: Optional[str] = None) -> None:
     console.print(f"Detected installation method: {method}")
     console.print(f"Will run: {cmd}")
 
-    response = console.input("Proceed with upgrade? [Y/n] ")
-    if response.lower() not in ("", "y", "yes"):
-        console.print("Upgrade cancelled.")
-        return
+    if interactive:
+        response = console.input("Proceed with upgrade? [Y/n] ")
+        if response.lower() not in ("", "y", "yes"):
+            console.print("Upgrade cancelled.")
+            return
 
     returncode = subprocess.run(cmd, shell=True).returncode
     if returncode == 0:
