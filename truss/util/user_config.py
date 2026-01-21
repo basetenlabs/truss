@@ -196,7 +196,6 @@ class VersionInfo(pydantic.BaseModel):
 
 class State(pydantic.BaseModel):
     version_info: VersionInfo = VersionInfo()
-    notified_for_version: Optional[str] = None
 
 
 class UpdateInfo(pydantic.BaseModel):
@@ -295,14 +294,7 @@ class _StateWrapper:
         if not update_info.upgrade_recommended:
             return None
 
-        if self._state.notified_for_version == update_info.latest_version:
-            return None
-
         return update_info
-
-    def mark_notified(self, version: str) -> None:
-        self._state.notified_for_version = version
-        self._write()
 
 
 state = _StateWrapper.read_or_create()

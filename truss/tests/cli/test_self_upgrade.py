@@ -248,7 +248,6 @@ class TestNotifyIfOutdated:
         )
         mock_state = mock.Mock()
         mock_state.should_notify_upgrade.return_value = mock_update_info
-        mock_state.mark_notified = mock.Mock()
         mock_settings = mock.Mock()
         mock_settings.check_for_updates = True
 
@@ -262,7 +261,6 @@ class TestNotifyIfOutdated:
         assert "0.11.0" in captured.out
         assert "truss upgrade" in captured.out
         assert "check_for_updates" in captured.out
-        mock_state.mark_notified.assert_called_once_with("0.12.3")
 
     def test_no_notification_when_up_to_date(self, monkeypatch, capsys):
         mock_state = mock.Mock()
@@ -307,47 +305,11 @@ class TestNotifyIfOutdated:
 
 
 class TestShouldNotifyUpgrade:
-    def test_returns_update_info_when_outdated_and_not_notified(self, tmp_path):
+    def test_returns_update_info_when_outdated(self, tmp_path):
         state = user_config.State(
             version_info=user_config.VersionInfo(
                 latest_version="0.12.3", last_check=datetime.datetime.now()
-            ),
-            notified_for_version=None,
-        )
-        wrapper = user_config._StateWrapper(state)
-
-        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
-            mock_should_upgrade.return_value = user_config.UpdateInfo(
-                upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
             )
-            result = wrapper.should_notify_upgrade("0.11.0")
-
-        assert result is not None
-        assert result.latest_version == "0.12.3"
-
-    def test_returns_none_when_already_notified_for_version(self, tmp_path):
-        state = user_config.State(
-            version_info=user_config.VersionInfo(
-                latest_version="0.12.3", last_check=datetime.datetime.now()
-            ),
-            notified_for_version="0.12.3",
-        )
-        wrapper = user_config._StateWrapper(state)
-
-        with mock.patch.object(wrapper, "should_upgrade") as mock_should_upgrade:
-            mock_should_upgrade.return_value = user_config.UpdateInfo(
-                upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
-            )
-            result = wrapper.should_notify_upgrade("0.11.0")
-
-        assert result is None
-
-    def test_returns_update_info_when_new_version_available(self, tmp_path):
-        state = user_config.State(
-            version_info=user_config.VersionInfo(
-                latest_version="0.12.3", last_check=datetime.datetime.now()
-            ),
-            notified_for_version="0.12.2",
         )
         wrapper = user_config._StateWrapper(state)
 
@@ -371,14 +333,3 @@ class TestShouldNotifyUpgrade:
             result = wrapper.should_notify_upgrade("0.12.3")
 
         assert result is None
-
-
-class TestMarkNotified:
-    def test_updates_state(self, tmp_path):
-        state = user_config.State()
-        wrapper = user_config._StateWrapper(state)
-
-        with mock.patch.object(wrapper, "_write"):
-            wrapper.mark_notified("0.12.3")
-
-        assert wrapper._state.notified_for_version == "0.12.3"

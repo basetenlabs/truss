@@ -112,4 +112,3 @@ def notify_if_outdated(current_version: str) -> None:
     console.print(
         f"▪▪▪▪ To disable this check, set `check_for_updates` to false in {settings_path}"
     )
-    user_config.state.mark_notified(latest)
