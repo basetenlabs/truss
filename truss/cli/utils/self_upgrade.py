@@ -85,36 +85,8 @@ def notify_if_outdated(current_version: str) -> None:
 
     latest = update_info.latest_version
     console.print(
-        f"A newer truss version {latest} is available. You're on {current_version}."
+        f"▪▪▪▪ There's a new version of truss available, {latest} "
+        f"(you are currently on {current_version})!"
     )
+    console.print("▪▪▪▪ To upgrade, run: [bold cyan]truss upgrade[/bold cyan]")
     user_config.state.mark_notified(latest)
-
-
-def prompt_upgrade_if_outdated(current_version: str) -> None:
-    update_info = user_config.state.should_notify_upgrade(current_version)
-    if not update_info:
-        return
-
-    latest = update_info.latest_version
-
-    if detect_installation_method() is None:
-        console.print(
-            f"A newer truss version {latest} is available. You're on {current_version}."
-        )
-        user_config.state.mark_notified(latest)
-        return
-
-    response = console.input(
-        f"A newer truss version {latest} is available. "
-        f"You're on {current_version}. Upgrade now? [Y/n] "
-    )
-
-    user_config.state.mark_notified(latest)
-
-    if response.lower() in ("", "y", "yes"):
-        # Note: we run upgrade and then exit.
-        # user will have to re-run their original command
-        run_upgrade()
-        # Note: reached only if upgrade was successful
-        # but we want to exit the old process now
-        sys.exit(0)

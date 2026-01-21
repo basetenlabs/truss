@@ -146,11 +146,7 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
 
 def upgrade_dialogue():
     try:
-        if not check_is_interactive():
-            self_upgrade.notify_if_outdated(truss.__version__)
-            return
-
-        self_upgrade.prompt_upgrade_if_outdated(truss.__version__)
+        self_upgrade.notify_if_outdated(truss.__version__)
     except Exception as e:
         logger.debug(f"Upgrade check failed: {e}")
 

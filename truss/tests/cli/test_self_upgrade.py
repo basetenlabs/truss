@@ -185,6 +185,7 @@ class TestNotifyIfOutdated:
         captured = capsys.readouterr()
         assert "0.12.3" in captured.out
         assert "0.11.0" in captured.out
+        assert "truss upgrade" in captured.out
         mock_state.mark_notified.assert_called_once_with("0.12.3")
 
     def test_no_notification_when_up_to_date(self, monkeypatch, capsys):
@@ -207,95 +208,6 @@ class TestNotifyIfOutdated:
         # Exception handling moved to upgrade_dialogue() in common.py
         with pytest.raises(Exception, match="Network error"):
             self_upgrade.notify_if_outdated("0.11.0")
-
-
-class TestPromptUpgradeIfOutdated:
-    def test_prompts_when_outdated_and_detection_succeeds(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        # Setup detection to succeed
-        fake_prefix = tmp_path / "venv"
-        fake_prefix.mkdir()
-        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
-        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-
-        mock_update_info = user_config.UpdateInfo(
-            upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
-        )
-        mock_state = mock.Mock()
-        mock_state.should_notify_upgrade.return_value = mock_update_info
-        mock_state.mark_notified = mock.Mock()
-        monkeypatch.setattr(user_config, "state", mock_state)
-
-        # Mock console.input to return "n"
-        with mock.patch.object(
-            self_upgrade.console, "input", return_value="n"
-        ) as mock_input:
-            self_upgrade.prompt_upgrade_if_outdated("0.11.0")
-
-        mock_input.assert_called_once()
-        assert "0.12.3" in mock_input.call_args[0][0]
-        mock_state.mark_notified.assert_called_once_with("0.12.3")
-
-    def test_executes_upgrade_on_yes(self, tmp_path, monkeypatch):
-        # Setup detection to succeed
-        fake_prefix = tmp_path / "venv"
-        fake_prefix.mkdir()
-        (fake_prefix / "pyvenv.cfg").write_text("home = /usr/bin")
-        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-
-        mock_update_info = user_config.UpdateInfo(
-            upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
-        )
-        mock_state = mock.Mock()
-        mock_state.should_notify_upgrade.return_value = mock_update_info
-        mock_state.mark_notified = mock.Mock()
-        monkeypatch.setattr(user_config, "state", mock_state)
-
-        with mock.patch.object(self_upgrade.console, "input", return_value="y"):
-            with mock.patch.object(self_upgrade, "run_upgrade") as mock_upgrade:
-                with pytest.raises(SystemExit) as exc_info:
-                    self_upgrade.prompt_upgrade_if_outdated("0.11.0")
-
-        mock_upgrade.assert_called_once_with()
-        assert exc_info.value.code == 0
-
-    def test_falls_back_to_notification_when_detection_fails(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        # Setup detection to fail
-        fake_prefix = tmp_path / "unknown"
-        fake_prefix.mkdir()
-        monkeypatch.setattr(sys, "prefix", str(fake_prefix))
-        monkeypatch.delenv("CONDA_PREFIX", raising=False)
-
-        mock_update_info = user_config.UpdateInfo(
-            upgrade_recommended=True, reason="outdated", latest_version="0.12.3"
-        )
-        mock_state = mock.Mock()
-        mock_state.should_notify_upgrade.return_value = mock_update_info
-        mock_state.mark_notified = mock.Mock()
-        monkeypatch.setattr(user_config, "state", mock_state)
-
-        # Should not prompt, just notify
-        with mock.patch.object(self_upgrade.console, "input") as mock_input:
-            self_upgrade.prompt_upgrade_if_outdated("0.11.0")
-
-        mock_input.assert_not_called()
-        # Should still mark as notified via notify_if_outdated
-        mock_state.mark_notified.assert_called()
-
-    def test_no_prompt_when_up_to_date(self, monkeypatch):
-        mock_state = mock.Mock()
-        mock_state.should_notify_upgrade.return_value = None
-        monkeypatch.setattr(user_config, "state", mock_state)
-
-        with mock.patch.object(self_upgrade.console, "input") as mock_input:
-            self_upgrade.prompt_upgrade_if_outdated("0.12.3")
-
-        mock_input.assert_not_called()
 
 
 class TestShouldNotifyUpgrade:
@@ -370,7 +282,6 @@ class TestMarkNotified:
         state = user_config.State()
         wrapper = user_config._StateWrapper(state)
 
-        # Mock _write to avoid file I/O
         with mock.patch.object(wrapper, "_write"):
             wrapper.mark_notified("0.12.3")
 
