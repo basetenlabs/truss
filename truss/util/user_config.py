@@ -160,16 +160,12 @@ class _SettingsWrapper:
         return self._settings.preferences.check_for_updates
 
 
-_PYPI_CHECK_BACKOFF_DAYS = [1, 2, 4, 7]
-
-
 class VersionInfo(pydantic.BaseModel):
     latest_version: Optional[packaging.version.Version] = None
     yanked_versions: set[packaging.version.Version] = pydantic.Field(
         default_factory=set
     )
     last_check: datetime.datetime = datetime.datetime.min
-    check_count: int = 0
 
     @pydantic.field_validator("latest_version", mode="before")
     @classmethod
@@ -236,12 +232,9 @@ class _StateWrapper:
         self._path().write_text(self._state.model_dump_json(indent=2), encoding="utf-8")
 
     def _should_check_for_updates(self) -> bool:
-        check_count = self._state.version_info.check_count
-        backoff_index = min(check_count, len(_PYPI_CHECK_BACKOFF_DAYS) - 1)
-        days_until_next_check = _PYPI_CHECK_BACKOFF_DAYS[backoff_index]
         return (
             self._state.version_info.last_check
-            < datetime.datetime.now() - datetime.timedelta(days=days_until_next_check)
+            < datetime.datetime.now() - datetime.timedelta(days=1)
         )
 
     def _update_version_info(self) -> None:
@@ -260,7 +253,6 @@ class _StateWrapper:
             latest_version=latest_version,
             yanked_versions=set(yanked_versions),
             last_check=datetime.datetime.now(),
-            check_count=self._state.version_info.check_count + 1,
         )
         self._write()
 
