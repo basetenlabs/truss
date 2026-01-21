@@ -177,8 +177,11 @@ class TestNotifyIfOutdated:
         mock_state = mock.Mock()
         mock_state.should_notify_upgrade.return_value = mock_update_info
         mock_state.mark_notified = mock.Mock()
+        mock_settings = mock.Mock()
+        mock_settings.check_for_updates = True
 
         monkeypatch.setattr(user_config, "state", mock_state)
+        monkeypatch.setattr(user_config, "settings", mock_settings)
 
         self_upgrade.notify_if_outdated("0.11.0")
 
@@ -186,24 +189,45 @@ class TestNotifyIfOutdated:
         assert "0.12.3" in captured.out
         assert "0.11.0" in captured.out
         assert "truss upgrade" in captured.out
+        assert "check_for_updates" in captured.out
         mock_state.mark_notified.assert_called_once_with("0.12.3")
 
     def test_no_notification_when_up_to_date(self, monkeypatch, capsys):
         mock_state = mock.Mock()
         mock_state.should_notify_upgrade.return_value = None
+        mock_settings = mock.Mock()
+        mock_settings.check_for_updates = True
 
         monkeypatch.setattr(user_config, "state", mock_state)
+        monkeypatch.setattr(user_config, "settings", mock_settings)
 
         self_upgrade.notify_if_outdated("0.12.3")
 
         captured = capsys.readouterr()
         assert captured.out == ""
 
+    def test_skips_check_when_check_for_updates_is_false(self, monkeypatch, capsys):
+        mock_state = mock.Mock()
+        mock_settings = mock.Mock()
+        mock_settings.check_for_updates = False
+
+        monkeypatch.setattr(user_config, "state", mock_state)
+        monkeypatch.setattr(user_config, "settings", mock_settings)
+
+        self_upgrade.notify_if_outdated("0.11.0")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        mock_state.should_notify_upgrade.assert_not_called()
+
     def test_raises_on_exception(self, monkeypatch):
         mock_state = mock.Mock()
         mock_state.should_notify_upgrade.side_effect = Exception("Network error")
+        mock_settings = mock.Mock()
+        mock_settings.check_for_updates = True
 
         monkeypatch.setattr(user_config, "state", mock_state)
+        monkeypatch.setattr(user_config, "settings", mock_settings)
 
         # Exception handling moved to upgrade_dialogue() in common.py
         with pytest.raises(Exception, match="Network error"):
@@ -286,6 +310,52 @@ class TestMarkNotified:
             wrapper.mark_notified("0.12.3")
 
         assert wrapper._state.notified_for_version == "0.12.3"
+
+
+class TestCheckForUpdatesSetting:
+    def test_default_value_is_true(self):
+        preferences = user_config.Preferences()
+        assert preferences.check_for_updates is True
+
+    def test_read_check_for_updates_true(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(user_config, "_get_dir", lambda: tmp_path)
+
+        settings_file = tmp_path / "settings.toml"
+        settings_file.write_text("[preferences]\ncheck_for_updates = true\n")
+
+        wrapper = user_config._SettingsWrapper.read_or_create()
+        assert wrapper.check_for_updates is True
+
+    def test_read_check_for_updates_false(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(user_config, "_get_dir", lambda: tmp_path)
+
+        settings_file = tmp_path / "settings.toml"
+        settings_file.write_text("[preferences]\ncheck_for_updates = false\n")
+
+        wrapper = user_config._SettingsWrapper.read_or_create()
+        assert wrapper.check_for_updates is False
+
+    def test_default_when_not_set_in_file(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(user_config, "_get_dir", lambda: tmp_path)
+
+        settings_file = tmp_path / "settings.toml"
+        settings_file.write_text("[preferences]\ninclude_git_info = false\n")
+
+        wrapper = user_config._SettingsWrapper.read_or_create()
+        assert wrapper.check_for_updates is True
+
+    def test_writes_default_when_file_created(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(user_config, "_get_dir", lambda: tmp_path)
+        monkeypatch.setattr(
+            user_config, "load_config", lambda: mock.Mock(sections=lambda: [])
+        )
+
+        wrapper = user_config._SettingsWrapper.read_or_create()
+
+        settings_file = tmp_path / "settings.toml"
+        content = settings_file.read_text()
+        assert "check_for_updates = true" in content
+        assert wrapper.check_for_updates is True
 
 
 class TestPyPICheckBackoff:

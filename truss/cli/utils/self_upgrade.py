@@ -79,6 +79,9 @@ def run_upgrade(target_version: Optional[str] = None) -> None:
 
 
 def notify_if_outdated(current_version: str) -> None:
+    if not user_config.settings.check_for_updates:
+        return
+
     update_info = user_config.state.should_notify_upgrade(current_version)
     if not update_info:
         return
@@ -89,4 +92,8 @@ def notify_if_outdated(current_version: str) -> None:
         f"(you are currently on {current_version})!"
     )
     console.print("▪▪▪▪ To upgrade, run: [bold cyan]truss upgrade[/bold cyan]")
+    settings_path = user_config._SettingsWrapper.path()
+    console.print(
+        f"▪▪▪▪ To disable this check, set `check_for_updates` to false in {settings_path}"
+    )
     user_config.state.mark_notified(latest)

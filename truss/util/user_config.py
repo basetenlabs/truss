@@ -60,6 +60,7 @@ def _truss_is_git_branch() -> bool:
 class Preferences(pydantic.BaseModel):
     include_git_info: bool = False
     auto_upgrade_command_template: Optional[str] = None
+    check_for_updates: bool = True
 
 
 class FeatureFlags(pydantic.BaseModel):
@@ -152,6 +153,10 @@ class _SettingsWrapper:
     def auto_upgrade_command_template(self, cmd: Optional[str]) -> None:
         self._settings.preferences.auto_upgrade_command_template = cmd
         self._write()
+
+    @property
+    def check_for_updates(self) -> bool:
+        return self._settings.preferences.check_for_updates
 
 
 _PYPI_CHECK_BACKOFF_DAYS = [1, 2, 4, 7]
