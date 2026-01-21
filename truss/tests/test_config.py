@@ -445,6 +445,54 @@ def test_from_yaml_empty():
         assert result.bundled_packages_dir == "packages"
 
 
+def test_from_yaml_duplicate_keys():
+    yaml_content = """
+description: first description
+model_name: test-model
+description: second description
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `description`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.description == "second description"
+
+
+def test_from_yaml_duplicate_nested_keys():
+    yaml_content = """
+resources:
+  cpu: "1"
+  memory: "2Gi"
+  cpu: "2"
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `cpu`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.resources.cpu == "2"
+
+
+def test_from_yaml_same_key_at_different_nesting_levels():
+    yaml_content = """
+model_name: test-model
+resources:
+  cpu: "1"
+  memory: "2Gi"
+build:
+  model_name: build-model-name
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.model_name == "test-model"
+
+
 def test_from_yaml_secrets_as_list():
     data = {"description": "this is a test", "secrets": ["foo", "bar"]}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
