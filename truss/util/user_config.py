@@ -114,7 +114,8 @@ class _SettingsWrapper:
         if cls.path().exists():
             toml_doc = tomlkit.parse(cls.path().read_text(encoding="utf-8"))
             settings = AppSettings(**toml_doc.unwrap())
-            write = False
+            preferences = toml_doc.get("preferences", {})
+            write = "check_for_updates" not in preferences
         else:
             settings = AppSettings()
             truss_rc = load_config()
