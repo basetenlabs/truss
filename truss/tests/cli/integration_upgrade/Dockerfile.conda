@@ -1,0 +1,21 @@
+FROM continuumio/miniconda3:latest
+
+WORKDIR /tests
+COPY test_in_container.py /tests/
+COPY settings_enabled.toml /tests/
+COPY settings_disabled.toml /tests/
+
+RUN conda create -n truss_test python=3.11 -y
+SHELL ["conda", "run", "-n", "truss_test", "/bin/bash", "-c"]
+
+ARG TRUSS_VERSION=0.12.6rc505
+ENV TEST_VERSION=${TRUSS_VERSION}
+
+RUN for i in 1 2 3 4 5; do \
+      pip install truss==${TRUSS_VERSION} && break; \
+      echo "Attempt $i failed, retrying in 10s..."; sleep 10; \
+    done
+
+ENV CONDA_DEFAULT_ENV=truss_test
+
+CMD ["conda", "run", "-n", "truss_test", "python", "/tests/test_in_container.py"]
