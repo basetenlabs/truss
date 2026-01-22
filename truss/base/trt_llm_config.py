@@ -287,7 +287,9 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     # number of GPUs to use for tensor parallelism
     # only for decoder models with inference_stack v1 / v2
     tensor_parallel_count: Annotated[int, Field(strict=True, ge=1)] = 1
+    # pipeline parallel count not allowed.
     pipeline_parallel_count: int = 1
+    moe_expert_parallel_option: int = -1
     sequence_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
@@ -434,6 +436,16 @@ pip install truss==0.10.8
                 )
 
             self.validate_not_external_draft()
+
+    @model_validator(mode="after")
+    def validate_moe_parallelism_valid(self):
+        if self.base_model == TrussTRTLLMModel.DECODER:
+            if self.moe_expert_parallel_option != -1:
+                if self.moe_expert_parallel_option > self.tensor_parallel_count:
+                    raise ValueError(
+                        f"moe_expert_parallel_option {self.moe_expert_parallel_option} cannot be greater than tensor_parallel_count {self.tensor_parallel_count}"
+                    )
+        return self
 
     @property
     def max_draft_len(self) -> Optional[int]:
