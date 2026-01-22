@@ -114,6 +114,57 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
 
 
 @pytest.mark.parametrize(
+    "input_dict, expect_resources, output_dict",
+    [
+        (
+            {"instance_type": "L4:8x32"},
+            Resources(instance_type="L4:8x32"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "L4:8x32",
+            },
+        ),
+        (
+            {"instance_type": "H100:8x80"},
+            Resources(instance_type="H100:8x80"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "H100:8x80",
+            },
+        ),
+        (
+            {"instance_type": "CPU:4x16"},
+            Resources(instance_type="CPU:4x16"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "CPU:4x16",
+            },
+        ),
+    ],
+)
+def test_parse_resources_with_instance_type(input_dict, expect_resources, output_dict):
+    parsed_result = Resources.model_validate(input_dict)
+    assert parsed_result == expect_resources
+    assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_instance_type_not_serialized_when_none():
+    """Test that instance_type is omitted from serialization when not set."""
+    resources = Resources()
+    result = resources.to_dict(verbose=True)
+    assert "instance_type" not in result
+
+
+@pytest.mark.parametrize(
     "cpu_spec, expected_valid",
     [
         (None, False),

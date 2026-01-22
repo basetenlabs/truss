@@ -525,6 +525,13 @@ class Resources(custom_types.ConfigModel):
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
+    instance_type: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Full SKU name for the instance type (e.g., 'L4:8x32'). "
+            "When specified, cpu, memory, and accelerator fields are ignored."
+        ),
+    )
     node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -598,10 +605,12 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` if at default."""
+        """Custom omission of `node_count` and `instance_type` if at default."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
+        if not self.instance_type:
+            result.pop("instance_type", None)
         return result
 
 

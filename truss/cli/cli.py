@@ -546,6 +546,13 @@ def push(
 
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
+
+    if tr.spec.config.resources.instance_type:
+        console.print(
+            "Field 'instance_type' specified - ignoring 'cpu', 'memory', 'accelerator', and 'use_gpu' fields.",
+            style="yellow",
+        )
+
     if (
         tr.spec.config.runtime.transport.kind == TransportKind.GRPC
         and not publish
