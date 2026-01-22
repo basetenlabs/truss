@@ -80,6 +80,24 @@ def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _has_defaulted_fields(model: pydantic.BaseModel) -> bool:
+    """
+    Check if any field in the model (or nested models) used its default value
+    rather than being explicitly provided. This is used to detect when an existing
+    settings file is missing newly-added fields, so we can write out the updated
+    defaults without requiring explicit checks for each new field we add.
+    """
+    dumped = model.model_dump()
+    if len(model.model_fields_set) < len(dumped):
+        return True
+    for field_name in model.model_fields_set:
+        value = getattr(model, field_name)
+        if isinstance(value, pydantic.BaseModel):
+            if _has_defaulted_fields(value):
+                return True
+    return False
+
+
 def _update_toml_document(doc, data: dict[str, Any]) -> None:
     """Update the values, but keep structure (esp. comments)."""
     # NOTE: this does not remove keys that are not in `data` from the toml doc.
@@ -114,8 +132,7 @@ class _SettingsWrapper:
         if cls.path().exists():
             toml_doc = tomlkit.parse(cls.path().read_text(encoding="utf-8"))
             settings = AppSettings(**toml_doc.unwrap())
-            preferences = toml_doc.get("preferences", {})
-            write = "check_for_updates" not in preferences
+            write = _has_defaulted_fields(settings)
         else:
             settings = AppSettings()
             truss_rc = load_config()

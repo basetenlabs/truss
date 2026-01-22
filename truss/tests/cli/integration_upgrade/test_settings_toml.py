@@ -180,6 +180,34 @@ def test_settings_written_to_correct_location():
     return f"Settings written to {settings_path}"
 
 
+def test_old_settings_file_gets_new_keys():
+    clear_settings()
+    settings_dir = get_settings_dir()
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    settings_path = get_settings_path()
+
+    settings_path.write_text("""[preferences]
+include_git_info = false
+""")
+
+    original_content = settings_path.read_text()
+    assert "check_for_updates" not in original_content, (
+        "Should not have check_for_updates initially"
+    )
+
+    uc = reload_user_config()
+
+    assert uc.settings.check_for_updates is True, "Default should be True in memory"
+
+    updated_content = settings_path.read_text()
+    assert "check_for_updates" in updated_content, (
+        "check_for_updates should be added to file"
+    )
+    print(f"  Updated settings.toml:\n{updated_content}")
+
+    return "Old settings file updated with new keys"
+
+
 def main():
     print("=" * 60)
     print("Settings TOML Integration Tests")
@@ -192,6 +220,7 @@ def main():
     run_test("notify_respects_false", test_notify_respects_false_setting)
     run_test("notify_works_when_enabled", test_notify_works_when_enabled)
     run_test("settings_correct_location", test_settings_written_to_correct_location)
+    run_test("old_settings_gets_new_keys", test_old_settings_file_gets_new_keys)
 
     print("=" * 60)
     passed = sum(1 for r in RESULTS if r["status"] == "pass")
