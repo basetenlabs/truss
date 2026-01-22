@@ -12,7 +12,7 @@ across different installation methods using Docker containers.
 ## Running the Tests
 
 ```bash
-cd truss/tests/cli/integration_upgrade
+cd integration_tests/self_upgrade
 ./run_tests.sh
 
 # With a specific version:
@@ -40,7 +40,7 @@ ENVIRONMENTS="uv_tool uv_venv" TRUSS_VERSION=0.12.6rc507 ./run_tests.sh
 ## Running Settings TOML Tests
 
 ```bash
-cd truss/tests/cli/integration_upgrade
+cd integration_tests/self_upgrade
 
 # Build and run settings tests (uses uv_venv environment)
 docker build --no-cache -f Dockerfile.uv --build-arg INSTALL_METHOD=venv -t truss-test-settings . && \
