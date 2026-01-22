@@ -16,10 +16,10 @@ cd truss/tests/cli/integration_upgrade
 ./run_tests.sh
 
 # With a specific version:
-TRUSS_VERSION=0.12.6rc505 ./run_tests.sh
+TRUSS_VERSION=0.12.6rc507 ./run_tests.sh
 
 # Test specific environments:
-ENVIRONMENTS="uv_tool uv_venv" TRUSS_VERSION=0.12.6rc506 ./run_tests.sh
+ENVIRONMENTS="uv_tool uv_venv" TRUSS_VERSION=0.12.6rc507 ./run_tests.sh
 ```
 
 ## What's Tested
