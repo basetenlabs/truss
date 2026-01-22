@@ -288,10 +288,9 @@ class _StateWrapper:
             reason = f"🐌 The current version '{local_version}' is outdated."
             upgrade_recommended = True
 
-        # FIXME: REMOVE BEFORE MERGING: MAKES INTEGRATION TESTS WORK FOR NOW
-        # if local_version.is_devrelease or local_version.is_prerelease:
-        #     reason = "Local version is for dev - upgrades are not applied."
-        #     upgrade_recommended = False
+        if local_version.is_devrelease or local_version.is_prerelease:
+            reason = "Local version is for dev - upgrades are not applied."
+            upgrade_recommended = False
 
         if local_version in self._state.version_info.yanked_versions:
             reason = f"🧨 The current version '{local_version}' is yanked ."
