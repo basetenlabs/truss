@@ -401,11 +401,6 @@ pip install truss==0.10.8
             )
         if (
             self.plugin_configuration.use_fp8_context_fmha
-            and not self.plugin_configuration.use_paged_context_fmha
-        ):
-            raise ValueError("Using fp8 context fmha requires paged context fmha")
-        if (
-            self.plugin_configuration.use_fp8_context_fmha
             and self.quantization_type
             not in (
                 TrussTRTLLMQuantizationType.FP8_KV,
