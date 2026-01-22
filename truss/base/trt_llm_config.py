@@ -388,8 +388,8 @@ pip install truss==0.10.8
 
             if "_kv" in self.quantization_type.value:
                 logger.warning(
-                    "Compling `encoder` does not have a kv-cache dtype is a alpha feature and may fail."
-                    f"you selected build.quantization_type {self.quantization_type}"
+                    "Compling `encoder` with a kv-cache dtype is a alpha feature. This may fail. "
+                    f"You selected build.quantization_type {self.quantization_type}"
                 )
 
     def _validate_kv_cache_flags(self):
