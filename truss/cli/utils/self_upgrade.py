@@ -2,12 +2,20 @@ import os
 import pathlib
 import subprocess
 import sys
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Optional
 
 from truss.cli.utils.output import console
 from truss.util import user_config
+
+
+@dataclass
+class InstallationInfo:
+    method: str
+    upgrade_command: str
+    version_suffix: str
 
 
 def _get_installer_info() -> Optional[tuple[str, Path]]:
@@ -20,15 +28,15 @@ def _get_installer_info() -> Optional[tuple[str, Path]]:
         return None
 
 
-def detect_installation_method() -> Optional[tuple[str, str, str]]:
+def detect_installation_method() -> Optional[InstallationInfo]:
     prefix = sys.prefix
 
     # Check for conda environment - use pip since truss isn't on conda channels
     if os.environ.get("CONDA_PREFIX") == prefix:
-        return (
-            "conda",
-            f"{sys.executable} -m pip install --upgrade truss",
-            "=={version}",
+        return InstallationInfo(
+            method="conda",
+            upgrade_command=f"{sys.executable} -m pip install --upgrade truss",
+            version_suffix="=={version}",
         )
 
     installer_info = _get_installer_info()
@@ -40,20 +48,32 @@ def detect_installation_method() -> Optional[tuple[str, str, str]]:
             if "tool" in str(dist_path).lower():
                 # uv tool upgrade doesn't work when installed with exact version pin
                 # Use uv tool install --force to reinstall/upgrade properly
-                return ("uv", "uv tool install --force truss", "@{version}")
-            return ("uv", "uv pip install --upgrade truss", "=={version}")
+                return InstallationInfo(
+                    method="uv",
+                    upgrade_command="uv tool install --force truss",
+                    version_suffix="@{version}",
+                )
+            return InstallationInfo(
+                method="uv",
+                upgrade_command="uv pip install --upgrade truss",
+                version_suffix="=={version}",
+            )
 
         # PIPX: check installer metadata or path
         if installer == "pipx" or "pipx" in str(dist_path).lower():
-            return ("pipx", "pipx upgrade truss", "=={version}")
+            return InstallationInfo(
+                method="pipx",
+                upgrade_command="pipx upgrade truss",
+                version_suffix="=={version}",
+            )
 
     # Check for venv environment...
     pyvenv_cfg = pathlib.Path(prefix) / "pyvenv.cfg"
     if pyvenv_cfg.exists():
-        return (
-            "pip",
-            f"{sys.executable} -m pip install --upgrade truss",
-            "=={version}",
+        return InstallationInfo(
+            method="pip",
+            upgrade_command=f"{sys.executable} -m pip install --upgrade truss",
+            version_suffix="=={version}",
         )
 
     # Can be: system python, homebrew python, pyenv without venv, etc.
@@ -62,9 +82,9 @@ def detect_installation_method() -> Optional[tuple[str, str, str]]:
 
 
 def run_upgrade(target_version: Optional[str] = None, interactive: bool = True) -> None:
-    result = detect_installation_method()
+    info = detect_installation_method()
 
-    if result is None:
+    if info is None:
         console.print(
             "Could not detect how truss was installed. Please upgrade manually:",
             style="yellow",
@@ -72,15 +92,13 @@ def run_upgrade(target_version: Optional[str] = None, interactive: bool = True) 
         console.print("  pip install --upgrade truss")
         sys.exit(1)
 
-    method, base_cmd, version_fmt = result
-
     # We optionally allow specifying a version to upgrade to.
     if target_version:
-        cmd = base_cmd + version_fmt.format(version=target_version)
+        cmd = info.upgrade_command + info.version_suffix.format(version=target_version)
     else:
-        cmd = base_cmd
+        cmd = info.upgrade_command
 
-    console.print(f"Detected installation method: {method}")
+    console.print(f"Detected installation method: {info.method}")
     console.print(f"Will run: {cmd}")
 
     if interactive:
@@ -110,7 +128,9 @@ def notify_if_outdated(current_version: str) -> None:
         f"▪▪▪▪ There's a new version of truss available, {latest} "
         f"(you are currently on {current_version})!"
     )
-    console.print("▪▪▪▪ To upgrade, run: [bold cyan]truss upgrade[/bold cyan]")
+    console.print(
+        "▪▪▪▪ To upgrade to the latest version, run: [bold cyan]truss upgrade[/bold cyan]"
+    )
     settings_path = user_config._SettingsWrapper.path()
     console.print(
         f"▪▪▪▪ To disable this check, set `check_for_updates` to false in {settings_path}"

@@ -59,10 +59,9 @@ class TestDetectInstallationMethod:
             assert result is None
         else:
             assert result is not None
-            method, cmd, version_fmt = result
-            assert method == expected[0]
-            assert version_fmt == expected[2]
-            assert expected[1] in cmd
+            assert result.method == expected[0]
+            assert result.version_suffix == expected[2]
+            assert expected[1] in result.upgrade_command
 
     @pytest.mark.parametrize(
         "installer,dist_path,expected_method,expected_cmd,expected_version_fmt",
@@ -119,10 +118,9 @@ class TestDetectInstallationMethod:
         result = self_upgrade.detect_installation_method()
 
         assert result is not None
-        method, cmd, version_fmt = result
-        assert method == expected_method
-        assert expected_cmd in cmd
-        assert version_fmt == expected_version_fmt
+        assert result.method == expected_method
+        assert expected_cmd in result.upgrade_command
+        assert result.version_suffix == expected_version_fmt
 
     def test_pip_installer_falls_through_to_pyvenv_check(self, tmp_path, monkeypatch):
         fake_prefix = tmp_path / "venv"
@@ -142,9 +140,8 @@ class TestDetectInstallationMethod:
         result = self_upgrade.detect_installation_method()
 
         assert result is not None
-        method, cmd, version_fmt = result
-        assert method == "pip"
-        assert "pip install --upgrade truss" in cmd
+        assert result.method == "pip"
+        assert "pip install --upgrade truss" in result.upgrade_command
 
     def test_detection_fails_when_no_indicators(self, tmp_path, monkeypatch):
         fake_prefix = tmp_path / "unknown_env"
