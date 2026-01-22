@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import (
+    AliasChoices,
     BaseModel,
     Discriminator,
     Field,
@@ -233,7 +234,8 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     served_model_name: Optional[str] = None
     # only for V2 inference stack, advanced use.
     patch_kwargs: Dict[str, Union[str, int, float, dict, list, None]] = Field(
-        default_factory=dict
+        default_factory=dict,
+        validation_alias=AliasChoices("patch_kwargs", "gated_features"),
     )
 
     @field_validator("patch_kwargs", mode="after")
@@ -385,24 +387,18 @@ pip install truss==0.10.8
             self.plugin_configuration.use_paged_context_fmha = False
 
             if "_kv" in self.quantization_type.value:
-                raise ValueError(
-                    "encoder does not have a kv-cache, therefore a kv specfic datatype is not valid"
-                    f"you selected build.quantization_type {self.quantization_type}"
+                logger.warning(
+                    "Compling `encoder` with a kv-cache dtype is a alpha feature. This may fail. "
+                    f"You selected build.quantization_type {self.quantization_type}"
                 )
 
     def _validate_kv_cache_flags(self):
         if not self.plugin_configuration.paged_kv_cache and (
             self.plugin_configuration.use_paged_context_fmha
-            or self.plugin_configuration.use_fp8_context_fmha
         ):
             raise ValueError(
-                "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
+                "Using paged context fmha requires requires paged kv cache"
             )
-        if (
-            self.plugin_configuration.use_fp8_context_fmha
-            and not self.plugin_configuration.use_paged_context_fmha
-        ):
-            raise ValueError("Using fp8 context fmha requires paged context fmha")
         if (
             self.plugin_configuration.use_fp8_context_fmha
             and self.quantization_type
@@ -584,7 +580,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # INTERNAL
     bei_image: str
     beibert_image: str = (
-        "baseten/bei_bert:1.8.4"  # once wired up in core-product, this can be removed
+        "baseten/bei_bert:1.8.5"  # once wired up in core-product, this can be removed
     )
     briton_image: str
     v2_llm_image: str
@@ -835,13 +831,6 @@ def trt_llm_common_validation(config: "TrussConfig"):
         logger.warning(
             "Weight only int8 quantization on A100 accelerators is not recommended."
         )
-    if base_model in [TrussTRTLLMModel.ENCODER_BERT]:
-        logger.warning(
-            "Using `encoder_bert` as base_model is a new feature. This means, we are still iterating and we are renaming a couple of things in the config.yaml. "
-            "While the `encoder_bert` usage is encouraged and stable (the deployed model will be very stable), "
-            "the config field names may still change in future releases, and you might need to upgrade your truss version if you encounter a issue pushing with this release of truss. "
-            "If you do, please reach out via Slack to us, and we'll help you out."
-        )
     if base_model in [
         TrussTRTLLMModel.PALMYRA,
         TrussTRTLLMModel.QWEN,
@@ -894,6 +883,8 @@ def trt_llm_common_validation(config: "TrussConfig"):
         TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.H100,
+        truss_config.Accelerator.H100_40GB,
+        truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
         truss_config.Accelerator.A100_40GB,
     ]:
