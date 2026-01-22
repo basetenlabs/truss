@@ -445,6 +445,14 @@ pip install truss==0.10.8
                     raise ValueError(
                         f"moe_expert_parallel_option {self.moe_expert_parallel_option} cannot be greater than tensor_parallel_count {self.tensor_parallel_count}"
                     )
+                if self.moe_expert_parallel_option <= 0:
+                    raise ValueError(
+                        f"moe_expert_parallel_option {self.moe_expert_parallel_option} must be positive or -1"
+                    )
+                if self.tensor_parallel_count % self.moe_expert_parallel_option != 0:
+                    logger.warning(
+                        f"tensor_parallel_count {self.tensor_parallel_count} is not divisible by moe_expert_parallel_option {self.moe_expert_parallel_option}. This may lead to suboptimal performance."
+                    )
         return self
 
     @property
@@ -977,6 +985,10 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
             f"sequence_parallel_count={trt_llm_config_v1.build.sequence_parallel_count} "
             f"== world_size->{world_size} "
             f"and accelerator.count={config.resources.accelerator.count}. "
+        )
+    if world_size not in [1, 2, 4, 8, 16, 32, 64, 128]:
+        logger.warning(
+            f"TRT-LLM world size {world_size} is unusual. Typical world sizes are powers of two, often 1 or [2,4,8]."
         )
 
     return config
