@@ -49,6 +49,5 @@ docker run --rm truss-test-settings python /tests/test_settings_toml.py
 
 ## Notes
 
-- Uses truss==0.12.6rc503 as the baseline version (first version with upgrade logic)
 - Tests both settings file configurations (check_for_updates: true/false)
 - Containers are ephemeral and cleaned up after tests

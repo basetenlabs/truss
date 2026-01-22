@@ -6,9 +6,8 @@ RUN pipx ensurepath
 ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /tests
-COPY test_in_container.py /tests/
-COPY settings_enabled.toml /tests/
-COPY settings_disabled.toml /tests/
+COPY test_harness.py test_in_container.py test_settings_toml.py /tests/
+COPY settings_enabled.toml settings_disabled.toml /tests/
 
 ARG TRUSS_VERSION=0.12.6rc505
 ENV TEST_VERSION=${TRUSS_VERSION}

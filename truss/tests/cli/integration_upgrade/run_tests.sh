@@ -112,6 +112,20 @@ main() {
         esac
     done
 
+    # Run settings TOML tests (environment-agnostic, only need to run once)
+    if [[ " $ENVIRONMENTS " == *" uv_venv "* ]]; then
+        log "=============================================="
+        log "Running settings TOML tests (using uv_venv image)"
+        log "=============================================="
+        if docker run --rm "truss-upgrade-test-uv_venv" python /tests/test_settings_toml.py; then
+            log "✅ settings_toml tests passed"
+            ((passed+=1))
+        else
+            error "settings_toml tests failed"
+            ((failed+=1))
+        fi
+    fi
+
     echo ""
     echo "=============================================="
     echo "Summary"

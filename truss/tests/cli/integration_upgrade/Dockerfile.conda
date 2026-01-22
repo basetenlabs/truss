@@ -1,9 +1,8 @@
 FROM continuumio/miniconda3:latest
 
 WORKDIR /tests
-COPY test_in_container.py /tests/
-COPY settings_enabled.toml /tests/
-COPY settings_disabled.toml /tests/
+COPY test_harness.py test_in_container.py test_settings_toml.py /tests/
+COPY settings_enabled.toml settings_disabled.toml /tests/
 
 RUN conda create -n truss_test python=3.11 -y
 SHELL ["conda", "run", "-n", "truss_test", "/bin/bash", "-c"]
