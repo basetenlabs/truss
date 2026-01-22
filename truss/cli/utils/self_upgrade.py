@@ -38,7 +38,9 @@ def detect_installation_method() -> Optional[tuple[str, str, str]]:
         # UV: check installer metadata
         if installer == "uv":
             if "tool" in str(dist_path).lower():
-                return ("uv", "uv tool upgrade truss", "=={version}")
+                # uv tool upgrade doesn't work when installed with exact version pin
+                # Use uv tool install --force to reinstall/upgrade properly
+                return ("uv", "uv tool install --force truss", "@{version}")
             return ("uv", "uv pip install --upgrade truss", "=={version}")
 
         # PIPX: check installer metadata or path

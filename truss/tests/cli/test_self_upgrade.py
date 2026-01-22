@@ -65,37 +65,48 @@ class TestDetectInstallationMethod:
             assert expected[1] in cmd
 
     @pytest.mark.parametrize(
-        "installer,dist_path,expected_method,expected_cmd",
+        "installer,dist_path,expected_method,expected_cmd,expected_version_fmt",
         [
             (
                 "uv",
                 "/home/user/.local/share/uv/tools/truss",
                 "uv",
-                "uv tool upgrade truss",
+                "uv tool install --force truss",
+                "@{version}",
             ),
             (
                 "uv",
                 "/home/user/project/.venv/lib/python3.11/site-packages",
                 "uv",
                 "uv pip install --upgrade truss",
+                "=={version}",
             ),
             (
                 "pipx",
                 "/home/user/.local/pipx/venvs/truss",
                 "pipx",
                 "pipx upgrade truss",
+                "=={version}",
             ),
             (
                 "pip",
                 "/home/user/.local/share/pipx/venvs/truss",
                 "pipx",
                 "pipx upgrade truss",
+                "=={version}",
             ),
         ],
         ids=["uv_tool", "uv_venv", "pipx_installer", "pipx_path"],
     )
     def test_detection_via_installer_metadata(
-        self, installer, dist_path, expected_method, expected_cmd, tmp_path, monkeypatch
+        self,
+        installer,
+        dist_path,
+        expected_method,
+        expected_cmd,
+        expected_version_fmt,
+        tmp_path,
+        monkeypatch,
     ):
         fake_prefix = tmp_path / "fake_prefix"
         fake_prefix.mkdir()
@@ -111,7 +122,7 @@ class TestDetectInstallationMethod:
         method, cmd, version_fmt = result
         assert method == expected_method
         assert expected_cmd in cmd
-        assert version_fmt == "=={version}"
+        assert version_fmt == expected_version_fmt
 
     def test_pip_installer_falls_through_to_pyvenv_check(self, tmp_path, monkeypatch):
         fake_prefix = tmp_path / "venv"
