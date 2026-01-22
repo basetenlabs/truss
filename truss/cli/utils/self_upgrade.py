@@ -86,10 +86,9 @@ def run_upgrade(target_version: Optional[str] = None, interactive: bool = True) 
 
     if info is None:
         console.print(
-            "Could not detect how truss was installed. Please upgrade manually:",
+            "Could not detect how truss was installed. Please upgrade manually.",
             style="yellow",
         )
-        console.print("  pip install --upgrade truss")
         sys.exit(1)
 
     # We optionally allow specifying a version to upgrade to.
