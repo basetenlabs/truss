@@ -289,8 +289,9 @@ class _StateWrapper:
             upgrade_recommended = True
 
         if local_version.is_devrelease or local_version.is_prerelease:
-            reason = "Local version is for dev - upgrades are not applied."
-            upgrade_recommended = False
+            if not os.environ.get("TRUSS_IGNORE_PRERELEASE_CHECK"):
+                reason = "Local version is for dev - upgrades are not applied."
+                upgrade_recommended = False
 
         if local_version in self._state.version_info.yanked_versions:
             reason = f"🧨 The current version '{local_version}' is yanked ."
@@ -307,6 +308,9 @@ class _StateWrapper:
         )
 
     def should_notify_upgrade(self, current_version: str) -> Optional[UpdateInfo]:
+        if not self._should_check_for_updates():
+            return None
+
         update_info = self.should_upgrade(current_version)
         if not update_info.upgrade_recommended:
             return None
