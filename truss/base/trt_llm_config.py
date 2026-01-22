@@ -387,8 +387,8 @@ pip install truss==0.10.8
             self.plugin_configuration.use_paged_context_fmha = False
 
             if "_kv" in self.quantization_type.value:
-                raise ValueError(
-                    "encoder does not have a kv-cache, therefore a kv specfic datatype is not valid"
+                logger.warning(
+                    "Compling `encoder` does not have a kv-cache dtype is a alpha feature and may fail."
                     f"you selected build.quantization_type {self.quantization_type}"
                 )
 
@@ -836,13 +836,6 @@ def trt_llm_common_validation(config: "TrussConfig"):
     ):
         logger.warning(
             "Weight only int8 quantization on A100 accelerators is not recommended."
-        )
-    if base_model in [TrussTRTLLMModel.ENCODER_BERT]:
-        logger.warning(
-            "Using `encoder_bert` as base_model is a new feature. This means, we are still iterating and we are renaming a couple of things in the config.yaml. "
-            "While the `encoder_bert` usage is encouraged and stable (the deployed model will be very stable), "
-            "the config field names may still change in future releases, and you might need to upgrade your truss version if you encounter a issue pushing with this release of truss. "
-            "If you do, please reach out via Slack to us, and we'll help you out."
         )
     if base_model in [
         TrussTRTLLMModel.PALMYRA,
