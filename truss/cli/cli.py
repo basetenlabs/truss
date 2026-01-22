@@ -549,7 +549,7 @@ def push(
 
     if tr.spec.config.resources.instance_type:
         console.print(
-            "Field 'instance_type' specified - ignoring 'cpu', 'memory', and 'accelerator' fields...",
+            "Field 'instance_type' specified - ignoring 'cpu', 'memory', 'accelerator', and 'use_gpu' fields.",
             style="yellow",
         )
 
