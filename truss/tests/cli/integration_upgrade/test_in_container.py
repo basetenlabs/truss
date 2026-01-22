@@ -44,8 +44,7 @@ def test_detect_installation_method():
     result = detect_installation_method()
     if result is None:
         return "Detection returned None (expected for some envs)"
-    method, cmd, version_fmt = result
-    return f"method={method}, cmd={cmd}"
+    return f"method={result.method}, cmd={result.upgrade_command}"
 
 
 def test_upgrade_command_format():
@@ -54,8 +53,7 @@ def test_upgrade_command_format():
     result = detect_installation_method()
     if result is None:
         raise AssertionError("Could not detect installation method")
-    method, cmd, version_fmt = result
-    test_cmd = cmd + version_fmt.format(version="1.2.3")
+    test_cmd = result.upgrade_command + result.version_suffix.format(version="1.2.3")
     assert "1.2.3" in test_cmd, f"Version not in command: {test_cmd}"
     return f"Formatted: {test_cmd}"
 
@@ -96,9 +94,8 @@ def test_upgrade_dry_run():
     result = detect_installation_method()
     if result is None:
         return "Skipped: detection returned None"
-    method, cmd, _ = result
-    print(f"  Would run: {cmd}")
-    return f"Dry run prepared for {method}"
+    print(f"  Would run: {result.upgrade_command}")
+    return f"Dry run prepared for {result.method}"
 
 
 def test_actual_upgrade():
@@ -117,10 +114,11 @@ def test_actual_upgrade():
     ).stdout.strip()
     print(f"  Version BEFORE: {before_version}")
 
-    method, cmd, _ = result
-    print(f"  Running: {cmd}")
+    print(f"  Running: {result.upgrade_command}")
     print("  " + "-" * 50)
-    proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    proc = subprocess.run(
+        result.upgrade_command, shell=True, capture_output=True, text=True
+    )
     if proc.stdout:
         for line in proc.stdout.strip().split("\n"):
             print(f"  | {line}")
