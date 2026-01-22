@@ -395,10 +395,9 @@ pip install truss==0.10.8
     def _validate_kv_cache_flags(self):
         if not self.plugin_configuration.paged_kv_cache and (
             self.plugin_configuration.use_paged_context_fmha
-            or self.plugin_configuration.use_fp8_context_fmha
         ):
             raise ValueError(
-                "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
+                "Using paged context fmha requires requires paged kv cache"
             )
         if (
             self.plugin_configuration.use_fp8_context_fmha
