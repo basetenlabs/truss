@@ -26,6 +26,7 @@ from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
 from truss.util.requirements import parse_requirement_string, raise_insufficent_revision
+from truss.util.yaml_utils import safe_load_yaml_with_no_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -831,7 +832,7 @@ class TrussConfig(custom_types.ConfigModel):
         if not os.path.isfile(path):
             raise ValueError(f"Expected a truss configuration file at {path}")
         with path.open() as f:
-            raw_data = yaml.safe_load(f) or {}
+            raw_data = safe_load_yaml_with_no_duplicates(f) or {}
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):

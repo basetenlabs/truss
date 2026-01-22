@@ -514,8 +514,10 @@ class TestResolveModelForWatch:
         )
 
         assert model["id"] == "model1"
-        # Verify get_models_for_watch was called with team_id
-        mock_api.get_models_for_watch.assert_called_once_with(team_id="team1")
+        # Verify get_models_for_watch was called with team_id and chainlets_only=False
+        mock_api.get_models_for_watch.assert_called_once_with(
+            team_id="team1", chainlets_only=False
+        )
 
     def test_provided_team_name_invalid(self):
         """Test that providing an invalid team name raises an error."""

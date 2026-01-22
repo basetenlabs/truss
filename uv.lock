@@ -3393,7 +3393,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-version = "0.12.8rc0"
+version = "0.12.9rc0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
