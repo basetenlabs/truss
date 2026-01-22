@@ -988,7 +988,7 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
         )
     if world_size not in [1, 2, 4, 8, 16, 32, 64, 128]:
         logger.warning(
-            f"TRT-LLM world size {world_size} is unusual. Typical world sizes are powers of two up to 64."
+            f"TRT-LLM world size {world_size} is unusual. Typical world sizes are powers of two, often 1 or [2,4,8]."
         )
 
     return config
