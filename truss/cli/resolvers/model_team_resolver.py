@@ -64,8 +64,17 @@ def resolve_model_for_watch(
     model_name: str,
     provided_team_name: Optional[str] = None,
     prompt: str = "👥 Multiple models with this name exist. Which team's model do you want to watch?",
+    chainlets_only: bool = False,
 ) -> tuple[dict, list]:
     """Resolve a model by name for watch, handling team disambiguation.
+
+    Args:
+        remote_provider: The Baseten remote provider.
+        model_name: The name of the model to resolve.
+        provided_team_name: Optional team name to filter by.
+        prompt: Prompt message for team selection.
+        chainlets_only: If True, query chainlet oracles (origin=CHAINS) instead of
+            regular models (origin=BASETEN). Required for chains watch.
 
     Returns tuple of (model_dict, versions_list).
     """
@@ -73,7 +82,9 @@ def resolve_model_for_watch(
 
     if provided_team_name is not None:
         team_id = _validate_provided_team(provided_team_name, existing_teams)
-        models_data = remote_provider.api.get_models_for_watch(team_id=team_id)
+        models_data = remote_provider.api.get_models_for_watch(
+            team_id=team_id, chainlets_only=chainlets_only
+        )
         matching = [
             m for m in models_data.get("models", []) if m.get("name") == model_name
         ]
@@ -84,7 +95,9 @@ def resolve_model_for_watch(
         return matching[0], matching[0].get("versions", [])
 
     matching_models = _get_matching_models(
-        model_name, existing_teams, remote_provider.api.get_models_for_watch
+        model_name,
+        existing_teams,
+        lambda: remote_provider.api.get_models_for_watch(chainlets_only=chainlets_only),
     )
 
     if not matching_models:

@@ -26,6 +26,7 @@ from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
 from truss.util.requirements import parse_requirement_string, raise_insufficent_revision
+from truss.util.yaml_utils import safe_load_yaml_with_no_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +224,7 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
 
 
 # URI prefixes for cloud storage sources
-_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://"})
+_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://"})
 # HuggingFace prefix
 _HF_PREFIX = "hf://"
 # HTTPS prefix for direct URL downloads
@@ -240,6 +241,7 @@ class WeightsSource(custom_types.ConfigModel):
     - s3:// -> AWS S3 (e.g., "s3://bucket/path")
     - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
     - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+    - r2:// -> CloudFlare R2 Storage (e.g., "r2://account_id.bucket/path")
     - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
 
     For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
@@ -248,7 +250,7 @@ class WeightsSource(custom_types.ConfigModel):
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, or https://. "
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, or https://. "
         "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
     )
     mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
@@ -523,6 +525,13 @@ class Resources(custom_types.ConfigModel):
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
+    instance_type: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Full SKU name for the instance type (e.g., 'L4:8x32'). "
+            "When specified, cpu, memory, and accelerator fields are ignored."
+        ),
+    )
     node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -596,10 +605,12 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` if at default."""
+        """Custom omission of `node_count` and `instance_type` if at default."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
+        if not self.instance_type:
+            result.pop("instance_type", None)
         return result
 
 
@@ -830,7 +841,7 @@ class TrussConfig(custom_types.ConfigModel):
         if not os.path.isfile(path):
             raise ValueError(f"Expected a truss configuration file at {path}")
         with path.open() as f:
-            raw_data = yaml.safe_load(f) or {}
+            raw_data = safe_load_yaml_with_no_duplicates(f) or {}
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
