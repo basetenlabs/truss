@@ -14,11 +14,17 @@ class TrussSpec:
     Helper class for easy access to information in a Truss.
     """
 
-    def __init__(self, truss_dir: Path) -> None:
+    def __init__(self, truss_dir: Path, config_path: Optional[Path] = None) -> None:
         self._truss_dir = truss_dir
-        self._config = truss_config.TrussConfig.from_yaml(
-            truss_dir / constants.CONFIG_FILE
-        )
+        self._config_path = self._resolve_config_path(truss_dir, config_path)
+        self._config = truss_config.TrussConfig.from_yaml(self._config_path)
+
+    @staticmethod
+    def _resolve_config_path(truss_dir: Path, config_path: Optional[Path]) -> Path:
+        """Return custom config path if provided, otherwise default to config.yaml."""
+        if config_path:
+            return config_path
+        return truss_dir / constants.CONFIG_FILE
 
     @property
     def truss_dir(self) -> Path:
@@ -26,7 +32,7 @@ class TrussSpec:
 
     @property
     def config_path(self) -> Path:
-        return self._truss_dir / constants.CONFIG_FILE
+        return self._config_path
 
     @property
     def data_dir(self) -> Path:
