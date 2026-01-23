@@ -19,7 +19,6 @@ from rich.markup import escape
 import truss
 from truss.cli.utils import self_upgrade
 from truss.cli.utils.output import console
-from truss.util import user_config
 
 logger = logging.getLogger(__name__)
 
@@ -146,13 +145,10 @@ def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
 
 
 def upgrade_dialogue():
-    ctx = click.get_current_context()
-    if (
-        not get_required_option(ctx, "non_interactive")
-        and check_is_interactive()
-        and user_config.settings.enable_auto_upgrade
-    ):
-        self_upgrade.upgrade_dialogue(truss.__version__)
+    try:
+        self_upgrade.notify_if_outdated(truss.__version__)
+    except Exception as e:
+        logger.debug(f"Upgrade check failed: {e}")
 
 
 def common_options(

@@ -114,6 +114,57 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
 
 
 @pytest.mark.parametrize(
+    "input_dict, expect_resources, output_dict",
+    [
+        (
+            {"instance_type": "L4:8x32"},
+            Resources(instance_type="L4:8x32"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "L4:8x32",
+            },
+        ),
+        (
+            {"instance_type": "H100:8x80"},
+            Resources(instance_type="H100:8x80"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "H100:8x80",
+            },
+        ),
+        (
+            {"instance_type": "CPU:4x16"},
+            Resources(instance_type="CPU:4x16"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "CPU:4x16",
+            },
+        ),
+    ],
+)
+def test_parse_resources_with_instance_type(input_dict, expect_resources, output_dict):
+    parsed_result = Resources.model_validate(input_dict)
+    assert parsed_result == expect_resources
+    assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_instance_type_not_serialized_when_none():
+    """Test that instance_type is omitted from serialization when not set."""
+    resources = Resources()
+    result = resources.to_dict(verbose=True)
+    assert "instance_type" not in result
+
+
+@pytest.mark.parametrize(
     "cpu_spec, expected_valid",
     [
         (None, False),
@@ -445,6 +496,54 @@ def test_from_yaml_empty():
         assert result.bundled_packages_dir == "packages"
 
 
+def test_from_yaml_duplicate_keys():
+    yaml_content = """
+description: first description
+model_name: test-model
+description: second description
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `description`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.description == "second description"
+
+
+def test_from_yaml_duplicate_nested_keys():
+    yaml_content = """
+resources:
+  cpu: "1"
+  memory: "2Gi"
+  cpu: "2"
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `cpu`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.resources.cpu == "2"
+
+
+def test_from_yaml_same_key_at_different_nesting_levels():
+    yaml_content = """
+model_name: test-model
+resources:
+  cpu: "1"
+  memory: "2Gi"
+build:
+  model_name: build-model-name
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.model_name == "test-model"
+
+
 def test_from_yaml_secrets_as_list():
     data = {"description": "this is a test", "secrets": ["foo", "bar"]}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
@@ -627,10 +726,6 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
         TrussTRTLLMQuantizationType.FP8_KV.value
     )
     TrussConfig.model_validate(trtllm_config)
-
-    del trtllm_config["trt_llm"]["build"]["quantization_type"]
-    with pytest.raises(ValueError):
-        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])

@@ -3,7 +3,7 @@
 import asyncio
 import random
 
-from baseten_performance_client import PerformanceClient
+from baseten_performance_client import PerformanceClient, RequestProcessingPreference
 
 client = PerformanceClient(
     base_url="https://model-7wl2op73.api.baseten.co/environments/production/sync"
@@ -12,9 +12,10 @@ client = PerformanceClient(
 
 async def benchmark_every(
     interval=0.50,  # 1/0.5 * 60 = 120 requests per minute
-    tokens_per_sentence=[500, 1000],
+    query_size=10,
+    tokens_per_document=[500, 1000],
     max_concurrent_requests_per_user=100,
-    sentences_per_request=100,
+    documents_per_query=100,
     n_requests=10000,
     n_users=1,
     lb_split=256,
@@ -22,17 +23,21 @@ async def benchmark_every(
     async def kick_off_task():
         """kicks of a single task to measure latency."""
         try:
-            result = await client.async_classify(
-                inputs=[
-                    "Hello "  # "Hello " is one token if concatinated with more text
-                    * random.randint(tokens_per_sentence[0], tokens_per_sentence[1])
-                ]
-                * sentences_per_request,
+            preference = RequestProcessingPreference(
                 max_concurrent_requests=max_concurrent_requests_per_user,
                 batch_size=16,
-                # splits in smaller chunks to pack large requests more sparseley
+                # splits in smaller chunks to pack large requests more sparsely
                 max_chars_per_request=5000,
                 # hedge_delay=0.5,
+            )
+            result = await client.async_rerank(
+                query="Hello" * query_size,
+                texts=[
+                    "Hello "  # "Hello " is one token if concatenated with more text
+                    * random.randint(tokens_per_document[0], tokens_per_document[1])
+                ]
+                * documents_per_query,
+                preference=preference,
             )
             total_time = result.total_time
             individual_times = result.individual_request_times
