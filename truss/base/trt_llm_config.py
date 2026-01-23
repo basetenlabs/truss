@@ -101,7 +101,7 @@ class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
     # strongly recommend to always have on. Do not set to false.
     use_paged_context_fmha: bool = True
     # recommend to have one when using fp8 quantization of kv cache
-    # AUTO-ENABLED: Has no effect. 
+    # AUTO-ENABLED: Has no effect.
     use_fp8_context_fmha: bool = False
 
 
@@ -590,7 +590,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # INTERNAL
     bei_image: str
     beibert_image: str = (
-        "baseten/bei_bert:1.8.5"  # once wired up in core-product, this can be removed
+        "baseten/bei_bert:1.8.6"  # once wired up in core-product, this can be removed
     )
     briton_image: str
     v2_llm_image: str
