@@ -1,5 +1,7 @@
 #!/usr/bin/env python
+import datetime
 import io
+import json
 import pathlib
 import shutil
 import sys
@@ -9,6 +11,7 @@ from test_harness import run_tests_and_exit
 
 SETTINGS_DIR = pathlib.Path.home() / ".config" / "truss"
 SETTINGS_PATH = SETTINGS_DIR / "settings.toml"
+STATE_PATH = SETTINGS_DIR / "state.json"
 
 
 def clear_settings():
@@ -123,6 +126,43 @@ def test_old_settings_file_gets_new_keys():
     return "Old settings file updated with new keys"
 
 
+def write_state(state_dict: dict):
+    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_PATH.write_text(json.dumps(state_dict))
+
+
+def test_notification_shows_only_once_per_day():
+    write_settings("[preferences]\ncheck_for_updates = true\n")
+
+    old_time = (datetime.datetime.now() - datetime.timedelta(days=2)).isoformat()
+    state = {
+        "version_info": {
+            "latest_version": "99.0.0",
+            "yanked_versions": [],
+            "last_check": old_time,
+        }
+    }
+    write_state(state)
+
+    uc = reload_user_config()
+
+    result1 = uc.state.should_notify_upgrade("0.1.0")
+    assert result1 is not None, "First call should return notification info"
+    print(f"  First call returned: {result1}")
+
+    state_after_first = json.loads(STATE_PATH.read_text())
+    last_check = state_after_first["version_info"]["last_check"]
+    print(f"  last_check after first call: {last_check}")
+
+    uc = reload_user_config()
+
+    result2 = uc.state.should_notify_upgrade("0.1.0")
+    assert result2 is None, f"Second call should return None, got: {result2}"
+    print("  Second call returned None (as expected)")
+
+    return "Notification correctly shows only once per day"
+
+
 if __name__ == "__main__":
     print(f"Settings path: {SETTINGS_PATH}")
 
@@ -136,5 +176,6 @@ if __name__ == "__main__":
             ("notify_works_when_enabled", test_notify_works_when_enabled),
             ("settings_correct_location", test_settings_written_to_correct_location),
             ("old_settings_gets_new_keys", test_old_settings_file_gets_new_keys),
+            ("notification_once_per_day", test_notification_shows_only_once_per_day),
         ],
     )
