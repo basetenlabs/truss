@@ -248,6 +248,7 @@ class ComputeSpec(pydantic.BaseModel):
     predict_concurrency: int = 1
     memory: str = "2Gi"
     accelerator: truss_config.AcceleratorSpec = truss_config.AcceleratorSpec()
+    instance_type: Optional[str] = None
 
 
 class Compute:
@@ -272,6 +273,7 @@ class Compute:
         gpu: Union[str, truss_config.Accelerator, None] = None,
         gpu_count: int = 1,
         predict_concurrency: Union[int, CpuCountT] = 1,
+        instance_type: Optional[str] = None,
     ) -> None:
         """
         Args:
@@ -283,6 +285,8 @@ class Compute:
             gpu_count: Number of GPUs to allocate.
             predict_concurrency: Number of concurrent requests a single replica of a
               deployed chainlet handles.
+            instance_type: Optional instance type to use. When specified, this will
+              override the cpu count, memory, and gpu settings in the backend.
 
         Concurrency concepts are explained in `this guide <https://docs.baseten.co/deploy/guides/concurrency#predict-concurrency>`_. # noqa: E501
         It is important to understand the difference between `predict_concurrency` and
@@ -314,6 +318,7 @@ class Compute:
             memory=memory,
             accelerator=accelerator,
             predict_concurrency=predict_concurrency_int,
+            instance_type=instance_type,
         )
 
     def get_spec(self) -> ComputeSpec:

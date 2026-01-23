@@ -718,7 +718,16 @@ def _gen_truss_config(
     config.resources.cpu = str(compute.cpu_count)
     config.resources.memory = str(compute.memory)
     config.resources.accelerator = compute.accelerator
+    config.resources.instance_type = compute.instance_type
     config.runtime.predict_concurrency = compute.predict_concurrency
+
+    # Warn if `instance_type` is specified.
+    if compute.instance_type:
+        logging.warning(
+            f"Chainlet '{chainlet_descriptor.display_name}' is using instance_type='{compute.instance_type}'. "
+            "This will override cpu count, memory, and gpu settings."
+        )
+
     if chainlet_descriptor.endpoint.is_websocket:
         if transport := remote_config.options.transport:
             assert isinstance(transport, truss_config.WebsocketOptions), transport
