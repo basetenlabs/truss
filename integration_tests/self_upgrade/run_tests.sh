@@ -11,7 +11,7 @@ NC='\033[0m'
 
 SKIP_ACTUAL_UPGRADE=${SKIP_ACTUAL_UPGRADE:-0}
 ENVIRONMENTS=${ENVIRONMENTS:-"uv_tool uv_venv pipx conda"}
-TRUSS_VERSION=${TRUSS_VERSION:-"0.12.8rc500"}
+TRUSS_VERSION=${TRUSS_VERSION:-"0.12.8rc501"}
 
 log() {
     echo -e "${GREEN}[TEST]${NC} $1"
@@ -53,7 +53,6 @@ run_env_test() {
     log "Running tests..."
     docker run --rm \
         -e SKIP_ACTUAL_UPGRADE="$SKIP_ACTUAL_UPGRADE" \
-        -e TRUSS_IGNORE_PRERELEASE_CHECK=1 \
         --name truss-upgrade-test \
         "truss-upgrade-test-$env_name" || {
         error "Tests failed for $env_name"
@@ -118,7 +117,7 @@ main() {
         log "=============================================="
         log "Running settings TOML tests (using uv_venv image)"
         log "=============================================="
-        if docker run --rm -e TRUSS_IGNORE_PRERELEASE_CHECK=1 "truss-upgrade-test-uv_venv" python /tests/test_settings_toml.py; then
+        if docker run --rm "truss-upgrade-test-uv_venv" python /tests/test_settings_toml.py; then
             log "✅ settings_toml tests passed"
             ((passed+=1))
         else
