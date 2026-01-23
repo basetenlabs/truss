@@ -727,10 +727,6 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
     )
     TrussConfig.model_validate(trtllm_config)
 
-    del trtllm_config["trt_llm"]["build"]["quantization_type"]
-    with pytest.raises(ValueError):
-        TrussConfig.model_validate(trtllm_config)
-
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
 def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):

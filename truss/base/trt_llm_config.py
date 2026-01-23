@@ -96,11 +96,12 @@ class TrussTRTLLMQuantizationType(str, Enum):
 
 
 class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
-    # strongly recommend to always have on
+    # strongly recommend to always have on. Do not set to false.
     paged_kv_cache: bool = True
-    # strongly recommend to always have on
+    # strongly recommend to always have on. Do not set to false.
     use_paged_context_fmha: bool = True
-    #  recommend to have one when using fp8 quantization of kv cache
+    # recommend to have one when using fp8 quantization of kv cache
+    # AUTO-ENABLED: Has no effect.
     use_fp8_context_fmha: bool = False
 
 
@@ -117,7 +118,7 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
 
     calib_size: int = 1024
     calib_dataset: str = "cnn_dailymail"
-    calib_max_seq_length: int = 2048
+    calib_max_seq_length: int = 1536
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -401,17 +402,6 @@ pip install truss==0.10.8
             raise ValueError(
                 "Using paged context fmha requires requires paged kv cache"
             )
-        if (
-            self.plugin_configuration.use_fp8_context_fmha
-            and self.quantization_type
-            not in (
-                TrussTRTLLMQuantizationType.FP8_KV,
-                TrussTRTLLMQuantizationType.FP4_KV,
-            )
-        ):
-            raise ValueError(
-                "Using fp8 context fmha requires fp8 kv, or fp4 with kv cache dtype"
-            )
 
         return self
 
@@ -600,7 +590,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # INTERNAL
     bei_image: str
     beibert_image: str = (
-        "baseten/bei_bert:1.8.5"  # once wired up in core-product, this can be removed
+        "baseten/bei_bert:1.8.6"  # once wired up in core-product, this can be removed
     )
     briton_image: str
     v2_llm_image: str
