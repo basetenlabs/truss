@@ -332,7 +332,7 @@ class TestShouldNotifyUpgrade:
     def test_returns_update_info_when_outdated(self, tmp_path):
         state = user_config.State(
             version_info=user_config.VersionInfo(
-                latest_version="0.12.3", last_check=datetime.datetime.now()
+                latest_version="0.12.3", last_check=datetime.datetime.min
             )
         )
         wrapper = user_config._StateWrapper(state)
