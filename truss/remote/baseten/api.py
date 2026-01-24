@@ -500,12 +500,6 @@ class BasetenApi:
                     id
                     name
                 }}
-                versions{{
-                    id,
-                    semver,
-                    current_deployment_status,
-                    is_primary,
-                }}
             }}
         }}
         """
