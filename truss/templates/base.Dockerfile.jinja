@@ -77,7 +77,7 @@ RUN {{ python_exec_path }} -c "import sys; \
 
 {% block install_curl %}
 {# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}
-RUN command -v curl >/dev/null 2>&1 || (apt-get update && apt-get install -y curl)
+RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
 {% endblock %}
 
 {% block install_uv %}
