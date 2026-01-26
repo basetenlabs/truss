@@ -427,6 +427,16 @@ def run_python(script, target_directory):
     ),
 )
 @click.option(
+    "--watch",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a development deployment with hot reload support. "
+        "Development models allow you to iterate quickly during the deployment process."
+    ),
+)
+@click.option(
     "--promote",
     is_flag=True,
     required=False,
@@ -546,6 +556,7 @@ def push(
     include_git_info: bool = False,
     tail: bool = False,
     preserve_env_instance_type: bool = True,
+    watch: bool = False,
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
 ) -> None:
@@ -555,6 +566,28 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+    # Handle the new logic: --watch creates development deployment, default is published
+    if watch and publish:
+        raise click.UsageError(
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
+        )
+
+    if watch and promote:
+        raise click.UsageError(
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
+        )
+
+    # Determine the deployment type based on flags
+    if watch:
+        # --watch explicitly creates development deployment
+        publish = False
+    elif publish or promote:
+        # --publish or --promote explicitly creates published deployment
+        publish = True
+    else:
+        # Default behavior: create published deployment
+        publish = True
+
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     if tr.spec.config.resources.instance_type:
@@ -569,7 +602,7 @@ def push(
         and not promote
     ):
         raise click.UsageError(
-            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command with --publish or --promote."
+            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command without --watch, or with --promote."
         )
 
     if not remote:
@@ -691,9 +724,9 @@ def push(
 | Your model is deploying as a development model. Development models allow you to       |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
+| To monitor changes to your model and rapidly iterate, run the 'truss watch' command.|
 | When you are ready to publish your deployed model as a new deployment,                |
-| pass '--publish' to the 'truss push' command. To monitor changes to your model and    |
-| rapidly iterate, run the 'truss watch' command.                                       |
+| run 'truss push' without the --watch flag.                                           |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """

@@ -65,6 +65,7 @@ def push(
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
     preserve_env_instance_type: bool = True,
+    watch: bool = False,
     deploy_timeout_minutes: Optional[int] = None,
 ) -> definitions.ModelDeployment:
     """
@@ -93,11 +94,47 @@ def push(
         preserve_env_instance_type: When pushing a truss to an environment, whether to use the resources
           specified in the truss config to resolve the instance type or preserve the instance type
           configured in the specified environment.
+        watch: Push the truss as a development deployment with hot reload support.
+          Development models allow you to iterate quickly during the deployment process.
         deploy_timeout_minutes: Optional timeout in minutes for the deployment operation.
 
     Returns:
         The newly created ModelDeployment.
     """
+    # Handle the new logic: --watch creates development deployment, default is published
+    if watch and publish:
+        raise ValueError(
+            "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
+        )
+
+    if watch and promote:
+        raise ValueError(
+            "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
+        )
+
+    # Determine the deployment type based on flags
+    if watch and publish:
+        raise ValueError(
+            "Cannot use `--publish` and `--watch` at the same time. Please use either a development or published model."
+        )
+    elif publish:
+        pass  # --publish explicitly creates published deployment
+    elif promote:
+        if not publish:
+            publish = True
+            warnings.warn(
+                "`promote` flag requires `publish` to be true. Setting `publish` to true."
+            )
+    else:
+        # Using neither flag will use a watch deployment but issue a warning
+        warnings.warn(
+            "Please either specify `--publish` (truss push --publish) or "
+            " `--watch` (`truss push --watch`, Development mode with 1 replica and hot-reloading)."
+            " Defaulting to `--watch` behaviour, this will be changed to `--publish` in future releases (0.13+). "
+            " Please start adding a `--publish` flag to your push commands or use `--watch` for development deployments.",
+            DeprecationWarning,
+        )
+        watch = True
     if trusted is not None:
         warnings.warn(
             "`trusted` is deprecated and will be ignored, all models are "
