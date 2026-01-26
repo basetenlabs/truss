@@ -1,6 +1,5 @@
 # Rust build artifacts
 target/
-Cargo.lock
 **/*.rs.bk
 
 # Node modules (if any)

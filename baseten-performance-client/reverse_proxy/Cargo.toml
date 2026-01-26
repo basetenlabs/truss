@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 baseten_performance_client_core = { path = "../core" }
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros"] }
+reqwest = { version = "0.12.26", default-features = false, features = ["rustls-tls", "json"] }
 axum = { version = "0.7", features = ["http2", "tokio"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
@@ -25,7 +26,7 @@ tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { version = "4.0", features = ["derive"] }
-time = { version = "0.3", features = ["formatting", "macros"] }
+time = { version = "0.3.35", features = ["formatting", "macros"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
