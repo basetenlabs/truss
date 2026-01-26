@@ -124,10 +124,15 @@ def push(
         # --publish or --promote explicitly creates published deployment
         publish = True
     else:
-        # Default behavior: create published deployment
-        raise ValueError(
-            "Please either specify `--publish` and `--watch` (Development mode with hot-reloading)."
+        # Using neither flag will use a watch deployment but issue a warning
+        warnings.warn(
+            "Please either specify `--publish` (truss push --publish) or "
+            " `--watch` (`truss push --watch`, Development mode with 1 replica and hot-reloading)."
+            " Defaulting to `--watch` behaviour, this will be changed in future releases. Please start adding a `--publish` flag to your push commands.",
+            DeprecationWarning,
         )
+        watch = True
+        publish = True
     if trusted is not None:
         warnings.warn(
             "`trusted` is deprecated and will be ignored, all models are "
