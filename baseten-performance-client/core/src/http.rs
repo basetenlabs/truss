@@ -1,4 +1,62 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Type alias for HTTP response headers
+pub type HeaderMap = HashMap<String, String>;
+
+/// HTTP methods supported by the batch client
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HttpMethod {
+    #[default]
+    POST,
+    PUT,
+    PATCH,
+    DELETE,
+    GET,
+    HEAD,
+    OPTIONS,
+}
+
+impl From<HttpMethod> for reqwest::Method {
+    fn from(method: HttpMethod) -> Self {
+        match method {
+            HttpMethod::POST => reqwest::Method::POST,
+            HttpMethod::PUT => reqwest::Method::PUT,
+            HttpMethod::PATCH => reqwest::Method::PATCH,
+            HttpMethod::DELETE => reqwest::Method::DELETE,
+            HttpMethod::GET => reqwest::Method::GET,
+            HttpMethod::HEAD => reqwest::Method::HEAD,
+            HttpMethod::OPTIONS => reqwest::Method::OPTIONS,
+        }
+    }
+}
+
+impl HttpMethod {
+    /// Parse a string into an HttpMethod, defaulting to POST for None or empty strings
+    pub fn from_str(method: Option<&str>) -> Result<Self, String> {
+        match method {
+            Some("GET") => Ok(HttpMethod::GET),
+            Some("PUT") => Ok(HttpMethod::PUT),
+            Some("PATCH") => Ok(HttpMethod::PATCH),
+            Some("DELETE") => Ok(HttpMethod::DELETE),
+            Some("HEAD") => Ok(HttpMethod::HEAD),
+            Some("OPTIONS") => Ok(HttpMethod::OPTIONS),
+            Some("POST") | None => Ok(HttpMethod::POST),
+            Some(invalid) => Err(format!(
+                "Invalid HTTP method '{}'. Supported methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS",
+                invalid
+            )),
+        }
+    }
+
+    /// Returns true if this HTTP method typically has a request body
+    pub fn has_body(&self) -> bool {
+        match self { // pattern helps when extending in future
+            HttpMethod::POST | HttpMethod::PUT | HttpMethod::PATCH => true,
+            HttpMethod::GET | HttpMethod::DELETE | HttpMethod::HEAD | HttpMethod::OPTIONS => false,
+        }
+    }
+}
 
 // Default functions for serde
 fn default_total_time() -> f64 {
@@ -9,7 +67,7 @@ fn default_individual_request_times() -> Vec<f64> {
     Vec::new()
 }
 
-fn default_response_headers() -> Vec<std::collections::HashMap<String, String>> {
+fn default_response_headers() -> Vec<HeaderMap> {
     Vec::new()
 }
 
@@ -58,13 +116,15 @@ pub struct CoreOpenAIEmbeddingsResponse {
     #[serde(default = "default_individual_request_times")]
     pub individual_request_times: Vec<f64>,
     #[serde(default = "default_response_headers")]
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }
 
 // --- Core Rerank Structures ---
 #[derive(Serialize, Debug)]
 pub struct CoreRerankRequest {
     pub query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     pub raw_scores: bool,
     pub return_text: bool,
     pub texts: Vec<String>,
@@ -88,7 +148,7 @@ pub struct CoreRerankResponse {
     #[serde(default = "default_individual_request_times")]
     pub individual_request_times: Vec<f64>,
     #[serde(default = "default_response_headers")]
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }
 
 impl CoreRerankResponse {
@@ -111,6 +171,8 @@ impl CoreRerankResponse {
 #[derive(Serialize, Debug)]
 pub struct CoreClassifyRequest {
     pub inputs: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     pub raw_scores: bool,
     pub truncate: bool,
     pub truncation_direction: String,
@@ -131,7 +193,7 @@ pub struct CoreClassificationResponse {
     #[serde(default = "default_individual_request_times")]
     pub individual_request_times: Vec<f64>,
     #[serde(default = "default_response_headers")]
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }
 
 impl CoreClassificationResponse {
@@ -155,5 +217,5 @@ pub struct CoreBatchPostResponse {
     pub data: Vec<serde_json::Value>,
     pub total_time: f64,
     pub individual_request_times: Vec<f64>,
-    pub response_headers: Vec<std::collections::HashMap<String, String>>,
+    pub response_headers: Vec<HeaderMap>,
 }

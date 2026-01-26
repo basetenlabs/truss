@@ -259,7 +259,10 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
                     let current_size = match fs::metadata(&monitor_path).await {
                         Ok(metadata) => metadata.len(),
                         Err(e) => {
-                            warn!("Failed to read metadata for {:?}: {}", monitor_path, e);
+                            warn!(
+                                "Issue monitoring the copy: read metadata for {:?} failed: {}",
+                                monitor_path, e
+                            );
                             continue;
                         }
                     };
@@ -337,13 +340,28 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         "Atomic rename: renaming incomplete cache file {:?} to final cache file {:?}",
         incomplete_cache_path, cache_path
     );
-    fs::rename(&incomplete_cache_path, cache_path)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to atomically rename incomplete cache file {incomplete_cache_path:?} to final cache file {cache_path:?}"
-            )
-        })?;
+    // Try atomic rename first, fall back to copy+delete if rename fails
+    match fs::rename(&incomplete_cache_path, cache_path).await {
+        Ok(()) => {
+            // Atomic rename succeeded
+        }
+        Err(rename_err) => {
+            // Rename failed, try copy + delete as fallback
+            if let Err(copy_err) = fs::copy(&incomplete_cache_path, cache_path).await {
+                return Err(anyhow::Error::new(copy_err).context(format!(
+                    "Failed to rename {incomplete_cache_path:?} to {cache_path:?} (rename error: {rename_err}) and copy fallback also failed"
+                )));
+            }
+
+            // Copy succeeded, now remove the incomplete file
+            if let Err(remove_err) = fs::remove_file(&incomplete_cache_path).await {
+                // Log warning but don't fail - the cache file was successfully created
+                warn!(
+                    "Failed to remove incomplete cache file {incomplete_cache_path:?} after copy: {remove_err}"
+                );
+            }
+        }
+    }
 
     // Delete the local file as its copy is now in the cache.
     info!("Deleting local file at {:?}", download_path);

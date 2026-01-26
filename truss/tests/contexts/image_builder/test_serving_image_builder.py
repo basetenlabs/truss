@@ -9,12 +9,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from truss.base.constants import (
-    TRTLLM_BASE_IMAGE,
-    TRTLLM_PREDICT_CONCURRENCY,
-    TRTLLM_PYTHON_EXECUTABLE,
-    TRTLLM_TRUSS_DIR,
-)
+from truss.base.constants import TRTLLM_PREDICT_CONCURRENCY, TRTLLM_TRUSS_DIR
 from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
@@ -100,7 +95,8 @@ def flatten_cached_files(local_cache_files):
 def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -137,7 +133,8 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -172,7 +169,8 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -207,7 +205,8 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -246,7 +245,8 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id=model)])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id=model, use_volume=False)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -466,7 +466,7 @@ def test_model_cache_dockerfile_v2(test_data_path):
             print(gen_docker_file)
             assert "truss-transfer" in gen_docker_file
             assert (
-                "COPY --chown= ./bptr-manifest /static-bptr/static-bptr-manifest.json"
+                "COPY --chown=root:root ./bptr-manifest /static-bptr/static-bptr-manifest.json"
                 in gen_docker_file
             ), "bptr-manifest copy not found in Dockerfile"
             assert "cache_warmer.py" not in gen_docker_file
@@ -511,11 +511,6 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         assert (
             build_th.spec.config.runtime.predict_concurrency
             == TRTLLM_PREDICT_CONCURRENCY
-        )
-        assert build_th.spec.config.base_image.image == TRTLLM_BASE_IMAGE
-        assert (
-            build_th.spec.config.base_image.python_executable_path
-            == TRTLLM_PYTHON_EXECUTABLE
         )
 
 
@@ -562,3 +557,230 @@ def test_hash_dir_sanitization(custom_model_truss_dir):
         image_builder.prepare_image_build_dir(tmp_path)
         truss_config = TrussConfig.from_yaml(tmp_path / "build_hash" / "config.yaml")
         assert truss_config.environment_variables == {}
+
+
+class TestDockerServerSupervisordConfig:
+    """Tests for supervisord.conf generation with various start_command patterns.
+
+    Uses configparser which properly handles multiline values by indenting
+    continuation lines, which supervisord's INI parser interprets correctly.
+    """
+
+    @pytest.mark.parametrize(
+        "test_id,start_command",
+        [
+            # Simple single-line commands
+            ("simple", "python main.py"),
+            ("with_args", "python -u main.py --port 8000"),
+            ("sh_wrapper", 'sh -c "vllm serve model --port 8000"'),
+            # Single-line with special characters
+            ("env_var_inline", "HF_TOKEN=secret python main.py"),
+            ("pipe", "echo hello | tee /tmp/log"),
+            ("redirect", "python main.py > /tmp/out 2>&1"),
+            ("subshell", 'sh -c "echo $(date) starting"'),
+            ("command_chain_and", "cd /app && python main.py"),
+            ("command_chain_or", "python main.py || echo failed"),
+            ("semicolon_chain", "export FOO=bar; python main.py"),
+        ],
+    )
+    def test_single_line_commands(self, tmp_path, test_id, start_command):
+        """Test various single-line start_command patterns."""
+        import configparser
+
+        from truss.contexts.image_builder.serving_image_builder import (
+            generate_docker_server_supervisord_config,
+        )
+
+        class MockDockerServer:
+            pass
+
+        MockDockerServer.start_command = start_command
+
+        class MockConfig:
+            docker_server = MockDockerServer()
+
+        generate_docker_server_supervisord_config(tmp_path, MockConfig())
+
+        cfg = configparser.RawConfigParser()
+        cfg.read(tmp_path / "supervisord.conf")
+
+        command = cfg.get("program:model-server", "command")
+        assert command == start_command, f"Command mismatch for {test_id}"
+
+    @pytest.mark.parametrize(
+        "test_id,start_command,expected_substrings",
+        [
+            # Environment variable exports
+            (
+                "env_exports",
+                """sh -c "
+export HF_TOKEN=$(cat /secrets/hf_access_token)
+export CUDA_VISIBLE_DEVICES=0
+vllm serve model --port 8000
+"
+""",
+                ["export HF_TOKEN", "export CUDA_VISIBLE_DEVICES", "vllm serve"],
+            ),
+            # If/then/else conditional
+            (
+                "if_then_else",
+                """sh -c "
+if [ -f /config/custom.yaml ]; then
+    python main.py --config /config/custom.yaml
+else
+    python main.py --config /defaults.yaml
+fi
+"
+""",
+                ["if [", "then", "else", "fi"],
+            ),
+            # For loop
+            (
+                "for_loop",
+                """sh -c "
+for i in 1 2 3; do
+    echo 'Attempt $i'
+    python main.py && break
+    sleep 5
+done
+"
+""",
+                ["for i in", "do", "done", "sleep"],
+            ),
+            # While loop with retry logic
+            (
+                "while_retry",
+                """sh -c "
+while ! curl -s localhost:8080/health; do
+    echo 'Waiting for service...'
+    sleep 2
+done
+python main.py
+"
+""",
+                ["while", "curl", "sleep", "done"],
+            ),
+            # Function definition
+            (
+                "function_def",
+                """sh -c "
+setup() {
+    export PATH=/opt/bin:$PATH
+    export LD_LIBRARY_PATH=/opt/lib
+}
+setup
+python main.py
+"
+""",
+                ["setup()", "export PATH", "setup\n"],
+            ),
+            # Here-string (simple form)
+            (
+                "here_string",
+                """sh -c "
+cat > /tmp/config.json << 'EOF'
+{\"model\": \"llama\", \"port\": 8000}
+EOF
+python main.py
+"
+""",
+                ["cat >", "EOF", '{"model"'],
+            ),
+            # Trap for signal handling
+            (
+                "trap_signals",
+                """sh -c "
+trap 'echo Caught signal; exit 1' SIGTERM SIGINT
+python main.py &
+wait
+"
+""",
+                ["trap", "SIGTERM", "wait"],
+            ),
+            # Complex real-world vLLM example
+            (
+                "vllm_full",
+                """sh -c "
+export HF_TOKEN=$(cat /secrets/hf_access_token)
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+# Wait for GPU to be ready
+sleep 5
+
+vllm serve meta-llama/Meta-Llama-3.1-70B-Instruct \\
+    --port 8000 \\
+    --tensor-parallel-size 4 \\
+    --max-model-len 8192
+"
+""",
+                ["export HF_TOKEN", "CUDA_VISIBLE_DEVICES", "tensor-parallel-size"],
+            ),
+            # Case statement
+            (
+                "case_statement",
+                """sh -c "
+case $MODEL_SIZE in
+    small) python main.py --size 7b ;;
+    medium) python main.py --size 13b ;;
+    large) python main.py --size 70b ;;
+    *) echo 'Unknown size'; exit 1 ;;
+esac
+"
+""",
+                ["case", "small)", "esac"],
+            ),
+            # Arithmetic and test expressions
+            (
+                "arithmetic",
+                """sh -c "
+GPU_COUNT=$(nvidia-smi -L | wc -l)
+if [ $GPU_COUNT -ge 4 ]; then
+    PARALLEL=4
+else
+    PARALLEL=$GPU_COUNT
+fi
+python main.py --gpus $PARALLEL
+"
+""",
+                ["GPU_COUNT=", "nvidia-smi", "-ge 4"],
+            ),
+        ],
+    )
+    def test_multiline_commands(
+        self, tmp_path, test_id, start_command, expected_substrings
+    ):
+        """Test various multiline start_command patterns with shell constructs."""
+        import configparser
+
+        from truss.contexts.image_builder.serving_image_builder import (
+            generate_docker_server_supervisord_config,
+        )
+
+        class MockDockerServer:
+            pass
+
+        MockDockerServer.start_command = start_command
+
+        class MockConfig:
+            docker_server = MockDockerServer()
+
+        generate_docker_server_supervisord_config(tmp_path, MockConfig())
+
+        cfg = configparser.RawConfigParser()
+        cfg.read(tmp_path / "supervisord.conf")
+
+        command = cfg.get("program:model-server", "command")
+
+        # Verify newlines are preserved
+        assert "\n" in command, f"Newlines not preserved for {test_id}"
+
+        # Verify expected substrings are present
+        for substring in expected_substrings:
+            assert substring in command, (
+                f"Expected '{substring}' not found in {test_id}"
+            )
+
+        # Verify all sections exist
+        assert cfg.has_section("supervisord")
+        assert cfg.has_section("program:nginx")
+        assert cfg.has_section("eventlistener:quit_on_failure")

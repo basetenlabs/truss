@@ -4,8 +4,9 @@ import logging
 import logging.config
 import re
 import traceback
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import Awaitable, Callable, Dict
+from typing import Callable
 
 import httpx
 from endpoints import control_app
@@ -38,14 +39,17 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
         try:
             return await call_next(request)
         except Exception as exc:
-            sanitized_traceback = self._create_sanitized_traceback(exc)
-            request.app.state.logger.error(sanitized_traceback)
-
+            # NB(nikhil): Intentionally bypass error logging for ModelLoadFailed, since health checks
+            # are noisy. The underlying model logs for why the load failed will still be visible.
             if isinstance(exc, ModelLoadFailed):
                 return JSONResponse(
                     {"error": str(exc)}, status_code=http.HTTPStatus.BAD_GATEWAY.value
                 )
-            elif isinstance(exc, PatchApplicatonError):
+
+            sanitized_traceback = self._create_sanitized_traceback(exc)
+            request.app.state.logger.error(sanitized_traceback)
+
+            if isinstance(exc, PatchApplicatonError):
                 error_type = _camel_to_snake_case(type(exc).__name__)
                 return JSONResponse({"error": {"type": error_type, "msg": str(exc)}})
             else:
@@ -61,7 +65,7 @@ class SanitizedExceptionMiddleware(BaseHTTPMiddleware):
         return f"{type(error).__name__}: {error}"
 
 
-def create_app(base_config: Dict):
+def create_app(base_config: dict):
     app_state = State()
     # TODO(BT-13721): better log setup: app_logger isn't captured and access log
     #   is redundant.

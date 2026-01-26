@@ -808,3 +808,114 @@ def test_raises_invalid_display_name():
 
             def run_remote(self) -> int:
                 return 123
+
+
+# MDN Weights Support Tests ################################################################
+
+
+def test_asset_spec_with_weights():
+    """Test that AssetSpec correctly accepts weights."""
+    weights = [
+        truss_config.WeightsSource(
+            source="hf://meta-llama/Llama-2-7b", mount_location="/app/weights"
+        )
+    ]
+    spec = public_types.AssetSpec(weights=weights)
+    assert len(spec.weights) == 1
+    assert spec.weights[0].source == "hf://meta-llama/Llama-2-7b"
+    assert spec.weights[0].mount_location == "/app/weights"
+
+
+def test_asset_spec_with_weights_and_auth_secret():
+    """Test that AssetSpec correctly accepts weights with auth_secret_name."""
+    weights = [
+        truss_config.WeightsSource(
+            source="hf://meta-llama/Llama-2-7b@main",
+            mount_location="/app/weights",
+            auth_secret_name="hf_access_token",
+        )
+    ]
+    spec = public_types.AssetSpec(weights=weights)
+    assert len(spec.weights) == 1
+    assert spec.weights[0].auth_secret_name == "hf_access_token"
+
+
+def test_asset_spec_with_multiple_weights():
+    """Test that AssetSpec correctly accepts multiple weights sources."""
+    weights = [
+        truss_config.WeightsSource(
+            source="hf://meta-llama/Llama-2-7b", mount_location="/app/llama"
+        ),
+        truss_config.WeightsSource(
+            source="s3://my-bucket/model", mount_location="/app/s3-model"
+        ),
+    ]
+    spec = public_types.AssetSpec(weights=weights)
+    assert len(spec.weights) == 2
+    assert spec.weights[0].source == "hf://meta-llama/Llama-2-7b"
+    assert spec.weights[1].source == "s3://my-bucket/model"
+
+
+def test_assets_class_with_weights():
+    """Test that Assets class correctly accepts and exposes weights."""
+    weights = [
+        truss_config.WeightsSource(
+            source="hf://meta-llama/Llama-2-7b", mount_location="/app/weights"
+        )
+    ]
+    assets = chains.Assets(weights=weights)
+    spec = assets.get_spec()
+    assert len(spec.weights) == 1
+    assert spec.weights[0].source == "hf://meta-llama/Llama-2-7b"
+
+
+def test_assets_class_with_weights_and_other_assets():
+    """Test that Assets class correctly combines weights with other asset types."""
+    weights = [
+        truss_config.WeightsSource(
+            source="hf://meta-llama/Llama-2-7b", mount_location="/app/weights"
+        )
+    ]
+    assets = chains.Assets(
+        weights=weights,
+        secret_keys=["api_key"],
+        external_data=[
+            truss_config.ExternalDataItem(
+                url="https://example.com/data.bin", local_data_path="data/file.bin"
+            )
+        ],
+    )
+    spec = assets.get_spec()
+    assert len(spec.weights) == 1
+    assert "api_key" in spec.secrets
+    assert len(spec.external_data) == 1
+
+
+def test_weights_source_import_from_truss_chains():
+    """Test that WeightsSource is importable from truss_chains."""
+    # Verify the import works (this is tested by the import itself)
+    assert chains.WeightsSource is truss_config.WeightsSource
+
+
+def test_chainlet_with_weights_config():
+    """Test that a chainlet can be defined with weights in remote_config."""
+
+    class ChainletWithWeights(chains.ChainletBase):
+        remote_config = chains.RemoteConfig(
+            assets=chains.Assets(
+                weights=[
+                    truss_config.WeightsSource(
+                        source="hf://meta-llama/Llama-2-7b",
+                        mount_location="/app/weights",
+                    )
+                ]
+            )
+        )
+
+        def run_remote(self) -> str:
+            return "ok"
+
+    # Verify the config is properly set
+    asset_spec = ChainletWithWeights.remote_config.get_asset_spec()
+    assert len(asset_spec.weights) == 1
+    assert asset_spec.weights[0].source == "hf://meta-llama/Llama-2-7b"

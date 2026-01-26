@@ -19,7 +19,11 @@ from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
-from truss.cli.utils import common
+from truss.cli.resolvers.model_team_resolver import (
+    resolve_model_for_watch,
+    resolve_model_team_name,
+)
+from truss.cli.utils import common, self_upgrade
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -28,6 +32,7 @@ from truss.remote.baseten.core import (
     ModelIdentifier,
     ModelName,
     ModelVersionId,
+    get_dev_version_from_versions,
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
@@ -115,6 +120,16 @@ def login(api_key: Optional[str]):
         RemoteFactory.update_remote_config(remote_config)
     else:
         login(api_key)
+
+
+@truss_cli.command()
+@click.argument("version", required=False)
+@common.common_options()
+@click.pass_context
+def upgrade(ctx: click.Context, version: Optional[str]) -> None:
+    """Upgrade truss to the latest (or specified) version."""
+    interactive = not ctx.obj.get("non_interactive", False)
+    self_upgrade.run_upgrade(version, interactive=interactive)
 
 
 @truss_cli.command()
@@ -472,7 +487,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with '--publish' or '--promote'."
+        "used in combination with --publish or --promote."
     ),
 )
 @click.option(
@@ -511,6 +526,19 @@ def run_python(script, target_directory):
         "Default is --preserve-env-instance-type."
     ),
 )
+@click.option(
+    "--deploy-timeout-minutes",
+    type=int,
+    required=False,
+    help="Timeout in minutes for the deploy operation.",
+)
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the model",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -529,6 +557,8 @@ def push(
     tail: bool = False,
     preserve_env_instance_type: bool = True,
     watch: bool = False,
+    deploy_timeout_minutes: Optional[int] = None,
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -559,6 +589,13 @@ def push(
         publish = True
     
     tr = _get_truss_from_directory(target_directory=target_directory)
+
+    if tr.spec.config.resources.instance_type:
+        console.print(
+            "Field 'instance_type' specified - ignoring 'cpu', 'memory', 'accelerator', and 'use_gpu' fields.",
+            style="yellow",
+        )
+
     if (
         tr.spec.config.runtime.transport.kind == TransportKind.GRPC
         and not publish
@@ -580,9 +617,25 @@ def push(
     if not model_name:
         model_name = remote_cli.inquire_model_name()
 
+    # Resolve team_id if BasetenRemote
+    team_id = None
+    if isinstance(remote_provider, BasetenRemote):
+        existing_teams = remote_provider.api.get_teams()
+        # Use config team as fallback if --team not provided
+        effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
+            remote
+        )
+        _, team_id = resolve_model_team_name(
+            remote_provider=remote_provider,
+            provided_team_name=effective_team_name,
+            existing_model_name=model_name,
+            existing_teams=existing_teams,
+        )
+
     if promote and environment:
-        promote_warning = "'promote' flag and 'environment' flag were both specified. Ignoring the value of 'promote'"
-        console.print(promote_warning, style="yellow")
+        raise click.UsageError(
+            "'promote' flag and 'environment' flag cannot both be specified."
+        )
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
 
@@ -644,11 +697,12 @@ def push(
             console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
     source = Path(target_directory)
-    # TODO(Abu): This needs to be refactored to be more generic
+    working_dir = source.parent if source.is_file() else source.resolve()
+
     service = remote_provider.push(
-        tr,
+        truss_handle=tr,
         model_name=model_name,
-        working_dir=source.parent if source.is_file() else source.resolve(),
+        working_dir=working_dir,
         publish=publish,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
@@ -658,7 +712,9 @@ def push(
         progress_bar=progress.Progress,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
-    )  # type: ignore
+        deploy_timeout_minutes=deploy_timeout_minutes,
+        team_id=team_id,
+    )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 
@@ -760,8 +816,17 @@ def model_logs(
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the model to watch",
+)
 @common.common_options()
-def watch(target_directory: str, remote: str) -> None:
+def watch(
+    target_directory: str, remote: str, provided_team_name: Optional[str] = None
+) -> None:
     """
     Seamless remote development with truss
 
@@ -771,7 +836,7 @@ def watch(target_directory: str, remote: str) -> None:
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    remote_provider = RemoteFactory.create(remote=remote)
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
     tr = _get_truss_from_directory(target_directory=target_directory)
     model_name = tr.spec.config.model_name
@@ -782,14 +847,30 @@ def watch(target_directory: str, remote: str) -> None:
         )
         sys.exit(1)
 
-    service = remote_provider.get_service(model_identifier=ModelName(model_name))
+    # Resolve the model once with team disambiguation (prompts only once if needed)
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+    resolved_model, versions = resolve_model_for_watch(
+        remote_provider, model_name, provided_team_name=effective_team_name
+    )
+    model_id = resolved_model["id"]
+
+    # Verify dev version exists
+    dev_version = get_dev_version_from_versions(versions)
+    if not dev_version:
+        console.print("❌ No development model found. Run `truss push` then try again.")
+        sys.exit(1)
+
+    # Use model_id to get service (no additional resolution needed)
+    service = remote_provider.get_service(model_identifier=ModelId(model_id))
     console.print(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
 
     if not os.path.isfile(target_directory):
-        remote_provider.sync_truss_to_dev_version_by_name(
-            model_name, target_directory, console, error_console
+        # Pass the resolved model to avoid re-resolution
+        remote_provider.sync_truss_to_dev_version_with_model(
+            resolved_model, versions, target_directory, console, error_console
         )
     else:
         # These imports are delayed, to handle pydantic v1 envs gracefully.

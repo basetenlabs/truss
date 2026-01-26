@@ -284,7 +284,7 @@ The following environment variables can be used to configure truss-transfer beha
   - Number of concurrent download workers
   - Controls parallelism for file downloads
 
-- **`TRUSS_TRANSFER_USE_RANGE_DOWNLOAD`** (default: `false`)
+- **`TRUSS_TRANSFER_USE_RANGE_DOWNLOAD`** (default: `true`)
   - Enable/disable range-based downloading for large files
   - Set to `1`, `true`, `yes`, or `y` to enable
 

@@ -165,9 +165,9 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
         "config_str",
         "semver_bump",
         b10_types.TrussUserEnv.collect(),
-        False,
-        "deployment_name",
-        "production",
+        preserve_previous_prod_deployment=False,
+        deployment_name="deployment_name",
+        environment="production",
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -182,6 +182,7 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert 'name: "deployment_name"' in gql_mutation
     assert 'environment_name: "production"' in gql_mutation
     assert "preserve_env_instance_type: true" in gql_mutation
+    assert "deploy_timeout_minutes: " not in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -211,6 +212,7 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert " name: " not in gql_mutation
     assert "environment_name: " not in gql_mutation
     assert "preserve_env_instance_type: false" in gql_mutation
+    assert "deploy_timeout_minutes: " not in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -242,6 +244,57 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert " name: " not in gql_mutation
     assert 'environment_name: "staging"' in gql_mutation
     assert "preserve_env_instance_type: true" in gql_mutation
+    assert "deploy_timeout_minutes: " not in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_with_deploy_timeout_minutes(
+    mock_post, baseten_api
+):
+    baseten_api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        preserve_previous_prod_deployment=False,
+        deployment_name="deployment_name",
+        environment="production",
+        deploy_timeout_minutes=300,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert 'model_id: "model_id"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
+    assert "scale_down_old_production: true" in gql_mutation
+    assert 'name: "deployment_name"' in gql_mutation
+    assert 'environment_name: "production"' in gql_mutation
+    assert "preserve_env_instance_type: true" in gql_mutation
+    assert "deploy_timeout_minutes: 300" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_with_deploy_timeout_minutes_zero(
+    mock_post, baseten_api
+):
+    """Test that deploy_timeout_minutes of 0 is handled correctly"""
+    baseten_api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        b10_types.TrussUserEnv.collect(),
+        preserve_previous_prod_deployment=False,
+        deploy_timeout_minutes=0,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert "deploy_timeout_minutes: 0" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
@@ -332,6 +385,48 @@ def test_create_development_model_from_truss_with_allow_truss_download(
         "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
     } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
+    assert "deploy_timeout_minutes: " not in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_development_model_response())
+def test_create_development_model_from_truss_with_deploy_timeout_minutes(
+    mock_post, baseten_api
+):
+    baseten_api.create_development_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        b10_types.TrussUserEnv.collect(),
+        allow_truss_download=False,
+        deploy_timeout_minutes=300,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert 'name: "model_name"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
+    assert "allow_truss_download: false" in gql_mutation
+    assert "deploy_timeout_minutes: 300" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_development_model_response())
+def test_create_development_model_from_truss_with_deploy_timeout_minutes_zero(
+    mock_post, baseten_api
+):
+    """Test that deploy_timeout_minutes of 0 is handled correctly"""
+    baseten_api.create_development_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        b10_types.TrussUserEnv.collect(),
+        deploy_timeout_minutes=0,
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+    assert "deploy_timeout_minutes: 0" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
@@ -357,6 +452,30 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
     assert 'chain_id: "chain_id"' in gql_mutation
     assert "dependencies:" in gql_mutation
     assert "entrypoint:" in gql_mutation
+    assert "deployment_name" not in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
+def test_deploy_chain_deployment_with_deployment_name(mock_post, baseten_api):
+    baseten_api.deploy_chain_atomic(
+        environment="production",
+        chain_id="chain_id",
+        dependencies=[],
+        entrypoint=ChainletDataAtomic(
+            name="chainlet-1",
+            oracle=OracleData(
+                model_name="model-1",
+                s3_key="s3-key-1",
+                encoded_config_str="encoded-config-str-1",
+            ),
+        ),
+        truss_user_env=b10_types.TrussUserEnv.collect(),
+        deployment_name="chain-deployment-name",
+    )
+
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
+
+    assert 'deployment_name: "chain-deployment-name"' in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())

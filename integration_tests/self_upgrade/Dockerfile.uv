@@ -1,0 +1,38 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+WORKDIR /tests
+COPY test_harness.py test_in_container.py test_settings_toml.py /tests/
+COPY settings_enabled.toml settings_disabled.toml /tests/
+
+ARG INSTALL_METHOD=tool
+ARG TRUSS_VERSION=0.12.6rc505
+ENV INSTALL_METHOD=${INSTALL_METHOD}
+ENV TEST_VERSION=${TRUSS_VERSION}
+
+RUN for i in 1 2 3 4 5; do \
+      if [ "$INSTALL_METHOD" = "tool" ]; then \
+        uv tool install --prerelease=allow truss==${TRUSS_VERSION} && break; \
+      else \
+        uv venv /opt/venv && \
+        . /opt/venv/bin/activate && \
+        uv pip install --prerelease=allow truss==${TRUSS_VERSION} && break; \
+      fi; \
+      echo "Attempt $i failed, retrying in 10s..."; sleep 10; \
+    done
+
+# For uv tool installs, save the Python path during build
+RUN if [ "$INSTALL_METHOD" = "tool" ]; then \
+      TRUSS_BIN=$(which truss) && \
+      PYTHON_PATH=$(head -1 "$TRUSS_BIN" | sed 's/^#!//') && \
+      echo "$PYTHON_PATH" > /tests/.python_path && \
+      echo "Saved Python path: $PYTHON_PATH"; \
+    fi
+
+ENV PATH="/root/.local/bin:/opt/venv/bin:$PATH"
+
+CMD ["sh", "-c", "if [ \"$INSTALL_METHOD\" = \"tool\" ]; then PYTHON=$(cat /tests/.python_path); echo \"Using Python: $PYTHON\"; $PYTHON /tests/test_in_container.py; else python /tests/test_in_container.py; fi"]

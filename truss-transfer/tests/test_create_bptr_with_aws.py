@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,7 @@ def sort_manifest(manifest):
     return sorted(manifest, key=lambda x: x["uid"])
 
 
-def test_dolly():
+def test_dolly(pattern="*tokenizer_config.json"):
     # fix the below models
     models = [
         truss_transfer.PyModelRepo(
@@ -35,7 +36,7 @@ def test_dolly():
             runtime_secret_name="aws-secret-json",
             volume_folder="julien_dummy",
             kind="s3",
-            allow_patterns=["*tokenizer_config.json"],
+            allow_patterns=[pattern],
             ignore_patterns=["*.pth", "*cache*", "original*", "*.lock", "*.metadata"],
         )
     ]
@@ -47,6 +48,8 @@ def test_dolly():
 
     print("Testing create_basetenpointer_from_models...")
     result = truss_transfer.create_basetenpointer_from_models(models)
+    if pattern == "*":
+        return result
     print("Success! Generated BasetenPointer manifest:")
     # Parse and pretty print the JSON
     manifest = json.loads(result)["pointers"]
@@ -89,8 +92,9 @@ def test_dolly():
 
 
 def test_dolly_with_download():
-    manifest = test_dolly()
+    manifest = test_dolly(pattern="*")
     Path("/static-bptr").mkdir(parents=True, exist_ok=True)
+    shutil.rmtree("/app/model_cache/julien_dummy", ignore_errors=True)
     with open("/static-bptr/static-bptr-manifest.json", "w") as f:
         f.write(manifest)
 

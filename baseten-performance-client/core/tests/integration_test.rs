@@ -1,3 +1,4 @@
+use baseten_performance_client_core::split_policy::{Combinable, SplitPolicy, Splittable};
 use baseten_performance_client_core::*;
 
 #[tokio::test]
@@ -153,68 +154,54 @@ fn test_classification_response_combine() {
 
 #[test]
 fn test_send_request_config_hedge_timeout_validation() {
-    use baseten_performance_client_core::http_client::SendRequestConfig;
-    use std::sync::atomic::{AtomicBool, AtomicUsize};
-    use std::sync::Arc;
+    use baseten_performance_client_core::customer_request_id::CustomerRequestId;
+
     use std::time::Duration;
 
-    let cancel_token = Arc::new(AtomicBool::new(false));
-    let hedge_budget = Arc::new(AtomicUsize::new(100));
-    let retry_budget = Arc::new(AtomicUsize::new(100));
+    // Test case 1: hedge delay higher than request delay (should fail)
+    // This validation is now done in RequestProcessingConfig, not SendRequestConfig
+    let pref = RequestProcessingPreference::new()
+        .with_timeout_s(1.0)
+        .with_hedge_delay(2.0); // hedge delay higher than timeout - should fail
 
-    // Test case 1: hedge timeout higher than request timeout (should succeed)
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        retry_budget.clone(),
-        cancel_token.clone(),
-        Some((hedge_budget.clone(), Duration::from_secs(2))), // hedge timeout = 2s
-        Duration::from_secs(1),                               // request timeout = 1s
-    );
-    assert!(
-        result.is_ok(),
-        "Should succeed when hedge timeout > request timeout"
-    );
-
-    // Test case 2: hedge timeout equal to request timeout (should fail)
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        retry_budget.clone(),
-        cancel_token.clone(),
-        Some((hedge_budget.clone(), Duration::from_secs(1))), // hedge timeout = 1s
-        Duration::from_secs(1),                               // request timeout = 1s
-    );
+    let result =
+        pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
     assert!(
         result.is_err(),
-        "Should fail when hedge timeout = request timeout"
+        "Should fail when hedge delay > request timeout"
     );
 
-    // Test case 3: hedge timeout lower than request timeout (should fail)
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        retry_budget.clone(),
-        cancel_token.clone(),
-        Some((hedge_budget.clone(), Duration::from_millis(500))), // hedge timeout = 0.5s
-        Duration::from_secs(1),                                   // request timeout = 1s
-    );
+    // Test case 2: hedge delay equal to request timeout (should fail)
+    let pref2 = RequestProcessingPreference::new()
+        .with_timeout_s(1.0)
+        .with_hedge_delay(1.0); // hedge delay equal to timeout - should fail
+
+    let result2 =
+        pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
     assert!(
-        result.is_err(),
-        "Should fail when hedge timeout < request timeout"
+        result2.is_err(),
+        "Should fail when hedge delay = request timeout"
+    );
+
+    // Test case 3: hedge delay lower than request timeout (should pass)
+    let pref3 = RequestProcessingPreference::new()
+        .with_timeout_s(1.0)
+        .with_hedge_delay(0.5); // hedge delay lower than timeout - should pass
+
+    let result3 =
+        pref3.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+    assert!(
+        result3.is_ok(),
+        "Should pass when hedge delay < request timeout"
     );
 
     // Test case 4: no hedge budget (should succeed)
-    let result = SendRequestConfig::new(
-        3,
-        Duration::from_millis(100),
-        retry_budget.clone(),
-        cancel_token.clone(),
-        None, // no hedge budget
-        Duration::from_secs(1),
-    );
+    let pref4 = RequestProcessingPreference::new().with_timeout_s(1.0); // no hedge delay - should succeed
+
+    let result4 =
+        pref4.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
     assert!(
-        result.is_ok(),
+        result4.is_ok(),
         "Should succeed when no hedge budget is specified"
     );
 }

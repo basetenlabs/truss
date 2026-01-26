@@ -9,13 +9,14 @@ use std::sync::{Arc, Mutex, OnceLock};
 use tokio::fs;
 use tokio::sync::Mutex as TokioMutex;
 
-use tokio::sync::Semaphore;
+use tokio::sync::{mpsc, Semaphore};
 use tokio::task::JoinSet;
 
 use crate::bindings::{init_logger_once, resolve_truss_transfer_download_dir};
 use crate::cache::cleanup_b10cache_and_get_space_stats;
 use crate::constants::*;
 use crate::download::download_file_with_cache;
+use crate::metrics::{MetricEvent, MetricsGuard};
 use crate::speed_checks::is_b10cache_fast_heuristic;
 use crate::types::{BasetenPointer, BasetenPointerManifest, ModelRepo, Resolution};
 
@@ -54,11 +55,15 @@ pub fn lazy_data_resolve_entrypoint(
         .build()
         .context("Failed to build Tokio runtime")?;
 
-    // Run the asynchronous logic.
-    rt.block_on(async {
+    // Run the asynchronous logic with metrics.
+    let result = rt.block_on(async {
         lazy_data_resolve_async(download_dir.clone().into(), num_workers, models, model_path).await
-    })?;
-    Ok(download_dir)
+    });
+
+    match result {
+        Ok(_) => Ok(download_dir),
+        Err(e) => Err(e),
+    }
 }
 
 /// Asynchronous implementation of the lazy data resolver logic.
@@ -69,6 +74,37 @@ async fn lazy_data_resolve_async(
     model_path: String,
 ) -> Result<()> {
     debug!("Checking for manifest files in multiple locations...");
+
+    // Initialize metrics collector
+    let metrics_guard = MetricsGuard::new();
+    let metrics_sender = metrics_guard
+        .sender()
+        .expect("Metrics sender should be available");
+
+    // Perform all operations - metrics_sender will be dropped at end of this function
+    let result = lazy_data_resolve_with_metrics(
+        download_dir,
+        num_workers,
+        models,
+        model_path,
+        metrics_sender,
+    )
+    .await;
+
+    // Finalize and flush metrics (after metrics_sender is dropped)
+    _ = tokio::time::timeout(std::time::Duration::from_secs(1), metrics_guard.finalize()).await;
+
+    result
+}
+
+/// Internal implementation that performs the actual download logic with metrics
+async fn lazy_data_resolve_with_metrics(
+    download_dir: PathBuf,
+    num_workers: usize,
+    models: Option<Vec<ModelRepo>>,
+    model_path: String,
+    metrics_sender: mpsc::UnboundedSender<MetricEvent>,
+) -> Result<()> {
     let timer = tokio::time::Instant::now();
 
     // 1. Check multiple manifest locations and collect all available manifests
@@ -134,6 +170,10 @@ async fn lazy_data_resolve_async(
         merged_manifest.pointers.len()
     );
 
+    // Record manifest size
+    let total_manifest_size: u64 = merged_manifest.pointers.iter().map(|p| p.size).sum();
+    let _ = metrics_sender.send(MetricEvent::ManifestSize(total_manifest_size));
+
     // 4. Validate expiration and build the resolution map
     let mut resolution_map = build_resolution_map(&merged_manifest)?;
     debug!("All pointers validated successfully.");
@@ -194,7 +234,7 @@ async fn lazy_data_resolve_async(
 
         // todo: check speed of b10cache (e.g. is faster than 100MB/s)
         // and stop using b10cache if download speed is faster
-        match is_b10cache_fast_heuristic(&merged_manifest).await {
+        match is_b10cache_fast_heuristic(&merged_manifest, metrics_sender.clone()).await {
             Ok(speed) => {
                 if speed {
                     info!("b10cache is faster than downloading.");
@@ -212,8 +252,12 @@ async fn lazy_data_resolve_async(
             "b10cache use: Read: {}, Write: {}",
             read_from_b10cache, write_to_b10cache
         );
+
+        // Record b10fs decision
+        let _ = metrics_sender.send(MetricEvent::B10fsDecision(read_from_b10cache));
     } else {
         info!("b10cache is not enabled for read or write.");
+        let _ = metrics_sender.send(MetricEvent::B10fsDecision(false));
     }
 
     // 6. Build concurrency limit
@@ -234,6 +278,7 @@ async fn lazy_data_resolve_async(
         let download_dir = download_dir.clone();
         let sem_clone = semaphore_download.clone();
         let semaphore_range_dw_clone = semaphore_range_dw.clone();
+        let metrics_sender_clone = metrics_sender.clone();
         download_tasks.spawn(async move {
             let _permit = sem_clone.acquire_owned().await?;
             log::debug!("Handling file: {}", file_name);
@@ -245,6 +290,7 @@ async fn lazy_data_resolve_async(
                 write_to_b10cache,
                 num_workers,
                 semaphore_range_dw_clone,
+                metrics_sender_clone,
             )
             .await
         });
@@ -272,14 +318,16 @@ async fn lazy_data_resolve_async(
                 error!("A download task failed: {}", e);
                 download_tasks.abort_all();
                 page_tasks.abort_all();
+                let _ = metrics_sender.send(MetricEvent::Success(false));
                 return Err(anyhow!("Download failure: {}", e));
             }
             Err(e) => {
-                // A Tokio task panicked. Abort all other tasks.
-                error!("A Tokio task panicked: {}", e);
+                // A Tokio task paniced. Abort all other tasks.
+                error!("A Tokio task paniced: {}", e);
                 download_tasks.abort_all();
                 page_tasks.abort_all();
-                return Err(anyhow!("Tokio task panicked: {}", e));
+                let _ = metrics_sender.send(MetricEvent::Success(false));
+                return Err(anyhow!("Tokio task paniced: {}", e));
             }
         }
     }
@@ -288,6 +336,9 @@ async fn lazy_data_resolve_async(
         "All downloads completed successfully after {:?}",
         timer.elapsed()
     );
+
+    // Mark as successful
+    let _ = metrics_sender.send(MetricEvent::Success(true));
 
     if !page_tasks.is_empty() {
         debug!(
@@ -299,7 +350,7 @@ async fn lazy_data_resolve_async(
             tokio::time::timeout_at(deadline, page_tasks.join_next()).await
         {
             if let Err(e) = join_result {
-                warn!("A paging task panicked: {}", e);
+                warn!("A paging task paniced: {}", e);
             }
         }
     }
@@ -398,11 +449,11 @@ async fn page_file_into_memory(path: &Path, lock: Arc<TokioMutex<()>>) {
             }
         }
         Err(e) => {
-            // The spawn_blocking task itself panicked or was cancelled.
+            // The spawn_blocking task itself paniced or was cancelled.
             if e.is_cancelled() {
                 warn!("Paging task for {} was cancelled.", path.display());
             } else {
-                error!("Paging task for {} panicked: {}", path.display(), e);
+                error!("Paging task for {} paniced: {}", path.display(), e);
             }
         }
     }

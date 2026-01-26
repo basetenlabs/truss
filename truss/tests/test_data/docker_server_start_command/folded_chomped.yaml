@@ -1,0 +1,8 @@
+docker_server:
+  start_command: >-
+    sh -c
+    /app/server
+  server_port: 8000
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /health
+  liveness_endpoint: /health

@@ -72,7 +72,7 @@ mod tests {
             },
             ModelRepo {
                 repo_id: "gs://test-bucket/model-path".to_string(),
-                revision: "main".to_string(), // Ignored for GCS
+                revision: "".to_string(), // Not needed for GCS
                 allow_patterns: Some(vec!["*.safetensors".to_string()]),
                 ignore_patterns: Some(vec!["*.md".to_string()]),
                 kind: ResolutionType::Gcs,
@@ -249,7 +249,7 @@ mod tests {
         // Test Azure support with a mock repository
         let model_repos = vec![ModelRepo {
             repo_id: "azure://testaccount/testcontainer/model.bin".to_string(),
-            revision: "main".to_string(),
+            revision: "".to_string(), // Not needed for Azure
             runtime_secret_name: "azure-storage".to_string(),
             volume_folder: "test_azure_model".to_string(),
             kind: ResolutionType::Azure,

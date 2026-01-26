@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import (
+    AliasChoices,
     BaseModel,
     Discriminator,
     Field,
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
     from truss.base.truss_config import TrussConfig
 
 logger = logging.getLogger(__name__)
-# Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
+# Suppress Pydantic V1 warnings, because  we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
 ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
@@ -40,9 +42,17 @@ except ImportError:
 
 
 class TrussTRTLLMModel(str, Enum):
+    # Causal models for embedding, but also does have basic Bert support.
+    # Worlds fastest runtime for qwen3-8b (causal embedding models) and other causal embedding models.
+    # also very fast for qwen, mistral, llama3 causal models for SequenceClassification
     ENCODER = "encoder"
+    # BERT-based encoder models for non-causal tasks such as text classification, reranking, embeddings etc.
+    # the encoder_bert setting will specfically optimize for thoughput and cold-start latency of small models (<4B parameters)
+    # supports also splade and colbert style models or ModernBert.
+    ENCODER_BERT = "encoder_bert"
+    # Decoder will launch the backend that is optimized for decoder only models such as LLama3ForCausalLM, Qwen3MoeForCausalLM etc.
     DECODER = "decoder"
-    # auto migrated settings
+    # a ERROR will be raised if you push one of the below models. Don't use
     PALMYRA = "palmyra"
     QWEN = "qwen"
     LLAMA = "llama"
@@ -53,26 +63,45 @@ class TrussTRTLLMModel(str, Enum):
 
 
 class InferenceStack(str, Enum):
+    # V1: use for small models, dense models. MoEs are not supported. Super fast speculation e.g. for code edit models
+    # V1: used for BEI models (causal embedding and classifer models) and BEI-Bert (non-causal small embedding models)
+    # All embedding runtimes are running without tensor parallelism (optimized for latency + thoughput.)
     v1 = "v1"
+    # V2: Use for all MoE models like Qwen3Moe, DeepSeek, Kimi, GLM4.
+    # use for multi node setups.
     v2 = "v2"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
+    # no_quant means fp16 or bf16. It will use the precision prefered in the config.json and available on the GPU.
     NO_QUANT = "no_quant"
+    # the below WEIGHTS_* and SMOOTH_QUANT are legacy quantization types
+    # and are raising a error on push. Don't use.
     WEIGHTS_ONLY_INT8 = "weights_int8"
     WEIGHTS_KV_INT8 = "weights_kv_int8"
     WEIGHTS_ONLY_INT4 = "weights_int4"
     WEIGHTS_INT4_KV_INT8 = "weights_int4_kv_int8"
     SMOOTH_QUANT = "smooth_quant"
+    # FP8 weights + 16 bit kv cache
     FP8 = "fp8"
+    # FP8 + fp8 kv cache quantization (faster attention when used with fp8 context fmha, required for fp8 ctx fmha)!
+    # not usable for asymmetric model with bias=True e.g. qwen2.5 models
     FP8_KV = "fp8_kv"
+    # fp4 with 16 bit kv cache
     FP4 = "fp4"
+    # fp4 with fp8 kv cache quantization
     FP4_KV = "fp4_kv"
+    # fp4, but only mlp layers are in fp4, rest is 16 bit , also 16 bit kv cache
+    FP4_MLP_ONLY = "fp4_mlp_only"
 
 
 class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
+    # strongly recommend to always have on. Do not set to false.
     paged_kv_cache: bool = True
+    # strongly recommend to always have on. Do not set to false.
     use_paged_context_fmha: bool = True
+    # recommend to have one when using fp8 quantization of kv cache
+    # AUTO-ENABLED: Has no effect.
     use_fp8_context_fmha: bool = False
 
 
@@ -89,7 +118,7 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
 
     calib_size: int = 1024
     calib_dataset: str = "cnn_dailymail"
-    calib_max_seq_length: int = 2048
+    calib_max_seq_length: int = 1536
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -106,19 +135,30 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
 
 class CheckpointSource(str, Enum):
     HF = "HF"
+    # AZURE, GCS and S3 use the `model_cache` to download the checkpoint.
+    # The repo should be the bucket name + path within the bucket.
+    # e.g. s3://my-bucket/path/to/checkpoint, where checkpoint contains config.json, model.safetensors etc.
+    # safetensors format strongly needed, as most operations will fail with pytorch.bin format.
     GCS = "GCS"
     S3 = "S3"
     AZURE = "AZURE"
+    # LOCAL is not supported, will raise error, do not document.
     LOCAL = "LOCAL"
     # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
+    # as tar.gzip file.
     REMOTE_URL = "REMOTE_URL"
+    # if deploying from a baseten training job
+    # the repo with be the training job and the revision the revision of the training run.
+    BASETEN_TRAINING = "BASETEN_TRAINING"
 
 
 class CheckpointRepository(PydanticTrTBaseModel):
     source: CheckpointSource
+    # repo and revision semantics depend on source. See above.
     repo: str
     revision: Optional[str] = None
-    # secret from baseten secrets e.g. `hf_access_token`
+    # secret from baseten secrets e.g. `hf_access_token`.
+    # the secret in baseten Secret UI contains the actual token or credentials., this is just the file name.
     runtime_secret_name: str = "hf_access_token"
 
     def __init__(self, **data):
@@ -136,20 +176,34 @@ class CheckpointRepository(PydanticTrTBaseModel):
 
 
 class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
+    # max utlilization: is recommend if you are serving customer request where you can't control the requested number of max_tokens.
+    # As it will schedule the requests without looking at the available.
+    # may need to stop/pause multiple requests if memory gets full (not recommened )
     MAX_UTILIZATION = "max_utilization"
+    # default: will guarantee the scheduling of a request with the number of tokens that the user requested.
+    # may queue requests if not enough memory is available.
     GUARANTEED_NO_EVICT = "guaranteed_no_evict"
 
 
 class TrussSpecDecMode(str, Enum):
+    # draft external is deprecated, use LOOKAHEAD_DECODING instead. No longer documented.
     DRAFT_EXTERNAL = "DRAFT_TOKENS_EXTERNAL"
+    # lookahead decoding uses internal draft generation with briton. Recommended.
+    # It is roughtly based on n-gram speculation built from the ground up.
+    # Its the world fastest speculation method for trt_llm models e.g. for code edits where n-gram like speculation
+    # works well
     LOOKAHEAD_DECODING = "LOOKAHEAD_DECODING"
 
 
 class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
+    # how much context length to support
     kv_cache_free_gpu_mem_fraction: float = 0.9
+    # how much memory to reserve on host (CPU) for kv-cache (in bytes)
+    # set to a high value to enable kv-cache offload to host memory
     kv_cache_host_memory_bytes: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
         None
     )
+    # wheter to
     enable_chunked_context: bool = True
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
@@ -157,8 +211,12 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     request_default_max_tokens: Optional[Annotated[int, Field(strict=True, ge=1)]] = (
         None
     )
+    # only for generative models (e.g. decoder models)
     served_model_name: Optional[str] = None
+    # how many tokens get scheduled at once to the C++ engine.
+    # only applicable for generative models (e.g. decoder models)
     total_token_limit: int = 500000
+    # only for embedding models (e.g. encoder models and encoder_bert models)
     webserver_default_route: Optional[
         Literal["/v1/embeddings", "/rerank", "/predict"]
     ] = None
@@ -166,13 +224,19 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
 
 class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
+    # how many requests can be batched together in one forward pass
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
+    # how many tokens can be gbatched together in one forward pass
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=131072)] = 8192
     tensor_parallel_size: Annotated[int, Field(strict=True, ge=1)] = 1
+    # whether to enable chunked prefill for generative models (decoder models)
     enable_chunked_prefill: bool = True
+    # only for generative models (e.g. decoder models), name in the json response
     served_model_name: Optional[str] = None
+    # only for V2 inference stack, advanced use.
     patch_kwargs: Dict[str, Union[str, int, float, dict, list, None]] = Field(
-        default_factory=dict
+        default_factory=dict,
+        validation_alias=AliasChoices("patch_kwargs", "gated_features"),
     )
 
     @field_validator("patch_kwargs", mode="after")
@@ -202,13 +266,18 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
     max_seq_len: Optional[Annotated[int, Field(strict=True, ge=1, le=1048576)]] = None
     max_batch_size: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
+    # for BEI/encoder and for generative models without chunked prefill:
+    # This will limit the max context length of input (+output token length for generative models)
     max_num_tokens: Annotated[int, Field(strict=True, gt=64, le=1048576)] = 8192
+    # do not document, only 1 is allowed.
     max_beam_width: Annotated[int, Field(strict=True, ge=1, le=1)] = (
         1  # "max_beam_width greater than 1 is not currently supported"
     )
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
     gather_all_token_logits: bool = False
+    # if you want to ignore the dtype of the model you loaded.
+    # recommend to not use unless you get a error during the build (model failing with compile error)
     strongly_typed: bool = False
     quantization_type: TrussTRTLLMQuantizationType = (
         TrussTRTLLMQuantizationType.NO_QUANT
@@ -216,14 +285,24 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     quantization_config: TrussTRTQuantizationConfiguration = (
         TrussTRTQuantizationConfiguration()
     )
+    # number of GPUs to use for tensor parallelism
+    # only for decoder models with inference_stack v1 / v2
     tensor_parallel_count: Annotated[int, Field(strict=True, ge=1)] = 1
+    # pipeline parallel count not allowed.
     pipeline_parallel_count: int = 1
+    moe_expert_parallel_option: int = -1
     sequence_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
+    # if you are running quantization on the same GPU as for inference, you might run out of GPU memory.
+    # if you are running out of GPU memory, set to a higher number than the deployment (aka higher than tp)
+    # if you are running out of CPU memory, do not adjust this number and add more CPU memory in the resource section.
     num_builder_gpus: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
+    # config for lookahead speculative decoding
     speculator: Optional[TrussSpeculatorConfiguration] = None
+    # for v1 decoder models only, a ahead of time known set of lora adapters.
+    # the name will be used as name of the openai client `model` key
     lora_adapters: Optional[
         Dict[
             Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9_\-\.:]+$")],
@@ -231,6 +310,8 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
         ]
     ] = None
     lora_configuration: Optional[TrussTRTLLMLoraConfiguration] = None
+    # for v2, skip the build step and use a engine that you e.g. provider otherwise
+    # e.g. via model_cache.
     skip_build_result: bool = False
 
     def __init__(self, **data):
@@ -309,34 +390,17 @@ pip install truss==0.10.8
             self.plugin_configuration.use_paged_context_fmha = False
 
             if "_kv" in self.quantization_type.value:
-                raise ValueError(
-                    "encoder does not have a kv-cache, therefore a kv specfic datatype is not valid"
-                    f"you selected build.quantization_type {self.quantization_type}"
+                logger.warning(
+                    "Compling `encoder` with a kv-cache dtype is a alpha feature. This may fail. "
+                    f"You selected build.quantization_type {self.quantization_type}"
                 )
 
     def _validate_kv_cache_flags(self):
         if not self.plugin_configuration.paged_kv_cache and (
             self.plugin_configuration.use_paged_context_fmha
-            or self.plugin_configuration.use_fp8_context_fmha
         ):
             raise ValueError(
-                "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
-            )
-        if (
-            self.plugin_configuration.use_fp8_context_fmha
-            and not self.plugin_configuration.use_paged_context_fmha
-        ):
-            raise ValueError("Using fp8 context fmha requires paged context fmha")
-        if (
-            self.plugin_configuration.use_fp8_context_fmha
-            and self.quantization_type
-            not in (
-                TrussTRTLLMQuantizationType.FP8_KV,
-                TrussTRTLLMQuantizationType.FP4_KV,
-            )
-        ):
-            raise ValueError(
-                "Using fp8 context fmha requires fp8 kv, or fp4 with kv cache dtype"
+                "Using paged context fmha requires requires paged kv cache"
             )
 
         return self
@@ -363,6 +427,24 @@ pip install truss==0.10.8
 
             self.validate_not_external_draft()
 
+    @model_validator(mode="after")
+    def validate_moe_parallelism_valid(self):
+        if self.base_model == TrussTRTLLMModel.DECODER:
+            if self.moe_expert_parallel_option != -1:
+                if self.moe_expert_parallel_option > self.tensor_parallel_count:
+                    raise ValueError(
+                        f"moe_expert_parallel_option {self.moe_expert_parallel_option} cannot be greater than tensor_parallel_count {self.tensor_parallel_count}"
+                    )
+                if self.moe_expert_parallel_option <= 0:
+                    raise ValueError(
+                        f"moe_expert_parallel_option {self.moe_expert_parallel_option} must be positive or -1"
+                    )
+                if self.tensor_parallel_count % self.moe_expert_parallel_option != 0:
+                    logger.warning(
+                        f"tensor_parallel_count {self.tensor_parallel_count} is not divisible by moe_expert_parallel_option {self.moe_expert_parallel_option}. This may lead to suboptimal performance."
+                    )
+        return self
+
     @property
     def max_draft_len(self) -> Optional[int]:
         if self.speculator:
@@ -376,6 +458,11 @@ class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
     checkpoint_repository: Optional[CheckpointRepository] = None
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: Optional[TrussTRTLLMBuildConfiguration] = None
+    # recommened according to lookahead paper
+    # (8,3,3), (5,5,5)
+    # setting it to (*,1,1) e.g. (8,1,1) will allow dynamic speculation, if enable_b10_lookahead is enabled.
+    # in this case (4,1,1), (8,1,1) and (32,1,1) are recommended.
+
     lookahead_windows_size: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
     lookahead_ngram_size: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
     lookahead_verification_set_size: Optional[
@@ -500,11 +587,13 @@ class ImageVersions(PydanticTrTBaseModel):
     # The schema of this model must be such that it can parse the values serialized
     # from the backend. The inserted values are full image references, resolved using
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
+    # INTERNAL
     bei_image: str
-    briton_image: str
-    v2_llm_image: str = (
-        "baseten/dynamo-cache-aware-routing:trtllm-gpu-ea9f7cb-725b8f2-eff071c4a5"
+    beibert_image: str = (
+        "baseten/bei_bert:1.8.6"  # once wired up in core-product, this can be removed
     )
+    briton_image: str
+    v2_llm_image: str
 
 
 class TRTLLMConfigurationV1(PydanticTrTBaseModel):
@@ -519,7 +608,10 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
         """Post-initialization validation and adjustments."""
         if (
             self.runtime.enable_chunked_context
-            and (self.build.base_model != TrussTRTLLMModel.ENCODER)
+            and (
+                self.build.base_model
+                not in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT)
+            )
             and not (
                 self.build.plugin_configuration.use_paged_context_fmha
                 and self.build.plugin_configuration.paged_kv_cache
@@ -528,21 +620,19 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
             raise ValueError(
                 "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache need to be True. "
             )
+        hf_cfg = get_hf_config(
+            repo=self.build.checkpoint_repository.repo,
+            revision=self.build.checkpoint_repository.revision,
+        )
 
         if (
             self.runtime.webserver_default_route is None
-            and self.build.base_model == TrussTRTLLMModel.ENCODER
+            and self.build.base_model
+            in (TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT)
             and not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION
         ):
-            # attemp to set the best possible default route client side.
-            try:
-                from transformers import AutoConfig
-
-                hf_cfg = AutoConfig.from_pretrained(
-                    self.build.checkpoint_repository.repo,
-                    revision=self.build.checkpoint_repository.revision,
-                )
-                # simple heuristic to set the default route
+            if hf_cfg is not None:
+                arch = hf_cfg.architectures[0]
                 is_sequence_classification = (
                     "ForSequenceClassification" in hf_cfg.architectures[0]
                 )
@@ -558,9 +648,64 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
                         else "Embeddings model."
                     )
                 )
-            except Exception:
-                # access error, or any other issue
-                pass
+        if hf_cfg is not None:
+            arch = hf_cfg.architectures[0]
+            if (
+                "bert" in arch.lower()
+                and self.build.base_model != TrussTRTLLMModel.ENCODER_BERT
+            ):
+                logger.warning(
+                    f"Your model architecture {arch} indicates a BERT-like based model. "
+                    f"Consider setting `trt_llm.build.base_model` to `encoder_bert` for better performance and compatibility."
+                )
+                if self.build.base_model == TrussTRTLLMModel.DECODER:
+                    logger.error(
+                        f"Your model architecture {arch} indicates a BERT-like based model. "
+                        f"but you set `trt_llm.build.base_model` to `decoder`. "
+                        f"Please set it to `encoder_bert`."
+                    )
+            if (
+                "ForCausalLM" in arch
+                and self.build.base_model != TrussTRTLLMModel.DECODER
+            ):
+                logger.warning(
+                    f"Your model architecture {arch} indicates a CausalLM based model. "
+                    f"Consider setting `trt_llm.build.base_model` to `decoder` for better performance and compatibility."
+                )
+                if self.build.base_model in (
+                    TrussTRTLLMModel.ENCODER,
+                    TrussTRTLLMModel.ENCODER_BERT,
+                ):
+                    logger.error(
+                        f"Your model architecture {arch} indicates a CausalLM based model. "
+                        f"but you set `trt_llm.build.base_model` to `encoder` or `encoder_bert`. "
+                        " Deploy it as `decoder` model instead, if you want to use it for text-generation. (most likley this is what you do)"
+                        " In the rare event you want to use it for Sequence classification via the first logit only:"
+                        " Please covert the CausalLM head using this script: "
+                        " https://github.com/michaelfeil/infinity/blob/c030718f3bf163237caa8898ee59cd53ba213124/docs/lm_head_to_classifier/convert_lm.py"
+                    )
+            if (
+                "ForSequenceClassification" in arch
+                and self.build.base_model == TrussTRTLLMModel.DECODER
+            ):
+                logger.error(
+                    f"Your model architecture {arch} indicates a SequenceClassification based model, "
+                    f"but you set `trt_llm.build.base_model` to `decoder`. "
+                    f"Please set it to `encoder` or `encoder_bert`."
+                )
+
+
+@functools.lru_cache(maxsize=4)
+def get_hf_config(repo: str, revision: Optional[str]) -> Optional[Any]:
+    try:
+        from transformers import AutoConfig
+
+        hf_cfg = AutoConfig.from_pretrained(
+            repo, revision=revision, trust_remote_code=False
+        )
+        return hf_cfg
+    except Exception:
+        return None
 
 
 class TRTLLMConfigurationV2(PydanticTrTBaseModel):
@@ -683,6 +828,11 @@ def trt_llm_common_validation(config: "TrussConfig"):
 
     assert config.trt_llm, "TRT-LLM configuration is required for TRT-LLM models"
     trt_llm_config: TRTLLMConfigurationV1 | TRTLLMConfigurationV2 = config.trt_llm.root
+    base_model = (
+        trt_llm_config.build.base_model
+        if hasattr(trt_llm_config.build, "base_model")
+        else None
+    )
     if (
         trt_llm_config.build.quantization_type
         is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
@@ -691,31 +841,60 @@ def trt_llm_common_validation(config: "TrussConfig"):
         logger.warning(
             "Weight only int8 quantization on A100 accelerators is not recommended."
         )
+    if base_model in [
+        TrussTRTLLMModel.PALMYRA,
+        TrussTRTLLMModel.QWEN,
+        TrussTRTLLMModel.LLAMA,
+        TrussTRTLLMModel.MISTRAL,
+        TrussTRTLLMModel.DEEPSEEK,
+    ]:
+        raise ValueError(
+            f"{base_model} has been renamed to `decoder` in trt_llm.build.base_model. "
+            " The decoder base_model now automatically detects the model architecture (e.g. Qwen, Llama, Mistral, etc.) from the checkpoint repository. "
+            " The functionality remains the same, only the name has changed to better reflect the usage of the base_model field."
+        )
+    if base_model == TrussTRTLLMModel.WHISPER:
+        raise ValueError(
+            "Whisper models has been refactored to a Chain's version. "
+            " Please send us a message on Slack or Support if you want to deploy a Whisper model with truss."
+        )
     if config.resources.accelerator.accelerator in [
         truss_config.Accelerator.T4,
         truss_config.Accelerator.V100,
     ]:
-        raise ValueError(
-            "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs"
-            "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
-        )
+        if base_model in [TrussTRTLLMModel.ENCODER_BERT]:
+            # ENCODER_BERT runs fine on T4 + Bert backend.
+            pass
+        else:
+            raise ValueError(
+                "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs. \n"
+                "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
+            )
     elif trt_llm_config.build.quantization_type in [
         TrussTRTLLMQuantizationType.FP8,
         TrussTRTLLMQuantizationType.FP8_KV,
         TrussTRTLLMQuantizationType.FP4,
+        TrussTRTLLMQuantizationType.FP4_KV,
+        TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.A10G,
         truss_config.Accelerator.A100,
         truss_config.Accelerator.A100_40GB,
+        truss_config.Accelerator.T4,
+        truss_config.Accelerator.V100,
     ]:
         raise ValueError(
-            "FP8 quantization is only supported on L4, H100, H200 "
+            "FP8 quantization is only supported on L4, H100, H200, B200 "
             "accelerators or newer (CUDA_COMPUTE>=89)"
         )
     elif trt_llm_config.build.quantization_type in [
-        TrussTRTLLMQuantizationType.FP4
+        TrussTRTLLMQuantizationType.FP4,
+        TrussTRTLLMQuantizationType.FP4_KV,
+        TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.H100,
+        truss_config.Accelerator.H100_40GB,
+        truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
         truss_config.Accelerator.A100_40GB,
     ]:
@@ -742,7 +921,10 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
     )
 
     trt_llm_config_v1: "TRTLLMConfigurationV1" = config.trt_llm.root
-    if trt_llm_config_v1.build.base_model != TrussTRTLLMModel.ENCODER:
+    if trt_llm_config_v1.build.base_model not in [
+        TrussTRTLLMModel.ENCODER,
+        TrussTRTLLMModel.ENCODER_BERT,
+    ]:
         current_tags = config.model_metadata.get("tags", [])
         if (
             constants.OPENAI_COMPATIBLE_TAG in current_tags
@@ -793,6 +975,10 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
             f"sequence_parallel_count={trt_llm_config_v1.build.sequence_parallel_count} "
             f"== world_size->{world_size} "
             f"and accelerator.count={config.resources.accelerator.count}. "
+        )
+    if world_size not in [1, 2, 4, 8, 16, 32, 64, 128]:
+        logger.warning(
+            f"TRT-LLM world size {world_size} is unusual. Typical world sizes are powers of two, often 1 or [2,4,8]."
         )
 
     return config

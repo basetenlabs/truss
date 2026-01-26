@@ -20,7 +20,7 @@ CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_cha
 TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
 TRAINING_TEMPLATE_DIR = TEMPLATES_DIR / "train"
 # Must be sorted ascendingly.
-SUPPORTED_PYTHON_VERSIONS = ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+SUPPORTED_PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
 TRTLLM_PREDICT_CONCURRENCY = 512
 BEI_TRTLLM_CLIENT_BATCH_SIZE = 128
@@ -49,6 +49,7 @@ FILENAME_CONSTANTS_MAP = {
 }
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
+NO_BUILD_DOCKERFILE_TEMPLATE_NAME = "no_build.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
 MODEL_CACHE_PATH = pathlib.Path("/app/model_cache")
 README_TEMPLATE_NAME = "README.md.jinja"
@@ -66,17 +67,14 @@ TRUSS_HASH = "truss_hash"
 
 
 INFERENCE_SERVER_PORT = 8080
+DEFAULT_NON_ROOT_USER_ID = 60000
 
 HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
-TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
-TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.18.1-cefe1b1"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
-BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.24"
 # TODO: build the image so that the default path `python3` can be used - then remove here.
 OPENAI_COMPATIBLE_TAG = "openai-compatible"
 OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecated - openai-compatible is now the default

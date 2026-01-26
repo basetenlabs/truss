@@ -25,18 +25,18 @@ deploy_checkpoint = DeployCheckpointsConfig(
         checkpoints=[
             LoRACheckpoint(
                 training_job_id="lqz4pw4",
-                paths=["lqz4pw4/rank-0/checkpoint-24/"],
+                checkpoint_name="checkpoint-24",
                 lora_details=LoRADetails(rank=16),
                 model_weight_format=ModelWeightsFormat.LORA,  # Not required, have it purely to test the import
             ),
             LoRACheckpoint(
                 training_job_id="lqz4pw5",
-                paths=["lqz4pw5/rank-0/checkpoint-42/"],
+                checkpoint_name="checkpoint-42",
                 lora_details=LoRADetails(rank=8),
             ),
             FullCheckpoint(
                 training_job_id="lqz4pw6",
-                paths=["lqz4pw6/checkpoint-123/"],
+                checkpoint_name="checkpoint-123",
                 model_weight_format=ModelWeightsFormat.FULL,  # Not required, have it purely to test the import
             ),
             # This is bever actually allowed (both LoRA and Full but I am just testing the loeader)

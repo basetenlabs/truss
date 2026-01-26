@@ -12,9 +12,15 @@ from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.resolvers.training_project_team_resolver import (
+    resolve_training_project_team_name,
+)
 from truss.cli.train import common as train_common
 from truss.cli.train import core
-from truss.cli.train.core import (
+from truss.cli.train.cache import (
+    OUTPUT_FORMAT_CLI_TABLE,
+    OUTPUT_FORMAT_CSV,
+    OUTPUT_FORMAT_JSON,
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
     SORT_BY_PERMISSIONS,
@@ -27,6 +33,7 @@ from truss.cli.train.types import DeploySuccessResult
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
@@ -108,28 +115,71 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
+def _resolve_team_name(
+    remote_provider: BasetenRemote,
+    provided_team_name: Optional[str],
+    existing_project_name: Optional[str] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    return resolve_training_project_team_name(
+        remote_provider=remote_provider,
+        provided_team_name=provided_team_name,
+        existing_project_name=existing_project_name,
+        existing_teams=existing_teams,
+    )
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
 @common.common_options()
 def push_training_job(
-    config: Path, remote: Optional[str], tail: bool, job_name: Optional[str]
+    config: Path,
+    remote: Optional[str],
+    tail: bool,
+    job_name: Optional[str],
+    provided_team_name: Optional[str],
 ):
     """Run a training job"""
-    from truss_train import deployment
+    from truss_train import deployment, loader
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    with console.status("Creating training job...", spinner="dots"):
-        remote_provider: BasetenRemote = cast(
-            BasetenRemote, RemoteFactory.create(remote=remote)
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    existing_teams = remote_provider.api.get_teams()
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+
+    with loader.import_training_project(config) as training_project:
+        team_name, team_id = _resolve_team_name(
+            remote_provider,
+            effective_team_name,
+            existing_project_name=training_project.name,
+            existing_teams=existing_teams,
         )
-        job_resp = deployment.create_training_job_from_file(
-            remote_provider, config, job_name
-        )
+
+        with console.status("Creating training job...", spinner="dots"):
+            job_resp = deployment.create_training_job(
+                remote_provider,
+                config,
+                training_project,
+                job_name_from_cli=job_name,
+                team_name=team_name,
+                team_id=team_id,
+            )
 
     # Note: This post create logic needs to happen outside the context
     # of the above context manager, as only one console session can be active
@@ -556,8 +606,17 @@ def cache():
     default=SORT_ORDER_ASC,
     help="Sort order: ascending or descending.",
 )
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice([OUTPUT_FORMAT_CLI_TABLE, OUTPUT_FORMAT_CSV, OUTPUT_FORMAT_JSON]),
+    default=OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
 @common.common_options()
-def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+def view_cache_summary(
+    project: str, remote: Optional[str], sort: str, order: str, output_format: str
+):
     """View cache summary for a training project"""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -566,7 +625,9 @@ def view_cache_summary(project: str, remote: Optional[str], sort: str, order: st
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)
+    train_cli.view_cache_summary_by_project(
+        remote_provider, project, sort, order, output_format
+    )
 
 
 def _maybe_resolve_project_id_from_id_or_name(

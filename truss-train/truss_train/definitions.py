@@ -99,12 +99,14 @@ class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
+    volume_size_gib: Optional[int] = None
 
 
 class CacheConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     enable_legacy_hf_mount: bool = False
     require_cache_affinity: bool = True
+    mount_base_path: str = "/root/.cache"
 
 
 class Runtime(custom_types.SafeModelNoExtra):
@@ -125,7 +127,7 @@ class Runtime(custom_types.SafeModelNoExtra):
             raise ValueError(
                 "Cannot set both 'enable_cache' and 'cache_config'. "
                 "'enable_cache' is deprecated. Prefer migrating to 'cache_config' with "
-                "`enabled=True` and `enable_legacy_hf_cache=True`."
+                "`enabled=True` and `enable_legacy_hf_mount=True`."
             )
 
         # Migrate enable_cache to cache_config if enable_cache is True
@@ -181,16 +183,18 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
+    team_name: Optional[str] = None
 
 
 class Checkpoint(custom_types.ConfigModel, ABC):
     training_job_id: str
-    paths: List[str]
+    checkpoint_name: str
     model_weight_format: ModelWeightsFormat
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
-            training_job_id=self.training_job_id, paths=self.paths
+            training_job_id=self.training_job_id,
+            paths=[f"rank-0/{self.checkpoint_name}/"],
         )
 
 

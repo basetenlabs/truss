@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,7 @@ def sort_manifest(manifest):
     return sorted(manifest, key=lambda x: x["uid"])
 
 
+@pytest.mark.skip(reason="Skipping GCS download test in CI")
 def test_dolly():
     # fix the below models
     models = [
@@ -215,11 +217,13 @@ def test_dolly():
     return result
 
 
+@pytest.mark.skip(reason="Skipping GCS download test in CI")
 def test_dolly_with_download():
     manifest = test_dolly()
     Path("/static-bptr").mkdir(parents=True, exist_ok=True)
     with open("/static-bptr/static-bptr-manifest.json", "w") as f:
         f.write(manifest)
+    shutil.rmtree("/app/model_cache/julien_dummy", ignore_errors=True)
 
     print("✓ BasetenPointer manifest written to /static-bptr/static-bptr-manifest.json")
     truss_transfer.lazy_data_resolve("")

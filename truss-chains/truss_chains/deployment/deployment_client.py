@@ -502,10 +502,13 @@ def _create_baseten_chain(
         f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
         f"(publish={baseten_options.publish}, environment={baseten_options.environment})."
     )
-    remote_provider = cast(
-        b10_remote.BasetenRemote,
-        remote_factory.RemoteFactory.create(remote=baseten_options.remote),
-    )
+    if baseten_options.remote_provider is not None:
+        remote_provider = baseten_options.remote_provider
+    else:
+        remote_provider = cast(
+            b10_remote.BasetenRemote,
+            remote_factory.RemoteFactory.create(remote=baseten_options.remote),
+        )
 
     if user_config.settings.include_git_info or baseten_options.include_git_info:
         truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
@@ -514,16 +517,23 @@ def _create_baseten_chain(
     else:
         truss_user_env = b10_types.TrussUserEnv.collect()
 
-    _create_chains_secret_if_missing(remote_provider)
+    # Get chain root for raw chain artifact upload
+    chain_root = None
+    if entrypoint_descriptor is not None:
+        chain_root = _get_chain_root(entrypoint_descriptor.chainlet_cls)
 
     chain_deployment_handle = remote_provider.push_chain_atomic(
         baseten_options.chain_name,
         entrypoint_artifact,
         dependency_artifacts,
         truss_user_env,
+        chain_root=chain_root,
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,
+        disable_chain_download=baseten_options.disable_chain_download,
+        deployment_name=baseten_options.deployment_name,
+        team_id=baseten_options.team_id,
     )
     return BasetenChainService(
         baseten_options.chain_name,
@@ -531,27 +541,6 @@ def _create_baseten_chain(
         remote_provider,
         entrypoint_descriptor,
     )
-
-
-def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) -> None:
-    secrets_info = remote_provider.api.get_all_secrets()
-    secret_names = {sec["name"] for sec in secrets_info["secrets"]}
-
-    if public_types.CHAIN_API_KEY_SECRET_NAME not in secret_names:
-        logging.info(
-            "It seems you are using chains for the first time, since there "
-            f"is no `{public_types.CHAIN_API_KEY_SECRET_NAME}` secret on baseten. "
-            "Creating secret automatically."
-        )
-
-        workspace_api_key = remote_provider.api.create_api_key(
-            api_key_type=b10_types.APIKeyCategory.WORKSPACE_INVOKE,
-            name=public_types.CHAIN_API_KEY_NAME,
-        )["api_key"]
-
-        remote_provider.api.upsert_secret(
-            public_types.CHAIN_API_KEY_SECRET_NAME, workspace_api_key
-        )
 
 
 # Watch / Live Patching ################################################################
@@ -688,7 +677,10 @@ class _Watcher:
         error_console: "rich_console.Console",
         show_stack_trace: bool,
         included_chainlets: Optional[list[str]],
+        provided_team_name: Optional[str] = None,
     ) -> None:
+        from truss.cli.resolvers.chain_team_resolver import resolve_chain_for_watch
+
         self._source = source
         self._entrypoint = entrypoint
         self._console = console
@@ -719,13 +711,10 @@ class _Watcher:
         else:
             self._included_chainlets = chainlet_names
 
-        chain_id = b10_core.get_chain_id_by_name(
-            self._remote_provider.api, self._deployed_chain_name
+        resolved_chain = resolve_chain_for_watch(
+            self._remote_provider, self._deployed_chain_name, provided_team_name
         )
-        if not chain_id:
-            raise public_types.ChainsDeploymentError(
-                f"Chain `{self._deployed_chain_name}` was not found."
-            )
+        chain_id = resolved_chain["id"]
         self._status_page_url = b10_service.URLConfig.status_page_url(
             self._remote_provider.remote_url, b10_service.URLConfig.CHAIN, chain_id
         )
@@ -912,6 +901,7 @@ def watch(
     error_console: "rich_console.Console",
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
+    provided_team_name: Optional[str] = None,
 ) -> None:
     console.print(
         (
@@ -929,6 +919,7 @@ def watch(
         error_console,
         show_stack_trace,
         included_chainlets,
+        provided_team_name,
     )
     patcher.watch()
 

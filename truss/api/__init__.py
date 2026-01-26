@@ -66,6 +66,7 @@ def push(
     include_git_info: bool = False,
     preserve_env_instance_type: bool = True,
     watch: bool = False,
+    deploy_timeout_minutes: Optional[int] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -95,6 +96,7 @@ def push(
           configured in the specified environment.
         watch: Push the truss as a development deployment with hot reload support.
           Development models allow you to iterate quickly during the deployment process.
+        deploy_timeout_minutes: Optional timeout in minutes for the deployment operation.
 
     Returns:
         The newly created ModelDeployment.
@@ -161,6 +163,7 @@ def push(
         progress_bar=progress_bar,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
+        deploy_timeout_minutes=deploy_timeout_minutes,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))

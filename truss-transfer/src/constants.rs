@@ -15,7 +15,6 @@ pub static LAZY_DATA_RESOLVER_PATHS: &[&str] = &[
 ];
 
 /// Cache directory for b10fs
-
 pub static CACHE_DIR: Lazy<String> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_CACHE_DIR")
         .unwrap_or_else(|_| "/cache/org/artifacts/truss_transfer_managed_v1".to_string())
@@ -50,7 +49,6 @@ pub static TRUSS_TRANSFER_NUM_WORKERS: Lazy<u8> = Lazy::new(|| {
 });
 
 /// Environment variable for download directory
-
 /// Cleanup hours for b10fs, initialized from the `TRUSS_TRANSFER_B10FS_CLEANUP_HOURS`
 /// environment variable, with a default of 96 hours (4 days).
 pub static TRUSS_TRANSFER_B10FS_CLEANUP_HOURS: Lazy<u64> = Lazy::new(|| {
@@ -71,7 +69,7 @@ pub static TRUSS_TRANSFER_USE_RANGE_DOWNLOAD: Lazy<bool> = Lazy::new(|| {
     env::var("TRUSS_TRANSFER_USE_RANGE_DOWNLOAD")
         .ok()
         .map(|s| is_truthy(&s))
-        .unwrap_or(false)
+        .unwrap_or(true)
 });
 
 pub static TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS: Lazy<usize> = Lazy::new(|| {
@@ -101,6 +99,8 @@ pub static TRUSS_TRANSFER_DOWNLOAD_DIR: Lazy<String> = Lazy::new(|| {
 
 /// Base path for secrets
 pub static SECRETS_BASE_PATH: &str = "/secrets";
+
+pub static SECRET_PATH_WHITELIST: &[&str] = &["/secrets", "/aws-secrets", "/app", "/tmp"];
 
 pub static RUNTIME_MODEL_CACHE_PATH: &str = "/app/model_cache";
 

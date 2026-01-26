@@ -10,34 +10,125 @@ from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.errors import ValidationError
 from truss.remote.baseten import core
 from truss.remote.baseten import custom_types as b10_types
-from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import (
     MAX_BATCH_SIZE,
     create_truss_service,
     get_training_job_logs_with_pagination,
 )
-from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.time import iso_to_millis
 
 
 def test_exists_model():
-    def mock_get_model(model_name):
-        if model_name == "first model":
-            return {"model": {"id": "1"}}
-        elif model_name == "second model":
-            return {"model": {"id": "2"}}
-        else:
-            raise ApiError(
-                "Oracle not found",
-                BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value,
-            )
-
+    """Test exists_model with client-side filtering."""
     api = MagicMock()
-    api.get_model.side_effect = mock_get_model
+    api.models.return_value = {
+        "models": [
+            {
+                "id": "1",
+                "name": "first model",
+                "team": {"id": "team1", "name": "Team 1"},
+            },
+            {
+                "id": "2",
+                "name": "second model",
+                "team": {"id": "team1", "name": "Team 1"},
+            },
+        ]
+    }
 
-    assert core.exists_model(api, "first model")
-    assert core.exists_model(api, "second model")
-    assert not core.exists_model(api, "third model")
+    assert core.exists_model(api, "first model") == "1"
+    assert core.exists_model(api, "second model") == "2"
+    assert core.exists_model(api, "third model") is None
+
+    # Verify models() was called without team_id
+    api.models.assert_called_with(team_id=None)
+
+
+def test_exists_model_with_team_id():
+    """Test exists_model with team_id filtering.
+
+    When team_id is provided, it should be passed to api.models() to filter
+    at the GraphQL level, then filter client-side by model name.
+    """
+    api = MagicMock()
+
+    # Simulate team1 models response
+    team1_models = {
+        "models": [
+            {
+                "id": "model1",
+                "name": "my-model",
+                "team": {"id": "team1", "name": "Team Alpha"},
+            },
+            {
+                "id": "model3",
+                "name": "other-model",
+                "team": {"id": "team1", "name": "Team Alpha"},
+            },
+        ]
+    }
+
+    # Simulate team2 models response
+    team2_models = {
+        "models": [
+            {
+                "id": "model2",
+                "name": "my-model",
+                "team": {"id": "team2", "name": "Team Beta"},
+            }
+        ]
+    }
+
+    # Simulate empty team response
+    empty_models = {"models": []}
+
+    # Test with team1
+    api.models.return_value = team1_models
+    assert core.exists_model(api, "my-model", team_id="team1") == "model1"
+    api.models.assert_called_with(team_id="team1")
+
+    # Test with team2
+    api.models.return_value = team2_models
+    assert core.exists_model(api, "my-model", team_id="team2") == "model2"
+    api.models.assert_called_with(team_id="team2")
+
+    # Test with non-existent team (empty response)
+    api.models.return_value = empty_models
+    assert core.exists_model(api, "my-model", team_id="team3") is None
+    api.models.assert_called_with(team_id="team3")
+
+    # Test model that doesn't exist in the team
+    api.models.return_value = team2_models
+    assert core.exists_model(api, "other-model", team_id="team2") is None
+
+
+def test_exists_model_name_in_different_team():
+    """Test that exists_model returns None when model exists in a different team.
+
+    This verifies that querying for a model name in team1 returns None even if
+    a model with that name exists in team2.
+    """
+    api = MagicMock()
+
+    # Model "shared-name" exists in team2, but not in team1
+    team1_models = {
+        "models": [
+            {"id": "model-a", "name": "team1-only-model", "team": {"id": "team1"}}
+        ]
+    }
+    team2_models = {
+        "models": [{"id": "model-b", "name": "shared-name", "team": {"id": "team2"}}]
+    }
+
+    # Query team1 for "shared-name" - should return None (model is in team2)
+    api.models.return_value = team1_models
+    assert core.exists_model(api, "shared-name", team_id="team1") is None
+    api.models.assert_called_with(team_id="team1")
+
+    # Query team2 for "shared-name" - should return model-b
+    api.models.return_value = team2_models
+    assert core.exists_model(api, "shared-name", team_id="team2") == "model-b"
+    api.models.assert_called_with(team_id="team2")
 
 
 def test_upload_truss():
@@ -187,6 +278,7 @@ def test_create_truss_service_handles_existing_model(inputs):
     _, kwargs = api.create_model_version_from_truss.call_args
     for k, v in inputs.items():
         assert kwargs[k] == v
+    assert kwargs.get("deploy_timeout_minutes") is None
 
 
 @pytest.mark.parametrize("allow_truss_download", [True, False])
@@ -252,6 +344,46 @@ def test_validate_truss_config():
         match="Validation failed with the following errors:\n  error\n  and another one",
     ):
         core.validate_truss_config_against_backend(api, {"should_error": "hi"})
+
+
+def test_validate_truss_config_with_warnings():
+    api = MagicMock()
+
+    with mock.patch("truss.remote.baseten.core.console") as mock_console:
+        api.validate_truss.return_value = {
+            "success": True,
+            "details": json.dumps(
+                {"warnings": ["Deprecation: field X will be removed in v2.0"]}
+            ),
+        }
+        core.validate_truss_config_against_backend(api, {})
+        mock_console.print.assert_called_once()
+        assert (
+            "Deprecation: field X will be removed" in mock_console.print.call_args[0][0]
+        )
+
+    with mock.patch("truss.remote.baseten.core.console") as mock_console:
+        api.validate_truss.return_value = {
+            "success": True,
+            "details": json.dumps({"warnings": ["warning1", "warning2"]}),
+        }
+        core.validate_truss_config_against_backend(api, {})
+        assert mock_console.print.call_count == 2
+        calls = [call[0][0] for call in mock_console.print.call_args_list]
+        assert any("warning1" in c for c in calls)
+        assert any("warning2" in c for c in calls)
+
+    with mock.patch("truss.remote.baseten.core.console") as mock_console:
+        api.validate_truss.return_value = {
+            "success": False,
+            "details": json.dumps(
+                {"errors": ["some error"], "warnings": ["warning despite error"]}
+            ),
+        }
+        with pytest.raises(ValidationError, match="some error"):
+            core.validate_truss_config_against_backend(api, {})
+        mock_console.print.assert_called_once()
+        assert "warning despite error" in mock_console.print.call_args[0][0]
 
 
 def test_get_training_job_logs_with_pagination_single_batch(baseten_api):
@@ -761,3 +893,88 @@ def test_get_training_job_logs_with_pagination_default_batch_size(baseten_api):
     query_params = call_args[0][2]  # query_params
 
     assert query_params["limit"] == MAX_BATCH_SIZE
+
+
+def test_create_truss_service_passes_deploy_timeout_minutes():
+    """Test that deploy_timeout_minutes is passed through to create_model_version_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_model_version_from_truss.return_value = return_value
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id="model_id",
+        environment="staging",
+        deploy_timeout_minutes=600,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    assert version_handle.model_id == "model_id"
+    api.create_model_version_from_truss.assert_called_once()
+    _, kwargs = api.create_model_version_from_truss.call_args
+    assert kwargs["deploy_timeout_minutes"] == 600
+
+
+def test_create_truss_service_passes_deploy_timeout_minutes_with_other_params():
+    """Test that deploy_timeout_minutes works correctly with other parameters like preserve_env_instance_type"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_model_version_from_truss.return_value = return_value
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=False,
+        model_id="model_id",
+        environment="production",
+        preserve_env_instance_type=False,
+        deploy_timeout_minutes=900,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    api.create_model_version_from_truss.assert_called_once()
+    _, kwargs = api.create_model_version_from_truss.call_args
+    assert kwargs["deploy_timeout_minutes"] == 900
+    assert kwargs["preserve_env_instance_type"] is False
+    assert kwargs["environment"] == "production"
+
+
+def test_create_truss_service_passes_deploy_timeout_minutes_for_development_model():
+    """Test that deploy_timeout_minutes is passed through to create_development_model_from_truss"""
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+        "instance_type": {"name": "1x2"},
+    }
+    api.create_development_model_from_truss.return_value = return_value
+    version_handle = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        b10_types.TrussUserEnv.collect(),
+        is_draft=True,
+        model_id=None,
+        deploy_timeout_minutes=600,
+    )
+
+    assert version_handle.version_id == "model_version_id"
+    assert version_handle.model_id == "model_id"
+    api.create_development_model_from_truss.assert_called_once()
+    _, kwargs = api.create_development_model_from_truss.call_args
+    assert kwargs["deploy_timeout_minutes"] == 600

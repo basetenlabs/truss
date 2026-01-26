@@ -26,6 +26,7 @@ from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
 from truss.util.requirements import parse_requirement_string, raise_insufficent_revision
+from truss.util.yaml_utils import safe_load_yaml_with_no_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -141,15 +142,22 @@ class ModelRepoSourceKind(str, enum.Enum):
 
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
-    revision: Optional[Annotated[str, pydantic.StringConstraints(min_length=1)]] = None
+    revision: str = ""
     allow_patterns: Optional[list[str]] = None
     ignore_patterns: Optional[list[str]] = None
     volume_folder: Optional[
         Annotated[str, pydantic.StringConstraints(min_length=1)]
     ] = None
-    use_volume: bool = False
+    use_volume: bool
     kind: ModelRepoSourceKind = ModelRepoSourceKind.HF
     runtime_secret_name: str = "hf_access_token"
+
+    @pydantic.field_validator("revision")
+    @classmethod
+    def _validate_revision(cls, v: str) -> str:
+        if len(v) == 1:
+            raise ValueError("revision must be empty or at least 2 characters")
+        return v
 
     @property
     def runtime_path(self) -> pathlib.Path:
@@ -161,11 +169,14 @@ class ModelRepo(custom_types.ConfigModel):
         use_volume = v.get("use_volume", False)
         if not use_volume:
             return v
-        if v.get("kind") == ModelRepoSourceKind.HF.value and v.get("revision") is None:
+        revision = v.get("revision") or ""
+        kind = v.get("kind")
+        is_hf = kind is None or kind == ModelRepoSourceKind.HF.value
+        if is_hf and not revision:
             logger.warning(
                 "the key `revision: str` is required for use_volume=True huggingface repos."
             )
-            raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
+            raise_insufficent_revision(v.get("repo_id"), revision)
         if v.get("volume_folder") is None or len(v["volume_folder"]) == 0:
             raise ValueError(
                 "the key `volume_folder: str` is required for `use_volume=True` repos."
@@ -202,7 +213,152 @@ class ModelCache(pydantic.RootModel[list[ModelRepo]]):
             )
 
 
-class CacheInternal(ModelCache): ...
+class ModelRepoCacheInternal(ModelRepo):
+    use_volume: bool = False  # override
+
+
+class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
+    @property
+    def models(self) -> list[ModelRepoCacheInternal]:
+        return self.root
+
+
+# URI prefixes for cloud storage sources
+_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://"})
+# HuggingFace prefix
+_HF_PREFIX = "hf://"
+# HTTPS prefix for direct URL downloads
+_HTTPS_PREFIX = "https://"
+# All supported URI schemes (cloud storage + HuggingFace + HTTPS)
+_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX, _HTTPS_PREFIX}
+
+
+class WeightsSource(custom_types.ConfigModel):
+    """Configuration for a weights source in the new weights API.
+
+    Uses a URI-based `source` field with a required scheme prefix:
+    - hf:// -> HuggingFace (e.g., "hf://meta-llama/Llama-2-7b" or "hf://meta-llama/Llama-2-7b@main")
+    - s3:// -> AWS S3 (e.g., "s3://bucket/path")
+    - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
+    - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+    - r2:// -> CloudFlare R2 Storage (e.g., "r2://account_id.bucket/path")
+    - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
+
+    For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
+    using the @{rev} suffix: "hf://owner/repo@revision"
+    """
+
+    source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ...,
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, or https://. "
+        "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
+    )
+    mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
+        pydantic.Field(
+            ..., description="Absolute path where weights will be mounted at runtime."
+        )
+    )
+    auth_secret_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="Baseten secret name containing credentials for accessing the source.",
+    )
+    allow_patterns: Optional[list[str]] = pydantic.Field(
+        default=None, description="File patterns to include (e.g., ['*.safetensors'])."
+    )
+    ignore_patterns: Optional[list[str]] = pydantic.Field(
+        default=None, description="File patterns to exclude (e.g., ['*.md'])."
+    )
+
+    @property
+    def is_huggingface(self) -> bool:
+        """Check if this source is a HuggingFace repository."""
+        return self.source.startswith(_HF_PREFIX)
+
+    @pydantic.field_validator("source")
+    @classmethod
+    def _validate_source(cls, v: str) -> str:
+        supported_schemes_str = ", ".join(sorted(_SUPPORTED_SCHEMES))
+
+        # URI scheme prefix is required
+        if "://" not in v:
+            raise ValueError(
+                f"Source '{v}' is missing a URI scheme. "
+                f"Supported schemes: {supported_schemes_str}"
+            )
+
+        scheme = v.split("://")[0] + "://"
+
+        # Check for unsupported URI schemes
+        if scheme not in _SUPPORTED_SCHEMES:
+            raise ValueError(
+                f"Unsupported source scheme '{scheme}'. "
+                f"Supported schemes: {supported_schemes_str}"
+            )
+
+        # Validate URI format for cloud storage
+        if scheme in _CLOUD_STORAGE_PREFIXES:
+            path_part = v[len(scheme) :]
+            if not path_part or path_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid {scheme[:-3].upper()} URI format: '{v}'. "
+                    f"Expected format: {scheme}bucket/path"
+                )
+            # Reject @ revision syntax for cloud storage (HF-only feature)
+            if "@" in path_part:
+                raise ValueError(
+                    f"The @ revision syntax is only valid for HuggingFace sources (hf://). "
+                    f"Source '{v}' uses {scheme[:-3].upper()} which does not support revisions."
+                )
+
+        # Validate https:// format
+        if scheme == _HTTPS_PREFIX:
+            url_part = v[len(_HTTPS_PREFIX) :]
+            if not url_part or url_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid HTTPS URL format: '{v}'. "
+                    f"Expected format: https://hostname/path"
+                )
+
+        # Validate hf:// format
+        if scheme == _HF_PREFIX:
+            repo_part = v[len(_HF_PREFIX) :]
+            if not repo_part or repo_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid HuggingFace URI format: '{v}'. "
+                    f"Expected format: hf://owner/repo"
+                )
+
+        return v
+
+    @pydantic.field_validator("mount_location")
+    @classmethod
+    def _validate_mount_location(cls, v: str) -> str:
+        if not v.startswith("/"):
+            raise ValueError(
+                f"mount_location must be an absolute path (start with /), got: {v}"
+            )
+        return v
+
+
+class Weights(pydantic.RootModel[list[WeightsSource]]):
+    """List of weights sources for the new weights API."""
+
+    @property
+    def sources(self) -> list[WeightsSource]:
+        return self.root
+
+    @pydantic.model_validator(mode="after")
+    def _validate_unique_mount_locations(self) -> "Weights":
+        """Ensure all mount_location values are unique."""
+        mount_locations: list[str] = []
+        for source in self.root:
+            if source.mount_location in mount_locations:
+                raise ValueError(
+                    f"Duplicate mount_location '{source.mount_location}' - "
+                    f"each weights source must have a unique mount path."
+                )
+            mount_locations.append(source.mount_location)
+        return self
 
 
 class HealthChecks(custom_types.ConfigModel):
@@ -369,6 +525,13 @@ class Resources(custom_types.ConfigModel):
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
+    instance_type: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Full SKU name for the instance type (e.g., 'L4:8x32'). "
+            "When specified, cpu, memory, and accelerator fields are ignored."
+        ),
+    )
     node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -442,10 +605,12 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` if at default."""
+        """Custom omission of `node_count` and `instance_type` if at default."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
+        if not self.instance_type:
+            result.pop("instance_type", None)
         return result
 
 
@@ -541,11 +706,26 @@ class BaseImage(custom_types.ConfigModel):
 
 
 class DockerServer(custom_types.ConfigModel):
-    start_command: str
+    start_command: Optional[str] = None
     server_port: int
     predict_endpoint: str
     readiness_endpoint: str
     liveness_endpoint: str
+    run_as_user_id: Optional[int] = None
+    no_build: Optional[bool] = None
+
+    @pydantic.field_validator("run_as_user_id")
+    @classmethod
+    def _validate_run_as_user_id(cls, v: Optional[int]) -> Optional[int]:
+        if v == 0 or v == constants.DEFAULT_NON_ROOT_USER_ID:
+            raise ValueError(f"run_as_user_id cannot be {v}. Use a different user ID.")
+        return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_start_command(self) -> "DockerServer":
+        if not self.no_build and self.start_command is None:
+            raise ValueError("start_command is required when no_build is not true")
+        return self
 
 
 class TrainingArtifactReference(custom_types.ConfigModel):
@@ -602,6 +782,7 @@ class TrussConfig(custom_types.ConfigModel):
     build_commands: list[str] = pydantic.Field(default_factory=list)
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
+    weights: Weights = pydantic.Field(default_factory=lambda: Weights([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
 
     # deploying from checkpoint
@@ -660,7 +841,7 @@ class TrussConfig(custom_types.ConfigModel):
         if not os.path.isfile(path):
             raise ValueError(f"Expected a truss configuration file at {path}")
         with path.open() as f:
-            raw_data = yaml.safe_load(f) or {}
+            raw_data = safe_load_yaml_with_no_duplicates(f) or {}
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
@@ -706,6 +887,10 @@ class TrussConfig(custom_types.ConfigModel):
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
             )
+        if self.model_cache.models and self.weights.sources:
+            raise ValueError(
+                "Please ensure that only one of `model_cache` and `weights` is specified"
+            )
         return self
 
     @pydantic.field_validator("cache_internal", mode="before")
@@ -732,6 +917,7 @@ class TrussConfig(custom_types.ConfigModel):
     def clear_runtime_fields(self) -> None:
         self.training_checkpoints = None
         self.environment_variables = {}
+        self.weights = Weights([])
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

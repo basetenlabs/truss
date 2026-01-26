@@ -12,7 +12,7 @@ except ImportError:
 from functools import partial
 from operator import is_not
 from pathlib import Path
-from typing import Dict, List, Type
+from typing import Dict, List, Optional, Type
 
 from truss.remote.baseten import BasetenRemote
 from truss.remote.truss_remote import RemoteConfig, TrussRemote
@@ -69,6 +69,17 @@ class RemoteFactory:
         config = load_config()
         config[remote_config.name] = remote_config.configs
         update_config(config)
+
+    @staticmethod
+    def get_remote_team(remote_name: str) -> Optional[str]:
+        """
+        Get team name from remote config if configured.
+        """
+        try:
+            config = RemoteFactory.load_remote_config(remote_name)
+            return config.configs.get("team")
+        except (FileNotFoundError, ValueError):
+            return None
 
     @classmethod
     def create(cls, remote: str) -> TrussRemote:

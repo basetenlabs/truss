@@ -6,7 +6,8 @@ use crate::cloud_range_download::{
     download_cloud_range_streaming, should_use_cloud_range_download,
 };
 use crate::constants::{
-    TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE, TRUSS_TRANSFER_USE_RANGE_DOWNLOAD, TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS,
+    TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS, TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE,
+    TRUSS_TRANSFER_USE_RANGE_DOWNLOAD,
 };
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -138,7 +139,7 @@ pub async fn download_http_to_path_fast(
     let auth_token = if is_hf_url {
         get_hf_secret_from_file(runtime_secret_name)
     } else {
-        info!("no hf token, since using {url}");
+        info!("no hf token, since using {sanitized_url}");
         None
     };
 
@@ -163,7 +164,7 @@ pub async fn download_http_to_path_fast(
         }
 
         // assure that the file got flushed, without asking each file to flush it
-        for i in (0..1000).rev() {
+        for i in (0..20).rev() {
             if check_metadata_size(path, size).await {
                 break;
             }
@@ -358,7 +359,10 @@ async fn download_from_object_store_range(
     // Use the new streaming approach that writes chunks as they arrive
     download_cloud_range_streaming(storage, object_path, local_path, size, concurrency)
         .await
-        .context("range download failed")?;
+        .context(format!(
+            "Range download failed for {} to {:?} (size: {} bytes, concurrency: {})",
+            source_description, local_path, size, concurrency
+        ))?;
 
     info!("Completed range download to {:?}", local_path);
     Ok(())
