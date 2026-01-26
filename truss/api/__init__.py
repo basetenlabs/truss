@@ -106,24 +106,28 @@ def push(
         raise ValueError(
             "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
         )
-    
+
     if watch and promote:
         raise ValueError(
             "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
         )
-    
+
     # Determine the deployment type based on flags
     if watch:
         # --watch explicitly creates development deployment
         if publish:
-            raise ValueError("Cannot use `--publish` and `--watch` at the same time. Please use either a development or published model.")
+            raise ValueError(
+                "Cannot use `--publish` and `--watch` at the same time. Please use either a development or published model."
+            )
         publish = False
     elif publish or promote:
         # --publish or --promote explicitly creates published deployment
         publish = True
     else:
         # Default behavior: create published deployment
-        raise ValueError("Please either specify `--publish` and `--watch` (Development mode with hot-reloading).")
+        raise ValueError(
+            "Please either specify `--publish` and `--watch` (Development mode with hot-reloading)."
+        )
     if trusted is not None:
         warnings.warn(
             "`trusted` is deprecated and will be ignored, all models are "

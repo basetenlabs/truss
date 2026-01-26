@@ -571,12 +571,12 @@ def push(
         raise click.UsageError(
             "Cannot use both --watch and --publish flags. Use --watch for development deployments or --publish for published deployments."
         )
-    
+
     if watch and promote:
         raise click.UsageError(
             "Cannot use both --watch and --promote flags. Use --watch for development deployments or --promote for production deployments."
         )
-    
+
     # Determine the deployment type based on flags
     if watch:
         # --watch explicitly creates development deployment
@@ -587,7 +587,7 @@ def push(
     else:
         # Default behavior: create published deployment
         publish = True
-    
+
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     if tr.spec.config.resources.instance_type:

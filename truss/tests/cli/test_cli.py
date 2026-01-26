@@ -16,7 +16,15 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
             result = runner.invoke(
                 truss_cli,
-                ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch"],
+                [
+                    "push",
+                    "test_truss",
+                    "--remote",
+                    "remote1",
+                    "--model-name",
+                    "name",
+                    "--watch",
+                ],
             )
 
     assert result.exit_code == 2
@@ -24,6 +32,7 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
         "Truss with gRPC transport cannot be used as a development deployment"
         in result.output
     )
+
 
 def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
     custom_model_truss_dir_with_pre_and_post,
