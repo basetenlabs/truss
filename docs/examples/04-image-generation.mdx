@@ -250,8 +250,11 @@ model_cache:
 
 Deploy the model like you would other Trusses, with:
 ```bash
-$ truss push
+$ truss push --publish
 ```
+
+For development with hot reload, use `truss push --watch` instead.
+
 You can then invoke the model with:
 ```bash
 $ truss predict -d '{"prompt": "A tree in a field under the night sky", "use_refiner": true}'

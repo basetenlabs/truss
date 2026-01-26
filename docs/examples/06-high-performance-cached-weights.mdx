@@ -114,9 +114,12 @@ secrets: {}
 
 Deploy the model like you would other Trusses, with:
 ```bash
-$ truss push
+$ truss push --publish
 ```
- <Note>
+
+For development with hot reload, use `truss push --watch` instead.
+
+<Note>
  The build step will take  longer than with the normal
  Llama Truss, since bundling the model weights is now happening during the build.
  The deploy step & scale-ups will happen much faster with this approach.

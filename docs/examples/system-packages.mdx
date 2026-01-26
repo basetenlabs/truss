@@ -132,8 +132,10 @@ You'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys
 We have successfully packaged LayoutLM Document QA as a Truss. Let's deploy!
 
 ```sh
-truss push
+truss push --publish
 ```
+
+For development with hot reload, use `truss push --watch` instead.
 
 You can invoke the model with:
 
