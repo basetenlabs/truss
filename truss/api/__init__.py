@@ -75,7 +75,7 @@ def push(
         remote: Name of the remote in .trussrc to patch changes to.
         model_name: The name of the model, if different from the one in the config.yaml.
         publish: Push the truss as a published deployment. If no production deployment exists,
-            promote the truss to production after deploy completes. Default is True.
+            promote the truss to production after deploy completes.
         promote: Push the truss as a published deployment. Even if a production deployment exists,
             promote the truss to production after deploy completes.
         preserve_previous_production_deployment: Preserve the previous production deployment's autoscaling
