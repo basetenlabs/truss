@@ -23,11 +23,20 @@ A high-performance reverse proxy for Baseten APIs that leverages the `baseten-pe
 
 ### Required Headers
 
-- `Authorization: Bearer <api_key>` - API key for authentication
+- `Authorization: Bearer <api_key>` - API key for authentication (overrides upstream API key)
 - `X-Baseten-Model: <model_name>` - Model to use for the request
+
+### API Key Resolution
+
+The reverse proxy uses API keys in the following priority order:
+1. **Request Header**: `Authorization: Bearer <api_key>` (highest priority)
+2. **Upstream API Key**: `--upstream-api-key` CLI argument (fallback)
+
+If no API key is provided in either location, the request will be rejected with `401 Unauthorized`.
 
 ### Optional Headers
 
+- `X-Target-Host: <url>` - Override target URL for this specific request
 - `X-Baseten-Request-Preferences: {...}` - JSON configuration for request processing
 - `X-Baseten-Customer-Request-Id: <request_id>` - Customer request ID for tracking
 
@@ -37,6 +46,7 @@ The `X-Baseten-Request-Preferences` header accepts JSON with the following field
 
 ```json
 {
+  "target_host": "https://api.example.com",
   "max_concurrent_requests": 64,
   "batch_size": 32,
   "timeout_s": 30.0,
@@ -89,6 +99,66 @@ curl -X POST "http://localhost:8080/rerank" \
   }'
 ```
 
+### With Target URL Override
+
+```bash
+curl -X POST "http://localhost:8080/v1/embeddings" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Baseten-Model: text-embedding-ada-002" \
+  -H "X-Target-Host: https://custom.api.com" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": ["Hello world", "How are you?"],
+    "encoding_format": "float"
+  }'
+```
+
+### With Target Host in Preferences
+
+```bash
+curl -X POST "http://localhost:8080/v1/embeddings" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Baseten-Model: text-embedding-ada-002" \
+  -H "X-Baseten-Request-Preferences: {\"target_host\": \"https://api.from-preferences.com\"}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": ["Hello world", "How are you?"],
+    "encoding_format": "float"
+  }'
+```
+
+### With Multiple Preferences Including Target Host
+
+```bash
+curl -X POST "http://localhost:8080/v1/embeddings" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Baseten-Model: text-embedding-ada-002" \
+  -H "X-Baseten-Request-Preferences: {\"target_host\": \"https://api.example.com\", \"max_concurrent_requests\": 128, \"timeout_s\": 60.0}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": ["Hello world", "How are you?"],
+    "encoding_format": "float"
+  }'
+```
+
+### Without Default Target URL
+
+```bash
+# Start proxy without default target URL
+./target/release/baseten-reverse-proxy --port 8080
+
+# Each request must provide target URL
+curl -X POST "http://localhost:8080/v1/embeddings" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Baseten-Model: text-embedding-ada-002" \
+  -H "X-Target-Host: https://api.baseten.co" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": ["Hello world"],
+    "encoding_format": "float"
+  }'
+```
+
 ## Building and Running
 
 ### From Source
@@ -97,32 +167,106 @@ curl -X POST "http://localhost:8080/rerank" \
 # Build the reverse proxy
 cargo build --release --bin baseten-reverse-proxy
 
-# Run with default settings
-./target/release/baseten-reverse-proxy --target-url https://api.baseten.co
+# Run with default target URL and upstream API key
+./target/release/baseten-reverse-proxy \
+  --target-url https://api.baseten.co \
+  --upstream-api-key your-upstream-api-key
+
+# Run with upstream API key from file (starts with /)
+./target/release/baseten-reverse-proxy \
+  --target-url https://api.baseten.co \
+  --upstream-api-key /path/to/api-key.txt
+
+# Run without default target URL (must be provided per request)
+./target/release/baseten-reverse-proxy \
+  --port 8080 \
+  --upstream-api-key your-upstream-api-key
 
 # Run with custom settings
 ./target/release/baseten-reverse-proxy \
   --port 8080 \
   --target-url https://api.baseten.co \
+  --upstream-api-key your-upstream-api-key \
   --max-concurrent-requests 128 \
   --batch-size 64 \
   --timeout-s 60.0
 ```
 
+### API Key File Support
+
+The `--upstream-api-key` argument supports reading API keys from files for better security:
+
+```bash
+# Create API key file
+echo "your-secret-api-key" > /path/to/api-key.txt
+
+# Use file path (starts with /)
+./target/release/baseten-reverse-proxy \
+  --upstream-api-key /path/to/api-key.txt \
+  --target-url https://api.baseten.co
+```
+
+**Security Benefits:**
+- API keys not visible in process list
+- Can set proper file permissions (`chmod 600 api-key.txt`)
+- Supports environment variable expansion
+- Works with Docker secrets and Kubernetes secrets
+
 ### With Docker
 
 ```bash
 # Build the Docker image
-docker build -t baseten-reverse-proxy ./reverse_proxy
+docker build -t baseten-reverse-proxy -f reverse_proxy/Dockerfile .
 
-# Run with default settings
+# Run with default settings (no default target URL)
 docker run -p 8080:8080 baseten-reverse-proxy
 
-# Run with custom settings
+# Run with upstream API key from file
 docker run -p 8080:8080 \
+  -v $(pwd)/api-key.txt:/etc/baseten/api-key.txt:ro \
   baseten-reverse-proxy \
-  --target-url https://api.baseten.co \
-  --max-concurrent-requests 128
+  --upstream-api-key /etc/baseten/api-key.txt \
+  --target-url https://api.baseten.co
+
+# Run with environment variables
+docker run -p 8080:8080 \
+  -e PORT=8080 \
+  -e LOG_LEVEL=debug \
+  -e HTTP_VERSION=2 \
+  baseten-reverse-proxy
+
+# Run with Docker Compose
+docker-compose up baseten-reverse-proxy
+```
+
+### Docker Compose Examples
+
+```yaml
+# Basic usage (API key must be provided per request)
+version: '3.8'
+services:
+  proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=info
+
+# With upstream API key
+version: '3.8'
+services:
+  proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./api-key.txt:/etc/baseten/api-key.txt:ro
+    command:
+      - "--upstream-api-key"
+      - "/etc/baseten/api-key.txt"
+      - "--target-url"
+      - "https://api.baseten.co"
 ```
 
 ## CLI Options

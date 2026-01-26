@@ -9,7 +9,7 @@ use tracing::{debug, error, info, warn};
 use crate::config::ProxyConfig;
 use crate::headers::{
     extract_api_key_from_header, extract_customer_request_id, extract_model_from_header,
-    parse_preferences_from_header,
+    extract_target_url_from_header, parse_preferences_from_header,
 };
 
 #[derive(Clone)]
@@ -29,8 +29,21 @@ impl UnifiedHandler {
         headers: HeaderMap,
         body: Value,
     ) -> Result<Value, StatusCode> {
-        // Extract common elements
-        let api_key = extract_api_key_from_header(&headers)?;
+// Extract common elements
+        let api_key = match extract_api_key_from_header(&headers) {
+            Ok(key) => Some(key),
+            Err(_) => {
+                // Fall back to upstream API key if no header provided
+                self.config.upstream_api_key.clone()
+            }
+        };
+
+        // If no API key is available (neither in header nor upstream), reject the request
+        let api_key = api_key.ok_or_else(|| {
+            error!("No API key provided in Authorization header or upstream configuration");
+            StatusCode::UNAUTHORIZED
+        })?;
+
         let mut preferences = parse_preferences_from_header(&headers, &self.config.default_preferences);
         let customer_request_id = extract_customer_request_id(&headers);
 
@@ -39,15 +52,29 @@ impl UnifiedHandler {
             debug!("Customer request ID: {}", id);
         }
 
+        // Get target URL from header first, then default
+        let target_url = {
+            let per_request_target = extract_target_url_from_header(&headers);
+            self.config.get_target_url(per_request_target)
+                .map_err(|e| {
+                    error!("Failed to get target URL: {}", e);
+                    StatusCode::BAD_REQUEST
+                })?
+        };
+
+        debug!("Using target URL: {}", target_url);
+
         // Create cancellation token that will auto-cancel when dropped (RAII)
         // This ensures that when the axum handler is revoked, the proxy stops proxying
         let cancel_token = CancellationToken::new();
-        preferences = preferences.with_cancel_token(cancel_token);
+        preferences = preferences
+            .with_cancel_token(cancel_token)
+            .with_primary_api_key_override(api_key);
 
-        // Create client with extracted API key
+        // Create client for this specific request with target URL
         let client = PerformanceClientCore::new(
-            self.config.target_url.clone(),
-            Some(api_key),
+            target_url,
+            None, // API key will be handled via preferences
             self.config.http_version,
             None,
         )
@@ -427,13 +454,15 @@ mod tests {
     fn create_test_handler() -> UnifiedHandler {
         let config = ProxyConfig {
             port: 8080,
-            target_url: "https://api.test.com".to_string(),
+            default_target_url: Some("https://api.test.com".to_string()),
+            upstream_api_key: Some("test-upstream-key".to_string()),
             http_version: 2,
             default_preferences: RequestProcessingPreference::new()
                 .with_max_concurrent_requests(32)
                 .with_batch_size(16)
                 .with_timeout_s(30.0),
         };
+
         UnifiedHandler::new(Arc::new(config))
     }
 
@@ -502,10 +531,11 @@ mod tests {
     }
 
     #[test]
-    fn test_proxy_config_from_cli() {
+    fn test_proxy_config_from_cli_with_upstream_key() {
         let cli = crate::Cli {
             port: 9090,
-            target_url: "https://api.example.com".to_string(),
+            target_url: Some("https://api.example.com".to_string()),
+            upstream_api_key: Some("test-api-key".to_string()),
             http_version: 1,
             max_concurrent_requests: 128,
             batch_size: 64,
@@ -513,13 +543,193 @@ mod tests {
             log_level: "debug".to_string(),
         };
 
-        let config = ProxyConfig::from_cli(cli);
+        let config = ProxyConfig::from_cli(cli).unwrap();
 
         assert_eq!(config.port, 9090);
-        assert_eq!(config.target_url, "https://api.example.com");
+        assert_eq!(config.default_target_url, Some("https://api.example.com".to_string()));
+        assert_eq!(config.upstream_api_key, Some("test-api-key".to_string()));
+        assert_eq!(config.http_version, 1);
+    }
+
+    #[test]
+    fn test_proxy_config_from_cli_no_upstream_key() {
+        let cli = crate::Cli {
+            port: 9090,
+            target_url: Some("https://api.example.com".to_string()),
+            upstream_api_key: None,
+            http_version: 1,
+            max_concurrent_requests: 128,
+            batch_size: 64,
+            timeout_s: 60.0,
+            log_level: "debug".to_string(),
+        };
+
+        let config = ProxyConfig::from_cli(cli).unwrap();
+
+        assert_eq!(config.port, 9090);
+        assert_eq!(config.default_target_url, Some("https://api.example.com".to_string()));
+        assert_eq!(config.upstream_api_key, None);
         assert_eq!(config.http_version, 1);
         assert_eq!(config.default_preferences.max_concurrent_requests, Some(128));
         assert_eq!(config.default_preferences.batch_size, Some(64));
         assert_eq!(config.default_preferences.timeout_s, Some(60.0));
+    }
+
+    #[test]
+    fn test_get_target_url_with_default() {
+        let config = ProxyConfig {
+            port: 8080,
+            default_target_url: Some("https://default.api.com".to_string()),
+            upstream_api_key: Some("test-key".to_string()),
+            http_version: 2,
+            default_preferences: RequestProcessingPreference::new(),
+        };
+
+        // Test with no per-request target (should use default)
+        let result = config.get_target_url(None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "https://default.api.com");
+
+        // Test with per-request target (should override default)
+        let result = config.get_target_url(Some("https://override.api.com".to_string()));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "https://override.api.com");
+    }
+
+    #[test]
+    fn test_get_target_url_no_default() {
+        let config = ProxyConfig {
+            port: 8080,
+            default_target_url: None,
+            upstream_api_key: Some("test-key".to_string()),
+            http_version: 2,
+            default_preferences: RequestProcessingPreference::new(),
+        };
+
+        // Test with no per-request target and no default (should fail)
+        let result = config.get_target_url(None);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "No target URL configured");
+
+        // Test with per-request target (should work)
+        let result = config.get_target_url(Some("https://per-request.api.com".to_string()));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "https://per-request.api.com");
+    }
+
+    #[test]
+    fn test_extract_target_url_from_header() {
+        use crate::headers::extract_target_url_from_header;
+        use axum::http::{HeaderMap, HeaderValue};
+
+        // Test with X-Target-Host header present
+        let mut headers = HeaderMap::new();
+        headers.insert("x-target-host", HeaderValue::from_static("https://api.example.com"));
+
+        let result = extract_target_url_from_header(&headers);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "https://api.example.com");
+
+        // Test with X-Target-Host header missing
+        let headers = HeaderMap::new();
+
+        let result = extract_target_url_from_header(&headers);
+        assert!(result.is_none());
+
+        // Test with case-insensitive header
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Target-Host", HeaderValue::from_static("https://api.test.com"));
+
+        let result = extract_target_url_from_header(&headers);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "https://api.test.com");
+    }
+
+#[test]
+    fn test_parse_preferences_from_header_with_multiple_fields() {
+        use crate::headers::parse_preferences_from_header;
+        use axum::http::{HeaderMap, HeaderValue};
+        use baseten_performance_client_core::RequestProcessingPreference;
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-baseten-request-preferences",
+            HeaderValue::from_static(r#"{"max_concurrent_requests": 128, "timeout_s": 60.0}"#),
+        );
+
+        let default_preferences = RequestProcessingPreference::new();
+        let preferences = parse_preferences_from_header(&headers, &default_preferences);
+
+        assert_eq!(preferences.max_concurrent_requests, Some(128));
+        assert_eq!(preferences.timeout_s, Some(60.0));
+    }
+
+    #[test]
+    fn test_extract_target_url_from_file() {
+        use crate::headers::extract_target_url_from_header;
+        use axum::http::{HeaderMap, HeaderValue};
+        use std::fs;
+
+        // Create a temporary file with target host
+        let temp_dir = std::env::temp_dir();
+        let target_host_file = temp_dir.join("test_target_host.txt");
+        fs::write(&target_host_file, "https://api.from-file.com\n").unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-target-host", HeaderValue::from_str(&target_host_file.to_string_lossy()).unwrap());
+
+        let result = extract_target_url_from_header(&headers);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "https://api.from-file.com");
+
+        // Clean up
+        fs::remove_file(&target_host_file).unwrap();
+    }
+
+    #[test]
+    fn test_proxy_config_from_cli_with_file_api_key() {
+        use std::fs;
+        use std::env;
+        use std::path::PathBuf;
+
+        // Create a temporary file with API key
+        let temp_dir = env::temp_dir();
+        let api_key_file = temp_dir.join("test_api_key.txt");
+        fs::write(&api_key_file, "file-api-key-12345\n").unwrap();
+
+        let cli = crate::Cli {
+            port: 9090,
+            target_url: Some("https://api.example.com".to_string()),
+            upstream_api_key: Some(api_key_file.to_string_lossy().to_string()),
+            http_version: 1,
+            max_concurrent_requests: 128,
+            batch_size: 64,
+            timeout_s: 60.0,
+            log_level: "debug".to_string(),
+        };
+
+        let config = ProxyConfig::from_cli(cli).unwrap();
+
+        assert_eq!(config.upstream_api_key, Some("file-api-key-12345".to_string()));
+
+        // Clean up
+        fs::remove_file(&api_key_file).unwrap();
+    }
+
+    #[test]
+    fn test_proxy_config_from_cli_missing_api_key() {
+        let cli = crate::Cli {
+            port: 9090,
+            target_url: Some("https://api.example.com".to_string()),
+            upstream_api_key: None,
+            http_version: 1,
+            max_concurrent_requests: 128,
+            batch_size: 64,
+            timeout_s: 60.0,
+            log_level: "debug".to_string(),
+        };
+
+        let config = ProxyConfig::from_cli(cli).unwrap();
+        assert_eq!(config.upstream_api_key, None);
     }
 }

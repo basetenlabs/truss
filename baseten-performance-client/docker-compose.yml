@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  baseten-reverse-proxy:
+    build:
+      context: .
+      dockerfile: reverse_proxy/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=info
+      - HTTP_VERSION=2
+    volumes:
+      # Mount API key file (optional)
+      - ./api-key.txt:/etc/baseten/api-key.txt:ro
+      # Mount target hosts file (optional)
+      - ./target-hosts.txt:/etc/baseten/target-hosts.txt:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health_internal"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Example with upstream API key
+  baseten-reverse-proxy-with-key:
+    build:
+      context: .
+      dockerfile: reverse_proxy/Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=debug
+      - HTTP_VERSION=2
+    command:
+      - "--upstream-api-key"
+      - "/etc/baseten/api-key.txt"
+      - "--target-url"
+      - "https://api.baseten.co"
+    volumes:
+      - ./api-key.txt:/etc/baseten/api-key.txt:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health_internal"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Example without default target URL (must be provided per request)
+  baseten-reverse-proxy-no-default:
+    build:
+      context: .
+      dockerfile: reverse_proxy/Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=info
+      - HTTP_VERSION=2
+    volumes:
+      - ./api-key.txt:/etc/baseten/api-key.txt:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health_internal"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

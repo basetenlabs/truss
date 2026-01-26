@@ -27,7 +27,7 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
         .route("/rerank", any(handle_unified_request))
         .route("/predict", any(handle_unified_request))
         .route("/classify", any(handle_unified_request))
-        .route("/health", get(handle_health_check))
+        .route("/health_internal", get(handle_health_check))
         .route("/*path", any(handle_unified_request)) // Catch-all for generic batch
         .layer(
             ServiceBuilder::new()
@@ -47,13 +47,16 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
         .map_err(|e| format!("Failed to bind to port {}: {}", config.port, e))?;
 
     info!("Baseten Reverse Proxy starting on port {}", config.port);
-    info!("Target URL: {}", config.target_url);
+    match &config.default_target_url {
+        Some(url) => info!("Default Target URL: {}", url),
+        None => info!("No default target URL configured (must be provided per request)"),
+    }
     info!("Available endpoints:");
     info!("  POST /v1/embeddings - OpenAI-compatible embeddings");
     info!("  POST /rerank - Reranking service");
     info!("  POST /predict - Classification service");
     info!("  POST /classify - Alternative classification endpoint");
-    info!("  GET /health - Health check endpoint");
+    info!("  GET /health_internal - Internal health check endpoint");
     info!("  ANY /*path - Generic batch requests");
 
     // Start the server

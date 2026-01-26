@@ -19,7 +19,10 @@ struct Cli {
     port: u16,
 
     #[arg(short = 'u', long)]
-    target_url: String,
+    target_url: Option<String>,
+
+    #[arg(short = 'k', long)]
+    upstream_api_key: Option<String>,
 
     #[arg(long, default_value = "2")]
     http_version: u8,
@@ -53,12 +56,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_line_number(false)
         .init();
 
-    let config = ProxyConfig::from_cli(cli);
+    let config = ProxyConfig::from_cli(cli)?;
 
     tracing::info!("Starting Baseten Reverse Proxy");
-    tracing::info!("Target URL: {}", config.target_url);
+    match &config.default_target_url {
+        Some(url) => tracing::info!("Default Target URL: {}", url),
+        None => tracing::info!("No default target URL configured (must be provided per request)"),
+    }
     tracing::info!("Port: {}", config.port);
     tracing::info!("HTTP Version: {}", config.http_version);
+    if let Some(ref key) = config.upstream_api_key {
+        tracing::info!("Upstream API Key: {}***", &key[..std::cmp::min(8, key.len())]);
+    }
 
     server::create_server(Arc::new(config)).await?;
 
