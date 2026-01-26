@@ -7,6 +7,7 @@ mod config;
 mod handlers;
 mod headers;
 mod server;
+mod constants;
 
 use config::ProxyConfig;
 

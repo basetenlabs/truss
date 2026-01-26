@@ -450,6 +450,7 @@ mod tests {
     use baseten_performance_client_core::{RequestProcessingPreference, HttpMethod};
     use serde_json::json;
     use std::sync::Arc;
+    use crate::constants;
 
     fn create_test_handler() -> UnifiedHandler {
         let config = ProxyConfig {
@@ -676,7 +677,7 @@ mod tests {
         fs::write(&target_host_file, "https://api.from-file.com\n").unwrap();
 
         let mut headers = HeaderMap::new();
-        headers.insert("x-target-host", HeaderValue::from_str(&target_host_file.to_string_lossy()).unwrap());
+        headers.insert(constants::TARGET_HOST_HEADER, HeaderValue::from_str(&target_host_file.to_string_lossy()).unwrap());
 
         let result = extract_target_url_from_header(&headers);
         assert!(result.is_some());

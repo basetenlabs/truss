@@ -17,6 +17,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::config::ProxyConfig;
 use crate::handlers::UnifiedHandler;
+use crate::constants;
 
 pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::error::Error>> {
     let handler = UnifiedHandler::new(config.clone());
@@ -79,7 +80,7 @@ async fn handle_unified_request(
     debug!("Received {:?} request to {}", method, path);
 
     // Read the request body
-    let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+    let body_bytes = match axum::body::to_bytes(body, constants::MAX_PROXY_SIZE).await {
         Ok(bytes) => bytes,
         Err(e) => {
             error!("Failed to read request body: {}", e);

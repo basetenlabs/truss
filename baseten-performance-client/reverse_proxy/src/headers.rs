@@ -1,6 +1,7 @@
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::RequestProcessingPreference;
 use serde_json;
+use crate::constants;
 /// Extract API key from Authorization header
 pub fn extract_api_key_from_header(headers: &HeaderMap) -> Result<String, StatusCode> {
     headers
@@ -61,7 +62,7 @@ pub fn parse_preferences_from_header(
 /// If the value starts with '/', read from file
 pub fn extract_target_url_from_header(headers: &HeaderMap) -> Option<String> {
     headers
-        .get("x-target-host")
+        .get(constants::TARGET_HOST_HEADER)
         .and_then(|h| h.to_str().ok())
         .map(|s| {
             if s.starts_with('/') {
