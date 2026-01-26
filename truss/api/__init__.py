@@ -113,13 +113,10 @@ def push(
         )
 
     # Determine the deployment type based on flags
-    if watch:
-        # --watch explicitly creates development deployment
-        if publish:
-            raise ValueError(
-                "Cannot use `--publish` and `--watch` at the same time. Please use either a development or published model."
-            )
-        publish = False
+    if watch and publish:
+        raise ValueError(
+            "Cannot use `--publish` and `--watch` at the same time. Please use either a development or published model."
+        )
     elif publish:
         pass  # --publish explicitly creates published deployment
     elif promote:
@@ -133,11 +130,11 @@ def push(
         warnings.warn(
             "Please either specify `--publish` (truss push --publish) or "
             " `--watch` (`truss push --watch`, Development mode with 1 replica and hot-reloading)."
-            " Defaulting to `--watch` behaviour, this will be changed in future releases. Please start adding a `--publish` flag to your push commands.",
+            " Defaulting to `--watch` behaviour, this will be changed to `--publish` in future releases (0.13+). "
+            " Please start adding a `--publish` flag to your push commands or use `--watch` for development deployments.",
             DeprecationWarning,
         )
         watch = True
-        publish = True
     if trusted is not None:
         warnings.warn(
             "`trusted` is deprecated and will be ignored, all models are "
