@@ -120,9 +120,14 @@ def push(
                 "Cannot use `--publish` and `--watch` at the same time. Please use either a development or published model."
             )
         publish = False
-    elif publish or promote:
-        # --publish or --promote explicitly creates published deployment
-        publish = True
+    elif publish:
+        pass  # --publish explicitly creates published deployment
+    elif promote:
+        if not publish:
+            publish = True
+            warnings.warn(
+                "`promote` flag requires `publish` to be true. Setting `publish` to true."
+            )
     else:
         # Using neither flag will use a watch deployment but issue a warning
         warnings.warn(
