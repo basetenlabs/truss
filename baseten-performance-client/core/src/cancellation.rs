@@ -29,6 +29,14 @@ impl CancellationToken {
     }
 }
 
+impl Drop for CancellationToken {
+    fn drop(&mut self) {
+        // Automatically cancel when dropped for RAII behavior
+        // This ensures that when the axum handle is revoked, the proxy stops proxying
+        self.cancel();
+    }
+}
+
 /// RAII guard that wraps a JoinSet and aborts all tasks when dropped.
 ///
 /// This ensures that when a future is cancelled (e.g., via tokio::select! or Drop),

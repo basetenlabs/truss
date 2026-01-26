@@ -1,6 +1,6 @@
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::{
-    HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+    CancellationToken, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -31,13 +31,18 @@ impl UnifiedHandler {
     ) -> Result<Value, StatusCode> {
         // Extract common elements
         let api_key = extract_api_key_from_header(&headers)?;
-        let preferences = parse_preferences_from_header(&headers, &self.config.default_preferences);
+        let mut preferences = parse_preferences_from_header(&headers, &self.config.default_preferences);
         let customer_request_id = extract_customer_request_id(&headers);
 
         debug!("Processing request for path: {}", path);
         if let Some(ref id) = customer_request_id {
             debug!("Customer request ID: {}", id);
         }
+
+        // Create cancellation token that will auto-cancel when dropped (RAII)
+        // This ensures that when the axum handler is revoked, the proxy stops proxying
+        let cancel_token = CancellationToken::new();
+        preferences = preferences.with_cancel_token(cancel_token);
 
         // Create client with extracted API key
         let client = PerformanceClientCore::new(
