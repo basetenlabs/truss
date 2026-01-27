@@ -206,7 +206,7 @@ impl OpenAIEmbeddingsResponse {
                 PyValueError::new_err(format!("Failed to create ndarray from embeddings: {}", e))
             })?;
         #[allow(deprecated)]
-        Ok(array.into_pyarray_bound(py))
+        Ok(array.into_pyarray(py))
     }
 }
 
