@@ -614,7 +614,7 @@ class _ModelWatcher:
         dev_version = b10_core.get_dev_version(self._remote_provider.api, model_name)
         if not dev_version:
             raise b10_errors.RemoteError(
-                "No development model found. Run `truss push --watch` then try again."
+                "No development model found. Run `truss push` then try again."
             )
 
     def _patch(self) -> None:
