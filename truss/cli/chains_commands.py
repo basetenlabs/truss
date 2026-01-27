@@ -392,7 +392,7 @@ def push_chain(
                 console.print(f"\t{log}")
         if success:
             # Handle deferred promotion if needed
-            if options.promote:
+            if options.promote and remote_provider is not None:
                 console.print("Promoting to production...", style="blue")
                 try:
                     remote_provider.promote_chain_deployment(
