@@ -96,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("HTTP Version: {}", config.http_version);
     if let Some(ref key) = config.upstream_api_key {
         tracing::info!(
+            // first 3 chars of key only are allowed at Baseten.
             "Upstream API Key: {}***",
             &key[..std::cmp::min(3, key.len())]
         );
