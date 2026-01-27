@@ -72,7 +72,8 @@ impl MockServer {
             .await
             .map_err(|e| format!("Failed to bind to port {}: {}", self.port, e))?;
 
-        info!("Mock server starting on port {}", self.port);
+        info!("✅ Mock server bound to port {}", self.port);
+        info!("🚀 Mock server starting axum serve...");
 
         axum::serve(listener, app).await?;
 
@@ -154,9 +155,10 @@ async fn stats_handler(State(server): State<MockServer>) -> impl IntoResponse {
 // Simplified handlers for integration test
 async fn embeddings_handler(
     State(server): State<MockServer>,
-_headers: HeaderMap,
+    _headers: HeaderMap,
     body: String,
 ) -> impl IntoResponse {
+    info!("📨 Embeddings handler called");
     let request: CoreOpenAIEmbeddingsRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
         Err(_) => {
@@ -226,10 +228,11 @@ _headers: HeaderMap,
 }
 
 async fn rerank_handler(
-    State(_server): State<MockServer>,
+    State(server): State<MockServer>,
     _headers: HeaderMap,
     body: String,
 ) -> impl IntoResponse {
+    info!("📨 Rerank handler called");
     // Parse the request body
     let request: CoreRerankRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
@@ -265,11 +268,15 @@ async fn rerank_handler(
         })
         .collect();
 
-    // Return the response using the proper struct
-    let response = CoreRerankResponse::new(data, Some(0.0), Some(vec![0.0]));
-    // Return as plain text to see if the issue is with JSON serialization
-    eprintln!("DEBUG: Rerank response created: {:?}", response);
-    (StatusCode::OK, Json(response)).into_response()
+    // Return only the data array as expected by the core library
+    // The core library expects Vec<CoreRerankResult>, not the full CoreRerankResponse
+    eprintln!("DEBUG: Rerank data array created: {:?}", data);
+
+    // Try sending as plain text with explicit content-type to avoid JSON parsing issues
+    let json_str = serde_json::to_string(&data).unwrap();
+    eprintln!("DEBUG: Rerank JSON being sent: {}", json_str);
+
+    (StatusCode::OK, [("content-type", "application/json")], json_str).into_response()
 }
 
 async fn classify_handler(
@@ -309,6 +316,7 @@ async fn classify_handler(
 /// Integration test for the reverse proxy
 /// This test verifies that the reverse proxy correctly forwards requests
 /// to the mock server and handles various scenarios.
+#[derive(Clone)]
 pub struct IntegrationTest {
     proxy_port: u16,
     mock_server_port: u16,
@@ -803,18 +811,294 @@ impl IntegrationTest {
 mod tests {
     use super::*;
     use tokio;
+    use std::sync::Arc;
+    use baseten_performance_client_core::RequestProcessingPreference;
 
-    #[tokio::test]
-    async fn test_integration_scenarios() {
+    fn setup_logging() {
         // Set log level if not already set (core library initializes tracing automatically)
         if std::env::var("RUST_LOG").is_err() {
             std::env::set_var("RUST_LOG", "info");
         }
+    }
 
-        let test = IntegrationTest::new(8081, 8082);
+    // RAII guard for test server - automatically shuts down when dropped
+    struct TestServerGuard {
+        mock_server_handle: tokio::task::JoinHandle<()>,
+        proxy_handle: tokio::task::JoinHandle<()>,
+        test: IntegrationTest,
+    }
 
-        if let Err(e) = test.run_all_scenarios().await {
-            panic!("Integration test failed: {}", e);
+    impl TestServerGuard {
+        async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+            let test = IntegrationTest::new(8081, 8082);
+
+            println!("🔧 Starting test server setup...");
+
+            // Start mock server
+            let mock_server_clone = test.mock_server.clone();
+            let mock_server_handle = tokio::spawn(async move {
+                if let Err(e) = mock_server_clone.start().await {
+                    eprintln!("❌ Mock server failed: {}", e);
+                }
+            });
+
+            // Give mock server time to bind and start listening
+            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            // Verify mock server is actually running and responsive
+            match test.wait_for_service(test.mock_server_port, "mock server").await {
+                Ok(_) => println!("✅ Mock server is healthy on port {}", test.mock_server_port),
+                Err(e) => {
+                    eprintln!("❌ Mock server health check failed: {}", e);
+                    return Err(format!("Mock server not responding: {}", e).into());
+                }
+            }
+
+            // Start reverse proxy server
+            let proxy_port = test.proxy_port;
+            let mock_server_port = test.mock_server_port;
+
+            let proxy_config = baseten_reverse_proxy_lib::config::ProxyConfig {
+                port: proxy_port,
+                default_target_url: Some(format!("http://0.0.0.0:{}", mock_server_port)),
+                upstream_api_key: Some("test_api_key".to_string()),
+                http_version: 2,
+                default_preferences: RequestProcessingPreference::new(),
+            };
+
+            let proxy_config = Arc::new(proxy_config);
+            let proxy_handle = tokio::spawn(async move {
+                if let Err(e) = baseten_reverse_proxy_lib::create_server(proxy_config).await {
+                    eprintln!("❌ Reverse proxy failed: {}", e);
+                }
+            });
+
+            // Give reverse proxy time to bind and start listening
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            // Verify reverse proxy is actually running and responsive
+            match test.wait_for_service(test.proxy_port, "reverse proxy").await {
+                Ok(_) => println!("✅ Reverse proxy is healthy on port {}", test.proxy_port),
+                Err(e) => {
+                    eprintln!("❌ Reverse proxy health check failed: {}", e);
+                    return Err(format!("Reverse proxy not responding: {}", e).into());
+                }
+            }
+
+            println!("🚀 Test server started successfully on ports {} (mock) and {} (proxy)",
+                    test.mock_server_port, test.proxy_port);
+
+            Ok(TestServerGuard {
+                mock_server_handle,
+                proxy_handle,
+                test,
+            })
         }
+
+        fn get_test(&self) -> &IntegrationTest {
+            &self.test
+        }
+    }
+
+    impl Drop for TestServerGuard {
+        fn drop(&mut self) {
+            println!("🛑 Shutting down test server (RAII cleanup)...");
+            self.mock_server_handle.abort();
+            self.proxy_handle.abort();
+            println!("✅ Test server shut down");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_integration_scenarios() {
+        setup_logging();
+
+        // RAII server setup - automatically shuts down when function ends
+        let server_guard = match TestServerGuard::new().await {
+            Ok(guard) => guard,
+            Err(e) => panic!("Failed to setup test server: {}", e),
+        };
+
+        println!("🧪 Starting integration test suite...");
+
+        // Run all scenarios with detailed error reporting
+        match server_guard.get_test().run_all_scenarios().await {
+            Ok(_) => {
+                println!("✅ All integration scenarios passed!");
+            }
+            Err(e) => {
+                eprintln!("❌ Integration test failed: {}", e);
+                eprintln!("💡 Run individual tests to isolate the failing scenario:");
+                list_available_tests();
+                panic!("Integration test failed");
+            }
+        }
+
+        // server_guard is automatically dropped here, triggering shutdown
+    }
+
+    #[tokio::test]
+    async fn test_basic_embeddings() {
+        setup_logging();
+
+        // RAII server setup
+        let server_guard = match TestServerGuard::new().await {
+            Ok(guard) => guard,
+            Err(e) => panic!("Failed to setup test server: {}", e),
+        };
+
+        println!("🔍 Testing basic embeddings endpoint...");
+
+        match server_guard.get_test().scenario_basic_embeddings().await {
+            Ok(_) => println!("✅ Basic embeddings test passed"),
+            Err(e) => {
+                eprintln!("❌ Basic embeddings test failed: {}", e);
+                panic!("Basic embeddings test failed");
+            }
+        }
+
+        // server_guard automatically shuts down here
+    }
+
+    #[tokio::test]
+    async fn test_rerank_endpoint() {
+        setup_logging();
+
+        // RAII server setup
+        let server_guard = match TestServerGuard::new().await {
+            Ok(guard) => guard,
+            Err(e) => panic!("Failed to setup test server: {}", e),
+        };
+
+        println!("🔍 Testing rerank endpoint...");
+
+        match server_guard.get_test().scenario_rerank_endpoint().await {
+            Ok(_) => println!("✅ Rerank endpoint test passed"),
+            Err(e) => {
+                eprintln!("❌ Rerank endpoint test failed: {}", e);
+                panic!("Rerank endpoint test failed");
+            }
+        }
+
+        // server_guard automatically shuts down here
+    }
+
+    #[tokio::test]
+    async fn test_classify_endpoint() {
+        setup_logging();
+
+        // RAII server setup
+        let server_guard = match TestServerGuard::new().await {
+            Ok(guard) => guard,
+            Err(e) => panic!("Failed to setup test server: {}", e),
+        };
+
+        println!("🔍 Testing classify endpoint...");
+
+        match server_guard.get_test().scenario_classify_endpoint().await {
+            Ok(_) => println!("✅ Classify endpoint test passed"),
+            Err(e) => {
+                eprintln!("❌ Classify endpoint test failed: {}", e);
+                panic!("Classify endpoint test failed");
+            }
+        }
+
+        // server_guard automatically shuts down here
+    }
+
+    #[tokio::test]
+    async fn test_error_handling() {
+        setup_logging();
+
+        // RAII server setup
+        let server_guard = match TestServerGuard::new().await {
+            Ok(guard) => guard,
+            Err(e) => panic!("Failed to setup test server: {}", e),
+        };
+
+        println!("🔍 Testing error handling...");
+
+        match server_guard.get_test().scenario_error_handling().await {
+            Ok(_) => println!("✅ Error handling test passed"),
+            Err(e) => {
+                eprintln!("❌ Error handling test failed: {}", e);
+                panic!("Error handling test failed");
+            }
+        }
+
+        // server_guard automatically shuts down here
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_requests() {
+        setup_logging();
+
+        // RAII server setup
+        let server_guard = match TestServerGuard::new().await {
+            Ok(guard) => guard,
+            Err(e) => panic!("Failed to setup test server: {}", e),
+        };
+
+        println!("🔍 Testing concurrent requests...");
+
+        match server_guard.get_test().scenario_concurrent_requests().await {
+            Ok(_) => println!("✅ Concurrent requests test passed"),
+            Err(e) => {
+                eprintln!("❌ Concurrent requests test failed: {}", e);
+                panic!("Concurrent requests test failed");
+            }
+        }
+
+        // server_guard automatically shuts down here
+    }
+
+    #[tokio::test]
+    async fn test_server_health() {
+        setup_logging();
+
+        // RAII server setup
+        let server_guard = match TestServerGuard::new().await {
+            Ok(guard) => guard,
+            Err(e) => panic!("Failed to setup test server: {}", e),
+        };
+
+        println!("🔍 Testing server health...");
+
+        let test = server_guard.get_test();
+
+        // Test that both mock server and proxy are healthy
+        match test.wait_for_service(test.mock_server_port, "mock server").await {
+            Ok(_) => println!("✅ Mock server is healthy"),
+            Err(e) => {
+                eprintln!("❌ Mock server health check failed: {}", e);
+                panic!("Mock server health check failed");
+            }
+        }
+
+        match test.wait_for_service(test.proxy_port, "reverse proxy").await {
+            Ok(_) => println!("✅ Reverse proxy is healthy"),
+            Err(e) => {
+                eprintln!("❌ Reverse proxy health check failed: {}", e);
+                panic!("Reverse proxy health check failed");
+            }
+        }
+
+        // server_guard automatically shuts down here
+    }
+
+    fn list_available_tests() {
+        eprintln!("   Available integration tests:");
+        eprintln!("   📋 test_integration_scenarios - Run all scenarios");
+        eprintln!("   🔍 test_basic_embeddings - Test embeddings endpoint");
+        eprintln!("   🔄 test_rerank_endpoint - Test rerank endpoint");
+        eprintln!("   📊 test_classify_endpoint - Test classify endpoint");
+        eprintln!("   ⚠️  test_error_handling - Test error scenarios");
+        eprintln!("   🚀 test_concurrent_requests - Test concurrent requests");
+        eprintln!("   💓 test_server_health - Test server health");
+        eprintln!("");
+        eprintln!("   Usage examples:");
+        eprintln!("   cargo test --test integration_test test_basic_embeddings");
+        eprintln!("   cargo test --test integration_test test_rerank_endpoint");
+        eprintln!("   cargo test --test integration_test -- --list");
     }
 }
