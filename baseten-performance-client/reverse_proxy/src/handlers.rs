@@ -682,7 +682,7 @@ mod tests {
         let cli = TestCli {
             port: 9090,
             target_url: Some("https://api.example.com".to_string()),
-            upstream_api_key: None,
+            upstream_api_key: Some(api_key_file.to_string_lossy().to_string()),
             http_version: 1,
             max_concurrent_requests: 128,
             batch_size: 64,

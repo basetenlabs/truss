@@ -424,6 +424,8 @@ pub struct RequestProcessingPreference {
     pub initial_backoff_ms: u64,
     #[pyo3(get, set)]
     pub cancel_token: Option<CancellationToken>,
+    #[pyo3(get, set)]
+    pub primary_api_key_override: Option<String>,
     inner: RustRequestProcessingPreference,
 }
 
@@ -441,7 +443,8 @@ impl RequestProcessingPreference {
         retry_budget_pct = None,
         max_retries = None,
         initial_backoff_ms = None,
-        cancel_token = None
+        cancel_token = None,
+        primary_api_key_override = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -455,6 +458,7 @@ impl RequestProcessingPreference {
         max_retries: Option<u32>,
         initial_backoff_ms: Option<u64>,
         cancel_token: Option<CancellationToken>,
+        primary_api_key_override: Option<String>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -468,6 +472,7 @@ impl RequestProcessingPreference {
             max_retries,
             initial_backoff_ms,
             cancel_token: cancel_token.as_ref().map(|token| token.inner.clone()),
+            primary_api_key_override: primary_api_key_override,
         };
 
         // Apply defaults using the same method as Rust core
@@ -487,6 +492,7 @@ impl RequestProcessingPreference {
             max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
             cancel_token,
+            primary_api_key_override: complete.primary_api_key_override,
             inner: rust_pref,
         }
     }
@@ -495,7 +501,7 @@ impl RequestProcessingPreference {
     #[classmethod]
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
-            None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None,
         ))
     }
 

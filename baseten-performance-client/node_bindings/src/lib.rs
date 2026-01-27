@@ -240,6 +240,7 @@ impl RequestProcessingPreference {
     max_retries: Option<u32>,
     initial_backoff_ms: Option<u32>,
     cancel_token: Option<&CancellationToken>,
+    primary_api_key_override: Option<String>,
   ) -> Self {
     let inner = RustRequestProcessingPreference {
       max_concurrent_requests: max_concurrent_requests.map(|x| x as usize),
@@ -253,6 +254,7 @@ impl RequestProcessingPreference {
       max_retries,
       initial_backoff_ms: initial_backoff_ms.map(|x| x as u64),
       cancel_token: cancel_token.map(|token| token.inner.clone()),
+      primary_api_key_override,
     };
 
     // Apply defaults using the same method as Rust core
@@ -321,6 +323,11 @@ impl RequestProcessingPreference {
       .complete
       .initial_backoff_ms
       .unwrap_or(INITIAL_BACKOFF_MS) as u32
+  }
+
+  #[napi(getter)]
+  pub fn primary_api_key_override(&self) -> Option<String> {
+    self.complete.primary_api_key_override.clone()
   }
 }
 

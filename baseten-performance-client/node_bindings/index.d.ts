@@ -28,7 +28,7 @@ export declare class PerformanceClient {
 
 /** Provides sensible defaults and getters for all properties. */
 export declare class RequestProcessingPreference {
-  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null)
+  constructor(maxConcurrentRequests?: number | undefined | null, batchSize?: number | undefined | null, timeoutS?: number | undefined | null, maxCharsPerRequest?: number | undefined | null, hedgeDelay?: number | undefined | null, totalTimeoutS?: number | undefined | null, hedgeBudgetPct?: number | undefined | null, retryBudgetPct?: number | undefined | null, maxRetries?: number | undefined | null, initialBackoffMs?: number | undefined | null, cancelToken?: CancellationToken | undefined | null, primaryApiKeyOverride?: string | undefined | null)
   get maxConcurrentRequests(): number
   get batchSize(): number
   get timeoutS(): number
@@ -39,4 +39,5 @@ export declare class RequestProcessingPreference {
   get retryBudgetPct(): number
   get maxRetries(): number
   get initialBackoffMs(): number
+  get primaryApiKeyOverride(): string | null
 }
