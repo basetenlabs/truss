@@ -2,7 +2,7 @@
 name = "baseten-performance-client"
 version = "0.1.1"
 edition = "2021"
-
+# edition is 2021
 [lib]
 crate-type = ["cdylib"]
 
