@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 
@@ -333,11 +332,6 @@ impl TokenizerManager {
             dimensions: request.dimensions,
             user: request.user.clone(),
         })
-    }
-
-    /// Get the configuration
-    pub fn config(&self) -> &TokenizerManagerConfig {
-        &self.config
     }
 }
 
