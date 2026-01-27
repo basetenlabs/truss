@@ -1,7 +1,6 @@
 use crate::constants;
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::RequestProcessingPreference;
-use serde_json;
 /// Extract API key from Authorization header
 pub fn extract_api_key_from_header(headers: &HeaderMap) -> Result<String, StatusCode> {
     headers
