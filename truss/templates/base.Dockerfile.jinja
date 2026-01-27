@@ -75,11 +75,13 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-{% block install_uv %}
-{# Install `uv` and `curl` if not already present in the image. We validate the expected location for `uv` at the very end
+{% block install_tools %}
+{# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}
+RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
+
+{# Install uv if not already present in the image. We validate the expected location for `uv` at the very end
    due to limitations with `pipefail` in Docker context. #}
 RUN if ! command -v uv >/dev/null 2>&1; then \
-    command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
     curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh && \
     test -x ${HOME}/.local/bin/uv; \
 fi
