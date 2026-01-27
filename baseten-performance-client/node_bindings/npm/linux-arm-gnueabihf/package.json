@@ -1,6 +1,6 @@
 {
   "name": "@basetenlabs/performance-client-linux-arm-gnueabihf",
-  "version": "0.1.2-rc0",
+  "version": "0.1.2",
   "os": [
     "linux"
   ],
