@@ -1000,8 +1000,9 @@ impl PerformanceClient {
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         // Parse method parameter using core function
-        let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-            .map_err(|e| PyValueError::new_err(e))?;
+        let http_method =
+            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+                .map_err(|e| PyValueError::new_err(e))?;
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1092,8 +1093,9 @@ impl PerformanceClient {
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         // Parse method parameter using core function
-        let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-            .map_err(|e| PyValueError::new_err(e))?;
+        let http_method =
+            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+                .map_err(|e| PyValueError::new_err(e))?;
 
         let future = async move {
             let (response_data_with_times_and_headers, total_time) = core_client

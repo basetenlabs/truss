@@ -22,7 +22,12 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
             .default_target_url
             .clone()
             .unwrap_or_else(|| "https://localhost".to_string()),
-        config.upstream_api_key.clone(),
+        Some(
+            config
+                .upstream_api_key
+                .clone()
+                .unwrap_or("invalid_key".to_string()),
+        ),
         config.http_version,
         None,
     )

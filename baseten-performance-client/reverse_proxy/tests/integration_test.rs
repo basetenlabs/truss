@@ -333,7 +333,6 @@ impl IntegrationTest {
 
     /// Run all integration test scenarios
 
-
     /// Run all integration test scenarios (servers already running)
     pub async fn run_scenarios_only(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Running integration test scenarios (servers already running)");
@@ -775,9 +774,9 @@ impl IntegrationTest {
 mod tests {
     use super::*;
     use baseten_performance_client_core::RequestProcessingPreference;
-    use std::sync::{Arc};
-    use tokio;
     use serial_test::serial;
+    use std::sync::Arc;
+    use tokio;
 
     fn setup_logging() {
         // Set log level if not already set (core library initializes tracing automatically)
@@ -885,8 +884,6 @@ mod tests {
             println!("✅ Test server shut down");
         }
     }
-
-
 
     #[tokio::test]
     #[serial]

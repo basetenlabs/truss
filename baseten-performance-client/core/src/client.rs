@@ -531,8 +531,11 @@ impl PerformanceClientCore {
         ClientError,
     > {
         // Create and validate config from preference
-        let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), texts.len(), self.api_key.clone())?;
+        let config = preference.pair_with_request_validate_and_convert(
+            self.base_url.to_string(),
+            texts.len(),
+            self.api_key.clone(),
+        )?;
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
@@ -586,8 +589,11 @@ impl PerformanceClientCore {
         preference: &RequestProcessingPreference,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
         // Create and validate config from preference
-        let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), texts.len(), self.api_key.clone())?;
+        let config = preference.pair_with_request_validate_and_convert(
+            self.base_url.to_string(),
+            texts.len(),
+            self.api_key.clone(),
+        )?;
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
@@ -652,8 +658,11 @@ impl PerformanceClientCore {
         ClientError,
     > {
         // Create and validate config from preference
-        let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), inputs.len(), self.api_key.clone())?;
+        let config = preference.pair_with_request_validate_and_convert(
+            self.base_url.to_string(),
+            inputs.len(),
+            self.api_key.clone(),
+        )?;
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
@@ -712,8 +721,11 @@ impl PerformanceClientCore {
         let total_payloads = payloads_json.len();
 
         // Create and validate config from preference
-        let config = preference
-            .pair_with_request_validate_and_convert(self.base_url.to_string(), total_payloads, self.api_key.clone())?;
+        let config = preference.pair_with_request_validate_and_convert(
+            self.base_url.to_string(),
+            total_payloads,
+            self.api_key.clone(),
+        )?;
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();

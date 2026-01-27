@@ -50,7 +50,7 @@ impl ProxyConfig {
 #[command(about = "A high-performance reverse proxy for Baseten APIs")]
 #[command(version)]
 struct Cli {
-    #[arg(short, long, default_value = "8080")]
+    #[arg(short, long, default_value = "80")]
     port: u16,
 
     #[arg(short = 'u', long)]

@@ -1,12 +1,18 @@
 # syntax=docker/dockerfile:1
-FROM rust:1.91-slim AS builder
+FROM --platform=$BUILDPLATFORM rust:1.91-slim AS builder
 
-# Install build dependencies
+# Install build dependencies for both x86_64 and aarch64
+# These are needed for ring/crypto/reqwest compilation
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     perl \
     make \
+    musl-tools \
+    gcc \
+    g++ \
+    clang \
+    llvm \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -25,11 +31,24 @@ COPY reverse_proxy/src ./reverse_proxy/src/
 COPY python_bindings/src ./python_bindings/src/
 COPY node_bindings/src ./node_bindings/src/
 
-# Build the core and reverse proxy packages
-RUN cargo build --release --package baseten-performance-reverse-proxy
+# Set target architecture (defaults to build platform architecture)
+ARG TARGETARCH
 
-# Runtime stage
-FROM debian:bookworm-slim
+# Determine the Rust target triple based on target architecture
+RUN case "$TARGETARCH" in \
+    "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm64") echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
+    *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
+    esac
+
+# Build with platform-appropriate musl target
+# Using musl ensures compatibility with manylinux_2_28
+RUN RUST_TARGET=$(cat /tmp/rust_target) && \
+    rustup target add $RUST_TARGET && \
+    cargo build --release --package baseten-performance-reverse-proxy --target $RUST_TARGET
+
+# Runtime stage using manylinux_2_28 compatible base (Debian Bookworm = glibc 2.36)
+FROM --platform=$TARGETPLATFORM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -45,8 +64,16 @@ RUN useradd -m -u 1000 proxyuser
 # Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage
-COPY --from=builder /app/target/release/baseten-reverse-proxy /usr/local/bin/
+# Copy the binary from builder stage (platform-aware)
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+    "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm64") echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
+    esac
+
+RUN mkdir -p /usr/local/bin
+COPY --from=builder /app/target/*/release/baseten-reverse-proxy /usr/local/bin/baseten-reverse-proxy
+RUN chmod +x /usr/local/bin/baseten-reverse-proxy
 
 # Change ownership to non-root user
 RUN chown -R proxyuser:proxyuser /app /usr/local/bin/baseten-reverse-proxy

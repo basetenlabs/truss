@@ -507,8 +507,9 @@ impl PerformanceClient {
     let pref = preference.map(|p| p.complete.clone()).unwrap_or_default();
 
     // Parse method parameter using core function
-    let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-      .map_err(|e| create_napi_error(&e))?;
+    let http_method =
+      baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+        .map_err(|e| create_napi_error(&e))?;
 
     let result = self
       .core_client

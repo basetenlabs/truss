@@ -3,9 +3,9 @@
 
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::{
-    errors::ClientError, CancellationToken, CoreClassifyRequest,
-    CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse, CoreRerankRequest,
-    HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+    errors::ClientError, CancellationToken, CoreClassifyRequest, CoreOpenAIEmbeddingsRequest,
+    CoreOpenAIEmbeddingsResponse, CoreRerankRequest, HttpMethod, PerformanceClientCore,
+    RequestProcessingPreference,
 };
 
 use serde_json::{json, Value};
@@ -426,18 +426,20 @@ mod tests {
         UnifiedHandler::new(
             Arc::new(config),
             Arc::new(
-                PerformanceClientCore::new("https://localhost".to_string(), None, 2, None)
-                    .expect("Failed to create client"),
+                PerformanceClientCore::new(
+                    "https://localhost".to_string(),
+                    Some("some".to_string()),
+                    2,
+                    None,
+                )
+                .expect("Failed to create client"),
             ),
         )
     }
 
     fn create_test_headers() -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "authorization",
-            HeaderValue::from_static("Bearer test-api-key"),
-        );
+        headers.insert("authorization", HeaderValue::from_static("Bearer some"));
         headers.insert(
             "x-baseten-customer-request-id",
             HeaderValue::from_static("req-123"),
