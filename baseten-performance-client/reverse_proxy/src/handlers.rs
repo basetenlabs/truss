@@ -123,7 +123,7 @@ impl UnifiedHandler {
 
         // Create cancellation token that auto-cancels when dropped (RAII)
         // This ensures proxying stops when the axum handler is revoked
-        let cancel_token = CancellationToken::new();
+        let cancel_token = CancellationToken::new(true);
         preferences = preferences
             .with_cancel_token(cancel_token)
             .with_primary_api_key_override(api_key);
