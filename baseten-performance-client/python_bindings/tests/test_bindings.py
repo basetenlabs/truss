@@ -123,16 +123,18 @@ def test_performance_client_with_cancellation_token():
     )
 
     token = CancellationToken()
+    assert token.is_cancelled() is False
     preference = RequestProcessingPreference(
         max_concurrent_requests=32, cancel_token=token
     )
-
+    assert token.is_cancelled() is False
     assert preference.cancel_token is not None
     assert not preference.cancel_token.is_cancelled()
 
     # Test cancellation
     preference.cancel_token.cancel()
     assert preference.cancel_token.is_cancelled()
+    assert token.is_cancelled()
 
 
 def test_request_processing_preference_api_key_override():
