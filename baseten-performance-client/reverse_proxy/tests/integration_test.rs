@@ -8,7 +8,7 @@ use axum::{
 use baseten_performance_client_core::{
     CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingData,
     CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult, CoreRerankResponse,
-    CoreClassifyRequest, CoreClassificationResult,
+    CoreClassifyRequest, CoreClassificationResult, CoreClassificationResponse,
     CoreEmbeddingVariant, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
 };
 use serde::{Deserialize, Serialize};
@@ -230,6 +230,7 @@ async fn rerank_handler(
     _headers: HeaderMap,
     body: String,
 ) -> impl IntoResponse {
+    // Parse the request body
     let request: CoreRerankRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
         Err(_) => {
@@ -240,6 +241,9 @@ async fn rerank_handler(
                 .into_response();
         }
     };
+
+    // Debug: print the request
+    eprintln!("DEBUG: Rerank request received: query={}, texts={:?}", request.query, request.texts);
 
     // Create mock rerank response in the format expected by the real API
     let data: Vec<CoreRerankResult> = request
@@ -261,10 +265,10 @@ async fn rerank_handler(
         })
         .collect();
 
-    // Return the response in the format expected by the core library
-    use baseten_performance_client_core::CoreRerankResponse;
+    // Return the response using the proper struct
     let response = CoreRerankResponse::new(data, Some(0.0), Some(vec![0.0]));
-
+    // Return as plain text to see if the issue is with JSON serialization
+    eprintln!("DEBUG: Rerank response created: {:?}", response);
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -296,14 +300,8 @@ async fn classify_handler(
         })
         .collect();
 
-    // Return the response in the format expected by the core library
-    let response = json!({
-        "object": "list",
-        "data": data,
-        "total_time": 0.0,
-        "individual_request_times": [0.0],
-        "response_headers": []
-    });
+// Return the response in the format expected by the core library
+    let response = CoreClassificationResponse::new(data, Some(0.0), Some(vec![0.0]));
 
     (StatusCode::OK, Json(response)).into_response()
 }
@@ -687,6 +685,7 @@ impl IntegrationTest {
         let client =
             PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
+        info!("Sending rerank request to proxy");
         let response = client
             .process_rerank_requests(
                 "What is the capital of France?".to_string(),
@@ -702,7 +701,14 @@ impl IntegrationTest {
                 "Right".to_string(),
                 &RequestProcessingPreference::new(),
             )
-            .await?;
+            .await;
+
+        match &response {
+            Ok(_) => info!("Rerank request completed successfully"),
+            Err(e) => info!("Rerank request failed: {:?}", e),
+        }
+
+        let response = response?;
 
         // Verify response
         let (response, _durations, _headers, _total_time) = response;

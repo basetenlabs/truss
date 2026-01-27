@@ -220,13 +220,15 @@ impl UnifiedHandler {
         body: Value,
         preferences: RequestProcessingPreference,
     ) -> Result<Value, (StatusCode, String)> {
+        debug!("Handling rerank request");
+
         // Validate request body against CoreRerankRequest schema
         let rerank_request: CoreRerankRequest =
             serde_json::from_value(body.clone()).map_err(|e| {
-                warn!("Invalid rerank request body: {}", e);
+                error!("Failed to parse rerank request: {}", e);
                 (
                     StatusCode::BAD_REQUEST,
-                    format!("Invalid rerank request body: {}", e),
+                    format!("Invalid rerank request format: {}", e),
                 )
             })?;
 
@@ -259,7 +261,7 @@ impl UnifiedHandler {
             durations.len()
         );
 
-        // Create response with proxy metadata
+        // Create response using proper struct
         let response_with_metadata = CoreRerankResponse {
             object: response.object,
             data: response.data,
@@ -268,6 +270,8 @@ impl UnifiedHandler {
             response_headers: vec![],
         };
 
+        debug!("Rerank response created successfully");
+        // Convert to JSON Value to match expected return type
         Ok(serde_json::to_value(response_with_metadata).unwrap())
     }
 
