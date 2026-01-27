@@ -111,7 +111,14 @@ impl UnifiedHandler {
             parse_preferences_from_header(&headers, &self.config.default_preferences);
         let customer_request_id = extract_customer_request_id(&headers);
 
-        debug!("Processing request for path: {}", path);
+        // Enhanced logging for request proxying
+        info!(
+            "Proxying request: {:?} {} | Headers: {} ",
+            method,
+            path,
+            headers.len(),
+        );
+
         if let Some(ref id) = customer_request_id {
             debug!("Customer request ID: {}", id);
         }
@@ -178,7 +185,7 @@ impl UnifiedHandler {
         };
 
         info!(
-            "Processing embeddings request: {} texts, model: {}",
+            "Proxying embeddings request: {} texts, model: {}",
             request.input.len(),
             request.model
         );
@@ -194,7 +201,7 @@ impl UnifiedHandler {
             )
             .await
             .map_err(|e| {
-                error!("Embeddings request failed: {:?}", e);
+                error!("Embeddings proxy request failed: {:?}", e);
                 Self::client_error_to_response(&e)
             })?;
 
@@ -248,7 +255,7 @@ impl UnifiedHandler {
             })?;
 
         info!(
-            "Processing tokenized embeddings request: {} token sequences, model: {}",
+            "Proxying tokenized embeddings request: {} token sequences, model: {}",
             tokenized_request.input.len(),
             tokenized_request.model
         );
@@ -332,7 +339,7 @@ impl UnifiedHandler {
             })?;
 
         info!(
-            "Processing rerank request: {} texts, query length: {}",
+            "Proxying rerank request: {} texts, query length: {}",
             rerank_request.texts.len(),
             rerank_request.query.len()
         );
@@ -383,7 +390,7 @@ impl UnifiedHandler {
             })?;
 
         info!(
-            "Processing classify request: {} inputs",
+            "Proxying classify request: {} inputs",
             classify_request.inputs.len()
         );
 
@@ -463,7 +470,7 @@ impl UnifiedHandler {
             });
 
         info!(
-            "Processing generic batch request: path={}, method={}, {} payloads",
+            "Proxying generic batch request: path={}, method={}, {} payloads",
             url_path,
             format!("{:?}", method),
             payloads.len()

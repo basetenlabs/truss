@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -19,8 +18,6 @@ pub enum TokenizerRequest {
 
     Shutdown,
 }
-
-
 
 /// Handle for interacting with a tokenizer worker
 #[derive(Debug, Clone)]
@@ -56,8 +53,6 @@ impl TokenizerHandle {
             )),
         }
     }
-
-
 }
 
 /// Tokenizer worker thread
@@ -108,38 +103,55 @@ impl TokenizerWorker {
         info!("Tokenizer worker '{}' shutting down", self.name);
     }
 
-/// Initialize the tokenizer
+    /// Initialize the tokenizer
     fn initialize_tokenizer(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let tokenizer = if self.config.tokenizer_path.exists() {
             // Load from file if it exists
-            HuggingFaceTokenizer::from_file(&self.config.tokenizer_path)
-                .map_err(|e| {
-                    error!("Failed to load tokenizer from file {}: {}", self.config.tokenizer_path.display(), e);
+            HuggingFaceTokenizer::from_file(&self.config.tokenizer_path).map_err(|e| {
+                error!(
+                    "Failed to load tokenizer from file {}: {}",
+                    self.config.tokenizer_path.display(),
                     e
-                })?
+                );
+                e
+            })?
         } else {
             // Try to load from pretrained model
-            warn!("Tokenizer file not found, attempting to load pretrained model: {}", self.config.model_id);
-            HuggingFaceTokenizer::from_file(&self.config.model_id)
-                .map_err(|e| {
-                    error!("Failed to load pretrained tokenizer {}: {}", self.config.model_id, e);
-                    e
-                })?
+            warn!(
+                "Tokenizer file not found, attempting to load pretrained model: {}",
+                self.config.model_id
+            );
+            HuggingFaceTokenizer::from_file(&self.config.model_id).map_err(|e| {
+                error!(
+                    "Failed to load pretrained tokenizer {}: {}",
+                    self.config.model_id, e
+                );
+                e
+            })?
         };
 
-        info!("Successfully loaded tokenizer: {} (vocab size: {})", self.name, tokenizer.get_vocab_size(true));
+        info!(
+            "Successfully loaded tokenizer: {} (vocab size: {})",
+            self.name,
+            tokenizer.get_vocab_size(true)
+        );
         self.tokenizer = Some(tokenizer);
         Ok(())
     }
 
-/// Handle a request from the channel
-    fn handle_request(&mut self, request: TokenizerRequest) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    /// Handle a request from the channel
+    fn handle_request(
+        &mut self,
+        request: TokenizerRequest,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match request {
-TokenizerRequest::DecodeBatch(token_sequences, response_tx) => {
+            TokenizerRequest::DecodeBatch(token_sequences, response_tx) => {
                 let result = if let Some(ref tokenizer) = self.tokenizer {
                     // Convert Vec<Vec<u32>> to Vec<&[u32]> for the tokenizer
-                    let token_refs: Vec<&[u32]> = token_sequences.iter().map(|seq| seq.as_slice()).collect();
-                    tokenizer.decode_batch(&token_refs, true)
+                    let token_refs: Vec<&[u32]> =
+                        token_sequences.iter().map(|seq| seq.as_slice()).collect();
+                    tokenizer
+                        .decode_batch(&token_refs, true)
                         .map_err(|e| format!("Decode batch error: {}", e))
                 } else {
                     Err("Tokenizer not initialized".to_string())
@@ -289,7 +301,11 @@ impl TokenizerManager {
             if available_models.is_empty() {
                 Err("No tokenizers are configured. Use --tokenizer <model_id> <path> to configure tokenizers.".to_string())
             } else {
-                Err(format!("Model '{}' not found. Available models: {}", model_name, available_models.join(", ")))
+                Err(format!(
+                    "Model '{}' not found. Available models: {}",
+                    model_name,
+                    available_models.join(", ")
+                ))
             }
         }
     }
@@ -332,13 +348,11 @@ impl TokenizerManager {
         })
     }
 
-/// Get the configuration
+    /// Get the configuration
     pub fn config(&self) -> &TokenizerManagerConfig {
         &self.config
     }
 }
-
-
 
 /// Implement graceful shutdown
 impl Drop for TokenizerManager {

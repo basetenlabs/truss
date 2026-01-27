@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM rust:1.91-slim AS builder
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS builder
 
-# Install build dependencies for both x86_64 and aarch64
-# These are needed for ring/crypto/reqwest compilation
+# Install Rust and build dependencies
 RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
     pkg-config \
     libssl-dev \
     perl \
@@ -14,6 +15,10 @@ RUN apt-get update && apt-get install -y \
     clang \
     llvm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Set working directory
 WORKDIR /app
@@ -35,14 +40,14 @@ COPY node_bindings/src ./node_bindings/src/
 ARG TARGETARCH
 
 # Determine the Rust target triple based on target architecture
+# Use musl for x86_64, glibc for arm64 to avoid C++ cross-compilation issues
 RUN case "$TARGETARCH" in \
     "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
-    "arm64") echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm64") echo "aarch64-unknown-linux-gnu" > /tmp/rust_target ;; \
     *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
     esac
 
-# Build with platform-appropriate musl target
-# Using musl ensures compatibility with manylinux_2_28
+# Build with platform-appropriate target
 RUN RUST_TARGET=$(cat /tmp/rust_target) && \
     rustup target add $RUST_TARGET && \
     cargo build --release --package baseten-performance-reverse-proxy --target $RUST_TARGET
@@ -68,7 +73,7 @@ WORKDIR /app
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
     "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
-    "arm64") echo "aarch64-unknown-linux-musl" > /tmp/rust_target ;; \
+    "arm64") echo "aarch64-unknown-linux-gnu" > /tmp/rust_target ;; \
     esac
 
 RUN mkdir -p /usr/local/bin
@@ -86,8 +91,8 @@ EXPOSE 80
 
 # Environment variables (can be overridden at runtime)
 ENV PORT=80
-ENV LOG_LEVEL=info
 ENV HTTP_VERSION=2
+ENV PERFORMANCE_CLIENT_LOG_LEVEL=info
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -8,6 +8,7 @@ use axum::{
 use baseten_performance_client_core::HttpMethod;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info, warn};
@@ -96,11 +97,14 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
     info!("  GET /health_internal - Internal health check endpoint");
     info!("  ANY /*path - Generic batch requests");
 
-    // Start the server
+    // Start the server with graceful shutdown
+    info!("Server starting up...");
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(|e| format!("Server failed: {}", e))?;
 
+    info!("Server shutdown complete");
     Ok(())
 }
 
@@ -191,4 +195,34 @@ fn convert_method(method: &Method) -> HttpMethod {
         "OPTIONS" => HttpMethod::OPTIONS,
         _ => HttpMethod::POST, // Default to POST for unknown methods
     }
+}
+
+// Handle shutdown signals (Ctrl+C, SIGTERM)
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(unix)]
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    #[cfg(not(unix))]
+    tokio::select! {
+        _ = ctrl_c => {},
+    }
+
+    info!("Received shutdown signal, starting graceful shutdown...");
 }
