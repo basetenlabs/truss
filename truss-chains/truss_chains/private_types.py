@@ -20,7 +20,6 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 import pydantic
 
 from truss.base import custom_types
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss_chains import public_types, utils
@@ -271,6 +270,7 @@ class PushOptionsBaseten(PushOptions):
     deployment_name: Optional[str] = None
     team_id: Optional[str] = None
     remote_provider: Optional[BasetenRemote] = None
+    promote: bool = False
 
     @classmethod
     def create(
@@ -288,9 +288,13 @@ class PushOptionsBaseten(PushOptions):
         team_id: Optional[str] = None,
         remote_provider: Optional[BasetenRemote] = None,
     ) -> "PushOptionsBaseten":
-        if promote and not environment:
-            environment = PRODUCTION_ENVIRONMENT_NAME
+        # Track whether we need deferred promotion (promote=True but no explicit environment)
+        should_promote = bool(promote) and not environment
         if environment:
+            publish = True
+        elif promote:
+            # promote=True but no environment - defer promotion, just publish
+            # Do NOT set environment here - promotion happens after ACTIVE
             publish = True
 
         if remote_provider is None and remote and not only_generate_trusses:
@@ -308,6 +312,7 @@ class PushOptionsBaseten(PushOptions):
             deployment_name=deployment_name,
             team_id=team_id,
             remote_provider=remote_provider,
+            promote=should_promote,
         )
 
 

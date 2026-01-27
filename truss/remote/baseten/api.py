@@ -484,6 +484,22 @@ class BasetenApi:
             f"v1/chains/{chain_id}/deployments/{chain_deployment_id}"
         )
 
+    def promote_chain_deployment(
+        self,
+        chain_id: str,
+        chain_deployment_id: str,
+        environment: str,
+        scale_down_previous_deployment: bool = True,
+    ) -> dict:
+        """Promote a chain deployment to an environment."""
+        return self._rest_api_client.post(
+            f"v1/chains/{chain_id}/environments/{environment}/promote",
+            body={
+                "deployment_id": chain_deployment_id,
+                "scale_down_previous_deployment": scale_down_previous_deployment,
+            },
+        )
+
     def models(self, team_id: Optional[str] = None):
         # If team_id is provided, filter by team; otherwise get all models
         if team_id:

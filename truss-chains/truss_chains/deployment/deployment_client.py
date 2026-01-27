@@ -478,6 +478,16 @@ class BasetenChainService(ChainService):
             self._chain_deployment_handle.chain_id,
         )
 
+    @property
+    def chain_id(self) -> str:
+        """The chain ID."""
+        return self._chain_deployment_handle.chain_id
+
+    @property
+    def chain_deployment_id(self) -> str:
+        """The chain deployment ID."""
+        return self._chain_deployment_handle.chain_deployment_id
+
     @tenacity.retry(
         stop=tenacity.stop_after_delay(300), wait=tenacity.wait_fixed(1), reraise=True
     )

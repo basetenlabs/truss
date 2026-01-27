@@ -12,6 +12,7 @@ import rich_click as click
 from InquirerPy import inquirer
 from rich import progress
 
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
 from truss.cli.resolvers.chain_team_resolver import resolve_chain_team_name
@@ -292,6 +293,14 @@ def push_chain(
         )
         console.print(promote_warning, style="yellow")
 
+    if promote and not wait and not environment:
+        console.print(
+            "[yellow]Warning:[/yellow] Using --promote with --no-wait. "
+            "Promotion will be skipped. Use --wait to enable automatic promotion, "
+            "or promote manually via the Baseten UI after chainlets are active.",
+            style="yellow",
+        )
+
     if not remote:
         if dryrun:
             remote = ""
@@ -382,11 +391,29 @@ def push_chain(
             for log in intercepted_logs:
                 console.print(f"\t{log}")
         if success:
+            # Handle deferred promotion if needed
+            if options.promote:
+                console.print("Promoting to production...", style="blue")
+                try:
+                    remote_provider.promote_chain_deployment(
+                        chain_id=service.chain_id,
+                        chain_deployment_id=service.chain_deployment_id,
+                        environment=PRODUCTION_ENVIRONMENT_NAME,
+                        scale_down_previous_deployment=True,
+                    )
+                    console.print(
+                        "Successfully promoted to production.", style="bold green"
+                    )
+                except Exception as e:
+                    console.print(
+                        f"Deployment succeeded but promotion failed: {e}", style="red"
+                    )
+
             deploy_success_text = "Deployment succeeded."
-            if environment:
+            if environment or options.promote:
+                env_name = environment or PRODUCTION_ENVIRONMENT_NAME
                 deploy_success_text = (
-                    "Your chain has been deployed into "
-                    f"the {options.environment} environment."
+                    f"Your chain has been deployed into the {env_name} environment."
                 )
             console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
