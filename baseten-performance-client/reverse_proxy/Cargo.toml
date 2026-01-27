@@ -36,3 +36,4 @@ time = { version = "0.3.35", features = ["formatting", "macros"] }
 tokio-test = "0.4"
 futures = "0.3"
 tracing-subscriber = { workspace = true }
+serial_test = "3.0"

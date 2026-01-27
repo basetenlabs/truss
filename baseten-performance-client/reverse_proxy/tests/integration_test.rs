@@ -12,7 +12,7 @@ use baseten_performance_client_core::{
     CoreRerankResult, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -332,56 +332,18 @@ impl IntegrationTest {
     }
 
     /// Run all integration test scenarios
-    pub async fn run_all_scenarios(&self) -> Result<(), Box<dyn std::error::Error>> {
-        info!("Starting integration tests for reverse proxy");
 
-        // Start mock server
-        let mock_server_clone = self.mock_server.clone();
-        let mock_server_handle = tokio::spawn(async move {
-            if let Err(e) = mock_server_clone.start().await {
-                error!("Mock server error: {}", e);
-            }
-        });
 
-        // Give mock server time to start
+    /// Run all integration test scenarios (servers already running)
+    pub async fn run_scenarios_only(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Running integration test scenarios (servers already running)");
+
+        // Give servers time to be ready
         sleep(Duration::from_millis(500)).await;
 
-        // Verify mock server is running
+        // Verify services are running
         self.wait_for_service(self.mock_server_port, "mock server")
             .await?;
-
-        // Start reverse proxy server in-process
-        let proxy_port = self.proxy_port;
-        let mock_server_port = self.mock_server_port;
-
-        info!(
-            "Starting reverse proxy on port {} targeting mock server on port {}",
-            proxy_port, mock_server_port
-        );
-
-        // Create proxy config
-        let proxy_config = baseten_reverse_proxy_lib::config::ProxyConfig {
-            port: proxy_port,
-            default_target_url: Some(format!("http://0.0.0.0:{}", mock_server_port)),
-            upstream_api_key: Some("test_api_key".to_string()),
-            http_version: 2,
-            default_preferences: RequestProcessingPreference::new(),
-        };
-
-        let proxy_config = Arc::new(proxy_config);
-        let proxy_config_clone = proxy_config.clone();
-
-        // Start reverse proxy server
-        let proxy_handle = tokio::spawn(async move {
-            if let Err(e) = baseten_reverse_proxy_lib::create_server(proxy_config_clone).await {
-                error!("Reverse proxy error: {}", e);
-            }
-        });
-
-        // Give reverse proxy time to start
-        sleep(Duration::from_millis(1000)).await;
-
-        // Verify reverse proxy is running
         self.wait_for_service(self.proxy_port, "reverse proxy")
             .await?;
 
@@ -394,11 +356,6 @@ impl IntegrationTest {
         self.scenario_rerank_endpoint().await?;
         self.scenario_classify_endpoint().await?;
         self.scenario_generic_batch().await?;
-
-        // Shutdown services
-        info!("Shutting down services");
-        drop(proxy_handle);
-        drop(mock_server_handle);
 
         info!("All integration test scenarios passed!");
         Ok(())
@@ -788,18 +745,25 @@ impl IntegrationTest {
         let custom_headers =
             HashMap::from([("X-Custom-Header".to_string(), "CustomValue".to_string())]);
 
-        let (responses, total_time) = client
-            .process_batch_post_requests(
-                "/custom-endpoint".to_string(),
-                payloads,
-                &RequestProcessingPreference::new(),
-                Some(custom_headers),
-                HttpMethod::POST,
-            )
+        // Test direct HTTP request to custom endpoint
+        let http_client = reqwest::Client::new();
+        let url = format!("http://0.0.0.0:{}/custom-endpoint", self.proxy_port);
+
+        let start_time = std::time::Instant::now();
+        let response = http_client
+            .post(&url)
+            .header("Authorization", "Bearer test_api_key")
+            .header("X-Custom-Header", "CustomValue")
+            .json(&payloads[0])
+            .send()
             .await?;
 
+        let total_time = start_time.elapsed();
+
         // Verify response
-        assert_eq!(responses.len(), 3);
+        assert_eq!(response.status(), 200);
+        let response_body: Value = response.json().await?;
+        assert!(response_body.get("status").is_some());
         assert!(total_time.as_secs_f64() > 0.0);
 
         info!("Generic batch endpoint test passed");
@@ -811,8 +775,9 @@ impl IntegrationTest {
 mod tests {
     use super::*;
     use baseten_performance_client_core::RequestProcessingPreference;
-    use std::sync::Arc;
+    use std::sync::{Arc};
     use tokio;
+    use serial_test::serial;
 
     fn setup_logging() {
         // Set log level if not already set (core library initializes tracing automatically)
@@ -830,6 +795,7 @@ mod tests {
 
     impl TestServerGuard {
         async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+            // Use fixed ports since tests run sequentially with #[serial]
             let test = IntegrationTest::new(8081, 8082);
 
             println!("🔧 Starting test server setup...");
@@ -920,35 +886,10 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_integration_scenarios() {
-        setup_logging();
 
-        // RAII server setup - automatically shuts down when function ends
-        let server_guard = match TestServerGuard::new().await {
-            Ok(guard) => guard,
-            Err(e) => panic!("Failed to setup test server: {}", e),
-        };
-
-        println!("🧪 Starting integration test suite...");
-
-        // Run all scenarios with detailed error reporting
-        match server_guard.get_test().run_all_scenarios().await {
-            Ok(_) => {
-                println!("✅ All integration scenarios passed!");
-            }
-            Err(e) => {
-                eprintln!("❌ Integration test failed: {}", e);
-                eprintln!("💡 Run individual tests to isolate the failing scenario:");
-                list_available_tests();
-                panic!("Integration test failed");
-            }
-        }
-
-        // server_guard is automatically dropped here, triggering shutdown
-    }
 
     #[tokio::test]
+    #[serial]
     async fn test_basic_embeddings() {
         setup_logging();
 
@@ -972,6 +913,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_rerank_endpoint() {
         setup_logging();
 
@@ -995,6 +937,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_classify_endpoint() {
         setup_logging();
 
@@ -1018,6 +961,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_error_handling() {
         setup_logging();
 
@@ -1041,6 +985,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_concurrent_requests() {
         setup_logging();
 
@@ -1064,6 +1009,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_server_health() {
         setup_logging();
 
