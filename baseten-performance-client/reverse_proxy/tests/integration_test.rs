@@ -49,6 +49,37 @@ impl IntegrationTest {
         // Give mock server time to start
         sleep(Duration::from_millis(500)).await;
 
+        // Start reverse proxy server
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let target_url = format!("http://0.0.0.0:{}", self.mock_server_port);
+
+        info!("Starting reverse proxy on port {} targeting {}", self.proxy_port, target_url);
+
+        let proxy_port = self.proxy_port;
+        let mock_server_port = self.mock_server_port;
+
+        let proxy_handle = tokio::spawn(async move {
+            let mut cmd = tokio::process::Command::new("/Users/michaelfeil/work/truss/baseten-performance-client/target/debug/baseten-reverse-proxy");
+            cmd.arg("--port")
+               .arg(proxy_port.to_string())
+               .arg("--target-url")
+               .arg(format!("http://0.0.0.0:{}", mock_server_port))
+               .arg("--upstream-api-key")
+               .arg("test_api_key");
+
+            match cmd.output().await {
+                Ok(output) => {
+                    if !output.status.success() {
+                        error!("Reverse proxy failed: {}", String::from_utf8_lossy(&output.stderr));
+                    }
+                }
+                Err(e) => error!("Failed to start reverse proxy: {}", e),
+            }
+        });
+
+        // Give reverse proxy time to start
+        sleep(Duration::from_millis(1000)).await;
+
         // Run test scenarios
         self.scenario_basic_embeddings().await?;
         self.scenario_large_batch().await?;
@@ -59,7 +90,8 @@ impl IntegrationTest {
         self.scenario_classify_endpoint().await?;
         self.scenario_generic_batch().await?;
 
-        // Shutdown mock server
+        // Shutdown services
+        drop(proxy_handle);
         drop(mock_server_handle);
 
         info!("All integration test scenarios passed!");
@@ -70,8 +102,10 @@ impl IntegrationTest {
     async fn scenario_basic_embeddings(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing basic embeddings request through proxy");
 
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+
         let client = PerformanceClientCore::new(
-            self.target_url.clone(),
+            proxy_url,
             Some("test_api_key".to_string()),
             2,
             None,
@@ -89,7 +123,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, headers, total_time) = response;
+        let (response, durations, _headers, total_time) = response;
         assert_eq!(response.data.len(), 2);
         assert_eq!(response.model, "text-embedding-ada-002");
         assert_eq!(response.object, "list");
@@ -132,7 +166,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, headers, total_time) = response;
+        let (response, durations, _headers, _total_time) = response;
         assert_eq!(response.data.len(), 100);
         assert_eq!(durations.len(), 4); // 100/32 = 4 batches
 
@@ -168,7 +202,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, headers, total_time) = response;
+        let (response, durations, _headers, _total_time) = response;
         assert_eq!(response.data.len(), 1);
 
         info!("Custom preferences test passed");
@@ -250,8 +284,9 @@ impl IntegrationTest {
     async fn scenario_concurrent_requests(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing concurrent requests through proxy");
 
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
         let client = Arc::new(PerformanceClientCore::new(
-            self.target_url.clone(),
+            proxy_url,
             Some("test_api_key".to_string()),
             2,
             None,
@@ -335,7 +370,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, headers, total_time) = response;
+        let (response, durations, _headers, _total_time) = response;
         assert_eq!(response.data.len(), 3);
 
         // Paris should have the highest score since it contains "capital"
@@ -377,7 +412,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, headers, total_time) = response;
+        let (response, durations, _headers, _total_time) = response;
         assert_eq!(response.data.len(), 3);
 
         // Each response should have classification results with scores
@@ -437,12 +472,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_integration_scenarios() {
-        // Initialize tracing only if not already set
+        // Set log level if not already set (core library initializes tracing automatically)
         if std::env::var("RUST_LOG").is_err() {
-            tracing_subscriber::fmt()
-                .with_max_level(tracing::Level::INFO)
-                .try_init()
-                .ok();
+            std::env::set_var("RUST_LOG", "info");
         }
 
         let test = IntegrationTest::new(8081, 8082);

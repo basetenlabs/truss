@@ -32,7 +32,6 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
         .route("/*path", any(handle_unified_request)) // Catch-all for generic batch
         .layer(
             ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
                 .layer(
                     CorsLayer::new()
                         .allow_origin(Any)

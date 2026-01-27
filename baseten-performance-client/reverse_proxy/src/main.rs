@@ -45,17 +45,8 @@ struct Cli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // Initialize tracing
-    let log_level = Level::from_str(&cli.log_level)
-        .map_err(|_| format!("Invalid log level: {}", cli.log_level))?;
-
-    tracing_subscriber::fmt()
-        .with_max_level(log_level)
-        .with_target(false)
-        .with_thread_ids(false)
-        .with_file(false)
-        .with_line_number(false)
-        .init();
+    // Set log level via environment variable (core library initializes tracing automatically)
+    std::env::set_var("RUST_LOG", &cli.log_level);
 
     let config = ProxyConfig::from_cli(cli)?;
 
