@@ -201,7 +201,7 @@ impl CancellationToken {
   #[napi(constructor)]
   pub fn new() -> Self {
     Self {
-      inner: CoreCancellationToken::new(),
+      inner: CoreCancellationToken::new(false),
     }
   }
 

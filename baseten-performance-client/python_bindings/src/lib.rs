@@ -383,7 +383,7 @@ impl CancellationToken {
     #[new]
     pub fn new() -> Self {
         Self {
-            inner: CoreCancellationToken::new(),
+            inner: CoreCancellationToken::new(false),
         }
     }
 
