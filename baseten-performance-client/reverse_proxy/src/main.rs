@@ -15,7 +15,8 @@ impl ProxyConfig {
         let default_preferences = RequestProcessingPreference::new()
             .with_max_concurrent_requests(cli.max_concurrent_requests)
             .with_batch_size(cli.batch_size)
-            .with_timeout_s(cli.timeout_s);
+            .with_timeout_s(cli.timeout_s)
+            .with_max_chars_per_request(cli.max_chars_per_request);
 
         // Resolve upstream API key (from file if starts with /) - ASAP resolution
         let upstream_api_key = if let Some(key) = cli.upstream_api_key {
@@ -67,8 +68,11 @@ struct Cli {
     #[arg(long, default_value = "32")]
     batch_size: usize,
 
-    #[arg(long, default_value = "30.0")]
+    #[arg(long, default_value = "300.0")]
     timeout_s: f64,
+
+    #[arg(long, default_value = "10000")]
+    max_chars_per_request: usize,
 
     #[arg(long, default_value = "info")]
     log_level: String,
