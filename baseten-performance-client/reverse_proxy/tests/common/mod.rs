@@ -5,6 +5,12 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use baseten_performance_client_core::{
+    CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse, CoreOpenAIEmbeddingData,
+    CoreOpenAIUsage, CoreRerankRequest, CoreRerankResponse, CoreRerankResult,
+    CoreClassifyRequest, CoreClassificationResponse, CoreClassificationResult,
+    CoreEmbeddingVariant,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -48,78 +54,7 @@ impl Default for MockServerConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EmbeddingRequest {
-    pub input: Vec<String>,
-    pub model: String,
-    pub encoding_format: Option<String>,
-    pub dimensions: Option<u32>,
-    pub user: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EmbeddingData {
-    pub object: String,
-    pub embedding: Vec<f32>,
-    pub index: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EmbeddingUsage {
-    pub prompt_tokens: u32,
-    pub total_tokens: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EmbeddingResponse {
-    pub object: String,
-    pub data: Vec<EmbeddingData>,
-    pub model: String,
-    pub usage: EmbeddingUsage,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RerankRequest {
-    pub query: String,
-    pub texts: Vec<String>,
-    pub model: Option<String>,
-    pub raw_scores: Option<bool>,
-    pub return_text: Option<bool>,
-    pub truncate: Option<bool>,
-    pub truncation_direction: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RerankResult {
-    pub index: usize,
-    pub score: f32,
-    pub text: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RerankResponse {
-    pub data: Vec<RerankResult>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClassifyRequest {
-    pub inputs: Vec<String>,
-    pub model: Option<String>,
-    pub raw_scores: Option<bool>,
-    pub truncate: Option<bool>,
-    pub truncation_direction: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClassificationResult {
-    pub scores: HashMap<String, f32>,
-    pub text: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClassificationResponse {
-    pub data: Vec<Vec<ClassificationResult>>,
-}
+// Note: Using CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse, etc. from baseten_performance_client_core
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HijackPayload {
@@ -219,7 +154,7 @@ async fn embeddings_handler(
     body: String,
 ) -> impl IntoResponse {
     // Parse the request body
-    let request: EmbeddingRequest = match serde_json::from_str(&body) {
+    let request: CoreOpenAIEmbeddingsRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
         Err(_) => {
             return (
@@ -304,7 +239,7 @@ async fn embeddings_handler(
     }
 
     // Create mock response
-    let data: Vec<EmbeddingData> = request
+    let data: Vec<CoreOpenAIEmbeddingData> = request
         .input
         .iter()
         .enumerate()
@@ -317,24 +252,27 @@ async fn embeddings_handler(
                 .map(|(j, c)| ((c as u32 + i as u32 * 1000 + j as u32 * 100) as f32) / 1000.0)
                 .collect();
 
-            EmbeddingData {
+            CoreOpenAIEmbeddingData {
                 object: "embedding".to_string(),
-                embedding,
+                embedding_internal: CoreEmbeddingVariant::FloatVector(embedding),
                 index: i,
             }
         })
         .collect();
 
-    let usage = EmbeddingUsage {
+    let usage = CoreOpenAIUsage {
         prompt_tokens: request.input.len() as u32 * 10, // Mock token count
         total_tokens: request.input.len() as u32 * 10,
     };
 
-    let response = EmbeddingResponse {
+    let response = CoreOpenAIEmbeddingsResponse {
         object: "list".to_string(),
         data,
         model: request.model,
         usage,
+        total_time: 0.0,
+        individual_request_times: vec![],
+        response_headers: vec![],
     };
 
     (StatusCode::OK, Json(response)).into_response()
@@ -346,7 +284,7 @@ async fn rerank_handler(
     body: String,
 ) -> impl IntoResponse {
     // Parse the request body
-    let request: RerankRequest = match serde_json::from_str(&body) {
+    let request: CoreRerankRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
         Err(_) => {
             return (
@@ -396,7 +334,7 @@ async fn rerank_handler(
     }
 
     // Create mock rerank response
-    let data: Vec<RerankResult> = request
+    let data: Vec<CoreRerankResult> = request
         .texts
         .iter()
         .enumerate()
@@ -408,15 +346,21 @@ async fn rerank_handler(
                 0.1 + (i as f32 * 0.01)
             };
 
-            RerankResult {
+            CoreRerankResult {
                 index: i,
-                score,
+                score: score as f64,
                 text: Some(text.clone()),
             }
         })
         .collect();
 
-    let response = RerankResponse { data };
+    let response = CoreRerankResponse {
+        object: "list".to_string(),
+        data,
+        total_time: 0.0,
+        individual_request_times: vec![],
+        response_headers: vec![],
+    };
 
     (StatusCode::OK, Json(response)).into_response()
 }
@@ -427,7 +371,7 @@ async fn classify_handler(
     body: String,
 ) -> impl IntoResponse {
     // Parse the request body
-    let request: ClassifyRequest = match serde_json::from_str(&body) {
+    let request: CoreClassifyRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
         Err(_) => {
             return (
@@ -477,23 +421,24 @@ async fn classify_handler(
     }
 
     // Create mock classification response
-    let data: Vec<Vec<ClassificationResult>> = request
+    let data: Vec<Vec<CoreClassificationResult>> = request
         .inputs
         .iter()
-        .map(|text| {
-            let mut scores = HashMap::new();
-            scores.insert("positive".to_string(), 0.7);
-            scores.insert("negative".to_string(), 0.2);
-            scores.insert("neutral".to_string(), 0.1);
-
-            vec![ClassificationResult {
-                scores,
-                text: Some(text.clone()),
+        .map(|_text| {
+            vec![CoreClassificationResult {
+                label: "positive".to_string(),
+                score: 0.7,
             }]
         })
         .collect();
 
-    let response = ClassificationResponse { data };
+    let response = CoreClassificationResponse {
+        object: "list".to_string(),
+        data,
+        total_time: 0.0,
+        individual_request_times: vec![],
+        response_headers: vec![],
+    };
 
     (StatusCode::OK, Json(response)).into_response()
 }

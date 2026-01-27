@@ -1,15 +1,312 @@
-use baseten_performance_client_core::{
-    HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Json},
+    routing::{get, post},
+    Router,
 };
+use baseten_performance_client_core::{
+    CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingData,
+    CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult, CoreRerankResponse,
+    CoreClassifyRequest, CoreClassificationResult,
+    CoreEmbeddingVariant, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{error, info};
 
-mod mock_server;
-use mock_server::MockServer;
+// Copy MockServer and related structs here for the integration test
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MockServerConfig {
+    pub stall_until_request: Option<usize>,
+    pub error_until_request: Option<usize>,
+    pub stall_duration_ms: Option<u64>,
+    pub response_delay_ms: Option<u64>,
+    pub return_429_until: Option<f64>,
+    pub internal_server_error_no_stall: bool,
+}
+
+impl Default for MockServerConfig {
+    fn default() -> Self {
+        Self {
+            stall_until_request: None,
+            error_until_request: None,
+            stall_duration_ms: None,
+            response_delay_ms: None,
+            return_429_until: None,
+            internal_server_error_no_stall: false,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct MockServer {
+    port: u16,
+    request_count: Arc<AtomicUsize>,
+    stall_count: Arc<AtomicUsize>,
+    error_count: Arc<AtomicUsize>,
+    config: Arc<RwLock<MockServerConfig>>,
+}
+
+impl MockServer {
+    pub fn new(port: u16) -> Self {
+        Self {
+            port,
+            request_count: Arc::new(AtomicUsize::new(0)),
+            stall_count: Arc::new(AtomicUsize::new(0)),
+            error_count: Arc::new(AtomicUsize::new(0)),
+            config: Arc::new(RwLock::new(MockServerConfig::default())),
+        }
+    }
+
+    pub async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let app = self.create_app();
+
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.port))
+            .await
+            .map_err(|e| format!("Failed to bind to port {}: {}", self.port, e))?;
+
+        info!("Mock server starting on port {}", self.port);
+
+        axum::serve(listener, app).await?;
+
+        Ok(())
+    }
+
+    fn create_app(&self) -> Router {
+        let app = Router::new()
+            .route("/v1/embeddings", post(embeddings_handler))
+            .route("/rerank", post(rerank_handler))
+            .route("/predict", post(classify_handler))
+            .route("/classify", post(classify_handler))
+            .route("/reset", get(reset_handler))
+            .route("/config", post(config_handler))
+            .route("/stats", get(stats_handler))
+            .route("/health_internal", get(health_handler))
+            .with_state(self.clone());
+
+        app
+    }
+
+    pub async fn update_config(&self, config: MockServerConfig) {
+        let mut cfg = self.config.write().await;
+        *cfg = config;
+    }
+
+    pub async fn get_stats(&self) -> HashMap<String, usize> {
+        HashMap::from([
+            (
+                "request_count".to_string(),
+                self.request_count.load(Ordering::Relaxed),
+            ),
+            (
+                "stall_count".to_string(),
+                self.stall_count.load(Ordering::Relaxed),
+            ),
+            (
+                "error_count".to_string(),
+                self.error_count.load(Ordering::Relaxed),
+            ),
+        ])
+    }
+
+    pub async fn reset_stats(&self) {
+        self.request_count.store(0, Ordering::Relaxed);
+        self.stall_count.store(0, Ordering::Relaxed);
+        self.error_count.store(0, Ordering::Relaxed);
+    }
+}
+
+async fn health_handler(State(server): State<MockServer>) -> impl IntoResponse {
+    Json(json!({
+        "service": "mock-server",
+        "status": "healthy",
+        "port": server.port,
+        "request_count": server.request_count.load(Ordering::Relaxed)
+    }))
+}
+
+async fn reset_handler(State(server): State<MockServer>) -> impl IntoResponse {
+    let stats = server.get_stats().await;
+    server.reset_stats().await;
+    (StatusCode::OK, Json(stats)).into_response()
+}
+
+async fn config_handler(
+    State(server): State<MockServer>,
+    Json(config): Json<MockServerConfig>,
+) -> impl IntoResponse {
+    server.update_config(config).await;
+    (StatusCode::OK, Json(json!({"status": "updated"}))).into_response()
+}
+
+async fn stats_handler(State(server): State<MockServer>) -> impl IntoResponse {
+    let stats = server.get_stats().await;
+    (StatusCode::OK, Json(stats)).into_response()
+}
+
+// Simplified handlers for integration test
+async fn embeddings_handler(
+    State(server): State<MockServer>,
+_headers: HeaderMap,
+    body: String,
+) -> impl IntoResponse {
+    let request: CoreOpenAIEmbeddingsRequest = match serde_json::from_str(&body) {
+        Ok(req) => req,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid JSON"})),
+            )
+                .into_response();
+        }
+    };
+
+    let request_num = server.request_count.fetch_add(1, Ordering::Relaxed) + 1;
+    info!("Received embeddings request #{}", request_num);
+
+    // Check config for special behaviors
+    let config = server.config.read().await;
+
+    // Check for errors
+    if let Some(error_until) = config.error_until_request {
+        if request_num <= error_until {
+            server.error_count.fetch_add(1, Ordering::Relaxed);
+            if config.internal_server_error_no_stall {
+                error!("Returning 400 for request #{}", request_num);
+                return (StatusCode::BAD_REQUEST, Json(json!({"error": "Bad request"}))).into_response();
+            }
+        }
+    }
+
+    // Create mock response
+    let data: Vec<CoreOpenAIEmbeddingData> = request
+        .input
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            let embedding: Vec<f32> = text
+                .chars()
+                .take(10)
+                .enumerate()
+                .map(|(j, c)| ((c as u32 + i as u32 * 1000 + j as u32 * 100) as f32) / 1000.0)
+                .collect();
+
+            CoreOpenAIEmbeddingData {
+                object: "embedding".to_string(),
+                embedding_internal: CoreEmbeddingVariant::FloatVector(embedding),
+                index: i,
+            }
+        })
+        .collect();
+
+    let usage = CoreOpenAIUsage {
+        prompt_tokens: request.input.len() as u32 * 10,
+        total_tokens: request.input.len() as u32 * 10,
+    };
+
+    // Return the response in the format expected by the core library
+    let response = json!({
+        "object": "list",
+        "data": data,
+        "model": request.model,
+        "usage": usage,
+        "total_time": 0.0,
+        "individual_request_times": [0.0],
+        "response_headers": []
+    });
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+async fn rerank_handler(
+    State(_server): State<MockServer>,
+    _headers: HeaderMap,
+    body: String,
+) -> impl IntoResponse {
+    let request: CoreRerankRequest = match serde_json::from_str(&body) {
+        Ok(req) => req,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid JSON"})),
+            )
+                .into_response();
+        }
+    };
+
+    // Create mock rerank response in the format expected by the real API
+    let data: Vec<CoreRerankResult> = request
+        .texts
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            let score = if text.to_lowercase().contains(&request.query.to_lowercase()) {
+                0.9 + (i as f32 * 0.01)
+            } else {
+                0.1 + (i as f32 * 0.01)
+            };
+
+            CoreRerankResult {
+                index: i,
+                score: score as f64,
+                text: Some(text.clone()),
+            }
+        })
+        .collect();
+
+    // Return the response in the format expected by the core library
+    use baseten_performance_client_core::CoreRerankResponse;
+    let response = CoreRerankResponse::new(data, Some(0.0), Some(vec![0.0]));
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+async fn classify_handler(
+    State(_server): State<MockServer>,
+    _headers: HeaderMap,
+    body: String,
+) -> impl IntoResponse {
+    let request: CoreClassifyRequest = match serde_json::from_str(&body) {
+        Ok(req) => req,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid JSON"})),
+            )
+                .into_response();
+        }
+    };
+
+    // Create mock classification response
+    let data: Vec<Vec<CoreClassificationResult>> = request
+        .inputs
+        .iter()
+        .map(|_text| {
+            vec![CoreClassificationResult {
+                label: "positive".to_string(),
+                score: 0.7,
+            }]
+        })
+        .collect();
+
+    // Return the response in the format expected by the core library
+    let response = json!({
+        "object": "list",
+        "data": data,
+        "total_time": 0.0,
+        "individual_request_times": [0.0],
+        "response_headers": []
+    });
+
+    (StatusCode::OK, Json(response)).into_response()
+}
 
 /// Integration test for the reverse proxy
 /// This test verifies that the reverse proxy correctly forwards requests
@@ -251,7 +548,7 @@ impl IntegrationTest {
         info!("Mock server stats reset");
 
         // Configure mock server to return errors for the next 2 requests
-        let error_config = mock_server::MockServerConfig {
+        let error_config = MockServerConfig {
             error_until_request: Some(2),
             internal_server_error_no_stall: true,
             ..Default::default()
@@ -299,7 +596,7 @@ impl IntegrationTest {
 
         // Reset config
         self.mock_server
-            .update_config(mock_server::MockServerConfig::default())
+            .update_config(MockServerConfig::default())
             .await;
 
         // Small delay to ensure config reset takes effect
