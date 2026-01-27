@@ -1,18 +1,18 @@
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::RwLock;
 use axum::{
     extract::State,
-    http::{StatusCode, HeaderMap},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{info, warn, error};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 
 /// Mock server for testing the reverse proxy
 /// This simulates a real API server with various behaviors
@@ -191,9 +191,18 @@ impl MockServer {
 
     pub async fn get_stats(&self) -> HashMap<String, usize> {
         HashMap::from([
-            ("request_count".to_string(), self.request_count.load(Ordering::Relaxed)),
-            ("stall_count".to_string(), self.stall_count.load(Ordering::Relaxed)),
-            ("error_count".to_string(), self.error_count.load(Ordering::Relaxed)),
+            (
+                "request_count".to_string(),
+                self.request_count.load(Ordering::Relaxed),
+            ),
+            (
+                "stall_count".to_string(),
+                self.stall_count.load(Ordering::Relaxed),
+            ),
+            (
+                "error_count".to_string(),
+                self.error_count.load(Ordering::Relaxed),
+            ),
         ])
     }
 
@@ -203,7 +212,6 @@ impl MockServer {
         self.error_count.store(0, Ordering::Relaxed);
     }
 }
-
 
 async fn embeddings_handler(
     State(server): State<MockServer>,
@@ -216,8 +224,9 @@ async fn embeddings_handler(
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"}))
-            ).into_response();
+                Json(json!({"error": "Invalid JSON"})),
+            )
+                .into_response();
         }
     };
     let request_num = server.request_count.fetch_add(1, Ordering::Relaxed) + 1;
@@ -231,16 +240,18 @@ async fn embeddings_handler(
                 error!("Invalid customer request ID: {}", id_str);
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Invalid customer request ID"}))
-                ).into_response();
+                    Json(json!({"error": "Invalid customer request ID"})),
+                )
+                    .into_response();
             }
         }
     } else {
         error!("Missing customer request ID header");
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Missing customer request ID header"}))
-        ).into_response();
+            Json(json!({"error": "Missing customer request ID header"})),
+        )
+            .into_response();
     }
 
     // Check config for special behaviors
@@ -257,8 +268,9 @@ async fn embeddings_handler(
             warn!("Returning 429 for request #{}", request_num);
             return (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(json!({"error": "Too many requests, please try again later"}))
-            ).into_response();
+                Json(json!({"error": "Too many requests, please try again later"})),
+            )
+                .into_response();
         }
     }
 
@@ -278,11 +290,10 @@ async fn embeddings_handler(
         if request_num <= error_until {
             server.error_count.fetch_add(1, Ordering::Relaxed);
             if config.internal_server_error_no_stall {
-                error!("Returning 500 for request #{}", request_num);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Internal server error, no stall"}))
-                ).into_response();
+                error!("Returning 400 for request #{}", request_num);
+                let error_response = json!({"error": "Bad request, no stall"});
+                info!("Error response body: {}", error_response);
+                return (StatusCode::BAD_REQUEST, Json(error_response)).into_response();
             }
         }
     }
@@ -340,8 +351,9 @@ async fn rerank_handler(
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"}))
-            ).into_response();
+                Json(json!({"error": "Invalid JSON"})),
+            )
+                .into_response();
         }
     };
     let request_num = server.request_count.fetch_add(1, Ordering::Relaxed) + 1;
@@ -354,15 +366,33 @@ async fn rerank_handler(
             if !id_str.starts_with("perfclient") {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Invalid customer request ID"}))
-                ).into_response();
+                    Json(json!({"error": "Invalid customer request ID"})),
+                )
+                    .into_response();
             }
         }
     } else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Missing customer request ID header"}))
-        ).into_response();
+            Json(json!({"error": "Missing customer request ID header"})),
+        )
+            .into_response();
+    }
+
+    // Check config for special behaviors (same as embeddings handler)
+    let config = server.config.read().await;
+
+    // Check for errors
+    if let Some(error_until) = config.error_until_request {
+        if request_num <= error_until {
+            server.error_count.fetch_add(1, Ordering::Relaxed);
+            if config.internal_server_error_no_stall {
+                error!("Returning 400 for rerank request #{}", request_num);
+                let error_response = json!({"error": "Bad request, no stall"});
+                info!("Error response body: {}", error_response);
+                return (StatusCode::BAD_REQUEST, Json(error_response)).into_response();
+            }
+        }
     }
 
     // Create mock rerank response
@@ -402,8 +432,9 @@ async fn classify_handler(
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"}))
-            ).into_response();
+                Json(json!({"error": "Invalid JSON"})),
+            )
+                .into_response();
         }
     };
     let request_num = server.request_count.fetch_add(1, Ordering::Relaxed) + 1;
@@ -416,15 +447,33 @@ async fn classify_handler(
             if !id_str.starts_with("perfclient") {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Invalid customer request ID"}))
-                ).into_response();
+                    Json(json!({"error": "Invalid customer request ID"})),
+                )
+                    .into_response();
             }
         }
     } else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Missing customer request ID header"}))
-        ).into_response();
+            Json(json!({"error": "Missing customer request ID header"})),
+        )
+            .into_response();
+    }
+
+    // Check config for special behaviors (same as embeddings handler)
+    let config = server.config.read().await;
+
+    // Check for errors
+    if let Some(error_until) = config.error_until_request {
+        if request_num <= error_until {
+            server.error_count.fetch_add(1, Ordering::Relaxed);
+            if config.internal_server_error_no_stall {
+                error!("Returning 400 for classify request #{}", request_num);
+                let error_response = json!({"error": "Bad request, no stall"});
+                info!("Error response body: {}", error_response);
+                return (StatusCode::BAD_REQUEST, Json(error_response)).into_response();
+            }
+        }
     }
 
     // Create mock classification response
@@ -449,9 +498,7 @@ async fn classify_handler(
     (StatusCode::OK, Json(response)).into_response()
 }
 
-async fn reset_handler(
-    State(server): State<MockServer>,
-) -> impl IntoResponse {
+async fn reset_handler(State(server): State<MockServer>) -> impl IntoResponse {
     let stats = server.get_stats().await;
     server.reset_stats().await;
 
@@ -466,9 +513,7 @@ async fn config_handler(
     (StatusCode::OK, Json(json!({"status": "updated"}))).into_response()
 }
 
-async fn stats_handler(
-    State(server): State<MockServer>,
-) -> impl IntoResponse {
+async fn stats_handler(State(server): State<MockServer>) -> impl IntoResponse {
     let stats = server.get_stats().await;
     (StatusCode::OK, Json(stats)).into_response()
 }

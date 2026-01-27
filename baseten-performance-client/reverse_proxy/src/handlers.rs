@@ -1,19 +1,11 @@
-// Unified request handler is proxying requests to Baseten Performance Client Core.
-// This leads to a client controllable fanout behavior
+// Unified request handler proxies requests to Baseten Performance Client Core.
+// This enables client-controllable fanout behavior.
 
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::{
-    CancellationToken, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
-    CoreRerankRequest, CoreOpenAIEmbeddingsRequest, CoreClassifyRequest,
-    CoreOpenAIEmbeddingsResponse, CoreRerankResponse, CoreClassificationResponse,
+    errors::ClientError, CancellationToken, CoreClassifyRequest, CoreClassificationResponse, CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse,
+    CoreRerankRequest, CoreRerankResponse, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
 };
-
-
-
-
-
-
-
 
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -21,8 +13,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::config::ProxyConfig;
 use crate::headers::{
-    extract_api_key_from_header, extract_customer_request_id,
-    extract_target_url_from_header, parse_preferences_from_header,
+    extract_api_key_from_header, extract_customer_request_id, extract_target_url_from_header,
+    parse_preferences_from_header,
 };
 
 #[derive(Clone)]
@@ -33,7 +25,49 @@ pub struct UnifiedHandler {
 
 impl UnifiedHandler {
     pub fn new(config: Arc<ProxyConfig>, client: Arc<PerformanceClientCore>) -> Self {
-        Self { config , client }
+        Self { config, client }
+    }
+
+    /// Convert ClientError to appropriate StatusCode and formatted error message
+    fn client_error_to_response(error: &ClientError) -> (StatusCode, String) {
+        match error {
+            ClientError::Http {
+                status, message, ..
+            } => {
+                let status_code =
+                    StatusCode::from_u16(*status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                let formatted_message = format!("Message from upstream: {}", message);
+                (status_code, formatted_message)
+            }
+            ClientError::InvalidParameter(message) => (
+                StatusCode::BAD_REQUEST,
+                format!("Message from upstream: {}", message),
+            ),
+            ClientError::Serialization(message) => (
+                StatusCode::BAD_REQUEST,
+                format!("Message from upstream: {}", message),
+            ),
+            ClientError::LocalTimeout(message, _) => (
+                StatusCode::REQUEST_TIMEOUT,
+                format!("Message from upstream: {}", message),
+            ),
+            ClientError::RemoteTimeout(message, _) => (
+                StatusCode::GATEWAY_TIMEOUT,
+                format!("Message from upstream: {}", message),
+            ),
+            ClientError::Network(message) => (
+                StatusCode::BAD_GATEWAY,
+                format!("Message from upstream: {}", message),
+            ),
+            ClientError::Connect(message) => (
+                StatusCode::BAD_GATEWAY,
+                format!("Message from upstream: {}", message),
+            ),
+            ClientError::Cancellation(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("Message from upstream: {}", message),
+            ),
+        }
     }
 
     pub async fn handle_request(
@@ -42,8 +76,8 @@ impl UnifiedHandler {
         method: HttpMethod,
         headers: HeaderMap,
         body: Value,
-    ) -> Result<Value, StatusCode> {
-// Extract common elements
+    ) -> Result<Value, (StatusCode, String)> {
+        // Extract common request elements
         let api_key = match extract_api_key_from_header(&headers) {
             Ok(key) => Some(key),
             Err(_) => {
@@ -52,13 +86,17 @@ impl UnifiedHandler {
             }
         };
 
-        // If no API key is available (neither in header nor upstream), reject the request
+        // Reject request if no API key is available (neither in header nor upstream)
         let api_key = api_key.ok_or_else(|| {
             error!("No API key provided in Authorization header or upstream configuration");
-            StatusCode::UNAUTHORIZED
+            (
+                StatusCode::UNAUTHORIZED,
+                "No API key provided in Authorization header or upstream configuration".to_string(),
+            )
         })?;
 
-        let mut preferences = parse_preferences_from_header(&headers, &self.config.default_preferences);
+        let mut preferences =
+            parse_preferences_from_header(&headers, &self.config.default_preferences);
         let customer_request_id = extract_customer_request_id(&headers);
 
         debug!("Processing request for path: {}", path);
@@ -66,41 +104,50 @@ impl UnifiedHandler {
             debug!("Customer request ID: {}", id);
         }
 
-        // Get target URL from header first, then default
+        // Get target URL from header, falling back to default
         let target_url = {
             let per_request_target = extract_target_url_from_header(&headers);
-            self.config.get_target_url(per_request_target)
+            self.config
+                .get_target_url(per_request_target)
                 .map_err(|e| {
                     error!("Failed to get target URL: {}", e);
-                    StatusCode::BAD_REQUEST
+                    (StatusCode::BAD_REQUEST, format!("Failed to get target URL: {}", e))
                 })?
         };
 
         debug!("Using target URL: {}", target_url);
 
-        // Create cancellation token that will auto-cancel when dropped (RAII)
-        // This ensures that when the axum handler is revoked, the proxy stops proxying
+        // Create cancellation token that auto-cancels when dropped (RAII)
+        // This ensures proxying stops when the axum handler is revoked
         let cancel_token = CancellationToken::new();
         preferences = preferences
             .with_cancel_token(cancel_token)
             .with_primary_api_key_override(api_key);
-
         let client = self.client.clone();
-        // Route based on path
+        // Route request based on path
         match path {
             "/v1/embeddings" => {
-                self.handle_embeddings(client, body, preferences, customer_request_id)
+                self.handle_embeddings(client, body, preferences)
                     .await
             }
-            "/rerank" => self.handle_rerank(client, body, preferences, customer_request_id).await,
+            "/rerank" => {
+                self.handle_rerank(client, body, preferences)
+                    .await
+            }
             "/predict" | "/classify" => {
-                self.handle_classify(client, body, preferences, customer_request_id)
+                self.handle_classify(client, body, preferences)
                     .await
             }
             _ => {
                 // Handle generic batch requests
-                self.handle_generic_batch(client, path, method, body, preferences, customer_request_id)
-                    .await
+                self.handle_generic_batch(
+                    client,
+                    path,
+                    method,
+                    body,
+                    preferences,
+                )
+                .await
             }
         }
     }
@@ -110,16 +157,18 @@ impl UnifiedHandler {
         client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
-        customer_request_id: Option<String>,
-    ) -> Result<Value, StatusCode> {
-        // Validate request body against CoreOpenAIEmbeddingsRequest struct
+    ) -> Result<Value, (StatusCode, String)> {
+        // Validate request body against CoreOpenAIEmbeddingsRequest schema
         let embeddings_request: CoreOpenAIEmbeddingsRequest = serde_json::from_value(body.clone())
             .map_err(|e| {
                 warn!("Invalid embeddings request body: {}", e);
-                StatusCode::BAD_REQUEST
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid embeddings request body: {}", e),
+                )
             })?;
 
-        // Override model with header-provided model if present
+        // Create request with validated embeddings data
         let request = CoreOpenAIEmbeddingsRequest {
             ..embeddings_request
         };
@@ -130,7 +179,7 @@ impl UnifiedHandler {
             request.model
         );
 
-        let (response, durations, headers, total_time) = client
+        let (response, durations, _headers, total_time) = client
             .process_embeddings_requests(
                 request.input,
                 request.model,
@@ -142,7 +191,7 @@ impl UnifiedHandler {
             .await
             .map_err(|e| {
                 error!("Embeddings request failed: {:?}", e);
-                StatusCode::BAD_GATEWAY
+                Self::client_error_to_response(&e)
             })?;
 
         debug!(
@@ -151,7 +200,7 @@ impl UnifiedHandler {
             durations.len()
         );
 
-        // Create response using the core struct with proxy metadata
+        // Create response with proxy metadata
         let response_with_metadata = CoreOpenAIEmbeddingsResponse {
             object: response.object,
             data: response.data,
@@ -170,13 +219,15 @@ impl UnifiedHandler {
         client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
-        customer_request_id: Option<String>,
-    ) -> Result<Value, StatusCode> {
-        // Validate request body against CoreRerankRequest struct
-        let rerank_request: CoreRerankRequest = serde_json::from_value(body.clone())
-            .map_err(|e| {
+    ) -> Result<Value, (StatusCode, String)> {
+        // Validate request body against CoreRerankRequest schema
+        let rerank_request: CoreRerankRequest =
+            serde_json::from_value(body.clone()).map_err(|e| {
                 warn!("Invalid rerank request body: {}", e);
-                StatusCode::BAD_REQUEST
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid rerank request body: {}", e),
+                )
             })?;
 
         info!(
@@ -185,7 +236,7 @@ impl UnifiedHandler {
             rerank_request.query.len()
         );
 
-        let (response, durations, headers, total_time) = client
+        let (response, durations, _headers, total_time) = client
             .process_rerank_requests(
                 rerank_request.query,
                 rerank_request.texts,
@@ -199,7 +250,7 @@ impl UnifiedHandler {
             .await
             .map_err(|e| {
                 error!("Rerank request failed: {:?}", e);
-                StatusCode::BAD_GATEWAY
+                Self::client_error_to_response(&e)
             })?;
 
         debug!(
@@ -208,7 +259,7 @@ impl UnifiedHandler {
             durations.len()
         );
 
-        // Create response using the core struct with proxy metadata
+        // Create response with proxy metadata
         let response_with_metadata = CoreRerankResponse {
             object: response.object,
             data: response.data,
@@ -220,18 +271,20 @@ impl UnifiedHandler {
         Ok(serde_json::to_value(response_with_metadata).unwrap())
     }
 
-async fn handle_classify(
+    async fn handle_classify(
         &self,
         client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
-        customer_request_id: Option<String>,
-    ) -> Result<Value, StatusCode> {
-        // Validate request body against CoreClassifyRequest struct
-        let classify_request: CoreClassifyRequest = serde_json::from_value(body.clone())
-            .map_err(|e| {
+    ) -> Result<Value, (StatusCode, String)> {
+        // Validate request body against CoreClassifyRequest schema
+        let classify_request: CoreClassifyRequest =
+            serde_json::from_value(body.clone()).map_err(|e| {
                 warn!("Invalid classify request body: {}", e);
-                StatusCode::BAD_REQUEST
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid classify request body: {}", e),
+                )
             })?;
 
         info!(
@@ -239,13 +292,10 @@ async fn handle_classify(
             classify_request.inputs.len()
         );
 
-        // Flatten the inputs from Vec<Vec<String>> to Vec<String> for the method call
-        let flattened_inputs: Vec<String> = classify_request.inputs
-            .into_iter()
-            .flatten()
-            .collect();
+        // Flatten inputs from Vec<Vec<String>> to Vec<String> for processing
+        let flattened_inputs: Vec<String> = classify_request.inputs.into_iter().flatten().collect();
 
-        let (response, durations, headers, total_time) = client
+        let (response, durations, _headers, total_time) = client
             .process_classify_requests(
                 flattened_inputs,
                 classify_request.model,
@@ -257,7 +307,7 @@ async fn handle_classify(
             .await
             .map_err(|e| {
                 error!("Classify request failed: {:?}", e);
-                StatusCode::BAD_GATEWAY
+                Self::client_error_to_response(&e)
             })?;
 
         debug!(
@@ -266,14 +316,12 @@ async fn handle_classify(
             durations.len()
         );
 
-        // Create response using the core struct with proxy metadata
-        let response_with_metadata = CoreClassificationResponse {
-            object: response.object,
-            data: response.data,
-            total_time: total_time.as_secs_f64(),
-            individual_request_times: response.individual_request_times,
-            response_headers: vec![],
-        };
+        // Create response with proxy metadata
+        let response_with_metadata = CoreClassificationResponse::new(
+            response.data,
+            Some(total_time.as_secs_f64()),
+            Some(response.individual_request_times),
+        );
 
         Ok(serde_json::to_value(response_with_metadata).unwrap())
     }
@@ -285,15 +333,17 @@ async fn handle_classify(
         method: HttpMethod,
         body: Value,
         preferences: RequestProcessingPreference,
-        customer_request_id: Option<String>,
-    ) -> Result<Value, StatusCode> {
-        // Extract url_path and payloads from body
+    ) -> Result<Value, (StatusCode, String)> {
+        // Extract url_path and payloads from request body
         let url_path = body
             .get("url_path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
                 warn!("Missing url_path in generic batch request");
-                StatusCode::BAD_REQUEST
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Missing url_path in generic batch request".to_string(),
+                )
             })?
             .to_string();
 
@@ -302,21 +352,24 @@ async fn handle_classify(
             .and_then(|v| v.as_array())
             .ok_or_else(|| {
                 warn!("Missing payloads in generic batch request");
-                StatusCode::BAD_REQUEST
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Missing payloads in generic batch request".to_string(),
+                )
             })?
             .to_vec();
 
         let custom_headers = body
             .get("custom_headers")
             .and_then(|v| v.as_object())
-            .and_then(|obj| {
+            .map(|obj| {
                 let mut headers = std::collections::HashMap::new();
                 for (key, value) in obj {
                     if let Some(value_str) = value.as_str() {
                         headers.insert(key.clone(), value_str.to_string());
                     }
                 }
-                Some(headers)
+                headers
             });
 
         info!(
@@ -331,7 +384,7 @@ async fn handle_classify(
             .await
             .map_err(|e| {
                 error!("Generic batch request failed: {:?}", e);
-                StatusCode::BAD_GATEWAY
+                Self::client_error_to_response(&e)
             })?;
 
         debug!(
@@ -358,7 +411,6 @@ async fn handle_classify(
             "proxy_metadata": {
                 "total_time": total_time.as_secs_f64(),
                 "response_count": json_responses.len(),
-                "customer_request_id": customer_request_id,
                 "path": path,
                 "method": format!("{:?}", method)
             }
@@ -371,15 +423,13 @@ async fn handle_classify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::TestCli;
     use axum::http::{HeaderMap, HeaderValue};
     use baseten_performance_client_core::RequestProcessingPreference;
-    use std::path::PathBuf;
     use std::fs;
-    use crate::config::TestCli;
-
-
-    use std::sync::Arc;
+    use std::path::PathBuf;
     use crate::constants;
+    use std::sync::Arc;
 
     fn create_test_handler() -> UnifiedHandler {
         let config = ProxyConfig {
@@ -393,25 +443,35 @@ mod tests {
                 .with_timeout_s(30.0),
         };
 
-        UnifiedHandler::new(Arc::new(config), Arc::new(PerformanceClientCore::new(
-            "https://localhost".to_string(),
-            None,
-            2,
-            None,
-        ).expect("Failed to create client")))
+        UnifiedHandler::new(
+            Arc::new(config),
+            Arc::new(
+                PerformanceClientCore::new("https://localhost".to_string(), None, 2, None)
+                    .expect("Failed to create client"),
+            ),
+        )
     }
 
     fn create_test_headers() -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("Bearer test-api-key"));
-        headers.insert("x-baseten-customer-request-id", HeaderValue::from_static("req-123"));
+        headers.insert(
+            "authorization",
+            HeaderValue::from_static("Bearer test-api-key"),
+        );
+        headers.insert(
+            "x-baseten-customer-request-id",
+            HeaderValue::from_static("req-123"),
+        );
         headers
     }
 
     #[test]
     fn test_extract_api_key_from_header_success() {
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("Bearer my-api-key"));
+        headers.insert(
+            "authorization",
+            HeaderValue::from_static("Bearer my-api-key"),
+        );
 
         let result = extract_api_key_from_header(&headers);
         assert!(result.is_ok());
@@ -427,12 +487,13 @@ mod tests {
         assert_eq!(result.unwrap_err(), StatusCode::UNAUTHORIZED);
     }
 
-
-
     #[test]
     fn test_extract_customer_request_id() {
         let mut headers = HeaderMap::new();
-        headers.insert("x-baseten-customer-request-id", HeaderValue::from_static("req-12345"));
+        headers.insert(
+            "x-baseten-customer-request-id",
+            HeaderValue::from_static("req-12345"),
+        );
 
         let result = extract_customer_request_id(&headers);
         assert!(result.is_some());
@@ -463,7 +524,10 @@ mod tests {
         let config = ProxyConfig::from_test_cli(cli).unwrap();
 
         assert_eq!(config.port, 9090);
-        assert_eq!(config.default_target_url, Some("https://api.example.com".to_string()));
+        assert_eq!(
+            config.default_target_url,
+            Some("https://api.example.com".to_string())
+        );
         assert_eq!(config.upstream_api_key, Some("test-api-key".to_string()));
         assert_eq!(config.http_version, 1);
     }
@@ -484,10 +548,16 @@ mod tests {
         let config = ProxyConfig::from_test_cli(cli).unwrap();
 
         assert_eq!(config.port, 9090);
-        assert_eq!(config.default_target_url, Some("https://api.example.com".to_string()));
+        assert_eq!(
+            config.default_target_url,
+            Some("https://api.example.com".to_string())
+        );
         assert_eq!(config.upstream_api_key, None);
         assert_eq!(config.http_version, 1);
-        assert_eq!(config.default_preferences.max_concurrent_requests, Some(128));
+        assert_eq!(
+            config.default_preferences.max_concurrent_requests,
+            Some(128)
+        );
         assert_eq!(config.default_preferences.batch_size, Some(64));
         assert_eq!(config.default_preferences.timeout_s, Some(60.0));
     }
@@ -541,7 +611,10 @@ mod tests {
 
         // Test with X-Target-Host header present
         let mut headers = HeaderMap::new();
-        headers.insert("x-target-host", HeaderValue::from_static("https://api.example.com"));
+        headers.insert(
+            "x-target-host",
+            HeaderValue::from_static("https://api.example.com"),
+        );
 
         let result = extract_target_url_from_header(&headers);
         assert!(result.is_some());
@@ -555,14 +628,17 @@ mod tests {
 
         // Test with case-insensitive header
         let mut headers = HeaderMap::new();
-        headers.insert("X-Target-Host", HeaderValue::from_static("https://api.test.com"));
+        headers.insert(
+            "X-Target-Host",
+            HeaderValue::from_static("https://api.test.com"),
+        );
 
         let result = extract_target_url_from_header(&headers);
         assert!(result.is_some());
         assert_eq!(result.unwrap(), "https://api.test.com");
     }
 
-#[test]
+    #[test]
     fn test_parse_preferences_from_header_with_multiple_fields() {
         use crate::headers::parse_preferences_from_header;
         use axum::http::{HeaderMap, HeaderValue};
@@ -593,7 +669,10 @@ mod tests {
         fs::write(&target_host_file, "https://api.from-file.com\n").unwrap();
 
         let mut headers = HeaderMap::new();
-        headers.insert(constants::TARGET_HOST_HEADER, HeaderValue::from_str(&target_host_file.to_string_lossy()).unwrap());
+        headers.insert(
+            constants::TARGET_HOST_HEADER,
+            HeaderValue::from_str(&target_host_file.to_string_lossy()).unwrap(),
+        );
 
         let result = extract_target_url_from_header(&headers);
         assert!(result.is_some());
@@ -605,9 +684,8 @@ mod tests {
 
     #[test]
     fn test_proxy_config_from_cli_with_file_api_key() {
-        use std::fs;
         use std::env;
-        use std::path::PathBuf;
+        use std::fs;
 
         // Create a temporary file with API key
         let temp_dir = env::temp_dir();
@@ -627,7 +705,10 @@ mod tests {
 
         let config = ProxyConfig::from_test_cli(cli).unwrap();
 
-        assert_eq!(config.upstream_api_key, Some("file-api-key-12345".to_string()));
+        assert_eq!(
+            config.upstream_api_key,
+            Some("file-api-key-12345".to_string())
+        );
 
         // Clean up
         fs::remove_file(&api_key_file).unwrap();

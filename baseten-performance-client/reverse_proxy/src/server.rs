@@ -1,6 +1,6 @@
 use axum::{
     extract::{Request, State},
-    http::{StatusCode, Method},
+    http::{Method, StatusCode},
     response::{IntoResponse, Json},
     routing::{any, get},
     Router,
@@ -9,31 +9,29 @@ use baseten_performance_client_core::HttpMethod;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tower::ServiceBuilder;
-use tower_http::{
-    cors::{Any, CorsLayer},
-};
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info, warn};
 
 use crate::config::ProxyConfig;
-use crate::handlers::UnifiedHandler;
 use crate::constants;
+use crate::handlers::UnifiedHandler;
 
 pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::error::Error>> {
     let client = baseten_performance_client_core::PerformanceClientCore::new(
-            config
-                .default_target_url
-                .clone()
-                .unwrap_or_else(|| "https://localhost".to_string()),
-            config.upstream_api_key.clone(),
-            config.http_version,
-            None,
-        ).map_err(|e| {
-            error!("Failed to create performance client: {}", e);
-            format!("Failed to create performance client: {}", e)
-        })?;
+        config
+            .default_target_url
+            .clone()
+            .unwrap_or_else(|| "https://localhost".to_string()),
+        config.upstream_api_key.clone(),
+        config.http_version,
+        None,
+    )
+    .map_err(|e| {
+        error!("Failed to create performance client: {}", e);
+        format!("Failed to create performance client: {}", e)
+    })?;
 
     let handler = UnifiedHandler::new(config.clone(), Arc::new(client));
-
 
     // Build the application with CORS and tracing middleware
     let app = Router::new()
@@ -44,13 +42,12 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
         .route("/health_internal", get(handle_health_check))
         .route("/*path", any(handle_unified_request)) // Catch-all for generic batch
         .layer(
-            ServiceBuilder::new()
-                .layer(
-                    CorsLayer::new()
-                        .allow_origin(Any)
-                        .allow_methods(Any)
-                        .allow_headers(Any),
-                ),
+            ServiceBuilder::new().layer(
+                CorsLayer::new()
+                    .allow_origin(Any)
+                    .allow_methods(Any)
+                    .allow_headers(Any),
+            ),
         )
         .with_state(handler);
 
@@ -118,20 +115,15 @@ async fn handle_unified_request(
     };
 
     // Process the request through the unified handler
-    match handler.handle_request(path, method, headers, body_value).await {
+    match handler
+        .handle_request(path, method, headers, body_value)
+        .await
+    {
         Ok(response) => {
             debug!("Successfully processed request to {}", path);
             (StatusCode::OK, Json(response)).into_response()
         }
-        Err(status) => {
-            let error_message = match status {
-                StatusCode::UNAUTHORIZED => "Unauthorized - missing or invalid API key",
-                StatusCode::BAD_REQUEST => "Bad request - invalid parameters or headers",
-                StatusCode::BAD_GATEWAY => "Bad gateway - upstream service error",
-                StatusCode::INTERNAL_SERVER_ERROR => "Internal server error",
-                _ => "Unknown error",
-            };
-
+        Err((status, error_message)) => {
             warn!("Request to {} failed: {}", path, error_message);
             (
                 status,

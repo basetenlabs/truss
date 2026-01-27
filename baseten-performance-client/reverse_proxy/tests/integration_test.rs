@@ -1,12 +1,12 @@
+use baseten_performance_client_core::{
+    HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+};
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use baseten_performance_client_core::{
-    PerformanceClientCore, RequestProcessingPreference, HttpMethod,
-};
-use serde_json::json;
-use tracing::{info, error};
+use tracing::{error, info};
 
 mod mock_server;
 use mock_server::MockServer;
@@ -50,13 +50,17 @@ impl IntegrationTest {
         sleep(Duration::from_millis(500)).await;
 
         // Verify mock server is running
-        self.wait_for_service(self.mock_server_port, "mock server").await?;
+        self.wait_for_service(self.mock_server_port, "mock server")
+            .await?;
 
         // Start reverse proxy server in-process
         let proxy_port = self.proxy_port;
         let mock_server_port = self.mock_server_port;
 
-        info!("Starting reverse proxy on port {} targeting mock server on port {}", proxy_port, mock_server_port);
+        info!(
+            "Starting reverse proxy on port {} targeting mock server on port {}",
+            proxy_port, mock_server_port
+        );
 
         // Create proxy config
         let proxy_config = baseten_reverse_proxy_lib::config::ProxyConfig {
@@ -81,7 +85,8 @@ impl IntegrationTest {
         sleep(Duration::from_millis(1000)).await;
 
         // Verify reverse proxy is running
-        self.wait_for_service(self.proxy_port, "reverse proxy").await?;
+        self.wait_for_service(self.proxy_port, "reverse proxy")
+            .await?;
 
         // Run test scenarios
         self.scenario_basic_embeddings().await?;
@@ -103,7 +108,11 @@ impl IntegrationTest {
     }
 
     /// Wait for a service to be ready on the given port
-    async fn wait_for_service(&self, port: u16, service_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    async fn wait_for_service(
+        &self,
+        port: u16,
+        service_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
         let url = format!("http://0.0.0.0:{}/health_internal", port);
 
@@ -114,10 +123,18 @@ impl IntegrationTest {
                     return Ok(());
                 }
                 Ok(_) => {
-                    info!("Waiting for {} to be ready (attempt {}/10)", service_name, i + 1);
+                    info!(
+                        "Waiting for {} to be ready (attempt {}/10)",
+                        service_name,
+                        i + 1
+                    );
                 }
                 Err(_) => {
-                    info!("Waiting for {} to be ready (attempt {}/10)", service_name, i + 1);
+                    info!(
+                        "Waiting for {} to be ready (attempt {}/10)",
+                        service_name,
+                        i + 1
+                    );
                 }
             }
             sleep(Duration::from_millis(500)).await;
@@ -132,12 +149,8 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
 
-        let client = PerformanceClientCore::new(
-            proxy_url,
-            Some("test_api_key".to_string()),
-            2,
-            None,
-        )?;
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
         let response = client
             .process_embeddings_requests(
@@ -168,17 +181,12 @@ impl IntegrationTest {
     async fn scenario_large_batch(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing large batch request through proxy");
 
-        let client = PerformanceClientCore::new(
-            self.target_url.clone(),
-            Some("test_api_key".to_string()),
-            2,
-            None,
-        )?;
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
         // Create a large batch
-        let inputs: Vec<String> = (0..100)
-            .map(|i| format!("Test input {}", i))
-            .collect();
+        let inputs: Vec<String> = (0..100).map(|i| format!("Test input {}", i)).collect();
 
         let response = client
             .process_embeddings_requests(
@@ -206,12 +214,9 @@ impl IntegrationTest {
     async fn scenario_with_preferences(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing request with custom preferences");
 
-        let client = PerformanceClientCore::new(
-            self.target_url.clone(),
-            Some("test_api_key".to_string()),
-            2,
-            None,
-        )?;
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
         let response = client
             .process_embeddings_requests(
@@ -243,6 +248,7 @@ impl IntegrationTest {
 
         // Reset mock server stats to ensure predictable request numbering
         self.mock_server.reset_stats().await;
+        info!("Mock server stats reset");
 
         // Configure mock server to return errors for the next 2 requests
         let error_config = mock_server::MockServerConfig {
@@ -252,14 +258,17 @@ impl IntegrationTest {
         };
         self.mock_server.update_config(error_config).await;
 
-        let client = PerformanceClientCore::new(
-            self.target_url.clone(),
-            Some("test_api_key".to_string()),
-            2,
-            None,
-        )?;
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
-        // First request should fail
+        // First request should fail - use preferences that disable hedging and retries
+        let no_hedge_prefs = RequestProcessingPreference::new()
+            .with_max_concurrent_requests(1)
+            .with_hedge_budget_pct(0.0)
+            .with_retry_budget_pct(0.0)
+            .with_max_retries(0);
+
         let result1 = client
             .process_embeddings_requests(
                 vec!["Error test 1".to_string()],
@@ -267,10 +276,11 @@ impl IntegrationTest {
                 None,
                 None,
                 None,
-                &RequestProcessingPreference::new(),
+                &no_hedge_prefs,
             )
             .await;
 
+        info!("First request result: {:?}", result1);
         assert!(result1.is_err(), "First request should fail");
 
         // Second request should also fail
@@ -281,14 +291,19 @@ impl IntegrationTest {
                 None,
                 None,
                 None,
-                &RequestProcessingPreference::new(),
+                &no_hedge_prefs,
             )
             .await;
 
         assert!(result2.is_err(), "Second request should fail");
 
         // Reset config
-        self.mock_server.update_config(mock_server::MockServerConfig::default()).await;
+        self.mock_server
+            .update_config(mock_server::MockServerConfig::default())
+            .await;
+
+        // Small delay to ensure config reset takes effect
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Third request should succeed
         let result3 = client
@@ -298,7 +313,7 @@ impl IntegrationTest {
                 None,
                 None,
                 None,
-                &RequestProcessingPreference::new(),
+                &no_hedge_prefs,
             )
             .await;
 
@@ -348,17 +363,15 @@ impl IntegrationTest {
         // Verify all requests succeeded
         for (i, result) in results.into_iter().enumerate() {
             match result {
-                Ok(response_result) => {
-                    match response_result {
-                        Ok((response, _, _, _)) => {
-                            assert_eq!(response.data.len(), 1);
-                            info!("Concurrent request {} succeeded", i);
-                        }
-                        Err(e) => {
-                            return Err(format!("Concurrent request {} failed: {}", i, e).into());
-                        }
+                Ok(response_result) => match response_result {
+                    Ok((response, _, _, _)) => {
+                        assert_eq!(response.data.len(), 1);
+                        info!("Concurrent request {} succeeded", i);
                     }
-                }
+                    Err(e) => {
+                        return Err(format!("Concurrent request {} failed: {}", i, e).into());
+                    }
+                },
                 Err(e) => {
                     return Err(format!("Concurrent request {} task failed: {}", i, e).into());
                 }
@@ -373,12 +386,9 @@ impl IntegrationTest {
     async fn scenario_rerank_endpoint(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing rerank endpoint through proxy");
 
-        let client = PerformanceClientCore::new(
-            self.target_url.clone(),
-            Some("test_api_key".to_string()),
-            2,
-            None,
-        )?;
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
         let response = client
             .process_rerank_requests(
@@ -417,12 +427,9 @@ impl IntegrationTest {
     async fn scenario_classify_endpoint(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing classify endpoint through proxy");
 
-        let client = PerformanceClientCore::new(
-            self.target_url.clone(),
-            Some("test_api_key".to_string()),
-            2,
-            None,
-        )?;
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
         let response = client
             .process_classify_requests(
@@ -457,12 +464,9 @@ impl IntegrationTest {
     async fn scenario_generic_batch(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing generic batch endpoint through proxy");
 
-        let client = PerformanceClientCore::new(
-            self.target_url.clone(),
-            Some("test_api_key".to_string()),
-            2,
-            None,
-        )?;
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
         let payloads = vec![
             json!({"test": "payload1"}),
@@ -470,9 +474,8 @@ impl IntegrationTest {
             json!({"test": "payload3"}),
         ];
 
-        let custom_headers = HashMap::from([
-            ("X-Custom-Header".to_string(), "CustomValue".to_string()),
-        ]);
+        let custom_headers =
+            HashMap::from([("X-Custom-Header".to_string(), "CustomValue".to_string())]);
 
         let (responses, total_time) = client
             .process_batch_post_requests(

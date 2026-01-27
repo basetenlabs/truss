@@ -1,12 +1,12 @@
+use baseten_performance_client_core::RequestProcessingPreference;
 use clap::Parser;
 use std::sync::Arc;
-use baseten_performance_client_core::RequestProcessingPreference;
 
 mod config;
+mod constants;
 mod handlers;
 mod headers;
 mod server;
-mod constants;
 
 use config::ProxyConfig;
 
@@ -91,7 +91,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Port: {}", config.port);
     tracing::info!("HTTP Version: {}", config.http_version);
     if let Some(ref key) = config.upstream_api_key {
-        tracing::info!("Upstream API Key: {}***", &key[..std::cmp::min(8, key.len())]);
+        tracing::info!(
+            "Upstream API Key: {}***",
+            &key[..std::cmp::min(8, key.len())]
+        );
     }
 
     server::create_server(Arc::new(config)).await?;

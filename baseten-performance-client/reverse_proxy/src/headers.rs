@@ -1,7 +1,7 @@
+use crate::constants;
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::RequestProcessingPreference;
 use serde_json;
-use crate::constants;
 /// Extract API key from Authorization header
 pub fn extract_api_key_from_header(headers: &HeaderMap) -> Result<String, StatusCode> {
     headers
@@ -11,7 +11,6 @@ pub fn extract_api_key_from_header(headers: &HeaderMap) -> Result<String, Status
         .map(|s| s.to_string())
         .ok_or(StatusCode::UNAUTHORIZED)
 }
-
 
 /// Parse RequestProcessingPreference from X-Baseten-Request-Preferences header
 pub fn parse_preferences_from_header(
