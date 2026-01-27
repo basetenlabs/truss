@@ -175,18 +175,19 @@ impl TokenizerWorker {
 #[derive(Debug, Clone)]
 pub struct TokenizerManagerConfig {
     pub tokenizers: HashMap<String, ProxyTokenizerConfig>,
-    pub default_tokenizer: Option<String>,
     pub channel_buffer: usize,
     pub shutdown_timeout_ms: u64,
+    pub tokenizer_workers_per_file: usize,
+
 }
 
 impl Default for TokenizerManagerConfig {
     fn default() -> Self {
         Self {
             tokenizers: HashMap::new(),
-            default_tokenizer: None,
             channel_buffer: 1000,
             shutdown_timeout_ms: 100,
+            tokenizer_workers_per_file: 2,
         }
     }
 }
@@ -196,9 +197,9 @@ impl TokenizerManagerConfig {
     pub fn from_proxy_config(proxy_config: &crate::config::ProxyConfig) -> Self {
         Self {
             tokenizers: proxy_config.tokenizers.clone(),
-            default_tokenizer: proxy_config.tokenizers.keys().next().cloned(),
             channel_buffer: 1000,
             shutdown_timeout_ms: 100,
+            tokenizer_workers_per_file: 2,
         }
     }
 }
@@ -241,10 +242,17 @@ impl TokenizerManager {
             let name_clone = name.clone();
             let config = config.clone();
 
-            thread::spawn(move || {
-                let worker = TokenizerWorker::new(name_clone, config, shutdown);
-                worker.run(rx);
-            });
+            for _ in 0..self.config.tokenizer_workers_per_file {
+                let name_clone = name_clone.clone();
+                let config = config.clone();
+                let shutdown = shutdown.clone();
+                let rx = rx.clone();
+
+                thread::spawn(move || {
+                    let worker = TokenizerWorker::new(name_clone, config, shutdown);
+                    worker.run(rx);
+                });
+            }
 
             let handle = TokenizerHandle {
                 name: name.clone(),
@@ -252,7 +260,7 @@ impl TokenizerManager {
             };
 
             self.handles.insert(name.clone(), handle);
-            info!("Spawned tokenizer worker: {}", name);
+            info!("Spawned {} tokenizer worker(s) for: {}", self.config.tokenizer_workers_per_file, name);
         }
 
         self.is_initialized = true;
@@ -276,16 +284,6 @@ impl TokenizerManager {
                     format!("Tokenizer '{}' not found. Available tokenizers: {}", name, available.join(", "))
                 }
             })
-    }
-
-    /// List all available tokenizer names
-    pub async fn list_tokenizers(&self) -> Vec<String> {
-        self.handles.keys().cloned().collect()
-    }
-
-    /// Check if a tokenizer exists
-    pub async fn has_tokenizer(&self, name: &str) -> bool {
-        self.handles.contains_key(name)
     }
 
     /// Check if a model exists and return available models if not found
@@ -322,7 +320,6 @@ impl TokenizerManager {
             None => {
                 // Try to get the first available tokenizer
                 if let Some((name, _)) = self.handles.iter().next() {
-                    info!("Using first available tokenizer: {}", name);
                     name.clone()
                 } else {
                     return Err("No tokenizer specified and no default available. Use --tokenizer <model_id> <path> to configure tokenizers.".to_string());
@@ -362,7 +359,9 @@ impl Drop for TokenizerManager {
 
         // Send shutdown signals to all workers
         for handle in self.handles.values() {
-            std::mem::drop(handle.tx.send(TokenizerRequest::Shutdown));
+            for _ in 0..self.config.tokenizer_workers_per_file {
+                std::mem::drop(handle.tx.send(TokenizerRequest::Shutdown));
+            }
         }
 
         // Give workers time to shut down gracefully
