@@ -6,9 +6,8 @@ use axum::{
     Router,
 };
 use baseten_performance_client_core::{
-    CoreClassificationResult, CoreClassifyRequest,
-    CoreEmbeddingVariant, CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsRequest,
-    CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult,
+    CoreClassificationResult, CoreClassifyRequest, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
+    CoreOpenAIEmbeddingsRequest, CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult,
     PerformanceClientCore, RequestProcessingPreference,
 };
 use serde::{Deserialize, Serialize};
@@ -1042,6 +1041,4 @@ mod tests {
 
         // server_guard automatically shuts down here
     }
-
-
 }

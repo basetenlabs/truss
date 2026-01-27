@@ -407,7 +407,6 @@ mod tests {
     use axum::http::{HeaderMap, HeaderValue};
     use baseten_performance_client_core::RequestProcessingPreference;
 
-
     // Test CLI struct for tests
     #[derive(Debug, Clone)]
     struct TestCli {
@@ -454,8 +453,6 @@ mod tests {
             })
         }
     }
-
-
 
     #[test]
     fn test_extract_api_key_from_header_success() {
@@ -533,7 +530,6 @@ mod tests {
             max_concurrent_requests: 128,
             batch_size: 64,
             timeout_s: 60.0,
-
         };
 
         let config = ProxyConfig::from_test_cli(cli).unwrap();
@@ -683,7 +679,7 @@ mod tests {
         let api_key_file = temp_dir.join("test_api_key.txt");
         fs::write(&api_key_file, "file-api-key-12345\n").unwrap();
 
-let cli = TestCli {
+        let cli = TestCli {
             port: 9090,
             target_url: Some("https://api.example.com".to_string()),
             upstream_api_key: None,
@@ -714,7 +710,6 @@ let cli = TestCli {
             max_concurrent_requests: 128,
             batch_size: 64,
             timeout_s: 60.0,
-
         };
 
         let config = ProxyConfig::from_test_cli(cli).unwrap();
