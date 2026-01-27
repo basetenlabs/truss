@@ -15,8 +15,6 @@ use tokenizers::Tokenizer as HuggingFaceTokenizer;
 #[derive(Debug)]
 pub enum TokenizerRequest {
     DecodeBatch(Vec<Vec<u32>>, oneshot::Sender<Result<Vec<String>, String>>),
-
-    Shutdown,
 }
 
 /// Handle for interacting with a tokenizer worker
@@ -161,11 +159,6 @@ impl TokenizerWorker {
                     error!("Failed to send decode batch response: {:?}", e);
                 }
             }
-
-            TokenizerRequest::Shutdown => {
-                info!("Tokenizer worker '{}' received shutdown signal", self.name);
-                self.shutdown.store(true, Ordering::SeqCst);
-            }
         }
         Ok(())
     }
@@ -176,7 +169,6 @@ impl TokenizerWorker {
 pub struct TokenizerManagerConfig {
     pub tokenizers: HashMap<String, ProxyTokenizerConfig>,
     pub channel_buffer: usize,
-    pub shutdown_timeout_ms: u64,
     pub tokenizer_workers_per_file: usize,
 
 }
@@ -186,7 +178,6 @@ impl Default for TokenizerManagerConfig {
         Self {
             tokenizers: HashMap::new(),
             channel_buffer: 1000,
-            shutdown_timeout_ms: 100,
             tokenizer_workers_per_file: 2,
         }
     }
@@ -198,7 +189,6 @@ impl TokenizerManagerConfig {
         Self {
             tokenizers: proxy_config.tokenizers.clone(),
             channel_buffer: 1000,
-            shutdown_timeout_ms: 100,
             tokenizer_workers_per_file: 2,
         }
     }
@@ -356,17 +346,6 @@ impl Drop for TokenizerManager {
     fn drop(&mut self) {
         info!("Shutting down tokenizer manager...");
         self.shutdown.store(true, Ordering::SeqCst);
-
-        // Send shutdown signals to all workers
-        for handle in self.handles.values() {
-            for _ in 0..self.config.tokenizer_workers_per_file {
-                std::mem::drop(handle.tx.send(TokenizerRequest::Shutdown));
-            }
-        }
-
-        // Give workers time to shut down gracefully
-        std::thread::sleep(Duration::from_millis(self.config.shutdown_timeout_ms));
-
         info!("Tokenizer manager shutdown completed");
     }
 }
