@@ -20,8 +20,8 @@ path = "src/main.rs"
 
 [dependencies]
 baseten_performance_client_core = { path = "../core" }
-tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros"] }
-reqwest = { version = "0.12.26", default-features = false, features = ["blocking", "json", "stream", "http2"] }
+tokio = { workspace = true }
+reqwest = { workspace = true }
 axum = { version = "0.7", features = ["http2", "tokio"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
@@ -35,7 +35,7 @@ async-channel = "2.3"
 
 [dev-dependencies]
 tokio-test = "0.4"
-futures = "0.3"
+futures = { workspace = true }
 tracing-subscriber = { workspace = true }
 serial_test = "3.0"
 
