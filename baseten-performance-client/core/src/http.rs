@@ -51,7 +51,8 @@ impl HttpMethod {
 
     /// Returns true if this HTTP method typically has a request body
     pub fn has_body(&self) -> bool {
-        match self { // pattern helps when extending in future
+        match self {
+            // pattern helps when extending in future
             HttpMethod::POST | HttpMethod::PUT | HttpMethod::PATCH => true,
             HttpMethod::GET | HttpMethod::DELETE | HttpMethod::HEAD | HttpMethod::OPTIONS => false,
         }
@@ -72,7 +73,7 @@ fn default_response_headers() -> Vec<HeaderMap> {
 }
 
 // --- Core OpenAI Compatible Structures ---
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIEmbeddingsRequest {
     pub input: Vec<String>,
     pub model: String,
@@ -120,7 +121,7 @@ pub struct CoreOpenAIEmbeddingsResponse {
 }
 
 // --- Core Rerank Structures ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CoreRerankRequest {
     pub query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -168,7 +169,7 @@ impl CoreRerankResponse {
 }
 
 // --- Core Classification Structures ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CoreClassifyRequest {
     pub inputs: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]

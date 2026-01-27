@@ -19,7 +19,21 @@ use crate::handlers::UnifiedHandler;
 use crate::constants;
 
 pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::error::Error>> {
-    let handler = UnifiedHandler::new(config.clone());
+    let client = baseten_performance_client_core::PerformanceClientCore::new(
+            config
+                .default_target_url
+                .clone()
+                .unwrap_or_else(|| "https://localhost".to_string()),
+            config.upstream_api_key.clone(),
+            config.http_version,
+            None,
+        ).map_err(|e| {
+            error!("Failed to create performance client: {}", e);
+            format!("Failed to create performance client: {}", e)
+        })?;
+
+    let handler = UnifiedHandler::new(config.clone(), Arc::new(client));
+
 
     // Build the application with CORS and tracing middleware
     let app = Router::new()

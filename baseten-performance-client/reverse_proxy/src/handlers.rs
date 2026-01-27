@@ -1,7 +1,19 @@
+// Unified request handler is proxying requests to Baseten Performance Client Core.
+// This leads to a client controllable fanout behavior
+
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::{
     CancellationToken, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+    CoreRerankRequest, CoreOpenAIEmbeddingsRequest, CoreClassifyRequest,
 };
+
+
+
+
+
+
+
+
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -15,11 +27,12 @@ use crate::headers::{
 #[derive(Clone)]
 pub struct UnifiedHandler {
     config: Arc<ProxyConfig>,
+    client: Arc<PerformanceClientCore>,
 }
 
 impl UnifiedHandler {
-    pub fn new(config: Arc<ProxyConfig>) -> Self {
-        Self { config }
+    pub fn new(config: Arc<ProxyConfig>, client: Arc<PerformanceClientCore>) -> Self {
+        Self { config , client }
     }
 
     pub async fn handle_request(
@@ -70,19 +83,7 @@ impl UnifiedHandler {
         preferences = preferences
             .with_cancel_token(cancel_token)
             .with_primary_api_key_override(api_key);
-
-        // Create client for this specific request with target URL
-        let client = PerformanceClientCore::new(
-            target_url,
-            None, // API key will be handled via preferences
-            self.config.http_version,
-            None,
-        )
-        .map_err(|e| {
-            error!("Failed to create PerformanceClientCore: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
+        let client = self.client.clone();
         // Route based on path
         match path {
             "/v1/embeddings" => {
@@ -105,49 +106,38 @@ impl UnifiedHandler {
 
     async fn handle_embeddings(
         &self,
-        client: PerformanceClientCore,
+        client: Arc<PerformanceClientCore>,
         body: Value,
         model: String,
         preferences: RequestProcessingPreference,
         customer_request_id: Option<String>,
     ) -> Result<Value, StatusCode> {
-        // Extract input array from request body
-        let input = body.get("input")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                warn!("Missing or invalid 'input' field in embeddings request");
+        // Validate request body against CoreOpenAIEmbeddingsRequest struct
+        let embeddings_request: CoreOpenAIEmbeddingsRequest = serde_json::from_value(body.clone())
+            .map_err(|e| {
+                warn!("Invalid embeddings request body: {}", e);
                 StatusCode::BAD_REQUEST
-            })?
-            .iter()
-            .filter_map(|v| v.as_str())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>();
+            })?;
 
-        let encoding_format = body.get("encoding_format")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let dimensions = body.get("dimensions")
-            .and_then(|v| v.as_u64())
-            .map(|d| d as u32);
-
-        let user = body.get("user")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        // Override model with header-provided model if present
+        let request = CoreOpenAIEmbeddingsRequest {
+            model,
+            ..embeddings_request
+        };
 
         info!(
             "Processing embeddings request: {} texts, model: {}",
-            input.len(),
-            model
+            request.input.len(),
+            request.model
         );
 
         let (response, durations, headers, total_time) = client
             .process_embeddings_requests(
-                input,
-                model,
-                encoding_format,
-                dimensions,
-                user,
+                request.input,
+                request.model,
+                request.encoding_format,
+                request.dimensions,
+                request.user,
                 &preferences,
             )
             .await
@@ -185,67 +175,33 @@ impl UnifiedHandler {
 
     async fn handle_rerank(
         &self,
-        client: PerformanceClientCore,
+        client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
         customer_request_id: Option<String>,
     ) -> Result<Value, StatusCode> {
-        // Extract required fields
-        let query = body.get("query")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                warn!("Missing 'query' field in rerank request");
+        // Validate request body against CoreRerankRequest struct
+        let rerank_request: CoreRerankRequest = serde_json::from_value(body.clone())
+            .map_err(|e| {
+                warn!("Invalid rerank request body: {}", e);
                 StatusCode::BAD_REQUEST
-            })?
-            .to_string();
-
-        let texts = body.get("texts")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| {
-                warn!("Missing 'texts' field in rerank request");
-                StatusCode::BAD_REQUEST
-            })?
-            .iter()
-            .filter_map(|v| v.as_str())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>();
-
-        let raw_scores = body.get("raw_scores")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let model = body.get("model")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let return_text = body.get("return_text")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let truncate = body.get("truncate")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let truncation_direction = body.get("truncation_direction")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Right")
-            .to_string();
+            })?;
 
         info!(
             "Processing rerank request: {} texts, query length: {}",
-            texts.len(),
-            query.len()
+            rerank_request.texts.len(),
+            rerank_request.query.len()
         );
 
         let (response, durations, headers, total_time) = client
             .process_rerank_requests(
-                query,
-                texts,
-                raw_scores,
-                model,
-                return_text,
-                truncate,
-                truncation_direction,
+                rerank_request.query,
+                rerank_request.texts,
+                rerank_request.raw_scores,
+                rerank_request.model,
+                rerank_request.return_text,
+                rerank_request.truncate,
+                rerank_request.truncation_direction,
                 &preferences,
             )
             .await
@@ -275,55 +231,38 @@ impl UnifiedHandler {
         Ok(response_value)
     }
 
-    async fn handle_classify(
+async fn handle_classify(
         &self,
-        client: PerformanceClientCore,
+        client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
         customer_request_id: Option<String>,
     ) -> Result<Value, StatusCode> {
-        // Extract inputs field - handle both string and array formats
-        let inputs = if let Some(input_str) = body.get("inputs").and_then(|v| v.as_str()) {
-            vec![input_str.to_string()]
-        } else if let Some(input_array) = body.get("inputs").and_then(|v| v.as_array()) {
-            input_array
-                .iter()
-                .filter_map(|v| v.as_str())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
-        } else {
-            return Err(StatusCode::BAD_REQUEST);
-        };
-
-        let model = body.get("model")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let raw_scores = body.get("raw_scores")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let truncate = body.get("truncate")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let truncation_direction = body.get("truncation_direction")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Right")
-            .to_string();
+        // Validate request body against CoreClassifyRequest struct
+        let classify_request: CoreClassifyRequest = serde_json::from_value(body.clone())
+            .map_err(|e| {
+                warn!("Invalid classify request body: {}", e);
+                StatusCode::BAD_REQUEST
+            })?;
 
         info!(
             "Processing classify request: {} inputs",
-            inputs.len()
+            classify_request.inputs.len()
         );
+
+        // Flatten the inputs from Vec<Vec<String>> to Vec<String> for the method call
+        let flattened_inputs: Vec<String> = classify_request.inputs
+            .into_iter()
+            .flatten()
+            .collect();
 
         let (response, durations, headers, total_time) = client
             .process_classify_requests(
-                inputs,
-                model,
-                raw_scores,
-                truncate,
-                truncation_direction,
+                flattened_inputs,
+                classify_request.model,
+                classify_request.raw_scores,
+                classify_request.truncate,
+                classify_request.truncation_direction,
                 &preferences,
             )
             .await
@@ -355,7 +294,7 @@ impl UnifiedHandler {
 
     async fn handle_generic_batch(
         &self,
-        client: PerformanceClientCore,
+        client: Arc<PerformanceClientCore>,
         path: &str,
         method: HttpMethod,
         body: Value,

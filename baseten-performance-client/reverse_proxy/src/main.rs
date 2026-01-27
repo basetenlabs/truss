@@ -1,7 +1,5 @@
 use clap::Parser;
 use std::sync::Arc;
-use std::str::FromStr;
-use tracing::Level;
 use baseten_performance_client_core::RequestProcessingPreference;
 
 mod config;
@@ -13,7 +11,7 @@ mod constants;
 use config::ProxyConfig;
 
 impl ProxyConfig {
-    pub fn from_cli(cli: Cli) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from(cli: Cli) -> Result<Self, Box<dyn std::error::Error>> {
         let default_preferences = RequestProcessingPreference::new()
             .with_max_concurrent_requests(cli.max_concurrent_requests)
             .with_batch_size(cli.batch_size)
@@ -83,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set log level via environment variable (core library initializes tracing automatically)
     std::env::set_var("RUST_LOG", &cli.log_level);
 
-    let config = ProxyConfig::from_cli(cli)?;
+    let config = ProxyConfig::from(cli)?;
 
     tracing::info!("Starting Baseten Reverse Proxy");
     match &config.default_target_url {

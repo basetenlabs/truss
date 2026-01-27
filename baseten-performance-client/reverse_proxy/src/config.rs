@@ -10,22 +10,6 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
-    pub fn new(
-        port: u16,
-        default_target_url: Option<String>,
-        upstream_api_key: Option<String>,
-        http_version: u8,
-        default_preferences: RequestProcessingPreference,
-    ) -> Self {
-        Self {
-            port,
-            default_target_url,
-            upstream_api_key,
-            http_version,
-            default_preferences,
-        }
-    }
-
     /// Get the target URL for a request, using per-request override if available,
     /// otherwise falling back to the default target URL
     pub fn get_target_url(&self, per_request_target: Option<String>) -> Result<String, String> {
