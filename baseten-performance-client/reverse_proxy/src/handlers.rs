@@ -419,7 +419,7 @@ impl UnifiedHandler {
         let json_responses: Vec<Value> = responses
             .into_iter()
             .enumerate()
-            .map(|(i, (response, headers, duration))| {
+            .map(|(i, (response, _headers, duration))| {
                 json!({
                     "index": i,
                     "response": response,

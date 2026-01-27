@@ -2,6 +2,7 @@ use clap::Parser;
 use std::sync::Arc;
 use std::str::FromStr;
 use tracing::Level;
+use baseten_performance_client_core::RequestProcessingPreference;
 
 mod config;
 mod handlers;
@@ -10,6 +11,40 @@ mod server;
 mod constants;
 
 use config::ProxyConfig;
+
+impl ProxyConfig {
+    pub fn from_cli(cli: Cli) -> Result<Self, Box<dyn std::error::Error>> {
+        let default_preferences = RequestProcessingPreference::new()
+            .with_max_concurrent_requests(cli.max_concurrent_requests)
+            .with_batch_size(cli.batch_size)
+            .with_timeout_s(cli.timeout_s);
+
+        // Resolve upstream API key (from file if starts with /) - ASAP resolution
+        let upstream_api_key = if let Some(key) = cli.upstream_api_key {
+            if key.starts_with('/') {
+                // Read API key from file immediately and replace with content
+                Some(
+                    std::fs::read_to_string(&key)
+                        .map_err(|e| format!("Failed to read API key file '{}': {}", key, e))?
+                        .trim()
+                        .to_string(),
+                )
+            } else {
+                Some(key)
+            }
+        } else {
+            None
+        };
+
+        Ok(Self {
+            port: cli.port,
+            default_target_url: cli.target_url,
+            upstream_api_key,
+            http_version: cli.http_version,
+            default_preferences,
+        })
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "baseten-reverse-proxy")]

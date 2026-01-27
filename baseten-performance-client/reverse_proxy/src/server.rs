@@ -11,7 +11,6 @@ use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
-    trace::TraceLayer,
 };
 use tracing::{debug, error, info, warn};
 

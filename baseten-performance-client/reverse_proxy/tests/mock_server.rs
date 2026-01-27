@@ -168,6 +168,7 @@ impl MockServer {
             .route("/reset", get(reset_handler))
             .route("/config", post(config_handler))
             .route("/stats", get(stats_handler))
+            .route("/health_internal", get(MockServer::health_handler))
             .with_state(self.clone());
 
         app
@@ -176,6 +177,16 @@ impl MockServer {
     pub async fn update_config(&self, config: MockServerConfig) {
         let mut cfg = self.config.write().await;
         *cfg = config;
+    }
+
+    /// Health check handler for the mock server
+    async fn health_handler(State(server): State<MockServer>) -> impl IntoResponse {
+        Json(json!({
+            "service": "mock-server",
+            "status": "healthy",
+            "port": server.port,
+            "request_count": server.request_count.load(Ordering::Relaxed)
+        }))
     }
 
     pub async fn get_stats(&self) -> HashMap<String, usize> {
@@ -192,7 +203,6 @@ impl MockServer {
         self.error_count.store(0, Ordering::Relaxed);
     }
 }
-
 
 
 async fn embeddings_handler(

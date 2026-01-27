@@ -10,6 +10,10 @@ documentation = "https://github.com/basetenlabs/truss/tree/main/baseten-performa
 keywords = ["http", "proxy", "async", "performance", "baseten"]
 categories = ["web-programming::http-server", "asynchronous"]
 
+[lib]
+name = "baseten_reverse_proxy_lib"
+path = "src/lib.rs"
+
 [[bin]]
 name = "baseten-reverse-proxy"
 path = "src/main.rs"

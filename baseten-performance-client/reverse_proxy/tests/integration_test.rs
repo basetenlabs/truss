@@ -49,36 +49,39 @@ impl IntegrationTest {
         // Give mock server time to start
         sleep(Duration::from_millis(500)).await;
 
-        // Start reverse proxy server
-        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let target_url = format!("http://0.0.0.0:{}", self.mock_server_port);
+        // Verify mock server is running
+        self.wait_for_service(self.mock_server_port, "mock server").await?;
 
-        info!("Starting reverse proxy on port {} targeting {}", self.proxy_port, target_url);
-
+        // Start reverse proxy server in-process
         let proxy_port = self.proxy_port;
         let mock_server_port = self.mock_server_port;
 
-        let proxy_handle = tokio::spawn(async move {
-            let mut cmd = tokio::process::Command::new("/Users/michaelfeil/work/truss/baseten-performance-client/target/debug/baseten-reverse-proxy");
-            cmd.arg("--port")
-               .arg(proxy_port.to_string())
-               .arg("--target-url")
-               .arg(format!("http://0.0.0.0:{}", mock_server_port))
-               .arg("--upstream-api-key")
-               .arg("test_api_key");
+        info!("Starting reverse proxy on port {} targeting mock server on port {}", proxy_port, mock_server_port);
 
-            match cmd.output().await {
-                Ok(output) => {
-                    if !output.status.success() {
-                        error!("Reverse proxy failed: {}", String::from_utf8_lossy(&output.stderr));
-                    }
-                }
-                Err(e) => error!("Failed to start reverse proxy: {}", e),
+        // Create proxy config
+        let proxy_config = baseten_reverse_proxy_lib::config::ProxyConfig {
+            port: proxy_port,
+            default_target_url: Some(format!("http://0.0.0.0:{}", mock_server_port)),
+            upstream_api_key: Some("test_api_key".to_string()),
+            http_version: 2,
+            default_preferences: RequestProcessingPreference::new(),
+        };
+
+        let proxy_config = Arc::new(proxy_config);
+        let proxy_config_clone = proxy_config.clone();
+
+        // Start reverse proxy server
+        let proxy_handle = tokio::spawn(async move {
+            if let Err(e) = baseten_reverse_proxy_lib::create_server(proxy_config_clone).await {
+                error!("Reverse proxy error: {}", e);
             }
         });
 
         // Give reverse proxy time to start
         sleep(Duration::from_millis(1000)).await;
+
+        // Verify reverse proxy is running
+        self.wait_for_service(self.proxy_port, "reverse proxy").await?;
 
         // Run test scenarios
         self.scenario_basic_embeddings().await?;
@@ -91,11 +94,36 @@ impl IntegrationTest {
         self.scenario_generic_batch().await?;
 
         // Shutdown services
+        info!("Shutting down services");
         drop(proxy_handle);
         drop(mock_server_handle);
 
         info!("All integration test scenarios passed!");
         Ok(())
+    }
+
+    /// Wait for a service to be ready on the given port
+    async fn wait_for_service(&self, port: u16, service_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+        let url = format!("http://0.0.0.0:{}/health_internal", port);
+
+        for i in 0..10 {
+            match client.get(&url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    info!("{} is ready on port {}", service_name, port);
+                    return Ok(());
+                }
+                Ok(_) => {
+                    info!("Waiting for {} to be ready (attempt {}/10)", service_name, i + 1);
+                }
+                Err(_) => {
+                    info!("Waiting for {} to be ready (attempt {}/10)", service_name, i + 1);
+                }
+            }
+            sleep(Duration::from_millis(500)).await;
+        }
+
+        Err(format!("{} failed to start on port {}", service_name, port).into())
     }
 
     /// Test basic embeddings request through proxy
@@ -202,7 +230,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, _headers, _total_time) = response;
+        let (response, _durations, _headers, _total_time) = response;
         assert_eq!(response.data.len(), 1);
 
         info!("Custom preferences test passed");
@@ -370,7 +398,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, _headers, _total_time) = response;
+        let (response, _durations, _headers, _total_time) = response;
         assert_eq!(response.data.len(), 3);
 
         // Paris should have the highest score since it contains "capital"
@@ -412,7 +440,7 @@ impl IntegrationTest {
             .await?;
 
         // Verify response
-        let (response, durations, _headers, _total_time) = response;
+        let (response, _durations, _headers, _total_time) = response;
         assert_eq!(response.data.len(), 3);
 
         // Each response should have classification results with scores
