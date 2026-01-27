@@ -403,49 +403,59 @@ impl UnifiedHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::TestCli;
     use crate::constants;
     use axum::http::{HeaderMap, HeaderValue};
     use baseten_performance_client_core::RequestProcessingPreference;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::Arc;
 
-    fn create_test_handler() -> UnifiedHandler {
-        let config = ProxyConfig {
-            port: 8080,
-            default_target_url: Some("https://api.test.com".to_string()),
-            upstream_api_key: Some("test-upstream-key".to_string()),
-            http_version: 2,
-            default_preferences: RequestProcessingPreference::new()
-                .with_max_concurrent_requests(32)
-                .with_batch_size(16)
-                .with_timeout_s(30.0),
-        };
 
-        UnifiedHandler::new(
-            Arc::new(config),
-            Arc::new(
-                PerformanceClientCore::new(
-                    "https://localhost".to_string(),
-                    Some("some".to_string()),
-                    2,
-                    None,
-                )
-                .expect("Failed to create client"),
-            ),
-        )
+    // Test CLI struct for tests
+    #[derive(Debug, Clone)]
+    struct TestCli {
+        port: u16,
+        target_url: Option<String>,
+        upstream_api_key: Option<String>,
+        http_version: u8,
+        max_concurrent_requests: usize,
+        batch_size: usize,
+        timeout_s: f64,
     }
 
-    fn create_test_headers() -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("Bearer some"));
-        headers.insert(
-            "x-baseten-customer-request-id",
-            HeaderValue::from_static("req-123"),
-        );
-        headers
+    impl ProxyConfig {
+        /// Create ProxyConfig from TestCli (for tests)
+        fn from_test_cli(cli: TestCli) -> Result<Self, Box<dyn std::error::Error>> {
+            let default_preferences = RequestProcessingPreference::new()
+                .with_max_concurrent_requests(cli.max_concurrent_requests)
+                .with_batch_size(cli.batch_size)
+                .with_timeout_s(cli.timeout_s);
+
+            // Resolve upstream API key (from file if starts with /) - ASAP resolution
+            let upstream_api_key = if let Some(key) = cli.upstream_api_key {
+                if key.starts_with('/') {
+                    // Read API key from file immediately and replace with content
+                    Some(
+                        std::fs::read_to_string(&key)
+                            .map_err(|e| format!("Failed to read API key file '{}': {}", key, e))?
+                            .trim()
+                            .to_string(),
+                    )
+                } else {
+                    Some(key)
+                }
+            } else {
+                None
+            };
+
+            Ok(Self {
+                port: cli.port,
+                default_target_url: cli.target_url,
+                upstream_api_key,
+                http_version: cli.http_version,
+                default_preferences,
+            })
+        }
     }
+
+
 
     #[test]
     fn test_extract_api_key_from_header_success() {
@@ -500,7 +510,6 @@ mod tests {
             max_concurrent_requests: 128,
             batch_size: 64,
             timeout_s: 60.0,
-            log_level: "debug".to_string(),
         };
 
         let config = ProxyConfig::from_test_cli(cli).unwrap();
@@ -524,7 +533,7 @@ mod tests {
             max_concurrent_requests: 128,
             batch_size: 64,
             timeout_s: 60.0,
-            log_level: "debug".to_string(),
+
         };
 
         let config = ProxyConfig::from_test_cli(cli).unwrap();
@@ -674,15 +683,14 @@ mod tests {
         let api_key_file = temp_dir.join("test_api_key.txt");
         fs::write(&api_key_file, "file-api-key-12345\n").unwrap();
 
-        let cli = TestCli {
+let cli = TestCli {
             port: 9090,
             target_url: Some("https://api.example.com".to_string()),
-            upstream_api_key: Some(api_key_file.to_string_lossy().to_string()),
+            upstream_api_key: None,
             http_version: 1,
             max_concurrent_requests: 128,
             batch_size: 64,
             timeout_s: 60.0,
-            log_level: "debug".to_string(),
         };
 
         let config = ProxyConfig::from_test_cli(cli).unwrap();
@@ -706,7 +714,7 @@ mod tests {
             max_concurrent_requests: 128,
             batch_size: 64,
             timeout_s: 60.0,
-            log_level: "debug".to_string(),
+
         };
 
         let config = ProxyConfig::from_test_cli(cli).unwrap();

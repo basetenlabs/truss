@@ -6,10 +6,10 @@ use axum::{
     Router,
 };
 use baseten_performance_client_core::{
-    CoreClassificationResponse, CoreClassificationResult, CoreClassifyRequest,
+    CoreClassificationResult, CoreClassifyRequest,
     CoreEmbeddingVariant, CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsRequest,
-    CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankRequest, CoreRerankResponse,
-    CoreRerankResult, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+    CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult,
+    PerformanceClientCore, RequestProcessingPreference,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -314,19 +314,16 @@ async fn classify_handler(
 pub struct IntegrationTest {
     proxy_port: u16,
     mock_server_port: u16,
-    target_url: String,
     mock_server: Arc<MockServer>,
 }
 
 impl IntegrationTest {
     pub fn new(proxy_port: u16, mock_server_port: u16) -> Self {
-        let target_url = format!("http://0.0.0.0:{}", mock_server_port);
         let mock_server = Arc::new(MockServer::new(mock_server_port));
 
         Self {
             proxy_port,
             mock_server_port,
-            target_url,
             mock_server,
         }
     }
@@ -732,7 +729,7 @@ impl IntegrationTest {
         info!("Testing generic batch endpoint through proxy");
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let client =
+        let _client =
             PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
 
         let payloads = vec![
@@ -741,7 +738,7 @@ impl IntegrationTest {
             json!({"test": "payload3"}),
         ];
 
-        let custom_headers =
+        let _custom_headers =
             HashMap::from([("X-Custom-Header".to_string(), "CustomValue".to_string())]);
 
         // Test direct HTTP request to custom endpoint
@@ -1046,19 +1043,5 @@ mod tests {
         // server_guard automatically shuts down here
     }
 
-    fn list_available_tests() {
-        eprintln!("   Available integration tests:");
-        eprintln!("   📋 test_integration_scenarios - Run all scenarios");
-        eprintln!("   🔍 test_basic_embeddings - Test embeddings endpoint");
-        eprintln!("   🔄 test_rerank_endpoint - Test rerank endpoint");
-        eprintln!("   📊 test_classify_endpoint - Test classify endpoint");
-        eprintln!("   ⚠️  test_error_handling - Test error scenarios");
-        eprintln!("   🚀 test_concurrent_requests - Test concurrent requests");
-        eprintln!("   💓 test_server_health - Test server health");
-        eprintln!("");
-        eprintln!("   Usage examples:");
-        eprintln!("   cargo test --test integration_test test_basic_embeddings");
-        eprintln!("   cargo test --test integration_test test_rerank_endpoint");
-        eprintln!("   cargo test --test integration_test -- --list");
-    }
+
 }
