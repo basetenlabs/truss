@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::config::ProxyConfig;
 use crate::headers::{
-    extract_api_key_from_header, extract_customer_request_id, extract_model_from_header,
+    extract_api_key_from_header, extract_customer_request_id,
     extract_target_url_from_header, parse_preferences_from_header,
 };
 
@@ -87,8 +87,7 @@ impl UnifiedHandler {
         // Route based on path
         match path {
             "/v1/embeddings" => {
-                let model = extract_model_from_header(&headers)?;
-                self.handle_embeddings(client, body, model, preferences, customer_request_id)
+                self.handle_embeddings(client, body, preferences, customer_request_id)
                     .await
             }
             "/rerank" => self.handle_rerank(client, body, preferences, customer_request_id).await,
@@ -108,7 +107,6 @@ impl UnifiedHandler {
         &self,
         client: Arc<PerformanceClientCore>,
         body: Value,
-        model: String,
         preferences: RequestProcessingPreference,
         customer_request_id: Option<String>,
     ) -> Result<Value, StatusCode> {
@@ -121,7 +119,6 @@ impl UnifiedHandler {
 
         // Override model with header-provided model if present
         let request = CoreOpenAIEmbeddingsRequest {
-            model,
             ..embeddings_request
         };
 
@@ -385,9 +382,13 @@ async fn handle_classify(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{HeaderMap, HeaderValue, Method};
-    use baseten_performance_client_core::{RequestProcessingPreference, HttpMethod};
-    use serde_json::json;
+    use axum::http::{HeaderMap, HeaderValue};
+    use baseten_performance_client_core::RequestProcessingPreference;
+    use std::path::PathBuf;
+    use std::fs;
+    use crate::config::TestCli;
+
+
     use std::sync::Arc;
     use crate::constants;
 
@@ -403,13 +404,17 @@ mod tests {
                 .with_timeout_s(30.0),
         };
 
-        UnifiedHandler::new(Arc::new(config))
+        UnifiedHandler::new(Arc::new(config), Arc::new(PerformanceClientCore::new(
+            "https://localhost".to_string(),
+            None,
+            2,
+            None,
+        ).expect("Failed to create client")))
     }
 
     fn create_test_headers() -> HeaderMap {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", HeaderValue::from_static("Bearer test-api-key"));
-        headers.insert("x-baseten-model", HeaderValue::from_static("test-model"));
         headers.insert("x-baseten-customer-request-id", HeaderValue::from_static("req-123"));
         headers
     }
@@ -433,24 +438,7 @@ mod tests {
         assert_eq!(result.unwrap_err(), StatusCode::UNAUTHORIZED);
     }
 
-    #[test]
-    fn test_extract_model_from_header_success() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-baseten-model", HeaderValue::from_static("text-embedding-ada-002"));
 
-        let result = extract_model_from_header(&headers);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "text-embedding-ada-002");
-    }
-
-    #[test]
-    fn test_extract_model_from_header_missing() {
-        let headers = HeaderMap::new();
-
-        let result = extract_model_from_header(&headers);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), StatusCode::BAD_REQUEST);
-    }
 
     #[test]
     fn test_extract_customer_request_id() {
@@ -472,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_proxy_config_from_cli_with_upstream_key() {
-        let cli = crate::Cli {
+        let cli = TestCli {
             port: 9090,
             target_url: Some("https://api.example.com".to_string()),
             upstream_api_key: Some("test-api-key".to_string()),
@@ -483,7 +471,7 @@ mod tests {
             log_level: "debug".to_string(),
         };
 
-        let config = ProxyConfig::from_cli(cli).unwrap();
+        let config = ProxyConfig::from_test_cli(cli).unwrap();
 
         assert_eq!(config.port, 9090);
         assert_eq!(config.default_target_url, Some("https://api.example.com".to_string()));
@@ -493,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_proxy_config_from_cli_no_upstream_key() {
-        let cli = crate::Cli {
+        let cli = TestCli {
             port: 9090,
             target_url: Some("https://api.example.com".to_string()),
             upstream_api_key: None,
@@ -504,7 +492,7 @@ mod tests {
             log_level: "debug".to_string(),
         };
 
-        let config = ProxyConfig::from_cli(cli).unwrap();
+        let config = ProxyConfig::from_test_cli(cli).unwrap();
 
         assert_eq!(config.port, 9090);
         assert_eq!(config.default_target_url, Some("https://api.example.com".to_string()));
@@ -637,7 +625,7 @@ mod tests {
         let api_key_file = temp_dir.join("test_api_key.txt");
         fs::write(&api_key_file, "file-api-key-12345\n").unwrap();
 
-        let cli = crate::Cli {
+        let cli = TestCli {
             port: 9090,
             target_url: Some("https://api.example.com".to_string()),
             upstream_api_key: Some(api_key_file.to_string_lossy().to_string()),
@@ -648,7 +636,7 @@ mod tests {
             log_level: "debug".to_string(),
         };
 
-        let config = ProxyConfig::from_cli(cli).unwrap();
+        let config = ProxyConfig::from_test_cli(cli).unwrap();
 
         assert_eq!(config.upstream_api_key, Some("file-api-key-12345".to_string()));
 
@@ -658,7 +646,7 @@ mod tests {
 
     #[test]
     fn test_proxy_config_from_cli_missing_api_key() {
-        let cli = crate::Cli {
+        let cli = TestCli {
             port: 9090,
             target_url: Some("https://api.example.com".to_string()),
             upstream_api_key: None,
@@ -669,7 +657,7 @@ mod tests {
             log_level: "debug".to_string(),
         };
 
-        let config = ProxyConfig::from_cli(cli).unwrap();
+        let config = ProxyConfig::from_test_cli(cli).unwrap();
         assert_eq!(config.upstream_api_key, None);
     }
 }

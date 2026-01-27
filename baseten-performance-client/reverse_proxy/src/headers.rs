@@ -12,14 +12,6 @@ pub fn extract_api_key_from_header(headers: &HeaderMap) -> Result<String, Status
         .ok_or(StatusCode::UNAUTHORIZED)
 }
 
-/// Extract model from X-Baseten-Model header
-pub fn extract_model_from_header(headers: &HeaderMap) -> Result<String, StatusCode> {
-    headers
-        .get("x-baseten-model")
-        .and_then(|h| h.to_str().ok())
-        .map(|s| s.to_string())
-        .ok_or(StatusCode::BAD_REQUEST)
-}
 
 /// Parse RequestProcessingPreference from X-Baseten-Request-Preferences header
 pub fn parse_preferences_from_header(
