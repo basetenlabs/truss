@@ -1010,7 +1010,11 @@ mod tests {
             .with_retry_budget_pct(0.10);
 
         let config = pref
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         assert_eq!(config.max_concurrent_requests, 64);
@@ -1029,8 +1033,11 @@ mod tests {
     fn test_negative_budget_percentages_validation() {
         let pref = RequestProcessingPreference::new().with_hedge_budget_pct(-0.1);
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1041,8 +1048,11 @@ mod tests {
 
         let pref2 = RequestProcessingPreference::new().with_retry_budget_pct(-0.05);
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1056,8 +1066,11 @@ mod tests {
     fn test_maximum_budget_percentages_validation() {
         let pref = RequestProcessingPreference::new().with_hedge_budget_pct(4.0); // 400% exceeds MAX_BUDGET_PERCENTAGE (300%)
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1069,8 +1082,11 @@ mod tests {
 
         let pref2 = RequestProcessingPreference::new().with_retry_budget_pct(3.5); // 350% exceeds MAX_BUDGET_PERCENTAGE (300%)
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1086,8 +1102,11 @@ mod tests {
         // Test initial_backoff_ms validation
         let pref = RequestProcessingPreference::new().with_initial_backoff_ms(25); // Below MIN_BACKOFF_MS (50)
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1099,8 +1118,11 @@ mod tests {
 
         let pref2 = RequestProcessingPreference::new().with_initial_backoff_ms(35000); // Above MAX_BACKOFF_MS (30000)
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_err());
         match result2.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1113,8 +1135,11 @@ mod tests {
         // Test valid backoff values
         let pref3 = RequestProcessingPreference::new().with_initial_backoff_ms(125); // Valid default value
 
-        let result3 =
-            pref3.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result3 = pref3.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result3.is_ok());
     }
 
@@ -1123,8 +1148,11 @@ mod tests {
         // Test max_retries validation
         let pref = RequestProcessingPreference::new().with_max_retries(5); // Above MAX_HTTP_RETRIES (4)
 
-        let result =
-            pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result = pref.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result.is_err());
         match result.unwrap_err() {
             ClientError::InvalidParameter(msg) => {
@@ -1137,8 +1165,11 @@ mod tests {
         // Test valid max_retries values
         let pref2 = RequestProcessingPreference::new().with_max_retries(3); // Valid value
 
-        let result2 =
-            pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100);
+        let result2 = pref2.pair_with_request_validate_and_convert(
+            "https://example.com".to_string(),
+            100,
+            "test_api_key".to_string(),
+        );
         assert!(result2.is_ok());
     }
 
@@ -1150,7 +1181,11 @@ mod tests {
             .with_retry_budget_pct(0.05);
 
         let config = pref
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 1)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                1,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Initial budgets should be 2 (minimum budget with our new logic)
@@ -1183,7 +1218,11 @@ mod tests {
             .with_hedge_budget_pct(0.10);
 
         let config = pref
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Should create hedge budget when delay equals MIN_HEDGE_DELAY_S
@@ -1195,7 +1234,11 @@ mod tests {
             .with_hedge_budget_pct(0.10);
 
         let config2 = pref2
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Should create hedge budget when delay is above MIN_HEDGE_DELAY_S
@@ -1205,7 +1248,11 @@ mod tests {
         let pref3 = RequestProcessingPreference::new().with_hedge_budget_pct(0.10);
 
         let config3 = pref3
-            .pair_with_request_validate_and_convert("https://example.com".to_string(), 100)
+            .pair_with_request_validate_and_convert(
+                "https://example.com".to_string(),
+                100,
+                "test_api_key".to_string(),
+            )
             .expect("Should create valid config");
 
         // Should set hedge budget to 0 when no delay is specified
