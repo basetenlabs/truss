@@ -6,10 +6,9 @@ use axum::{
     Router,
 };
 use baseten_performance_client_core::{
-    CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingData,
-    CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult, CoreRerankResponse,
+    CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult, CoreRerankResponse,
     CoreClassifyRequest, CoreClassificationResult, CoreClassificationResponse,
-    CoreEmbeddingVariant, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+    CoreEmbeddingVariant, RequestProcessingPreference, PerformanceClientCore, HttpMethod,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -72,8 +71,7 @@ impl MockServer {
             .await
             .map_err(|e| format!("Failed to bind to port {}: {}", self.port, e))?;
 
-        info!("✅ Mock server bound to port {}", self.port);
-        info!("🚀 Mock server starting axum serve...");
+        info!("Mock server starting on port {}", self.port);
 
         axum::serve(listener, app).await?;
 
@@ -158,7 +156,6 @@ async fn embeddings_handler(
     _headers: HeaderMap,
     body: String,
 ) -> impl IntoResponse {
-    info!("📨 Embeddings handler called");
     let request: CoreOpenAIEmbeddingsRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
         Err(_) => {
@@ -213,7 +210,7 @@ async fn embeddings_handler(
         total_tokens: request.input.len() as u32 * 10,
     };
 
-    // Return the response in the format expected by the core library
+    // Return the response using the proper struct
     let response = json!({
         "object": "list",
         "data": data,
@@ -223,16 +220,14 @@ async fn embeddings_handler(
         "individual_request_times": [0.0],
         "response_headers": []
     });
-
     (StatusCode::OK, Json(response)).into_response()
 }
 
 async fn rerank_handler(
-    State(server): State<MockServer>,
+    State(_server): State<MockServer>,
     _headers: HeaderMap,
     body: String,
 ) -> impl IntoResponse {
-    info!("📨 Rerank handler called");
     // Parse the request body
     let request: CoreRerankRequest = match serde_json::from_str(&body) {
         Ok(req) => req,
@@ -268,15 +263,9 @@ async fn rerank_handler(
         })
         .collect();
 
-    // Return only the data array as expected by the core library
-    // The core library expects Vec<CoreRerankResult>, not the full CoreRerankResponse
-    eprintln!("DEBUG: Rerank data array created: {:?}", data);
-
-    // Try sending as plain text with explicit content-type to avoid JSON parsing issues
-    let json_str = serde_json::to_string(&data).unwrap();
-    eprintln!("DEBUG: Rerank JSON being sent: {}", json_str);
-
-    (StatusCode::OK, [("content-type", "application/json")], json_str).into_response()
+    // Return the response using the proper struct
+    let response = CoreRerankResponse::new(data, None, None);
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 async fn classify_handler(
@@ -307,9 +296,8 @@ async fn classify_handler(
         })
         .collect();
 
-// Return the response in the format expected by the core library
+// Return the response using the proper struct
     let response = CoreClassificationResponse::new(data, Some(0.0), Some(vec![0.0]));
-
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -685,6 +673,43 @@ impl IntegrationTest {
         Ok(())
     }
 
+    /// Test classify endpoint through proxy
+    async fn scenario_classify_endpoint(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Testing classify endpoint through proxy");
+
+        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
+        let client =
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+
+        let response = client
+            .process_classify_requests(
+                vec![
+                    "I love this product!".to_string(),
+                    "This is terrible.".to_string(),
+                    "It's okay, nothing special.".to_string(),
+                ],
+                Some("classify-model".to_string()),
+                true,
+                true,
+                "Right".to_string(),
+                &RequestProcessingPreference::new(),
+            )
+            .await?;
+
+        // Verify response
+        let (response, _durations, _headers, _total_time) = response;
+        assert_eq!(response.data.len(), 3);
+
+        // Each response should have classification results with scores
+        for classification in &response.data {
+            assert!(!classification.is_empty());
+            assert!(classification[0].score >= 0.0);
+        }
+
+        info!("Classify endpoint test passed");
+        Ok(())
+    }
+
     /// Test rerank endpoint through proxy
     async fn scenario_rerank_endpoint(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Testing rerank endpoint through proxy");
@@ -731,43 +756,6 @@ impl IntegrationTest {
         assert!(paris_score > berlin_score);
 
         info!("Rerank endpoint test passed");
-        Ok(())
-    }
-
-    /// Test classify endpoint through proxy
-    async fn scenario_classify_endpoint(&self) -> Result<(), Box<dyn std::error::Error>> {
-        info!("Testing classify endpoint through proxy");
-
-        let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
-        let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
-
-        let response = client
-            .process_classify_requests(
-                vec![
-                    "I love this product!".to_string(),
-                    "This is terrible.".to_string(),
-                    "It's okay, nothing special.".to_string(),
-                ],
-                Some("classify-model".to_string()),
-                true,
-                true,
-                "Right".to_string(),
-                &RequestProcessingPreference::new(),
-            )
-            .await?;
-
-        // Verify response
-        let (response, _durations, _headers, _total_time) = response;
-        assert_eq!(response.data.len(), 3);
-
-        // Each response should have classification results with scores
-        for classification in &response.data {
-            assert!(!classification.is_empty());
-            assert!(classification[0].score >= 0.0);
-        }
-
-        info!("Classify endpoint test passed");
         Ok(())
     }
 
