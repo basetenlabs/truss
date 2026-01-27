@@ -30,7 +30,7 @@ tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { version = "4.0", features = ["derive"] }
-time = "0.3.20"
+
 tokenizers = "0.22"
 async-channel = "2.3"
 
