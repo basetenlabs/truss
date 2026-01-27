@@ -5,6 +5,7 @@ use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::{
     CancellationToken, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
     CoreRerankRequest, CoreOpenAIEmbeddingsRequest, CoreClassifyRequest,
+    CoreOpenAIEmbeddingsResponse, CoreRerankResponse, CoreClassificationResponse,
 };
 
 
@@ -83,6 +84,7 @@ impl UnifiedHandler {
         preferences = preferences
             .with_cancel_token(cancel_token)
             .with_primary_api_key_override(api_key);
+
         let client = self.client.clone();
         // Route based on path
         match path {
@@ -149,25 +151,18 @@ impl UnifiedHandler {
             durations.len()
         );
 
-        // Create response with proxy metadata
-        let response_value = json!({
-            "object": response.object,
-            "model": response.model,
-            "usage": {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "total_tokens": response.usage.total_tokens
-            },
-            "data_count": response.data.len(),
-            "proxy_metadata": {
-                "total_time": total_time.as_secs_f64(),
-                "batch_count": durations.len(),
-                "customer_request_id": customer_request_id,
-                "individual_request_times": response.individual_request_times,
-                "response_headers_count": headers.len()
-            }
-        });
+        // Create response using the core struct with proxy metadata
+        let response_with_metadata = CoreOpenAIEmbeddingsResponse {
+            object: response.object,
+            data: response.data,
+            model: response.model,
+            usage: response.usage,
+            total_time: total_time.as_secs_f64(),
+            individual_request_times: response.individual_request_times,
+            response_headers: vec![],
+        };
 
-        Ok(response_value)
+        Ok(serde_json::to_value(response_with_metadata).unwrap())
     }
 
     async fn handle_rerank(
@@ -213,19 +208,16 @@ impl UnifiedHandler {
             durations.len()
         );
 
-        // Create response with proxy metadata
-        let response_value = json!({
-            "data_count": response.data.len(),
-            "proxy_metadata": {
-                "total_time": total_time.as_secs_f64(),
-                "batch_count": durations.len(),
-                "customer_request_id": customer_request_id,
-                "individual_request_times": response.individual_request_times,
-                "response_headers_count": headers.len()
-            }
-        });
+        // Create response using the core struct with proxy metadata
+        let response_with_metadata = CoreRerankResponse {
+            object: response.object,
+            data: response.data,
+            total_time: total_time.as_secs_f64(),
+            individual_request_times: response.individual_request_times,
+            response_headers: vec![],
+        };
 
-        Ok(response_value)
+        Ok(serde_json::to_value(response_with_metadata).unwrap())
     }
 
 async fn handle_classify(
@@ -274,19 +266,16 @@ async fn handle_classify(
             durations.len()
         );
 
-        // Create response with proxy metadata
-        let response_value = json!({
-            "data_count": response.data.len(),
-            "proxy_metadata": {
-                "total_time": total_time.as_secs_f64(),
-                "batch_count": durations.len(),
-                "customer_request_id": customer_request_id,
-                "individual_request_times": response.individual_request_times,
-                "response_headers_count": headers.len()
-            }
-        });
+        // Create response using the core struct with proxy metadata
+        let response_with_metadata = CoreClassificationResponse {
+            object: response.object,
+            data: response.data,
+            total_time: total_time.as_secs_f64(),
+            individual_request_times: response.individual_request_times,
+            response_headers: vec![],
+        };
 
-        Ok(response_value)
+        Ok(serde_json::to_value(response_with_metadata).unwrap())
     }
 
     async fn handle_generic_batch(

@@ -85,14 +85,14 @@ pub struct CoreOpenAIEmbeddingsRequest {
     pub user: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum CoreEmbeddingVariant {
     Base64(String),
     FloatVector(Vec<f32>),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIEmbeddingData {
     pub object: String,
     #[serde(rename = "embedding")]
@@ -100,13 +100,13 @@ pub struct CoreOpenAIEmbeddingData {
     pub index: usize,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIUsage {
     pub prompt_tokens: u32,
     pub total_tokens: u32,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIEmbeddingsResponse {
     pub object: String,
     pub data: Vec<CoreOpenAIEmbeddingData>,
@@ -133,14 +133,14 @@ pub struct CoreRerankRequest {
     pub truncation_direction: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreRerankResult {
     pub index: usize,
     pub score: f64,
     pub text: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreRerankResponse {
     pub object: String,
     pub data: Vec<CoreRerankResult>,
@@ -179,13 +179,13 @@ pub struct CoreClassifyRequest {
     pub truncation_direction: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreClassificationResult {
     pub label: String,
     pub score: f64,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreClassificationResponse {
     pub object: String,
     pub data: Vec<Vec<CoreClassificationResult>>,

@@ -244,7 +244,7 @@ impl IntegrationTest {
         // Reset mock server stats to ensure predictable request numbering
         self.mock_server.reset_stats().await;
 
-        // Configure mock server to return errors
+        // Configure mock server to return errors for the next 2 requests
         let error_config = mock_server::MockServerConfig {
             error_until_request: Some(2),
             internal_server_error_no_stall: true,
