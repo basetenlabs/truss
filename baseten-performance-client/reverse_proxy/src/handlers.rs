@@ -3,8 +3,9 @@
 
 use axum::http::{HeaderMap, StatusCode};
 use baseten_performance_client_core::{
-    errors::ClientError, CancellationToken, CoreClassifyRequest, CoreClassificationResponse, CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse,
-    CoreRerankRequest, CoreRerankResponse, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
+    errors::ClientError, CancellationToken, CoreClassifyRequest,
+    CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse, CoreRerankRequest,
+    HttpMethod, PerformanceClientCore, RequestProcessingPreference,
 };
 
 use serde_json::{json, Value};
@@ -111,7 +112,10 @@ impl UnifiedHandler {
                 .get_target_url(per_request_target)
                 .map_err(|e| {
                     error!("Failed to get target URL: {}", e);
-                    (StatusCode::BAD_REQUEST, format!("Failed to get target URL: {}", e))
+                    (
+                        StatusCode::BAD_REQUEST,
+                        format!("Failed to get target URL: {}", e),
+                    )
                 })?
         };
 
@@ -126,28 +130,13 @@ impl UnifiedHandler {
         let client = self.client.clone();
         // Route request based on path
         match path {
-            "/v1/embeddings" => {
-                self.handle_embeddings(client, body, preferences)
-                    .await
-            }
-            "/rerank" => {
-                self.handle_rerank(client, body, preferences)
-                    .await
-            }
-            "/predict" | "/classify" => {
-                self.handle_classify(client, body, preferences)
-                    .await
-            }
+            "/v1/embeddings" => self.handle_embeddings(client, body, preferences).await,
+            "/rerank" => self.handle_rerank(client, body, preferences).await,
+            "/predict" | "/classify" => self.handle_classify(client, body, preferences).await,
             _ => {
                 // Handle generic batch requests
-                self.handle_generic_batch(
-                    client,
-                    path,
-                    method,
-                    body,
-                    preferences,
-                )
-                .await
+                self.handle_generic_batch(client, path, method, body, preferences)
+                    .await
             }
         }
     }
@@ -415,11 +404,11 @@ impl UnifiedHandler {
 mod tests {
     use super::*;
     use crate::config::TestCli;
+    use crate::constants;
     use axum::http::{HeaderMap, HeaderValue};
     use baseten_performance_client_core::RequestProcessingPreference;
     use std::fs;
     use std::path::PathBuf;
-    use crate::constants;
     use std::sync::Arc;
 
     fn create_test_handler() -> UnifiedHandler {

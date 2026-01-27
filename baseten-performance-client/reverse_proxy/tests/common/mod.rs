@@ -6,10 +6,10 @@ use axum::{
     Router,
 };
 use baseten_performance_client_core::{
-    CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse, CoreOpenAIEmbeddingData,
-    CoreOpenAIUsage, CoreRerankRequest, CoreRerankResponse, CoreRerankResult,
-    CoreClassifyRequest, CoreClassificationResponse, CoreClassificationResult,
-    CoreEmbeddingVariant,
+    CoreClassificationResponse, CoreClassificationResult, CoreClassifyRequest,
+    CoreEmbeddingVariant, CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsRequest,
+    CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankRequest, CoreRerankResponse,
+    CoreRerankResult,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;

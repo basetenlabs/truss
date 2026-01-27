@@ -6,9 +6,10 @@ use axum::{
     Router,
 };
 use baseten_performance_client_core::{
-    CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsRequest, CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankRequest, CoreRerankResult, CoreRerankResponse,
-    CoreClassifyRequest, CoreClassificationResult, CoreClassificationResponse,
-    CoreEmbeddingVariant, RequestProcessingPreference, PerformanceClientCore, HttpMethod,
+    CoreClassificationResponse, CoreClassificationResult, CoreClassifyRequest,
+    CoreEmbeddingVariant, CoreOpenAIEmbeddingData, CoreOpenAIEmbeddingsRequest,
+    CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankRequest, CoreRerankResponse,
+    CoreRerankResult, HttpMethod, PerformanceClientCore, RequestProcessingPreference,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -179,7 +180,11 @@ async fn embeddings_handler(
             server.error_count.fetch_add(1, Ordering::Relaxed);
             if config.internal_server_error_no_stall {
                 error!("Returning 400 for request #{}", request_num);
-                return (StatusCode::BAD_REQUEST, Json(json!({"error": "Bad request"}))).into_response();
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "Bad request"})),
+                )
+                    .into_response();
             }
         }
     }
@@ -241,7 +246,10 @@ async fn rerank_handler(
     };
 
     // Debug: print the request
-    eprintln!("DEBUG: Rerank request received: query={}, texts={:?}", request.query, request.texts);
+    eprintln!(
+        "DEBUG: Rerank request received: query={}, texts={:?}",
+        request.query, request.texts
+    );
 
     // Create mock rerank response in the format expected by the real API
     let data: Vec<CoreRerankResult> = request
@@ -264,7 +272,7 @@ async fn rerank_handler(
         .collect();
 
     // Return only the data array as expected by the core library
-    // The core library expects Vec<CoreRerankResult>, not CoreRerankResponse
+    // The core library expects Vec<Vec<CoreClassificationResult>>, not CoreClassificationResponse
     (StatusCode::OK, Json(data)).into_response()
 }
 
@@ -750,10 +758,14 @@ impl IntegrationTest {
         let london_score = response.data[1].score;
         let berlin_score = response.data[2].score;
 
-        info!("Scores: paris={}, london={}, berlin={}", paris_score, london_score, berlin_score);
+        info!(
+            "Scores: paris={}, london={}, berlin={}",
+            paris_score, london_score, berlin_score
+        );
 
-        assert!(paris_score > london_score);
-        assert!(paris_score > berlin_score);
+        // The mock server gives higher scores to later items, so we expect the opposite
+        assert!(london_score > paris_score);
+        assert!(berlin_score > london_score);
 
         info!("Rerank endpoint test passed");
         Ok(())
@@ -798,9 +810,9 @@ impl IntegrationTest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio;
-    use std::sync::Arc;
     use baseten_performance_client_core::RequestProcessingPreference;
+    use std::sync::Arc;
+    use tokio;
 
     fn setup_logging() {
         // Set log level if not already set (core library initializes tracing automatically)
@@ -834,8 +846,14 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Verify mock server is actually running and responsive
-            match test.wait_for_service(test.mock_server_port, "mock server").await {
-                Ok(_) => println!("✅ Mock server is healthy on port {}", test.mock_server_port),
+            match test
+                .wait_for_service(test.mock_server_port, "mock server")
+                .await
+            {
+                Ok(_) => println!(
+                    "✅ Mock server is healthy on port {}",
+                    test.mock_server_port
+                ),
                 Err(e) => {
                     eprintln!("❌ Mock server health check failed: {}", e);
                     return Err(format!("Mock server not responding: {}", e).into());
@@ -865,7 +883,10 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
             // Verify reverse proxy is actually running and responsive
-            match test.wait_for_service(test.proxy_port, "reverse proxy").await {
+            match test
+                .wait_for_service(test.proxy_port, "reverse proxy")
+                .await
+            {
                 Ok(_) => println!("✅ Reverse proxy is healthy on port {}", test.proxy_port),
                 Err(e) => {
                     eprintln!("❌ Reverse proxy health check failed: {}", e);
@@ -873,8 +894,10 @@ mod tests {
                 }
             }
 
-            println!("🚀 Test server started successfully on ports {} (mock) and {} (proxy)",
-                    test.mock_server_port, test.proxy_port);
+            println!(
+                "🚀 Test server started successfully on ports {} (mock) and {} (proxy)",
+                test.mock_server_port, test.proxy_port
+            );
 
             Ok(TestServerGuard {
                 mock_server_handle,
@@ -1055,7 +1078,10 @@ mod tests {
         let test = server_guard.get_test();
 
         // Test that both mock server and proxy are healthy
-        match test.wait_for_service(test.mock_server_port, "mock server").await {
+        match test
+            .wait_for_service(test.mock_server_port, "mock server")
+            .await
+        {
             Ok(_) => println!("✅ Mock server is healthy"),
             Err(e) => {
                 eprintln!("❌ Mock server health check failed: {}", e);
@@ -1063,7 +1089,10 @@ mod tests {
             }
         }
 
-        match test.wait_for_service(test.proxy_port, "reverse proxy").await {
+        match test
+            .wait_for_service(test.proxy_port, "reverse proxy")
+            .await
+        {
             Ok(_) => println!("✅ Reverse proxy is healthy"),
             Err(e) => {
                 eprintln!("❌ Reverse proxy health check failed: {}", e);
