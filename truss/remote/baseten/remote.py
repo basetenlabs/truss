@@ -350,6 +350,21 @@ class BasetenRemote(TrussRemote):
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle
 
+    def promote_chain_deployment(
+        self,
+        chain_id: str,
+        chain_deployment_id: str,
+        environment: str = PRODUCTION_ENVIRONMENT_NAME,
+        scale_down_previous_deployment: bool = True,
+    ) -> dict:
+        """Promote a chain deployment to an environment."""
+        return self._api.promote_chain_deployment(
+            chain_id=chain_id,
+            chain_deployment_id=chain_deployment_id,
+            environment=environment,
+            scale_down_previous_deployment=scale_down_previous_deployment,
+        )
+
     @staticmethod
     def _get_matching_version(model_versions: List[dict], published: bool) -> dict:
         if not published:
