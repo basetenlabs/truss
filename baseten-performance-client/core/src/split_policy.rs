@@ -23,6 +23,7 @@ pub struct RequestProcessingPreference {
     pub max_retries: Option<u32>,
     pub initial_backoff_ms: Option<u64>,
     pub cancel_token: Option<CancellationToken>,
+    pub primary_api_key_override: Option<String>,
 }
 
 impl RequestProcessingPreference {
@@ -45,6 +46,7 @@ impl RequestProcessingPreference {
             max_retries: self.max_retries.or(Some(MAX_HTTP_RETRIES)),
             initial_backoff_ms: self.initial_backoff_ms.or(Some(INITIAL_BACKOFF_MS)),
             cancel_token: self.cancel_token.clone(),
+            primary_api_key_override: self.primary_api_key_override.clone(),
         }
     }
 }
@@ -116,15 +118,22 @@ impl RequestProcessingPreference {
         self
     }
 
+    /// Builder pattern: set primary API key override
+    pub fn with_primary_api_key_override(mut self, key: String) -> Self {
+        self.primary_api_key_override = Some(key);
+        self
+    }
+
     /// Validate and convert to RequestProcessingConfig for a specific request.
-    /// This pairs the preference with request-specific data (base_url, total_requests)
+    /// This pairs the preference with request-specific data (base_url, total_requests, api_key)
     /// and returns a validated config ready for processing.
     pub fn pair_with_request_validate_and_convert(
         &self,
         base_url: String,
         total_requests: usize,
+        api_key: String,
     ) -> Result<RequestProcessingConfig, ClientError> {
-        RequestProcessingConfig::new_from_preference(self, base_url, total_requests)
+        RequestProcessingConfig::new_from_preference(self, base_url, total_requests, api_key)
     }
 }
 
@@ -171,6 +180,9 @@ pub struct RequestProcessingConfig {
 
     /// Cancellation token for coordinated shutdown
     pub cancel_token: CancellationToken,
+
+    /// Primary API key to use for requests
+    pub api_key_primary: String,
 }
 
 impl RequestProcessingConfig {
@@ -188,6 +200,7 @@ impl RequestProcessingConfig {
         max_retries: u32,
         initial_backoff_ms: u64,
         total_requests: usize,
+        api_key: &str,
     ) -> Result<(), ClientError> {
         // Validate total_requests
         if total_requests == 0 {
@@ -296,6 +309,13 @@ impl RequestProcessingConfig {
             )));
         }
 
+        // Validate API key
+        if api_key.is_empty() {
+            return Err(ClientError::InvalidParameter(
+                "API key cannot be empty".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -315,6 +335,7 @@ impl RequestProcessingConfig {
         preference: &RequestProcessingPreference,
         base_url: String,
         total_requests: usize,
+        api_key: String,
     ) -> Result<Self, ClientError> {
         // Apply defaults to preference
         let pref = preference.with_defaults();
@@ -330,6 +351,13 @@ impl RequestProcessingConfig {
         let max_retries = pref.max_retries.unwrap();
         let initial_backoff_ms = pref.initial_backoff_ms.unwrap();
 
+        // Handle API key override
+        let api_key_primary = if let Some(ref key) = pref.primary_api_key_override {
+            key.clone()
+        } else {
+            api_key
+        };
+
         // Validate parameters
         Self::validate_parameters(
             max_concurrent_requests,
@@ -343,6 +371,7 @@ impl RequestProcessingConfig {
             max_retries,
             initial_backoff_ms,
             total_requests,
+            &api_key_primary,
         )?;
 
         // Create customer request ID for this batch operation
@@ -384,6 +413,7 @@ impl RequestProcessingConfig {
             retry_budget_pct,
             hedge_budget_pct,
             cancel_token: pref.cancel_token.unwrap_or_default(),
+            api_key_primary,
         })
     }
 

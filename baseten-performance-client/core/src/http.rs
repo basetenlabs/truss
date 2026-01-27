@@ -51,7 +51,8 @@ impl HttpMethod {
 
     /// Returns true if this HTTP method typically has a request body
     pub fn has_body(&self) -> bool {
-        match self { // pattern helps when extending in future
+        match self {
+            // pattern helps when extending in future
             HttpMethod::POST | HttpMethod::PUT | HttpMethod::PATCH => true,
             HttpMethod::GET | HttpMethod::DELETE | HttpMethod::HEAD | HttpMethod::OPTIONS => false,
         }
@@ -72,7 +73,7 @@ fn default_response_headers() -> Vec<HeaderMap> {
 }
 
 // --- Core OpenAI Compatible Structures ---
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIEmbeddingsRequest {
     pub input: Vec<String>,
     pub model: String,
@@ -84,14 +85,14 @@ pub struct CoreOpenAIEmbeddingsRequest {
     pub user: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum CoreEmbeddingVariant {
     Base64(String),
     FloatVector(Vec<f32>),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIEmbeddingData {
     pub object: String,
     #[serde(rename = "embedding")]
@@ -99,13 +100,13 @@ pub struct CoreOpenAIEmbeddingData {
     pub index: usize,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIUsage {
     pub prompt_tokens: u32,
     pub total_tokens: u32,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreOpenAIEmbeddingsResponse {
     pub object: String,
     pub data: Vec<CoreOpenAIEmbeddingData>,
@@ -120,7 +121,7 @@ pub struct CoreOpenAIEmbeddingsResponse {
 }
 
 // --- Core Rerank Structures ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CoreRerankRequest {
     pub query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -132,14 +133,14 @@ pub struct CoreRerankRequest {
     pub truncation_direction: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreRerankResult {
     pub index: usize,
     pub score: f64,
     pub text: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreRerankResponse {
     pub object: String,
     pub data: Vec<CoreRerankResult>,
@@ -168,7 +169,7 @@ impl CoreRerankResponse {
 }
 
 // --- Core Classification Structures ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CoreClassifyRequest {
     pub inputs: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -178,13 +179,13 @@ pub struct CoreClassifyRequest {
     pub truncation_direction: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreClassificationResult {
     pub label: String,
     pub score: f64,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreClassificationResponse {
     pub object: String,
     pub data: Vec<Vec<CoreClassificationResult>>,
