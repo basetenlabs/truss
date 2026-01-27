@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "python_bindings", "node_bindings"]
+members = ["core", "python_bindings", "node_bindings", "reverse_proxy"]
 resolver = "2"
 
 [workspace.dependencies]
