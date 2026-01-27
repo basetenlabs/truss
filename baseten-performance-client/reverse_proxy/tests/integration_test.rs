@@ -263,9 +263,9 @@ async fn rerank_handler(
         })
         .collect();
 
-    // Return the response using the proper struct
-    let response = CoreRerankResponse::new(data, None, None);
-    (StatusCode::OK, Json(response)).into_response()
+    // Return only the data array as expected by the core library
+    // The core library expects Vec<CoreRerankResult>, not CoreRerankResponse
+    (StatusCode::OK, Json(data)).into_response()
 }
 
 async fn classify_handler(
@@ -296,9 +296,7 @@ async fn classify_handler(
         })
         .collect();
 
-// Return the response using the proper struct
-    let response = CoreClassificationResponse::new(data, Some(0.0), Some(vec![0.0]));
-    (StatusCode::OK, Json(response)).into_response()
+    (StatusCode::OK, Json(data)).into_response()
 }
 
 /// Integration test for the reverse proxy
@@ -751,6 +749,8 @@ impl IntegrationTest {
         let paris_score = response.data[0].score;
         let london_score = response.data[1].score;
         let berlin_score = response.data[2].score;
+
+        info!("Scores: paris={}, london={}, berlin={}", paris_score, london_score, berlin_score);
 
         assert!(paris_score > london_score);
         assert!(paris_score > berlin_score);

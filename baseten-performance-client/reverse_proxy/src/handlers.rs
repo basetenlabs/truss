@@ -261,18 +261,10 @@ impl UnifiedHandler {
             durations.len()
         );
 
-        // Create response using proper struct
-        let response_with_metadata = CoreRerankResponse {
-            object: response.object,
-            data: response.data,
-            total_time: total_time.as_secs_f64(),
-            individual_request_times: response.individual_request_times,
-            response_headers: vec![],
-        };
-
+        // Return only the data array as expected by the core library
+        // The core library expects Vec<CoreRerankResult>, not the full response object
         debug!("Rerank response created successfully");
-        // Convert to JSON Value to match expected return type
-        Ok(serde_json::to_value(response_with_metadata).unwrap())
+        Ok(serde_json::to_value(response.data).unwrap())
     }
 
     async fn handle_classify(
@@ -320,14 +312,9 @@ impl UnifiedHandler {
             durations.len()
         );
 
-        // Create response with proxy metadata
-        let response_with_metadata = CoreClassificationResponse::new(
-            response.data,
-            Some(total_time.as_secs_f64()),
-            Some(response.individual_request_times),
-        );
-
-        Ok(serde_json::to_value(response_with_metadata).unwrap())
+        // Return only the data array as expected by the core library
+        // The core library expects Vec<Vec<CoreClassificationResult>>, not the full response object
+        Ok(serde_json::to_value(response.data).unwrap())
     }
 
     async fn handle_generic_batch(
