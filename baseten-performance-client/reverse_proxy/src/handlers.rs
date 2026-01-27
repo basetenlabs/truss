@@ -17,16 +17,27 @@ use crate::headers::{
     extract_api_key_from_header, extract_customer_request_id, extract_target_url_from_header,
     parse_preferences_from_header,
 };
+use crate::schema::TokenizedEmbeddingsRequest;
+use crate::tokenizer_manager::TokenizerManager;
 
 #[derive(Clone)]
 pub struct UnifiedHandler {
     config: Arc<ProxyConfig>,
     client: Arc<PerformanceClientCore>,
+    tokenizer_manager: Option<Arc<TokenizerManager>>,
 }
 
 impl UnifiedHandler {
-    pub fn new(config: Arc<ProxyConfig>, client: Arc<PerformanceClientCore>) -> Self {
-        Self { config, client }
+    pub fn new(
+        config: Arc<ProxyConfig>,
+        client: Arc<PerformanceClientCore>,
+        tokenizer_manager: Option<Arc<TokenizerManager>>,
+    ) -> Self {
+        Self {
+            config,
+            client,
+            tokenizer_manager,
+        }
     }
 
     /// Convert ClientError to appropriate StatusCode and formatted error message
@@ -131,6 +142,10 @@ impl UnifiedHandler {
         // Route request based on path
         match path {
             "/v1/embeddings" => self.handle_embeddings(client, body, preferences).await,
+            "/v1/tokenized-embeddings" => {
+                self.handle_tokenized_embeddings(client, body, preferences)
+                    .await
+            }
             "/rerank" => self.handle_rerank(client, body, preferences).await,
             "/predict" | "/classify" => self.handle_classify(client, body, preferences).await,
             _ => {
@@ -185,6 +200,101 @@ impl UnifiedHandler {
 
         debug!(
             "Embeddings request completed in {:.3}s, {} batches",
+            total_time.as_secs_f64(),
+            durations.len()
+        );
+
+        // Create response with proxy metadata
+        let response_with_metadata = CoreOpenAIEmbeddingsResponse {
+            object: response.object,
+            data: response.data,
+            model: response.model,
+            usage: response.usage,
+            total_time: total_time.as_secs_f64(),
+            individual_request_times: response.individual_request_times,
+            response_headers: vec![],
+        };
+
+        Ok(serde_json::to_value(response_with_metadata).unwrap())
+    }
+
+    /// Handle tokenized embeddings requests
+    async fn handle_tokenized_embeddings(
+        &self,
+        client: Arc<PerformanceClientCore>,
+        body: Value,
+        preferences: RequestProcessingPreference,
+    ) -> Result<Value, (StatusCode, String)> {
+        // Check if tokenizer manager is available
+        let tokenizer_manager = match &self.tokenizer_manager {
+            Some(tm) => tm,
+            None => {
+                warn!("Tokenized embeddings request received but no tokenizer manager available");
+                return Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Tokenizer support not available".to_string(),
+                ));
+            }
+        };
+
+        // Try to parse as tokenized embeddings request
+        let tokenized_request: TokenizedEmbeddingsRequest = serde_json::from_value(body.clone())
+            .map_err(|e| {
+                warn!("Invalid tokenized embeddings request body: {}", e);
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid tokenized embeddings request body: {}", e),
+                )
+            })?;
+
+        info!(
+            "Processing tokenized embeddings request: {} token sequences, model: {}",
+            tokenized_request.input.len(),
+            tokenized_request.model
+        );
+
+        // Check if the requested model is available
+        tokenizer_manager
+            .has_model(&tokenized_request.model)
+            .await
+            .map_err(|e| {
+                warn!("Model validation failed: {}", e);
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Model not available: {}", e),
+                )
+            })?;
+
+        // Process tokenized request using tokenizer manager
+        let core_request = tokenizer_manager
+            .process_tokenized_request(&tokenized_request, None)
+            .await
+            .map_err(|e| {
+                error!("Failed to process tokenized request: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to process tokenized request: {}", e),
+                )
+            })?;
+
+        // Now process the decoded request using the standard embeddings flow
+        let (response, durations, _headers, total_time) = client
+            .process_embeddings_requests(
+                core_request.input,
+                core_request.model,
+                core_request.encoding_format,
+                core_request.dimensions,
+                core_request.user,
+                &preferences,
+            )
+            .await
+            .map_err(|e| {
+                error!("Embeddings request failed: {:?}", e);
+                Self::client_error_to_response(&e)
+            })?;
+
+        debug!(
+            "Tokenized embeddings request completed in {:.3}s, {} batches",
             total_time.as_secs_f64(),
             durations.len()
         );
@@ -406,6 +516,7 @@ mod tests {
     use crate::constants;
     use axum::http::{HeaderMap, HeaderValue};
     use baseten_performance_client_core::RequestProcessingPreference;
+    use std::collections::HashMap;
 
     // Test CLI struct for tests
     #[derive(Debug, Clone)]
@@ -450,6 +561,7 @@ mod tests {
                 upstream_api_key,
                 http_version: cli.http_version,
                 default_preferences,
+                tokenizers: HashMap::new(),
             })
         }
     }
@@ -557,6 +669,7 @@ mod tests {
             upstream_api_key: Some("test-key".to_string()),
             http_version: 2,
             default_preferences: RequestProcessingPreference::new(),
+            tokenizers: HashMap::new(),
         };
 
         // Test with no per-request target (should use default)
@@ -578,6 +691,7 @@ mod tests {
             upstream_api_key: Some("test-key".to_string()),
             http_version: 2,
             default_preferences: RequestProcessingPreference::new(),
+            tokenizers: HashMap::new(),
         };
 
         // Test with no per-request target and no default (should fail)

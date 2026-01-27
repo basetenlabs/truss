@@ -15,8 +15,30 @@ use tracing::{debug, error, info, warn};
 use crate::config::ProxyConfig;
 use crate::constants;
 use crate::handlers::UnifiedHandler;
+use crate::tokenizer_manager::create_tokenizer_manager_from_proxy_config;
 
 pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize tokenizer manager
+    let tokenizer_manager = if !config.tokenizers.is_empty() {
+        let mut manager = create_tokenizer_manager_from_proxy_config(&config);
+        info!(
+            "Loading tokenizer manager with {} tokenizers...",
+            config.tokenizers.len()
+        );
+        if let Err(e) = manager.initialize().await {
+            warn!("Failed to initialize tokenizer manager: {}", e);
+            info!("Continuing without tokenizer support");
+            None
+        } else {
+            info!("Tokenizer manager initialized successfully");
+            info!("Loaded {} tokenizers", config.tokenizers.len());
+            Some(Arc::new(manager))
+        }
+    } else {
+        info!("No tokenizers configured");
+        None
+    };
+
     let client = baseten_performance_client_core::PerformanceClientCore::new(
         config
             .default_target_url
@@ -36,7 +58,7 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
         format!("Failed to create performance client: {}", e)
     })?;
 
-    let handler = UnifiedHandler::new(config.clone(), Arc::new(client));
+    let handler = UnifiedHandler::new(config.clone(), Arc::new(client), tokenizer_manager);
 
     // Build the application with CORS and tracing middleware
     let app = Router::new()

@@ -831,6 +831,7 @@ mod tests {
                 upstream_api_key: Some("test_api_key".to_string()),
                 http_version: 2,
                 default_preferences: RequestProcessingPreference::new(),
+                tokenizers: std::collections::HashMap::new(),
             };
 
             let proxy_config = Arc::new(proxy_config);

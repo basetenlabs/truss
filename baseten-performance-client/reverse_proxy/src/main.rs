@@ -1,12 +1,15 @@
 use baseten_performance_client_core::RequestProcessingPreference;
 use clap::Parser;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 mod config;
 mod constants;
 mod handlers;
 mod headers;
+mod schema;
 mod server;
+mod tokenizer_manager;
 
 use config::ProxyConfig;
 
@@ -35,12 +38,29 @@ impl ProxyConfig {
             None
         };
 
+        // Parse tokenizer configurations from command line arguments
+        let mut tokenizers = HashMap::new();
+        for chunk in cli.tokenizers.chunks(2) {
+            if chunk.len() == 2 {
+                let model_id = chunk[0].clone();
+                let path = chunk[1].clone();
+                tokenizers.insert(
+                    model_id.clone(),
+                    crate::config::TokenizerConfig {
+                        model_id,
+                        tokenizer_path: std::path::PathBuf::from(path),
+                    },
+                );
+            }
+        }
+
         Ok(Self {
             port: cli.port,
             default_target_url: cli.target_url,
             upstream_api_key,
             http_version: cli.http_version,
             default_preferences,
+            tokenizers,
         })
     }
 }
@@ -76,6 +96,10 @@ struct Cli {
 
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Tokenizer configurations in the format: --tokenizer <model_id> <path> [--tokenizer <model_id> <path> ...]
+    #[arg(long = "tokenizer", value_names = ["MODEL_ID", "PATH"], num_args = 2)]
+    tokenizers: Vec<String>,
 }
 
 #[tokio::main]
