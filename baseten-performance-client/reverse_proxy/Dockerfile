@@ -50,7 +50,7 @@ RUN case "$TARGETARCH" in \
 # Build with platform-appropriate target
 RUN RUST_TARGET=$(cat /tmp/rust_target) && \
     rustup target add $RUST_TARGET && \
-    cargo build --release --package baseten-performance-reverse-proxy --target $RUST_TARGET
+    cargo build --release --package baseten-performance-reverse-proxy --target $RUST_TARGET --features=rustls
 
 # Runtime stage using manylinux_2_28 compatible base (Debian Bookworm = glibc 2.36)
 FROM --platform=$TARGETPLATFORM debian:bookworm-slim
