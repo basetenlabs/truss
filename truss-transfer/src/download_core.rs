@@ -2,8 +2,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
+use crate::cloud_range_download::{
+    download_cloud_range_streaming, should_use_cloud_range_download,
+};
 use crate::constants::{
-    TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE, TRUSS_TRANSFER_USE_RANGE_DOWNLOAD,
+    TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS, TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE,
+    TRUSS_TRANSFER_USE_RANGE_DOWNLOAD,
 };
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -41,7 +45,7 @@ fn sanitize_url(url: &str) -> String {
 fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
     tokio::spawn(async move {
         let start_time = Instant::now();
-        let mut ticker = interval(Duration::from_secs(30));
+        let mut ticker = interval(Duration::from_secs(*TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS));
         let mut last_size = 0;
 
         //
@@ -71,7 +75,7 @@ fn spawn_download_monitor(path: PathBuf, total_size: u64) -> JoinHandle<()> {
                 } else {
                     0.0
                 };
-                info!(
+                warn!(
                     "Download for {:?} {:.2}% ({} / {} bytes, avg: {:.2} MB/s, curr: {:.2} MB/s)",
                     path,
                     progress_percent,
@@ -135,7 +139,7 @@ pub async fn download_http_to_path_fast(
     let auth_token = if is_hf_url {
         get_hf_secret_from_file(runtime_secret_name)
     } else {
-        info!("no hf token, since using {url}");
+        info!("no hf token, since using {sanitized_url}");
         None
     };
 
@@ -160,7 +164,7 @@ pub async fn download_http_to_path_fast(
         }
 
         // assure that the file got flushed, without asking each file to flush it
-        for i in (0..1000).rev() {
+        for i in (0..20).rev() {
             if check_metadata_size(path, size).await {
                 break;
             }
@@ -252,6 +256,7 @@ async fn download_from_object_store(
     size: u64,
     source_description: &str,
 ) -> Result<()> {
+    // Regular object store download (range downloads are now handled at the caller level)
     if let Some(parent) = local_path.parent() {
         fs::create_dir_all(parent).await.context(format!(
             "Failed to create directory for download path: {parent:?}"
@@ -330,6 +335,39 @@ async fn download_from_object_store(
     Ok(())
 }
 
+/// Range download function for object store using streaming positioned writes
+async fn download_from_object_store_range(
+    storage: Arc<dyn ObjectStore>,
+    object_path: &object_store::path::Path,
+    local_path: &Path,
+    size: u64,
+    source_description: &str,
+) -> Result<()> {
+    if let Some(parent) = local_path.parent() {
+        fs::create_dir_all(parent).await.context(format!(
+            "Failed to create directory for download path: {parent:?}"
+        ))?;
+    }
+
+    debug!(
+        "Starting range download to {:?} from {} (size: {} bytes)",
+        local_path, source_description, size
+    );
+
+    let concurrency = *TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE; // 84 workers
+
+    // Use the new streaming approach that writes chunks as they arrive
+    download_cloud_range_streaming(storage, object_path, local_path, size, concurrency)
+        .await
+        .context(format!(
+            "Range download failed for {} to {:?} (size: {} bytes, concurrency: {})",
+            source_description, local_path, size, concurrency
+        ))?;
+
+    info!("Completed range download to {:?}", local_path);
+    Ok(())
+}
+
 /// Pure download function for S3 objects
 pub async fn download_s3_to_path(
     bucket_name: &str,
@@ -340,12 +378,22 @@ pub async fn download_s3_to_path(
 ) -> Result<()> {
     use crate::create::aws_metadata::s3_storage;
 
-    let s3 = s3_storage(bucket_name, runtime_secret_name)
+    let s3_box = s3_storage(bucket_name, runtime_secret_name)
         .map_err(|e| anyhow!("Failed to create S3 client: {}", e))?;
+    let s3: Arc<dyn ObjectStore> = Arc::from(s3_box);
     let object_path = object_store::path::Path::from(object_key);
     let source_description = format!("s3://{bucket_name}/{object_key}");
 
-    download_from_object_store(&s3, &object_path, path, size, &source_description).await
+    // Use high-concurrency range downloads for large files
+    if should_use_cloud_range_download(size) {
+        debug!(
+            "Using high-concurrency S3 range download for {}MB file",
+            size / 1024 / 1024
+        );
+        download_from_object_store_range(s3, &object_path, path, size, &source_description).await
+    } else {
+        download_from_object_store(&*s3, &object_path, path, size, &source_description).await
+    }
 }
 
 /// Pure download function for Azure Blob Storage
@@ -359,12 +407,22 @@ pub async fn download_azure_to_path(
 ) -> Result<()> {
     use crate::create::azure_metadata::azure_storage;
 
-    let azure = azure_storage(account_name, runtime_secret_name)
+    let azure_box = azure_storage(account_name, runtime_secret_name)
         .map_err(|e| anyhow!("Failed to create Azure client: {}", e))?;
+    let azure: Arc<dyn ObjectStore> = Arc::from(azure_box);
     let object_path = object_store::path::Path::from(blob_name);
     let source_description = format!("azure://{account_name}/{container_name}/{blob_name}");
 
-    download_from_object_store(&azure, &object_path, path, size, &source_description).await
+    // Use high-concurrency range downloads for large files
+    if should_use_cloud_range_download(size) {
+        debug!(
+            "Using high-concurrency Azure range download for {}MB file",
+            size / 1024 / 1024
+        );
+        download_from_object_store_range(azure, &object_path, path, size, &source_description).await
+    } else {
+        download_from_object_store(&*azure, &object_path, path, size, &source_description).await
+    }
 }
 
 /// Pure download function for GCS objects
@@ -377,10 +435,20 @@ pub async fn download_gcs_to_path(
 ) -> Result<()> {
     use crate::create::gcs_metadata::gcs_storage;
 
-    let gcs = gcs_storage(bucket_name, runtime_secret_name)
+    let gcs_box = gcs_storage(bucket_name, runtime_secret_name)
         .map_err(|e| anyhow!("Failed to create GCS client: {}", e))?;
+    let gcs: Arc<dyn ObjectStore> = Arc::from(gcs_box);
     let object_path = object_store::path::Path::from(object_key);
     let source_description = format!("gs://{bucket_name}/{object_key}");
 
-    download_from_object_store(&gcs, &object_path, path, size, &source_description).await
+    // Use high-concurrency range downloads for large files
+    if should_use_cloud_range_download(size) {
+        debug!(
+            "Using high-concurrency GCS range download for {}MB file",
+            size / 1024 / 1024
+        );
+        download_from_object_store_range(gcs, &object_path, path, size, &source_description).await
+    } else {
+        download_from_object_store(&*gcs, &object_path, path, size, &source_description).await
+    }
 }

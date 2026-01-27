@@ -26,11 +26,10 @@ from truss.remote.baseten.core import (
     create_chain_atomic,
     create_truss_service,
     exists_model,
-    get_dev_version,
     get_dev_version_from_versions,
-    get_model_and_versions,
     get_prod_version_from_versions,
     get_truss_watch_state,
+    upload_chain_artifact,
     upload_truss,
     validate_truss_config_against_backend,
 )
@@ -68,6 +67,7 @@ class FinalPushData(custom_types.OracleData):
     origin: Optional[custom_types.ModelOrigin] = None
     environment: Optional[str] = None
     allow_truss_download: bool
+    team_id: Optional[str] = None
 
 
 class BasetenRemote(TrussRemote):
@@ -126,6 +126,8 @@ class BasetenRemote(TrussRemote):
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
+        deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -163,7 +165,14 @@ class BasetenRemote(TrussRemote):
                 "Deployment name must only contain alphanumeric, -, _ and . characters"
             )
 
-        model_id = exists_model(self._api, model_name)
+        if deploy_timeout_minutes is not None and (
+            deploy_timeout_minutes < 10 or deploy_timeout_minutes > 1440
+        ):
+            raise ValueError(
+                "deploy-timeout-minutes must be between 10 minutes and 1440 minutes (24 hours)"
+            )
+
+        model_id = exists_model(self._api, model_name, team_id=team_id)
 
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
@@ -187,6 +196,7 @@ class BasetenRemote(TrussRemote):
             origin=origin,
             environment=environment,
             allow_truss_download=not disable_truss_download,
+            team_id=team_id,
         )
 
     def push(  # type: ignore
@@ -204,6 +214,8 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         include_git_info: bool = False,
         preserve_env_instance_type: bool = True,
+        deploy_timeout_minutes: Optional[int] = None,
+        team_id: Optional[str] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -216,6 +228,8 @@ class BasetenRemote(TrussRemote):
             origin=origin,
             environment=environment,
             progress_bar=progress_bar,
+            deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         if include_git_info:
@@ -241,6 +255,8 @@ class BasetenRemote(TrussRemote):
             environment=push_data.environment,
             truss_user_env=truss_user_env,
             preserve_env_instance_type=preserve_env_instance_type,
+            deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=push_data.team_id,
         )
 
         if model_version_handle.instance_type_name:
@@ -263,9 +279,13 @@ class BasetenRemote(TrussRemote):
         entrypoint_artifact: custom_types.ChainletArtifact,
         dependency_artifacts: List[custom_types.ChainletArtifact],
         truss_user_env: b10_types.TrussUserEnv,
+        chain_root: Optional[Path] = None,
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
+        disable_chain_download: bool = False,
+        deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -285,6 +305,8 @@ class BasetenRemote(TrussRemote):
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
                 progress_bar=progress_bar,
+                disable_truss_download=disable_chain_download,
+                deployment_name=deployment_name,
             )
             oracle_data = custom_types.OracleData(
                 model_name=push_data.model_name,
@@ -300,6 +322,18 @@ class BasetenRemote(TrussRemote):
                 )
             )
 
+        # Upload raw chain artifact if chain_root is provided
+        raw_chain_s3_key = None
+        if chain_root is not None:
+            logging.info("Uploading source artifact")
+            # Create a tar file from the chain root directory
+            original_source_tar = archive_dir(dir=chain_root, progress_bar=progress_bar)
+            # Upload the chain artifact to S3
+            raw_chain_s3_key = upload_chain_artifact(
+                api=self._api,
+                serialize_file=original_source_tar,
+                progress_bar=progress_bar,
+            )
         chain_deployment_handle = create_chain_atomic(
             api=self._api,
             chain_name=chain_name,
@@ -308,6 +342,10 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             truss_user_env=truss_user_env,
             environment=environment,
+            original_source_artifact_s3_key=raw_chain_s3_key,
+            allow_truss_download=not disable_chain_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return chain_deployment_handle
@@ -331,9 +369,8 @@ class BasetenRemote(TrussRemote):
             )
         return prod_version
 
-    @staticmethod
     def _get_service_url_path_and_model_ids(
-        api: BasetenApi, model_identifier: ModelIdentifier, published: bool
+        self, api: BasetenApi, model_identifier: ModelIdentifier, published: bool
     ) -> Tuple[str, ModelVersionHandle]:
         if isinstance(model_identifier, ModelVersionId):
             try:
@@ -350,7 +387,13 @@ class BasetenRemote(TrussRemote):
             )
 
         if isinstance(model_identifier, ModelName):
-            model, model_versions = get_model_and_versions(api, model_identifier)
+            # Use resolve_model_for_watch to handle team disambiguation
+            # Import here to avoid circular import
+            from truss.cli.resolvers.model_team_resolver import resolve_model_for_watch
+
+            model, model_versions = resolve_model_for_watch(
+                self, model_identifier.value
+            )
             model_version = BasetenRemote._get_matching_version(
                 model_versions, published
             )
@@ -408,8 +451,25 @@ class BasetenRemote(TrussRemote):
         console: "rich_console.Console",
         error_console: "rich_console.Console",
     ) -> None:
-        # verify that development deployment exists for given model name
-        dev_version = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
+        # Resolve model with team disambiguation and verify development deployment exists
+        # Import here to avoid circular import
+        from truss.cli.resolvers.model_team_resolver import resolve_model_for_watch
+
+        model, versions = resolve_model_for_watch(self, model_name)
+        self.sync_truss_to_dev_version_with_model(
+            model, versions, target_directory, console, error_console
+        )
+
+    def sync_truss_to_dev_version_with_model(
+        self,
+        resolved_model: dict,
+        resolved_versions: List[dict],
+        target_directory: str,
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ) -> None:
+        """Sync truss to dev version using pre-resolved model (no team re-prompting)."""
+        dev_version = get_dev_version_from_versions(resolved_versions)
         if not dev_version:
             raise RemoteError(
                 "No development model found. Run `truss push` then try again."
@@ -425,18 +485,49 @@ class BasetenRemote(TrussRemote):
         logging.getLogger("watchfiles.main").disabled = True
 
         console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        self.patch(watch_path, truss_ignore_patterns, console, error_console)
+        self._patch_with_model(
+            watch_path,
+            truss_ignore_patterns,
+            resolved_model,
+            resolved_versions,
+            console,
+            error_console,
+        )
 
-        console.print(f"👀 Watching for changes to truss at '{watch_path}'...")
-        for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
+        # Prepare watch paths including external package directories
+        truss_handle = TrussHandle(watch_path)
+        watch_paths = [watch_path]
+
+        # Add external package directories to watch list for seamless live development
+        if not truss_handle.no_external_packages:
+            external_dirs = truss_handle.spec.external_package_dirs_paths
+            watch_paths.extend(external_dirs)
+            console.print(
+                f"👀 Watching for changes to truss at '{watch_path}' "
+                f"and {len(external_dirs)} external package director{'y' if len(external_dirs) == 1 else 'ies'}..."
+            )
+        else:
+            console.print(f"👀 Watching for changes to truss at '{watch_path}'...")
+
+        for _ in watch(*watch_paths, watch_filter=watch_filter, raise_interrupt=False):
             console.print("Changes detected, creating patch...")
-            self.patch(watch_path, truss_ignore_patterns, console, error_console)
+            self._patch_with_model(
+                watch_path,
+                truss_ignore_patterns,
+                resolved_model,
+                resolved_versions,
+                console,
+                error_console,
+            )
 
     def _patch(
         self,
         watch_path: Path,
         truss_ignore_patterns: List[str],
         console: Optional["rich_console.Console"] = None,
+        resolved_model: Optional[dict] = None,
+        resolved_versions: Optional[List[dict]] = None,
+        chainlets_only: bool = False,
     ) -> PatchResult:
         try:
             truss_handle = TrussHandle(watch_path)
@@ -449,7 +540,33 @@ class BasetenRemote(TrussRemote):
             )
 
         model_name = truss_handle.spec.config.model_name
-        dev_version = get_dev_version(self._api, model_name)  # type: ignore
+        if not model_name:
+            return PatchResult(
+                PatchStatus.FAILED, "Truss config is missing a model name."
+            )
+
+        # Use pre-resolved model if provided to avoid re-prompting for team selection
+        if resolved_model is not None and resolved_versions is not None:
+            model = resolved_model
+            versions = resolved_versions
+        else:
+            try:
+                # Use resolve_model_for_watch to handle team disambiguation
+                # Import here to avoid circular import
+                from truss.cli.resolvers.model_team_resolver import (
+                    resolve_model_for_watch,
+                )
+
+                model, versions = resolve_model_for_watch(
+                    self, model_name, chainlets_only=chainlets_only
+                )
+            except Exception as e:
+                return PatchResult(
+                    PatchStatus.FAILED, f"Model not found: {model_name}. {e}"
+                )
+
+        model_id = model["id"]
+        dev_version = get_dev_version_from_versions(versions)
         if not dev_version:
             return PatchResult(
                 PatchStatus.FAILED,
@@ -468,7 +585,7 @@ class BasetenRemote(TrussRemote):
                 ),
             )
 
-        truss_watch_state = get_truss_watch_state(self._api, model_name)  # type: ignore
+        truss_watch_state = get_truss_watch_state(self._api, model_id)
         # Make sure the patches are calculated against the current django patch state, if it exists.
         # This is important to ensure that the sequence of patches for a given sesion forms a
         # valid patch sequence (via a linked list)
@@ -512,9 +629,9 @@ class BasetenRemote(TrussRemote):
 
         def do_patch():
             if should_create_patch:
-                resp = self._api.patch_draft_truss_two_step(model_name, patch_request)
+                resp = self._api.patch_draft_truss_two_step(model_id, patch_request)
             else:
-                resp = self._api.sync_draft_truss(model_name)
+                resp = self._api.sync_draft_truss(model_id)
             return resp
 
         try:
@@ -569,7 +686,33 @@ class BasetenRemote(TrussRemote):
     def patch_for_chainlet(
         self, watch_path: Path, truss_ignore_patterns: List[str]
     ) -> PatchResult:
-        return self._patch(watch_path, truss_ignore_patterns, console=None)
+        # Use chainlets_only=True to query chainlet oracles (origin=CHAINS)
+        # instead of regular models (origin=BASETEN)
+        return self._patch(
+            watch_path, truss_ignore_patterns, console=None, chainlets_only=True
+        )
 
-    def upsert_training_project(self, training_project):
-        return self._api.upsert_training_project(training_project)
+    def _patch_with_model(
+        self,
+        watch_path: Path,
+        truss_ignore_patterns: List[str],
+        resolved_model: dict,
+        resolved_versions: List[dict],
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ):
+        """Patch with pre-resolved model (no team re-prompting)."""
+        result = self._patch(
+            watch_path,
+            truss_ignore_patterns,
+            console=console,
+            resolved_model=resolved_model,
+            resolved_versions=resolved_versions,
+        )
+        if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
+            console.print(result.message, style="green")
+        else:
+            error_console.print(result.message)
+
+    def upsert_training_project(self, training_project, team_id=None):
+        return self._api.upsert_training_project(training_project, team_id=team_id)

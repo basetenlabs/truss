@@ -3,7 +3,8 @@ from typing import cast
 
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
-from truss_train.deployment import create_training_job_from_file
+from truss_train import loader
+from truss_train.deployment import create_training_job
 
 
 def push(config: Path, remote: str = "baseten"):
@@ -30,4 +31,5 @@ def push(config: Path, remote: str = "baseten"):
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    return create_training_job_from_file(remote_provider, config)
+    with loader.import_training_project(config) as training_project:
+        return create_training_job(remote_provider, config, training_project)

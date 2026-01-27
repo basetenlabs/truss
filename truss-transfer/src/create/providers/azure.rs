@@ -60,6 +60,9 @@ impl CloudMetadataProvider for AzureProvider {
             .clone()
             .unwrap_or_else(|| format!("azure-{}", rand::random::<u64>()))
     }
+    fn last_modified_time(&self, meta: &object_store::ObjectMeta) -> chrono::DateTime<chrono::Utc> {
+        meta.last_modified
+    }
 
     fn generate_uid(&self, bucket: &str, object_path: &str, _hash: &str) -> String {
         // Extract account and container for UID

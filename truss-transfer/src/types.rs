@@ -165,6 +165,8 @@ pub struct BasetenPointer {
     pub hashtype: String,
     pub hash: String,
     pub size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified_time: Option<chrono::DateTime<chrono::Utc>>,
     // defaults to `hf_access_token` if not provided
     #[serde(default = "default_runtime_secret_name")]
     pub runtime_secret_name: String,

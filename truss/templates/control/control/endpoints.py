@@ -1,21 +1,18 @@
 import asyncio
 import logging
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Optional, Protocol
 
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
+from helpers.errors import ModelLoadFailed, ModelNotReady
+from httpx_ws import AsyncWebSocketSession, WebSocketDisconnect, aconnect_ws
 from httpx_ws import _exceptions as httpx_ws_exceptions
-from httpx_ws import aconnect_ws
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
+from starlette.websockets import WebSocketDisconnect as StartletteWebSocketDisconnect
 from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
 from wsproto.events import BytesMessage, TextMessage
-
-from truss.templates.control.control.helpers.errors import (
-    ModelLoadFailed,
-    ModelNotReady,
-)
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 BASE_RETRY_EXCEPTIONS = (
@@ -28,6 +25,15 @@ BASE_RETRY_EXCEPTIONS = (
 )
 
 control_app = APIRouter()
+
+WEBSOCKET_NORMAL_CLOSURE_CODE = 1000
+WEBSOCKET_SERVER_ERROR_CODE = 1011
+
+
+class CloseableWebsocket(Protocol):
+    async def close(
+        self, code: int = WEBSOCKET_NORMAL_CLOSURE_CODE, reason: Optional[str] = None
+    ) -> None: ...
 
 
 @control_app.get("/")
@@ -109,20 +115,85 @@ async def proxy_http(request: Request):
 def inference_retries(
     retry_condition: Callable[[RetryCallState], bool] = BASE_RETRY_EXCEPTIONS,
 ):
-    for attempt in Retrying(
+    yield from Retrying(
         retry=retry_condition,
         stop=_custom_stop_strategy,
         wait=wait_fixed(1),
         reraise=True,
-    ):
-        yield attempt
+    )
 
 
-async def _safe_close_ws(ws: WebSocket, logger: logging.Logger):
+async def _safe_close_ws(
+    ws: CloseableWebsocket,
+    logger: logging.Logger,
+    code: int,
+    reason: Optional[str] = None,
+):
     try:
-        await ws.close()
+        await ws.close(code, reason)
     except RuntimeError as close_error:
         logger.debug(f"Duplicate close of websocket: `{close_error}`.")
+
+
+async def forward_to_server(
+    client_ws: WebSocket, server_ws: AsyncWebSocketSession
+) -> None:
+    while True:
+        message = await client_ws.receive()
+        if message.get("type") == "websocket.disconnect":
+            raise StartletteWebSocketDisconnect(
+                message.get("code", 1000), message.get("reason")
+            )
+        if "text" in message:
+            await server_ws.send_text(message["text"])
+        elif "bytes" in message:
+            await server_ws.send_bytes(message["bytes"])
+
+
+async def forward_to_client(client_ws: WebSocket, server_ws: AsyncWebSocketSession):
+    while True:
+        message = await server_ws.receive()
+        if isinstance(message, TextMessage):
+            await client_ws.send_text(message.data)
+        elif isinstance(message, BytesMessage):
+            await client_ws.send_bytes(message.data)
+
+
+# NB(nikhil): _handle_websocket_forwarding uses some py311 specific syntax, but in newer
+# versions of truss we're guaranteed to be running the control server with at least that version.
+async def _handle_websocket_forwarding(
+    client_ws: WebSocket, server_ws: AsyncWebSocketSession
+):
+    logger = client_ws.app.state.logger
+    try:
+        async with asyncio.TaskGroup() as tg:  # type: ignore[attr-defined]
+            tg.create_task(forward_to_client(client_ws, server_ws))
+            tg.create_task(forward_to_server(client_ws, server_ws))
+    except ExceptionGroup as eg:  # type: ignore[name-defined] # noqa: F821
+        # NB(nikhil): The first websocket proxy method to raise an error will
+        # be surfaced here, and that contains the information we want to forward to the
+        # other websocket. Further errors might raise as a result of cancellation, but we
+        # can safely ignore those.
+        exc = eg.exceptions[0]
+        if isinstance(exc, WebSocketDisconnect):
+            await _safe_close_ws(client_ws, logger, exc.code, exc.reason)
+        elif isinstance(exc, StartletteWebSocketDisconnect):
+            await _safe_close_ws(server_ws, logger, exc.code, exc.reason)
+        else:
+            logger.warning(f"Ungraceful websocket close: {exc}")
+    finally:
+        # NB(nikhil): In most common cases, both websockets would have been successfully
+        # closed with applicable codes above, these lines are just a failsafe.
+        await _safe_close_ws(client_ws, logger, code=WEBSOCKET_SERVER_ERROR_CODE)
+        await _safe_close_ws(server_ws, logger, code=WEBSOCKET_SERVER_ERROR_CODE)
+
+
+async def _attempt_websocket_proxy(
+    client_ws: WebSocket, proxy_client: httpx.AsyncClient, logger
+):
+    async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
+        await client_ws.accept()
+        await _handle_websocket_forwarding(client_ws, server_ws)
 
 
 async def proxy_ws(client_ws: WebSocket):
@@ -132,37 +203,10 @@ async def proxy_ws(client_ws: WebSocket):
     for attempt in inference_retries():
         with attempt:
             try:
-                async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
-                    # Unfortunate, but FastAPI and httpx-ws have slightly different abstractions
-                    # for sending data, so it's not easy to create a unified wrapper.
-                    async def forward_to_server():
-                        while True:
-                            message = await client_ws.receive()
-                            if message.get("type") == "websocket.disconnect":
-                                break
-                            if "text" in message:
-                                await server_ws.send_text(message["text"])
-                            elif "bytes" in message:
-                                await server_ws.send_bytes(message["bytes"])
-
-                    async def forward_to_client():
-                        while True:
-                            message = await server_ws.receive()
-                            if message is None:
-                                break
-                            if isinstance(message, TextMessage):
-                                await client_ws.send_text(message.data)
-                            elif isinstance(message, BytesMessage):
-                                await client_ws.send_bytes(message.data)
-
-                    await client_ws.accept()
-                    try:
-                        await asyncio.gather(forward_to_client(), forward_to_server())
-                    finally:
-                        await _safe_close_ws(client_ws, logger)
+                await _attempt_websocket_proxy(client_ws, proxy_client, logger)
             except httpx_ws_exceptions.HTTPXWSException as e:
                 logger.warning(f"WebSocket connection rejected: {e}")
-                await _safe_close_ws(client_ws, logger)
+                await _safe_close_ws(client_ws, logger, WEBSOCKET_SERVER_ERROR_CODE)
                 break
 
 
@@ -172,7 +216,7 @@ control_app.add_route("/metrics/", proxy_http, ["GET"])
 
 
 @control_app.post("/control/patch")
-async def patch(request: Request) -> Dict[str, str]:
+async def patch(request: Request) -> dict[str, str]:
     request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
     loop = asyncio.get_event_loop()
@@ -187,20 +231,20 @@ async def patch(request: Request) -> Dict[str, str]:
 
 
 @control_app.get("/control/truss_hash")
-async def truss_hash(request: Request) -> Dict[str, Any]:
+async def truss_hash(request: Request) -> dict[str, Any]:
     t_hash = request.app.state.inference_server_controller.truss_hash()
     return {"result": t_hash}
 
 
 @control_app.post("/control/restart_inference_server")
-async def restart_inference_server(request: Request) -> Dict[str, str]:
+async def restart_inference_server(request: Request) -> dict[str, str]:
     request.app.state.inference_server_controller.restart()
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.get("/control/has_partially_applied_patch")
-async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
+async def has_partially_applied_patch(request: Request) -> dict[str, Any]:
     app_has_partially_applied_patch = (
         request.app.state.inference_server_controller.has_partially_applied_patch()
     )
@@ -208,7 +252,7 @@ async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
 
 
 @control_app.post("/control/stop_inference_server")
-async def stop_inference_server(request: Request) -> Dict[str, str]:
+async def stop_inference_server(request: Request) -> dict[str, str]:
     request.app.state.inference_server_controller.stop()
     return {"msg": "Inference server stopped successfully"}
 

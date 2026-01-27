@@ -104,12 +104,12 @@ def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
 @pytest.mark.parametrize(
     "config_python_version, inspected_python_version",
     [
-        ("py38", "3.8"),
         ("py39", "3.9"),
         ("py310", "3.10"),
         ("py311", "3.11"),
         ("py312", "3.12"),
         ("py313", "3.13"),
+        ("py314", "3.14"),
     ],
 )
 def test_predict_python_versions(config_python_version, inspected_python_version):
@@ -120,8 +120,6 @@ def test_predict_python_versions(config_python_version, inspected_python_version
             version = sys.version_info
             return f"{version.major}.{version.minor}"
     """
-    # config = """base_image:
-    #                   image: baseten/truss-server-base:3.13-marius"""
     config = f"python_version: {config_python_version}"
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         container, urls = tr.docker_run_for_test()
@@ -990,8 +988,8 @@ def test_is_healthy_returns_503_on_load_failure():
                 # when the model goes down, this will throw an exception
                 break
         diff = container.diff()
-        # the crash file is written to the app user's home directory
-        crash_file_path = "/home/app/inference_server_crashed.txt"
+        # the crash file is written to the user's home directory
+        crash_file_path = "/root/inference_server_crashed.txt"
         assert crash_file_path in diff
         assert diff[crash_file_path] == "A"
 
@@ -2099,3 +2097,42 @@ async def test_websocket_ping_timeout_behavior(caplog):
 
         # We wait 3 seconds, so there should be ~3 PING/PONGS
         assert 2 <= caplog.text.count("PING") <= 4
+
+
+@pytest.mark.integration
+def test_build_commands_on_model_files(test_data_path):
+    with ensure_kill_all():
+        truss_dir = test_data_path / "test_build_commands_truss"
+        tr = TrussHandle(truss_dir)
+        container, urls = tr.docker_run_for_test()
+        time.sleep(3)  # Sleeping to allow the load to finish
+
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        assert response.json() == "TEST_SECOND_VALUE"
+
+
+@pytest.mark.integration
+def test_switch_build_context_to_root(test_data_path):
+    with ensure_kill_all():
+        truss_dir = test_data_path / "test_non_root_base_image"
+        tr = TrussHandle(truss_dir)
+        container, urls = tr.docker_run_for_test()
+        time.sleep(3)  # Sleeping to allow the load to finish
+
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
+
+
+@pytest.mark.integration
+def test_system_managed_python(test_data_path):
+    with ensure_kill_all():
+        truss_dir = test_data_path / "test_system_managed_python"
+        tr = TrussHandle(truss_dir)
+        container, urls = tr.docker_run_for_test()
+        time.sleep(3)  # Sleeping to allow the load to finish
+
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        assert response.json() == {"success": True}

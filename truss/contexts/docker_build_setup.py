@@ -8,6 +8,7 @@ from typing import Optional
 import click
 
 from truss.base import constants, trt_llm_config
+from truss.base.truss_config import Accelerator
 from truss.patch.hash import directory_content_hash
 from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
 from truss.templates.control.control.helpers.custom_types import Patch
@@ -45,6 +46,33 @@ def _fill_trt_llm_versions(
         ):
             print(f"Using BEI image: {image_versions.bei_image}")
             tr.set_base_image(image_versions.bei_image, "/usr/bin/python3")
+        elif (
+            tr.spec.config.trt_llm.build.base_model
+            == trt_llm_config.TrussTRTLLMModel.ENCODER_BERT
+        ):
+            accelerator = tr.spec.config.resources.accelerator.accelerator
+            docker_image_suffix = {  # not ideal, but build may fail if version is not pushed.
+                Accelerator.L4: "89-",
+                Accelerator.A100: "",
+                Accelerator.H100: "hopper-",
+                Accelerator.H100_40GB: "hopper-",
+                Accelerator.A10G: "86-",
+                Accelerator.T4: "turing-",
+                Accelerator.H200: "hopper-",
+                Accelerator.V100: "turing-",
+                Accelerator.B200: "blackwell-",
+                None: "unsupported none please upgrade truss",
+            }.get(accelerator, f"unsupported {accelerator} please upgrade truss")
+            if docker_image_suffix.startswith("unsupported"):
+                raise ValueError(docker_image_suffix)
+            base_image_prefix, base_image_version = image_versions.beibert_image.split(
+                ":", 1
+            )
+            bei_bert_image_with_accelerator = (
+                f"{base_image_prefix}:{docker_image_suffix}{base_image_version}"
+            )
+            print(f"Using BEI BERT image: {bei_bert_image_with_accelerator}")
+            tr.set_base_image(bei_bert_image_with_accelerator, "/usr/bin/python3")
         else:
             print(f"Using Briton image: {image_versions.briton_image}")
             tr.set_base_image(

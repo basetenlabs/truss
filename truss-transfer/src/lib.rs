@@ -5,12 +5,14 @@
 // Module declarations
 mod bindings;
 mod cache;
+mod cloud_range_download;
 mod constants;
 mod core;
 mod create;
 mod download;
 mod download_core;
 mod hf_transfer;
+mod metrics;
 mod secrets;
 mod speed_checks;
 mod types;
@@ -65,6 +67,7 @@ mod tests {
                 future_timestamp,
             )),
             uid: "123".into(),
+            last_modified_time: None,
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
@@ -92,6 +95,7 @@ mod tests {
                 past_timestamp,
             )),
             uid: "123".into(),
+            last_modified_time: None,
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
@@ -117,6 +121,7 @@ mod tests {
             )),
             uid: "123".into(),
             file_name: "file.txt".into(),
+            last_modified_time: None,
             hashtype: "sha256".into(),
             hash: "abc/def".into(), // Invalid hash with slash
             size: 1024,
@@ -143,6 +148,7 @@ mod tests {
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "abcdef".into(),
             size: 1024,
             runtime_secret_name: "hf_access_token".into(),
@@ -171,6 +177,7 @@ mod tests {
                 file_name: "file1.txt".into(),
                 hashtype: "sha256".into(),
                 hash: "hash1".into(),
+                last_modified_time: None,
                 size: 1024,
                 runtime_secret_name: "hf_access_token".into(),
             }],
@@ -187,6 +194,7 @@ mod tests {
                 file_name: "file2.txt".into(),
                 hashtype: "sha256".into(),
                 hash: "hash2".into(),
+                last_modified_time: None,
                 size: 2048,
                 runtime_secret_name: "hf_access_token".into(),
             }],
@@ -221,6 +229,7 @@ mod tests {
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "samehash".into(),
             size: 1024,
             runtime_secret_name: "hf_access_token".into(),
@@ -254,6 +263,7 @@ mod tests {
             )),
             uid: "123".into(),
             file_name: "file.txt".into(),
+            last_modified_time: None,
             hashtype: "sha256".into(),
             hash: "hash1".into(),
             size: 1024,
@@ -268,6 +278,7 @@ mod tests {
             uid: "456".into(),
             file_name: "file.txt".into(), // Same name
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "hash2".into(), // Different hash
             size: 2048,
             runtime_secret_name: "hf_access_token".into(),
@@ -312,6 +323,7 @@ mod tests {
                     uid: "123".into(),
                     file_name: "file1.txt".into(),
                     hashtype: "sha256".into(),
+                    last_modified_time: None,
                     hash: "hash1".into(),
                     size: 1024,
                     runtime_secret_name: "hf_access_token".into(),
@@ -325,6 +337,7 @@ mod tests {
                     file_name: "file2.txt".into(),
                     hashtype: "sha256".into(),
                     hash: "hash2".into(),
+                    last_modified_time: None,
                     size: 2048,
                     runtime_secret_name: "hf_access_token".into(),
                 },

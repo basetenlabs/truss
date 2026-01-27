@@ -16,7 +16,6 @@ from truss.templates.control.control.helpers.custom_types import (
     Patch,
     PatchType,
     PythonRequirementPatch,
-    SystemPackagePatch,
 )
 from truss.truss_handle.patch.calc_patch import (
     _calc_python_requirements_patches,
@@ -736,49 +735,33 @@ def test_calc_config_patches_add_remove_env_var(custom_model_truss_dir: Path):
     ]
 
 
-def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
-    patches = _apply_config_change_and_calc_patches(
-        custom_model_truss_dir, lambda config: config.system_packages.append("curl")
-    )
-    assert len(patches) == 2
-    assert patches == [
-        Patch(
-            type=PatchType.CONFIG,
-            body=ConfigPatch(
-                action=Action.UPDATE,
-                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
-            ),
-        ),
-        Patch(
-            type=PatchType.SYSTEM_PACKAGE,
-            body=SystemPackagePatch(action=Action.ADD, package="curl"),
-        ),
-    ]
+def test_system_package_changes_make_truss_unpatchable_add(
+    custom_model_truss_dir: Path,
+):
+    # System package changes should raise a ValueError indicating full rebuild required
+    with pytest.raises(
+        ValueError, match="System package changes detected - full rebuild required"
+    ):
+        _apply_config_change_and_calc_patches(
+            custom_model_truss_dir, lambda config: config.system_packages.append("curl")
+        )
 
 
-def test_calc_config_patches_remove_system_package(custom_model_truss_dir: Path):
-    patches = _apply_config_change_and_calc_patches(
-        custom_model_truss_dir,
-        config_pre_op=lambda config: config.system_packages.append("curl"),
-        config_op=lambda config: config.system_packages.clear(),
-    )
-    assert len(patches) == 2
-    assert patches == [
-        Patch(
-            type=PatchType.CONFIG,
-            body=ConfigPatch(
-                action=Action.UPDATE,
-                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
-            ),
-        ),
-        Patch(
-            type=PatchType.SYSTEM_PACKAGE,
-            body=SystemPackagePatch(action=Action.REMOVE, package="curl"),
-        ),
-    ]
+def test_system_package_changes_make_truss_unpatchable_remove(
+    custom_model_truss_dir: Path,
+):
+    # System package changes should raise a ValueError indicating full rebuild required
+    with pytest.raises(
+        ValueError, match="System package changes detected - full rebuild required"
+    ):
+        _apply_config_change_and_calc_patches(
+            custom_model_truss_dir,
+            config_pre_op=lambda config: config.system_packages.append("curl"),
+            config_op=lambda config: config.system_packages.clear(),
+        )
 
 
-def test_calc_config_patches_add_and_remove_system_package(
+def test_system_package_changes_make_truss_unpatchable_modify(
     custom_model_truss_dir: Path,
 ):
     def config_pre_op(config: TrussConfig):
@@ -787,29 +770,13 @@ def test_calc_config_patches_add_and_remove_system_package(
     def config_op(config: TrussConfig):
         config.system_packages = ["curl", "libsnd"]
 
-    patches = _apply_config_change_and_calc_patches(
-        custom_model_truss_dir, config_pre_op=config_pre_op, config_op=config_op
-    )
-    assert len(patches) == 3
-    assert patches[0] == Patch(
-        type=PatchType.CONFIG,
-        body=ConfigPatch(
-            action=Action.UPDATE,
-            config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
-        ),
-    )
-    patches = patches[1:]
-    patches.sort(key=lambda patch: patch.body.package)
-    assert patches == [
-        Patch(
-            type=PatchType.SYSTEM_PACKAGE,
-            body=SystemPackagePatch(action=Action.REMOVE, package="jq"),
-        ),
-        Patch(
-            type=PatchType.SYSTEM_PACKAGE,
-            body=SystemPackagePatch(action=Action.ADD, package="libsnd"),
-        ),
-    ]
+    # System package changes should raise a ValueError indicating full rebuild required
+    with pytest.raises(
+        ValueError, match="System package changes detected - full rebuild required"
+    ):
+        _apply_config_change_and_calc_patches(
+            custom_model_truss_dir, config_pre_op=config_pre_op, config_op=config_op
+        )
 
 
 def test_calc_config_patches_toggle_apply_library_patches(custom_model_truss_dir: Path):

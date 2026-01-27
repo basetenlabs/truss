@@ -264,14 +264,46 @@ The following environment variables can be used to configure truss-transfer beha
 
 ### Core Configuration
 
-- **`TRUSS_TRANSFER_DOWNLOAD_DIR`** (default: `/tmp/bptr-resolved`)
+- **`TRUSS_TRANSFER_DOWNLOAD_DIR`** (default: `/tmp/truss_transfer`)
   - Directory where resolved files will be downloaded
   - Used when no explicit download directory is provided
   - Can be overridden by passing a directory to the CLI or Python function
 
-- **`RUST_LOG`** (default: `info`)
+- **`TRUSS_TRANSFER_LOG`** or **`RUST_LOG`** (default: `info`)
   - Controls logging level: `error`, `warn`, `info`, `debug`, `trace`
+  - `TRUSS_TRANSFER_LOG` takes precedence over `RUST_LOG`
   - Example: `RUST_LOG=debug` for detailed logging
+
+- **`TRUSS_TRANSFER_CACHE_DIR`** (default: `/cache/org/artifacts/truss_transfer_managed_v1`)
+  - Cache directory for b10fs operations
+  - Used when Baseten FS is enabled
+
+### Download Configuration
+
+- **`TRUSS_TRANSFER_NUM_WORKERS`** (default: `6`)
+  - Number of concurrent download workers
+  - Controls parallelism for file downloads
+
+- **`TRUSS_TRANSFER_USE_RANGE_DOWNLOAD`** (default: `true`)
+  - Enable/disable range-based downloading for large files
+  - Set to `1`, `true`, `yes`, or `y` to enable
+
+- **`TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS`** (default: `192`)
+  - Total number of range download workers across all files
+  - Used when range downloading is enabled
+
+- **`TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE`** (default: `84`)
+  - Number of concurrent range workers per individual file
+  - Used when range downloading is enabled
+
+- **`TRUSS_TRANSFER_DOWNLOAD_MONITOR_SECS`** (default: `30`)
+  - Interval in seconds for monitoring download progress
+  - Controls how often progress is reported
+
+- **`TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD`** (default: `false`)
+  - Enable/disable memory paging after downloads complete
+  - Set to `1`, `true`, `yes`, or `y` to enable
+  - Helps with memory management for large downloads
 
 ### Authentication
 
@@ -289,29 +321,46 @@ The following environment variables can be used to configure truss-transfer beha
 
 - **`BASETEN_FS_ENABLED`** (default: `false`)
   - Enable/disable Baseten FS caching: `1`/`true` to enable, `0`/`false` to disable
-  - When enabled, files are cached in `/cache/org/artifacts/truss_transfer_managed_v1`
+  - When enabled, files are cached in the directory specified by `TRUSS_TRANSFER_CACHE_DIR`
 
 - **`TRUSS_TRANSFER_B10FS_CLEANUP_HOURS`** (default: `96`)
   - Hours after last access before deleting cached files from other tenants
   - Helps manage disk space by removing old cached files
   - Example: `TRUSS_TRANSFER_B10FS_CLEANUP_HOURS=48` for 2 days
 
-- **`TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS`** (default: `350`)
+- **`TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS`** (default: dynamic)
   - Expected download speed in MB/s for b10fs performance benchmarking
   - Used to determine if b10fs is faster than direct download
+  - Default: 400 MB/s for >16 cores, 90 MB/s for ≤16 cores (with randomization)
   - Lower values make b10fs more likely to be used
+
+- **`TRUSS_TRANSFER_B10FS_MAX_STALE_CACHE_SIZE_GB`** (default: unlimited)
+  - Maximum size in GB for stale cache files before cleanup is triggered
+  - When set, actively purges old cache files to maintain this limit
+  - Example: `TRUSS_TRANSFER_B10FS_MAX_STALE_CACHE_SIZE_GB=500`
 
 ### Example Configuration
 
 ```bash
 # Basic setup
 export TRUSS_TRANSFER_DOWNLOAD_DIR="/tmp/my-models"
-export RUST_LOG=info
+export TRUSS_TRANSFER_LOG=info
+export TRUSS_TRANSFER_NUM_WORKERS=8
 
-# With b10fs enabled and authentication
+# Advanced download configuration
+export TRUSS_TRANSFER_USE_RANGE_DOWNLOAD=1
+export TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS=256
+export TRUSS_TRANSFER_RANGE_DOWNLOAD_WORKERS_PER_FILE=64
+export TRUSS_TRANSFER_PAGE_AFTER_DOWNLOAD=1
+
+# With b10fs enabled and tuned
 export BASETEN_FS_ENABLED=1
+export TRUSS_TRANSFER_CACHE_DIR="/fast-ssd/cache"
 export TRUSS_TRANSFER_B10FS_CLEANUP_HOURS=48
-export TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS=100
+export TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS=200
+export TRUSS_TRANSFER_B10FS_MAX_STALE_CACHE_SIZE_GB=1000
+
+# Authentication
 export HF_TOKEN="your-huggingface-token"
 ```
 

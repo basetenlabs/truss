@@ -4,10 +4,10 @@ import logging
 import logging.config
 import os
 import signal
-import sys
+from collections.abc import AsyncGenerator, Awaitable, Generator
 from http import HTTPStatus
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Callable, Optional, Union
 
 import pydantic
 import uvicorn
@@ -43,11 +43,6 @@ from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
-if sys.version_info >= (3, 9):
-    from typing import AsyncGenerator, Generator
-else:
-    from typing_extensions import AsyncGenerator, Generator
-
 PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
@@ -76,7 +71,7 @@ async def parse_body(request: Request) -> bytes:
 
 
 async def _safe_close_websocket(
-    ws: WebSocket, reason: Optional[str], status_code: int = 1000
+    ws: WebSocket, status_code: int = 1000, reason: Optional[str] = None
 ) -> None:
     try:
         await ws.close(code=status_code, reason=reason)
@@ -117,7 +112,7 @@ class BasetenEndpoints:
         self.check_healthy()
         return {}
 
-    async def invocations_ready(self) -> Dict[str, Union[str, bool]]:
+    async def invocations_ready(self) -> dict[str, Union[str, bool]]:
         """
         This method provides compatibility with Sagemaker hosting for the 'ping' endpoint.
         """
@@ -182,6 +177,12 @@ class BasetenEndpoints:
         """
         Executes a predictive endpoint
         """
+        request_id = request.headers.get("x-baseten-request-id")
+
+        logging.debug(
+            f"[DEBUG] Request received - {request.method} /{method.__name__} "
+            f", Request ID: {request_id}"
+        )
         self.check_healthy()
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
@@ -257,14 +258,16 @@ class BasetenEndpoints:
                 try:
                     await ws.accept()
                     await self._model.websocket(ws)
-                    await _safe_close_websocket(ws, None, status_code=1000)
+                    await _safe_close_websocket(ws, status_code=1000, reason=None)
                 except WebSocketDisconnect as ws_error:
                     logging.info(
                         f"Client terminated websocket connection: `{ws_error}`."
                     )
                 except Exception:
                     await _safe_close_websocket(
-                        ws, errors.MODEL_ERROR_MESSAGE, status_code=1011
+                        ws,
+                        status_code=errors.WEBSOCKET_SERVER_ERROR_CODE,
+                        reason=errors.MODEL_ERROR_MESSAGE,
                     )
                     raise  # Re raise to let `intercept_exceptions` deal with it.
 
@@ -303,7 +306,7 @@ class BasetenEndpoints:
                 response_headers["Content-Type"] = "application/json"
                 return Response(content=content, headers=response_headers)
 
-    async def schema(self, model_name: str) -> Dict:
+    async def schema(self, model_name: str) -> dict:
         if self._model.truss_schema is None:
             # If there is not a TrussSchema, we return a 404.
             if self._model.ready:
@@ -336,7 +339,7 @@ class TrussServer:
 
     _server: Optional[uvicorn.Server]
 
-    def __init__(self, http_port: int, config_or_path: Union[str, Path, Dict]):
+    def __init__(self, http_port: int, config_or_path: Union[str, Path, dict]):
         # This is run before uvicorn is up. Need explicit logging config here.
         logging.config.dictConfig(log_config.make_log_config("INFO"))
 
@@ -489,9 +492,9 @@ class TrussServer:
             timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config=log_config.make_log_config(log_level),
             ws_max_size=WS_MAX_MSG_SZ_BYTES,
+            loop="uvloop",
             **extra_kwargs,
         )
-        cfg.setup_event_loop()  # Call this so uvloop gets used
         server = uvicorn.Server(config=cfg)
         self._server = server
         asyncio.run(server.serve())

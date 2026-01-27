@@ -28,7 +28,12 @@ DEFAULT_CONCURRENCY_LIMIT = 300
 CpuCountT = Literal["cpu_count"]
 CPU_COUNT: CpuCountT = "cpu_count"
 
-_BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
+
+# NOTE(Tyron): This is a secret that points to an API key value.
+CHAIN_API_KEY_SECRET_NAME = "baseten_chain_api_key"
+
+# NOTE(Tyron): This is the actual API key pointed to by the above secret.
+CHAIN_API_KEY_NAME = "baseten-chain-api-key"
 
 _K = TypeVar("_K", contravariant=True)
 _V = TypeVar("_V", covariant=True)
@@ -243,6 +248,7 @@ class ComputeSpec(pydantic.BaseModel):
     predict_concurrency: int = 1
     memory: str = "2Gi"
     accelerator: truss_config.AcceleratorSpec = truss_config.AcceleratorSpec()
+    instance_type: Optional[str] = None
 
 
 class Compute:
@@ -267,6 +273,7 @@ class Compute:
         gpu: Union[str, truss_config.Accelerator, None] = None,
         gpu_count: int = 1,
         predict_concurrency: Union[int, CpuCountT] = 1,
+        instance_type: Optional[str] = None,
     ) -> None:
         """
         Args:
@@ -278,6 +285,8 @@ class Compute:
             gpu_count: Number of GPUs to allocate.
             predict_concurrency: Number of concurrent requests a single replica of a
               deployed chainlet handles.
+            instance_type: Optional instance type to use. When specified, this will
+              override the cpu count, memory, and gpu settings in the backend.
 
         Concurrency concepts are explained in `this guide <https://docs.baseten.co/deploy/guides/concurrency#predict-concurrency>`_. # noqa: E501
         It is important to understand the difference between `predict_concurrency` and
@@ -309,6 +318,7 @@ class Compute:
             memory=memory,
             accelerator=accelerator,
             predict_concurrency=predict_concurrency_int,
+            instance_type=instance_type,
         )
 
     def get_spec(self) -> ComputeSpec:
@@ -323,6 +333,7 @@ class AssetSpec(custom_types.SafeModel):
     external_data: list[truss_config.ExternalDataItem] = pydantic.Field(
         default_factory=list
     )
+    weights: list[truss_config.WeightsSource] = pydantic.Field(default_factory=list)
 
 
 class Assets:
@@ -339,8 +350,27 @@ class Assets:
         )
         chains.Assets(cached=[mistral_cache], ...)
 
-    See `truss caching guide <https://docs.baseten.co/deploy/guides/model-cache#enabling-caching-for-a-model>`_
-    for more details on caching.
+    For MDN (Model Delivery Network) weight mirroring, which pre-downloads weights
+    during deployment for faster startup::
+
+        from truss.base.truss_config import WeightsSource
+
+        chains.Assets(
+            weights=[
+                WeightsSource(
+                    source="hf://meta-llama/Llama-2-7b",
+                    mount_location="/app/weights",
+                    auth_secret_name="hf_access_token",  # Optional: org secret name
+                )
+            ]
+        )
+
+    Note: ``auth_secret_name`` references a secret in your Baseten organization's
+    secret store (not ``secret_keys``). It is used during weight mirroring, before
+    the container starts. Weights are pre-mirrored and mounted at ``mount_location``.
+
+    See `truss caching guide <https://docs.baseten.co/deploy/guides/model-cache>`_
+    for more details on caching and weights.
     """
 
     # Builder to create asset spec.
@@ -352,10 +382,12 @@ class Assets:
         cached: Iterable[truss_config.ModelRepo] = (),
         secret_keys: Iterable[str] = (),
         external_data: Iterable[truss_config.ExternalDataItem] = (),
+        weights: Iterable[truss_config.WeightsSource] = (),
     ) -> None:
         """
         Args:
-            cached: One or more ``truss_config.ModelRepo`` objects.
+            cached: One or more ``truss_config.ModelRepo`` objects for runtime
+              model caching (downloaded when container starts).
             secret_keys: Names of secrets stored on baseten, that the
               chainlet should have access to. You can manage secrets on baseten
               `here <https://app.baseten.co/settings/secrets>`_.
@@ -363,11 +395,18 @@ class Assets:
               in the deployment (via ``context.data_dir``). See
               `here <https://docs.baseten.co/reference/config#external-data>`_ for
               more details.
+            weights: One or more ``truss_config.WeightsSource`` objects for MDN
+              weight mirroring. Weights are pre-downloaded during deployment and
+              mounted at the specified ``mount_location``. Supports sources like
+              ``hf://``, ``s3://``, ``gs://``, ``azure://``, ``r2://``, ``https://``.
+              If authentication is needed, specify ``auth_secret_name`` which
+              references a secret in your Baseten organization (not ``secret_keys``).
         """
         self._spec = AssetSpec(
             cached=list(cached),
             secrets={k: SECRET_DUMMY for k in secret_keys},
             external_data=list(external_data),
+            weights=list(weights),
         )
 
     def get_spec(self) -> AssetSpec:
@@ -473,6 +512,7 @@ class WebSocketProtocol(Protocol):
 
     async def close(self, code: int = 1000, reason: Optional[str] = None) -> None: ...
 
+    async def receive(self) -> Union[str, bytes]: ...
     async def receive_text(self) -> str: ...
     async def receive_bytes(self) -> bytes: ...
     async def receive_json(self) -> Any: ...
@@ -481,9 +521,11 @@ class WebSocketProtocol(Protocol):
     async def send_bytes(self, data: bytes) -> None: ...
     async def send_json(self, data: Any) -> None: ...
 
-    def iter_text(self) -> AsyncIterator[str]: ...
-    def iter_bytes(self) -> AsyncIterator[bytes]: ...
-    def iter_json(self) -> AsyncIterator[Any]: ...
+    async def iter_text(self) -> AsyncIterator[str]: ...
+    async def iter_bytes(self) -> AsyncIterator[bytes]: ...
+    async def iter_json(self) -> AsyncIterator[Any]: ...
+
+    def is_connected(self) -> bool: ...
 
 
 class EngineBuilderLLMInput(pydantic.BaseModel):
@@ -735,14 +777,14 @@ class DeploymentContext(custom_types.SafeModelNonSerializable):
             )
         error_msg = (
             "For using chains, it is required to setup a an API key with name "
-            f"`{_BASETEN_API_SECRET_NAME}` on Baseten to allow chain Chainlet to "
+            f"`{CHAIN_API_KEY_SECRET_NAME}` on Baseten to allow chain Chainlet to "
             "call other Chainlets. For local execution, secrets can be provided "
             "to `run_local`."
         )
-        if _BASETEN_API_SECRET_NAME not in self.secrets:
+        if CHAIN_API_KEY_SECRET_NAME not in self.secrets:
             raise MissingDependencyError(error_msg)
 
-        api_key = self.secrets[_BASETEN_API_SECRET_NAME]
+        api_key = self.secrets[CHAIN_API_KEY_SECRET_NAME]
         if api_key == SECRET_DUMMY:
             raise MissingDependencyError(
                 f"{error_msg}. Retrieved dummy value of `{api_key}`."

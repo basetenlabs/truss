@@ -1,17 +1,26 @@
+import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
 
 import rich_click as click
 
 import truss.cli.train.core as train_cli
+from truss.base.constants import TRAINING_TEMPLATE_DIR
 from truss.cli import remote_cli
-from truss.cli.cli import push, truss_cli
+from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.resolvers.training_project_team_resolver import (
+    resolve_training_project_team_name,
+)
 from truss.cli.train import common as train_common
 from truss.cli.train import core
-from truss.cli.train.core import (
+from truss.cli.train.cache import (
+    OUTPUT_FORMAT_CLI_TABLE,
+    OUTPUT_FORMAT_CSV,
+    OUTPUT_FORMAT_JSON,
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
     SORT_BY_PERMISSIONS,
@@ -20,11 +29,14 @@ from truss.cli.train.core import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
+from truss.cli.train.types import DeploySuccessResult
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
+from truss.util.path import copy_tree_path
 from truss_train import TrainingJob
 
 
@@ -38,13 +50,14 @@ truss_cli.add_command(train)
 
 def _print_training_job_success_message(
     job_id: str,
+    project_id: str,
     project_name: str,
-    job_object: TrainingJob,
+    job_object: Optional[TrainingJob],
     remote_provider: BasetenRemote,
 ) -> None:
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
-    should_print_cache_summary = (
+    should_print_cache_summary = job_object and (
         job_object.runtime.enable_cache
         or job_object.runtime.cache_config
         and job_object.runtime.cache_config.enabled
@@ -61,7 +74,7 @@ def _print_training_job_success_message(
         f"🔍 View metrics for your job via "
         f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
         f"{cache_summary_snippet}"
-        f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
+        f"🌐 View job in the UI: {common.format_link(core.status_page_url(remote_provider.remote_url, project_id, job_id))}"
     )
 
 
@@ -77,8 +90,13 @@ def _handle_post_create_logic(
             style="green",
         )
     else:
+        # recreate currently doesn't pass back a job object.
         _print_training_job_success_message(
-            job_id, project_name, job_resp["job_object"], remote_provider
+            job_id,
+            project_id,
+            project_name,
+            job_resp.get("job_object"),
+            remote_provider,
         )
 
     if tail:
@@ -97,28 +115,71 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
+def _resolve_team_name(
+    remote_provider: BasetenRemote,
+    provided_team_name: Optional[str],
+    existing_project_name: Optional[str] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    return resolve_training_project_team_name(
+        remote_provider=remote_provider,
+        provided_team_name=provided_team_name,
+        existing_project_name=existing_project_name,
+        existing_teams=existing_teams,
+    )
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
 @common.common_options()
 def push_training_job(
-    config: Path, remote: Optional[str], tail: bool, job_name: Optional[str]
+    config: Path,
+    remote: Optional[str],
+    tail: bool,
+    job_name: Optional[str],
+    provided_team_name: Optional[str],
 ):
     """Run a training job"""
-    from truss_train import deployment
+    from truss_train import deployment, loader
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    with console.status("Creating training job...", spinner="dots"):
-        remote_provider: BasetenRemote = cast(
-            BasetenRemote, RemoteFactory.create(remote=remote)
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    existing_teams = remote_provider.api.get_teams()
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+
+    with loader.import_training_project(config) as training_project:
+        team_name, team_id = _resolve_team_name(
+            remote_provider,
+            effective_team_name,
+            existing_project_name=training_project.name,
+            existing_teams=existing_teams,
         )
-        job_resp = deployment.create_training_job_from_file(
-            remote_provider, config, job_name
-        )
+
+        with console.status("Creating training job...", spinner="dots"):
+            job_resp = deployment.create_training_job(
+                remote_provider,
+                config,
+                training_project,
+                job_name_from_cli=job_name,
+                team_name=team_name,
+                team_id=team_id,
+            )
 
     # Note: This post create logic needs to happen outside the context
     # of the above context manager, as only one console session can be active
@@ -153,11 +214,16 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
 @common.common_options()
 def get_job_logs(
-    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+    remote: Optional[str],
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    tail: bool,
 ):
     """Fetch logs for a training job"""
 
@@ -167,6 +233,10 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+
     project_id, job_id = train_common.get_most_recent_job(
         remote_provider, project_id, job_id
     )
@@ -185,12 +255,17 @@ def get_job_logs(
 
 @train.command(name="stop")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def stop_job(
-    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    all: bool,
+    remote: Optional[str],
 ):
     """Stop a training job"""
 
@@ -199,6 +274,9 @@ def stop_job(
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
     )
     if all:
         train_cli.stop_all_jobs(remote_provider, project_id)
@@ -214,13 +292,17 @@ def stop_job(
 @click.option(
     "--project-id", type=str, required=False, help="View training jobs for a project."
 )
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def view_training(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    remote: Optional[str],
 ):
     """List all training jobs for a project"""
 
@@ -230,16 +312,24 @@ def view_training(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+
     train_cli.view_training_details(remote_provider, project_id, job_id)
 
 
 @train.command(name="metrics")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def get_job_metrics(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    remote: Optional[str],
 ):
     """Get metrics for a training job"""
 
@@ -249,11 +339,15 @@ def get_job_metrics(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
     train_cli.view_training_job_metrics(remote_provider, project_id, job_id)
 
 
 @train.command(name="deploy_checkpoints")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
     "--config",
@@ -264,14 +358,22 @@ def get_job_metrics(
 @click.option(
     "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
+@click.option(
+    "--truss-config-output-dir",
+    type=str,
+    required=False,
+    help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
+    project: Optional[str],
     job_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
+    truss_config_output_dir: Optional[str],
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -283,26 +385,52 @@ def deploy_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+    result = train_cli.create_model_version_from_inference_template(
         remote_provider,
-        train_cli.PrepareCheckpointArgs(
-            project_id=project_id, job_id=job_id, deploy_config_path=config
+        train_cli.DeployCheckpointArgs(
+            project_id=project_id,
+            job_id=job_id,
+            deploy_config_path=config,
+            dry_run=dry_run,
         ),
     )
 
-    params = {
-        "target_directory": prepare_checkpoint_result.truss_directory,
-        "remote": remote,
-        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
-        "publish": True,
-        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
-    }
-    ctx = _prepare_click_context(push, params)
     if dry_run:
-        console.print("--dry-run flag provided, not deploying", style="yellow")
-    else:
-        push.invoke(ctx)
-    train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
+        console.print("did not deploy because --dry-run flag provided", style="yellow")
+
+    _write_truss_config(result, truss_config_output_dir, dry_run)
+
+    if not dry_run:
+        train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
+
+
+def _write_truss_config(
+    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
+) -> None:
+    if not result.truss_config:
+        return
+    # format: 20251006_123456
+    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_name = (
+        f"{result.model_version.name}_{result.model_version.id}"
+        if result.model_version
+        else f"dry_run_{datestamp}"
+    )
+    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
+    output_dir = Path(output_dir_str)
+    output_path = output_dir / "config.yaml"
+    os.makedirs(output_dir, exist_ok=True)
+    console.print(f"Writing truss config to {output_path}", style="yellow")
+    console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
+    if dry_run:
+        console.print(
+            f"🚀 Run `cd {output_dir} && truss push --publish` to deploy the truss",
+            style="green",
+        )
+    result.truss_config.write_to_yaml_file(output_path)
 
 
 @train.command(name="download")
@@ -381,6 +509,75 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
         sys.exit(1)
 
 
+@train.command(name="init")
+@click.option("--list-examples", is_flag=True, help="List all available examples.")
+@click.option("--target-directory", type=str, required=False)
+@click.option("--examples", type=str, required=False)
+@common.common_options()
+def init_training_job(
+    list_examples: Optional[bool],
+    target_directory: Optional[str],
+    examples: Optional[str],
+) -> None:
+    try:
+        if list_examples:
+            all_examples = train_cli._get_all_train_init_example_options()
+            console.print("Available training examples:", style="bold")
+            for example in all_examples:
+                console.print(f"- {example}")
+            console.print(
+                "To launch, run `truss train init --examples <example1,example2>`",
+                style="bold",
+            )
+            return
+
+        selected_options = examples.split(",") if examples else []
+
+        # No examples selected, initialize empty training project structure
+        if not selected_options:
+            if target_directory is None:
+                target_directory = "truss-train-init"
+            console.print(f"Initializing empty training project at {target_directory}")
+            os.makedirs(target_directory)
+            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_directory))
+            console.print(
+                f"✨ Empty training project initialized at {target_directory}",
+                style="bold green",
+            )
+            return
+
+        if target_directory is None:
+            target_directory = os.getcwd()
+        for example_to_download in selected_options:
+            download_info = train_cli._get_train_init_example_info(
+                example_name=example_to_download
+            )
+            local_dir = os.path.join(target_directory, example_to_download)
+
+            if not download_info:
+                all_examples = train_cli._get_all_train_init_example_options()
+                error_console.print(
+                    f"Example {example_to_download} not found in the ml-cookbook repository. Examples have to be one or more comma separated values from: {', '.join(all_examples)}"
+                )
+                continue
+            success = train_cli.download_git_directory(
+                git_api_url=download_info[0]["url"], local_dir=local_dir
+            )
+            if success:
+                console.print(
+                    f"✨ Training directory for {example_to_download} initialized at {local_dir}",
+                    style="bold green",
+                )
+            else:
+                error_console.print(
+                    f"Failed to initialize training artifacts to {local_dir}"
+                )
+
+    except Exception as e:
+        error_console.print(f"Failed to initialize training artifacts: {str(e)}")
+        sys.exit(1)
+
+
 @train.group(name="cache")
 def cache():
     """Cache-related subcommands for truss train"""
@@ -409,8 +606,17 @@ def cache():
     default=SORT_ORDER_ASC,
     help="Sort order: ascending or descending.",
 )
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice([OUTPUT_FORMAT_CLI_TABLE, OUTPUT_FORMAT_CSV, OUTPUT_FORMAT_JSON]),
+    default=OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
 @common.common_options()
-def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+def view_cache_summary(
+    project: str, remote: Optional[str], sort: str, order: str, output_format: str
+):
     """View cache summary for a training project"""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -419,4 +625,18 @@ def view_cache_summary(project: str, remote: Optional[str], sort: str, order: st
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)
+    train_cli.view_cache_summary_by_project(
+        remote_provider, project, sort, order, output_format
+    )
+
+
+def _maybe_resolve_project_id_from_id_or_name(
+    remote_provider: BasetenRemote, project_id: Optional[str], project: Optional[str]
+) -> Optional[str]:
+    """resolve the project_id or project. `project` can be name or id"""
+    if project and project_id:
+        console.print("Both `project-id` and `project` provided. Using `project`.")
+    project_str = project or project_id
+    if not project_str:
+        return None
+    return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]

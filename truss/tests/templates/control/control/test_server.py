@@ -1,30 +1,15 @@
 import os
 import socket
-import sys
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Dict, List
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
-from truss.truss_handle.patch.custom_types import PatchRequest
+from truss.tests.templates.control.control.conftest import setup_control_imports
 
-# Needed to simulate the set up on the model docker container
-sys.path.append(
-    str(
-        Path(__file__).parent.parent.parent.parent.parent
-        / "templates"
-        / "control"
-        / "control"
-    )
-)
-
-sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent / "templates"))
-sys.path.append(
-    str(Path(__file__).parent.parent.parent.parent.parent / "templates" / "shared")
-)
+setup_control_imports()
 
 from truss.templates.control.control.application import create_app  # noqa
 from truss.templates.control.control.helpers.custom_types import (  # noqa
@@ -34,6 +19,7 @@ from truss.templates.control.control.helpers.custom_types import (  # noqa
     PatchType,
     PythonRequirementPatch,
 )
+from truss.truss_handle.patch.custom_types import PatchRequest
 
 
 @pytest.fixture
@@ -67,7 +53,7 @@ def app(truss_container_fs, truss_original_hash, ports):
                 "control_server_port": ports["control_server_port"],
                 "inference_server_port": ports["inference_server_port"],
                 "oversee_inference_server": False,
-                "pip_path": "pip",
+                "uv_path": "uv",
             }
         )
         inference_server_controller = control_app.state.inference_server_controller
@@ -273,14 +259,12 @@ async def test_retries(client, app):
         ]
     )
 
-    with (
-        patch("endpoints.INFERENCE_SERVER_START_WAIT_SECS", new=4),
-        pytest.raises(httpx.RemoteProtocolError),
-    ):
-        await client.get("/v1/models/model")
+    with patch("endpoints.INFERENCE_SERVER_START_WAIT_SECS", new=4):
+        resp = await client.get("/v1/models/model")
 
-    # We should have made 5 attempts
+    # We should have made 5 attempts, and then surfaced a 500
     assert app.state.proxy_client.send.call_count == 5
+    assert resp.status_code == 500
 
 
 async def _verify_apply_patch_success(client, patch: Patch):

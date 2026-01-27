@@ -1,17 +1,28 @@
 [package]
 name = "baseten_performance_client_core"
-version = "0.0.10-rc0"
+version = "0.1.1"
 edition = "2021"
+description = "High performance HTTP client for Baseten.co and other APIs"
+license = "MIT"
+repository = "https://github.com/basetenlabs/truss/tree/main/baseten-performance-client"
+homepage = "https://github.com/basetenlabs/truss/tree/main/baseten-performance-client"
+documentation = "https://github.com/basetenlabs/truss/tree/main/baseten-performance-client"
+keywords = ["http", "client", "async", "performance", "baseten"]
+categories = ["web-programming::http-client", "asynchronous"]
 
 [dependencies]
 tokio = { workspace = true }
-reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "json", "stream", "http2"] }
-openssl = { version = "0.10", features = ["vendored"], optional = true}
+reqwest = { version = "0.12.26", default-features = false, features = ["blocking", "json", "stream", "http2"] }
+openssl = { version = "0.10.75", features = ["vendored"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }
+uuid = { version = "1.19.0", features = ["v4"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+ctor = { workspace = true }
 
 [features]
 default = ["native-tls"]

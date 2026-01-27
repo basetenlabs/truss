@@ -8,6 +8,8 @@ from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tup
 import requests
 
 from truss.base.errors import ValidationError
+from truss.cli.utils.output import console
+from truss.util.error_utils import handle_client_error
 
 if TYPE_CHECKING:
     from rich import progress
@@ -80,6 +82,8 @@ class ChainDeploymentHandleAtomic(NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
+    original_source_artifact_s3_key: Optional[str] = None
+    allow_truss_download: Optional[bool] = True
 
 
 class ModelVersionHandle(NamedTuple):
@@ -89,19 +93,21 @@ class ModelVersionHandle(NamedTuple):
     instance_type_name: Optional[str] = None
 
 
-def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
+def get_chain_id_by_name(
+    api: BasetenApi, chain_name: str, team_id: Optional[str] = None
+) -> Optional[str]:
     """
     Check if a chain with the given name exists in the Baseten remote.
 
     Args:
         api: BasetenApi instance
         chain_name: Name of the chain to check for existence
+        team_id: Optional team_id to filter chains by team
 
     Returns:
         chain_id if present, otherwise None
     """
-    chains = api.get_chains()
-
+    chains = api.get_chains(team_id=team_id)
     chain_name_id_mapping = {chain["name"]: chain["id"] for chain in chains}
     return chain_name_id_mapping.get(chain_name)
 
@@ -127,6 +133,10 @@ def create_chain_atomic(
     is_draft: bool,
     truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
+    original_source_artifact_s3_key: Optional[str] = None,
+    allow_truss_download: bool = True,
+    deployment_name: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
@@ -135,7 +145,7 @@ def create_chain_atomic(
         )
         is_draft = False
 
-    chain_id = get_chain_id_by_name(api, chain_name)
+    chain_id = get_chain_id_by_name(api, chain_name, team_id=team_id)
 
     # TODO(Tyron): Refactor for better readability:
     # 1. Prepare all arguments for `deploy_chain_atomic`.
@@ -149,6 +159,10 @@ def create_chain_atomic(
             chain_name=chain_name,
             is_draft=True,
             truss_user_env=truss_user_env,
+            original_source_artifact_s3_key=original_source_artifact_s3_key,
+            allow_truss_download=allow_truss_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -162,6 +176,10 @@ def create_chain_atomic(
                 chain_id=chain_id,
                 environment=environment,
                 truss_user_env=truss_user_env,
+                original_source_artifact_s3_key=original_source_artifact_s3_key,
+                allow_truss_download=allow_truss_download,
+                deployment_name=deployment_name,
+                team_id=team_id,
             )
         except ApiError as e:
             if (
@@ -182,6 +200,10 @@ def create_chain_atomic(
             dependencies=dependencies,
             chain_name=chain_name,
             truss_user_env=truss_user_env,
+            original_source_artifact_s3_key=original_source_artifact_s3_key,
+            allow_truss_download=allow_truss_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -189,37 +211,35 @@ def create_chain_atomic(
         chain_id=res["chain_deployment"]["chain"]["id"],
         hostname=res["chain_deployment"]["chain"]["hostname"],
         is_draft=is_draft,
+        original_source_artifact_s3_key=original_source_artifact_s3_key,
+        allow_truss_download=allow_truss_download,
     )
 
 
-def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
+def exists_model(
+    api: BasetenApi, model_name: str, team_id: Optional[str] = None
+) -> Optional[str]:
     """
     Check if a model with the given name exists in the Baseten remote.
+
+    Uses the models() API with optional team_id filter, then filters
+    client-side by model name.
 
     Args:
         api: BasetenApi instance
         model_name: Name of the model to check for existence
+        team_id: Optional team ID to filter models by team (more efficient)
 
     Returns:
         model_id if present, otherwise None
     """
-    try:
-        model = api.get_model(model_name)
-    except ApiError as e:
-        if (
-            e.graphql_error_code
-            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
-        ):
-            return None
-
-        raise e
-
-    return model["model"]["id"]
-
-
-def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:
-    query_result = api.get_model(model_name.value)["model"]
-    return query_result, query_result["versions"]
+    # If team_id is provided, query only that team's models (more efficient)
+    # Otherwise, query all models the user has access to
+    models_response = api.models(team_id=team_id)
+    for model in models_response.get("models", []):
+        if model.get("name") == model_name:
+            return model["id"]
+    return None
 
 
 def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
@@ -254,8 +274,8 @@ def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
     return get_dev_version_from_versions(versions)
 
 
-def get_truss_watch_state(api: BasetenApi, model_name: str) -> TrussWatchState:
-    response = api.get_truss_watch_state(model_name)["truss_watch_state"]
+def get_truss_watch_state(api: BasetenApi, model_id: str) -> TrussWatchState:
+    response = api.get_truss_watch_state(model_id)["truss_watch_state"]
     django_patch_state = (
         None
         if response["django_patch_state"] is None
@@ -342,6 +362,33 @@ def upload_truss(
     return s3_key
 
 
+def upload_chain_artifact(
+    api: BasetenApi,
+    serialize_file: IO,
+    progress_bar: Optional[Type["progress.Progress"]],
+) -> str:
+    """
+    Upload a chain artifact to the Baseten remote.
+
+    Args:
+        api: BasetenApi instance
+        serialize_file: File-like object containing the serialized chain artifact
+
+    Returns:
+        The S3 key of the uploaded file
+    """
+    credentials = api.get_chain_s3_upload_credentials()
+    with handle_client_error("Uploading chain source"):
+        multipart_upload_boto3(
+            serialize_file.name,
+            credentials.s3_bucket,
+            credentials.s3_key,
+            credentials.aws_credentials.model_dump(),
+            progress_bar,
+        )
+    return credentials.s3_key
+
+
 def create_truss_service(
     api: BasetenApi,
     model_name: str,
@@ -357,6 +404,8 @@ def create_truss_service(
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
     preserve_env_instance_type: bool = True,
+    deploy_timeout_minutes: Optional[int] = None,
+    team_id: Optional[str] = None,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -372,6 +421,7 @@ def create_truss_service(
             to zero.
         deployment_name: Name to apply to the created deployment. Not applied to
             development model.
+        team_id: ID of the team to create the model in.
 
     Returns:
         A Model Version handle.
@@ -384,6 +434,8 @@ def create_truss_service(
             truss_user_env,
             allow_truss_download=allow_truss_download,
             origin=origin,
+            deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         return ModelVersionHandle(
@@ -398,9 +450,6 @@ def create_truss_service(
         )
 
     if model_id is None:
-        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
-
         model_version_json = api.create_model_from_truss(
             model_name,
             s3_key,
@@ -410,6 +459,9 @@ def create_truss_service(
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
+            environment=environment,
+            deploy_timeout_minutes=deploy_timeout_minutes,
+            team_id=team_id,
         )
 
         return ModelVersionHandle(
@@ -423,28 +475,18 @@ def create_truss_service(
             ),
         )
 
-    try:
-        model_version_json = api.create_model_version_from_truss(
-            model_id,
-            s3_key,
-            config,
-            semver_bump,
-            truss_user_env,
-            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
-            deployment_name=deployment_name,
-            environment=environment,
-            preserve_env_instance_type=preserve_env_instance_type,
-        )
-    except ApiError as e:
-        if (
-            e.graphql_error_code
-            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
-        ):
-            raise ValueError(
-                f"Environment `{environment}` does not exist. You can create "
-                "environments in the Baseten UI."
-            ) from e
-        raise e
+    model_version_json = api.create_model_version_from_truss(
+        model_id,
+        s3_key,
+        config,
+        semver_bump,
+        truss_user_env,
+        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+        deployment_name=deployment_name,
+        environment=environment,
+        preserve_env_instance_type=preserve_env_instance_type,
+        deploy_timeout_minutes=deploy_timeout_minutes,
+    )
 
     return ModelVersionHandle(
         version_id=model_version_json["id"],
@@ -458,7 +500,7 @@ def create_truss_service(
     )
 
 
-def validate_truss_config_against_backend(api: BasetenApi, config: str):
+def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
     """
     Validate a truss config as well as the truss version.
 
@@ -466,12 +508,16 @@ def validate_truss_config_against_backend(api: BasetenApi, config: str):
         api: BasetenApi instance
         config: Base64 encoded JSON string of the Truss config
 
-    Returns:
-        None if the config is valid, otherwise raises an error message
+    Raises:
+        ValidationError if config is invalid.
     """
     valid_config = api.validate_truss(config)
+    details = json.loads(valid_config.get("details") or "{}")
+
+    for warning in details.get("warnings", []):
+        console.print(f"[bold yellow]⚠ Warning:[/bold yellow] {warning}")
+
     if not valid_config.get("success"):
-        details = json.loads(valid_config.get("details"))
         errors = details.get("errors", [])
         if errors:
             error_messages = "\n".join(textwrap.indent(error, "  ") for error in errors)

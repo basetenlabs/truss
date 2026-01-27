@@ -544,7 +544,11 @@ async def websocket(self, websocket: fastapi.WebSocket) -> None:
         )"""
     return _Source(
         src=src,
-        imports={"import fastapi", "from truss_chains.remote_chainlet import utils"},
+        imports={
+            "import fastapi",
+            "from starlette.websockets import WebSocketState",
+            "from truss_chains.remote_chainlet import utils",
+        },
     )
 
 
@@ -714,7 +718,16 @@ def _gen_truss_config(
     config.resources.cpu = str(compute.cpu_count)
     config.resources.memory = str(compute.memory)
     config.resources.accelerator = compute.accelerator
+    config.resources.instance_type = compute.instance_type
     config.runtime.predict_concurrency = compute.predict_concurrency
+
+    # Warn if `instance_type` is specified.
+    if compute.instance_type:
+        logging.warning(
+            f"Chainlet '{chainlet_descriptor.display_name}' is using instance_type='{compute.instance_type}'. "
+            "This will override cpu count, memory, and gpu settings."
+        )
+
     if chainlet_descriptor.endpoint.is_websocket:
         if transport := remote_config.options.transport:
             assert isinstance(transport, truss_config.WebsocketOptions), transport
@@ -760,17 +773,19 @@ def _gen_truss_config(
             config.external_package_dirs.append(ext_dir.abs_path)
     config.use_local_src = use_local_src
 
-    if public_types._BASETEN_API_SECRET_NAME not in config.secrets:
-        config.secrets[public_types._BASETEN_API_SECRET_NAME] = (
+    if public_types.CHAIN_API_KEY_SECRET_NAME not in config.secrets:
+        config.secrets[public_types.CHAIN_API_KEY_SECRET_NAME] = (
             public_types.SECRET_DUMMY
         )
     else:
         logging.info(
-            f"Chains automatically add {public_types._BASETEN_API_SECRET_NAME} "
+            f"Chains automatically add {public_types.CHAIN_API_KEY_SECRET_NAME} "
             "to secrets - no need to manually add it."
         )
     config.model_cache = truss_config.ModelCache(assets.cached)
     config.external_data = truss_config.ExternalData(assets.external_data)
+    if assets.weights:
+        config.weights = truss_config.Weights(assets.weights)
     config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
         private_types.TrussMetadata(
             chainlet_to_service=chainlet_to_service

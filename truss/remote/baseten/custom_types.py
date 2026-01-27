@@ -120,6 +120,7 @@ class TrussUserEnv(pydantic.BaseModel):
 class BlobType(Enum):
     MODEL = "model"
     TRAIN = "train"
+    CHAIN = "chain"
 
 
 class FileSummary(pydantic.BaseModel):
@@ -155,3 +156,18 @@ class GetCacheSummaryResponseV1(pydantic.BaseModel):
     file_summaries: list[FileSummary] = pydantic.Field(
         description="List of files in the cache"
     )
+
+
+class APIKeyCategory(Enum):
+    PERSONAL = "PERSONAL"
+    WORKSPACE_MANAGE_ALL = "WORKSPACE_MANAGE_ALL"
+    WORKSPACE_EXPORT_METRICS = "WORKSPACE_EXPORT_METRICS"
+    WORKSPACE_INVOKE = "WORKSPACE_INVOKE"
+
+
+class TeamType(pydantic.BaseModel):
+    """Represents a team from the Baseten API."""
+
+    id: str = pydantic.Field(description="Team identifier")
+    name: str = pydantic.Field(description="Team display name")
+    default: bool = pydantic.Field(description="Whether this is the default team")

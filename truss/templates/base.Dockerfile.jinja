@@ -1,4 +1,5 @@
 ARG PYVERSION={{ config.python_version }}
+ARG HOME
 FROM {{ base_image_name_and_tag }} AS truss_server
 
 {%- set python_exec_path = config.base_image.python_executable_path or '$(which python3)' %}
@@ -8,45 +9,57 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
-{%- set app_username = "app" %}  {# needed later for USER directive#}
-{% block user_setup %}
-{%- set app_user_uid = 60000 %}
-{%- set control_server_dir = "/control" %}
 {%- set default_owner = "root:root" %}
-{# The non-root user's home directory. #}
+{%- set ROOT_USER_ID = 0 %}
+{%- set NONROOT_DEFAULT_USER_ID = 60000 %}
+{#
+  run_as_user_id encoding:
+  - ROOT_USER_ID = root (non-root disabled)
+  - NONROOT_DEFAULT_USER_ID = platform default "app" user (non-root enabled, create user)
+  - any other = custom UID (user-specified, don't create user)
+#}
+{% block user_setup %}
+{#
+  NB(nikhil): Assume `root` for various setup that requires permissions; we conditionally switch to
+  non-root user at the end, if `non_root` behavior is enabled.
+#}
+USER root
+{%- set app_username = "app" %}
+{%- set control_server_dir = "/control" %}
+{%- if run_as_user_id == NONROOT_DEFAULT_USER_ID %}
+{# Platform-managed non-root user's home directory. #}
 {# uv will use $HOME to install packages. #}
-ENV HOME=/home/{{ app_username }}
-{# Directory containing inference server code. #}
+ENV HOME=${HOME:-/home/{{ app_username }}}
+{%- else %}
+{# For root or custom run_as_user, use /root during build (we switch user at the end). #}
+{# For custom UIDs, we don't know the username and its corresponding $HOME, so /root. We still switch user at the end. #}
+ENV HOME=${HOME:-/root}
+{%- endif %}
+{# Directory containing inference server code - always /app regardless of username #}
 ENV APP_HOME=/{{ app_username }}
 RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
-{# Create a non-root user to run model containers. #}
-RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
+{%- if run_as_user_id == ROOT_USER_ID or run_as_user_id == NONROOT_DEFAULT_USER_ID %}
+{# Create platform-managed non-root user to run model containers. #}
+{# For custom UIDs, assume the user already exists and don't create. #}
+RUN useradd -u {{ NONROOT_DEFAULT_USER_ID }} -ms /bin/bash {{ app_username }}
+{%- endif %}
 {% endblock %} {#- endblock user_setup #}
 
 {#- at the very beginning, set non-interactive mode for apt #}
 ENV DEBIAN_FRONTEND=noninteractive
 
-{# If non-root user is enabled and model container admin commands are enabled, install sudo #}
-{# to allow the non-root user to install packages. #}
-{%- if non_root_user and enable_model_container_admin_commands %}
-RUN apt update && apt install -y sudo
-{%- set allowed_admin_commands = ["/usr/bin/apt install *", "/usr/bin/apt update"] %}
-RUN echo "Defaults:{{ app_username }} passwd_tries=0\n{{ app_username }} ALL=(root) NOPASSWD: {{ allowed_admin_commands | join(", ") }}" > /etc/sudoers.d/app-packages
-RUN chmod 0440 /etc/sudoers.d/app-packages
-{#- optional but good practice: check if the sudoers file is valid #}
-RUN visudo -c
-{%- endif %} {#- endif non_root_user and enable_model_container_admin_commands #}
 
-{%- set UV_VERSION = "0.7.19" %}
+{%- set UV_VERSION = "0.8.22" %}
 {#
 NB(nikhil): We use a semi-complex uv installation command across the board:
 - A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
 - We use `unsafe-best-match` since `uv` is stricter about having multiple registries, and we often need to search multiple.
 - Use the python executable currently on the path, will respect activated virtual envs.
+- `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
 #}
 {%- set sys_pip_install_command =
     "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
-    "uv pip install " +
+    "uv pip install --system --break-system-packages " +
     "--index-strategy unsafe-best-match " +
     "--python " + python_exec_path
 %}
@@ -62,11 +75,15 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-{% block install_uv %}
-{# Install `uv` and `curl` if not already present in the image. #}
+{% block install_tools %}
+{# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}
+RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
+
+{# Install uv if not already present in the image. We validate the expected location for `uv` at the very end
+   due to limitations with `pipefail` in Docker context. #}
 RUN if ! command -v uv >/dev/null 2>&1; then \
-    command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
-    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh; \
+    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh && \
+    test -x ${HOME}/.local/bin/uv; \
 fi
 {# Add the user's local bin to the path, used by uv. #}
 ENV PATH=${PATH}:${HOME}/.local/bin
@@ -117,9 +134,11 @@ WORKDIR $APP_HOME
 {% endblock %}
 
 
+{% set packages_dir = "/packages" %}
+RUN mkdir -p {{ packages_dir }}
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} /packages
+COPY --chown={{ default_owner }} ./{{ config.bundled_packages_dir }} {{ packages_dir }}
 {%- endif %}
 {% endblock %}
 

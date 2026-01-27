@@ -1,6 +1,6 @@
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
 import rich
 import rich.live
@@ -14,10 +14,13 @@ from rich import progress
 
 from truss.cli import remote_cli
 from truss.cli.cli import truss_cli
+from truss.cli.resolvers.chain_team_resolver import resolve_chain_team_name
 from truss.cli.utils import common, output
 from truss.cli.utils.output import console
 from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils.status import get_displayable_status
+from truss.remote.remote_factory import RemoteFactory
 from truss.util import user_config
 from truss.util.log_utils import LogInterceptor
 
@@ -43,18 +46,31 @@ def _load_example_chainlet_code() -> str:
     return source
 
 
-def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
+def _make_chains_curl_snippet(
+    run_remote_url: str, environment: Optional[str], is_websocket: bool = False
+) -> str:
     if environment:
         idx = run_remote_url.find("deployment")
         if idx != -1:
             run_remote_url = (
                 run_remote_url[:idx] + f"environments/{environment}/run_remote"
             )
-    return (
-        f"curl -X POST '{run_remote_url}' \\\n"
-        '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
-        "    -d '<JSON_INPUT>'"
-    )
+
+    if is_websocket:
+        # Replace 'run_remote' with 'websocket' for websocket endpoints
+        websocket_url = run_remote_url.replace("run_remote", "websocket").replace(
+            "https", "wss"
+        )
+        return (
+            f'websocat -H="Authorization: Api-Key $BASETEN_API_KEY" \\\n'
+            f"    {websocket_url}"
+        )
+    else:
+        return (
+            f"curl -X POST '{run_remote_url}' \\\n"
+            '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
+            "    -d '<JSON_INPUT>'"
+        )
 
 
 def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
@@ -198,6 +214,30 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     default=False,
     help=common.INCLUDE_GIT_INFO_DOC,
 )
+@click.option(
+    "--disable-chain-download",
+    "disable_chain_download",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Disable downloading of pushed chain source code from the UI.",
+)
+@click.option(
+    "--deployment-name",
+    type=str,
+    required=False,
+    help=(
+        "Name of the deployment created by the publish. Can only be used "
+        "in combination with '--publish' or '--promote'."
+    ),
+)
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the chain deployment",
+)
 @click.pass_context
 @common.common_options()
 def push_chain(
@@ -214,6 +254,9 @@ def push_chain(
     environment: Optional[str],
     experimental_watch_chainlet_names: Optional[str],
     include_git_info: bool = False,
+    disable_chain_download: bool = False,
+    deployment_name: Optional[str] = None,
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Deploys a chain remotely.
@@ -258,10 +301,29 @@ def push_chain(
     if not include_git_info:
         include_git_info = user_config.settings.include_git_info
 
+    # Resolve team if not in dryrun mode
+    team_id = None
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or (
+        RemoteFactory.get_remote_team(remote) if remote else None
+    )
+    resolved_team_name = effective_team_name
     with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
             name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
         )
+
+        remote_provider = None
+        if not dryrun and remote:
+            remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+            existing_teams = remote_provider.api.get_teams()
+            resolved_team_name, team_id = resolve_chain_team_name(
+                remote_provider,
+                effective_team_name,
+                existing_chain_name=chain_name,
+                existing_teams=existing_teams,
+            )
+
         options = chains_def.PushOptionsBaseten.create(
             chain_name=chain_name,
             promote=promote,
@@ -271,6 +333,10 @@ def push_chain(
             environment=environment,
             include_git_info=include_git_info,
             working_dir=source.parent if source.is_file() else source.resolve(),
+            disable_chain_download=disable_chain_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
+            remote_provider=remote_provider,
         )
         service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
@@ -281,7 +347,7 @@ def push_chain(
 
     assert isinstance(service, deployment_client.BasetenChainService)
     curl_snippet = _make_chains_curl_snippet(
-        service.run_remote_url, options.environment
+        service.run_remote_url, options.environment, service.is_websocket
     )
 
     table, statuses = _create_chains_table(service)
@@ -341,6 +407,7 @@ def push_chain(
                     output.error_console,
                     show_stack_trace=not common.is_human_log_level(ctx),
                     included_chainlets=included_chainlets,
+                    provided_team_name=resolved_team_name,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -359,7 +426,7 @@ def push_chain(
     "--name",
     type=str,
     required=False,
-    help="Name of the chain to be deployed, if not given, the entrypoint name is used.",
+    help="Name of the chain to be watched. If not given, the entrypoint name is used.",
 )
 @click.option(
     "--remote",
@@ -378,6 +445,13 @@ def push_chain(
         "and refer to docs."
     ),
 )
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the chain to watch",
+)
 @click.pass_context
 @common.common_options()
 def watch_chains(
@@ -387,6 +461,7 @@ def watch_chains(
     name: Optional[str],
     remote: Optional[str],
     experimental_chainlet_names: Optional[str],
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Watches the chains source code and applies live patches to a development deployment.
@@ -418,6 +493,7 @@ def watch_chains(
         output.error_console,
         show_stack_trace=not common.is_human_log_level(ctx),
         included_chainlets=included_chainlets,
+        provided_team_name=provided_team_name,
     )
 
 
