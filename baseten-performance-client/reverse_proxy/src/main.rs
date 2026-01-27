@@ -97,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(ref key) = config.upstream_api_key {
         tracing::info!(
             "Upstream API Key: {}***",
-            &key[..std::cmp::min(8, key.len())]
+            &key[..std::cmp::min(3, key.len())]
         );
     }
 
