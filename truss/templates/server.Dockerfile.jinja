@@ -134,6 +134,9 @@ ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_conf
 RUN rm -f /etc/nginx/sites-enabled/default
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
 {{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run"]) }}
+{#- Create in-memory temp directories for nginx to avoid disk writes #}
+RUN mkdir -p /dev/shm/nginx_client_temp /dev/shm/nginx_proxy_temp /dev/shm/nginx_fastcgi_temp /dev/shm/nginx_uwsgi_temp /dev/shm/nginx_scgi_temp
+{{ chown_and_switch_to_regular_user_if_enabled(["/dev/shm/nginx_client_temp", "/dev/shm/nginx_proxy_temp", "/dev/shm/nginx_fastcgi_temp", "/dev/shm/nginx_uwsgi_temp", "/dev/shm/nginx_scgi_temp"]) }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
