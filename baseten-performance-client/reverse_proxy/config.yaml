@@ -1,4 +1,5 @@
-# Baseten config
+# Baseten for `truss push --publish`
+# For deployment on Baseten.
 base_image:
   image: baseten/performance-proxy:0.0.1
 docker_server:
@@ -8,14 +9,16 @@ docker_server:
   predict_endpoint: /v1/embeddings
   server_port: 8081
 build_commands:
-# Download tokenizers for multiple models
-- sh -c "mkdir -p /app/tokenizers/bge-small-en-v1.5 && cd /app/tokenizers/bge-small-en-v1.5 && wget https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json -O tokenizer.json"
-- sh -c "mkdir -p /app/tokenizers/voyage-4-nano && cd /app/tokenizers/voyage-4-nano && wget https://huggingface.co/voyageai/voyage-4-nano/resolve/main/tokenizer.json -O tokenizer.json"
+  # Download tokenizers for multiple models
+  - sh -c "mkdir -p /app/tokenizers/bge-small-en-v1.5 && cd /app/tokenizers/bge-small-en-v1.5 && wget https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json -O tokenizer.json"
+  - sh -c "mkdir -p /app/tokenizers/voyage-4-nano && cd /app/tokenizers/voyage-4-nano && wget https://huggingface.co/voyageai/voyage-4-nano/resolve/main/tokenizer.json -O tokenizer.json"
 resources:
   use_gpu: false
 model_name: baseten-performance-proxy
 environment_variables:
+  # headers get stipped inside baseten. Therfore, you need to configure a UPSTREAM_URL and default auth header.
   UPSTREAM_URL: https://model-abcdefg.api.baseten.co/environments/production/sync
   PERFORMANCE_CLIENT_LOG_LEVEL: info
 secrets:
+
   upstream_api_key: null # name saved in baseten-ui
