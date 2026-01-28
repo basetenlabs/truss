@@ -14,6 +14,7 @@ from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
+    generate_docker_server_nginx_config,
     get_files_to_model_cache_v1,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
@@ -784,3 +785,39 @@ python main.py --gpus $PARALLEL
         assert cfg.has_section("supervisord")
         assert cfg.has_section("program:nginx")
         assert cfg.has_section("eventlistener:quit_on_failure")
+
+
+def test_nginx_config_disables_disk_writes(tmp_path):
+    """Test that nginx configuration disables all disk writes."""
+
+    class MockDockerServer:
+        predict_endpoint = "/predict"
+        readiness_endpoint = "/readiness"
+        liveness_endpoint = "/health"
+        server_port = 8090
+
+    class MockTransport:
+        kind = "http"
+
+    class MockRuntime:
+        transport = MockTransport()
+
+    class MockConfig:
+        docker_server = MockDockerServer()
+        runtime = MockRuntime()
+
+    generate_docker_server_nginx_config(tmp_path, MockConfig())
+
+    with open(tmp_path / "proxy.conf", "r") as f:
+        nginx_config = f.read()
+
+    # Verify logging is disabled
+    assert "access_log off;" in nginx_config
+    assert "error_log /dev/null;" in nginx_config
+
+    # Verify temp paths use /dev/shm (in-memory filesystem)
+    assert "client_body_temp_path /dev/shm/nginx_client_temp;" in nginx_config
+    assert "proxy_temp_path /dev/shm/nginx_proxy_temp;" in nginx_config
+    assert "fastcgi_temp_path /dev/shm/nginx_fastcgi_temp;" in nginx_config
+    assert "uwsgi_temp_path /dev/shm/nginx_uwsgi_temp;" in nginx_config
+    assert "scgi_temp_path /dev/shm/nginx_scgi_temp;" in nginx_config

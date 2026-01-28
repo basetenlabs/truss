@@ -46,5 +46,5 @@ pub(crate) const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.
 pub(crate) const CUSTOMER_HEADER_NAME: &str = "x-baseten-customer-request-id";
 
 // Logging constants
-pub(crate) const DEFAULT_LOG_LEVEL: &str = "warn";
-pub(crate) const LOG_LEVEL_ENV_VAR: &str = "PERFORMANCE_CLIENT_LOG_LEVEL";
+pub const DEFAULT_LOG_LEVEL: &str = "warn";
+pub const LOG_LEVEL_ENV_VAR: &str = "PERFORMANCE_CLIENT_LOG_LEVEL";
