@@ -1,12 +1,14 @@
 import requests
 
 from truss.base.constants import (
+    EMPTY_HF_REPO,
+    HF_MAIN_BRANCH,
     HF_MODELS_API_URL,
     OPENAI_COMPATIBLE_TAG,
     OPENAI_NON_COMPATIBLE_TAG,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
-from truss.base.trt_llm_config import TrussTRTLLMModel
+from truss.base.trt_llm_config import CheckpointSource, TrussTRTLLMModel
 from truss.truss_handle.truss_handle import TrussHandle
 
 
@@ -96,6 +98,32 @@ model_metadata:
     return ("", False)
 
 
+def empty_checkpoint_repo_trt_llm_builder(tr: TrussHandle) -> str:
+    """
+    If cache_internal is used to deploy large models with inference stack v2,
+    then we want our checkpoint repository to point to an empty HF repo because the download workflow still runs.
+    """
+    if uses_trt_llm_builder(tr):
+        assert tr.spec.config.trt_llm is not None
+        if (
+            uses_cache_internal(tr)
+            and tr.spec.config.trt_llm.root.inference_stack == "v2"
+        ):
+            trt_llm_config = tr.spec.config.trt_llm.root
+            if (
+                trt_llm_config.build is None
+                or trt_llm_config.build.checkpoint_repository is None
+            ):
+                return ""
+            else:
+                checkpoint_repository = trt_llm_config.build.checkpoint_repository
+                checkpoint_repository.source = CheckpointSource.HF
+                checkpoint_repository.repo = EMPTY_HF_REPO
+                checkpoint_repository.revision = HF_MAIN_BRANCH
+                return f"Set checkpoint repository to download empty HF repo ({EMPTY_HF_REPO}) because cache_internal was specified"
+    return ""
+
+
 def memory_updated_for_trt_llm_builder(tr: TrussHandle) -> bool:
     if uses_trt_llm_builder(tr):
         if tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_GI * 1024**3:
@@ -116,3 +144,11 @@ def _is_model_public(model_id: str) -> bool:
 
 def uses_trt_llm_builder(tr: TrussHandle) -> bool:
     return tr.spec.config.trt_llm is not None
+
+
+def uses_cache_internal(tr: TrussHandle) -> bool:
+    return (
+        tr.spec.config.cache_internal is not None
+        and tr.spec.config.cache_internal.models is not None
+        and len(tr.spec.config.cache_internal.models) > 0
+    )
