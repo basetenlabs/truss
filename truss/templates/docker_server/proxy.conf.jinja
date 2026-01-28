@@ -1,3 +1,14 @@
+{# NB(dhruv/nikhil): We intentionally turn logs off since they've caused issues at volume with certain nodes. #}
+access_log off;
+error_log /dev/null;
+
+{# NB(dhruv/nikhil): /dev/shm is memory backed at runtime in our deployed environments, less dependencies on overlayfs #}
+client_body_temp_path /dev/shm/nginx_client_temp;
+proxy_temp_path /dev/shm/nginx_proxy_temp;
+fastcgi_temp_path /dev/shm/nginx_fastcgi_temp;
+uwsgi_temp_path /dev/shm/nginx_uwsgi_temp;
+scgi_temp_path /dev/shm/nginx_scgi_temp;
+
 map $http_upgrade $upgrade_header {
     default        $http_upgrade;
     ''             '';

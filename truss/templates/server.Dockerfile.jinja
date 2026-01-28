@@ -132,8 +132,10 @@ ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
 {#- default configuration uses port 80, which requires root privileges, so we remove it #}
 RUN rm -f /etc/nginx/sites-enabled/default
-{#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
-{{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run"]) }}
+{# NB(nikhil): Ensure /dev/shm exists, but we expect this to get overwritten at runtime with volume mounts #}
+RUN mkdir -p /dev/shm
+{#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}
+{{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
