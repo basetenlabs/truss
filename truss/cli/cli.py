@@ -73,17 +73,20 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-def _get_truss_from_directory(target_directory: Optional[str] = None):
+def _get_truss_from_directory(
+    target_directory: Optional[str] = None, config: Optional[str] = None
+):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
+    config_path = Path(config) if config else None
     if not os.path.isfile(target_directory):
-        return load(target_directory)
+        return load(target_directory, config_path=config_path)
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains.deployment import code_gen
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
-    return load(truss_dir)
+    return load(truss_dir, config_path=config_path)
 
 
 ### Top-level & utility commands. ######################################################
@@ -409,6 +412,12 @@ def run_python(script, target_directory):
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
+    "--config",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to a custom config file (default: config.yaml in truss directory)",
+)
+@click.option(
     "--remote",
     type=str,
     required=False,
@@ -532,6 +541,7 @@ def run_python(script, target_directory):
 @common.common_options()
 def push(
     target_directory: str,
+    config: Optional[str],
     remote: str,
     model_name: str,
     publish: bool = False,
@@ -555,7 +565,7 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _get_truss_from_directory(target_directory=target_directory, config=config)
 
     if tr.spec.config.resources.instance_type:
         console.print(
@@ -778,6 +788,12 @@ def model_logs(
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
+    "--config",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to a custom config file (default: config.yaml in truss directory)",
+)
+@click.option(
     "--remote",
     type=str,
     required=False,
@@ -792,7 +808,10 @@ def model_logs(
 )
 @common.common_options()
 def watch(
-    target_directory: str, remote: str, provided_team_name: Optional[str] = None
+    target_directory: str,
+    config: Optional[str],
+    remote: str,
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Seamless remote development with truss
@@ -805,7 +824,7 @@ def watch(
 
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _get_truss_from_directory(target_directory=target_directory, config=config)
     model_name = tr.spec.config.model_name
     if not model_name:
         console.print(
