@@ -179,6 +179,9 @@ class BasetenRemote(TrussRemote):
 
         config = truss_handle._spec._config
 
+        # Pin HuggingFace revisions in weights to commit SHAs
+        self._pin_hf_revisions_in_weights(truss_handle)
+
         config.validate_forbid_extra()
         encoded_config_str = base64_encoded_json_str(config.to_dict())
         validate_truss_config_against_backend(self._api, encoded_config_str)
@@ -198,6 +201,96 @@ class BasetenRemote(TrussRemote):
             allow_truss_download=not disable_truss_download,
             team_id=team_id,
         )
+
+    def _pin_hf_revisions_in_weights(self, truss_handle: TrussHandle) -> None:
+        """Pin HuggingFace revisions in weights to commit SHAs (best effort).
+
+        This resolves unpinned revisions (e.g., "main", "dev", or missing revision)
+        to commit SHAs and writes the updated config back to config.yaml.
+
+        This is a best-effort operation - if resolution fails for any reason,
+        the push will still proceed with the unpinned revision. This ensures
+        the push never fails due to HF API issues or network problems.
+        """
+        try:
+            from truss.util.hf_revision_resolver import (
+                build_hf_source,
+                is_commit_sha,
+                parse_hf_source,
+                resolve_hf_revision,
+            )
+
+            config = truss_handle._spec._config
+            weights = config.weights
+
+            if not weights or not weights.sources:
+                return
+
+            modified = False
+            changes = []
+
+            for source in weights.sources:
+                if not source.is_huggingface:
+                    continue
+
+                try:
+                    repo_id, revision = parse_hf_source(source.source)
+                except ValueError:
+                    # Not a valid HF source, skip
+                    continue
+
+                # Skip if already a commit SHA
+                if is_commit_sha(revision):
+                    continue
+
+                # If no revision specified, assume "main"
+                revision_to_resolve = revision if revision else "main"
+
+                # Resolve to commit SHA (best effort)
+                try:
+                    resolved_sha = resolve_hf_revision(
+                        repo_id, revision_to_resolve, token=None
+                    )
+
+                    if revision != resolved_sha:
+                        new_source = build_hf_source(repo_id, resolved_sha)
+
+                        source.source = new_source
+                        modified = True
+                        changes.append((repo_id, revision_to_resolve, resolved_sha))
+
+                        logging.info(
+                            f"Pinning HF revision: {repo_id}@{revision_to_resolve} "
+                            f"-> {resolved_sha[:8]}..."
+                        )
+                except Exception as e:
+                    # Best effort - don't fail the push if we can't resolve
+                    logging.info(
+                        f"Could not resolve {repo_id}@{revision_to_resolve} to SHA: {e}. "
+                        "Push will proceed with unpinned revision."
+                    )
+                    continue
+
+            if modified:
+                # Write updated config back to file
+                config_path = truss_handle._truss_dir / "config.yaml"
+                config.write_to_yaml_file(config_path, verbose=True)
+
+                logging.warning(
+                    "\n⚠️  Your config.yaml has been modified to pin HuggingFace revisions to commit SHAs."
+                )
+                logging.warning(
+                    "   This ensures reproducible deployments. Modified sources:\n"
+                )
+                for repo_id, old_rev, new_sha in changes:
+                    logging.warning(f"   {repo_id}@{old_rev} -> {new_sha[:8]}...\n")
+
+        except Exception as e:
+            # Catch-all: never fail the push due to revision pinning
+            logging.info(
+                f"HF revision pinning encountered an error: {e}. "
+                "Push will proceed without pinning revisions."
+            )
 
     def push(  # type: ignore
         self,
