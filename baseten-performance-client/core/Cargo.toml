@@ -25,6 +25,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 ctor = { workspace = true }
 
 [features]
-default = ["native-tls"]
+default = ["rustls"]
 native-tls = ["reqwest/default-tls", "reqwest/native-tls-alpn", "dep:openssl"]
 rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]

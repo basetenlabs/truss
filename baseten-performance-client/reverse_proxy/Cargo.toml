@@ -19,7 +19,7 @@ name = "baseten-performance-proxy"
 path = "src/main.rs"
 
 [dependencies]
-baseten_performance_client_core = { path = "../core" }
+baseten_performance_client_core = { path = "../core", features = ["rustls"] }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 axum = { version = "0.7", features = ["http2", "tokio"] }
@@ -41,4 +41,4 @@ serial_test = "3.0"
 
 [features]
 default = []
-rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
+rustls = ["baseten_performance_client_core/rustls", "reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
