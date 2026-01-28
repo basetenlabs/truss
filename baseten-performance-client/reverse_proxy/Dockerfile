@@ -77,11 +77,11 @@ RUN case "$TARGETARCH" in \
     esac
 
 RUN mkdir -p /usr/local/bin
-COPY --from=builder /app/target/*/release/baseten-reverse-proxy /usr/local/bin/baseten-reverse-proxy
-RUN chmod +x /usr/local/bin/baseten-reverse-proxy
+COPY --from=builder /app/target/*/release/baseten-performance-proxy /usr/local/bin/baseten-performance-proxy
+RUN chmod +x /usr/local/bin/baseten-performance-proxy
 
 # Change ownership to non-root user
-RUN chown -R proxyuser:proxyuser /app /usr/local/bin/baseten-reverse-proxy
+RUN chown -R proxyuser:proxyuser /app /usr/local/bin/baseten-performance-proxy
 
 # Switch to non-root user
 USER proxyuser
@@ -99,7 +99,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health_internal || exit 1
 
 # Default command (target URL is optional, can be provided per request)
-CMD ["baseten-reverse-proxy", "--port", "80"]
+CMD ["baseten-performance-proxy", "--port", "80"]
 
 # Volume mounts for API key files (optional)
 # VOLUME ["/etc/baseten", "/app/secrets"]

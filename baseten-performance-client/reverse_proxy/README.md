@@ -1,6 +1,6 @@
 # Baseten Performance Reverse Proxy
 
-A high-performance reverse proxy for Baseten APIs that leverages the `baseten-performance-client-core` library for optimal request processing.
+A high-performance performance proxy for Baseten APIs that leverages the `baseten-performance-client-core` library for optimal request processing.
 
 ## Features
 
@@ -28,7 +28,7 @@ A high-performance reverse proxy for Baseten APIs that leverages the `baseten-pe
 
 ### API Key Resolution
 
-The reverse proxy uses API keys in the following priority order:
+The performance proxy uses API keys in the following priority order:
 1. **Request Header**: `Authorization: Bearer <api_key>` (highest priority)
 2. **Upstream API Key**: `--upstream-api-key` CLI argument (fallback)
 
@@ -145,7 +145,7 @@ curl -X POST "http://localhost:8080/v1/embeddings" \
 
 ```bash
 # Start proxy without default target URL
-./target/release/baseten-reverse-proxy --port 8080
+./target/release/baseten-performance-proxy --port 8080
 
 # Each request must provide target URL
 curl -X POST "http://localhost:8080/v1/embeddings" \
@@ -164,26 +164,26 @@ curl -X POST "http://localhost:8080/v1/embeddings" \
 ### From Source
 
 ```bash
-# Build the reverse proxy
-cargo build --release --bin baseten-reverse-proxy
+# Build the performance proxy
+cargo build --release --bin baseten-performance-proxy
 
 # Run with default target URL and upstream API key
-./target/release/baseten-reverse-proxy \
+./target/release/baseten-performance-proxy \
   --target-url https://api.baseten.co \
   --upstream-api-key your-upstream-api-key
 
 # Run with upstream API key from file (starts with /)
-./target/release/baseten-reverse-proxy \
+./target/release/baseten-performance-proxy \
   --target-url https://api.baseten.co \
   --upstream-api-key /path/to/api-key.txt
 
 # Run without default target URL (must be provided per request)
-./target/release/baseten-reverse-proxy \
+./target/release/baseten-performance-proxy \
   --port 8080 \
   --upstream-api-key your-upstream-api-key
 
 # Run with custom settings
-./target/release/baseten-reverse-proxy \
+./target/release/baseten-performance-proxy \
   --port 8080 \
   --target-url https://api.baseten.co \
   --upstream-api-key your-upstream-api-key \
@@ -201,7 +201,7 @@ The `--upstream-api-key` argument supports reading API keys from files for bette
 echo "your-secret-api-key" > /path/to/api-key.txt
 
 # Use file path (starts with /)
-./target/release/baseten-reverse-proxy \
+./target/release/baseten-performance-proxy \
   --upstream-api-key /path/to/api-key.txt \
   --target-url https://api.baseten.co
 ```
@@ -216,15 +216,15 @@ echo "your-secret-api-key" > /path/to/api-key.txt
 
 ```bash
 # Build the Docker image
-docker build -t baseten-reverse-proxy -f reverse_proxy/Dockerfile .
+docker build -t baseten/performance-proxy -f reverse_proxy/Dockerfile .
 
 # Run with default settings (no default target URL)
-docker run -p 8080:8080 baseten-reverse-proxy
+docker run -p 8080:8080 baseten/performance-proxy
 
 # Run with upstream API key from file
 docker run -p 8080:8080 \
   -v $(pwd)/api-key.txt:/etc/baseten/api-key.txt:ro \
-  baseten-reverse-proxy \
+  baseten/performance-proxy \
   --upstream-api-key /etc/baseten/api-key.txt \
   --target-url https://api.baseten.co
 
@@ -233,11 +233,27 @@ docker run -p 8080:8080 \
   -e PORT=8080 \
   -e LOG_LEVEL=debug \
   -e HTTP_VERSION=2 \
-  baseten-reverse-proxy
+  baseten/performance-proxy
 
 # Run with Docker Compose
-docker-compose up baseten-reverse-proxy
+docker-compose up baseten-performance-proxy
 ```
+
+### Pushing to Docker Registry
+
+```bash
+# Tag the image for the default registry location
+docker tag baseten/performance-proxy baseten/performance-proxy:latest
+
+# Push to the default registry location
+docker push baseten/performance-proxy:latest
+
+# Push with a specific version tag
+docker tag baseten/performance-proxy baseten/performance-proxy:v1.0.0
+docker push baseten/performance-proxy:v1.0.0
+```
+
+**Note:** The default Docker registry location for this proxy is `baseten/performance-proxy`. When pushing to a registry, always use this naming convention to ensure consistency.
 
 ### Docker Compose Examples
 
@@ -272,7 +288,7 @@ services:
 ## CLI Options
 
 ```
-baseten-reverse-proxy [OPTIONS]
+baseten-performance-proxy [OPTIONS]
 
 Options:
   -p, --port <PORT>                 Port to listen on [default: 8080]
@@ -344,7 +360,7 @@ Response:
 ```json
 {
   "status": "healthy",
-  "service": "baseten-reverse-proxy",
+  "service": "baseten-performance-proxy",
   "timestamp": "2024-01-25T12:00:00Z"
 }
 ```
@@ -363,7 +379,7 @@ The proxy includes timing information in all responses:
 ```yaml
 version: '3.8'
 services:
-  reverse-proxy:
+  performance-proxy:
     build: ./reverse_proxy
     ports:
       - "8080:8080"
@@ -386,24 +402,24 @@ services:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: baseten-reverse-proxy
+  name: baseten-performance-proxy
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: baseten-reverse-proxy
+      app: baseten-performance-proxy
   template:
     metadata:
       labels:
-        app: baseten-reverse-proxy
+        app: baseten-performance-proxy
     spec:
       containers:
-      - name: reverse-proxy
-        image: baseten-reverse-proxy:latest
+      - name: performance-proxy
+        image: baseten/performance-proxy:latest
         ports:
         - containerPort: 8080
         command:
-        - baseten-reverse-proxy
+        - baseten-performance-proxy
         - --target-url=https://api.baseten.co
         - --port=8080
         livenessProbe:

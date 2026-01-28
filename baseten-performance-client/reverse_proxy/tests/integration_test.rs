@@ -306,8 +306,8 @@ async fn classify_handler(
     (StatusCode::OK, Json(data)).into_response()
 }
 
-/// Integration test for the reverse proxy
-/// This test verifies that the reverse proxy correctly forwards requests
+/// Integration test for the performance proxy
+/// This test verifies that the performance proxy correctly forwards requests
 /// to the mock server and handles various scenarios.
 #[derive(Clone)]
 pub struct IntegrationTest {
@@ -339,7 +339,7 @@ impl IntegrationTest {
         // Verify services are running
         self.wait_for_service(self.mock_server_port, "mock server")
             .await?;
-        self.wait_for_service(self.proxy_port, "reverse proxy")
+        self.wait_for_service(self.proxy_port, "performance proxy")
             .await?;
 
         // Run test scenarios
@@ -821,7 +821,7 @@ mod tests {
                 }
             }
 
-            // Start reverse proxy server
+            // Start performance proxy server
             let proxy_port = test.proxy_port;
             let mock_server_port = test.mock_server_port;
 
@@ -841,18 +841,18 @@ mod tests {
                 }
             });
 
-            // Give reverse proxy time to bind and start listening
+            // Give performance proxy time to bind and start listening
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
-            // Verify reverse proxy is actually running and responsive
+            // Verify performance proxy is actually running and responsive
             match test
-                .wait_for_service(test.proxy_port, "reverse proxy")
+                .wait_for_service(test.proxy_port, "performance proxy")
                 .await
             {
-                Ok(_) => println!("✅ Reverse proxy is healthy on port {}", test.proxy_port),
+                Ok(_) => println!("✅ Performance proxy is healthy on port {}", test.proxy_port),
                 Err(e) => {
-                    eprintln!("❌ Reverse proxy health check failed: {}", e);
-                    return Err(format!("Reverse proxy not responding: {}", e).into());
+                    eprintln!("❌ Performance proxy health check failed: {}", e);
+                    return Err(format!("Performance proxy not responding: {}", e).into());
                 }
             }
 
@@ -1030,13 +1030,13 @@ mod tests {
         }
 
         match test
-            .wait_for_service(test.proxy_port, "reverse proxy")
+            .wait_for_service(test.proxy_port, "performance proxy")
             .await
         {
-            Ok(_) => println!("✅ Reverse proxy is healthy"),
+            Ok(_) => println!("✅ Performance proxy is healthy"),
             Err(e) => {
-                eprintln!("❌ Reverse proxy health check failed: {}", e);
-                panic!("Reverse proxy health check failed");
+                eprintln!("❌ Performance proxy health check failed: {}", e);
+                panic!("Performance proxy health check failed");
             }
         }
 

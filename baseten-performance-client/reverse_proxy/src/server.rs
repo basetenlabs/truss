@@ -174,7 +174,7 @@ async fn handle_health_check() -> impl IntoResponse {
         StatusCode::OK,
         Json(json!({
             "status": "healthy",
-            "service": "baseten-reverse-proxy",
+            "service": "baseten-performance-proxy",
             "timestamp": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

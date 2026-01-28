@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Integration test runner for the reverse proxy
+# Integration test runner for the performance proxy
 # This script runs comprehensive integration tests to ensure the proxy works correctly
 
 set -e
 
-echo "🧪 Starting Reverse Proxy Integration Tests"
+echo "🧪 Starting Performance Proxy Integration Tests"
 echo "=========================================="
 
-# Build the reverse proxy
-echo "📦 Building reverse proxy..."
+# Build the performance proxy
+echo "📦 Building performance proxy..."
 cargo build --release --package baseten-performance-reverse-proxy
 
 # Run unit tests
@@ -48,6 +48,6 @@ echo "  cargo test --package baseten-performance-reverse-proxy --test integratio
 echo ""
 echo "📊 Test Architecture:"
 echo "  - Mock server on port 8082"
-echo "  - Reverse proxy on port 8081"
+echo "  - Performance proxy on port 8081"
 echo "  - Core client connecting through proxy"
 echo "  - Comprehensive scenario testing"

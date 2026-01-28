@@ -20,7 +20,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
-/// Mock server for testing the reverse proxy
+/// Mock server for testing the performance proxy
 /// This simulates a real API server with various behaviors
 #[derive(Clone)]
 pub struct MockServer {

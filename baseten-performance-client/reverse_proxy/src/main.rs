@@ -70,8 +70,8 @@ impl ProxyConfig {
 }
 
 #[derive(Parser)]
-#[command(name = "baseten-reverse-proxy")]
-#[command(about = "A high-performance reverse proxy for Baseten APIs")]
+#[command(name = "baseten-performance-proxy")]
+#[command(about = "A high-performance performance proxy for Baseten APIs")]
 #[command(version)]
 struct Cli {
     #[arg(short, long, default_value = "80")]
