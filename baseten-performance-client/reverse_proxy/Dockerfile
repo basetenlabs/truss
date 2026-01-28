@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS builder
+FROM --platform=$TARGETPLATFORM debian:bookworm-slim AS chef
 
 # Install Rust and build dependencies
 RUN apt-get update && apt-get install -y \
@@ -17,27 +17,29 @@ RUN apt-get update && apt-get install -y \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Set working directory
+# Install cargo-chef
+RUN cargo install cargo-chef
+
 WORKDIR /app
 
-# Copy Cargo files
-COPY Cargo.toml Cargo.lock ./
-COPY core/Cargo.toml ./core/
-COPY reverse_proxy/Cargo.toml ./reverse_proxy/
-COPY python_bindings/Cargo.toml ./python_bindings/
-COPY node_bindings/Cargo.toml ./node_bindings/
+# Planner stage - analyze dependencies
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Copy the actual source code
-COPY core/src ./core/src/
-COPY reverse_proxy/src ./reverse_proxy/src/
-COPY python_bindings/src ./python_bindings/src/
-COPY node_bindings/src ./node_bindings/src/
+# Builder stage - build dependencies and app
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
 
-# Build the binary
+# Build dependencies - this layer is cached unless dependencies change
+RUN cargo chef cook --release --package baseten-performance-reverse-proxy --recipe-path recipe.json
+
+# Copy source code and build the binary
+COPY . .
 RUN cargo build --release --package baseten-performance-reverse-proxy
 
 # Runtime stage using Debian Bookworm
-FROM debian:bookworm-slim
+FROM --platform=$TARGETPLATFORM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -45,7 +47,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     libc6 \
     python3 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
 # Python3 is not needed, but baseten likes to have it inside the docker image.
 # Create non-root user
 RUN useradd -m -u 1000 proxyuser
