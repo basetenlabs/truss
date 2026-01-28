@@ -119,10 +119,12 @@ external_package_dirs: []
 Deploy the model with the following command:
 
 ```bash
-$ truss push
+$ truss push --publish
 ```
 
-And then you can performance inference with:
+For development with hot reload, use `truss push --watch` instead.
+
+And then you can perform inference with:
 ```
 $ truss predict -d '"Truss is awesome!"'
 ```
