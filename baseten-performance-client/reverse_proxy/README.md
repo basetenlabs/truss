@@ -430,6 +430,33 @@ spec:
           periodSeconds: 10
 ```
 
+### Truss Configuration
+
+For deploying with Truss, use the following configuration in your `config.yaml`:
+
+```yaml
+base_image:
+  image: baseten/performance-proxy:0.0.1
+docker_server:
+  start_command: sh -c "baseten-performance-proxy --port 8081 --upstream-api-key $/secrets/upstream_api_key --target-url ${UPSTREAM_URL} --tokenizer BAAI/bge-small-en-v1.5 /app/tokenizers/bge-small-en-v1.5/tokenizer.json --tokenizer voyageai/voyage-4-nano /app/tokenizers/voyage-4-nano/tokenizer.json --http-version 2 --max-chars-per-request 10000 --timeout-s 300 --batch-size 16 --max-concurrent-requests 64"
+  readiness_endpoint: /health_internal
+  liveness_endpoint: /health_internal
+  predict_endpoint: /v1/embeddings
+  server_port: 8081
+build_commands:
+# Download tokenizers for multiple models
+- sh -c "mkdir -p /app/tokenizers/bge-small-en-v1.5 && cd /app/tokenizers/bge-small-en-v1.5 && wget https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json -O tokenizer.json"
+- sh -c "mkdir -p /app/tokenizers/voyage-4-nano && cd /app/tokenizers/voyage-4-nano && wget https://huggingface.co/voyageai/voyage-4-nano/resolve/main/tokenizer.json -O tokenizer.json"
+resources:
+  use_gpu: false
+model_name: baseten-performance-proxy
+environment_variables:
+  UPSTREAM_URL: https://model-abcdefg.api.baseten.co/environments/production/sync
+  PERFORMANCE_CLIENT_LOG_LEVEL: info
+secrets:
+  upstream_api_key: null # name saved in baseten-ui
+```
+
 ## License
 
 MIT License - see LICENSE file for details.
