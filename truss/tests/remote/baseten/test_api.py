@@ -593,3 +593,99 @@ def test_fetch_log_batch(baseten_api):
     mock_rest_client.post.assert_called_with(
         "v1/training_projects/project-123/jobs/job-456/logs", body=query_params
     )
+
+
+def mock_model_s3_upload_credentials_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={
+            "data": {
+                "model_s3_upload_credentials": {
+                    "s3_bucket": "test-bucket",
+                    "s3_key": "test-key",
+                    "aws_access_key_id": "access-key",
+                    "aws_secret_access_key": "secret-key",
+                    "aws_session_token": "session-token",
+                }
+            }
+        }
+    )
+    return response
+
+
+@mock.patch("requests.post", return_value=mock_model_s3_upload_credentials_response())
+def test_model_s3_upload_credentials_without_oidc_params(mock_post, baseten_api):
+    result = baseten_api.model_s3_upload_credentials()
+
+    gql_query = mock_post.call_args[1]["json"]["query"]
+    assert "model_s3_upload_credentials" in gql_query
+    assert "aws_role_arn" not in gql_query
+    assert "aws_region" not in gql_query
+    assert result["s3_bucket"] == "test-bucket"
+
+
+@mock.patch("requests.post", return_value=mock_model_s3_upload_credentials_response())
+def test_model_s3_upload_credentials_with_oidc_params(mock_post, baseten_api):
+    result = baseten_api.model_s3_upload_credentials(
+        aws_role_arn="arn:aws:iam::123456789:role/my-role", aws_region="us-west-2"
+    )
+
+    gql_query = mock_post.call_args[1]["json"]["query"]
+    assert 'aws_role_arn: "arn:aws:iam::123456789:role/my-role"' in gql_query
+    assert 'aws_region: "us-west-2"' in gql_query
+    assert result["s3_bucket"] == "test-bucket"
+
+
+@mock.patch("requests.post", return_value=mock_model_s3_upload_credentials_response())
+def test_model_s3_upload_credentials_with_partial_oidc_params(mock_post, baseten_api):
+    result = baseten_api.model_s3_upload_credentials(
+        aws_role_arn="arn:aws:iam::123456789:role/my-role"
+    )
+
+    gql_query = mock_post.call_args[1]["json"]["query"]
+    assert 'aws_role_arn: "arn:aws:iam::123456789:role/my-role"' in gql_query
+    assert "aws_region" not in gql_query
+    assert result["s3_bucket"] == "test-bucket"
+
+
+def mock_chain_s3_upload_credentials_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={
+            "data": {
+                "chain_s3_upload_credentials": {
+                    "s3_bucket": "test-chain-bucket",
+                    "s3_key": "chains/test-uuid/chain.tgz",
+                    "aws_access_key_id": "access-key",
+                    "aws_secret_access_key": "secret-key",
+                    "aws_session_token": "session-token",
+                }
+            }
+        }
+    )
+    return response
+
+
+@mock.patch("requests.post", return_value=mock_chain_s3_upload_credentials_response())
+def test_chain_s3_upload_credentials_without_oidc_params(mock_post, baseten_api):
+    result = baseten_api.get_chain_s3_upload_credentials()
+
+    gql_query = mock_post.call_args[1]["json"]["query"]
+    assert "chain_s3_upload_credentials" in gql_query
+    assert "aws_role_arn" not in gql_query
+    assert "aws_region" not in gql_query
+    assert result.s3_bucket == "test-chain-bucket"
+
+
+@mock.patch("requests.post", return_value=mock_chain_s3_upload_credentials_response())
+def test_chain_s3_upload_credentials_with_oidc_params(mock_post, baseten_api):
+    result = baseten_api.get_chain_s3_upload_credentials(
+        aws_role_arn="arn:aws:iam::123456789:role/my-role", aws_region="us-east-1"
+    )
+
+    gql_query = mock_post.call_args[1]["json"]["query"]
+    assert 'aws_role_arn: "arn:aws:iam::123456789:role/my-role"' in gql_query
+    assert 'aws_region: "us-east-1"' in gql_query
+    assert result.s3_bucket == "test-chain-bucket"

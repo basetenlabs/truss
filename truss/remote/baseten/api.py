@@ -174,17 +174,26 @@ class BasetenApi:
 
         return resp_dict
 
-    def model_s3_upload_credentials(self):
-        query_string = """
-        {
-            model_s3_upload_credentials {
+    def model_s3_upload_credentials(
+        self, aws_role_arn: Optional[str] = None, aws_region: Optional[str] = None
+    ) -> dict:
+        args = []
+        if aws_role_arn:
+            args.append(f'aws_role_arn: "{aws_role_arn}"')
+        if aws_region:
+            args.append(f'aws_region: "{aws_region}"')
+        args_str = f"({', '.join(args)})" if args else ""
+
+        query_string = f"""
+        {{
+            model_s3_upload_credentials{args_str} {{
                 s3_bucket
                 s3_key
                 aws_access_key_id
                 aws_secret_access_key
                 aws_session_token
-            }
-        }
+            }}
+        }}
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]["model_s3_upload_credentials"]
@@ -794,18 +803,27 @@ class BasetenApi:
             return self.get_chain_s3_upload_credentials()
         return self._rest_api_client.get(f"v1/blobs/credentials/{blob_type.value}")
 
-    def get_chain_s3_upload_credentials(self) -> ChainUploadCredentials:
+    def get_chain_s3_upload_credentials(
+        self, aws_role_arn: Optional[str] = None, aws_region: Optional[str] = None
+    ) -> ChainUploadCredentials:
         """Get chain artifact credentials using GraphQL query."""
-        query = """
-        query {
-            chain_s3_upload_credentials {
+        args = []
+        if aws_role_arn:
+            args.append(f'aws_role_arn: "{aws_role_arn}"')
+        if aws_region:
+            args.append(f'aws_region: "{aws_region}"')
+        args_str = f"({', '.join(args)})" if args else ""
+
+        query = f"""
+        query {{
+            chain_s3_upload_credentials{args_str} {{
                 s3_bucket
                 s3_key
                 aws_access_key_id
                 aws_secret_access_key
                 aws_session_token
-            }
-        }
+            }}
+        }}
         """
         response = self._post_graphql_query(query)
 

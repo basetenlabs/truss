@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import os
 import pathlib
 import textwrap
 from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Type
@@ -31,6 +32,10 @@ ACTIVE_STATUS = "ACTIVE"
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
     "Model hasn't been deployed yet. No environments exist."
 )
+
+# Environment variable names for OIDC-based S3 upload credentials
+AWS_ROLE_ARN_ENV_VAR = "AWS_ROLE_ARN"
+AWS_REGION_ENV_VAR = "AWS_REGION"
 
 # Maximum number of iterations to prevent infinite loops when paginating logs
 MAX_ITERATIONS = 10_000
@@ -353,7 +358,12 @@ def upload_truss(
     Returns:
         The S3 key of the uploaded file
     """
-    temp_credentials_s3_upload = api.model_s3_upload_credentials()
+    aws_role_arn = os.environ.get(AWS_ROLE_ARN_ENV_VAR)
+    aws_region = os.environ.get(AWS_REGION_ENV_VAR)
+
+    temp_credentials_s3_upload = api.model_s3_upload_credentials(
+        aws_role_arn=aws_role_arn, aws_region=aws_region
+    )
     s3_key = temp_credentials_s3_upload.pop("s3_key")
     s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
     multipart_upload_boto3(
@@ -377,7 +387,12 @@ def upload_chain_artifact(
     Returns:
         The S3 key of the uploaded file
     """
-    credentials = api.get_chain_s3_upload_credentials()
+    aws_role_arn = os.environ.get(AWS_ROLE_ARN_ENV_VAR)
+    aws_region = os.environ.get(AWS_REGION_ENV_VAR)
+
+    credentials = api.get_chain_s3_upload_credentials(
+        aws_role_arn=aws_role_arn, aws_region=aws_region
+    )
     with handle_client_error("Uploading chain source"):
         multipart_upload_boto3(
             serialize_file.name,

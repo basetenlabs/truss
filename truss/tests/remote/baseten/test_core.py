@@ -1,4 +1,5 @@
 import json
+import os
 from tempfile import NamedTemporaryFile
 from unittest import mock
 from unittest.mock import MagicMock
@@ -978,3 +979,64 @@ def test_create_truss_service_passes_deploy_timeout_minutes_for_development_mode
     api.create_development_model_from_truss.assert_called_once()
     _, kwargs = api.create_development_model_from_truss.call_args
     assert kwargs["deploy_timeout_minutes"] == 600
+
+
+def test_upload_truss_without_oidc_env_vars():
+    api = MagicMock()
+    api.model_s3_upload_credentials.return_value = {
+        "s3_key": "key",
+        "s3_bucket": "bucket",
+    }
+    core.multipart_upload_boto3 = MagicMock()
+    core.multipart_upload_boto3.return_value = None
+    test_file = NamedTemporaryFile()
+
+    with mock.patch.dict(os.environ, {}, clear=True):
+        result = core.upload_truss(api, test_file, None)
+
+    assert result == "key"
+    api.model_s3_upload_credentials.assert_called_once_with(
+        aws_role_arn=None, aws_region=None
+    )
+
+
+def test_upload_truss_with_oidc_env_vars():
+    api = MagicMock()
+    api.model_s3_upload_credentials.return_value = {
+        "s3_key": "key",
+        "s3_bucket": "bucket",
+    }
+    core.multipart_upload_boto3 = MagicMock()
+    core.multipart_upload_boto3.return_value = None
+    test_file = NamedTemporaryFile()
+
+    env_vars = {
+        "AWS_ROLE_ARN": "arn:aws:iam::123456789:role/my-role",
+        "AWS_REGION": "us-west-2",
+    }
+    with mock.patch.dict(os.environ, env_vars, clear=True):
+        result = core.upload_truss(api, test_file, None)
+
+    assert result == "key"
+    api.model_s3_upload_credentials.assert_called_once_with(
+        aws_role_arn="arn:aws:iam::123456789:role/my-role", aws_region="us-west-2"
+    )
+
+
+def test_upload_truss_with_partial_oidc_env_vars():
+    api = MagicMock()
+    api.model_s3_upload_credentials.return_value = {
+        "s3_key": "key",
+        "s3_bucket": "bucket",
+    }
+    core.multipart_upload_boto3 = MagicMock()
+    test_file = NamedTemporaryFile()
+
+    env_vars = {"AWS_ROLE_ARN": "arn:aws:iam::123456789:role/my-role"}
+    with mock.patch.dict(os.environ, env_vars, clear=True):
+        result = core.upload_truss(api, test_file, None)
+
+    assert result == "key"
+    api.model_s3_upload_credentials.assert_called_once_with(
+        aws_role_arn="arn:aws:iam::123456789:role/my-role", aws_region=None
+    )

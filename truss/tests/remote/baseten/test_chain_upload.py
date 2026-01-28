@@ -1,5 +1,7 @@
+import os
 import pathlib
 import tempfile
+from unittest import mock
 from unittest.mock import Mock, patch
 
 import pytest
@@ -145,11 +147,14 @@ def test_upload_chain_artifact_function(mock_multipart_upload):
         temp_file.write(b"test chain content")
         temp_file.flush()
 
-        result = upload_chain_artifact(api, temp_file, None)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            result = upload_chain_artifact(api, temp_file, None)
 
         assert result == "chains/test-uuid/chain.tgz"
 
-        api.get_chain_s3_upload_credentials.assert_called_once_with()
+        api.get_chain_s3_upload_credentials.assert_called_once_with(
+            aws_role_arn=None, aws_region=None
+        )
 
         mock_multipart_upload.assert_called_once()
         call_args = mock_multipart_upload.call_args
@@ -161,6 +166,36 @@ def test_upload_chain_artifact_function(mock_multipart_upload):
             "aws_secret_access_key": "test_secret_key",
             "aws_session_token": "test_session_token",
         }
+
+
+@patch("truss.remote.baseten.core.multipart_upload_boto3")
+def test_upload_chain_artifact_with_oidc_env_vars(mock_multipart_upload):
+    """Test upload_chain_artifact with OIDC environment variables."""
+    mock_credentials = Mock()
+    mock_credentials.s3_bucket = "test-chain-bucket"
+    mock_credentials.s3_key = "chains/test-uuid/chain.tgz"
+    mock_credentials.aws_credentials = Mock()
+    mock_credentials.aws_credentials.model_dump.return_value = {
+        "aws_access_key_id": "test_access_key",
+        "aws_secret_access_key": "test_secret_key",
+        "aws_session_token": "test_session_token",
+    }
+
+    api = Mock(spec=BasetenApi)
+    api.get_chain_s3_upload_credentials.return_value = mock_credentials
+
+    env_vars = {
+        "AWS_ROLE_ARN": "arn:aws:iam::123456789:role/chain-role",
+        "AWS_REGION": "eu-west-1",
+    }
+    with tempfile.NamedTemporaryFile(suffix=".tgz") as temp_file:
+        with mock.patch.dict(os.environ, env_vars, clear=True):
+            result = upload_chain_artifact(api, temp_file, None)
+
+    assert result == "chains/test-uuid/chain.tgz"
+    api.get_chain_s3_upload_credentials.assert_called_once_with(
+        aws_role_arn="arn:aws:iam::123456789:role/chain-role", aws_region="eu-west-1"
+    )
 
 
 @patch("truss.remote.baseten.remote.upload_chain_artifact")
