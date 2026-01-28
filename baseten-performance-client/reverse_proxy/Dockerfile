@@ -5,9 +5,6 @@ FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS builder
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
-    pkg-config \
-    libssl-dev \
-    perl \
     make \
     musl-tools \
     gcc \
@@ -36,30 +33,16 @@ COPY reverse_proxy/src ./reverse_proxy/src/
 COPY python_bindings/src ./python_bindings/src/
 COPY node_bindings/src ./node_bindings/src/
 
-# Set target architecture (defaults to build platform architecture)
-ARG TARGETARCH
+# Build the binary
+RUN cargo build --release --package baseten-performance-reverse-proxy
 
-# Determine the Rust target triple based on target architecture
-# Use musl for x86_64, glibc for arm64 to avoid C++ cross-compilation issues
-RUN case "$TARGETARCH" in \
-    "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
-    "arm64") echo "aarch64-unknown-linux-gnu" > /tmp/rust_target ;; \
-    *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
-    esac
-
-# Build with platform-appropriate target
-RUN RUST_TARGET=$(cat /tmp/rust_target) && \
-    rustup target add $RUST_TARGET && \
-    cargo build --release --package baseten-performance-reverse-proxy --target $RUST_TARGET --features=rustls
-
-# Runtime stage using manylinux_2_28 compatible base (Debian Bookworm = glibc 2.36)
-FROM --platform=$TARGETPLATFORM debian:bookworm-slim
+# Runtime stage using Debian Bookworm
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
-    libssl3 \
     libc6 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -69,15 +52,9 @@ RUN useradd -m -u 1000 proxyuser
 # Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage (platform-aware)
-ARG TARGETARCH
-RUN case "$TARGETARCH" in \
-    "amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust_target ;; \
-    "arm64") echo "aarch64-unknown-linux-gnu" > /tmp/rust_target ;; \
-    esac
-
+# Copy the binary from builder stage
 RUN mkdir -p /usr/local/bin
-COPY --from=builder /app/target/*/release/baseten-performance-proxy /usr/local/bin/baseten-performance-proxy
+COPY --from=builder /app/target/release/baseten-performance-proxy /usr/local/bin/baseten-performance-proxy
 RUN chmod +x /usr/local/bin/baseten-performance-proxy
 
 # Change ownership to non-root user
@@ -87,19 +64,22 @@ RUN chown -R proxyuser:proxyuser /app /usr/local/bin/baseten-performance-proxy
 USER proxyuser
 
 # Expose port
-EXPOSE 80
+EXPOSE 8081
 
 # Environment variables (can be overridden at runtime)
-ENV PORT=80
+ENV PORT=8081
 ENV HTTP_VERSION=2
 ENV PERFORMANCE_CLIENT_LOG_LEVEL=info
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health_internal || exit 1
+    CMD curl -f http://localhost:8081/health_internal || exit 1
 
-# Default command (target URL is optional, can be provided per request)
-CMD ["baseten-performance-proxy", "--port", "80"]
+# Set entrypoint for the container
+ENTRYPOINT ["baseten-performance-proxy"]
+
+# Default command (can be overridden at runtime)
+CMD ["--port", "8081"]
 
 # Volume mounts for API key files (optional)
 # VOLUME ["/etc/baseten", "/app/secrets"]
