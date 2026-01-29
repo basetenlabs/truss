@@ -166,11 +166,18 @@ class Image(custom_types.SafeModelNoExtra):
     docker_auth: Optional[DockerAuth] = None
 
 
+class Workspace(custom_types.SafeModelNoExtra):
+    workspace_root: Optional[str] = None
+    external_dirs: List[str] = []
+    exclude_dirs: List[str] = []
+
+
 class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
     name: Optional[str] = None
+    workspace: Optional[Workspace] = None
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
