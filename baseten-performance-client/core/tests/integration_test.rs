@@ -164,8 +164,11 @@ fn test_send_request_config_hedge_timeout_validation() {
         .with_timeout_s(1.0)
         .with_hedge_delay(2.0); // hedge delay higher than timeout - should fail
 
-    let result =
-        pref.pair_with_request_validate_and_convert("https://example.com".to_string(), 100, "test_api_key".to_string());
+    let result = pref.pair_with_request_validate_and_convert(
+        "https://example.com".to_string(),
+        100,
+        "test_api_key".to_string(),
+    );
     assert!(
         result.is_err(),
         "Should fail when hedge delay > request timeout"
@@ -176,8 +179,11 @@ fn test_send_request_config_hedge_timeout_validation() {
         .with_timeout_s(1.0)
         .with_hedge_delay(1.0); // hedge delay equal to timeout - should fail
 
-    let result2 =
-        pref2.pair_with_request_validate_and_convert("https://example.com".to_string(), 100, "test_api_key".to_string());
+    let result2 = pref2.pair_with_request_validate_and_convert(
+        "https://example.com".to_string(),
+        100,
+        "test_api_key".to_string(),
+    );
     assert!(
         result2.is_err(),
         "Should fail when hedge delay = request timeout"
@@ -188,8 +194,11 @@ fn test_send_request_config_hedge_timeout_validation() {
         .with_timeout_s(1.0)
         .with_hedge_delay(0.5); // hedge delay lower than timeout - should pass
 
-    let result3 =
-        pref3.pair_with_request_validate_and_convert("https://example.com".to_string(), 100, "test_api_key".to_string());
+    let result3 = pref3.pair_with_request_validate_and_convert(
+        "https://example.com".to_string(),
+        100,
+        "test_api_key".to_string(),
+    );
     assert!(
         result3.is_ok(),
         "Should pass when hedge delay < request timeout"
@@ -198,8 +207,11 @@ fn test_send_request_config_hedge_timeout_validation() {
     // Test case 4: no hedge budget (should succeed)
     let pref4 = RequestProcessingPreference::new().with_timeout_s(1.0); // no hedge delay - should succeed
 
-    let result4 =
-        pref4.pair_with_request_validate_and_convert("https://example.com".to_string(), 100, "test_api_key".to_string());
+    let result4 = pref4.pair_with_request_validate_and_convert(
+        "https://example.com".to_string(),
+        100,
+        "test_api_key".to_string(),
+    );
     assert!(
         result4.is_ok(),
         "Should succeed when no hedge budget is specified"

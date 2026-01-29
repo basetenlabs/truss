@@ -322,6 +322,34 @@ async def test_rerank_async():
     print("async test passed", data[0])
 
 
+@pytest.mark.skipif(
+    not EMBEDDINGS_REACHABLE, reason="Deployment is not reachable. Skipping test."
+)
+def test_extra_headers_with_batch_post():
+    """Test that extra_headers work with batch_post requests."""
+    client_batch = PerformanceClient(base_url=base_url_embed, api_key=api_key)
+
+    extra_headers = {"x-batch-test": "batch-value"}
+
+    preference = RequestProcessingPreference(
+        batch_size=1, max_concurrent_requests=1, extra_headers=extra_headers
+    )
+
+    response = client_batch.batch_post(
+        url_path="/v1/embeddings",
+        payloads=[
+            {"model": "my_model", "input": ["Hello world"]},
+            {"model": "my_model", "input": ["Goodbye world"]},
+        ],
+        preference=preference,
+    )
+
+    # Verify the response is successful
+    assert response is not None
+    assert len(response.data) == 2
+    assert response.total_time >= 0
+
+
 if __name__ == "__main__":
     import asyncio
 
