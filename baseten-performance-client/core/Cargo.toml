@@ -12,7 +12,7 @@ categories = ["web-programming::http-client", "asynchronous"]
 
 [dependencies]
 tokio = { workspace = true }
-reqwest = { version = "0.12.26", default-features = false, features = ["blocking", "json", "stream", "http2"] }
+reqwest = { workspace = true }
 openssl = { version = "0.10.75", features = ["vendored"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -25,6 +25,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 ctor = { workspace = true }
 
 [features]
-default = ["native-tls"]
+default = ["rustls"]
 native-tls = ["reqwest/default-tls", "reqwest/native-tls-alpn", "dep:openssl"]
 rustls = ["reqwest/rustls-tls", "reqwest/rustls-tls-webpki-roots"]
