@@ -19,7 +19,7 @@ name = "baseten-performance-proxy"
 path = "src/main.rs"
 
 [dependencies]
-baseten_performance_client_core = { path = "../core", features = ["rustls"] }
+baseten_performance_client_core = { path = "../core", features = ["native-tls"] }
 tokio = { workspace = true }
 
 axum = { version = "0.7", features = ["http2", "tokio"] }

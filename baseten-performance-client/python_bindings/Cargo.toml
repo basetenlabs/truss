@@ -4,7 +4,7 @@ version = "1.2.0"
 edition = "2021"
 
 [dependencies]
-baseten_performance_client_core = { path = "../core", features = ["rustls"] }
+baseten_performance_client_core = { path = "../core", features = ["native-tls"] }
 pyo3 = { version = "0.24", features = ["extension-module", "abi3-py38"] }
 numpy = "0.24.0"
 ndarray = "0.16"
