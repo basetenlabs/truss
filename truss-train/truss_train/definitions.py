@@ -109,26 +109,25 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     mount_base_path: str = "/root/.cache"
 
 class InteractiveSessionTrigger(str, enum.Enum):
-    IMMEDIATE = "immediate"
+    ON_STARTUP = "on_startup"
     ON_FAILURE = "on_failure"
-    MANUAL = "manual"
+    ON_DEMAND = "on_demand"
 
-class InteractiveSessionClient(str, enum.Enum):
+class InteractiveSessionProvider(str, enum.Enum):
     VS_CODE = "vs_code"
     CURSOR = "cursor"
 
 class InteractiveSessionAuthProvider(str, enum.Enum):
     GITHUB = "github"
     MICROSOFT = "microsoft"
-class InteractiveSessionConfig(custom_types.SafeModelNoExtra):
-    trigger: InteractiveSessionTrigger = InteractiveSessionTrigger.MANUAL
-    timeout_hours: int = 24 * 7
-    client_type: str = InteractiveSessionClient.VS_CODE
+class InteractiveSession(custom_types.SafeModelNoExtra):
+    trigger: InteractiveSessionTrigger = InteractiveSessionTrigger.ON_DEMAND
+    timeout_minutes: int = 8 * 60
+    session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
     auth_provider: InteractiveSessionAuthProvider = InteractiveSessionAuthProvider.GITHUB
 
 
 class Runtime(custom_types.SafeModelNoExtra):
-    interactive_session_config: InteractiveSessionConfig = None
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: Optional[bool] = None
@@ -189,6 +188,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
+    interactive_session: Optional[InteractiveSession] = None
     name: Optional[str] = None
 
     def model_dump(self, *args, **kwargs):

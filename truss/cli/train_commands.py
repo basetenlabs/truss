@@ -58,7 +58,7 @@ def _print_training_job_success_message(
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
     should_print_cache_summary = job_object and (
-        job_object.runtime.enable_cache
+        getattr(job_object.runtime, "enable_cache", None)
         or job_object.runtime.cache_config
         and job_object.runtime.cache_config.enabled
     )
@@ -141,6 +141,31 @@ def _resolve_team_name(
     required=False,
     help="Team name for the training project",
 )
+@click.option(
+    "--interactive",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="Interactive session trigger mode",
+)
+@click.option(
+    "--interactive-timeout-minutes",
+    type=int,
+    required=False,
+    help="Interactive session timeout in minutes",
+)
+@click.option(
+    "--accelerator",
+    type=str,
+    required=False,
+    help="Accelerator type and count (e.g., H200:8)",
+)
+@click.option("--node-count", type=int, required=False, help="Number of compute nodes")
+@click.option(
+    "--start-command",
+    multiple=True,
+    required=False,
+    help="Runtime start command. Can be specified multiple times.",
+)
 @common.common_options()
 def push_training_job(
     config: Path,
@@ -148,6 +173,11 @@ def push_training_job(
     tail: bool,
     job_name: Optional[str],
     provided_team_name: Optional[str],
+    interactive: Optional[str],
+    interactive_timeout_minutes: Optional[int],
+    accelerator: Optional[str],
+    node_count: Optional[int],
+    start_command: tuple[str, ...],
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -177,6 +207,11 @@ def push_training_job(
                 job_name_from_cli=job_name,
                 team_name=team_name,
                 team_id=team_id,
+                interactive_trigger=interactive,
+                interactive_timeout_minutes=interactive_timeout_minutes,
+                accelerator=accelerator,
+                node_count=node_count,
+                start_command=start_command if start_command else None,
             )
 
     # Note: This post create logic needs to happen outside the context
@@ -644,9 +679,9 @@ def _maybe_resolve_project_id_from_id_or_name(
 @click.argument("job_id", type=str, required=True)
 @click.option(
     "--trigger",
-    type=click.Choice(["immediate", "on_failure", "manual"], case_sensitive=False),
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
     required=False,
-    help="When to create the interactive session: 'immediate' creates on job start, 'on_failure' creates on job failure, 'manual' disables automatic session creation.",
+    help="When to create the interactive session: 'on_startup' creates on job start, 'on_failure' creates on job failure, 'on_demand' allows manual session creation.",
 )
 @click.option(
     "--timeout-hours",
