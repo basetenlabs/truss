@@ -206,7 +206,7 @@ impl OpenAIEmbeddingsResponse {
                 PyValueError::new_err(format!("Failed to create ndarray from embeddings: {}", e))
             })?;
         #[allow(deprecated)]
-        Ok(array.into_pyarray_bound(py))
+        Ok(array.into_pyarray(py))
     }
 }
 
@@ -357,9 +357,9 @@ struct HttpClientWrapper {
 #[pymethods]
 impl HttpClientWrapper {
     #[new]
-    #[pyo3(signature = (http_version = 1))]
-    fn new(http_version: u8) -> PyResult<Self> {
-        let inner = HttpClientWrapperRs::new(http_version)
+    #[pyo3(signature = (http_version = 1, proxy = None))]
+    fn new(http_version: u8, proxy: Option<String>) -> PyResult<Self> {
+        let inner = HttpClientWrapperRs::new(http_version, proxy)
             .map_err(PerformanceClient::convert_core_error_to_py_err)?;
         Ok(HttpClientWrapper { inner })
     }
@@ -383,7 +383,7 @@ impl CancellationToken {
     #[new]
     pub fn new() -> Self {
         Self {
-            inner: CoreCancellationToken::new(),
+            inner: CoreCancellationToken::new(false),
         }
     }
 
@@ -424,6 +424,10 @@ pub struct RequestProcessingPreference {
     pub initial_backoff_ms: u64,
     #[pyo3(get, set)]
     pub cancel_token: Option<CancellationToken>,
+    #[pyo3(get, set)]
+    pub primary_api_key_override: Option<String>,
+    #[pyo3(get, set)]
+    pub extra_headers: Option<std::collections::HashMap<String, String>>,
     inner: RustRequestProcessingPreference,
 }
 
@@ -441,7 +445,9 @@ impl RequestProcessingPreference {
         retry_budget_pct = None,
         max_retries = None,
         initial_backoff_ms = None,
-        cancel_token = None
+        cancel_token = None,
+        primary_api_key_override = None,
+        extra_headers = None
     ))]
     fn new(
         max_concurrent_requests: Option<usize>,
@@ -455,6 +461,8 @@ impl RequestProcessingPreference {
         max_retries: Option<u32>,
         initial_backoff_ms: Option<u64>,
         cancel_token: Option<CancellationToken>,
+        primary_api_key_override: Option<String>,
+        extra_headers: Option<std::collections::HashMap<String, String>>,
     ) -> Self {
         let rust_pref = RustRequestProcessingPreference {
             max_concurrent_requests,
@@ -468,6 +476,8 @@ impl RequestProcessingPreference {
             max_retries,
             initial_backoff_ms,
             cancel_token: cancel_token.as_ref().map(|token| token.inner.clone()),
+            primary_api_key_override: primary_api_key_override,
+            extra_headers: extra_headers,
         };
 
         // Apply defaults using the same method as Rust core
@@ -487,6 +497,8 @@ impl RequestProcessingPreference {
             max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
             cancel_token,
+            primary_api_key_override: complete.primary_api_key_override,
+            extra_headers: complete.extra_headers,
             inner: rust_pref,
         }
     }
@@ -495,7 +507,7 @@ impl RequestProcessingPreference {
     #[classmethod]
     fn default(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
         Ok(Self::new(
-            None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None,
         ))
     }
 
@@ -553,16 +565,18 @@ impl PerformanceClient {
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None))]
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None))]
     fn new(
         base_url: String,
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<HttpClientWrapper>,
+        proxy: Option<String>,
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
-        let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper)
-            .map_err(Self::convert_core_error_to_py_err)?;
+        let core_client =
+            PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy)
+                .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {
             core_client,
@@ -967,14 +981,13 @@ impl PerformanceClient {
         pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
-    #[pyo3(signature = (url_path, payloads, preference = None, custom_headers = None, method = None))]
+    #[pyo3(signature = (url_path, payloads, preference = None, method = None))]
     fn batch_post(
         &self,
         py: Python,
         url_path: String,
         payloads: Vec<PyObject>,
         preference: Option<&RequestProcessingPreference>,
-        custom_headers: Option<std::collections::HashMap<String, String>>,
         method: Option<String>,
     ) -> PyResult<BatchPostResponse> {
         if payloads.is_empty() {
@@ -1000,8 +1013,9 @@ impl PerformanceClient {
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         // Parse method parameter using core function
-        let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-            .map_err(|e| PyValueError::new_err(e))?;
+        let http_method =
+            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+                .map_err(|e| PyValueError::new_err(e))?;
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1010,7 +1024,6 @@ impl PerformanceClient {
                         url_path,
                         payloads_json,
                         &rust_preference,
-                        custom_headers,
                         http_method,
                     )
                     .await
@@ -1060,14 +1073,13 @@ impl PerformanceClient {
         })
     }
 
-    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, custom_headers = None, method = None))]
+    #[pyo3(name = "async_batch_post", signature = (url_path, payloads, preference = None, method = None))]
     fn async_batch_post<'py>(
         &self,
         py: Python<'py>,
         url_path: String,
         payloads: Vec<PyObject>,
         preference: Option<&RequestProcessingPreference>,
-        custom_headers: Option<std::collections::HashMap<String, String>>,
         method: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         if payloads.is_empty() {
@@ -1092,18 +1104,13 @@ impl PerformanceClient {
         let rust_preference = preference.map(|p| p.inner.clone()).unwrap_or_default();
 
         // Parse method parameter using core function
-        let http_method = baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
-            .map_err(|e| PyValueError::new_err(e))?;
+        let http_method =
+            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+                .map_err(|e| PyValueError::new_err(e))?;
 
         let future = async move {
             let (response_data_with_times_and_headers, total_time) = core_client
-                .process_batch_post_requests(
-                    url_path,
-                    payloads_json,
-                    &rust_preference,
-                    custom_headers,
-                    http_method,
-                )
+                .process_batch_post_requests(url_path, payloads_json, &rust_preference, http_method)
                 .await
                 .map_err(Self::convert_core_error_to_py_err)?;
 

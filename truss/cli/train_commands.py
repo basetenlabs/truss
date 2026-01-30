@@ -190,11 +190,13 @@ def push_training_job(
     )
 
     existing_teams = remote_provider.api.get_teams()
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
 
     with loader.import_training_project(config) as training_project:
         team_name, team_id = _resolve_team_name(
             remote_provider,
-            provided_team_name,
+            effective_team_name,
             existing_project_name=training_project.name,
             existing_teams=existing_teams,
         )

@@ -1,3 +1,4 @@
+from truss.base.truss_config import WeightsSource
 from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
 from truss_chains.public_api import (
     depends,
@@ -48,6 +49,7 @@ __all__ = [
     "RemoteErrorDetail",
     "StubBase",
     "WebSocketProtocol",
+    "WeightsSource",
     "depends",
     "depends_context",
     "make_abs_path_here",

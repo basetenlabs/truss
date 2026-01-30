@@ -99,13 +99,13 @@ COPY --chown={{ default_owner }} ./{{ config.model_module_dir }} ${APP_HOME}/mod
 {% block run %}
 {# Macro to change ownership of directories and switch to regular user #}
 {%- macro chown_and_switch_to_regular_user_if_enabled(additional_chown_dirs=[]) -%}
-{%- if non_root_user %}
+{%- if run_as_user_id != ROOT_USER_ID %}
 {#- /workspace is used by TRT-LLM v2 inference stack, but we create and chown it unconditionally #}
 {%- set workspace_dir = "/workspace" %}
 RUN mkdir -p {{ workspace_dir }}
-RUN chown -R {{ app_username }}:{{ app_username }} ${HOME} ${APP_HOME} {{ packages_dir }} {{ workspace_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
-USER {{ app_username }}
-{%- endif %} {#- endif non_root_user #}
+RUN chown -R {{ run_as_user_id }}:{{ run_as_user_id }} ${HOME} ${APP_HOME} {{ packages_dir }} {{ workspace_dir }} {% for dir in additional_chown_dirs %}{{ dir }} {% endfor %}
+USER {{ run_as_user_id }}
+{%- endif %}
 {%- endmacro -%}
 
 {%- if build_commands %}
@@ -132,8 +132,10 @@ ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
 {#- default configuration uses port 80, which requires root privileges, so we remove it #}
 RUN rm -f /etc/nginx/sites-enabled/default
-{#- nginx writes to /var/lib/nginx, /var/log/nginx, and /run directories #}
-{{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run"]) }}
+{# NB(nikhil): Ensure /dev/shm exists, but we expect this to get overwritten at runtime with volume mounts #}
+RUN mkdir -p /dev/shm
+{#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}
+{{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
 ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}

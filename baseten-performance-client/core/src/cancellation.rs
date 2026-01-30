@@ -9,12 +9,14 @@ use tokio::task::JoinSet;
 #[derive(Debug, Clone, Default)]
 pub struct CancellationToken {
     cancelled: Arc<AtomicBool>,
+    cancel_on_drop: bool,
 }
 
 impl CancellationToken {
-    pub fn new() -> Self {
+    pub fn new(cancel_on_drop: bool) -> Self {
         Self {
             cancelled: Arc::new(AtomicBool::new(false)),
+            cancel_on_drop,
         }
     }
 
@@ -26,6 +28,16 @@ impl CancellationToken {
     /// Check if cancellation has been requested
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for CancellationToken {
+    fn drop(&mut self) {
+        if self.cancel_on_drop {
+            // Automatically cancel when dropped for RAII behavior
+            // This ensures that when the axum handle is revoked, the proxy stops proxying
+            self.cancel();
+        }
     }
 }
 

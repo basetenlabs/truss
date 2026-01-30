@@ -23,7 +23,7 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_for_watch,
     resolve_model_team_name,
 )
-from truss.cli.utils import common
+from truss.cli.utils import common, self_upgrade
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -120,6 +120,16 @@ def login(api_key: Optional[str]):
         RemoteFactory.update_remote_config(remote_config)
     else:
         login(api_key)
+
+
+@truss_cli.command()
+@click.argument("version", required=False)
+@common.common_options()
+@click.pass_context
+def upgrade(ctx: click.Context, version: Optional[str]) -> None:
+    """Upgrade truss to the latest (or specified) version."""
+    interactive = not ctx.obj.get("non_interactive", False)
+    self_upgrade.run_upgrade(version, interactive=interactive)
 
 
 @truss_cli.command()
@@ -546,6 +556,13 @@ def push(
 
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
+
+    if tr.spec.config.resources.instance_type:
+        console.print(
+            "Field 'instance_type' specified - ignoring 'cpu', 'memory', 'accelerator', and 'use_gpu' fields.",
+            style="yellow",
+        )
+
     if (
         tr.spec.config.runtime.transport.kind == TransportKind.GRPC
         and not publish
@@ -571,9 +588,13 @@ def push(
     team_id = None
     if isinstance(remote_provider, BasetenRemote):
         existing_teams = remote_provider.api.get_teams()
+        # Use config team as fallback if --team not provided
+        effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
+            remote
+        )
         _, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
-            provided_team_name=provided_team_name,
+            provided_team_name=effective_team_name,
             existing_model_name=model_name,
             existing_teams=existing_teams,
         )
@@ -794,8 +815,10 @@ def watch(
         sys.exit(1)
 
     # Resolve the model once with team disambiguation (prompts only once if needed)
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
     resolved_model, versions = resolve_model_for_watch(
-        remote_provider, model_name, provided_team_name=provided_team_name
+        remote_provider, model_name, provided_team_name=effective_team_name
     )
     model_id = resolved_model["id"]
 

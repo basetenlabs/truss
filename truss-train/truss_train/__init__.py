@@ -19,6 +19,7 @@ from truss_train.definitions import (
     SecretReference,
     TrainingJob,
     TrainingProject,
+    Workspace,
 )
 
 __all__ = [
@@ -42,4 +43,5 @@ __all__ = [
     "BasetenCheckpoint",
     "DockerAuth",
     "Image",
+    "Workspace",
 ]
