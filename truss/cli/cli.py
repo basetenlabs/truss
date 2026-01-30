@@ -980,4 +980,4 @@ def kill_all() -> None:
 
 
 # These imports are needed to register the subcommands
-from truss.cli import chains_commands, train_commands  # noqa: F401
+from truss.cli import chains_commands, migrate_commands, train_commands  # noqa: F401
