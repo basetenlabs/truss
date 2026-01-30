@@ -399,7 +399,7 @@ impl IntegrationTest {
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
 
         let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
 
         let response = client
             .process_embeddings_requests(
@@ -432,7 +432,7 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
         let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
 
         // Create a large batch
         let inputs: Vec<String> = (0..100).map(|i| format!("Test input {}", i)).collect();
@@ -465,7 +465,7 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
         let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
 
         let response = client
             .process_embeddings_requests(
@@ -509,7 +509,7 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
         let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
 
         // First request should fail - use preferences that disable hedging and retries
         let no_hedge_prefs = RequestProcessingPreference::new()
@@ -582,6 +582,7 @@ impl IntegrationTest {
             Some("test_api_key".to_string()),
             2,
             None,
+            None,
         )?);
 
         // Create multiple concurrent requests
@@ -637,7 +638,7 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
         let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
 
         let response = client
             .process_classify_requests(
@@ -674,7 +675,7 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
         let client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
 
         info!("Sending rerank request to proxy");
         let response = client
@@ -729,7 +730,7 @@ impl IntegrationTest {
 
         let proxy_url = format!("http://0.0.0.0:{}", self.proxy_port);
         let _client =
-            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None)?;
+            PerformanceClientCore::new(proxy_url, Some("test_api_key".to_string()), 2, None, None)?;
 
         let payloads = vec![
             json!({"test": "payload1"}),
