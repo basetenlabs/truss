@@ -252,31 +252,15 @@ def _upsert_project_and_create_job(
     return job_resp
 
 
-def create_training_job(
-    remote_provider: BasetenRemote,
-    config: Path,
+def _apply_cli_overrides(
     training_project: TrainingProject,
-    job_name_from_cli: Optional[str] = None,
-    team_name: Optional[str] = None,
-    team_id: Optional[str] = None,
     interactive_trigger: Optional[str] = None,
     interactive_timeout_minutes: Optional[int] = None,
     accelerator: Optional[str] = None,
     node_count: Optional[int] = None,
     entrypoint: Optional[str] = None,
-) -> dict:
-    if job_name_from_cli:
-        if training_project.job.name:
-            console.print(
-                f"Warning: name '{training_project.job.name}' provided in config file "
-                f"will be ignored. Using job name '{job_name_from_cli}' provided via "
-                f"--job-name flag.",
-                style="yellow",
-            )
-        training_project.job.name = job_name_from_cli
-    if team_name:
-        training_project.team_name = team_name
-
+) -> None:
+    """Apply CLI flag overrides to the training project configuration."""
     if interactive_trigger is not None or interactive_timeout_minutes is not None:
         if training_project.job.interactive_session is None:
             training_project.job.interactive_session = InteractiveSession()
@@ -312,7 +296,7 @@ def create_training_job(
 
     if node_count is not None:
         existing_node_count = training_project.job.compute.node_count
-        if existing_node_count != 1:  # 1 is the default
+        if existing_node_count != 1:
             console.print(
                 f"[bold yellow]⚠ Warning:[/bold yellow] node_count '{existing_node_count}' provided in config file will be ignored. Using '{node_count}' provided via --node-count flag."
             )
@@ -325,6 +309,41 @@ def create_training_job(
                 f"[bold yellow]⚠ Warning:[/bold yellow] start_commands {existing_start_commands} provided in config file will be ignored. Using '{entrypoint}' provided via --entrypoint flag."
             )
         training_project.job.runtime.start_commands = [entrypoint]
+
+
+def create_training_job(
+    remote_provider: BasetenRemote,
+    config: Path,
+    training_project: TrainingProject,
+    job_name_from_cli: Optional[str] = None,
+    team_name: Optional[str] = None,
+    team_id: Optional[str] = None,
+    interactive_trigger: Optional[str] = None,
+    interactive_timeout_minutes: Optional[int] = None,
+    accelerator: Optional[str] = None,
+    node_count: Optional[int] = None,
+    entrypoint: Optional[str] = None,
+) -> dict:
+    if job_name_from_cli:
+        if training_project.job.name:
+            console.print(
+                f"Warning: name '{training_project.job.name}' provided in config file "
+                f"will be ignored. Using job name '{job_name_from_cli}' provided via "
+                f"--job-name flag.",
+                style="yellow",
+            )
+        training_project.job.name = job_name_from_cli
+    if team_name:
+        training_project.team_name = team_name
+
+    _apply_cli_overrides(
+        training_project,
+        interactive_trigger=interactive_trigger,
+        interactive_timeout_minutes=interactive_timeout_minutes,
+        accelerator=accelerator,
+        node_count=node_count,
+        entrypoint=entrypoint,
+    )
 
     job_resp = _upsert_project_and_create_job(
         remote_provider=remote_provider,
