@@ -241,6 +241,7 @@ impl RequestProcessingPreference {
     initial_backoff_ms: Option<u32>,
     cancel_token: Option<&CancellationToken>,
     primary_api_key_override: Option<String>,
+    extra_headers: Option<HashMap<String, String>>,
   ) -> Self {
     let inner = RustRequestProcessingPreference {
       max_concurrent_requests: max_concurrent_requests.map(|x| x as usize),
@@ -255,6 +256,7 @@ impl RequestProcessingPreference {
       initial_backoff_ms: initial_backoff_ms.map(|x| x as u64),
       cancel_token: cancel_token.map(|token| token.inner.clone()),
       primary_api_key_override,
+      extra_headers,
     };
 
     // Apply defaults using the same method as Rust core
@@ -328,6 +330,11 @@ impl RequestProcessingPreference {
   #[napi(getter)]
   pub fn primary_api_key_override(&self) -> Option<String> {
     self.complete.primary_api_key_override.clone()
+  }
+
+  #[napi(getter)]
+  pub fn extra_headers(&self) -> Option<HashMap<String, String>> {
+    self.complete.extra_headers.clone()
   }
 }
 
@@ -504,7 +511,6 @@ impl PerformanceClient {
     url_path: String,
     payloads: Vec<JsonValue>,
     preference: Option<&RequestProcessingPreference>,
-    custom_headers: Option<std::collections::HashMap<String, String>>,
     method: Option<String>,
   ) -> napi::Result<serde_json::Value> {
     if payloads.is_empty() {
@@ -520,7 +526,7 @@ impl PerformanceClient {
 
     let result = self
       .core_client
-      .process_batch_post_requests(url_path, payloads, &pref, custom_headers, http_method)
+      .process_batch_post_requests(url_path, payloads, &pref, http_method)
       .await
       .map_err(convert_core_error_to_napi_error)?;
 

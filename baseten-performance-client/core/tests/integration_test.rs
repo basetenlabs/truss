@@ -154,9 +154,6 @@ fn test_classification_response_combine() {
 
 #[test]
 fn test_send_request_config_hedge_timeout_validation() {
-    use baseten_performance_client_core::customer_request_id::CustomerRequestId;
-
-    use std::time::Duration;
 
     // Test case 1: hedge delay higher than request delay (should fail)
     // This validation is now done in RequestProcessingConfig, not SendRequestConfig
