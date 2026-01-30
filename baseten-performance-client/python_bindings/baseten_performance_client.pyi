@@ -392,12 +392,17 @@ class HttpClientWrapper:
         >>> client2 = PerformanceClient(base_url="https://api2.example.com", client_wrapper=wrapper)
     """
 
-    def __init__(self, http_version: builtins.int = 1) -> None:
+    def __init__(
+        self,
+        http_version: builtins.int = 1,
+        proxy: typing.Optional[builtins.str] = None,
+    ) -> None:
         """
         Create a new HTTP client wrapper.
 
         Args:
             http_version: HTTP version to use. 1 for HTTP/1.1, 2 for HTTP/2. Defaults to 1.
+            proxy: Optional proxy URL to route all HTTP requests through (e.g., "http://proxy:8080").
         """
         ...
 
@@ -423,6 +428,7 @@ class PerformanceClient:
         api_key: typing.Optional[builtins.str] = None,
         http_version: builtins.int = 1,
         client_wrapper: typing.Optional[HttpClientWrapper] = None,
+        proxy: typing.Optional[builtins.str] = None,
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
@@ -434,12 +440,15 @@ class PerformanceClient:
                 Under high concurrency, HTTP/1.1 delivers better performance and is the better default choice.
             client_wrapper: Optional HttpClientWrapper instance to reuse connection pooling
                 across multiple PerformanceClient instances.
+            proxy: Optional proxy URL to route all HTTP requests through (e.g., "http://proxy:8080").
 
         Example:
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key", http_version=1)
             >>> # Or with shared connection pool:
             >>> wrapper = HttpClientWrapper(http_version=1)
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", client_wrapper=wrapper)
+            >>> # Or with proxy:
+            >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", proxy="http://envoy-proxy.local:8080")
         """
         ...
 

@@ -357,9 +357,9 @@ struct HttpClientWrapper {
 #[pymethods]
 impl HttpClientWrapper {
     #[new]
-    #[pyo3(signature = (http_version = 1))]
-    fn new(http_version: u8) -> PyResult<Self> {
-        let inner = HttpClientWrapperRs::new(http_version)
+    #[pyo3(signature = (http_version = 1, proxy = None))]
+    fn new(http_version: u8, proxy: Option<String>) -> PyResult<Self> {
+        let inner = HttpClientWrapperRs::new(http_version, proxy)
             .map_err(PerformanceClient::convert_core_error_to_py_err)?;
         Ok(HttpClientWrapper { inner })
     }
@@ -565,16 +565,18 @@ impl PerformanceClient {
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None))]
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None))]
     fn new(
         base_url: String,
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<HttpClientWrapper>,
+        proxy: Option<String>,
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
-        let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper)
-            .map_err(Self::convert_core_error_to_py_err)?;
+        let core_client =
+            PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy)
+                .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {
             core_client,

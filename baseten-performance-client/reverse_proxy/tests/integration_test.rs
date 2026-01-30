@@ -582,6 +582,7 @@ impl IntegrationTest {
             Some("test_api_key".to_string()),
             2,
             None,
+            None,
         )?);
 
         // Create multiple concurrent requests

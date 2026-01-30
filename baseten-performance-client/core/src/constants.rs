@@ -36,7 +36,6 @@ pub(crate) const HTTP2_WINDOW_SIZE: u32 = 2_097_152; // 2 MB
 pub(crate) const HTTP2_CLIENT_POOL_SIZE: usize = 64;
 pub(crate) const HTTP2_CLIENT_OPTIMUM_QUEUED: usize = 8;
 
-
 // Slow providers where customers have reported issues
 pub(crate) const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
 pub(crate) const CUSTOMER_HEADER_NAME: &str = "x-baseten-customer-request-id";

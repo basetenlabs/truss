@@ -53,6 +53,7 @@ pub async fn create_server(config: Arc<ProxyConfig>) -> Result<(), Box<dyn std::
         ),
         config.http_version,
         None,
+        None,
     )
     .map_err(|e| {
         error!("Failed to create performance client: {}", e);

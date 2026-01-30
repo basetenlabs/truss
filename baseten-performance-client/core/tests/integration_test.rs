@@ -154,7 +154,6 @@ fn test_classification_response_combine() {
 
 #[test]
 fn test_send_request_config_hedge_timeout_validation() {
-
     // Test case 1: hedge delay higher than request delay (should fail)
     // This validation is now done in RequestProcessingConfig, not SendRequestConfig
     let pref = RequestProcessingPreference::new()
