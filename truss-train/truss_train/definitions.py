@@ -120,6 +120,7 @@ class InteractiveSessionProvider(str, enum.Enum):
 class InteractiveSessionAuthProvider(str, enum.Enum):
     GITHUB = "github"
     MICROSOFT = "microsoft"
+
 class InteractiveSession(custom_types.SafeModelNoExtra):
     trigger: InteractiveSessionTrigger = InteractiveSessionTrigger.ON_DEMAND
     timeout_minutes: int = 8 * 60
