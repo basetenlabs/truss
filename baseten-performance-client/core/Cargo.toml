@@ -1,6 +1,6 @@
 [package]
 name = "baseten_performance_client_core"
-version = "0.1.5"
+version = "0.1.4"
 edition = "2021"
 description = "High performance HTTP client for Baseten.co and other APIs"
 license = "MIT"
