@@ -33,6 +33,13 @@ where
     // Add customer request ID header
     request_builder = request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
 
+    // Add extra headers from config if present
+    if let Some(ref headers) = config.extra_headers {
+        for (key, value) in headers {
+            request_builder = request_builder.header(key, value);
+        }
+    }
+
     let response = send_request_with_retry(request_builder, config).await?;
     let successful_response =
         ensure_successful_response(response, Some(customer_request_id.to_string())).await?;
@@ -64,7 +71,6 @@ pub(crate) async fn send_http_request_with_headers<T>(
     request_timeout: Duration,
     config: &RequestProcessingConfig,
     customer_request_id: CustomerRequestId,
-    custom_headers: Option<&std::collections::HashMap<String, String>>,
     method: crate::http::HttpMethod,
 ) -> Result<(serde_json::Value, std::collections::HashMap<String, String>), ClientError>
 where
@@ -83,7 +89,8 @@ where
     // Add customer request ID header
     request_builder = request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
 
-    if let Some(headers) = custom_headers {
+    // Add extra headers from config if present
+    if let Some(ref headers) = config.extra_headers {
         for (key, value) in headers {
             request_builder = request_builder.header(key, value);
         }
@@ -107,7 +114,9 @@ where
         successful_response
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| ClientError::Serialization(format!("Failed to parse response JSON: {}", e)))?
+            .map_err(|e| {
+                ClientError::Serialization(format!("Failed to parse response JSON: {}", e))
+            })?
     } else {
         serde_json::Value::Object(serde_json::Map::new())
     };

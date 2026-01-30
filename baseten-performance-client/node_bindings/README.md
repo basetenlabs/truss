@@ -52,7 +52,10 @@ try {
         undefined, // hedge_budget_pct
         undefined, // retry_budget_pct
         undefined, // max_retries
-        undefined  // initial_backoff_ms
+        undefined, // initial_backoff_ms
+        undefined, // cancel_token
+        undefined, // primary_api_key_override
+        {"x-custom-header": "value"} // extra_headers
     );
     const response = await embedClient.embed(
         texts,
@@ -150,7 +153,10 @@ try {
         undefined, // hedge_budget_pct
         undefined, // retry_budget_pct
         undefined, // max_retries
-        undefined  // initial_backoff_ms
+        undefined, // initial_backoff_ms
+        undefined, // cancel_token
+        undefined, // primary_api_key_override
+        {"x-custom-header": "value"} // extra_headers
     );
     const response = await rerankClient.classify(
         textsToClassify,
@@ -187,17 +193,20 @@ const payloads = [
 const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
 try {
-    const preference = new RequestProcessingPreference(
-        4,  // max_concurrent_requests
-        undefined, // batch_size
+const preference = new RequestProcessingPreference(
+        4,     // max_concurrent_requests
+        2,     // batch_size
         undefined, // max_chars_per_request
-        30, // timeout_s
+        30,    // timeout_s
         undefined, // hedge_delay
         undefined, // total_timeout_s
         undefined, // hedge_budget_pct
         undefined, // retry_budget_pct
         undefined, // max_retries
-        undefined  // initial_backoff_ms
+        undefined, // initial_backoff_ms
+        undefined, // cancel_token
+        undefined, // primary_api_key_override
+        {"x-custom-header": "value"} // extra_headers
     );
     const response = await embedClient.batchPost(
         "/v1/embeddings", // URL path
@@ -275,7 +284,7 @@ The client supports request hedging for improved latency:
 const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
 const preference = new RequestProcessingPreference(
-    8, 2, 100000, 30, 0.5, 60, 0.1, 0.05, 3, 250  // maxConcurrentRequests, batchSize, maxCharsPerRequest, timeoutS, hedgeDelay, totalTimeoutS, hedgeBudgetPct, retryBudgetPct, maxRetries, initialBackoffMs
+    8, 2, 100000, 30, 0.5, 60, 0.1, 0.05, 3, 250, undefined, undefined, undefined, {"x-custom-header": "value"}  // maxConcurrentRequests, batchSize, maxCharsPerRequest, timeoutS, hedgeDelay, totalTimeoutS, hedgeBudgetPct, retryBudgetPct, maxRetries, initialBackoffMs, cancelToken, primaryApiKeyOverride, extraHeaders
 );
 const response = await embedClient.embed(
     texts,
@@ -302,7 +311,10 @@ const preference = new RequestProcessingPreference(
     undefined, // hedgeBudgetPct
     0.10,      // retryBudgetPct (10% for retries)
     4,         // maxRetries (maximum allowed)
-    500        // initialBackoffMs (start with 500ms backoff)
+    500,       // initialBackoffMs (start with 500ms backoff)
+    undefined, // cancelToken
+    undefined, // primaryApiKeyOverride
+    {"x-custom-header": "value"} // extraHeaders
 );
 
 const response = await embedClient.embed(
@@ -314,17 +326,39 @@ const response = await embedClient.embed(
 ```
 
 #### Custom Headers
-Use custom headers with batchPost:
+Use custom headers with all requests using RequestProcessingPreference:
 
 ```javascript
 const { RequestProcessingPreference } = require('@basetenlabs/performance-client');
 
-const preference = new RequestProcessingPreference(4, undefined, undefined, 30, undefined, undefined, undefined, undefined, undefined, undefined);
-const response = await client.batchPost(
+const preference = new RequestProcessingPreference(
+    4, // maxConcurrentRequests
+    undefined, // batchSize
+    undefined, // maxCharsPerRequest
+    30, // timeoutS
+    undefined, // hedgeDelay
+    undefined, // totalTimeoutS
+    undefined, // hedgeBudgetPct
+    undefined, // retryBudgetPct
+    undefined, // maxRetries
+    undefined, // initialBackoffMs
+    undefined, // cancelToken
+    undefined, // primaryApiKeyOverride
+    { "x-custom-header": "value" } // extraHeaders
+);
+
+// Use with any method (embed, rerank, classify, batchPost)
+const response = await client.embed(
+    texts,
+    "text-embedding-3-small",
+    null, null, null, // encoding_format, dimensions, user
+    preference // preference parameter
+);
+
+const batchResponse = await client.batchPost(
     "/v1/embeddings",
     payloads,
-    { "x-custom-header": "value" }, // custom headers
-    preference // preference parameter
+    preference // preference parameter (headers come from preference)
 );
 ```
 
@@ -357,7 +391,7 @@ new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
 #### RequestProcessingPreference
 
 ```javascript
-new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, maxCharsPerRequest?, timeoutS?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?)
+new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, maxCharsPerRequest?, timeoutS?, hedgeDelay?, totalTimeoutS?, hedgeBudgetPct?, retryBudgetPct?, maxRetries?, initialBackoffMs?, cancelToken?, primaryApiKeyOverride?, extraHeaders?)
 ```
 
 - `maxConcurrentRequests` (number, optional): Maximum number of parallel requests (default: 128)
@@ -370,6 +404,9 @@ new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, maxCharsPerR
 - `retryBudgetPct` (number, optional): Retry budget percentage (default: 0.05, range: 0.0-3.0)
 - `maxRetries` (number, optional): Maximum number of HTTP retries (default: 4, max: 4)
 - `initialBackoffMs` (number, optional): Initial backoff duration in milliseconds (default: 125, range: 50-30000)
+- `cancelToken` (CancellationToken, optional): Token for cancelling operations
+- `primaryApiKeyOverride` (string, optional): Override API key for requests
+- `extraHeaders` (Record<string, string>, optional): Custom headers to include with all requests
 
 ### Methods
 
@@ -402,12 +439,11 @@ new RequestProcessingPreference(maxConcurrentRequests?, batchSize?, maxCharsPerR
 - `truncationDirection` (string, optional): "Left" or "Right" (default: "Right")
 - `preference` (RequestProcessingPreference, optional): Advanced configuration preference object
 
-#### batchPost(urlPath, payloads, customHeaders?, preference?)
+#### batchPost(urlPath, payloads, preference?)
 
 - `urlPath` (string): URL path for the POST request
 - `payloads` (Array<Object>): List of JSON payloads
-- `customHeaders` (Record<string, string>, optional): Custom headers to include with each request
-- `preference` (RequestProcessingPreference, optional): Advanced configuration preference object
+- `preference` (RequestProcessingPreference, optional): Advanced configuration preference object (headers come from preference.extraHeaders)
 
 ## Error Handling
 

@@ -849,7 +849,10 @@ mod tests {
                 .wait_for_service(test.proxy_port, "performance proxy")
                 .await
             {
-                Ok(_) => println!("✅ Performance proxy is healthy on port {}", test.proxy_port),
+                Ok(_) => println!(
+                    "✅ Performance proxy is healthy on port {}",
+                    test.proxy_port
+                ),
                 Err(e) => {
                     eprintln!("❌ Performance proxy health check failed: {}", e);
                     return Err(format!("Performance proxy not responding: {}", e).into());

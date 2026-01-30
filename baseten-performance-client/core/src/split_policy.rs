@@ -24,6 +24,7 @@ pub struct RequestProcessingPreference {
     pub initial_backoff_ms: Option<u64>,
     pub cancel_token: Option<CancellationToken>,
     pub primary_api_key_override: Option<String>,
+    pub extra_headers: Option<std::collections::HashMap<String, String>>,
 }
 
 impl RequestProcessingPreference {
@@ -47,6 +48,7 @@ impl RequestProcessingPreference {
             initial_backoff_ms: self.initial_backoff_ms.or(Some(INITIAL_BACKOFF_MS)),
             cancel_token: self.cancel_token.clone(),
             primary_api_key_override: self.primary_api_key_override.clone(),
+            extra_headers: self.extra_headers.clone(),
         }
     }
 }
@@ -124,6 +126,15 @@ impl RequestProcessingPreference {
         self
     }
 
+    /// Builder pattern: set extra headers
+    pub fn with_extra_headers(
+        mut self,
+        headers: std::collections::HashMap<String, String>,
+    ) -> Self {
+        self.extra_headers = Some(headers);
+        self
+    }
+
     /// Validate and convert to RequestProcessingConfig for a specific request.
     /// This pairs the preference with request-specific data (base_url, total_requests, api_key)
     /// and returns a validated config ready for processing.
@@ -183,6 +194,9 @@ pub struct RequestProcessingConfig {
 
     /// Primary API key to use for requests
     pub api_key_primary: String,
+
+    /// Extra headers to include with all requests
+    pub extra_headers: Option<std::collections::HashMap<String, String>>,
 }
 
 impl RequestProcessingConfig {
@@ -414,6 +428,7 @@ impl RequestProcessingConfig {
             hedge_budget_pct,
             cancel_token: pref.cancel_token.unwrap_or_default(),
             api_key_primary,
+            extra_headers: pref.extra_headers.clone(),
         })
     }
 

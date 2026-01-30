@@ -54,7 +54,10 @@ The `X-Baseten-Request-Preferences` header accepts JSON with the following field
   "hedge_budget_pct": 0.15,
   "retry_budget_pct": 0.08,
   "max_retries": 3,
-  "initial_backoff_ms": 125
+  "initial_backoff_ms": 125,
+  "extra_headers": {
+    "x-custom-header": "value",
+  }
 }
 ```
 
