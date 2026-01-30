@@ -136,7 +136,6 @@ class InteractiveSession(custom_types.SafeModelNoExtra):
 
 class Runtime(custom_types.SafeModelNoExtra):
     start_commands: List[str] = []
-    entrypoint: Optional[str] = None
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: Optional[bool] = None
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()

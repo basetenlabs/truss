@@ -319,12 +319,12 @@ def create_training_job(
         training_project.job.compute.node_count = node_count
 
     if entrypoint is not None:
-        existing_entrypoint = training_project.job.runtime.entrypoint
-        if existing_entrypoint:
+        existing_start_commands = training_project.job.runtime.start_commands
+        if existing_start_commands:
             console.print(
-                f"[bold yellow]⚠ Warning:[/bold yellow] entrypoint '{existing_entrypoint}' provided in config file will be ignored. Using '{entrypoint}' provided via --entrypoint flag."
+                f"[bold yellow]⚠ Warning:[/bold yellow] start_commands {existing_start_commands} provided in config file will be ignored. Using '{entrypoint}' provided via --entrypoint flag."
             )
-        training_project.job.runtime.entrypoint = entrypoint
+        training_project.job.runtime.start_commands = [entrypoint]
 
     job_resp = _upsert_project_and_create_job(
         remote_provider=remote_provider,
