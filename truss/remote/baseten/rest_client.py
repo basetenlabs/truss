@@ -39,6 +39,8 @@ class RestAPIClient:
         return resp.json()
 
     def patch(self, path: str, body: Any):
-        resp = requests.patch(f"{self.base_url}/{path}", headers=self.headers, json=body)
+        resp = requests.patch(
+            f"{self.base_url}/{path}", headers=self.headers, json=body
+        )
         self._handle_error(resp)
         return resp.json()
