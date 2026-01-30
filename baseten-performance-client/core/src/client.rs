@@ -135,6 +135,7 @@ impl HttpClientWrapper {
 ///     Some("your-api-key".to_string()),
 ///     2, // HTTP/2
 ///     None,
+///     None, // proxy
 /// )?;
 ///
 /// // Configure processing preferences
