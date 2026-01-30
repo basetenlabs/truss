@@ -42,7 +42,7 @@ deploy_checkpoint = DeployCheckpointsConfig(
 )
 
 runtime_config = Runtime(
-    entrypoint=["/bin/bash ./my-entrypoint.sh"],
+    start_commands=["/bin/bash ./my-entrypoint.sh"],
     environment_variables={
         "FOO_VAR": "FOO_VAL",
         "BAR_VAR": SecretReference(name="BAR_SECRET"),

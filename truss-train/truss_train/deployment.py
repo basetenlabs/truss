@@ -262,7 +262,7 @@ def create_training_job(
     interactive_timeout_minutes: Optional[int] = None,
     accelerator: Optional[str] = None,
     node_count: Optional[int] = None,
-    entrypoint: Optional[tuple[str, ...]] = None,
+    entrypoint: Optional[str] = None,
 ) -> dict:
     if job_name_from_cli:
         if training_project.job.name:
@@ -306,8 +306,8 @@ def create_training_job(
             console.print(
                 f"[bold yellow]⚠ Warning:[/bold yellow] accelerator '{existing_accelerator}' provided in config file will be ignored. Using '{accelerator}' provided via --accelerator flag."
             )
-        training_project.job.compute.accelerator = truss_config.AcceleratorSpec(
-            accelerator
+        training_project.job.compute.accelerator = (
+            truss_config.AcceleratorSpec.model_validate(accelerator)
         )
 
     if node_count is not None:
@@ -322,9 +322,9 @@ def create_training_job(
         existing_entrypoint = training_project.job.runtime.entrypoint
         if existing_entrypoint:
             console.print(
-                f"[bold yellow]⚠ Warning:[/bold yellow] entrypoint {existing_entrypoint} provided in config file will be ignored. Using entrypoint provided via --entrypoint flags."
+                f"[bold yellow]⚠ Warning:[/bold yellow] entrypoint '{existing_entrypoint}' provided in config file will be ignored. Using '{entrypoint}' provided via --entrypoint flag."
             )
-        training_project.job.runtime.entrypoint = list(entrypoint)
+        training_project.job.runtime.entrypoint = entrypoint
 
     job_resp = _upsert_project_and_create_job(
         remote_provider=remote_provider,

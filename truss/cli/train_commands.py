@@ -160,12 +160,7 @@ def _resolve_team_name(
     help="Accelerator type and count (e.g., H200:8)",
 )
 @click.option("--node-count", type=int, required=False, help="Number of compute nodes")
-@click.option(
-    "--entrypoint",
-    multiple=True,
-    required=False,
-    help="Entrypoint command. Can be specified multiple times.",
-)
+@click.option("--entrypoint", type=str, required=False, help="Entrypoint command.")
 @common.common_options()
 def push_training_job(
     config: Path,
@@ -177,7 +172,7 @@ def push_training_job(
     interactive_timeout_minutes: Optional[int],
     accelerator: Optional[str],
     node_count: Optional[int],
-    entrypoint: tuple[str, ...],
+    entrypoint: Optional[str],
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -213,7 +208,7 @@ def push_training_job(
                 interactive_timeout_minutes=interactive_timeout_minutes,
                 accelerator=accelerator,
                 node_count=node_count,
-                entrypoint=entrypoint if entrypoint else None,
+                entrypoint=entrypoint,
             )
 
     # Note: This post create logic needs to happen outside the context

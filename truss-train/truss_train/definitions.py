@@ -108,28 +108,35 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     require_cache_affinity: bool = True
     mount_base_path: str = "/root/.cache"
 
+
 class InteractiveSessionTrigger(str, enum.Enum):
     ON_STARTUP = "on_startup"
     ON_FAILURE = "on_failure"
     ON_DEMAND = "on_demand"
 
+
 class InteractiveSessionProvider(str, enum.Enum):
     VS_CODE = "vs_code"
     CURSOR = "cursor"
+
 
 class InteractiveSessionAuthProvider(str, enum.Enum):
     GITHUB = "github"
     MICROSOFT = "microsoft"
 
+
 class InteractiveSession(custom_types.SafeModelNoExtra):
     trigger: InteractiveSessionTrigger = InteractiveSessionTrigger.ON_DEMAND
     timeout_minutes: int = 8 * 60
     session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
-    auth_provider: InteractiveSessionAuthProvider = InteractiveSessionAuthProvider.GITHUB
+    auth_provider: InteractiveSessionAuthProvider = (
+        InteractiveSessionAuthProvider.GITHUB
+    )
 
 
 class Runtime(custom_types.SafeModelNoExtra):
-    entrypoint: List[str] = []
+    start_commands: List[str] = []
+    entrypoint: Optional[str] = None
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: Optional[bool] = None
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()
