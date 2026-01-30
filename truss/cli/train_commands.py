@@ -58,7 +58,7 @@ def _print_training_job_success_message(
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
     should_print_cache_summary = job_object and (
-        job_object.runtime.enable_cache
+        getattr(job_object.runtime, "enable_cache", None)
         or job_object.runtime.cache_config
         and job_object.runtime.cache_config.enabled
     )
@@ -141,6 +141,26 @@ def _resolve_team_name(
     required=False,
     help="Team name for the training project",
 )
+@click.option(
+    "--interactive",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="Interactive session trigger mode",
+)
+@click.option(
+    "--interactive-timeout-minutes",
+    type=int,
+    required=False,
+    help="Interactive session timeout in minutes",
+)
+@click.option(
+    "--accelerator",
+    type=str,
+    required=False,
+    help="Accelerator type and count (e.g., H200:8)",
+)
+@click.option("--node-count", type=int, required=False, help="Number of compute nodes")
+@click.option("--entrypoint", type=str, required=False, help="Entrypoint command.")
 @common.common_options()
 def push_training_job(
     config: Path,
@@ -148,6 +168,11 @@ def push_training_job(
     tail: bool,
     job_name: Optional[str],
     provided_team_name: Optional[str],
+    interactive: Optional[str],
+    interactive_timeout_minutes: Optional[int],
+    accelerator: Optional[str],
+    node_count: Optional[int],
+    entrypoint: Optional[str],
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -179,6 +204,11 @@ def push_training_job(
                 job_name_from_cli=job_name,
                 team_name=team_name,
                 team_id=team_id,
+                interactive_trigger=interactive,
+                interactive_timeout_minutes=interactive_timeout_minutes,
+                accelerator=accelerator,
+                node_count=node_count,
+                entrypoint=entrypoint,
             )
 
     # Note: This post create logic needs to happen outside the context
@@ -640,3 +670,61 @@ def _maybe_resolve_project_id_from_id_or_name(
     if not project_str:
         return None
     return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]
+
+
+@train.command(name="update_session")
+@click.argument("job_id", type=str, required=True)
+@click.option(
+    "--trigger",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="When to create the interactive session: 'on_startup' creates on job start, 'on_failure' creates on job failure, 'on_demand' allows manual session creation.",
+)
+@click.option(
+    "--timeout-hours",
+    type=int,
+    required=False,
+    help="Number of hours before the interactive session times out.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def update_session(
+    job_id: str,
+    trigger: Optional[str],
+    timeout_hours: Optional[int],
+    remote: Optional[str],
+):
+    """Update interactive session configuration for a training job."""
+
+    if trigger is None and timeout_hours is None:
+        error_console.print(
+            "At least one of --trigger or --timeout-hours must be provided."
+        )
+        sys.exit(1)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        remote_provider.api.update_interactive_session(
+            project_id=project_id,
+            job_id=job_id,
+            trigger=trigger,
+            timeout_hours=timeout_hours,
+        )
+        console.print("Interactive session configuration updated.", style="green")
+    except Exception as e:
+        error_console.print(f"Failed to update interactive session: {str(e)}")
+        sys.exit(1)

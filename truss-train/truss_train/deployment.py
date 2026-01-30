@@ -6,8 +6,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-logger = logging.getLogger(__name__)
-
+from truss.base import truss_config
 from truss.base.custom_types import SafeModel
 from truss.cli.utils.output import console
 from truss.remote.baseten import custom_types as b10_types
@@ -15,7 +14,16 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import archive_dir
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils import transfer
-from truss_train.definitions import TrainingJob, TrainingProject, Workspace
+from truss_train.definitions import (
+    DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES,
+    InteractiveSession,
+    InteractiveSessionTrigger,
+    TrainingJob,
+    TrainingProject,
+    Workspace,
+)
+
+logger = logging.getLogger(__name__)
 
 # 5GB max archive size
 MAX_ARCHIVE_SIZE_BYTES = 5 * 1024 * 1024 * 1024
@@ -212,6 +220,7 @@ def prepare_push(
         runtime=training_job.runtime,
         compute=training_job.compute,
         name=training_job.name,
+        interactive_session=training_job.interactive_session,
         runtime_artifacts=[
             S3Artifact(s3_key=credentials["s3_key"], s3_bucket=credentials["s3_bucket"])
         ],
@@ -243,6 +252,65 @@ def _upsert_project_and_create_job(
     return job_resp
 
 
+def _apply_cli_overrides(
+    training_project: TrainingProject,
+    interactive_trigger: Optional[str] = None,
+    interactive_timeout_minutes: Optional[int] = None,
+    accelerator: Optional[str] = None,
+    node_count: Optional[int] = None,
+    entrypoint: Optional[str] = None,
+) -> None:
+    """Apply CLI flag overrides to the training project configuration."""
+    if interactive_trigger is not None or interactive_timeout_minutes is not None:
+        if training_project.job.interactive_session is None:
+            training_project.job.interactive_session = InteractiveSession()
+
+        if interactive_trigger is not None:
+            trigger_enum = InteractiveSessionTrigger(interactive_trigger.lower())
+            existing_trigger = training_project.job.interactive_session.trigger
+            if existing_trigger != InteractiveSessionTrigger.ON_DEMAND:
+                console.print(
+                    f"[bold yellow]⚠ Warning:[/bold yellow] interactive trigger '{existing_trigger.value}' provided in config file will be ignored. Using '{interactive_trigger}' provided via --interactive flag."
+                )
+            training_project.job.interactive_session.trigger = trigger_enum
+
+        if interactive_timeout_minutes is not None:
+            existing_timeout = training_project.job.interactive_session.timeout_minutes
+            if existing_timeout != DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES:
+                console.print(
+                    f"[bold yellow]⚠ Warning:[/bold yellow] interactive timeout '{existing_timeout}' minutes provided in config file will be ignored. Using '{interactive_timeout_minutes}' minutes provided via --interactive-timeout-minutes flag."
+                )
+            training_project.job.interactive_session.timeout_minutes = (
+                interactive_timeout_minutes
+            )
+
+    if accelerator is not None:
+        existing_accelerator = training_project.job.compute.accelerator
+        if existing_accelerator is not None:
+            console.print(
+                f"[bold yellow]⚠ Warning:[/bold yellow] accelerator '{existing_accelerator}' provided in config file will be ignored. Using '{accelerator}' provided via --accelerator flag."
+            )
+        training_project.job.compute.accelerator = (
+            truss_config.AcceleratorSpec.model_validate(accelerator)
+        )
+
+    if node_count is not None:
+        existing_node_count = training_project.job.compute.node_count
+        if existing_node_count != 1:
+            console.print(
+                f"[bold yellow]⚠ Warning:[/bold yellow] node_count '{existing_node_count}' provided in config file will be ignored. Using '{node_count}' provided via --node-count flag."
+            )
+        training_project.job.compute.node_count = node_count
+
+    if entrypoint is not None:
+        existing_start_commands = training_project.job.runtime.start_commands
+        if existing_start_commands:
+            console.print(
+                f"[bold yellow]⚠ Warning:[/bold yellow] start_commands {existing_start_commands} provided in config file will be ignored. Using '{entrypoint}' provided via --entrypoint flag."
+            )
+        training_project.job.runtime.start_commands = [entrypoint]
+
+
 def create_training_job(
     remote_provider: BasetenRemote,
     config: Path,
@@ -250,6 +318,11 @@ def create_training_job(
     job_name_from_cli: Optional[str] = None,
     team_name: Optional[str] = None,
     team_id: Optional[str] = None,
+    interactive_trigger: Optional[str] = None,
+    interactive_timeout_minutes: Optional[int] = None,
+    accelerator: Optional[str] = None,
+    node_count: Optional[int] = None,
+    entrypoint: Optional[str] = None,
 ) -> dict:
     if job_name_from_cli:
         if training_project.job.name:
@@ -262,6 +335,15 @@ def create_training_job(
         training_project.job.name = job_name_from_cli
     if team_name:
         training_project.team_name = team_name
+
+    _apply_cli_overrides(
+        training_project,
+        interactive_trigger=interactive_trigger,
+        interactive_timeout_minutes=interactive_timeout_minutes,
+        accelerator=accelerator,
+        node_count=node_count,
+        entrypoint=entrypoint,
+    )
 
     job_resp = _upsert_project_and_create_job(
         remote_provider=remote_provider,
