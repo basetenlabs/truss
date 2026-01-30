@@ -8,6 +8,7 @@ from pydantic import ValidationError, field_validator, model_validator
 from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
+DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES = 8 * 60
 
 # Allowed LoRA rank values for vLLM
 ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
@@ -127,7 +128,7 @@ class InteractiveSessionAuthProvider(str, enum.Enum):
 
 class InteractiveSession(custom_types.SafeModelNoExtra):
     trigger: InteractiveSessionTrigger = InteractiveSessionTrigger.ON_DEMAND
-    timeout_minutes: int = 8 * 60
+    timeout_minutes: int = DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES
     session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
     auth_provider: InteractiveSessionAuthProvider = (
         InteractiveSessionAuthProvider.GITHUB

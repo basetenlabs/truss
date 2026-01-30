@@ -15,6 +15,7 @@ from truss.remote.baseten.core import archive_dir
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.utils import transfer
 from truss_train.definitions import (
+    DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES,
     InteractiveSession,
     InteractiveSessionTrigger,
     TrainingJob,
@@ -291,8 +292,7 @@ def create_training_job(
 
         if interactive_timeout_minutes is not None:
             existing_timeout = training_project.job.interactive_session.timeout_minutes
-            default_timeout = 8 * 60  # Default is 8 hours
-            if existing_timeout != default_timeout:
+            if existing_timeout != DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES:
                 console.print(
                     f"[bold yellow]⚠ Warning:[/bold yellow] interactive timeout '{existing_timeout}' minutes provided in config file will be ignored. Using '{interactive_timeout_minutes}' minutes provided via --interactive-timeout-minutes flag."
                 )
