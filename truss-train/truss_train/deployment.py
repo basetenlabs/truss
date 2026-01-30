@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import List, Optional
 
 from truss.base import truss_config
-
 from truss.base.custom_types import SafeModel
 from truss.cli.utils.output import console
 from truss.remote.baseten import custom_types as b10_types
@@ -20,8 +19,8 @@ from truss_train.definitions import (
     InteractiveSessionTrigger,
     TrainingJob,
     TrainingProject,
+    Workspace,
 )
-from truss_train.definitions import TrainingJob, TrainingProject, Workspace
 
 logger = logging.getLogger(__name__)
 
