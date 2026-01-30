@@ -27,15 +27,6 @@ def gather_chain(
     This mimics the behavior of truss_handle/truss_gatherer.py:gather() for
     regular Truss, ensuring that downloaded chain artifacts include all
     external dependencies.
-
-    Args:
-        chain_root: The root directory of the chain.
-        external_package_dirs: List of absolute paths to external package directories.
-
-    Returns:
-        The path to use for archiving. This is either the original chain_root
-        (if no external packages) or a new temp directory containing the
-        gathered chain with bundled packages.
     """
     if not external_package_dirs:
         return chain_root
