@@ -426,6 +426,42 @@ client1 = PerformanceClient(base_url="https://api1.example.com", client_wrapper=
 client2 = PerformanceClient(base_url="https://api2.example.com", client_wrapper=wrapper)
 ```
 
+#### HTTP Proxy Support
+Route all HTTP requests through a proxy (e.g., for connection pooling with Envoy):
+
+```python
+from baseten_performance_client import HttpClientWrapper
+
+# Create wrapper with HTTP proxy
+wrapper = HttpClientWrapper(
+    http_version=1,
+    proxy="http://envoy-proxy.local:8080"
+)
+
+# Share the wrapper across multiple clients
+client1 = PerformanceClient(
+    base_url="https://api1.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+client2 = PerformanceClient(
+    base_url="https://api2.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+# Both clients will use the same connection pool and proxy
+```
+
+You can also specify the proxy directly when creating a client:
+
+```python
+client = PerformanceClient(
+    base_url="https://api.example.com",
+    api_key="your_key",
+    proxy="http://envoy-proxy.local:8080"
+)
+```
+
 ### Error Handling
 
 The client can raise several types of errors. Here's how to handle common ones:

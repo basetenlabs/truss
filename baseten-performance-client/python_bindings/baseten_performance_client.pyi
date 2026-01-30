@@ -390,6 +390,25 @@ class HttpClientWrapper:
         >>> wrapper = HttpClientWrapper(http_version=1)
         >>> client1 = PerformanceClient(base_url="https://api1.example.com", client_wrapper=wrapper)
         >>> client2 = PerformanceClient(base_url="https://api2.example.com", client_wrapper=wrapper)
+
+    Advanced Settings - Using with HTTP Proxy:
+        >>> # Create a wrapper with an HTTP proxy for connection pooling
+        >>> wrapper = HttpClientWrapper(
+        ...     http_version=1,
+        ...     proxy="http://envoy-proxy.local:8080"
+        ... )
+        >>> # Share the wrapper across multiple clients
+        >>> client1 = PerformanceClient(
+        ...     base_url="https://api1.example.com",
+        ...     api_key="your_key",
+        ...     client_wrapper=wrapper
+        ... )
+        >>> client2 = PerformanceClient(
+        ...     base_url="https://api2.example.com",
+        ...     api_key="your_key",
+        ...     client_wrapper=wrapper
+        ... )
+        >>> # Both clients will use the same connection pool and proxy
     """
 
     def __init__(

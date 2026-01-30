@@ -373,6 +373,46 @@ const clientHttp1 = new PerformanceClient(baseUrl, apiKey, 1);
 const clientHttp2 = new PerformanceClient(baseUrl, apiKey, 2);
 ```
 
+#### HTTP Proxy Support
+Route all HTTP requests through a proxy (e.g., for connection pooling with Envoy):
+
+```javascript
+const { HttpClientWrapper } = require('@basetenlabs/performance-client');
+
+// Create wrapper with HTTP proxy
+const wrapper = new HttpClientWrapper(
+    1,  // http_version
+    "http://envoy-proxy.local:8080"  // proxy
+);
+
+// Share the wrapper across multiple clients
+const client1 = new PerformanceClient(
+    "https://api1.example.com",
+    "your_key",
+    undefined,  // http_version
+    wrapper
+);
+const client2 = new PerformanceClient(
+    "https://api2.example.com",
+    "your_key",
+    undefined,  // http_version
+    wrapper
+);
+// Both clients will use the same connection pool and proxy
+```
+
+You can also specify the proxy directly when creating a client:
+
+```javascript
+const client = new PerformanceClient(
+    "https://api.example.com",
+    "your_key",
+    undefined,  // http_version
+    undefined,  // client_wrapper
+    "http://envoy-proxy.local:8080"  // proxy
+);
+```
+
 ## API Reference
 
 ### Constructors
@@ -380,13 +420,14 @@ const clientHttp2 = new PerformanceClient(baseUrl, apiKey, 2);
 #### PerformanceClient
 
 ```javascript
-new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?)
+new PerformanceClient(baseUrl, apiKey?, httpVersion?, clientWrapper?, proxy?)
 ```
 
 - `baseUrl` (string): The base URL for the API endpoint
 - `apiKey` (string, optional): API key. If not provided, will use `BASETEN_API_KEY` or `OPENAI_API_KEY` environment variables
 - `httpVersion` (number, optional): HTTP version to use (1 for HTTP/1.1, 2 for HTTP/2). Default: 2
 - `clientWrapper` (HttpClientWrapper, optional): Custom HTTP client wrapper for advanced configuration
+- `proxy` (string, optional): Proxy URL to route all HTTP requests through (e.g., "http://proxy:8080")
 
 #### RequestProcessingPreference
 

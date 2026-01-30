@@ -559,6 +559,79 @@ const client1 = new PerformanceClient(baseUrl1, apiKey, 1, wrapper);
 const client2 = new PerformanceClient(baseUrl2, apiKey, 1, wrapper);
 ```
 
+#### HTTP Proxy Support
+Route all HTTP requests through a proxy (e.g., for connection pooling with Envoy):
+
+```python
+from baseten_performance_client import HttpClientWrapper
+
+# Create wrapper with HTTP proxy
+wrapper = HttpClientWrapper(
+    http_version=1,
+    proxy="http://envoy-proxy.local:8080"
+)
+
+# Share the wrapper across multiple clients
+client1 = PerformanceClient(
+    base_url="https://api1.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+client2 = PerformanceClient(
+    base_url="https://api2.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+# Both clients will use the same connection pool and proxy
+```
+
+You can also specify the proxy directly when creating a client:
+
+```python
+client = PerformanceClient(
+    base_url="https://api.example.com",
+    api_key="your_key",
+    proxy="http://envoy-proxy.local:8080"
+)
+```
+
+```javascript
+const { HttpClientWrapper } = require('baseten-performance-client');
+
+// Create wrapper with HTTP proxy
+const wrapper = new HttpClientWrapper(
+    1,  // http_version
+    "http://envoy-proxy.local:8080"  // proxy
+);
+
+// Share the wrapper across multiple clients
+const client1 = new PerformanceClient(
+    "https://api1.example.com",
+    "your_key",
+    undefined,  // http_version
+    wrapper
+);
+const client2 = new PerformanceClient(
+    "https://api2.example.com",
+    "your_key",
+    undefined,  // http_version
+    wrapper
+);
+// Both clients will use the same connection pool and proxy
+```
+
+You can also specify the proxy directly when creating a client:
+
+```javascript
+const client = new PerformanceClient(
+    "https://api.example.com",
+    "your_key",
+    undefined,  // http_version
+    undefined,  // client_wrapper
+    "http://envoy-proxy.local:8080"  // proxy
+);
+```
+
 #### Custom Headers
 Add custom headers to all requests using RequestProcessingPreference:
 
@@ -721,7 +794,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("BASETEN_API_KEY").expect("BASETEN_API_KEY not set");
     let base_url = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
 
-    let client = PerformanceClientCore::new(base_url, Some(api_key), None, None); // http_version, client_wrapper
+    let client = PerformanceClientCore::new(
+        base_url,
+        Some(api_key),
+        None,  // http_version
+        None,  // client_wrapper
+        None   // proxy
+    );
 
     // Embedding example
     let texts = vec!["Hello world".to_string(), "Example text".to_string()];
