@@ -161,10 +161,10 @@ def _resolve_team_name(
 )
 @click.option("--node-count", type=int, required=False, help="Number of compute nodes")
 @click.option(
-    "--start-command",
+    "--entrypoint",
     multiple=True,
     required=False,
-    help="Runtime start command. Can be specified multiple times.",
+    help="Entrypoint command. Can be specified multiple times.",
 )
 @common.common_options()
 def push_training_job(
@@ -177,7 +177,7 @@ def push_training_job(
     interactive_timeout_minutes: Optional[int],
     accelerator: Optional[str],
     node_count: Optional[int],
-    start_command: tuple[str, ...],
+    entrypoint: tuple[str, ...],
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -211,7 +211,7 @@ def push_training_job(
                 interactive_timeout_minutes=interactive_timeout_minutes,
                 accelerator=accelerator,
                 node_count=node_count,
-                start_command=start_command if start_command else None,
+                entrypoint=entrypoint if entrypoint else None,
             )
 
     # Note: This post create logic needs to happen outside the context

@@ -100,7 +100,7 @@ def create_training_job(
     interactive_timeout_minutes: Optional[int] = None,
     accelerator: Optional[str] = None,
     node_count: Optional[int] = None,
-    start_command: Optional[tuple[str, ...]] = None,
+    entrypoint: Optional[tuple[str, ...]] = None,
 ) -> dict:
     if job_name_from_cli:
         if training_project.job.name:
@@ -111,7 +111,6 @@ def create_training_job(
     if team_name:
         training_project.team_name = team_name
 
-    # Apply CLI overrides for interactive session
     if interactive_trigger is not None or interactive_timeout_minutes is not None:
         if training_project.job.interactive_session is None:
             training_project.job.interactive_session = InteractiveSession()
@@ -136,7 +135,6 @@ def create_training_job(
                 interactive_timeout_minutes
             )
 
-    # Apply CLI override for accelerator
     if accelerator is not None:
         existing_accelerator = training_project.job.compute.accelerator
         if existing_accelerator is not None:
@@ -147,7 +145,6 @@ def create_training_job(
             accelerator
         )
 
-    # Apply CLI override for node_count
     if node_count is not None:
         existing_node_count = training_project.job.compute.node_count
         if existing_node_count != 1:  # 1 is the default
@@ -156,14 +153,13 @@ def create_training_job(
             )
         training_project.job.compute.node_count = node_count
 
-    # Apply CLI override for start_command
-    if start_command is not None:
-        existing_commands = training_project.job.runtime.start_commands
-        if existing_commands:
+    if entrypoint is not None:
+        existing_entrypoint = training_project.job.runtime.entrypoint
+        if existing_entrypoint:
             console.print(
-                f"[bold yellow]⚠ Warning:[/bold yellow] start_commands {existing_commands} provided in config file will be ignored. Using commands provided via --start-command flags."
+                f"[bold yellow]⚠ Warning:[/bold yellow] entrypoint {existing_entrypoint} provided in config file will be ignored. Using entrypoint provided via --entrypoint flags."
             )
-        training_project.job.runtime.start_commands = list(start_command)
+        training_project.job.runtime.entrypoint = list(entrypoint)
 
     job_resp = _upsert_project_and_create_job(
         remote_provider=remote_provider,

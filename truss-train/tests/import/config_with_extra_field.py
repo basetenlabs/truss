@@ -1,7 +1,7 @@
 from truss_train import definitions
 
 runtime_config = definitions.Runtime(
-    start_commands=["/bin/bash ./my-entrypoint.sh"],
+    entrypoint=["/bin/bash ./my-entrypoint.sh"],
     environment_variables={
         "FOO_VAR": "FOO_VAL",
         "BAR_VAR": definitions.SecretReference(name="BAR_SECRET"),
