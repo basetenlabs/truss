@@ -36,6 +36,7 @@ from truss.util import log_utils, user_config
 from truss.util import path as truss_path
 from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import code_gen
+from truss_chains.deployment.chain_gatherer import gather_chain
 
 if TYPE_CHECKING:
     from rich import console as rich_console
@@ -72,6 +73,30 @@ def _get_chain_root(entrypoint: Type[private_types.ABCChainlet]) -> pathlib.Path
         "be included as dependencies in the remote deployments and are importable)."
     )
     return chain_root
+
+
+def _collect_external_package_dirs(
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+) -> list[pathlib.Path]:
+    """Collect unique external_package_dirs from all chainlets.
+
+    Args:
+        chainlet_descriptors: Iterable of chainlet descriptors to collect from.
+
+    Returns:
+        List of unique absolute paths to external package directories.
+    """
+    seen: set[pathlib.Path] = set()
+    result: list[pathlib.Path] = []
+    for desc in chainlet_descriptors:
+        remote_config = desc.chainlet_cls.remote_config
+        if remote_config.docker_image.external_package_dirs:
+            for ext_dir in remote_config.docker_image.external_package_dirs:
+                abs_path = pathlib.Path(ext_dir.abs_path)
+                if abs_path not in seen:
+                    seen.add(abs_path)
+                    result.append(abs_path)
+    return result
 
 
 class ChainService(abc.ABC):
@@ -521,6 +546,15 @@ def _create_baseten_chain(
     chain_root = None
     if entrypoint_descriptor is not None:
         chain_root = _get_chain_root(entrypoint_descriptor.chainlet_cls)
+
+        # Gather external packages from all chainlets into the chain archive.
+        # This ensures that when users download the chain, all external
+        # dependencies are included in the artifact.
+        all_external_dirs = _collect_external_package_dirs(
+            _get_ordered_dependencies([entrypoint_descriptor.chainlet_cls])
+        )
+        if all_external_dirs:
+            chain_root = gather_chain(chain_root, all_external_dirs)
 
     chain_deployment_handle = remote_provider.push_chain_atomic(
         baseten_options.chain_name,
