@@ -1,0 +1,44 @@
+[package]
+name = "baseten-performance-reverse-proxy"
+version = "0.0.1"
+edition = "2021"
+description = "High-performance performance proxy for Baseten APIs"
+license = "MIT"
+repository = "https://github.com/basetenlabs/truss/tree/main/baseten-performance-client"
+homepage = "https://github.com/basetenlabs/truss/tree/main/baseten-performance-client"
+documentation = "https://github.com/basetenlabs/truss/tree/main/baseten-performance-client"
+keywords = ["http", "proxy", "async", "performance", "baseten"]
+categories = ["web-programming::http-server", "asynchronous"]
+
+[lib]
+name = "baseten_reverse_proxy_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "baseten-performance-proxy"
+path = "src/main.rs"
+
+[dependencies]
+baseten_performance_client_core = { path = "../core", features = ["rustls"] }
+tokio = { workspace = true }
+
+axum = { version = "0.7", features = ["http2", "tokio"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { version = "4.0", features = ["derive"] }
+tokenizers = "0.22"
+async-channel = "2.3"
+
+[dev-dependencies]
+tokio-test = "0.4"
+futures = { workspace = true }
+reqwest = { workspace = true }
+tracing-subscriber = { workspace = true }
+serial_test = "3.0"
+
+[features]
+default = []
