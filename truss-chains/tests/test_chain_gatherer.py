@@ -2,6 +2,7 @@ import pathlib
 import tempfile
 
 import pytest
+import yaml
 
 from truss_chains.deployment.chain_gatherer import BUNDLED_PACKAGES_DIR, gather_chain
 
@@ -169,3 +170,47 @@ class TestGatherChain:
             # The nested directory should be under packages/ (not ext_pkg)
             assert (packages_dir / "nested" / "__init__.py").exists()
             assert (packages_dir / "nested" / "deep_module.py").exists()
+
+    def test_clears_external_package_dirs_from_configs(self, temp_external_packages):
+        """external_package_dirs should be cleared from chainlet configs after gathering."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chain_root = pathlib.Path(tmpdir) / "chain_root"
+            chain_root.mkdir()
+
+            # Create chainlet directories with config.yaml files
+            chainlet_a = chain_root / "chainlet_HelloWorld"
+            chainlet_a.mkdir()
+            config_a = {
+                "model_name": "HelloWorld",
+                "external_package_dirs": ["/some/external/path"],
+                "requirements": [],
+            }
+            (chainlet_a / "config.yaml").write_text(yaml.safe_dump(config_a))
+
+            chainlet_b = chain_root / "chainlet_RandInt"
+            chainlet_b.mkdir()
+            config_b = {
+                "model_name": "RandInt",
+                "external_package_dirs": [],  # Already empty
+                "requirements": [],
+            }
+            (chainlet_b / "config.yaml").write_text(yaml.safe_dump(config_b))
+
+            # Gather with external packages
+            ext_pkg = temp_external_packages[0]
+            result = gather_chain(chain_root, [ext_pkg])
+
+            # Check that external_package_dirs is cleared in gathered configs
+            gathered_config_a = yaml.safe_load(
+                (result / "chainlet_HelloWorld" / "config.yaml").read_text()
+            )
+            assert gathered_config_a["external_package_dirs"] == []
+
+            gathered_config_b = yaml.safe_load(
+                (result / "chainlet_RandInt" / "config.yaml").read_text()
+            )
+            assert gathered_config_b["external_package_dirs"] == []
+
+            # Other config fields should be preserved
+            assert gathered_config_a["model_name"] == "HelloWorld"
+            assert gathered_config_b["model_name"] == "RandInt"

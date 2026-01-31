@@ -8,6 +8,7 @@ external packages via truss_handle/truss_gatherer.py.
 import pathlib
 import tempfile
 
+from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import copy_file_path, copy_tree_path
 
 BUNDLED_PACKAGES_DIR = "packages"
@@ -95,4 +96,26 @@ def gather_chain(
             elif sub_path.is_file():
                 copy_file_path(sub_path, dest_path)
 
+    # Clear external_package_dirs from all chainlet configs so the gathered chain
+    # can be re-pushed without needing the original external paths.
+    # This mirrors truss_gatherer.py's shadow_handle.clear_external_packages().
+    _clear_external_package_dirs_from_configs(gathered_chain_root)
+
     return gathered_chain_root
+
+
+def _clear_external_package_dirs_from_configs(chain_root: pathlib.Path) -> None:
+    """Clear external_package_dirs from all chainlet config.yaml files.
+
+    After gathering, external packages are bundled into packages/, so the
+    original external_package_dirs paths are no longer needed. Clearing them
+    allows the gathered chain to be downloaded and re-pushed without errors.
+
+    Reuses TrussHandle.clear_external_packages() since each chainlet directory
+    is a valid truss directory structure.
+    """
+    for chainlet_dir in chain_root.glob("chainlet_*"):
+        if chainlet_dir.is_dir():
+            handle = TrussHandle(chainlet_dir, validate=False)
+            if handle.spec.config.external_package_dirs:
+                handle.clear_external_packages()
