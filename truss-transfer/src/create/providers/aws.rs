@@ -30,7 +30,7 @@ impl CloudMetadataProvider for AwsProvider {
         runtime_secret_name: &str,
     ) -> Result<Box<dyn ObjectStore>> {
         let s3 = s3_storage(bucket, runtime_secret_name)?;
-        Ok(s3)
+        Ok(Box::new(s3))
     }
 
     fn create_resolution(&self, bucket: &str, object_path: &str) -> Resolution {
