@@ -109,6 +109,44 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     mount_base_path: str = "/root/.cache"
 
 
+class WeightConfig(custom_types.SafeModelNoExtra):
+    """
+    Weight source configuration for training jobs.
+
+    Enables training jobs to mount external model weights from HuggingFace, S3, GCS, or R2
+    via MDN's (Model Distribution Network) caching and CSI mounting infrastructure.
+    Weights are mirrored once and deduplicated across training jobs.
+
+    Example:
+        >>> from truss_train import WeightConfig
+        >>> weight = WeightConfig(
+        ...     source="hf://meta-llama/Llama-3-8B@main",
+        ...     mount_location="/app/models/base",
+        ...     auth_secret_name="hf_token"
+        ... )
+    """
+
+    source: str
+    """Weight source URI. Supported formats:
+    - HuggingFace: hf://namespace/model@revision (e.g., "hf://meta-llama/Llama-3-8B@main")
+    - S3: s3://bucket/path (e.g., "s3://my-bucket/models/llama")
+    - GCS: gs://bucket/path (e.g., "gs://my-bucket/models/llama")
+    - R2: r2://account_id.bucket/path (e.g., "r2://abc123.my-bucket/models/llama")
+    """
+
+    mount_location: str
+    """Path where weights will be mounted in the container (e.g., "/app/models/base")."""
+
+    allow_patterns: Optional[List[str]] = None
+    """File patterns to include (Unix-style shell patterns, e.g., ["*.safetensors", "config.json"])."""
+
+    ignore_patterns: Optional[List[str]] = None
+    """File patterns to exclude (Unix-style shell patterns, e.g., ["*.bin", "*.h5"])."""
+
+    auth_secret_name: Optional[str] = None
+    """Name of the workspace secret for authentication (e.g., HuggingFace token)."""
+
+
 class Runtime(custom_types.SafeModelNoExtra):
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
@@ -178,6 +216,8 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     runtime: Runtime = Runtime()
     name: Optional[str] = None
     workspace: Optional[Workspace] = None
+    weights: List[WeightConfig] = []
+    """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
