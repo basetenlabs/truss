@@ -4,11 +4,6 @@ ENV CUDNN_VERSION="8.9.5.29"
 ENV CUDA="12.2"
 ENV LD_LIBRARY_PATH="/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 
-{# Configure Ubuntu mirrors with fallbacks for better reliability #}
-RUN if [ -f /etc/apt/sources.list ] && ! grep -q "mirror.ubuntu.com" /etc/apt/sources.list; then \
-        sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|http://mirror.ubuntu.com/ubuntu/ http://archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list; \
-    fi
-
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub && \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
