@@ -142,8 +142,14 @@ def upgrade(ctx: click.Context, version: Optional[str]) -> None:
     required=False,
     help="Name of the remote in .trussrc to check whoami.",
 )
+@click.option(
+    "--show-oidc",
+    is_flag=True,
+    default=False,
+    help="Show OIDC configuration for workload identity.",
+)
 @common.common_options()
-def whoami(remote: Optional[str]):
+def whoami(remote: Optional[str], show_oidc: bool):
     """
     Shows user information and exit.
     """
@@ -155,6 +161,50 @@ def whoami(remote: Optional[str]):
     user = whoami(remote)
 
     console.print(f"{user.workspace_name}\\{user.user_email}")
+
+    if show_oidc:
+        remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+        oidc_info = remote_provider.get_oidc_info()
+
+        console.print()
+        console.print("[bold]OIDC Information[/bold]")
+        console.print("-" * 19)
+        console.print(f"Org ID:                 {oidc_info.org_id}")
+
+        # Display teams with both ID and name
+        if oidc_info.teams:
+            teams_display = ", ".join(
+                f"{team.id} ({team.name})" for team in oidc_info.teams
+            )
+            console.print(f"Teams:                  [ {teams_display} ]")
+        else:
+            console.print("Teams:                  [ ]")
+
+        console.print(f"Issuer:                 {oidc_info.issuer}")
+        console.print(f"Audience:               {oidc_info.audience}")
+        console.print(f"Workload Type Options:  {', '.join(oidc_info.workload_types)}")
+
+        console.print()
+        console.print("[bold]Example Subject Claims[/bold]")
+        console.print("-" * 22)
+
+        # Use first team for examples (if available)
+        team_id = oidc_info.teams[0].id if oidc_info.teams else "<team_id>"
+
+        console.print("All team workloads (any type):")
+        console.print(f"  baseten:v=1:org={oidc_info.org_id}:team={team_id}:*")
+        console.print()
+        console.print("This model in environment <env_name>, builds only:")
+        console.print(
+            f"  baseten:v=1:org={oidc_info.org_id}:team={team_id}:"
+            "model=<model_id>:*:env=<env_name>:type=model_build"
+        )
+        console.print()
+        console.print("This specific version, any environment and workload type:")
+        console.print(
+            f"  baseten:v=1:org={oidc_info.org_id}:team={team_id}:"
+            "model=<model_id>:deployment=<model_version_id>:*"
+        )
 
 
 @truss_cli.command()

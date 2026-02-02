@@ -171,3 +171,24 @@ class TeamType(pydantic.BaseModel):
     id: str = pydantic.Field(description="Team identifier")
     name: str = pydantic.Field(description="Team display name")
     default: bool = pydantic.Field(description="Whether this is the default team")
+
+
+class OidcTeamInfo(pydantic.BaseModel):
+    """Team information for OIDC configuration."""
+
+    id: str = pydantic.Field(description="Team identifier")
+    name: str = pydantic.Field(description="Team display name")
+
+
+class OidcInfo(pydantic.BaseModel):
+    """OIDC configuration information for workload identity."""
+
+    org_id: str = pydantic.Field(description="Organization identifier")
+    teams: list[OidcTeamInfo] = pydantic.Field(
+        description="List of teams with id and name"
+    )
+    issuer: str = pydantic.Field(description="OIDC issuer URL")
+    audience: str = pydantic.Field(description="OIDC audience")
+    workload_types: list[str] = pydantic.Field(
+        description="Available workload type options"
+    )

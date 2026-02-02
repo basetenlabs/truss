@@ -1037,6 +1037,22 @@ class BasetenApi:
         # Convert list to dict mapping team_name -> team
         return {team["name"]: TeamType(**team) for team in teams_data}
 
+    def get_organization_id(self) -> str:
+        """
+        Get the organization ID via GraphQL API.
+        Returns the organization identifier.
+        """
+        query_string = """
+        query {
+            organization {
+                id
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["organization"]["id"]
+
     def update_interactive_session(
         self,
         project_id: str,
