@@ -223,6 +223,13 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
         return self.root
 
 
+class WeightsAuthMethod(str, enum.Enum):
+    """Authentication methods for weights sources."""
+
+    AWS_OIDC = "AWS_OIDC"
+    GCP_OIDC = "GCP_OIDC"
+
+
 # URI prefixes for cloud storage sources
 _CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://"})
 # HuggingFace prefix
@@ -261,6 +268,25 @@ class WeightsSource(custom_types.ConfigModel):
     auth_secret_name: Optional[str] = pydantic.Field(
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
+    )
+    auth_method: Optional[WeightsAuthMethod] = pydantic.Field(
+        default=None,
+        description="Authentication method for OIDC-based authentication (AWS_OIDC or GCP_OIDC).",
+    )
+    # AWS OIDC authentication fields
+    aws_oidc_role_arn: Optional[str] = pydantic.Field(
+        default=None, description="AWS IAM role ARN for OIDC authentication."
+    )
+    aws_oidc_region: Optional[str] = pydantic.Field(
+        default=None, description="AWS region for OIDC authentication."
+    )
+    # GCP OIDC authentication fields
+    gcp_oidc_service_account: Optional[str] = pydantic.Field(
+        default=None, description="GCP service account name for OIDC authentication."
+    )
+    gcp_oidc_workload_id_provider: Optional[str] = pydantic.Field(
+        default=None,
+        description="GCP workload identity provider for OIDC authentication.",
     )
     allow_patterns: Optional[list[str]] = pydantic.Field(
         default=None, description="File patterns to include (e.g., ['*.safetensors'])."
@@ -338,6 +364,33 @@ class WeightsSource(custom_types.ConfigModel):
                 f"mount_location must be an absolute path (start with /), got: {v}"
             )
         return v
+
+    @pydantic.field_validator("auth_method", mode="before")
+    @classmethod
+    def _normalize_auth_method(cls, v: Optional[str]) -> Optional[str]:
+        return v.upper() if isinstance(v, str) else v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_auth_fields(self) -> "WeightsSource":
+        if self.auth_method == WeightsAuthMethod.AWS_OIDC:
+            if not self.aws_oidc_role_arn:
+                raise ValueError(
+                    "aws_oidc_role_arn must be provided when auth_method is AWS_OIDC"
+                )
+            if not self.aws_oidc_region:
+                raise ValueError(
+                    "aws_oidc_region must be provided when auth_method is AWS_OIDC"
+                )
+        if self.auth_method == WeightsAuthMethod.GCP_OIDC:
+            if not self.gcp_oidc_service_account:
+                raise ValueError(
+                    "gcp_oidc_service_account must be provided when auth_method is GCP_OIDC"
+                )
+            if not self.gcp_oidc_workload_id_provider:
+                raise ValueError(
+                    "gcp_oidc_workload_id_provider must be provided when auth_method is GCP_OIDC"
+                )
+        return self
 
 
 class Weights(pydantic.RootModel[list[WeightsSource]]):
@@ -658,6 +711,8 @@ class DockerAuthType(str, enum.Enum):
 
     GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
     AWS_IAM = "AWS_IAM"
+    AWS_OIDC = "AWS_OIDC"
+    GCP_OIDC = "GCP_OIDC"
 
 
 class DockerAuthSettings(custom_types.ConfigModel):
@@ -675,12 +730,20 @@ class DockerAuthSettings(custom_types.ConfigModel):
     aws_access_key_id_secret_name: str = DEFAULT_AWS_ACCESS_KEY_SECRET_NAME
     aws_secret_access_key_secret_name: str = DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME
 
+    # AWS OIDC authentication fields
+    aws_oidc_role_arn: Optional[str] = None
+    aws_oidc_region: Optional[str] = None
+
+    # GCP OIDC authentication fields
+    gcp_oidc_service_account: Optional[str] = None
+    gcp_oidc_workload_id_provider: Optional[str] = None
+
     @pydantic.field_validator("auth_method", mode="before")
     def _normalize_auth_method(cls, v: str) -> str:
         return v.upper() if isinstance(v, str) else v
 
     @pydantic.model_validator(mode="after")
-    def validate_secret_name(self) -> "DockerAuthSettings":
+    def validate_auth_fields(self) -> "DockerAuthSettings":
         if (
             self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON
             and self.secret_name is None
@@ -688,6 +751,24 @@ class DockerAuthSettings(custom_types.ConfigModel):
             raise ValueError(
                 "secret_name must be provided when auth_method is GCP_SERVICE_ACCOUNT_JSON"
             )
+        if self.auth_method == DockerAuthType.AWS_OIDC:
+            if not self.aws_oidc_role_arn:
+                raise ValueError(
+                    "aws_oidc_role_arn must be provided when auth_method is AWS_OIDC"
+                )
+            if not self.aws_oidc_region:
+                raise ValueError(
+                    "aws_oidc_region must be provided when auth_method is AWS_OIDC"
+                )
+        if self.auth_method == DockerAuthType.GCP_OIDC:
+            if not self.gcp_oidc_service_account:
+                raise ValueError(
+                    "gcp_oidc_service_account must be provided when auth_method is GCP_OIDC"
+                )
+            if not self.gcp_oidc_workload_id_provider:
+                raise ValueError(
+                    "gcp_oidc_workload_id_provider must be provided when auth_method is GCP_OIDC"
+                )
         return self
 
 

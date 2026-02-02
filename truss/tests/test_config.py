@@ -31,6 +31,7 @@ from truss.base.truss_config import (
     TrussConfig,
     WebsocketOptions,
     Weights,
+    WeightsAuthMethod,
     WeightsSource,
     _map_to_supported_python_version,
 )
@@ -272,6 +273,10 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "registry": "some-docker-registry",
                     "aws_access_key_id_secret_name": "aws_access_key_id",
                     "aws_secret_access_key_secret_name": ("aws_secret_access_key"),
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
                 },
             },
         ),
@@ -301,6 +306,86 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "secret_name": None,
                     "aws_access_key_id_secret_name": "aws_access_key_id",
                     "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
+                },
+            },
+        ),
+        # AWS OIDC authentication
+        (
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_OIDC",
+                    "aws_oidc_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_oidc_region": "us-west-2",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                },
+            },
+            BaseImage(
+                image="123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                python_executable_path="/usr/bin/python3",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.AWS_OIDC,
+                    aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                    aws_oidc_region="us-west-2",
+                    registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+                ),
+            ),
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_OIDC",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_oidc_region": "us-west-2",
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
+                },
+            },
+        ),
+        # GCP OIDC authentication
+        (
+            {
+                "image": "us-west2-docker.pkg.dev/my-project/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "GCP_OIDC",
+                    "gcp_oidc_service_account": "my-service-account@my-project.iam.gserviceaccount.com",
+                    "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                    "registry": "us-west2-docker.pkg.dev",
+                },
+            },
+            BaseImage(
+                image="us-west2-docker.pkg.dev/my-project/my-image",
+                python_executable_path="/usr/bin/python3",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.GCP_OIDC,
+                    gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+                    gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                    registry="us-west2-docker.pkg.dev",
+                ),
+            ),
+            {
+                "image": "us-west2-docker.pkg.dev/my-project/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "GCP_OIDC",
+                    "registry": "us-west2-docker.pkg.dev",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": "my-service-account@my-project.iam.gserviceaccount.com",
+                    "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
                 },
             },
         ),
@@ -310,6 +395,44 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
     parsed_result = BaseImage.model_validate(input_dict)
     assert parsed_result == expect_base_image
     assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_docker_auth_aws_oidc_missing_role_arn():
+    with pytest.raises(ValueError, match="aws_oidc_role_arn must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_region="us-west-2",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_aws_oidc_missing_region():
+    with pytest.raises(ValueError, match="aws_oidc_region must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_gcp_oidc_missing_service_account():
+    with pytest.raises(ValueError, match="gcp_oidc_service_account must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            registry="us-west2-docker.pkg.dev",
+        )
+
+
+def test_docker_auth_gcp_oidc_missing_workload_id_provider():
+    with pytest.raises(
+        ValueError, match="gcp_oidc_workload_id_provider must be provided"
+    ):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            registry="us-west2-docker.pkg.dev",
+        )
 
 
 def test_default_config_not_crowded_end_to_end():
@@ -1342,6 +1465,101 @@ class TestWeightsSource:
             pydantic.ValidationError, match="Invalid HuggingFace URI format"
         ):
             WeightsSource(source="hf://", mount_location="/models/llama")
+
+    def test_s3_source_with_aws_oidc(self):
+        """S3 source with AWS OIDC authentication."""
+        source = WeightsSource(
+            source="s3://my-bucket/models/custom-weights",
+            mount_location="/models/custom",
+            auth_method=WeightsAuthMethod.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_oidc_region="us-west-2",
+        )
+        assert source.auth_method == WeightsAuthMethod.AWS_OIDC
+        assert source.aws_oidc_role_arn == "arn:aws:iam::123456789:role/my-role"
+        assert source.aws_oidc_region == "us-west-2"
+
+    def test_gcs_source_with_gcp_oidc(self):
+        """GCS source with GCP OIDC authentication."""
+        source = WeightsSource(
+            source="gs://my-bucket/models/weights",
+            mount_location="/models/gcs-weights",
+            auth_method=WeightsAuthMethod.GCP_OIDC,
+            gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+        )
+        assert source.auth_method == WeightsAuthMethod.GCP_OIDC
+        assert (
+            source.gcp_oidc_service_account
+            == "my-service-account@my-project.iam.gserviceaccount.com"
+        )
+        assert (
+            source.gcp_oidc_workload_id_provider
+            == "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider"
+        )
+
+    def test_aws_oidc_missing_role_arn(self):
+        """AWS OIDC without role ARN should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_role_arn must be provided"
+        ):
+            WeightsSource(
+                source="s3://my-bucket/models/custom-weights",
+                mount_location="/models/custom",
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_region="us-west-2",
+            )
+
+    def test_aws_oidc_missing_region(self):
+        """AWS OIDC without region should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_region must be provided"
+        ):
+            WeightsSource(
+                source="s3://my-bucket/models/custom-weights",
+                mount_location="/models/custom",
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
+
+    def test_gcp_oidc_missing_service_account(self):
+        """GCP OIDC without service account should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="gcp_oidc_service_account must be provided"
+        ):
+            WeightsSource(
+                source="gs://my-bucket/models/weights",
+                mount_location="/models/gcs-weights",
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            )
+
+    def test_gcp_oidc_missing_workload_id_provider(self):
+        """GCP OIDC without workload identity provider should error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="gcp_oidc_workload_id_provider must be provided",
+        ):
+            WeightsSource(
+                source="gs://my-bucket/models/weights",
+                mount_location="/models/gcs-weights",
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            )
+
+    def test_weights_source_to_dict_with_oidc(self):
+        """WeightsSource should serialize OIDC fields correctly."""
+        source = WeightsSource(
+            source="s3://my-bucket/models/custom-weights",
+            mount_location="/models/custom",
+            auth_method=WeightsAuthMethod.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_oidc_region="us-west-2",
+        )
+        result = source.to_dict(verbose=True)
+        assert result["auth_method"] == "AWS_OIDC"
+        assert result["aws_oidc_role_arn"] == "arn:aws:iam::123456789:role/my-role"
+        assert result["aws_oidc_region"] == "us-west-2"
 
 
 class TestWeights:
