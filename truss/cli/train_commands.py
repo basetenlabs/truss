@@ -681,24 +681,24 @@ def _maybe_resolve_project_id_from_id_or_name(
     help="When to create the interactive session: 'on_startup' creates on job start, 'on_failure' creates on job failure, 'on_demand' allows manual session creation.",
 )
 @click.option(
-    "--timeout-hours",
+    "--timeout-minutes",
     type=int,
     required=False,
-    help="Number of hours before the interactive session times out.",
+    help="Number of minutes before the interactive session times out.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def update_session(
     job_id: str,
     trigger: Optional[str],
-    timeout_hours: Optional[int],
+    timeout_minutes: Optional[int],
     remote: Optional[str],
 ):
     """Update interactive session configuration for a training job."""
 
-    if trigger is None and timeout_hours is None:
+    if trigger is None and timeout_minutes is None:
         error_console.print(
-            "At least one of --trigger or --timeout-hours must be provided."
+            "At least one of --trigger or --timeout-minutes must be provided."
         )
         sys.exit(1)
 
@@ -722,9 +722,46 @@ def update_session(
             project_id=project_id,
             job_id=job_id,
             trigger=trigger,
-            timeout_hours=timeout_hours,
+            timeout_minutes=timeout_minutes,
         )
         console.print("Interactive session configuration updated.", style="green")
     except Exception as e:
         error_console.print(f"Failed to update interactive session: {str(e)}")
+        sys.exit(1)
+
+
+@train.command(name="auth_codes")
+@click.argument("job_id", type=str, required=True)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def get_auth_codes(
+    job_id: str,
+    remote: Optional[str],
+):
+    """Get auth codes for a training job's interactive sessions."""
+    import json
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        response = remote_provider.api.get_training_job_auth_codes(
+            project_id=project_id,
+            job_id=job_id,
+        )
+        console.print(json.dumps(response, indent=2, default=str))
+    except Exception as e:
+        error_console.print(f"Failed to get auth codes: {str(e)}")
         sys.exit(1)
