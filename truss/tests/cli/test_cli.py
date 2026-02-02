@@ -15,7 +15,15 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
         with patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"):
             result = runner.invoke(
                 truss_cli,
-                ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch"],
+                [
+                    "push",
+                    "test_truss",
+                    "--remote",
+                    "remote1",
+                    "--model-name",
+                    "name",
+                    "--watch",
+                ],
             )
 
     assert result.exit_code == 2
@@ -223,19 +231,19 @@ def test_push_watch_creates_development_deployment(
 ):
     """Test that --watch creates a development deployment (is_draft=True)."""
     runner = CliRunner()
-    
+
     # Mock the service to return is_draft=True and have poll_deployment_status
     mock_service = MagicMock()
     mock_service.is_draft = True
     mock_service.logs_url = "https://example.com/logs"
     mock_service.poll_deployment_status.return_value = iter(["MODEL_READY"])
     remote.push = Mock(return_value=mock_service)
-    
+
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
         remote.api.get_teams = Mock(return_value={})
         with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
             with patch.object(remote, "sync_truss_to_dev_version_by_name"):
-                result = runner.invoke(
+                _result = runner.invoke(
                     truss_cli,
                     [
                         "push",
@@ -267,7 +275,16 @@ def test_push_watch_with_promote_fails():
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         result = runner.invoke(
             truss_cli,
-            ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch", "--promote"],
+            [
+                "push",
+                "test_truss",
+                "--remote",
+                "remote1",
+                "--model-name",
+                "name",
+                "--watch",
+                "--promote",
+            ],
         )
 
     assert result.exit_code == 2
@@ -287,7 +304,17 @@ def test_push_watch_with_environment_fails():
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         result = runner.invoke(
             truss_cli,
-            ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch", "--environment", "staging"],
+            [
+                "push",
+                "test_truss",
+                "--remote",
+                "remote1",
+                "--model-name",
+                "name",
+                "--watch",
+                "--environment",
+                "staging",
+            ],
         )
 
     assert result.exit_code == 2
@@ -307,9 +334,17 @@ def test_push_watch_with_tail_fails():
     with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
         result = runner.invoke(
             truss_cli,
-            ["push", "test_truss", "--remote", "remote1", "--model-name", "name", "--watch", "--tail"],
+            [
+                "push",
+                "test_truss",
+                "--remote",
+                "remote1",
+                "--model-name",
+                "name",
+                "--watch",
+                "--tail",
+            ],
         )
 
     assert result.exit_code == 2
     assert "Cannot use --watch with --tail" in result.output
-

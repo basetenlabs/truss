@@ -37,7 +37,6 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
-from truss.remote.truss_remote import TrussRemote
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
@@ -922,7 +921,9 @@ def watch(
     # Verify dev version exists
     dev_version = get_dev_version_from_versions(versions)
     if not dev_version:
-        console.print("❌ No development model found. Run `truss push --watch` then try again.")
+        console.print(
+            "❌ No development model found. Run `truss push --watch` then try again."
+        )
         sys.exit(1)
 
     # Use model_id to get service (no additional resolution needed)
