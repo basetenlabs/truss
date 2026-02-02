@@ -288,7 +288,9 @@ def test_push_watch_with_promote_fails():
         )
 
     assert result.exit_code == 2
-    assert "Cannot use --watch with --promote" in result.output
+    assert "Cannot use --watch with --promote" in result.output or (
+        result.exception and "Cannot use --watch with --promote" in str(result.exception.__context__)
+    )
 
 
 def test_push_watch_with_environment_fails():
