@@ -363,7 +363,7 @@ class BasetenRemote(TrussRemote):
             dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
                 raise RemoteError(
-                    "No development model found. Run `truss push` then try again."
+                    "No development model found. Run `truss push --watch` then try again."
                 )
             return dev_version
 
@@ -371,7 +371,7 @@ class BasetenRemote(TrussRemote):
         prod_version = get_prod_version_from_versions(model_versions)
         if not prod_version:
             raise RemoteError(
-                "No production model found. Run `truss push --publish` then try again."
+                "No production model found. Run `truss push` then try again."
             )
         return prod_version
 
@@ -478,7 +478,7 @@ class BasetenRemote(TrussRemote):
         dev_version = get_dev_version_from_versions(resolved_versions)
         if not dev_version:
             raise RemoteError(
-                "No development model found. Run `truss push` then try again."
+                "No development model found. Run `truss push --watch` then try again."
             )
 
         watch_path = Path(target_directory)

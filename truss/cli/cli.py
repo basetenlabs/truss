@@ -37,6 +37,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
+from truss.remote.truss_remote import TrussRemote
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
@@ -430,6 +431,7 @@ def run_python(script, target_directory):
     required=False,
     default=False,
     help=(
+        "[DEPRECATED] Published deployments are now the default."
         "Push the truss as a published deployment. If no production "
         "deployment exists, promote the truss to production "
         "after deploy completes."
@@ -452,7 +454,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Push the truss as a published deployment to the specified environment."
-        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+        "If specified, publish is implied and the supplied value of --promote will be ignored."
     ),
 )
 @click.option(
@@ -485,8 +487,8 @@ def run_python(script, target_directory):
     type=str,
     required=False,
     help=(
-        "Name of the deployment created by the push. Can only be "
-        "used in combination with --publish or --promote."
+        "Name of the deployment created by the push. Cannot be "
+        "used with --watch (development deployments)."
     ),
 )
 @click.option(
@@ -544,6 +546,18 @@ def run_python(script, target_directory):
     required=False,
     help="JSON string of metadata key-value pairs.",
 )
+@click.option(
+    "--watch",
+    "watch_after_push",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Deploy as a development model and watch for changes. "
+        "Waits for deployment to complete, then starts watching for code changes "
+        "to apply live patches. Cannot be used with --promote, --environment, or --tail."
+    ),
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -565,6 +579,7 @@ def push(
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
     metadata: Optional[str] = None,
+    watch_after_push: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -572,6 +587,36 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+
+    if publish:
+        console.print(
+            "[DEPRECATED] The --publish flag is deprecated. Published deployments are now the default.",
+            style="yellow",
+        )
+
+    # Handle --watch flag: deploys as development and then watches
+    if watch_after_push:
+        if promote:
+            raise click.UsageError(
+                "Cannot use --watch with --promote. Watch mode runs a development deployment."
+            )
+        if environment:
+            raise click.UsageError(
+                "Cannot use --watch with --environment. Watch mode runs a development deployment."
+            )
+        if tail:
+            raise click.UsageError("Cannot use --watch with --tail.")
+        # Development deployment for watch mode
+        publish = False
+        wait = True
+    else:
+        # Default is now published deployment
+        publish = True
+        console.print(
+            "Deploying as a published deployment. Use --watch for a development deployment.",
+            style="green",
+        )
+
     tr = _get_truss_from_directory(target_directory=target_directory, config=config)
 
     if tr.spec.config.resources.instance_type:
@@ -586,7 +631,7 @@ def push(
         and not promote
     ):
         raise click.UsageError(
-            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command with --publish or --promote."
+            "Truss with gRPC transport cannot be used as a development deployment. Remove --watch to deploy as a published model."
         )
 
     if not remote:
@@ -662,7 +707,7 @@ def push(
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
         if not publish:
-            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow. Remove --watch to deploy as a published model."
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
 
@@ -720,8 +765,7 @@ def push(
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
 | When you are ready to publish your deployed model as a new deployment,                |
-| pass '--publish' to the 'truss push' command. To monitor changes to your model and    |
-| rapidly iterate, run the 'truss watch' command.                                       |
+| run 'truss push' without --watch.                                                     |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """
@@ -741,8 +785,6 @@ def push(
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
-            # Poll for the deployment status until we have reached. Either ACTIVE,
-            # or a non-deploying status (in which case the deployment has failed).
             for deployment_status in service.poll_deployment_status():
                 if (
                     timeout_seconds is not None
@@ -757,7 +799,7 @@ def push(
 
                 if deployment_status == ACTIVE_STATUS:
                     console.print("Deployment succeeded.", style="bold green")
-                    return
+                    break
 
                 if deployment_status not in DEPLOYING_STATUSES:
                     console.print(
@@ -765,6 +807,24 @@ def push(
                         style="red",
                     )
                     sys.exit(1)
+
+        # If --watch was used, start watching after deploy success
+        if watch_after_push:
+            console.print("Starting watch mode...", style="bold blue")
+            if not os.path.isfile(target_directory):
+                remote_provider.sync_truss_to_dev_version_by_name(
+                    model_name, target_directory, console, error_console
+                )
+            else:
+                from truss_chains.deployment import deployment_client
+
+                deployment_client.watch_model(
+                    source=Path(target_directory),
+                    model_name=model_name,
+                    remote_provider=remote_provider,
+                    console=console,
+                    error_console=error_console,
+                )
 
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
@@ -862,7 +922,7 @@ def watch(
     # Verify dev version exists
     dev_version = get_dev_version_from_versions(versions)
     if not dev_version:
-        console.print("❌ No development model found. Run `truss push` then try again.")
+        console.print("❌ No development model found. Run `truss push --watch` then try again.")
         sys.exit(1)
 
     # Use model_id to get service (no additional resolution needed)
