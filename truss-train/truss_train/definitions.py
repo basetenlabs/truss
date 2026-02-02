@@ -205,6 +205,8 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     interactive_session: Optional[InteractiveSession] = None
     name: Optional[str] = None
     workspace: Optional[Workspace] = None
+    weights: List[truss_config.WeightsSource] = []
+    """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
