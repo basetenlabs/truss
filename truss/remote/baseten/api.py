@@ -1036,3 +1036,23 @@ class BasetenApi:
         teams_data = resp["data"]["teams"]
         # Convert list to dict mapping team_name -> team
         return {team["name"]: TeamType(**team) for team in teams_data}
+
+    def update_interactive_session(
+        self,
+        project_id: str,
+        job_id: str,
+        trigger: Optional[str] = None,
+        timeout_hours: Optional[int] = None,
+    ):
+        """Update interactive session configuration for a training job."""
+        body: Dict[str, Any] = {}
+        if trigger is not None:
+            body["trigger"] = trigger
+        if timeout_hours is not None:
+            body["timeout_hours"] = timeout_hours
+
+        resp_json = self._rest_api_client.patch(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_session",
+            body=body,
+        )
+        return resp_json

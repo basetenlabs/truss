@@ -8,6 +8,7 @@ from pydantic import ValidationError, field_validator, model_validator
 from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
+DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES = 8 * 60
 
 # Allowed LoRA rank values for vLLM
 ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
@@ -109,6 +110,31 @@ class CacheConfig(custom_types.SafeModelNoExtra):
     mount_base_path: str = "/root/.cache"
 
 
+class InteractiveSessionTrigger(str, enum.Enum):
+    ON_STARTUP = "on_startup"
+    ON_FAILURE = "on_failure"
+    ON_DEMAND = "on_demand"
+
+
+class InteractiveSessionProvider(str, enum.Enum):
+    VS_CODE = "vs_code"
+    CURSOR = "cursor"
+
+
+class InteractiveSessionAuthProvider(str, enum.Enum):
+    GITHUB = "github"
+    MICROSOFT = "microsoft"
+
+
+class InteractiveSession(custom_types.SafeModelNoExtra):
+    trigger: InteractiveSessionTrigger = InteractiveSessionTrigger.ON_DEMAND
+    timeout_minutes: int = DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES
+    session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
+    auth_provider: InteractiveSessionAuthProvider = (
+        InteractiveSessionAuthProvider.GITHUB
+    )
+
+
 class Runtime(custom_types.SafeModelNoExtra):
     start_commands: List[str] = []
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
@@ -176,6 +202,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
+    interactive_session: Optional[InteractiveSession] = None
     name: Optional[str] = None
     workspace: Optional[Workspace] = None
 
