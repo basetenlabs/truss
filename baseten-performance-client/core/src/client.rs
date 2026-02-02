@@ -63,16 +63,16 @@ impl Deref for ClientGuard {
 }
 
 impl HttpClientWrapper {
-    pub fn new(http_version: u8) -> Result<Arc<Self>, ClientError> {
+    pub fn new(http_version: u8, proxy: Option<String>) -> Result<Arc<Self>, ClientError> {
         let wrapper = if http_version == 2 {
             let mut pool = Vec::with_capacity(HTTP2_CLIENT_POOL_SIZE);
             for _ in 0..HTTP2_CLIENT_POOL_SIZE {
-                let client = PerformanceClientCore::get_http_client(2)?;
+                let client = PerformanceClientCore::get_http_client(2, proxy.clone())?;
                 pool.push((Arc::new(AtomicUsize::new(0)), Arc::new(client)));
             }
             HttpClientWrapper::Http2(Arc::new(pool))
         } else {
-            let client = PerformanceClientCore::get_http_client(1)?;
+            let client = PerformanceClientCore::get_http_client(1, proxy)?;
             HttpClientWrapper::Http1(Arc::new(client))
         };
         Ok(Arc::new(wrapper))
@@ -135,6 +135,7 @@ impl HttpClientWrapper {
 ///     Some("your-api-key".to_string()),
 ///     2, // HTTP/2
 ///     None,
+///     None, // proxy
 /// )?;
 ///
 /// // Configure processing preferences
@@ -181,13 +182,14 @@ impl PerformanceClientCore {
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<Arc<HttpClientWrapper>>,
+        proxy: Option<String>,
     ) -> Result<Self, ClientError> {
         let api_key = Self::get_api_key(api_key)?;
 
         let client_wrapper = if let Some(wrapper) = client_wrapper {
             wrapper
         } else {
-            HttpClientWrapper::new(http_version)?
+            HttpClientWrapper::new(http_version, proxy)?
         };
 
         if WARNING_SLOW_PROVIDERS
@@ -288,8 +290,15 @@ impl PerformanceClientCore {
         Arc::clone(&self.client_wrapper)
     }
 
-    pub fn get_http_client(http_version: u8) -> Result<Client, ClientError> {
+    pub fn get_http_client(http_version: u8, proxy: Option<String>) -> Result<Client, ClientError> {
         let mut client_builder = Client::builder();
+
+        if let Some(proxy_url) = proxy {
+            client_builder = client_builder.proxy(
+                reqwest::Proxy::all(&proxy_url)
+                    .map_err(|e| ClientError::Network(format!("Invalid proxy URL: {}", e)))?,
+            );
+        }
 
         if http_version == 2 {
             client_builder = client_builder
@@ -714,7 +723,6 @@ impl PerformanceClientCore {
         url_path: String,
         payloads_json: Vec<serde_json::Value>,
         preference: &RequestProcessingPreference,
-        custom_headers: Option<HeaderMap>,
         method: crate::http::HttpMethod,
     ) -> Result<(Vec<(serde_json::Value, HeaderMap, Duration)>, Duration), ClientError> {
         let start_time = std::time::Instant::now();
@@ -738,8 +746,6 @@ impl PerformanceClientCore {
         let mut indexed_results: Vec<(usize, serde_json::Value, HeaderMap, Duration)> =
             Vec::with_capacity(total_payloads);
 
-        let custom_headers = custom_headers.map(Arc::new);
-
         for (index, payload_item_json) in payloads_json.into_iter().enumerate() {
             // Clone config for this iteration
             let config_clone = config.clone();
@@ -749,7 +755,6 @@ impl PerformanceClientCore {
             let url_path = url_path.clone();
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;
-            let custom_headers = custom_headers.clone();
             let method = method;
 
             // Generate individual request ID for this batch
@@ -777,7 +782,6 @@ impl PerformanceClientCore {
                     individual_request_timeout,
                     &config_clone,
                     request_customer_id,
-                    custom_headers.as_deref(),
                     method,
                 )
                 .await;

@@ -169,7 +169,6 @@ pub struct TokenizerManagerConfig {
     pub tokenizers: HashMap<String, ProxyTokenizerConfig>,
     pub channel_buffer: usize,
     pub tokenizer_workers_per_file: usize,
-
 }
 
 impl Default for TokenizerManagerConfig {
@@ -249,7 +248,10 @@ impl TokenizerManager {
             };
 
             self.handles.insert(name.clone(), handle);
-            info!("Spawned {} tokenizer worker(s) for: {}", self.config.tokenizer_workers_per_file, name);
+            info!(
+                "Spawned {} tokenizer worker(s) for: {}",
+                self.config.tokenizer_workers_per_file, name
+            );
         }
 
         self.is_initialized = true;

@@ -11,7 +11,7 @@ mod schema;
 mod server;
 mod tokenizer_manager;
 
-use tracing::{info};
+use tracing::info;
 
 use config::ProxyConfig;
 
@@ -56,7 +56,10 @@ impl ProxyConfig {
             }
         }
 
-        info!("Starting up server with {} tokenizer(s) configured", tokenizers.len());
+        info!(
+            "Starting up server with {} tokenizer(s) configured",
+            tokenizers.len()
+        );
 
         Ok(Self {
             port: cli.port,
@@ -113,7 +116,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set log level via environment variable (core library initializes tracing automatically)
     // Use core's LOG_LEVEL_ENV_VAR if set, otherwise use CLI log_level
     if std::env::var(baseten_performance_client_core::constants::LOG_LEVEL_ENV_VAR).is_err() {
-        std::env::set_var(baseten_performance_client_core::constants::LOG_LEVEL_ENV_VAR, &cli.log_level);
+        std::env::set_var(
+            baseten_performance_client_core::constants::LOG_LEVEL_ENV_VAR,
+            &cli.log_level,
+        );
     }
 
     let config = ProxyConfig::from(cli)?;

@@ -60,6 +60,7 @@ impl CustomerRequestId {
     }
 
     /// Increment retry count and clear cache
+    #[cfg(test)] // Only used in tests
     pub(crate) fn increment_retry(&mut self) -> &mut Self {
         if let Some(ref mut count) = self.retry_count {
             *count += 1;
@@ -70,6 +71,7 @@ impl CustomerRequestId {
     }
 
     /// Set hedge ID and clear cache
+    #[cfg(test)] // Only used in tests
     pub(crate) fn set_hedge(&mut self, hedge_id: u32) -> &mut Self {
         self.hedge_id = Some(hedge_id);
         self

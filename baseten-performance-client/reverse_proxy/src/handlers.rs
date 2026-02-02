@@ -456,19 +456,6 @@ impl UnifiedHandler {
             })?
             .to_vec();
 
-        let custom_headers = body
-            .get("custom_headers")
-            .and_then(|v| v.as_object())
-            .map(|obj| {
-                let mut headers = std::collections::HashMap::new();
-                for (key, value) in obj {
-                    if let Some(value_str) = value.as_str() {
-                        headers.insert(key.clone(), value_str.to_string());
-                    }
-                }
-                headers
-            });
-
         info!(
             "Proxying generic batch request: path={}, method={}, {} payloads",
             url_path,
@@ -477,7 +464,7 @@ impl UnifiedHandler {
         );
 
         let (responses, total_time) = client
-            .process_batch_post_requests(url_path, payloads, &preferences, custom_headers, method)
+            .process_batch_post_requests(url_path, payloads, &preferences, method)
             .await
             .map_err(|e| {
                 error!("Generic batch request failed: {:?}", e);
