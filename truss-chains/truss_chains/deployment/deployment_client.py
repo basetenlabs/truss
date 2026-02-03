@@ -96,6 +96,12 @@ def _collect_external_package_dirs(
                 if abs_path not in seen:
                     seen.add(abs_path)
                     result.append(abs_path)
+                    if abs_path.name != "packages":
+                        logging.warning(
+                            f'"{abs_path.name}" is a non-standard directory name for '
+                            f"external_package_dirs and may not work after a chain download. "
+                            f'Consider naming it "packages" instead.'
+                        )
     return result
 
 
