@@ -122,23 +122,11 @@ class BasetenRemote(TrussRemote):
             for team in teams.values()
         ]
 
-        # Determine OIDC issuer based on remote URL
-        remote_url = self._remote_url.rstrip("/")
-        if "staging" in remote_url:
-            issuer = "https://oidc.staging.baseten.co"
-            audience = "staging.baseten.co"
-        elif "dev" in remote_url or "localhost" in remote_url:
-            issuer = "https://oidc.dev.baseten.co"
-            audience = "dev.baseten.co"
-        else:
-            issuer = "https://oidc.baseten.co"
-            audience = "baseten.co"
-
         return custom_types.OidcInfo(
             org_id=org_id,
             teams=team_info,
-            issuer=issuer,
-            audience=audience,
+            issuer="https://oidc.baseten.co",
+            audience="baseten.co",
             workload_types=["model_container", "model_build"],
         )
 
