@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
 
+import rich.table
 import rich_click as click
 
 import truss.cli.train.core as train_cli
@@ -727,4 +728,85 @@ def update_session(
         console.print("Interactive session configuration updated.", style="green")
     except Exception as e:
         error_console.print(f"Failed to update interactive session: {str(e)}")
+        sys.exit(1)
+
+
+@train.command(name="auth_codes")
+@click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def get_auth_codes(job_id: str, remote: Optional[str]):
+    """Get auth codes for a training job's interactive session."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        response = remote_provider.api.get_training_job_auth_codes(
+            project_id=project_id, job_id=job_id
+        )
+        auth_codes = response.get("auth_codes", [])
+
+        if not auth_codes:
+            console.print("No auth codes found for this job.", style="yellow")
+            return
+
+        def replica_sort_key(code: dict) -> int:
+            replica_id = code.get("replica_id", "")
+            # Extract number after final 'r' (e.g., "g00r0" -> 0, "g00r12" -> 12)
+            if "r" in replica_id:
+                try:
+                    return int(replica_id.rsplit("r", 1)[-1])
+                except ValueError:
+                    return 0
+            return 0
+
+        auth_codes.sort(key=replica_sort_key)
+
+        def format_local_time(utc_timestamp: str) -> str:
+            """Convert UTC ISO timestamp to local time string."""
+            if not utc_timestamp:
+                return ""
+            try:
+                # Parse ISO format (e.g., "2026-02-03T07:27:48.015Z")
+                utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+                local_dt = utc_dt.astimezone()
+                return local_dt.strftime("%H:%M:%S %Z")
+            except (ValueError, TypeError):
+                return utc_timestamp
+
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title=f"Auth Codes for Job: {job_id}",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        table.add_column("Replica ID", style="cyan")
+        table.add_column("Auth Code", style="green bold")
+        table.add_column("Auth URL", style="blue")
+        table.add_column("Generated At (Local)", style="dim")
+
+        for code in auth_codes:
+            table.add_row(
+                code.get("replica_id", ""),
+                code.get("auth_code", ""),
+                code.get("auth_url", ""),
+                format_local_time(code.get("generated_at", "")),
+            )
+
+        console.print(table)
+    except Exception as e:
+        error_console.print(f"Failed to get auth codes: {str(e)}")
         sys.exit(1)
