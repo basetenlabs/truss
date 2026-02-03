@@ -456,12 +456,15 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
         console: "rich_console.Console",
         error_console: "rich_console.Console",
+        team_name: Optional[str] = None,
     ) -> None:
         # Resolve model with team disambiguation and verify development deployment exists
         # Import here to avoid circular import
         from truss.cli.resolvers.model_team_resolver import resolve_model_for_watch
 
-        model, versions = resolve_model_for_watch(self, model_name)
+        model, versions = resolve_model_for_watch(
+            self, model_name, provided_team_name=team_name
+        )
         self.sync_truss_to_dev_version_with_model(
             model, versions, target_directory, console, error_console
         )

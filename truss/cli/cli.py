@@ -653,7 +653,7 @@ def push(
         effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
             remote
         )
-        _, team_id = resolve_model_team_name(
+        team_name, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
             provided_team_name=effective_team_name,
             existing_model_name=model_name,
@@ -812,7 +812,11 @@ def push(
             console.print("Starting watch mode...", style="bold blue")
             if not os.path.isfile(target_directory):
                 remote_provider.sync_truss_to_dev_version_by_name(
-                    model_name, target_directory, console, error_console
+                    model_name,
+                    target_directory,
+                    console,
+                    error_console,
+                    team_name=team_name,
                 )
             else:
                 from truss_chains.deployment import deployment_client
