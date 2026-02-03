@@ -863,7 +863,7 @@ class BasetenApi:
         )
         return resp_json
 
-    def get_training_job_auth_codes(self, project_id: str, job_id: str):
+    def get_training_job_isession(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/auth_codes"
         )
