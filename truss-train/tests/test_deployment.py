@@ -194,7 +194,7 @@ class TestGatherTrainingDir:
         tests_dir.mkdir()
         (tests_dir / "test_foo.py").write_text("# test")
 
-        workspace = Workspace(exclude_dirs=["data", "tests"])
+        workspace = Workspace(exclude_dirs=["./data", "./tests"])
         result = deployment._gather_training_dir(config_path, workspace=workspace)
 
         assert result is not None
@@ -234,7 +234,9 @@ class TestGatherTrainingDir:
         (external_dir / "helpers.py").write_text("# helpers")
 
         workspace = Workspace(
-            workspace_root="..", external_dirs=["../../external"], exclude_dirs=["data"]
+            workspace_root="..",
+            external_dirs=["../../external"],
+            exclude_dirs=["../data"],
         )
         result = deployment._gather_training_dir(config_path, workspace=workspace)
 

@@ -47,8 +47,45 @@ def _validate_workspace_root(workspace_root: Path, config_path: Path) -> None:
         )
 
 
+def _resolve_exclude_dirs(
+    exclude_dirs: List[str], config_dir: Path, workspace_root: Path
+) -> set:
+    """
+    Resolve exclude_dirs paths and validate they are direct children of workspace_root.
+
+    Paths are resolved relative to config_dir (same as workspace_root and external_dirs).
+
+    Returns a set of directory names to exclude at the workspace root level.
+    """
+    exclude_names: set = set()
+
+    for exclude_dir in exclude_dirs:
+        resolved = _resolve_path(exclude_dir, config_dir)
+
+        # Check that it's a direct child of workspace_root
+        try:
+            relative = resolved.relative_to(workspace_root)
+            # Should be a single component (direct child)
+            if len(relative.parts) != 1:
+                raise ValueError(
+                    f"exclude_dir '{exclude_dir}' resolves to '{resolved}' which is not "
+                    f"a direct child of workspace_root '{workspace_root}'. "
+                    f"Only top-level directories can be excluded."
+                )
+            exclude_names.add(relative.parts[0])
+        except ValueError as e:
+            if "not a direct child" in str(e):
+                raise
+            raise ValueError(
+                f"exclude_dir '{exclude_dir}' resolves to '{resolved}' which is not "
+                f"inside workspace_root '{workspace_root}'."
+            )
+
+    return exclude_names
+
+
 def _validate_external_dirs(
-    external_dirs: List[Path], workspace_root: Path, exclude_dirs: List[str]
+    external_dirs: List[Path], workspace_root: Path, exclude_names: set
 ) -> List[Path]:
     """
     Validate external_dirs and filter out any inside workspace_root.
@@ -57,9 +94,8 @@ def _validate_external_dirs(
     Warns (but continues) if an external_dir is inside workspace_root.
     Raises ValueError for name collisions with workspace_root contents.
     """
-    exclude_set = set(exclude_dirs)
     workspace_top_level = {
-        p.name for p in workspace_root.iterdir() if p.name not in exclude_set
+        p.name for p in workspace_root.iterdir() if p.name not in exclude_names
     }
     seen_names: set[str] = set(workspace_top_level)
     valid_dirs: List[Path] = []
@@ -86,6 +122,24 @@ def _validate_external_dirs(
         valid_dirs.append(ext_dir)
 
     return valid_dirs
+
+
+def _calculate_dir_size(path: Path, exclude_set: set, is_root: bool = True) -> int:
+    """Calculate total size of directory, respecting excludes at root level."""
+    total = 0
+    try:
+        for item in path.iterdir():
+            if is_root and item.name in exclude_set:
+                continue
+            if item.is_symlink():
+                continue
+            if item.is_file():
+                total += item.stat().st_size
+            elif item.is_dir():
+                total += _calculate_dir_size(item, exclude_set, is_root=False)
+    except PermissionError:
+        pass
+    return total
 
 
 def _gather_training_dir(
@@ -116,11 +170,16 @@ def _gather_training_dir(
 
     console.print(f"Using workspace root: {resolved_workspace_root}")
 
+    # Resolve exclude_dirs paths to names
+    exclude_names = _resolve_exclude_dirs(
+        exclude_dirs, config_dir, resolved_workspace_root
+    )
+
     resolved_external_dirs = [_resolve_path(d, config_dir) for d in external_dirs]
 
     if resolved_external_dirs:
         resolved_external_dirs = _validate_external_dirs(
-            resolved_external_dirs, resolved_workspace_root, exclude_dirs
+            resolved_external_dirs, resolved_workspace_root, exclude_names
         )
 
     for ext_dir in resolved_external_dirs:
@@ -129,21 +188,32 @@ def _gather_training_dir(
         if not ext_dir.is_dir():
             raise ValueError(f"external_dir is not a directory: {ext_dir}")
 
+    # Early size check before copying/archiving
+    total_size = _calculate_dir_size(resolved_workspace_root, exclude_names)
+    for ext_dir in resolved_external_dirs:
+        total_size += _calculate_dir_size(ext_dir, set())
+
+    if total_size > MAX_ARCHIVE_SIZE_BYTES:
+        size_gb = total_size / (1024 * 1024 * 1024)
+        raise ValueError(
+            f"Workspace size ({size_gb:.2f}GB) exceeds maximum allowed size (5GB). "
+            f"Please use 'exclude_dirs' to exclude large files/directories, "
+            f"or contact Baseten support for assistance."
+        )
+
     temp_dir = Path(tempfile.mkdtemp(prefix="truss_train_"))
     gathered_dir = temp_dir / "gathered"
-
-    exclude_set = set(exclude_dirs)
 
     def ignore_excluded(directory: str, contents: List[str]) -> List[str]:
         # Only apply excludes at the top level of workspace_root
         if Path(directory).resolve() == resolved_workspace_root.resolve():
-            return [c for c in contents if c in exclude_set]
+            return [c for c in contents if c in exclude_names]
         return []
 
     shutil.copytree(
         resolved_workspace_root,
         gathered_dir,
-        ignore=ignore_excluded if exclude_dirs else None,
+        ignore=ignore_excluded if exclude_names else None,
     )
 
     for ext_dir in resolved_external_dirs:
