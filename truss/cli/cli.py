@@ -35,7 +35,7 @@ from truss.remote.baseten.core import (
     get_dev_version_from_versions,
 )
 from truss.remote.baseten.remote import BasetenRemote
-from truss.remote.baseten.service import BasetenService
+from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
@@ -927,9 +927,12 @@ def watch(
         sys.exit(1)
 
     # Use model_id to get service (no additional resolution needed)
-    service = remote_provider.get_service(model_identifier=ModelId(model_id))
+    dev_version_id = dev_version["id"]
+    logs_url = URLConfig.model_logs_url(
+        remote_provider.remote_url, model_id, dev_version_id
+    )
     console.print(
-        f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
+        f"🪵  View logs for your development model at {common.format_link(logs_url)}"
     )
 
     if not os.path.isfile(target_directory):
