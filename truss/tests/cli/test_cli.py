@@ -167,7 +167,7 @@ def test_whoami_basic():
     mock_user = RemoteUser("test_workspace", "user@example.com")
 
     with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
-        with patch("truss.cli.cli.whoami", return_value=mock_user) as mock_whoami_fn:
+        with patch("truss.api.whoami", return_value=mock_user) as mock_whoami_fn:
             result = runner.invoke(truss_cli, ["whoami", "--remote", "baseten"])
 
     assert result.exit_code == 0
@@ -195,7 +195,7 @@ def test_whoami_with_show_oidc():
     mock_remote.get_oidc_info.return_value = mock_oidc_info
 
     with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
-        with patch("truss.cli.cli.whoami", return_value=mock_user):
+        with patch("truss.api.whoami", return_value=mock_user):
             with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
                 result = runner.invoke(
                     truss_cli, ["whoami", "--remote", "baseten", "--show-oidc"]
