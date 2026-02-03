@@ -289,7 +289,8 @@ def test_push_watch_with_promote_fails():
 
     assert result.exit_code == 2
     assert "Cannot use --watch with --promote" in result.output or (
-        result.exception and "Cannot use --watch with --promote" in str(result.exception.__context__)
+        result.exception
+        and "Cannot use --watch with --promote" in str(result.exception.__context__)
     )
 
 
@@ -321,7 +322,8 @@ def test_push_watch_with_environment_fails():
 
     assert result.exit_code == 2
     assert "Cannot use --watch with --environment" in result.output or (
-        result.exception and "Cannot use --watch with --environment" in str(result.exception.__context__)
+        result.exception
+        and "Cannot use --watch with --environment" in str(result.exception.__context__)
     )
 
 
@@ -352,5 +354,6 @@ def test_push_watch_with_tail_fails():
 
     assert result.exit_code == 2
     assert "Cannot use --watch with --tail" in result.output or (
-        result.exception and "Cannot use --watch with --tail" in str(result.exception.__context__)
+        result.exception
+        and "Cannot use --watch with --tail" in str(result.exception.__context__)
     )
