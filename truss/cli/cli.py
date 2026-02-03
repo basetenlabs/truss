@@ -203,7 +203,7 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print("This specific version, any environment and workload type:")
         console.print(
             f"  baseten:v=1:org={oidc_info.org_id}:team={team_id}:"
-            "model=<model_id>:deployment=<model_version_id>:*"
+            "model=<model_id>:deployment=<deployment_id>:*"
         )
 
 
