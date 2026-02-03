@@ -1022,7 +1022,7 @@ class TrussHandle:
             for path in self._spec.external_package_dirs_paths:
                 if not path.exists():
                     raise RuntimeError(
-                        f"Truss referes to external package at "
+                        f"Truss refers to external package at "
                         f"{path.resolve()} but that path does not exist."
                     )
 
