@@ -242,6 +242,75 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
     _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
+def _format_local_time(utc_timestamp: str) -> str:
+    """Convert UTC ISO timestamp to local time string."""
+    if not utc_timestamp:
+        return ""
+    try:
+        utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+        local_dt = utc_dt.astimezone()
+        return local_dt.strftime("%H:%M:%S %Z")
+    except (ValueError, TypeError):
+        return utc_timestamp
+
+
+def _build_auth_codes_table(
+    remote_provider: BasetenRemote, project_id: str, job_id: str
+) -> Optional[rich.table.Table]:
+    """Build auth codes table for a training job. Returns None if no auth codes."""
+    try:
+        response = remote_provider.api.get_training_job_auth_codes(
+            project_id=project_id, job_id=job_id
+        )
+        auth_codes = response.get("auth_codes", [])
+
+        if not auth_codes:
+            return None
+
+        def replica_sort_key(code: dict) -> int:
+            replica_id = code.get("replica_id", "")
+            if "r" in replica_id:
+                try:
+                    return int(replica_id.rsplit("r", 1)[-1])
+                except ValueError:
+                    return 0
+            return 0
+
+        auth_codes.sort(key=replica_sort_key)
+
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title=f"Auth Codes for Job: {job_id}",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        table.add_column("Replica ID", style="cyan")
+        table.add_column("Auth Code", style="green bold")
+        table.add_column("Auth URL", style="blue")
+        table.add_column("Generated At (Local)", style="dim")
+
+        for code in auth_codes:
+            table.add_row(
+                code.get("replica_id", ""),
+                code.get("auth_code", ""),
+                code.get("auth_url", ""),
+                _format_local_time(code.get("generated_at", "")),
+            )
+
+        return table
+    except Exception:
+        return None
+
+
+def _display_auth_codes(remote_provider: BasetenRemote, project_id: str, job_id: str):
+    """Display auth codes table for a training job if available."""
+    table = _build_auth_codes_table(remote_provider, project_id, job_id)
+    if table:
+        console.print(table)
+        console.print()  # Add blank line before logs
+
+
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
@@ -271,6 +340,9 @@ def get_job_logs(
     project_id, job_id = train_common.get_most_recent_job(
         remote_provider, project_id, job_id
     )
+
+    # Display auth codes at the top before logs
+    _display_auth_codes(remote_provider, project_id, job_id)
 
     if not tail:
         logs = get_training_job_logs_with_pagination(
@@ -762,51 +834,7 @@ def get_auth_codes(job_id: str, remote: Optional[str]):
             console.print("No auth codes found for this job.", style="yellow")
             return
 
-        def replica_sort_key(code: dict) -> int:
-            replica_id = code.get("replica_id", "")
-            # Extract number after final 'r' (e.g., "g00r0" -> 0, "g00r12" -> 12)
-            if "r" in replica_id:
-                try:
-                    return int(replica_id.rsplit("r", 1)[-1])
-                except ValueError:
-                    return 0
-            return 0
-
-        auth_codes.sort(key=replica_sort_key)
-
-        def format_local_time(utc_timestamp: str) -> str:
-            """Convert UTC ISO timestamp to local time string."""
-            if not utc_timestamp:
-                return ""
-            try:
-                # Parse ISO format (e.g., "2026-02-03T07:27:48.015Z")
-                utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
-                local_dt = utc_dt.astimezone()
-                return local_dt.strftime("%H:%M:%S %Z")
-            except (ValueError, TypeError):
-                return utc_timestamp
-
-        table = rich.table.Table(
-            show_header=True,
-            header_style="bold magenta",
-            title=f"Auth Codes for Job: {job_id}",
-            box=rich.table.box.ROUNDED,
-            border_style="blue",
-        )
-        table.add_column("Replica ID", style="cyan")
-        table.add_column("Auth Code", style="green bold")
-        table.add_column("Auth URL", style="blue")
-        table.add_column("Generated At (Local)", style="dim")
-
-        for code in auth_codes:
-            table.add_row(
-                code.get("replica_id", ""),
-                code.get("auth_code", ""),
-                code.get("auth_url", ""),
-                format_local_time(code.get("generated_at", "")),
-            )
-
-        console.print(table)
+        _display_auth_codes(remote_provider, project_id, job_id)
     except Exception as e:
         error_console.print(f"Failed to get auth codes: {str(e)}")
         sys.exit(1)
