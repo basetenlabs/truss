@@ -433,28 +433,12 @@ class WeightsSource(custom_types.ConfigModel):
     @pydantic.model_validator(mode="after")
     def _validate_auth_secret_name(self) -> "WeightsSource":
         """Validate that auth_secret_name is not specified in conflicting locations."""
-        if self.auth_secret_name and self.auth and self.auth.auth_secret_name:
+        if self.auth_secret_name and (self.auth and self.auth.auth_secret_name):
             raise ValueError(
                 "auth_secret_name cannot be specified both at the top level and in auth section. "
                 "Please use only one location."
             )
         return self
-
-    def get_effective_auth_secret_name(self) -> Optional[str]:
-        """Get the effective auth_secret_name from either location."""
-        if self.auth and self.auth.auth_secret_name:
-            return self.auth.auth_secret_name
-        return self.auth_secret_name
-
-    def uses_oidc_auth(self) -> bool:
-        """Check if this weights source uses OIDC authentication."""
-        if self.auth and self.auth.auth_method:
-            return self.auth.auth_method in {
-                WeightsAuthMethod.AWS_OIDC,
-                WeightsAuthMethod.GCP_OIDC,
-            }
-        return False
-
 
 class Weights(pydantic.RootModel[list[WeightsSource]]):
     """List of weights sources for the new weights API."""

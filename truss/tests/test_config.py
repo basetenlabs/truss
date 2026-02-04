@@ -1491,44 +1491,6 @@ class TestWeightsSource:
         ):
             WeightsSource(source="hf://", mount_location="/models/llama")
 
-    def test_s3_source_with_aws_oidc(self):
-        """S3 source with AWS OIDC authentication."""
-        source = WeightsSource(
-            source="s3://my-bucket/models/custom-weights",
-            mount_location="/models/custom",
-            auth=WeightsAuth(
-                auth_method=WeightsAuthMethod.AWS_OIDC,
-                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
-                aws_oidc_region="us-west-2",
-            ),
-        )
-        assert source.auth.auth_method == WeightsAuthMethod.AWS_OIDC
-        assert source.auth.aws_oidc_role_arn == "arn:aws:iam::123456789:role/my-role"
-        assert source.auth.aws_oidc_region == "us-west-2"
-        assert source.uses_oidc_auth() is True
-
-    def test_gcs_source_with_gcp_oidc(self):
-        """GCS source with GCP OIDC authentication."""
-        source = WeightsSource(
-            source="gs://my-bucket/models/weights",
-            mount_location="/models/gcs-weights",
-            auth=WeightsAuth(
-                auth_method=WeightsAuthMethod.GCP_OIDC,
-                gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
-                gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
-            ),
-        )
-        assert source.auth.auth_method == WeightsAuthMethod.GCP_OIDC
-        assert (
-            source.auth.gcp_oidc_service_account
-            == "my-service-account@my-project.iam.gserviceaccount.com"
-        )
-        assert (
-            source.auth.gcp_oidc_workload_id_provider
-            == "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider"
-        )
-        assert source.uses_oidc_auth() is True
-
     def test_aws_oidc_missing_role_arn(self):
         """AWS OIDC without role ARN should error."""
         with pytest.raises(
@@ -1586,26 +1548,6 @@ class TestWeightsSource:
             result["auth"]["aws_oidc_role_arn"] == "arn:aws:iam::123456789:role/my-role"
         )
         assert result["auth"]["aws_oidc_region"] == "us-west-2"
-
-    def test_auth_secret_name_backwards_compat(self):
-        """auth_secret_name at top level should work for backwards compatibility."""
-        source = WeightsSource(
-            source="s3://my-bucket/models/weights",
-            mount_location="/models/weights",
-            auth_secret_name="my-secret",
-        )
-        assert source.auth_secret_name == "my-secret"
-        assert source.get_effective_auth_secret_name() == "my-secret"
-
-    def test_auth_secret_name_in_auth_section(self):
-        """auth_secret_name can be specified in the auth section."""
-        source = WeightsSource(
-            source="s3://my-bucket/models/weights",
-            mount_location="/models/weights",
-            auth=WeightsAuth(auth_secret_name="my-secret"),
-        )
-        assert source.auth.auth_secret_name == "my-secret"
-        assert source.get_effective_auth_secret_name() == "my-secret"
 
     def test_auth_secret_name_conflict_error(self):
         """auth_secret_name cannot be specified in both locations."""
