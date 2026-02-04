@@ -387,7 +387,7 @@ def test_whoami_with_show_oidc():
             OidcTeamInfo(id="abc123", name="ML Team"),
         ],
         issuer="https://oidc.baseten.co",
-        audience="baseten.co",
+        audience="oidc.baseten.co",
         workload_types=["model_container", "model_build"],
     )
 
@@ -408,7 +408,7 @@ def test_whoami_with_show_oidc():
     assert "wgeyxoq (Default Team)" in result.output
     assert "abc123 (ML Team)" in result.output
     assert "https://oidc.baseten.co" in result.output
-    assert "baseten.co" in result.output
+    assert "oidc.baseten.co" in result.output
     assert "Example Subject Claims" in result.output
     normalized_output = result.output.replace("\n", "")
     assert (

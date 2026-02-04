@@ -126,7 +126,7 @@ class BasetenRemote(TrussRemote):
             org_id=org_id,
             teams=team_info,
             issuer="https://oidc.baseten.co",
-            audience="baseten.co",
+            audience="oidc.baseten.co",
             workload_types=["model_container", "model_build"],
         )
 
