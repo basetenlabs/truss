@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional, cast
 
 import rich_click as click
+from rich import console as rich_console
 from rich import progress
 
 import truss
@@ -87,6 +88,32 @@ def _get_truss_from_directory(
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
     return load(truss_dir, config_path=config_path)
+
+
+def _start_watch_mode(
+    target_directory: str,
+    model_name: str,
+    remote_provider: BasetenRemote,
+    resolved_model: dict,
+    resolved_versions: list,
+    console: "rich_console.Console",
+    error_console: "rich_console.Console",
+) -> None:
+    if not os.path.isfile(target_directory):
+        remote_provider.sync_truss_to_dev_version_with_model(
+            resolved_model, resolved_versions, target_directory, console, error_console
+        )
+    else:
+        # These imports are delayed, to handle pydantic v1 envs gracefully.
+        from truss_chains.deployment import deployment_client
+
+        deployment_client.watch_model(
+            source=Path(target_directory),
+            model_name=model_name,
+            remote_provider=remote_provider,
+            console=console,
+            error_console=error_console,
+        )
 
 
 ### Top-level & utility commands. ######################################################
@@ -810,24 +837,18 @@ def push(
         # If --watch was used, start watching after deploy success
         if watch_after_push:
             console.print("Starting watch mode...", style="bold blue")
-            if not os.path.isfile(target_directory):
-                remote_provider.sync_truss_to_dev_version_by_name(
-                    model_name,
-                    target_directory,
-                    console,
-                    error_console,
-                    team_name=team_name,
-                )
-            else:
-                from truss_chains.deployment import deployment_client
-
-                deployment_client.watch_model(
-                    source=Path(target_directory),
-                    model_name=model_name,
-                    remote_provider=remote_provider,
-                    console=console,
-                    error_console=error_console,
-                )
+            resolved_model, versions = resolve_model_for_watch(
+                remote_provider, model_name, provided_team_name=team_name
+            )
+            _start_watch_mode(
+                target_directory=target_directory,
+                model_name=model_name,
+                remote_provider=remote_provider,
+                resolved_model=resolved_model,
+                resolved_versions=versions,
+                console=console,
+                error_console=error_console,
+            )
 
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
@@ -939,22 +960,15 @@ def watch(
         f"🪵  View logs for your development model at {common.format_link(logs_url)}"
     )
 
-    if not os.path.isfile(target_directory):
-        # Pass the resolved model to avoid re-resolution
-        remote_provider.sync_truss_to_dev_version_with_model(
-            resolved_model, versions, target_directory, console, error_console
-        )
-    else:
-        # These imports are delayed, to handle pydantic v1 envs gracefully.
-        from truss_chains.deployment import deployment_client
-
-        deployment_client.watch_model(
-            source=Path(target_directory),
-            model_name=model_name,
-            remote_provider=remote_provider,
-            console=console,
-            error_console=error_console,
-        )
+    _start_watch_mode(
+        target_directory=target_directory,
+        model_name=model_name,
+        remote_provider=remote_provider,
+        resolved_model=resolved_model,
+        resolved_versions=versions,
+        console=console,
+        error_console=error_console,
+    )
 
 
 ### Image commands. ####################################################################

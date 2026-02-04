@@ -332,3 +332,34 @@ def test_chains_push_watch_with_promote_fails():
 
     assert result.exit_code == 1
     assert "the deployment cannot be published" in result.output
+
+
+def test_chains_push_watch_with_environment_fails():
+    """Test that --watch with --environment fails."""
+    runner = CliRunner()
+
+    mock_entrypoint_cls = Mock()
+    mock_entrypoint_cls.meta_data.chain_name = "test_chain"
+    mock_entrypoint_cls.display_name = "TestChain"
+
+    with patch(
+        "truss_chains.framework.ChainletImporter.import_target"
+    ) as mock_importer:
+        mock_importer.return_value.__enter__.return_value = mock_entrypoint_cls
+
+        result = runner.invoke(
+            truss_cli,
+            [
+                "chains",
+                "push",
+                "test_chain.py",
+                "--watch",
+                "--environment",
+                "staging",
+                "--remote",
+                "test_remote",
+            ],
+        )
+
+    assert result.exit_code == 1
+    assert "Cannot use --watch with --environment" in result.output

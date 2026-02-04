@@ -277,6 +277,10 @@ def push_chain(
             raise ValueError(
                 "When using `--watch`, the deployment cannot be published or promoted."
             )
+        if environment:
+            raise ValueError(
+                "Cannot use --watch with --environment. Watch mode requires a development deployment."
+            )
         # --watch implies development deployment
         publish = False
         if not wait:
