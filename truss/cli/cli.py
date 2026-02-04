@@ -189,7 +189,8 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print("-" * 22)
         console.print(
             "v=1:org=<org_id>:team=<team_id>:model=<model_id>:"
-            "deployment=<deployment_id>:env=<environment>:type=<workload_type>"
+            "deployment=<deployment_id>:env=<environment>:type=<workload_type>",
+            markup=False,
         )
 
         console.print()
@@ -199,16 +200,18 @@ def whoami(remote: Optional[str], show_oidc: bool):
         # Use first team for examples (if available)
         team_id = oidc_info.teams[0].id if oidc_info.teams else "<team_id>"
 
-        console.print("Model container in production environment:")
+        console.print("Scoped to a model's build context:")
         console.print(
             f"  v=1:org={oidc_info.org_id}:team={team_id}:"
-            "model=<model_id>:deployment=<deployment_id>:env=production:type=model_container"
+            "model=<model_id>:deployment=<deployment_id>:env=<environment>:type=model_build",
+            markup=False,
         )
         console.print()
-        console.print("Model build in staging environment:")
+        console.print("Scoped to the deployed model context:")
         console.print(
             f"  v=1:org={oidc_info.org_id}:team={team_id}:"
-            "model=<model_id>:deployment=<deployment_id>:env=staging:type=model_build"
+            "model=<model_id>:deployment=<deployment_id>:env=<environment>:type=model_container",
+            markup=False,
         )
 
 
