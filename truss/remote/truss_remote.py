@@ -251,7 +251,6 @@ class TrussRemote(ABC):
         target_directory: str,
         console: "rich_console.Console",
         error_console: "rich_console.Console",
-        team_name: Optional[str] = None,
     ) -> None:
         """
         This method watches for changes to files in the `target_directory`,
