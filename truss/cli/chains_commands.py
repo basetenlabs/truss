@@ -152,8 +152,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @click.option(
     "--publish/--no-publish",
-    default=None,  # Use None to detect if explicitly passed
-    help="[DEPRECATED] Published deployments are now the default. Use --watch for development deployments.",
+    default=False,
+    help="Create chainlets as published deployments.",
 )
 @click.option(
     "--promote/--no-promote",
@@ -166,7 +166,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     help=(
         "Deploy the chain as a published deployment to the specified environment."
-        "If specified, publish is implied and the supplied value of --promote will be ignored."
+        "If specified, --publish is implied and the supplied value of --promote will be ignored."
     ),
 )
 @click.option(
@@ -180,7 +180,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help=(
         "Watches the chains source code and applies live patches. Using this option "
         "will wait for the chain to be deployed (i.e. `--wait` flag is applied), "
-        "before starting to watch for changes."
+        "before starting to watch for changes. This option required the deployment "
+        "to be a development deployment (i.e. `--no-promote` and `--no-publish`."
     ),
 )
 @click.option(
@@ -226,7 +227,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     type=str,
     required=False,
     help=(
-        "Name of the deployment created by the publish. Can be used with '--promote' as well."
+        "Name of the deployment created by the publish. Can only be used "
+        "in combination with '--publish' or '--promote'."
     ),
 )
 @click.option(
@@ -243,7 +245,7 @@ def push_chain(
     source: Path,
     entrypoint: Optional[str],
     name: Optional[str],
-    publish: Optional[bool],
+    publish: bool,
     promote: bool,
     wait: bool,
     watch: bool,
@@ -277,37 +279,11 @@ def push_chain(
             raise ValueError(
                 "When using `--watch`, the deployment cannot be published or promoted."
             )
-        if environment:
-            raise ValueError(
-                "Cannot use --watch with --environment. Watch mode requires a development deployment."
-            )
-        # --watch implies development deployment
-        publish = False
         if not wait:
             console.print(
                 "'--watch' is used. Will wait for deployment before watching files."
             )
             wait = True
-    else:
-        if publish is True:
-            console.print(
-                "[DEPRECATED] The --publish flag is deprecated. Published deployments are now the default.",
-                style="yellow",
-            )
-        elif publish is False:
-            console.print(
-                "[DEPRECATED] The --no-publish flag is deprecated. Use --watch for development deployments.",
-                style="yellow",
-            )
-            # Keep publish=False for backwards compatibility
-
-        # Default to published
-        if publish is None:
-            publish = True
-            console.print(
-                "Deploying as a published deployment. Use --watch for a development deployment.",
-                style="green",
-            )
 
     if promote and environment:
         promote_warning = (
