@@ -76,14 +76,13 @@ RUN {{ python_exec_path }} -c "import sys; \
 {% endblock %}
 
 {# mirrors.ubuntu.com is a redirector service (uses mirrors.txt) that provides the best mirror based on location #}
-{# Handle old format (Ubuntu 22.04 and earlier): /etc/apt/sources.list #}
-RUN if [ -f /etc/apt/sources.list ] && ! grep -q "mirrors.ubuntu.com" /etc/apt/sources.list; then \
-        sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list; \
-    fi
-{# Handle new deb822 format (Ubuntu 24.04+): /etc/apt/sources.list.d/ubuntu.sources #}
-RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ] && ! grep -q "mirrors.ubuntu.com" /etc/apt/sources.list.d/ubuntu.sources; then \
-        sed -i.bak 's|URIs: http://archive.ubuntu.com/ubuntu/|URIs: mirror://mirrors.ubuntu.com/mirrors.txt|g' /etc/apt/sources.list.d/ubuntu.sources; \
-    fi
+{# Handle old format (Ubuntu 22.04 and earlier): /etc/apt/sources.list, and new format (Ubuntu 24.04+): /etc/apt/sources.list.d/ubuntu.sources #}
+{%- set ubuntu_sources_list_files = ["/etc/apt/sources.list", "/etc/apt/sources.list.d/ubuntu.sources"] %}
+{%- for ubuntu_sources_list_file in ubuntu_sources_list_files %}
+RUN if [ -f {{ ubuntu_sources_list_file }} ]; then \
+    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/mirrors.txt|g' {{ ubuntu_sources_list_file }}; \
+fi
+{%- endfor %}
 
 {% block install_tools %}
 {# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}
