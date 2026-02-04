@@ -36,15 +36,10 @@ pub(crate) const HTTP2_WINDOW_SIZE: u32 = 2_097_152; // 2 MB
 pub(crate) const HTTP2_CLIENT_POOL_SIZE: usize = 64;
 pub(crate) const HTTP2_CLIENT_OPTIMUM_QUEUED: usize = 8;
 
-// Error messages
-pub(crate) const CANCELLATION_ERROR_MESSAGE_DETAIL: &str =
-    "Operation cancelled due to a previous error";
-pub(crate) const CTRL_C_ERROR_MESSAGE_DETAIL: &str = "Operation cancelled by Ctrl+C";
-
 // Slow providers where customers have reported issues
 pub(crate) const WARNING_SLOW_PROVIDERS: [&str; 3] = ["fireworks.ai", "together.ai", "modal.com"];
 pub(crate) const CUSTOMER_HEADER_NAME: &str = "x-baseten-customer-request-id";
 
 // Logging constants
-pub(crate) const DEFAULT_LOG_LEVEL: &str = "warn";
-pub(crate) const LOG_LEVEL_ENV_VAR: &str = "PERFORMANCE_CLIENT_LOG_LEVEL";
+pub const DEFAULT_LOG_LEVEL: &str = "warn";
+pub const LOG_LEVEL_ENV_VAR: &str = "PERFORMANCE_CLIENT_LOG_LEVEL";

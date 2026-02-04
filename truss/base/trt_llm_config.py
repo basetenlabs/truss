@@ -117,7 +117,7 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     """
 
     calib_size: int = 1024
-    calib_dataset: str = "cnn_dailymail"
+    calib_dataset: str = "abisee/cnn_dailymail"
     calib_max_seq_length: int = 1536
 
     def __init__(self, **data):

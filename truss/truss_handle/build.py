@@ -98,16 +98,20 @@ def init_directory(
     return target_directory_path
 
 
-def load(truss_directory: Union[str, Path]) -> TrussHandle:
+def load(
+    truss_directory: Union[str, Path], config_path: Optional[Path] = None
+) -> TrussHandle:
     """Get a handle to a Truss. A Truss is a build context designed to be built
     as a container locally or uploaded into a model serving environment.
 
     Args:
         truss_directory (str | Path): The local directory of an existing Truss
+        config_path (Path | None): Optional path to a config file. If not provided,
+            defaults to config.yaml in the truss directory.
     Returns:
         TrussHandle
     """
-    return TrussHandle(Path(truss_directory))
+    return TrussHandle(Path(truss_directory), config_path=config_path)
 
 
 def cleanup() -> None:
