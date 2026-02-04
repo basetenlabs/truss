@@ -194,6 +194,7 @@ def whoami(remote: Optional[str], show_oidc: bool):
         )
         # TODO(danielleef): Reference docs here once they're ready
 
+
 @truss_cli.command()
 def configure():
     # Read the original file content

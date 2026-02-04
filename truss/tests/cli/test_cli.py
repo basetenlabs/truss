@@ -159,6 +159,7 @@ def test_cli_push_api_integration_deploy_timeout_minutes_propagated(
     _, push_kwargs = mock_remote_factory.push.call_args
     assert push_kwargs.get("deploy_timeout_minutes") == 1200
 
+
 def test_whoami_basic():
     """Test basic whoami command."""
     runner = CliRunner()
