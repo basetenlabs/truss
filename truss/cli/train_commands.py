@@ -293,6 +293,7 @@ def _build_isession_table(
             border_style="blue",
         )
         table.add_column("Replica ID", style="cyan")
+        table.add_column("Tunnel Name", style="yellow")
         table.add_column("Auth Code", style="green bold")
         table.add_column("Auth URL", style="blue")
         table.add_column("Generated At (Local)", style="dim")
@@ -300,6 +301,7 @@ def _build_isession_table(
         for code in isession:
             table.add_row(
                 code.get("replica_id", ""),
+                code.get("tunnel_name", ""),
                 code.get("auth_code", ""),
                 code.get("auth_url", ""),
                 _format_local_time(code.get("generated_at", "")),
