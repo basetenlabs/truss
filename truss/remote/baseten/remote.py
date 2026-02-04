@@ -363,7 +363,7 @@ class BasetenRemote(TrussRemote):
             dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
                 raise RemoteError(
-                    "No development model found. Run `truss push --watch` then try again."
+                    "No development model found. Run `truss push` then try again."
                 )
             return dev_version
 
@@ -371,7 +371,7 @@ class BasetenRemote(TrussRemote):
         prod_version = get_prod_version_from_versions(model_versions)
         if not prod_version:
             raise RemoteError(
-                "No production model found. Run `truss push` then try again."
+                "No production model found. Run `truss push --publish` then try again."
             )
         return prod_version
 
@@ -456,15 +456,12 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
         console: "rich_console.Console",
         error_console: "rich_console.Console",
-        team_name: Optional[str] = None,
     ) -> None:
         # Resolve model with team disambiguation and verify development deployment exists
         # Import here to avoid circular import
         from truss.cli.resolvers.model_team_resolver import resolve_model_for_watch
 
-        model, versions = resolve_model_for_watch(
-            self, model_name, provided_team_name=team_name
-        )
+        model, versions = resolve_model_for_watch(self, model_name)
         self.sync_truss_to_dev_version_with_model(
             model, versions, target_directory, console, error_console
         )
@@ -481,7 +478,7 @@ class BasetenRemote(TrussRemote):
         dev_version = get_dev_version_from_versions(resolved_versions)
         if not dev_version:
             raise RemoteError(
-                "No development model found. Run `truss push --watch` then try again."
+                "No development model found. Run `truss push` then try again."
             )
 
         watch_path = Path(target_directory)

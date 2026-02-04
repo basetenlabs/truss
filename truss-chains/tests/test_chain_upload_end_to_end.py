@@ -146,6 +146,7 @@ def test_push_chain_with_all_parameters_including_disable_chain_download(
             "--name",
             "custom_chain_name",
             "--disable-chain-download",
+            "--publish",
             "--no-promote",
             "--environment",
             "test_env",
