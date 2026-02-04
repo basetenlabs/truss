@@ -672,6 +672,10 @@ def push(
 
     # Handle --watch flag: deploys as development and then watches
     if watch_after_push:
+        if publish:
+            raise click.UsageError(
+                "Cannot use --watch with --publish. Watch mode requires a development deployment."
+            )
         if promote:
             raise click.UsageError(
                 "Cannot use --watch with --promote. Watch mode runs a development deployment."
@@ -1006,7 +1010,6 @@ def watch(
         )
         sys.exit(1)
 
-    # Use model_id to get service (no additional resolution needed)
     dev_version_id = dev_version["id"]
     logs_url = URLConfig.model_logs_url(
         remote_provider.remote_url, model_id, dev_version_id
