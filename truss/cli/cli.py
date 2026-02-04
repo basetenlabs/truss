@@ -23,7 +23,7 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_for_watch,
     resolve_model_team_name,
 )
-from truss.cli.utils import common
+from truss.cli.utils import common, self_upgrade
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -73,17 +73,20 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-def _get_truss_from_directory(target_directory: Optional[str] = None):
+def _get_truss_from_directory(
+    target_directory: Optional[str] = None, config: Optional[str] = None
+):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
+    config_path = Path(config) if config else None
     if not os.path.isfile(target_directory):
-        return load(target_directory)
+        return load(target_directory, config_path=config_path)
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains.deployment import code_gen
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
-    return load(truss_dir)
+    return load(truss_dir, config_path=config_path)
 
 
 ### Top-level & utility commands. ######################################################
@@ -120,6 +123,16 @@ def login(api_key: Optional[str]):
         RemoteFactory.update_remote_config(remote_config)
     else:
         login(api_key)
+
+
+@truss_cli.command()
+@click.argument("version", required=False)
+@common.common_options()
+@click.pass_context
+def upgrade(ctx: click.Context, version: Optional[str]) -> None:
+    """Upgrade truss to the latest (or specified) version."""
+    interactive = not ctx.obj.get("non_interactive", False)
+    self_upgrade.run_upgrade(version, interactive=interactive)
 
 
 @truss_cli.command()
@@ -399,6 +412,12 @@ def run_python(script, target_directory):
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
+    "--config",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to a custom config file (default: config.yaml in truss directory)",
+)
+@click.option(
     "--remote",
     type=str,
     required=False,
@@ -519,9 +538,16 @@ def run_python(script, target_directory):
     required=False,
     help="Team name for the model",
 )
+@click.option(
+    "--metadata",
+    type=str,
+    required=False,
+    help="JSON string of metadata key-value pairs.",
+)
 @common.common_options()
 def push(
     target_directory: str,
+    config: Optional[str],
     remote: str,
     model_name: str,
     publish: bool = False,
@@ -538,6 +564,7 @@ def push(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
+    metadata: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -545,7 +572,14 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _get_truss_from_directory(target_directory=target_directory, config=config)
+
+    if tr.spec.config.resources.instance_type:
+        console.print(
+            "Field 'instance_type' specified - ignoring 'cpu', 'memory', 'accelerator', and 'use_gpu' fields.",
+            style="yellow",
+        )
+
     if (
         tr.spec.config.runtime.transport.kind == TransportKind.GRPC
         and not publish
@@ -615,6 +649,16 @@ def push(
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
+    # Parse metadata from CLI option
+    metadata_dict: dict = {}
+    if metadata:
+        try:
+            metadata_dict = json.loads(metadata)
+            if not isinstance(metadata_dict, dict):
+                raise click.UsageError("--metadata must be a JSON object.")
+        except json.JSONDecodeError as e:
+            raise click.UsageError(f"Invalid JSON in --metadata: {e}")
+
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
         if not publish:
@@ -664,6 +708,7 @@ def push(
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
+        metadata=metadata_dict,
     )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -761,6 +806,12 @@ def model_logs(
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
+    "--config",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to a custom config file (default: config.yaml in truss directory)",
+)
+@click.option(
     "--remote",
     type=str,
     required=False,
@@ -775,7 +826,10 @@ def model_logs(
 )
 @common.common_options()
 def watch(
-    target_directory: str, remote: str, provided_team_name: Optional[str] = None
+    target_directory: str,
+    config: Optional[str],
+    remote: str,
+    provided_team_name: Optional[str] = None,
 ) -> None:
     """
     Seamless remote development with truss
@@ -788,7 +842,7 @@ def watch(
 
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _get_truss_from_directory(target_directory=target_directory, config=config)
     model_name = tr.spec.config.model_name
     if not model_name:
         console.print(

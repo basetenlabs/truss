@@ -2,7 +2,7 @@ import enum
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Type
 
 import yaml
 from requests import ReadTimeout
@@ -68,6 +68,7 @@ class FinalPushData(custom_types.OracleData):
     environment: Optional[str] = None
     allow_truss_download: bool
     team_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class BasetenRemote(TrussRemote):
@@ -128,6 +129,7 @@ class BasetenRemote(TrussRemote):
         progress_bar: Optional[Type["progress.Progress"]] = None,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -197,6 +199,7 @@ class BasetenRemote(TrussRemote):
             environment=environment,
             allow_truss_download=not disable_truss_download,
             team_id=team_id,
+            metadata=metadata,
         )
 
     def push(  # type: ignore
@@ -216,6 +219,7 @@ class BasetenRemote(TrussRemote):
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -230,6 +234,7 @@ class BasetenRemote(TrussRemote):
             progress_bar=progress_bar,
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
+            metadata=metadata,
         )
 
         if include_git_info:
@@ -257,6 +262,7 @@ class BasetenRemote(TrussRemote):
             preserve_env_instance_type=preserve_env_instance_type,
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=push_data.team_id,
+            metadata=push_data.metadata,
         )
 
         if model_version_handle.instance_type_name:
@@ -527,6 +533,7 @@ class BasetenRemote(TrussRemote):
         console: Optional["rich_console.Console"] = None,
         resolved_model: Optional[dict] = None,
         resolved_versions: Optional[List[dict]] = None,
+        chainlets_only: bool = False,
     ) -> PatchResult:
         try:
             truss_handle = TrussHandle(watch_path)
@@ -556,7 +563,9 @@ class BasetenRemote(TrussRemote):
                     resolve_model_for_watch,
                 )
 
-                model, versions = resolve_model_for_watch(self, model_name)
+                model, versions = resolve_model_for_watch(
+                    self, model_name, chainlets_only=chainlets_only
+                )
             except Exception as e:
                 return PatchResult(
                     PatchStatus.FAILED, f"Model not found: {model_name}. {e}"
@@ -683,7 +692,11 @@ class BasetenRemote(TrussRemote):
     def patch_for_chainlet(
         self, watch_path: Path, truss_ignore_patterns: List[str]
     ) -> PatchResult:
-        return self._patch(watch_path, truss_ignore_patterns, console=None)
+        # Use chainlets_only=True to query chainlet oracles (origin=CHAINS)
+        # instead of regular models (origin=BASETEN)
+        return self._patch(
+            watch_path, truss_ignore_patterns, console=None, chainlets_only=True
+        )
 
     def _patch_with_model(
         self,

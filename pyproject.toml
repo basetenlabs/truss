@@ -1,6 +1,6 @@
 [project]
 name = "truss"
-version = "0.12.4"
+version = "0.13.0"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
@@ -140,7 +140,7 @@ markers = [
     "asyncio: marks tests as async.",
 ]
 # specify basetemp because the default `/private/var/...` interferes with truss_ignore, which also has a var/ pattern
-addopts = "--ignore=smoketests --ignore=baseten-performance-client --basetemp=/tmp/pytest-temp"
+addopts = "--ignore=smoketests --ignore=baseten-performance-client --ignore=integration_tests --basetemp=/tmp/pytest-temp"
 # NB(nikhil): Ensures our relative imports work for tests, given non-traditional directory structure.
 pythonpath = [".", "truss-chains", "truss-train"]
 

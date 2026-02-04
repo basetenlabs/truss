@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, Union
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import (
+    AliasChoices,
     BaseModel,
     Discriminator,
     Field,
@@ -95,11 +96,12 @@ class TrussTRTLLMQuantizationType(str, Enum):
 
 
 class TrussTRTLLMPluginConfiguration(PydanticTrTBaseModel):
-    # strongly recommend to always have on
+    # strongly recommend to always have on. Do not set to false.
     paged_kv_cache: bool = True
-    # strongly recommend to always have on
+    # strongly recommend to always have on. Do not set to false.
     use_paged_context_fmha: bool = True
-    #  recommend to have one when using fp8 quantization of kv cache
+    # recommend to have one when using fp8 quantization of kv cache
+    # AUTO-ENABLED: Has no effect.
     use_fp8_context_fmha: bool = False
 
 
@@ -115,8 +117,8 @@ class TrussTRTQuantizationConfiguration(PydanticTrTBaseModel):
     """
 
     calib_size: int = 1024
-    calib_dataset: str = "cnn_dailymail"
-    calib_max_seq_length: int = 2048
+    calib_dataset: str = "abisee/cnn_dailymail"
+    calib_max_seq_length: int = 1536
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -233,7 +235,8 @@ class TRTLLMRuntimeConfigurationV2(PydanticTrTBaseModel):
     served_model_name: Optional[str] = None
     # only for V2 inference stack, advanced use.
     patch_kwargs: Dict[str, Union[str, int, float, dict, list, None]] = Field(
-        default_factory=dict
+        default_factory=dict,
+        validation_alias=AliasChoices("patch_kwargs", "gated_features"),
     )
 
     @field_validator("patch_kwargs", mode="after")
@@ -285,7 +288,9 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
     # number of GPUs to use for tensor parallelism
     # only for decoder models with inference_stack v1 / v2
     tensor_parallel_count: Annotated[int, Field(strict=True, ge=1)] = 1
+    # pipeline parallel count not allowed.
     pipeline_parallel_count: int = 1
+    moe_expert_parallel_option: int = -1
     sequence_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
@@ -385,34 +390,17 @@ pip install truss==0.10.8
             self.plugin_configuration.use_paged_context_fmha = False
 
             if "_kv" in self.quantization_type.value:
-                raise ValueError(
-                    "encoder does not have a kv-cache, therefore a kv specfic datatype is not valid"
-                    f"you selected build.quantization_type {self.quantization_type}"
+                logger.warning(
+                    "Compling `encoder` with a kv-cache dtype is a alpha feature. This may fail. "
+                    f"You selected build.quantization_type {self.quantization_type}"
                 )
 
     def _validate_kv_cache_flags(self):
         if not self.plugin_configuration.paged_kv_cache and (
             self.plugin_configuration.use_paged_context_fmha
-            or self.plugin_configuration.use_fp8_context_fmha
         ):
             raise ValueError(
-                "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
-            )
-        if (
-            self.plugin_configuration.use_fp8_context_fmha
-            and not self.plugin_configuration.use_paged_context_fmha
-        ):
-            raise ValueError("Using fp8 context fmha requires paged context fmha")
-        if (
-            self.plugin_configuration.use_fp8_context_fmha
-            and self.quantization_type
-            not in (
-                TrussTRTLLMQuantizationType.FP8_KV,
-                TrussTRTLLMQuantizationType.FP4_KV,
-            )
-        ):
-            raise ValueError(
-                "Using fp8 context fmha requires fp8 kv, or fp4 with kv cache dtype"
+                "Using paged context fmha requires requires paged kv cache"
             )
 
         return self
@@ -438,6 +426,24 @@ pip install truss==0.10.8
                 )
 
             self.validate_not_external_draft()
+
+    @model_validator(mode="after")
+    def validate_moe_parallelism_valid(self):
+        if self.base_model == TrussTRTLLMModel.DECODER:
+            if self.moe_expert_parallel_option != -1:
+                if self.moe_expert_parallel_option > self.tensor_parallel_count:
+                    raise ValueError(
+                        f"moe_expert_parallel_option {self.moe_expert_parallel_option} cannot be greater than tensor_parallel_count {self.tensor_parallel_count}"
+                    )
+                if self.moe_expert_parallel_option <= 0:
+                    raise ValueError(
+                        f"moe_expert_parallel_option {self.moe_expert_parallel_option} must be positive or -1"
+                    )
+                if self.tensor_parallel_count % self.moe_expert_parallel_option != 0:
+                    logger.warning(
+                        f"tensor_parallel_count {self.tensor_parallel_count} is not divisible by moe_expert_parallel_option {self.moe_expert_parallel_option}. This may lead to suboptimal performance."
+                    )
+        return self
 
     @property
     def max_draft_len(self) -> Optional[int]:
@@ -584,7 +590,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # INTERNAL
     bei_image: str
     beibert_image: str = (
-        "baseten/bei_bert:1.8.4"  # once wired up in core-product, this can be removed
+        "baseten/bei_bert:1.8.6"  # once wired up in core-product, this can be removed
     )
     briton_image: str
     v2_llm_image: str
@@ -835,13 +841,6 @@ def trt_llm_common_validation(config: "TrussConfig"):
         logger.warning(
             "Weight only int8 quantization on A100 accelerators is not recommended."
         )
-    if base_model in [TrussTRTLLMModel.ENCODER_BERT]:
-        logger.warning(
-            "Using `encoder_bert` as base_model is a new feature. This means, we are still iterating and we are renaming a couple of things in the config.yaml. "
-            "While the `encoder_bert` usage is encouraged and stable (the deployed model will be very stable), "
-            "the config field names may still change in future releases, and you might need to upgrade your truss version if you encounter a issue pushing with this release of truss. "
-            "If you do, please reach out via Slack to us, and we'll help you out."
-        )
     if base_model in [
         TrussTRTLLMModel.PALMYRA,
         TrussTRTLLMModel.QWEN,
@@ -894,6 +893,8 @@ def trt_llm_common_validation(config: "TrussConfig"):
         TrussTRTLLMQuantizationType.FP4_MLP_ONLY,
     ] and config.resources.accelerator.accelerator in [
         truss_config.Accelerator.H100,
+        truss_config.Accelerator.H100_40GB,
+        truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
         truss_config.Accelerator.A100_40GB,
     ]:
@@ -974,6 +975,10 @@ def trt_llm_validation_v1(config: "TrussConfig") -> "TrussConfig":
             f"sequence_parallel_count={trt_llm_config_v1.build.sequence_parallel_count} "
             f"== world_size->{world_size} "
             f"and accelerator.count={config.resources.accelerator.count}. "
+        )
+    if world_size not in [1, 2, 4, 8, 16, 32, 64, 128]:
+        logger.warning(
+            f"TRT-LLM world size {world_size} is unusual. Typical world sizes are powers of two, often 1 or [2,4,8]."
         )
 
     return config

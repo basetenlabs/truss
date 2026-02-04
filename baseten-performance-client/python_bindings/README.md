@@ -135,12 +135,12 @@ preference = RequestProcessingPreference(
     max_concurrent_requests=32,
     timeout_s=360,
     hedge_delay=0.5,  # Enable hedging with 0.5s delay
-    total_timeout_s=360  # Total operation timeout
+    total_timeout_s=360,  # Total operation timeout
+    extra_headers={"x-custom-header": "value"}  # Custom headers
 )
 response_obj = client.batch_post(
     url_path="/v1/embeddings", # Example path, adjust to your needs
     payloads=[payload1, payload2],
-    custom_headers={"x-custom-header": "value"},  # Custom headers
     preference=preference
 )
 print(f"Total time for batch POST: {response_obj.total_time:.4f}s")
@@ -159,16 +159,16 @@ async def async_batch_post_example():
 
     payload1 = {"model": "my_model", "input": ["Async batch sample 1"]}
     payload2 = {"model": "my_model", "input": ["Async batch sample 2"]}
-    preference = RequestProcessingPreference(
-        max_concurrent_requests=32,
-        timeout_s=360,
-        hedge_delay=0.5,  # Enable hedging with 0.5s delay
-        total_timeout_s=360  # Total operation timeout
-    )
+preference = RequestProcessingPreference(
+    max_concurrent_requests=32,
+    timeout_s=360,
+    hedge_delay=0.5,  # Enable hedging with 0.5s delay
+    total_timeout_s=360,  # Total operation timeout
+    extra_headers={"x-custom-header": "value"}  # Custom headers
+)
     response_obj = await client.async_batch_post(
         url_path="/v1/embeddings",
         payloads=[payload1, payload2],
-        custom_headers={"x-custom-header": "value"},  # Custom headers
         preference=preference
     )
     print(f"Async total time for batch POST: {response_obj.total_time:.4f}s")
@@ -388,13 +388,16 @@ response = client.embed(
 Use custom headers with batch_post:
 
 ```python
-response = client.batch_post(
-    url_path="/v1/embeddings",
-    payloads=payloads,
-    custom_headers={
+preference = RequestProcessingPreference(
+    extra_headers={
         "x-custom-header": "value",
         "authorization": "Bearer token"
     }
+)
+response = client.batch_post(
+    url_path="/v1/embeddings",
+    payloads=payloads,
+    preference=preference
 )
 ```
 
@@ -421,6 +424,42 @@ wrapper = HttpClientWrapper(http_version=1)
 # Reuse across multiple clients
 client1 = PerformanceClient(base_url="https://api1.example.com", client_wrapper=wrapper)
 client2 = PerformanceClient(base_url="https://api2.example.com", client_wrapper=wrapper)
+```
+
+#### HTTP Proxy Support
+Route all HTTP requests through a proxy (e.g., for connection pooling with Envoy):
+
+```python
+from baseten_performance_client import HttpClientWrapper
+
+# Create wrapper with HTTP proxy
+wrapper = HttpClientWrapper(
+    http_version=1,
+    proxy="http://envoy-proxy.local:8080"
+)
+
+# Share the wrapper across multiple clients
+client1 = PerformanceClient(
+    base_url="https://api1.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+client2 = PerformanceClient(
+    base_url="https://api2.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+# Both clients will use the same connection pool and proxy
+```
+
+You can also specify the proxy directly when creating a client:
+
+```python
+client = PerformanceClient(
+    base_url="https://api.example.com",
+    api_key="your_key",
+    proxy="http://envoy-proxy.local:8080"
+)
 ```
 
 ### Error Handling

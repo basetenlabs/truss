@@ -8,6 +8,7 @@ import io
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 import rich_click as click
 from rich.console import Console
@@ -108,7 +109,7 @@ def convert_model_repo_to_weights(model: ModelRepo) -> dict:
     source = generate_source_uri(model)
     mount_location = generate_mount_location_for_model(model)
 
-    result = {"source": source, "mount_location": mount_location}
+    result: dict[str, Any] = {"source": source, "mount_location": mount_location}
 
     # Map runtime_secret_name to auth_secret_name
     if model.runtime_secret_name:
