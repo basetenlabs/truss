@@ -234,26 +234,23 @@ class WeightsAuth(custom_types.ConfigModel):
     """Authentication configuration for a weights source.
 
     This can be used to specify OIDC-based authentication for cloud storage sources,
-    or a Baseten secret name for other authentication methods.
+    or a Baseten secret name for access key authentication.
     """
 
     auth_method: Optional[WeightsAuthMethod] = pydantic.Field(
         default=None,
         description="Authentication method for OIDC-based authentication (AWS_OIDC or GCP_OIDC).",
     )
-    # Baseten secret name - can be specified here or at the WeightsSource level for backwards compat
     auth_secret_name: Optional[str] = pydantic.Field(
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
     )
-    # AWS OIDC authentication fields
     aws_oidc_role_arn: Optional[str] = pydantic.Field(
         default=None, description="AWS IAM role ARN for OIDC authentication."
     )
     aws_oidc_region: Optional[str] = pydantic.Field(
         default=None, description="AWS region for OIDC authentication."
     )
-    # GCP OIDC authentication fields
     gcp_oidc_service_account: Optional[str] = pydantic.Field(
         default=None, description="GCP service account name for OIDC authentication."
     )
@@ -330,12 +327,12 @@ class WeightsSource(custom_types.ConfigModel):
     using the @{rev} suffix: "hf://owner/repo@revision"
 
     Authentication can be specified either:
-    - Using the `auth` section (recommended for OIDC):
+    - Using the `auth` section (required for OIDC):
         auth:
           auth_method: AWS_OIDC
           aws_oidc_role_arn: <role_arn>
           aws_oidc_region: <region>
-    - Using `auth_secret_name` at the top level (backwards compatible)
+    - Using `auth_secret_name` at the top level (or in the `auth` section)
     """
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
@@ -348,12 +345,10 @@ class WeightsSource(custom_types.ConfigModel):
             ..., description="Absolute path where weights will be mounted at runtime."
         )
     )
-    # Nested auth configuration (recommended for OIDC)
     auth: Optional[WeightsAuth] = pydantic.Field(
         default=None,
         description="Authentication configuration for accessing the weights source.",
     )
-    # Top-level auth_secret_name for backwards compatibility
     auth_secret_name: Optional[str] = pydantic.Field(
         default=None,
         description="Baseten secret name containing credentials. Can also be specified in auth.auth_secret_name.",
