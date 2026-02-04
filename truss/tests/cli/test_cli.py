@@ -211,5 +211,6 @@ def test_whoami_with_show_oidc():
     assert "baseten.co" in result.output
     assert "model_container" in result.output
     assert "model_build" in result.output
+    assert "Subject Claim Format" in result.output
     assert "Example Subject Claims" in result.output
-    assert "baseten:v=1:org=PJAd5Q0:team=wgeyxoq:*" in result.output
+    assert "v=1:org=PJAd5Q0:team=wgeyxoq:" in result.output

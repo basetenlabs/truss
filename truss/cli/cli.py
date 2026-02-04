@@ -185,25 +185,30 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print(f"Workload Type Options:  {', '.join(oidc_info.workload_types)}")
 
         console.print()
+        console.print("[bold]Subject Claim Format[/bold]")
+        console.print("-" * 22)
+        console.print(
+            "v=1:org=<org_id>:team=<team_id>:model=<model_id>:"
+            "deployment=<deployment_id>:env=<environment>:type=<workload_type>"
+        )
+
+        console.print()
         console.print("[bold]Example Subject Claims[/bold]")
         console.print("-" * 22)
 
         # Use first team for examples (if available)
         team_id = oidc_info.teams[0].id if oidc_info.teams else "<team_id>"
 
-        console.print("All team workloads (any type):")
-        console.print(f"  baseten:v=1:org={oidc_info.org_id}:team={team_id}:*")
-        console.print()
-        console.print("This model in environment <env_name>, builds only:")
+        console.print("Model container in production environment:")
         console.print(
-            f"  baseten:v=1:org={oidc_info.org_id}:team={team_id}:"
-            "model=<model_id>:*:env=<env_name>:type=model_build"
+            f"  v=1:org={oidc_info.org_id}:team={team_id}:"
+            "model=<model_id>:deployment=<deployment_id>:env=production:type=model_container"
         )
         console.print()
-        console.print("This specific version, any environment and workload type:")
+        console.print("Model build in staging environment:")
         console.print(
-            f"  baseten:v=1:org={oidc_info.org_id}:team={team_id}:"
-            "model=<model_id>:deployment=<deployment_id>:*"
+            f"  v=1:org={oidc_info.org_id}:team={team_id}:"
+            "model=<model_id>:deployment=<deployment_id>:env=staging:type=model_build"
         )
 
 
