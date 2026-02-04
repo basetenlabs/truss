@@ -420,3 +420,4 @@ def test_whoami_with_show_oidc():
         "v=1:org=PJAd5Q0:team=wgeyxoq:"
         "model=<model_id>:deployment=<deployment_id>:env=<environment>:type=model_container"
         in normalized_output
+    )
