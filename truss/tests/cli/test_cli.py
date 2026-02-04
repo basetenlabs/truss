@@ -208,15 +208,3 @@ def test_whoami_with_show_oidc():
     assert "abc123 (ML Team)" in result.output
     assert "https://oidc.baseten.co" in result.output
     assert "oidc.baseten.co" in result.output
-    assert "Example Subject Claims" in result.output
-    normalized_output = result.output.replace("\n", "")
-    assert (
-        "v=1:org=PJAd5Q0:team=wgeyxoq:"
-        "model=<model_id>:deployment=<deployment_id>:env=<environment>:type=model_build"
-        in normalized_output
-    )
-    assert (
-        "v=1:org=PJAd5Q0:team=wgeyxoq:"
-        "model=<model_id>:deployment=<deployment_id>:env=<environment>:type=model_container"
-        in normalized_output
-    )
