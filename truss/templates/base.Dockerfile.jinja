@@ -9,29 +9,40 @@ FROM {{ base_image_name_and_tag }} AS truss_server
 {%- set python_executable = config.base_image.python_executable_path or 'python3' %}
 ENV PYTHON_EXECUTABLE="{{ python_executable }}"
 
-{%- set app_username = "app" %}  {# needed later for USER directive #}
+{%- set default_owner = "root:root" %}
+{%- set ROOT_USER_ID = 0 %}
+{%- set NONROOT_DEFAULT_USER_ID = 60000 %}
+{#
+  run_as_user_id encoding:
+  - ROOT_USER_ID = root (non-root disabled)
+  - NONROOT_DEFAULT_USER_ID = platform default "app" user (non-root enabled, create user)
+  - any other = custom UID (user-specified, don't create user)
+#}
 {% block user_setup %}
 {#
   NB(nikhil): Assume `root` for various setup that requires permissions; we conditionally switch to
-  `app_username` at the end, if `non_root` behavior is enabled.
+  non-root user at the end, if `non_root` behavior is enabled.
 #}
 USER root
-{%- set app_user_uid = 60000 %}
+{%- set app_username = "app" %}
 {%- set control_server_dir = "/control" %}
-{%- set default_owner = "root:root" %}
-{%- if non_root_user %}
-{# The non-root user's home directory. #}
+{%- if run_as_user_id == NONROOT_DEFAULT_USER_ID %}
+{# Platform-managed non-root user's home directory. #}
 {# uv will use $HOME to install packages. #}
 ENV HOME=${HOME:-/home/{{ app_username }}}
 {%- else %}
-{# This is the default, but we use this variable later so ... setting it here too.#}
+{# For root or custom run_as_user, use /root during build (we switch user at the end). #}
+{# For custom UIDs, we don't know the username and its corresponding $HOME, so /root. We still switch user at the end. #}
 ENV HOME=${HOME:-/root}
-{%- endif %} {#- endif non_root_user #}
-{# Directory containing inference server code. #}
+{%- endif %}
+{# Directory containing inference server code - always /app regardless of username #}
 ENV APP_HOME=/{{ app_username }}
 RUN mkdir -p ${APP_HOME} {{ control_server_dir }}
-{# Create a non-root user to run model containers. #}
-RUN useradd -u {{ app_user_uid }} -ms /bin/bash {{ app_username }}
+{%- if run_as_user_id == ROOT_USER_ID or run_as_user_id == NONROOT_DEFAULT_USER_ID %}
+{# Create platform-managed non-root user to run model containers. #}
+{# For custom UIDs, assume the user already exists and don't create. #}
+RUN useradd -u {{ NONROOT_DEFAULT_USER_ID }} -ms /bin/bash {{ app_username }}
+{%- endif %}
 {% endblock %} {#- endblock user_setup #}
 
 {#- at the very beginning, set non-interactive mode for apt #}
@@ -64,11 +75,13 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
-{% block install_uv %}
-{# Install `uv` and `curl` if not already present in the image. We validate the expected location for `uv` at the very end
+{% block install_tools %}
+{# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}
+RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
+
+{# Install uv if not already present in the image. We validate the expected location for `uv` at the very end
    due to limitations with `pipefail` in Docker context. #}
 RUN if ! command -v uv >/dev/null 2>&1; then \
-    command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl) && \
     curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/{{ UV_VERSION }}/install.sh | sh && \
     test -x ${HOME}/.local/bin/uv; \
 fi

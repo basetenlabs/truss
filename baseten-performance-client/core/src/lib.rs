@@ -31,11 +31,15 @@ fn init_tracing() {
         std::env::set_var("RUST_LOG", crate::constants::DEFAULT_LOG_LEVEL);
     }
 
-    // Initialize subscriber only once
+    // Initialize subscriber only once, and only if not already initialized
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {
-        tracing_subscriber::fmt()
+        // Try to initialize tracing, but don't panic if it's already initialized
+        if let Err(_) = tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .init();
+            .try_init()
+        {
+            // Tracing is already initialized, which is fine
+        }
     });
 }
