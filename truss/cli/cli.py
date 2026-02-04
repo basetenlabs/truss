@@ -836,14 +836,19 @@ def push(
 
         # If --watch was used, start watching after deploy success
         if watch_after_push:
+            if not isinstance(remote_provider, BasetenRemote):
+                raise click.UsageError(
+                    f"Watch mode is not supported for remote provider type: {type(remote_provider).__name__}"
+                )
+            bt_remote = cast(BasetenRemote, remote_provider)
             console.print("Starting watch mode...", style="bold blue")
             resolved_model, versions = resolve_model_for_watch(
-                remote_provider, model_name, provided_team_name=team_name
+                bt_remote, model_name, provided_team_name=team_name
             )
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
-                remote_provider=remote_provider,
+                remote_provider=bt_remote,
                 resolved_model=resolved_model,
                 resolved_versions=versions,
                 console=console,
