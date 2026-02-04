@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from rich import progress
 
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.base.truss_config import DockerAuthType, TrussConfig
+from truss.base.truss_config import DockerAuthType, TrussConfig, WeightsAuthMethod
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
@@ -532,8 +532,8 @@ def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
 
 
 OIDC_FEATURE_FLAG = "ENABLE_OIDC_AUTH"
-OIDC_AUTH_METHODS = {DockerAuthType.AWS_OIDC, DockerAuthType.GCP_OIDC}
-
+DOCKER_OIDC_AUTH_METHODS = {DockerAuthType.AWS_OIDC, DockerAuthType.GCP_OIDC}
+WEIGHTS_OIDC_AUTH_METHODS = {WeightsAuthMethod.AWS_OIDC, WeightsAuthMethod.GCP_OIDC}
 
 def _config_uses_oidc_auth(config: TrussConfig) -> bool:
     """
@@ -543,16 +543,15 @@ def _config_uses_oidc_auth(config: TrussConfig) -> bool:
     - Docker registry authentication (base_image.docker_auth)
     - Weights source authentication (weights[].auth.auth_method)
     """
-    # Check docker auth in base_image
     if config.base_image and config.base_image.docker_auth:
-        if config.base_image.docker_auth.auth_method in OIDC_AUTH_METHODS:
+        if config.base_image.docker_auth.auth_method in DOCKER_OIDC_AUTH_METHODS:
             return True
 
-    # Check weights auth (uses nested auth section)
     if config.weights:
         for source in config.weights.sources:
-            if source.uses_oidc_auth():
-                return True
+            if source.auth and source.auth.auth_method:
+                if source.auth.auth_method in WEIGHTS_OIDC_AUTH_METHODS:
+                    return True
 
     return False
 
@@ -560,13 +559,6 @@ def _config_uses_oidc_auth(config: TrussConfig) -> bool:
 def validate_oidc_feature_flag(api: BasetenApi, config: TrussConfig) -> None:
     """
     Validate that OIDC authentication is enabled for the organization if the config uses it.
-
-    Args:
-        api: BasetenApi instance
-        config: TrussConfig to check for OIDC auth usage
-
-    Raises:
-        ValidationError if OIDC auth is used but not enabled for the organization.
     """
     if not _config_uses_oidc_auth(config):
         return
