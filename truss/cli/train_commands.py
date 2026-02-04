@@ -670,8 +670,7 @@ def _write_truss_config(
     console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
     if dry_run:
         console.print(
-            f"🚀 Run `cd {output_dir} && truss push --publish` to deploy the truss",
-            style="green",
+            f"🚀 Run `cd {output_dir} && truss push` to deploy the truss", style="green"
         )
     result.truss_config.write_to_yaml_file(output_path)
 

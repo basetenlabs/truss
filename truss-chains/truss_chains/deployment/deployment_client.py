@@ -230,7 +230,7 @@ def push(
         if has_engine_builder_chainlets and not options.publish:
             raise public_types.ChainsDeploymentError(
                 "This chain contains engine builder chainlets. Development models are "
-                "not supportd, push with `--publish`."
+                "not supportd, push as a published deployment."
             )
         return _create_baseten_chain(
             options,
@@ -614,7 +614,7 @@ class _ModelWatcher:
         dev_version = b10_core.get_dev_version(self._remote_provider.api, model_name)
         if not dev_version:
             raise b10_errors.RemoteError(
-                "No development model found. Run `truss push` then try again."
+                "No development model found. Run `truss push --watch` then try again."
             )
 
     def _patch(self) -> None:
