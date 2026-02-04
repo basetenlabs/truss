@@ -31,6 +31,7 @@ from truss.base.truss_config import (
     TrussConfig,
     WebsocketOptions,
     Weights,
+    WeightsAuth,
     WeightsAuthMethod,
     WeightsSource,
     _map_to_supported_python_version,
@@ -431,6 +432,30 @@ def test_docker_auth_gcp_oidc_missing_workload_id_provider():
         DockerAuthSettings(
             auth_method=DockerAuthType.GCP_OIDC,
             gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            registry="us-west2-docker.pkg.dev",
+        )
+
+
+def test_docker_auth_aws_oidc_with_gcp_params_error():
+    """AWS OIDC docker auth cannot have GCP parameters."""
+    with pytest.raises(ValueError, match="GCP OIDC parameters.*cannot be specified"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_oidc_region="us-west-2",
+            gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_gcp_oidc_with_aws_params_error():
+    """GCP OIDC docker auth cannot have AWS parameters."""
+    with pytest.raises(ValueError, match="AWS OIDC parameters.*cannot be specified"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
             registry="us-west2-docker.pkg.dev",
         )
 
@@ -1471,43 +1496,46 @@ class TestWeightsSource:
         source = WeightsSource(
             source="s3://my-bucket/models/custom-weights",
             mount_location="/models/custom",
-            auth_method=WeightsAuthMethod.AWS_OIDC,
-            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
-            aws_oidc_region="us-west-2",
+            auth=WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+            ),
         )
-        assert source.auth_method == WeightsAuthMethod.AWS_OIDC
-        assert source.aws_oidc_role_arn == "arn:aws:iam::123456789:role/my-role"
-        assert source.aws_oidc_region == "us-west-2"
+        assert source.auth.auth_method == WeightsAuthMethod.AWS_OIDC
+        assert source.auth.aws_oidc_role_arn == "arn:aws:iam::123456789:role/my-role"
+        assert source.auth.aws_oidc_region == "us-west-2"
+        assert source.uses_oidc_auth() is True
 
     def test_gcs_source_with_gcp_oidc(self):
         """GCS source with GCP OIDC authentication."""
         source = WeightsSource(
             source="gs://my-bucket/models/weights",
             mount_location="/models/gcs-weights",
-            auth_method=WeightsAuthMethod.GCP_OIDC,
-            gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
-            gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            auth=WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+                gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            ),
         )
-        assert source.auth_method == WeightsAuthMethod.GCP_OIDC
+        assert source.auth.auth_method == WeightsAuthMethod.GCP_OIDC
         assert (
-            source.gcp_oidc_service_account
+            source.auth.gcp_oidc_service_account
             == "my-service-account@my-project.iam.gserviceaccount.com"
         )
         assert (
-            source.gcp_oidc_workload_id_provider
+            source.auth.gcp_oidc_workload_id_provider
             == "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider"
         )
+        assert source.uses_oidc_auth() is True
 
     def test_aws_oidc_missing_role_arn(self):
         """AWS OIDC without role ARN should error."""
         with pytest.raises(
             pydantic.ValidationError, match="aws_oidc_role_arn must be provided"
         ):
-            WeightsSource(
-                source="s3://my-bucket/models/custom-weights",
-                mount_location="/models/custom",
-                auth_method=WeightsAuthMethod.AWS_OIDC,
-                aws_oidc_region="us-west-2",
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC, aws_oidc_region="us-west-2"
             )
 
     def test_aws_oidc_missing_region(self):
@@ -1515,9 +1543,7 @@ class TestWeightsSource:
         with pytest.raises(
             pydantic.ValidationError, match="aws_oidc_region must be provided"
         ):
-            WeightsSource(
-                source="s3://my-bucket/models/custom-weights",
-                mount_location="/models/custom",
+            WeightsAuth(
                 auth_method=WeightsAuthMethod.AWS_OIDC,
                 aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
             )
@@ -1527,9 +1553,7 @@ class TestWeightsSource:
         with pytest.raises(
             pydantic.ValidationError, match="gcp_oidc_service_account must be provided"
         ):
-            WeightsSource(
-                source="gs://my-bucket/models/weights",
-                mount_location="/models/gcs-weights",
+            WeightsAuth(
                 auth_method=WeightsAuthMethod.GCP_OIDC,
                 gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
             )
@@ -1540,9 +1564,7 @@ class TestWeightsSource:
             pydantic.ValidationError,
             match="gcp_oidc_workload_id_provider must be provided",
         ):
-            WeightsSource(
-                source="gs://my-bucket/models/weights",
-                mount_location="/models/gcs-weights",
+            WeightsAuth(
                 auth_method=WeightsAuthMethod.GCP_OIDC,
                 gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
             )
@@ -1552,14 +1574,72 @@ class TestWeightsSource:
         source = WeightsSource(
             source="s3://my-bucket/models/custom-weights",
             mount_location="/models/custom",
-            auth_method=WeightsAuthMethod.AWS_OIDC,
-            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
-            aws_oidc_region="us-west-2",
+            auth=WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+            ),
         )
         result = source.to_dict(verbose=True)
-        assert result["auth_method"] == "AWS_OIDC"
-        assert result["aws_oidc_role_arn"] == "arn:aws:iam::123456789:role/my-role"
-        assert result["aws_oidc_region"] == "us-west-2"
+        assert result["auth"]["auth_method"] == "AWS_OIDC"
+        assert (
+            result["auth"]["aws_oidc_role_arn"] == "arn:aws:iam::123456789:role/my-role"
+        )
+        assert result["auth"]["aws_oidc_region"] == "us-west-2"
+
+    def test_auth_secret_name_backwards_compat(self):
+        """auth_secret_name at top level should work for backwards compatibility."""
+        source = WeightsSource(
+            source="s3://my-bucket/models/weights",
+            mount_location="/models/weights",
+            auth_secret_name="my-secret",
+        )
+        assert source.auth_secret_name == "my-secret"
+        assert source.get_effective_auth_secret_name() == "my-secret"
+
+    def test_auth_secret_name_in_auth_section(self):
+        """auth_secret_name can be specified in the auth section."""
+        source = WeightsSource(
+            source="s3://my-bucket/models/weights",
+            mount_location="/models/weights",
+            auth=WeightsAuth(auth_secret_name="my-secret"),
+        )
+        assert source.auth.auth_secret_name == "my-secret"
+        assert source.get_effective_auth_secret_name() == "my-secret"
+
+    def test_auth_secret_name_conflict_error(self):
+        """auth_secret_name cannot be specified in both locations."""
+        with pytest.raises(pydantic.ValidationError, match="cannot be specified both"):
+            WeightsSource(
+                source="s3://my-bucket/models/weights",
+                mount_location="/models/weights",
+                auth_secret_name="my-secret-top",
+                auth=WeightsAuth(auth_secret_name="my-secret-nested"),
+            )
+
+    def test_aws_oidc_with_gcp_params_error(self):
+        """AWS OIDC cannot have GCP parameters."""
+        with pytest.raises(
+            pydantic.ValidationError, match="GCP OIDC parameters.*cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+                gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            )
+
+    def test_gcp_oidc_with_aws_params_error(self):
+        """GCP OIDC cannot have AWS parameters."""
+        with pytest.raises(
+            pydantic.ValidationError, match="AWS OIDC parameters.*cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+                gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
 
 
 class TestWeights:

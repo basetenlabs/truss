@@ -1056,3 +1056,19 @@ class BasetenApi:
             body=body,
         )
         return resp_json
+
+    def get_organization_feature_flags(self) -> List[str]:
+        """
+        Get organization feature flags via GraphQL API.
+        Returns a list of feature flag names enabled for the organization.
+        """
+        query_string = """
+        query {
+            organization {
+                feature_flags
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["organization"]["feature_flags"]

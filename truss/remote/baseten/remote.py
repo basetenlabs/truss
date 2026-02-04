@@ -31,6 +31,7 @@ from truss.remote.baseten.core import (
     get_truss_watch_state,
     upload_chain_artifact,
     upload_truss,
+    validate_oidc_feature_flag,
     validate_truss_config_against_backend,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
@@ -182,6 +183,7 @@ class BasetenRemote(TrussRemote):
         config = truss_handle._spec._config
 
         config.validate_forbid_extra()
+        validate_oidc_feature_flag(self._api, config)
         encoded_config_str = base64_encoded_json_str(config.to_dict())
         validate_truss_config_against_backend(self._api, encoded_config_str)
         temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
