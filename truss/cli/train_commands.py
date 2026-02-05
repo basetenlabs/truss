@@ -1,10 +1,18 @@
 import os
+import signal
 import sys
+import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, cast
+from typing import Any, Deque, Optional, cast
 
+import rich.table
 import rich_click as click
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.text import Text
 
 import truss.cli.train.core as train_cli
 from truss.base.constants import TRAINING_TEMPLATE_DIR
@@ -241,6 +249,209 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
     _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
+def _format_local_time(utc_timestamp: str) -> str:
+    """Convert UTC ISO timestamp to local time string."""
+    if not utc_timestamp:
+        return ""
+    try:
+        utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+        local_dt = utc_dt.astimezone()
+        return local_dt.strftime("%H:%M:%S %Z")
+    except (ValueError, TypeError):
+        return utc_timestamp
+
+
+def _build_isession_table(
+    remote_provider: BasetenRemote, project_id: str, job_id: str
+) -> Optional[rich.table.Table]:
+    """Build auth codes table for a training job. Returns None if no auth codes."""
+    try:
+        response = remote_provider.api.get_training_job_isession(
+            project_id=project_id, job_id=job_id
+        )
+        isession = response.get("auth_codes", [])
+
+        if not isession:
+            return None
+
+        def replica_sort_key(code: dict) -> int:
+            replica_id = code.get("replica_id", "")
+            if "r" in replica_id:
+                try:
+                    return int(replica_id.rsplit("r", 1)[-1])
+                except ValueError:
+                    return 0
+            return 0
+
+        isession.sort(key=replica_sort_key)
+
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title=f"Interactive Sessions for Job: {job_id}",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        table.add_column("Replica ID", style="cyan")
+        table.add_column("Auth Code", style="green bold")
+        table.add_column("Auth URL", style="blue")
+        table.add_column("Generated At (Local)", style="dim")
+
+        for code in isession:
+            table.add_row(
+                code.get("replica_id", ""),
+                code.get("auth_code", ""),
+                code.get("auth_url", ""),
+                _format_local_time(code.get("generated_at", "")),
+            )
+
+        return table
+    except Exception:
+        return None
+
+
+def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: str):
+    """Display auth codes table for a training job if available."""
+    table = _build_isession_table(remote_provider, project_id, job_id)
+    if table:
+        console.print(table)
+        console.print()  # Add blank line before logs
+
+
+# Maximum number of log lines to display in the live view
+_MAX_DISPLAY_LOGS = 50
+# How often to refresh the isession info (seconds)
+_ISESSION_REFRESH_INTERVAL = 30
+
+
+class TailLogsWithHeader:
+    """
+    A log watcher that uses Rich's Live display to pin the isession table
+    at the top while streaming logs below.
+    """
+
+    def __init__(self, remote_provider: BasetenRemote, project_id: str, job_id: str):
+        self.remote_provider = remote_provider
+        self.project_id = project_id
+        self.job_id = job_id
+        self.log_watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
+        self.live: Optional[Live] = None
+        self._log_buffer: Deque[cli_log_utils.ParsedLog] = deque(
+            maxlen=_MAX_DISPLAY_LOGS
+        )
+        self._last_isession_refresh = 0.0
+        self._cached_isession_table: Optional[rich.table.Table] = None
+
+    def _handle_sigint(self, signum: int, frame: Any) -> None:
+        if self.live:
+            self.live.stop()
+        msg = f"\n\nExiting training job logs. To stop the job, run `truss train stop --job-id {self.job_id}`"
+        console.print(msg, style="yellow")
+        raise KeyboardInterrupt()
+
+    def _get_isession_renderable(self) -> Panel:
+        """Get the isession panel, refreshing if needed."""
+        now = time.time()
+        if (
+            self._cached_isession_table is None
+            or now - self._last_isession_refresh > _ISESSION_REFRESH_INTERVAL
+        ):
+            self._cached_isession_table = _build_isession_table(
+                self.remote_provider, self.project_id, self.job_id
+            )
+            self._last_isession_refresh = now
+
+        if self._cached_isession_table:
+            return Panel(
+                self._cached_isession_table,
+                title="Interactive Session",
+                border_style="blue",
+            )
+        else:
+            return Panel(
+                Text("No interactive session available", style="dim"),
+                title="Interactive Session",
+                border_style="dim",
+            )
+
+    def _format_log_line(self, log: cli_log_utils.ParsedLog) -> Text:
+        """Format a single log line for display."""
+        epoch_nanos = int(log.timestamp)
+        dt = datetime.fromtimestamp(epoch_nanos / 1e9)
+        formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        line = Text()
+        line.append(f"[{formatted_time}]: ", style="blue")
+        if log.replica:
+            line.append(f"({log.replica}) ", style="green")
+        line.append(log.message.strip())
+        return line
+
+    def _get_logs_renderable(self) -> Panel:
+        """Get the logs panel with recent logs."""
+        if not self._log_buffer:
+            return Panel(
+                Text("Waiting for logs...", style="dim italic"),
+                title=f"Logs (showing last {_MAX_DISPLAY_LOGS} lines)",
+                border_style="green",
+            )
+
+        log_text = Text()
+        for i, log in enumerate(self._log_buffer):
+            if i > 0:
+                log_text.append("\n")
+            log_text.append_text(self._format_log_line(log))
+
+        return Panel(
+            log_text,
+            title=f"Logs (showing last {len(self._log_buffer)} of max {_MAX_DISPLAY_LOGS})",
+            border_style="green",
+        )
+
+    def _create_layout(self) -> Layout:
+        """Create the layout with isession header and logs."""
+        layout = Layout()
+
+        # Calculate header size based on isession content
+        isession_panel = self._get_isession_renderable()
+        logs_panel = self._get_logs_renderable()
+
+        layout.split_column(
+            Layout(isession_panel, name="header", size=10),
+            Layout(logs_panel, name="logs"),
+        )
+
+        return layout
+
+    def watch(self):
+        """Watch logs with pinned isession header."""
+        # Register signal handler
+        signal.signal(signal.SIGINT, self._handle_sigint)
+
+        # Wait for job to be ready (reuse log_watcher's before_polling)
+        self.log_watcher.before_polling()
+
+        with Live(self._create_layout(), auto_refresh=False, console=console) as live:
+            self.live = live
+
+            while True:
+                # Poll for new logs
+                for log in self.log_watcher.poll():
+                    self._log_buffer.append(log)
+
+                # Update the display
+                live.update(self._create_layout(), refresh=True)
+
+                if not self.log_watcher.should_poll_again():
+                    break
+
+                time.sleep(2)  # POLL_INTERVAL_SEC
+                self.log_watcher.post_poll()
+
+        # Run after_polling to show final status
+        self.log_watcher.after_polling()
+
+
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
@@ -272,15 +483,17 @@ def get_job_logs(
     )
 
     if not tail:
+        # Non-tail mode: Display isession once, then all logs
+        _display_isession(remote_provider, project_id, job_id)
         logs = get_training_job_logs_with_pagination(
             remote_provider.api, project_id, job_id
         )
         for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log)
     else:
-        log_watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
-        for log in log_watcher.watch():
-            cli_log_utils.output_log(log)
+        # Tail mode: Use Live display with pinned isession header
+        tail_watcher = TailLogsWithHeader(remote_provider, project_id, job_id)
+        tail_watcher.watch()
 
 
 @train.command(name="stop")
@@ -681,7 +894,7 @@ def _maybe_resolve_project_id_from_id_or_name(
     help="When to create the interactive session: 'on_startup' creates on job start, 'on_failure' creates on job failure, 'on_demand' allows manual session creation.",
 )
 @click.option(
-    "--timeout-hours",
+    "--timeout-minutes",
     type=int,
     required=False,
     help="Number of hours before the interactive session times out.",
@@ -691,14 +904,14 @@ def _maybe_resolve_project_id_from_id_or_name(
 def update_session(
     job_id: str,
     trigger: Optional[str],
-    timeout_hours: Optional[int],
+    timeout_minutes: Optional[int],
     remote: Optional[str],
 ):
     """Update interactive session configuration for a training job."""
 
-    if trigger is None and timeout_hours is None:
+    if trigger is None and timeout_minutes is None:
         error_console.print(
-            "At least one of --trigger or --timeout-hours must be provided."
+            "At least one of --trigger or --timeout-minutes must be provided."
         )
         sys.exit(1)
 
@@ -722,9 +935,46 @@ def update_session(
             project_id=project_id,
             job_id=job_id,
             trigger=trigger,
-            timeout_hours=timeout_hours,
+            timeout_minutes=timeout_minutes,
         )
         console.print("Interactive session configuration updated.", style="green")
     except Exception as e:
         error_console.print(f"Failed to update interactive session: {str(e)}")
+        sys.exit(1)
+
+
+@train.command(name="isession")
+@click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def get_isession(job_id: str, remote: Optional[str]):
+    """Get auth codes for a training job's interactive session."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        response = remote_provider.api.get_training_job_isession(
+            project_id=project_id, job_id=job_id
+        )
+        isession = response.get("auth_codes", [])
+
+        if not isession:
+            console.print("No auth codes found for this job.", style="yellow")
+            return
+
+        _display_isession(remote_provider, project_id, job_id)
+    except Exception as e:
+        error_console.print(f"Failed to get auth codes: {str(e)}")
         sys.exit(1)
