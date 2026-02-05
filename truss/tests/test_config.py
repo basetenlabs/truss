@@ -438,7 +438,9 @@ def test_docker_auth_gcp_oidc_missing_workload_id_provider():
 
 def test_docker_auth_aws_oidc_with_gcp_params_error():
     """AWS OIDC docker auth cannot have GCP parameters."""
-    with pytest.raises(ValueError, match="GCP OIDC parameters.*cannot be specified"):
+    with pytest.raises(
+        ValueError, match="gcp_oidc_service_account cannot be specified"
+    ):
         DockerAuthSettings(
             auth_method=DockerAuthType.AWS_OIDC,
             aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
@@ -450,7 +452,7 @@ def test_docker_auth_aws_oidc_with_gcp_params_error():
 
 def test_docker_auth_gcp_oidc_with_aws_params_error():
     """GCP OIDC docker auth cannot have AWS parameters."""
-    with pytest.raises(ValueError, match="AWS OIDC parameters.*cannot be specified"):
+    with pytest.raises(ValueError, match="aws_oidc_role_arn cannot be specified"):
         DockerAuthSettings(
             auth_method=DockerAuthType.GCP_OIDC,
             gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
@@ -1571,7 +1573,8 @@ class TestWeightsSource:
     def test_aws_oidc_with_gcp_params_error(self):
         """AWS OIDC cannot have GCP parameters."""
         with pytest.raises(
-            pydantic.ValidationError, match="GCP OIDC parameters.*cannot be specified"
+            pydantic.ValidationError,
+            match="gcp_oidc_service_account cannot be specified",
         ):
             WeightsAuth(
                 auth_method=WeightsAuthMethod.AWS_OIDC,
@@ -1583,7 +1586,7 @@ class TestWeightsSource:
     def test_gcp_oidc_with_aws_params_error(self):
         """GCP OIDC cannot have AWS parameters."""
         with pytest.raises(
-            pydantic.ValidationError, match="AWS OIDC parameters.*cannot be specified"
+            pydantic.ValidationError, match="aws_oidc_role_arn cannot be specified"
         ):
             WeightsAuth(
                 auth_method=WeightsAuthMethod.GCP_OIDC,

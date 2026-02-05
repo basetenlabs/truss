@@ -41,6 +41,12 @@ DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME = "aws_secret_access_key"
 
 DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/training_checkpoints"
 
+WEIGHTS_AUTH_SECRET_NAME_PARAM = "auth_secret_name"
+DOCKER_AUTH_SECRET_NAME_PARAM = "secret_name"
+AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
+AWS_OIDC_REGION_PARAM = "aws_oidc_region"
+GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
+GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
 
 def _is_numeric(number_like: str) -> bool:
     try:
@@ -62,7 +68,6 @@ class Accelerator(str, enum.Enum):
     H200 = "H200"
     H100_40GB = "H100_40GB"
     B200 = "B200"
-
 
 class AcceleratorSpec(custom_types.ConfigModel):
     model_config = pydantic.ConfigDict(validate_assignment=True)
@@ -267,52 +272,59 @@ class WeightsAuth(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def _validate_auth_fields(self) -> "WeightsAuth":
-        has_aws_params = self.aws_oidc_role_arn or self.aws_oidc_region
-        has_gcp_params = (
-            self.gcp_oidc_service_account or self.gcp_oidc_workload_id_provider
-        )
-
-        if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
-            if not self.auth_secret_name:
+        def require(method: WeightsAuthMethod, *fields: str) -> None:
+            missing = [f for f in fields if getattr(self, f) in (None, "")]
+            if missing:
                 raise ValueError(
-                    "auth_secret_name must be provided when auth_method is CUSTOM_SECRET"
+                    f"{', '.join(missing)} must be provided when auth_method is {method.value}"
                 )
-        if (
-            self.auth_secret_name
-            and self.auth_method != WeightsAuthMethod.CUSTOM_SECRET
-        ):
+
+        def forbid(method: WeightsAuthMethod, *fields: str) -> None:
+            present = [f for f in fields if getattr(self, f) not in (None, "")]
+            if present:
+                raise ValueError(
+                    f"{', '.join(present)} cannot be specified when auth_method is {method.value}"
+                )
+
+        # Handle case where auth_secret_name is provided without auth_method
+        if self.auth_secret_name and self.auth_method is None:
             raise ValueError(
-                "auth_method must be CUSTOM_SECRET when auth_secret_name is specified"
+                f"auth_method must be {WeightsAuthMethod.CUSTOM_SECRET.value} when auth_secret_name is specified"
             )
 
-        if self.auth_method == WeightsAuthMethod.AWS_OIDC:
-            if not self.aws_oidc_role_arn:
-                raise ValueError(
-                    "aws_oidc_role_arn must be provided when auth_method is AWS_OIDC"
+        match self.auth_method:
+            case WeightsAuthMethod.CUSTOM_SECRET:
+                require(WeightsAuthMethod.CUSTOM_SECRET, "auth_secret_name")
+                forbid(
+                    WeightsAuthMethod.CUSTOM_SECRET,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 )
-            if not self.aws_oidc_region:
-                raise ValueError(
-                    "aws_oidc_region must be provided when auth_method is AWS_OIDC"
+            case WeightsAuthMethod.AWS_OIDC:
+                require(
+                    WeightsAuthMethod.AWS_OIDC, AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM
                 )
-            if has_gcp_params:
-                raise ValueError(
-                    "GCP OIDC parameters (gcp_oidc_service_account, gcp_oidc_workload_id_provider) "
-                    "cannot be specified when auth_method is AWS_OIDC"
+                forbid(
+                    WeightsAuthMethod.AWS_OIDC,
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 )
-        if self.auth_method == WeightsAuthMethod.GCP_OIDC:
-            if not self.gcp_oidc_service_account:
-                raise ValueError(
-                    "gcp_oidc_service_account must be provided when auth_method is GCP_OIDC"
+            case WeightsAuthMethod.GCP_OIDC:
+                require(
+                    WeightsAuthMethod.GCP_OIDC,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 )
-            if not self.gcp_oidc_workload_id_provider:
-                raise ValueError(
-                    "gcp_oidc_workload_id_provider must be provided when auth_method is GCP_OIDC"
+                forbid(
+                    WeightsAuthMethod.GCP_OIDC,
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
                 )
-            if has_aws_params:
-                raise ValueError(
-                    "AWS OIDC parameters (aws_oidc_role_arn, aws_oidc_region) "
-                    "cannot be specified when auth_method is GCP_OIDC"
-                )
+
         return self
 
 
@@ -806,46 +818,51 @@ class DockerAuthSettings(custom_types.ConfigModel):
 
     @pydantic.model_validator(mode="after")
     def validate_auth_fields(self) -> "DockerAuthSettings":
-        has_aws_oidc_params = self.aws_oidc_role_arn or self.aws_oidc_region
-        has_gcp_oidc_params = (
-            self.gcp_oidc_service_account or self.gcp_oidc_workload_id_provider
-        )
+        def require(method: DockerAuthType, *fields: str) -> None:
+            missing = [f for f in fields if getattr(self, f) in (None, "")]
+            if missing:
+                raise ValueError(
+                    f"{', '.join(missing)} must be provided when auth_method is {method.value}"
+                )
 
-        if (
-            self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON
-            and self.secret_name is None
-        ):
-            raise ValueError(
-                "secret_name must be provided when auth_method is GCP_SERVICE_ACCOUNT_JSON"
-            )
-        if self.auth_method == DockerAuthType.AWS_OIDC:
-            if not self.aws_oidc_role_arn:
+        def forbid(method: DockerAuthType, *fields: str) -> None:
+            present = [f for f in fields if getattr(self, f) not in (None, "")]
+            if present:
                 raise ValueError(
-                    "aws_oidc_role_arn must be provided when auth_method is AWS_OIDC"
+                    f"{', '.join(present)} cannot be specified when auth_method is {method.value}"
                 )
-            if not self.aws_oidc_region:
-                raise ValueError(
-                    "aws_oidc_region must be provided when auth_method is AWS_OIDC"
+
+        match self.auth_method:
+            case DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
+                require(DockerAuthType.GCP_SERVICE_ACCOUNT_JSON, DOCKER_AUTH_SECRET_NAME_PARAM)
+                forbid(
+                    DockerAuthType.GCP_SERVICE_ACCOUNT_JSON,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 )
-            if has_gcp_oidc_params:
-                raise ValueError(
-                    "GCP OIDC parameters (gcp_oidc_service_account, gcp_oidc_workload_id_provider) "
-                    "cannot be specified when auth_method is AWS_OIDC"
+            case DockerAuthType.AWS_OIDC:
+                require(DockerAuthType.AWS_OIDC, AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM)
+                forbid(
+                    DockerAuthType.AWS_OIDC,
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 )
-        if self.auth_method == DockerAuthType.GCP_OIDC:
-            if not self.gcp_oidc_service_account:
-                raise ValueError(
-                    "gcp_oidc_service_account must be provided when auth_method is GCP_OIDC"
+            case DockerAuthType.GCP_OIDC:
+                require(
+                    DockerAuthType.GCP_OIDC,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
                 )
-            if not self.gcp_oidc_workload_id_provider:
-                raise ValueError(
-                    "gcp_oidc_workload_id_provider must be provided when auth_method is GCP_OIDC"
+                forbid(
+                    DockerAuthType.GCP_OIDC,
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
                 )
-            if has_aws_oidc_params:
-                raise ValueError(
-                    "AWS OIDC parameters (aws_oidc_role_arn, aws_oidc_region) "
-                    "cannot be specified when auth_method is GCP_OIDC"
-                )
+
         return self
 
 
