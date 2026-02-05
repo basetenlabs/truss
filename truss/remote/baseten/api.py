@@ -863,6 +863,12 @@ class BasetenApi:
         )
         return resp_json
 
+    def get_training_job_isession(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/auth_codes"
+        )
+        return resp_json
+
     def _prepare_time_range_query(
         self,
         start_epoch_millis: Optional[int] = None,
@@ -1042,33 +1048,17 @@ class BasetenApi:
         project_id: str,
         job_id: str,
         trigger: Optional[str] = None,
-        timeout_hours: Optional[int] = None,
+        timeout_minutes: Optional[int] = None,
     ):
         """Update interactive session configuration for a training job."""
         body: Dict[str, Any] = {}
         if trigger is not None:
             body["trigger"] = trigger
-        if timeout_hours is not None:
-            body["timeout_hours"] = timeout_hours
+        if timeout_minutes is not None:
+            body["timeout_minutes"] = timeout_minutes
 
         resp_json = self._rest_api_client.patch(
             f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_session",
             body=body,
         )
         return resp_json
-
-    def get_organization_feature_flags(self) -> List[str]:
-        """
-        Get organization feature flags via GraphQL API.
-        Returns a list of feature flag names enabled for the organization.
-        """
-        query_string = """
-        query {
-            organization {
-                feature_flags
-            }
-        }
-        """
-
-        resp = self._post_graphql_query(query_string)
-        return resp["data"]["organization"]["feature_flags"]
