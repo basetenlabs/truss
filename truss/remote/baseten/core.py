@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from rich import progress
 
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.base.truss_config import DockerAuthType, TrussConfig, WeightsAuthMethod
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
@@ -529,47 +528,6 @@ def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
             raise ValidationError(
                 f"Validation failed with the following errors:\n{error_messages}"
             )
-
-
-OIDC_FEATURE_FLAG = "ENABLE_OIDC_AUTH"
-DOCKER_OIDC_AUTH_METHODS = {DockerAuthType.AWS_OIDC, DockerAuthType.GCP_OIDC}
-WEIGHTS_OIDC_AUTH_METHODS = {WeightsAuthMethod.AWS_OIDC, WeightsAuthMethod.GCP_OIDC}
-
-def _config_uses_oidc_auth(config: TrussConfig) -> bool:
-    """
-    Check if the truss config uses OIDC authentication.
-
-    Returns True if OIDC auth is configured for either:
-    - Docker registry authentication (base_image.docker_auth)
-    - Weights source authentication (weights[].auth.auth_method)
-    """
-    if config.base_image and config.base_image.docker_auth:
-        if config.base_image.docker_auth.auth_method in DOCKER_OIDC_AUTH_METHODS:
-            return True
-
-    if config.weights:
-        for source in config.weights.sources:
-            if source.auth and source.auth.auth_method:
-                if source.auth.auth_method in WEIGHTS_OIDC_AUTH_METHODS:
-                    return True
-
-    return False
-
-
-def validate_oidc_feature_flag(api: BasetenApi, config: TrussConfig) -> None:
-    """
-    Validate that OIDC authentication is enabled for the organization if the config uses it.
-    """
-    if not _config_uses_oidc_auth(config):
-        return
-
-    feature_flags = api.get_organization_feature_flags()
-    if OIDC_FEATURE_FLAG not in feature_flags:
-        raise ValidationError(
-            "Your truss config uses OIDC authentication (AWS_OIDC or GCP_OIDC), "
-            "but OIDC auth is not enabled for your organization. "
-            "Please contact support to enable OIDC authentication."
-        )
 
 
 def _build_log_query_params(
