@@ -442,3 +442,35 @@ def test_push_watch_with_publish_fails():
         result.exception
         and "Cannot use --watch with --publish" in str(result.exception.__context__)
     )
+
+
+def test_push_wait_with_tail_fails():
+    """Test that --wait with --tail fails."""
+    mock_truss = Mock()
+    mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.resources.instance_type = None
+    mock_truss.spec.config.build = None
+    mock_truss.spec.config.trt_llm = None
+
+    runner = CliRunner()
+
+    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
+        result = runner.invoke(
+            truss_cli,
+            [
+                "push",
+                "test_truss",
+                "--remote",
+                "remote1",
+                "--model-name",
+                "name",
+                "--wait",
+                "--tail",
+            ],
+        )
+
+    assert result.exit_code == 2
+    assert "Cannot use --wait with --tail" in result.output or (
+        result.exception
+        and "Cannot use --wait with --tail" in str(result.exception.__context__)
+    )

@@ -697,6 +697,11 @@ def push(
             style="green",
         )
 
+    if wait and tail:
+        raise click.UsageError(
+            "Cannot use --wait with --tail. Use --tail by itself to wait for deployment and tail logs."
+        )
+
     tr = _get_truss_from_directory(target_directory=target_directory, config=config)
 
     if tr.spec.config.resources.instance_type:
