@@ -89,19 +89,21 @@ def _collect_external_package_dirs(
     seen: set[pathlib.Path] = set()
     result: list[pathlib.Path] = []
     for desc in chainlet_descriptors:
-        remote_config = desc.chainlet_cls.remote_config
-        if remote_config.docker_image.external_package_dirs:
-            for ext_dir in remote_config.docker_image.external_package_dirs:
-                abs_path = pathlib.Path(ext_dir.abs_path)
-                if abs_path not in seen:
-                    seen.add(abs_path)
-                    result.append(abs_path)
-                    if abs_path.name != "packages":
-                        logging.warning(
-                            f'"{abs_path.name}" is a non-standard directory name for '
-                            f"external_package_dirs and may not work after a chain download. "
-                            f'Consider naming it "packages" instead.'
-                        )
+        ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
+        if not ext_dirs:
+            continue
+        for ext_dir in ext_dirs:
+            abs_path = pathlib.Path(ext_dir.abs_path)
+            if abs_path in seen:
+                continue
+            seen.add(abs_path)
+            result.append(abs_path)
+            if abs_path.name != "packages":
+                logging.warning(
+                    f'"{abs_path.name}" is a non-standard directory name for '
+                    f"external_package_dirs and may not work after a chain download. "
+                    f'Consider naming it "packages" instead.'
+                )
     return result
 
 
