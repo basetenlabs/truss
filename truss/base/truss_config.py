@@ -48,6 +48,7 @@ AWS_OIDC_REGION_PARAM = "aws_oidc_region"
 GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
 
+
 def _is_numeric(number_like: str) -> bool:
     try:
         float(number_like)
@@ -68,6 +69,7 @@ class Accelerator(str, enum.Enum):
     H200 = "H200"
     H100_40GB = "H100_40GB"
     B200 = "B200"
+
 
 class AcceleratorSpec(custom_types.ConfigModel):
     model_config = pydantic.ConfigDict(validate_assignment=True)
@@ -292,38 +294,39 @@ class WeightsAuth(custom_types.ConfigModel):
                 f"auth_method must be {WeightsAuthMethod.CUSTOM_SECRET.value} when auth_secret_name is specified"
             )
 
-        match self.auth_method:
-            case WeightsAuthMethod.CUSTOM_SECRET:
-                require(WeightsAuthMethod.CUSTOM_SECRET, "auth_secret_name")
-                forbid(
-                    WeightsAuthMethod.CUSTOM_SECRET,
-                    AWS_OIDC_ROLE_ARN_PARAM,
-                    AWS_OIDC_REGION_PARAM,
-                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-                )
-            case WeightsAuthMethod.AWS_OIDC:
-                require(
-                    WeightsAuthMethod.AWS_OIDC, AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM
-                )
-                forbid(
-                    WeightsAuthMethod.AWS_OIDC,
-                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
-                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-                )
-            case WeightsAuthMethod.GCP_OIDC:
-                require(
-                    WeightsAuthMethod.GCP_OIDC,
-                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-                )
-                forbid(
-                    WeightsAuthMethod.GCP_OIDC,
-                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
-                    AWS_OIDC_ROLE_ARN_PARAM,
-                    AWS_OIDC_REGION_PARAM,
-                )
+        if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
+            require(WeightsAuthMethod.CUSTOM_SECRET, WEIGHTS_AUTH_SECRET_NAME_PARAM)
+            forbid(
+                WeightsAuthMethod.CUSTOM_SECRET,
+                AWS_OIDC_ROLE_ARN_PARAM,
+                AWS_OIDC_REGION_PARAM,
+                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            )
+        elif self.auth_method == WeightsAuthMethod.AWS_OIDC:
+            require(
+                WeightsAuthMethod.AWS_OIDC,
+                AWS_OIDC_ROLE_ARN_PARAM,
+                AWS_OIDC_REGION_PARAM,
+            )
+            forbid(
+                WeightsAuthMethod.AWS_OIDC,
+                WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            )
+        elif self.auth_method == WeightsAuthMethod.GCP_OIDC:
+            require(
+                WeightsAuthMethod.GCP_OIDC,
+                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            )
+            forbid(
+                WeightsAuthMethod.GCP_OIDC,
+                WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                AWS_OIDC_ROLE_ARN_PARAM,
+                AWS_OIDC_REGION_PARAM,
+            )
 
         return self
 
@@ -832,36 +835,39 @@ class DockerAuthSettings(custom_types.ConfigModel):
                     f"{', '.join(present)} cannot be specified when auth_method is {method.value}"
                 )
 
-        match self.auth_method:
-            case DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
-                require(DockerAuthType.GCP_SERVICE_ACCOUNT_JSON, DOCKER_AUTH_SECRET_NAME_PARAM)
-                forbid(
-                    DockerAuthType.GCP_SERVICE_ACCOUNT_JSON,
-                    AWS_OIDC_ROLE_ARN_PARAM,
-                    AWS_OIDC_REGION_PARAM,
-                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-                )
-            case DockerAuthType.AWS_OIDC:
-                require(DockerAuthType.AWS_OIDC, AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM)
-                forbid(
-                    DockerAuthType.AWS_OIDC,
-                    DOCKER_AUTH_SECRET_NAME_PARAM,
-                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-                )
-            case DockerAuthType.GCP_OIDC:
-                require(
-                    DockerAuthType.GCP_OIDC,
-                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-                )
-                forbid(
-                    DockerAuthType.GCP_OIDC,
-                    DOCKER_AUTH_SECRET_NAME_PARAM,
-                    AWS_OIDC_ROLE_ARN_PARAM,
-                    AWS_OIDC_REGION_PARAM,
-                )
+        if self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
+            require(
+                DockerAuthType.GCP_SERVICE_ACCOUNT_JSON, DOCKER_AUTH_SECRET_NAME_PARAM
+            )
+            forbid(
+                DockerAuthType.GCP_SERVICE_ACCOUNT_JSON,
+                AWS_OIDC_ROLE_ARN_PARAM,
+                AWS_OIDC_REGION_PARAM,
+                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            )
+        elif self.auth_method == DockerAuthType.AWS_OIDC:
+            require(
+                DockerAuthType.AWS_OIDC, AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM
+            )
+            forbid(
+                DockerAuthType.AWS_OIDC,
+                DOCKER_AUTH_SECRET_NAME_PARAM,
+                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            )
+        elif self.auth_method == DockerAuthType.GCP_OIDC:
+            require(
+                DockerAuthType.GCP_OIDC,
+                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            )
+            forbid(
+                DockerAuthType.GCP_OIDC,
+                DOCKER_AUTH_SECRET_NAME_PARAM,
+                AWS_OIDC_ROLE_ARN_PARAM,
+                AWS_OIDC_REGION_PARAM,
+            )
 
         return self
 
