@@ -2,9 +2,13 @@
 # For deployment on Baseten.
 model_metadata:
   example_model_input:
-    { "model": "voyageai/voyage-4-nano", "input": [[1, 2, 3]] }
+    {
+      "model": "voyageai/voyage-4-nano",
+      "input": [[14990, 1052]],
+      "_t": ["hello there"],
+    }
 base_image:
-  image: baseten/performance-proxy:0.0.2
+  image: baseten/performance-proxy:0.0.3
 docker_server:
   start_command: sh -c "echo 'starting' && /usr/local/bin/baseten-performance-proxy --port 8081 --upstream-api-key /secrets/upstream_api_key --target-url ${UPSTREAM_URL} --tokenizer BAAI/bge-small-en-v1.5 /app/tokenizers/bge-small-en-v1.5/tokenizer.json --tokenizer voyageai/voyage-4-nano /app/tokenizers/voyage-4-nano/tokenizer.json --http-version 1 --max-chars-per-request 10000 --timeout-s 300 --batch-size 16 --max-concurrent-requests 64"
   readiness_endpoint: /health_internal
