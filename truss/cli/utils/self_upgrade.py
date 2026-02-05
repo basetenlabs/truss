@@ -109,9 +109,52 @@ def run_upgrade(target_version: Optional[str] = None, interactive: bool = True) 
     returncode = subprocess.run(cmd, shell=True).returncode
     if returncode == 0:
         console.print("✅ Upgrade complete.", style="green")
+        # After upgrade, check for available migrations
+        _notify_about_available_migrations()
     else:
         console.print(f"❌ Upgrade failed (exit code {returncode})", style="red")
         sys.exit(1)
+
+
+def _notify_about_available_migrations() -> None:
+    """Check for available config migrations and notify the user."""
+    try:
+        from pathlib import Path
+
+        from truss.cli.migrations.detection import get_available_migrations
+
+        # Check current directory for migrations
+        current_dir = Path.cwd()
+        config_path = current_dir / "config.yaml"
+
+        if not config_path.exists():
+            # Not in a Truss directory, skip notification
+            return
+
+        # Load config to check for migrations
+        from ruamel.yaml import YAML
+
+        yaml = YAML()
+        with config_path.open() as f:
+            config_data = yaml.load(f)
+
+        if config_data is None:
+            config_data = {}
+
+        available_migrations = get_available_migrations(current_dir, config_data)
+
+        if available_migrations:
+            console.print()
+            console.print("📦 Config migrations available:", style="bold")
+            for migration in available_migrations:
+                console.print(f"   - {migration.id}: {migration.description}")
+            console.print()
+            console.print(
+                "Run [bold cyan]truss migrate[/bold cyan] to update your configs."
+            )
+    except Exception:
+        # Silently fail - migration detection shouldn't break upgrade
+        pass
 
 
 def notify_if_outdated(current_version: str) -> None:
