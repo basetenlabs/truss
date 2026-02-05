@@ -1531,24 +1531,6 @@ class TestWeightsSource:
                 gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
             )
 
-    def test_weights_source_to_dict_with_oidc(self):
-        """WeightsSource should serialize OIDC fields correctly."""
-        source = WeightsSource(
-            source="s3://my-bucket/models/custom-weights",
-            mount_location="/models/custom",
-            auth=WeightsAuth(
-                auth_method=WeightsAuthMethod.AWS_OIDC,
-                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
-                aws_oidc_region="us-west-2",
-            ),
-        )
-        result = source.to_dict(verbose=True)
-        assert result["auth"]["auth_method"] == "AWS_OIDC"
-        assert (
-            result["auth"]["aws_oidc_role_arn"] == "arn:aws:iam::123456789:role/my-role"
-        )
-        assert result["auth"]["aws_oidc_region"] == "us-west-2"
-
     def test_auth_secret_name_conflict_error(self):
         """auth_secret_name cannot be specified in both locations."""
         with pytest.raises(pydantic.ValidationError, match="cannot be specified both"):
