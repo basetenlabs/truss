@@ -132,6 +132,8 @@ def login(api_key: Optional[str]):
 def upgrade(ctx: click.Context, version: Optional[str]) -> None:
     """Upgrade truss to the latest (or specified) version."""
     interactive = not ctx.obj.get("non_interactive", False)
+    # Check for migrations before upgrade (in case already up-to-date)
+    self_upgrade._notify_about_available_migrations()
     self_upgrade.run_upgrade(version, interactive=interactive)
 
 

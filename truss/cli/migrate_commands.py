@@ -7,7 +7,9 @@ import difflib
 import io
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict
 
 import rich_click as click
 from rich.console import Console
@@ -17,6 +19,8 @@ from ruamel.yaml import YAML
 from truss.base.constants import MODEL_CACHE_PATH
 from truss.base.truss_config import ExternalDataItem, ModelRepo, ModelRepoSourceKind
 from truss.cli.cli import truss_cli
+from truss.cli.migrations.detection import get_available_migrations
+from truss.cli.migrations.history import record_migration_applied
 from truss.cli.utils import common
 
 console = Console()
@@ -103,12 +107,12 @@ def generate_mount_location_for_model(model: ModelRepo) -> str:
         return str(MODEL_CACHE_PATH / sanitized)
 
 
-def convert_model_repo_to_weights(model: ModelRepo) -> dict:
+def convert_model_repo_to_weights(model: ModelRepo) -> Dict[str, Any]:
     """Convert a ModelRepo to a WeightsSource dict."""
     source = generate_source_uri(model)
     mount_location = generate_mount_location_for_model(model)
 
-    result = {"source": source, "mount_location": mount_location}
+    result: Dict[str, Any] = {"source": source, "mount_location": mount_location}
 
     # Map runtime_secret_name to auth_secret_name
     if model.runtime_secret_name:
@@ -116,9 +120,9 @@ def convert_model_repo_to_weights(model: ModelRepo) -> dict:
 
     # Preserve patterns if set
     if model.allow_patterns:
-        result["allow_patterns"] = list(model.allow_patterns)
+        result["allow_patterns"] = model.allow_patterns
     if model.ignore_patterns:
-        result["ignore_patterns"] = list(model.ignore_patterns)
+        result["ignore_patterns"] = model.ignore_patterns
 
     return result
 
@@ -205,13 +209,12 @@ def show_diff(original_yaml: str, migrated_yaml: str) -> None:
 @click.argument("target_directory", required=False, default=os.getcwd())
 @common.common_options()
 def migrate(target_directory: str) -> None:
-    """Migrate model_cache and external_data to the new weights API.
+    """Migrate Truss config to newer formats.
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
-    This command converts deprecated model_cache and external_data configurations
-    to the unified weights API format. It shows a diff preview and asks for
-    confirmation before applying changes.
+    This command checks for available config migrations and applies them
+    interactively. Migrations are version-gated and only shown if applicable.
     """
     target_path = Path(target_directory)
     config_path = target_path / "config.yaml"
@@ -220,72 +223,73 @@ def migrate(target_directory: str) -> None:
         error_console.print(f"[red]Error: No config.yaml found at {config_path}[/red]")
         raise SystemExit(1)
 
-    # Read the original config with ruamel.yaml to preserve comments
-    with config_path.open() as f:
-        original_yaml = f.read()
-
+    # Load config to check for available migrations
     with config_path.open() as f:
         config_data = yaml.load(f)
 
     if config_data is None:
         config_data = {}
 
-    # Check if already using weights - not an error, just nothing to do
-    if config_data.get("weights"):
+    available_migrations = get_available_migrations(target_path, config_data)
+
+    if not available_migrations:
         console.print(
-            "[yellow]Config already uses the weights API. Nothing to migrate.[/yellow]"
+            "[yellow]No applicable migrations found. Your config is up to date.[/yellow]"
         )
         return
 
-    # Check if there's anything to migrate
-    has_model_cache = bool(config_data.get("model_cache"))
-    has_external_data = bool(config_data.get("external_data"))
+    console.print(
+        f"[bold]Found {len(available_migrations)} applicable migration(s):[/bold]\n"
+    )
 
-    if not has_model_cache and not has_external_data:
-        console.print(
-            "[yellow]No model_cache or external_data found. Nothing to migrate.[/yellow]"
-        )
-        return
+    # Process each migration
+    for migration in available_migrations:
+        console.print(f"[bold cyan]📦 {migration.id}[/bold cyan]")
+        console.print(f"   {migration.description}\n")
 
-    # Generate weights from model_cache and external_data
-    weights_list, warnings = migrate_config_data(config_data)
+        # Read the original config with ruamel.yaml to preserve comments
+        with config_path.open() as f:
+            original_yaml = f.read()
 
-    # Modify the config in place (preserves comments and structure)
-    if "model_cache" in config_data:
-        del config_data["model_cache"]
-    if "external_data" in config_data:
-        del config_data["external_data"]
+        with config_path.open() as f:
+            current_config = yaml.load(f)
 
-    # Add weights
-    config_data["weights"] = weights_list
+        if current_config is None:
+            current_config = {}
 
-    # Generate migrated YAML string
-    migrated_yaml = dump_yaml_to_string(config_data)
+        # Apply migration
+        migrated_config, warnings = migration.apply_function(current_config)
 
-    # Show warnings
-    for warning in warnings:
-        console.print(f"[yellow]Warning:[/yellow] {warning}")
+        # Generate migrated YAML string
+        migrated_yaml = dump_yaml_to_string(migrated_config)
 
-    # Show diff
-    console.print("\n[bold]Proposed changes:[/bold]\n")
-    show_diff(original_yaml, migrated_yaml)
+        # Show warnings
+        for warning in warnings:
+            console.print(f"[yellow]Warning:[/yellow] {warning}")
 
-    # Prompt for confirmation
-    console.print()
-    if not click.confirm("Apply these changes?", default=False):
-        console.print("[yellow]Migration cancelled.[/yellow]")
-        return
+        # Show diff
+        console.print("\n[bold]Proposed changes:[/bold]\n")
+        show_diff(original_yaml, migrated_yaml)
 
-    # Create backup
-    backup_path = config_path.with_suffix(".yaml.bak")
-    shutil.copy(config_path, backup_path)
-    console.print(f"[dim]Backup created: {backup_path}[/dim]")
+        # Prompt for confirmation
+        console.print()
+        if not click.confirm(f"Apply migration '{migration.id}'?", default=False):
+            console.print(f"[yellow]Migration '{migration.id}' cancelled.[/yellow]\n")
+            continue
 
-    # Write migrated config
-    with config_path.open("w") as f:
-        yaml.dump(config_data, f)
+        # Create backup with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = config_path.with_suffix(f".yaml.bak.{timestamp}")
+        shutil.copy(config_path, backup_path)
+        console.print(f"[dim]Backup created: {backup_path}[/dim]")
 
-    console.print("[green]Migration complete![/green]")
+        # Write migrated config
+        with config_path.open("w") as f:
+            yaml.dump(migrated_config, f)
+
+        record_migration_applied(target_path, migration.id, backup_path.name)
+
+        console.print(f"[green]Migration '{migration.id}' complete![/green]\n")
 
 
 # For backwards compatibility with tests that import migrate_config
