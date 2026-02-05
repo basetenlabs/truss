@@ -440,6 +440,7 @@ class WeightsSource(custom_types.ConfigModel):
             )
         return self
 
+
 class Weights(pydantic.RootModel[list[WeightsSource]]):
     """List of weights sources for the new weights API."""
 
