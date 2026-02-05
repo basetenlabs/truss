@@ -219,7 +219,7 @@ echo "your-secret-api-key" > /path/to/api-key.txt
 
 ```bash
 # Build the Docker image
-docker build -t baseten/performance-proxy -f reverse_proxy/Dockerfile .
+docker build -t baseten/performance-proxy:0.0.3 --platform linux/amd64,linux/arm64 -f reverse_proxy/Dockerfile .
 
 # Run with default settings (no default target URL)
 docker run -p 8080:8080 baseten/performance-proxy
@@ -438,24 +438,37 @@ spec:
 For deploying with Truss, use the following configuration in your `config.yaml`:
 
 ```yaml
+# Baseten for `truss push --publish`
+# For deployment on Baseten.
+model_metadata:
+  example_model_input:
+    {
+      "model": "voyageai/voyage-4-nano",
+      "input": [[14990, 1052]],
+      "_t": ["hello there"],
+    }
 base_image:
-  image: baseten/performance-proxy:0.0.1
+  image: baseten/performance-proxy:0.0.3
 docker_server:
-  start_command: sh -c "baseten-performance-proxy --port 8081 --upstream-api-key $/secrets/upstream_api_key --target-url ${UPSTREAM_URL} --tokenizer BAAI/bge-small-en-v1.5 /app/tokenizers/bge-small-en-v1.5/tokenizer.json --tokenizer voyageai/voyage-4-nano /app/tokenizers/voyage-4-nano/tokenizer.json --http-version 2 --max-chars-per-request 10000 --timeout-s 300 --batch-size 16 --max-concurrent-requests 64"
+  start_command: sh -c "echo 'starting' && /usr/local/bin/baseten-performance-proxy --port 8081 --upstream-api-key /secrets/upstream_api_key --target-url ${UPSTREAM_URL} --tokenizer BAAI/bge-small-en-v1.5 /app/tokenizers/bge-small-en-v1.5/tokenizer.json --tokenizer voyageai/voyage-4-nano /app/tokenizers/voyage-4-nano/tokenizer.json --http-version 1 --max-chars-per-request 10000 --timeout-s 300 --batch-size 16 --max-concurrent-requests 64"
   readiness_endpoint: /health_internal
   liveness_endpoint: /health_internal
-  predict_endpoint: /v1/embeddings
+  predict_endpoint: /v1/tokenized-embeddings
   server_port: 8081
 build_commands:
-# Download tokenizers for multiple models
-- sh -c "mkdir -p /app/tokenizers/bge-small-en-v1.5 && cd /app/tokenizers/bge-small-en-v1.5 && wget https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json -O tokenizer.json"
-- sh -c "mkdir -p /app/tokenizers/voyage-4-nano && cd /app/tokenizers/voyage-4-nano && wget https://huggingface.co/voyageai/voyage-4-nano/resolve/main/tokenizer.json -O tokenizer.json"
+  # Download tokenizers for multiple models
+  - apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
+  - sh -c "mkdir -p /app/tokenizers/bge-small-en-v1.5 && cd /app/tokenizers/bge-small-en-v1.5 && wget https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json -O tokenizer.json"
+  - sh -c "mkdir -p /app/tokenizers/voyage-4-nano && cd /app/tokenizers/voyage-4-nano && wget https://huggingface.co/voyageai/voyage-4-nano/resolve/main/tokenizer.json -O tokenizer.json"
 resources:
-  use_gpu: false
+  cpu: "2"
 model_name: baseten-performance-proxy
 environment_variables:
-  UPSTREAM_URL: https://model-abcdefg.api.baseten.co/environments/production/sync
+  # headers get stipped inside baseten. Therfore, you need to configure a UPSTREAM_URL and default auth header.
+  # if you deploy this container locally, you can get any headers, Bearer token + X-MODEL-TARGET=https://model-xxxxx.api.baseten.co/environments/production/sync
+  UPSTREAM_URL: https://model-xxxxxx.api.baseten.co/environments/production/sync
   PERFORMANCE_CLIENT_LOG_LEVEL: info
+  NO_PROXY: "localhost,.baseten.co"
 secrets:
   upstream_api_key: null # name saved in baseten-ui
 ```
