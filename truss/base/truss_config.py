@@ -240,7 +240,7 @@ class WeightsAuth(custom_types.ConfigModel):
 
     auth_method: Optional[WeightsAuthMethod] = pydantic.Field(
         default=None,
-        description="Authentication method for OIDC-based authentication (AWS_OIDC or GCP_OIDC).",
+        description="Authentication method for downloading weights from the source.",
     )
     auth_secret_name: Optional[str] = pydantic.Field(
         default=None,
