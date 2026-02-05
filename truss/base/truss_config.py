@@ -226,6 +226,7 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
 class WeightsAuthMethod(str, enum.Enum):
     """Authentication methods for weights sources."""
 
+    CUSTOM_SECRET = "CUSTOM_SECRET"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
 
@@ -270,6 +271,19 @@ class WeightsAuth(custom_types.ConfigModel):
         has_gcp_params = (
             self.gcp_oidc_service_account or self.gcp_oidc_workload_id_provider
         )
+
+        if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
+            if not self.auth_secret_name:
+                raise ValueError(
+                    "auth_secret_name must be provided when auth_method is CUSTOM_SECRET"
+                )
+        if (
+            self.auth_secret_name
+            and self.auth_method != WeightsAuthMethod.CUSTOM_SECRET
+        ):
+            raise ValueError(
+                "auth_method must be CUSTOM_SECRET when auth_secret_name is specified"
+            )
 
         if self.auth_method == WeightsAuthMethod.AWS_OIDC:
             if not self.aws_oidc_role_arn:

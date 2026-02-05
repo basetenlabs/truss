@@ -1538,8 +1538,35 @@ class TestWeightsSource:
                 source="s3://my-bucket/models/weights",
                 mount_location="/models/weights",
                 auth_secret_name="my-secret-top",
-                auth=WeightsAuth(auth_secret_name="my-secret-nested"),
+                auth=WeightsAuth(
+                    auth_method=WeightsAuthMethod.CUSTOM_SECRET,
+                    auth_secret_name="my-secret-nested",
+                ),
             )
+
+    def test_custom_secret_requires_auth_secret_name(self):
+        """CUSTOM_SECRET auth_method requires auth_secret_name."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_secret_name must be provided when auth_method is CUSTOM_SECRET",
+        ):
+            WeightsAuth(auth_method=WeightsAuthMethod.CUSTOM_SECRET)
+
+    def test_auth_secret_name_requires_custom_secret_method(self):
+        """auth_secret_name requires CUSTOM_SECRET auth_method."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_method must be CUSTOM_SECRET when auth_secret_name is specified",
+        ):
+            WeightsAuth(auth_secret_name="my-secret")
+
+    def test_custom_secret_with_auth_secret_name_valid(self):
+        """CUSTOM_SECRET with auth_secret_name should be valid."""
+        auth = WeightsAuth(
+            auth_method=WeightsAuthMethod.CUSTOM_SECRET, auth_secret_name="my-secret"
+        )
+        assert auth.auth_method == WeightsAuthMethod.CUSTOM_SECRET
+        assert auth.auth_secret_name == "my-secret"
 
     def test_aws_oidc_with_gcp_params_error(self):
         """AWS OIDC cannot have GCP parameters."""
