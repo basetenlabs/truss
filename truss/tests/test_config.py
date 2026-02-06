@@ -1558,9 +1558,14 @@ class TestWeightsSource:
         """auth_secret_name requires CUSTOM_SECRET auth_method."""
         with pytest.raises(
             pydantic.ValidationError,
-            match="auth_method must be CUSTOM_SECRET when auth_secret_name is specified",
+            match="auth_secret_name cannot be specified when auth_method is AWS_OIDC",
         ):
-            WeightsAuth(auth_secret_name="my-secret")
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                auth_secret_name="my-secret",
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+            )
 
     def test_custom_secret_with_auth_secret_name_valid(self):
         """CUSTOM_SECRET with auth_secret_name should be valid."""
