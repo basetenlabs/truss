@@ -4,6 +4,7 @@ import requests
 import truss_transfer
 
 AUDIO_URL = "https://cdn.baseten.co/docs/production/Gettysburg.mp3"
+AUDI_M4A = "https://test-audios-public.s3.us-west-2.amazonaws.com/30-sec-01-podcast.m4a"
 
 # skip if version < 0.0.40
 pytestmark = pytest.mark.skipif(
@@ -265,6 +266,37 @@ def test_audio_config_with_bytes():
     print("✓ AudioConfig with bytes source works")
 
 
+def test_process_m4a_from_url():
+    """Test M4A audio processing from URL."""
+    print(f"Testing M4A audio processing from {AUDI_M4A}...")
+    processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
+    audio_config = truss_transfer.AudioConfig()
+    audio_array = processor.process_audio_from_url(AUDI_M4A, audio_config)
+
+    assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
+    assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
+    assert len(audio_array) > 0, "Processed audio should not be empty"
+
+    print(f"✓ Processed {len(audio_array)} audio samples from M4A URL")
+
+
+def test_process_m4a_from_bytes():
+    """Test M4A audio processing from bytes."""
+    print("Testing M4A audio processing from bytes...")
+    processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
+    audio_config = truss_transfer.AudioConfig()
+
+    # Download M4A file as bytes
+    audio_bytes = processor.download_bytes(AUDI_M4A)
+    audio_array = processor.process_audio_from_bytes(audio_bytes, audio_config)
+
+    assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
+    assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
+    assert len(audio_array) > 0, "Processed audio should not be empty"
+
+    print(f"✓ Processed {len(audio_array)} audio samples from M4A bytes")
+
+
 if __name__ == "__main__":
     test_processor_creation()
     test_processor_with_config()
@@ -278,4 +310,8 @@ if __name__ == "__main__":
     test_audio_config_builder()
     test_headers_builder()
     test_audio_config_with_raw_ffmpeg()
+    test_audio_config_per_call()
+    test_audio_config_with_bytes()
+    test_process_m4a_from_url()
+    test_process_m4a_from_bytes()
     print("\n✅ All tests passed!")
