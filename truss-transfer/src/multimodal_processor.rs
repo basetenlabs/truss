@@ -457,26 +457,4 @@ impl MultimodalProcessor {
             ))),
         }
     }
-
-    /// Convert numpy array to base64 string (GIL unlocked for performance)
-    pub fn numpy_to_base64(&self, py: Python, array: Bound<'_, PyArray1<f32>>) -> PyResult<String> {
-        // Release GIL during conversion for performance
-        py.allow_threads(|| {
-            // Get the array as a slice using readonly()
-            let slice = array.readonly();
-
-            // Convert f32 array to bytes (little-endian)
-            let len = slice
-                .len()
-                .map_err(|e| PyException::new_err(format!("Failed to get array length: {}", e)))?;
-            let bytes: &[u8] = bytemuck::cast_slice(slice.as_slice());
-            let bytes_vec = bytes.to_vec();
-
-            // Encode to base64
-            let encoded = general_purpose::STANDARD.encode(&bytes_vec);
-
-            // encoded is already a String
-            Ok(encoded)
-        })
-    }
 }
