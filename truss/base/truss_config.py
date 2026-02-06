@@ -245,10 +245,13 @@ class WeightsAuth(custom_types.ConfigModel):
     or a Baseten secret name for access key authentication.
     """
 
-    auth_method: Optional[WeightsAuthMethod] = pydantic.Field(
-        default=None,
-        description="Authentication method for downloading weights from the source.",
-    )
+    auth_method: Annotated[
+        WeightsAuthMethod,
+        pydantic.Field(
+            ...,
+            description="Authentication method for downloading weights from the source.",
+        ),
+    ]
     auth_secret_name: Optional[str] = pydantic.Field(
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
@@ -287,12 +290,6 @@ class WeightsAuth(custom_types.ConfigModel):
                 raise ValueError(
                     f"{', '.join(present)} cannot be specified when auth_method is {method.value}"
                 )
-
-        # Handle case where auth_secret_name is provided without auth_method
-        if self.auth_secret_name and self.auth_method is None:
-            raise ValueError(
-                f"auth_method must be {WeightsAuthMethod.CUSTOM_SECRET.value} when auth_secret_name is specified"
-            )
 
         if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
             require(WeightsAuthMethod.CUSTOM_SECRET, WEIGHTS_AUTH_SECRET_NAME_PARAM)
