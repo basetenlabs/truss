@@ -250,11 +250,7 @@ impl MultimodalProcessor {
     ) -> PyResult<Py<PyArray1<f32>>> {
         let config = audio_config.borrow().build();
 
-        let headers_map: Option<HashMap<String, String>> = if let Some(headers_obj) = headers {
-            Some(headers_obj.borrow().build())
-        } else {
-            None
-        };
+        let headers_map: Option<HashMap<String, String>> = headers.map(|headers_obj| headers_obj.borrow().build());
 
         let samples = py
             .allow_threads(|| {
@@ -281,7 +277,7 @@ impl MultimodalProcessor {
 
                 process_audio(&audio_bytes, &config)
             })
-            .map_err(|e| PyException::new_err(e))?;
+            .map_err(PyException::new_err)?;
 
         let numpy_array = PyArray1::from_vec(py, samples);
         Ok(numpy_array.into())
@@ -302,7 +298,7 @@ impl MultimodalProcessor {
 
                 process_audio(&audio_bytes, &config)
             })
-            .map_err(|e| PyException::new_err(e))?;
+            .map_err(PyException::new_err)?;
 
         let numpy_array = PyArray1::from_vec(py, samples);
         Ok(numpy_array.into())
@@ -319,7 +315,7 @@ impl MultimodalProcessor {
 
         let samples = py
             .allow_threads(|| process_audio(&audio_bytes, &config))
-            .map_err(|e| PyException::new_err(e))?;
+            .map_err(PyException::new_err)?;
 
         let numpy_array = PyArray1::from_vec(py, samples);
         Ok(numpy_array.into())
@@ -332,11 +328,7 @@ impl MultimodalProcessor {
         url: String,
         headers: Option<Bound<'_, Headers>>,
     ) -> PyResult<Py<PyBytes>> {
-        let headers_map: Option<HashMap<String, String>> = if let Some(headers_obj) = headers {
-            Some(headers_obj.borrow().build())
-        } else {
-            None
-        };
+        let headers_map: Option<HashMap<String, String>> = headers.map(|headers_obj| headers_obj.borrow().build());
 
         let bytes = py
             .allow_threads(|| {
@@ -353,7 +345,7 @@ impl MultimodalProcessor {
                     .and_then(|resp| resp.bytes())
                     .map_err(|e| format!("Download failed: {}", e))
             })
-            .map_err(|e| PyException::new_err(e))?;
+            .map_err(PyException::new_err)?;
 
         Ok(PyBytes::new(py, &bytes).into())
     }
