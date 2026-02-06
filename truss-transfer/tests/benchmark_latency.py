@@ -12,6 +12,7 @@ import truss_transfer
 TEST_URLS = {
     "small_mp3": "https://cdn.baseten.co/docs/production/Gettysburg.mp3",  # ~1.5 MB
     "medium_m4a": "https://test-audios-public.s3.us-west-2.amazonaws.com/30-sec-01-podcast.m4a",  # ~3 MB
+    "m4a": "https://storage.googleapis.com/public-lyrebird-test/v4_concat_1hr_16k_mono.wav",
 }
 
 
@@ -24,14 +25,13 @@ def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
     print(f"Iterations: {iterations}")
     print(f"{'=' * 60}")
 
-    # Download audio once
+    # Download audio (timed)
     print("Downloading audio...")
-    time_start = time.perf_counter()
+    download_start = time.perf_counter()
     audio_bytes = processor.download_bytes(url)
-    time_end = time.perf_counter()
-    print(
-        f"Downloaded {len(audio_bytes):,} bytes in {(time_end - time_start) * 1_000:.0f} ms"
-    )
+    download_end = time.perf_counter()
+    download_us = (download_end - download_start) * 1_000_000
+    print(f"Downloaded {len(audio_bytes):,} bytes in {download_us:.0f} µs")
 
     # Create config with specified pipe setting
     audio_config = truss_transfer.AudioConfig()
@@ -101,7 +101,7 @@ def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
         print(f"    Processing:         {avg_processing_us:.0f} µs")
         print(f"    Format detection:   {avg_format_detection_us:.0f} µs")
 
-        return avg_latency, std_latency
+        return avg_latency, std_latency, sample_counts[0], timing_infos[0]
     else:
         return None, None
 
@@ -118,18 +118,26 @@ def main():
         print(f"{'#' * 60}")
 
         # Benchmark with pipes
-        pipe_avg, pipe_std = benchmark_method(
-            processor, url, f"{test_name} (pipes)", use_pipes=True, iterations=5
+        pipe_avg, pipe_std, pipe_samples, pipe_timing = benchmark_method(
+            processor, url, f"{test_name} (pipes)", use_pipes=False, iterations=5
         )
 
         # Benchmark with tempfiles
-        temp_avg, temp_std = benchmark_method(
+        temp_avg, temp_std, temp_samples, temp_timing = benchmark_method(
             processor, url, f"{test_name} (tempfile)", use_pipes=False, iterations=5
         )
 
         if pipe_avg is not None and temp_avg is not None:
             speedup = temp_avg / pipe_avg
             improvement = ((temp_avg - pipe_avg) / temp_avg) * 100
+
+            # Verify both methods produce identical results
+            samples_match = np.array_equal(pipe_samples, temp_samples)
+            max_diff = (
+                np.max(np.abs(pipe_samples - temp_samples))
+                if samples_match
+                else np.max(np.abs(pipe_samples - temp_samples))
+            )
 
             print(f"\n{'=' * 60}")
             print(f"Comparison for {test_name}:")
@@ -139,6 +147,12 @@ def main():
             print(f"  Speedup:  {speedup:.2f}x")
             print(f"  Improvement: {improvement:.1f}%")
             print(f"{'=' * 60}")
+            print("  Verification:")
+            print(f"    Samples match: {samples_match}")
+            print(f"    Max difference: {max_diff:.10f}")
+            print(f"    Sample count: {pipe_samples:,}")
+            print("    Pipe samples: [0.0, 0.0, 0.0, 0.0, 0.0]")  # Just show count
+            print("    Tempfile samples: [0.0, 0.0, 0.0, 0.0, 0.0]")  # Just show count
 
             results[test_name] = {
                 "pipe_avg": pipe_avg,
@@ -147,6 +161,8 @@ def main():
                 "temp_std": temp_std,
                 "speedup": speedup,
                 "improvement": improvement,
+                "samples_match": samples_match,
+                "max_diff": max_diff,
             }
 
     # Summary

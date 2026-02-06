@@ -5,8 +5,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use reqwest::blocking::Client;
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::io::Write;
+use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Instant;
 use tempfile::NamedTempFile;
@@ -31,7 +31,6 @@ pub struct AudioProcessorConfig {
     pub format: String,
     pub codec: Option<String>,
     pub raw_ffmpeg_args: Vec<String>,
-    pub use_pipes: Option<bool>,
 }
 
 impl Default for AudioProcessorConfig {
@@ -43,7 +42,6 @@ impl Default for AudioProcessorConfig {
             format: "f32le".to_string(),
             codec: None,
             raw_ffmpeg_args: Vec::new(),
-            use_pipes: None,
         }
     }
 }
@@ -69,8 +67,6 @@ pub struct AudioConfig {
     pub codec: Option<String>,
     #[pyo3(get, set)]
     pub raw_ffmpeg_args: Option<Vec<String>>,
-    #[pyo3(get, set)]
-    pub use_pipes: Option<bool>,
 }
 
 impl Default for AudioConfig {
@@ -82,7 +78,6 @@ impl Default for AudioConfig {
             format: "f32le".to_string(),
             codec: None,
             raw_ffmpeg_args: None,
-            use_pipes: None,
         }
     }
 }
@@ -129,12 +124,6 @@ impl AudioConfig {
         new_config.raw_ffmpeg_args = Some(args);
         new_config
     }
-
-    pub fn with_use_pipes(&self, use_pipes: bool) -> Self {
-        let mut new_config = self.clone();
-        new_config.use_pipes = Some(use_pipes);
-        new_config
-    }
 }
 
 impl AudioConfig {
@@ -146,7 +135,6 @@ impl AudioConfig {
             format: self.format.clone(),
             codec: self.codec.clone(),
             raw_ffmpeg_args: self.raw_ffmpeg_args.clone().unwrap_or_default(),
-            use_pipes: self.use_pipes,
         }
     }
 }
@@ -187,10 +175,6 @@ pub struct TimingInfo {
     pub download_us: f64,
     #[pyo3(get, set)]
     pub processing_us: f64,
-    #[pyo3(get, set)]
-    pub format_detection_us: f64,
-    #[pyo3(get, set)]
-    pub input_method: String,
 }
 
 #[pymethods]
@@ -202,8 +186,8 @@ impl TimingInfo {
 
     pub fn __repr__(&self) -> String {
         format!(
-            "TimingInfo(total={:.0}µs, download={:.0}µs, processing={:.0}µs, format_detection={:.0}µs, input_method={})",
-            self.total_us, self.download_us, self.processing_us, self.format_detection_us, self.input_method
+            "TimingInfo(total={:.0}µs, download={:.0}µs, processing={:.0}µs)",
+            self.total_us, self.download_us, self.processing_us
         )
     }
 
@@ -223,179 +207,7 @@ struct ProcessedAudio {
     timing: TimingInfo,
 }
 
-enum InputSource<'a> {
-    Pipe,
-    Path(&'a std::path::Path),
-}
-
-fn build_ffmpeg_command(input_source: InputSource, config: &AudioProcessorConfig) -> Command {
-    let out_format = "f32le";
-    let mut cmd = Command::new("ffmpeg");
-
-    // Common flags
-    cmd.arg("-hide_banner").arg("-loglevel").arg("error");
-
-    // Input source (only difference)
-    match input_source {
-        InputSource::Pipe => {
-            // Don't use -nostdin for pipes - we need to write to stdin
-        }
-        InputSource::Path(_) => {
-            // Use -nostdin for files to prevent interactive prompts
-            cmd.arg("-nostdin");
-        }
-    };
-
-    match input_source {
-        InputSource::Pipe => cmd.arg("-i").arg("pipe:0"),
-        InputSource::Path(path) => cmd.arg("-i").arg(path),
-    };
-
-    // Output format (same for both)
-    cmd.arg("-f")
-        .arg(out_format)
-        .arg("-acodec")
-        .arg("pcm_f32le");
-
-    // Conditional args (same for both)
-    if let Some(channels) = config.channels {
-        cmd.arg("-ac").arg(channels.to_string());
-    }
-    if let Some(sample_rate) = config.sample_rate {
-        cmd.arg("-ar").arg(sample_rate.to_string());
-    }
-    if config.use_dynamic_normalization.unwrap_or(false) {
-        cmd.args(["-af", "dynaudnorm"]);
-    }
-    for arg in &config.raw_ffmpeg_args {
-        cmd.arg(arg);
-    }
-
-    // Output to pipe (same for both)
-    cmd.arg("pipe:1")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    // For pipes, also set stdin to piped
-    if matches!(input_source, InputSource::Pipe) {
-        cmd.stdin(Stdio::piped());
-    }
-
-    cmd
-}
-
-fn should_use_pipes_heuristic(audio_bytes: &[u8]) -> bool {
-    // Need at least 12 bytes for reliable detection
-    if audio_bytes.len() < 12 {
-        return false; // Too small, play safe with tempfile
-    }
-
-    let magic = &audio_bytes[..12.min(audio_bytes.len())];
-
-    // MP3 (ID3v2 tag) - works with pipes
-    if magic.starts_with(b"ID3") {
-        return true;
-    }
-
-    // MP3 (raw, no ID3) - sync byte 0xFF followed by MPEG sync bits
-    if magic[0] == 0xFF && (magic[1] & 0xE0) == 0xE0 {
-        return true;
-    }
-
-    // WAV (RIFF) - works with pipes
-    if magic.starts_with(b"RIFF") {
-        return true;
-    }
-
-    // FLAC - works with pipes
-    if magic.starts_with(b"fLaC") {
-        return true;
-    }
-
-    // OGG (includes Opus, Vorbis, Speex) - works with pipes
-    if magic.starts_with(b"OggS") {
-        return true;
-    }
-
-    // ADTS AAC (raw AAC stream) - works with pipes
-    // Sync byte 0xFF followed by 0xF0 (ADTS fixed header)
-    if magic[0] == 0xFF && (magic[1] & 0xF0) == 0xF0 {
-        return true;
-    }
-
-    // M4A/MP4 - NEEDS tempfile (ftyp atom at offset 4, moov atom at end)
-    if audio_bytes.len() >= 8 && &audio_bytes[4..8] == b"ftyp" {
-        return false;
-    }
-
-    // Unknown format - try pipes first (will fallback if fails)
-    true
-}
-
-fn process_audio_with_pipes(
-    audio_bytes: &[u8],
-    config: &AudioProcessorConfig,
-) -> Result<ProcessedAudio, String> {
-    let start = Instant::now();
-    let mut cmd = build_ffmpeg_command(InputSource::Pipe, config);
-
-    // Spawn the process
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("ffmpeg spawn failed: {e}"))?;
-
-    // Write to stdin
-    let mut stdin = child.stdin.take().ok_or("ffmpeg stdin missing")?;
-    stdin
-        .write_all(audio_bytes)
-        .map_err(|e| format!("stdin write failed: {e}"))?;
-    drop(stdin); // Close stdin
-
-    // Read output
-    let mut stdout = child.stdout.take().ok_or("ffmpeg stdout missing")?;
-    let mut stderr = child.stderr.take().ok_or("ffmpeg stderr missing")?;
-
-    let mut out = Vec::new();
-    stdout
-        .read_to_end(&mut out)
-        .map_err(|e| format!("stdout read failed: {e}"))?;
-
-    let mut err_s = String::new();
-    let _ = stderr.read_to_string(&mut err_s);
-
-    let status = child.wait().map_err(|e| format!("wait failed: {e}"))?;
-    if !status.success() {
-        return Err(format!("ffmpeg failed: {err_s}"));
-    }
-
-    if out.is_empty() {
-        return Err("Empty output - format may not support pipes".to_string());
-    }
-
-    if out.len() % 4 != 0 {
-        return Err(format!("Unexpected f32le output length: {}", out.len()));
-    }
-
-    let samples = out
-        .chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect::<Vec<f32>>();
-
-    let processing_us = start.elapsed().as_secs_f64() * 1_000_000.0;
-
-    Ok(ProcessedAudio {
-        samples,
-        timing: TimingInfo {
-            total_us: processing_us,
-            download_us: 0.0,
-            processing_us,
-            format_detection_us: 0.0,
-            input_method: "pipe".to_string(),
-        },
-    })
-}
-
-fn process_audio_with_tempfile(
+fn process_audio(
     audio_bytes: &[u8],
     config: &AudioProcessorConfig,
 ) -> Result<ProcessedAudio, String> {
@@ -409,37 +221,52 @@ fn process_audio_with_tempfile(
         .flush()
         .map_err(|e| format!("Failed to flush temp file: {}", e))?;
 
-    let mut cmd = build_ffmpeg_command(InputSource::Path(temp_file.path()), config);
-    cmd.stdin(Stdio::piped()); // Set stdin for tempfile version
+    let input_path = temp_file.path();
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("ffmpeg spawn failed: {e}"))?;
+    let mut ffmpeg_cmd = Command::new("ffmpeg");
+    ffmpeg_cmd.arg("-i").arg(input_path);
+    ffmpeg_cmd.arg("-f").arg(&config.format);
 
-    let mut stdout = child.stdout.take().ok_or("ffmpeg stdout missing")?;
-    let mut stderr = child.stderr.take().ok_or("ffmpeg stderr missing")?;
-
-    let mut out = Vec::new();
-    stdout
-        .read_to_end(&mut out)
-        .map_err(|e| format!("stdout read failed: {e}"))?;
-
-    let mut err_s = String::new();
-    let _ = stderr.read_to_string(&mut err_s);
-
-    let status = child.wait().map_err(|e| format!("wait failed: {e}"))?;
-    if !status.success() {
-        return Err(format!("ffmpeg failed: {err_s}"));
+    if let Some(codec) = &config.codec {
+        ffmpeg_cmd.arg("-acodec").arg(codec);
     }
 
-    if out.len() % 4 != 0 {
-        return Err(format!("Unexpected f32le output length: {}", out.len()));
+    if let Some(channels) = config.channels {
+        ffmpeg_cmd.arg("-ac").arg(channels.to_string());
     }
 
-    let samples = out
-        .chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect::<Vec<f32>>();
+    if let Some(sample_rate) = config.sample_rate {
+        ffmpeg_cmd.arg("-ar").arg(sample_rate.to_string());
+    }
+
+    if config.use_dynamic_normalization.unwrap_or(false) {
+        ffmpeg_cmd.args(["-af", "dynaudnorm"]);
+    }
+
+    for arg in &config.raw_ffmpeg_args {
+        ffmpeg_cmd.arg(arg);
+    }
+
+    ffmpeg_cmd.arg("-y").arg("-");
+
+    let output = ffmpeg_cmd
+        .output()
+        .map_err(|e| format!("ffmpeg execution failed: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("ffmpeg command: {:?}", ffmpeg_cmd);
+        return Err(format!("ffmpeg command line execution failed: {}", stderr));
+    }
+
+    let audio_data = output.stdout;
+    let samples: Vec<f32> = audio_data
+        .chunks(4)
+        .map(|chunk| {
+            let bytes: [u8; 4] = chunk.try_into().unwrap_or([0, 0, 0, 0]);
+            f32::from_le_bytes(bytes)
+        })
+        .collect();
 
     let processing_us = start.elapsed().as_secs_f64() * 1_000_000.0;
 
@@ -449,75 +276,27 @@ fn process_audio_with_tempfile(
             total_us: processing_us,
             download_us: 0.0,
             processing_us,
-            format_detection_us: 0.0,
-            input_method: "tempfile".to_string(),
         },
     })
 }
 
-fn process_audio(
-    audio_bytes: &[u8],
-    config: &AudioProcessorConfig,
-) -> Result<ProcessedAudio, String> {
-    let total_start = Instant::now();
-
-    // Determine which method to use based on config
-    let format_detection_start = Instant::now();
-    let use_pipes = match config.use_pipes {
-        Some(true) => true,                              // Force pipes
-        Some(false) => false,                            // Force tempfile
-        None => should_use_pipes_heuristic(audio_bytes), // Auto-detect
-    };
-    let format_detection_us = format_detection_start.elapsed().as_secs_f64() * 1_000_000.0;
-
-    let result = if use_pipes {
-        // Try pipes first, fallback to tempfile on failure
-        match process_audio_with_pipes(audio_bytes, config) {
-            Ok(mut processed) => {
-                processed.timing.format_detection_us = format_detection_us;
-                processed.timing.total_us = total_start.elapsed().as_secs_f64() * 1_000_000.0;
-                Ok(processed)
-            }
-            Err(_e) => {
-                // Fallback to tempfile if pipes fail
-                eprint!("Pipes failed, falling back to tempfile. Please set use_pipes=False to avoid this fallback.\n");
-                let mut processed = process_audio_with_tempfile(audio_bytes, config)?;
-                processed.timing.format_detection_us = format_detection_us;
-                processed.timing.total_us = total_start.elapsed().as_secs_f64() * 1_000_000.0;
-                Ok(processed)
-            }
-        }
-    } else {
-        // Use tempfile directly
-        let mut processed = process_audio_with_tempfile(audio_bytes, config)?;
-        processed.timing.format_detection_us = format_detection_us;
-        processed.timing.total_us = total_start.elapsed().as_secs_f64() * 1_000_000.0;
-        Ok(processed)
-    };
-
-    result
-}
-
 #[pyclass]
+#[derive(Clone)]
 pub struct MultimodalProcessor {
+    #[pyo3(get, set)]
+    pub timeout_secs: u64,
     client: Client,
 }
 
 #[pymethods]
 impl MultimodalProcessor {
     #[new]
-    #[pyo3(signature = (
-        timeout_secs=300
-    ))]
-    pub fn new(timeout_secs: u64) -> PyResult<Self> {
-        let mut client_builder = Client::builder();
-        client_builder = client_builder.timeout(std::time::Duration::from_secs(timeout_secs));
-
-        let client = client_builder
-            .build()
-            .map_err(|e| PyException::new_err(format!("Failed to create client: {}", e)))?;
-
-        Ok(Self { client })
+    #[pyo3(signature = (timeout_secs=60))]
+    pub fn new(timeout_secs: u64) -> Self {
+        Self {
+            timeout_secs,
+            client: Client::new(),
+        }
     }
 
     #[pyo3(signature = (url, audio_config, /, headers=None))]
@@ -567,11 +346,9 @@ impl MultimodalProcessor {
             .map_err(|e: String| PyException::new_err(e))?;
 
         let timing = TimingInfo {
-            total_us: download_us + processed.timing.total_us,
+            total_us: processed.timing.total_us,
             download_us,
             processing_us: processed.timing.processing_us,
-            format_detection_us: processed.timing.format_detection_us,
-            input_method: processed.timing.input_method,
         };
 
         let numpy_array = PyArray1::from_vec(py, processed.samples);
@@ -679,5 +456,27 @@ impl MultimodalProcessor {
                 source_type
             ))),
         }
+    }
+
+    /// Convert numpy array to base64 string (GIL unlocked for performance)
+    pub fn numpy_to_base64(&self, py: Python, array: Bound<'_, PyArray1<f32>>) -> PyResult<String> {
+        // Release GIL during conversion for performance
+        py.allow_threads(|| {
+            // Get the array as a slice using readonly()
+            let slice = array.readonly();
+
+            // Convert f32 array to bytes (little-endian)
+            let len = slice
+                .len()
+                .map_err(|e| PyException::new_err(format!("Failed to get array length: {}", e)))?;
+            let bytes: &[u8] = bytemuck::cast_slice(slice.as_slice());
+            let bytes_vec = bytes.to_vec();
+
+            // Encode to base64
+            let encoded = general_purpose::STANDARD.encode(&bytes_vec);
+
+            // encoded is already a String
+            Ok(encoded)
+        })
     }
 }

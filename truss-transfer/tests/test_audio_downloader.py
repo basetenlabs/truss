@@ -286,41 +286,6 @@ def test_audio_config_with_bytes():
     print(f"  Timing: {timing}")
 
 
-def test_audio_config_use_pipes_true():
-    """Test forcing pipes with use_pipes=True."""
-    print("Testing use_pipes=True...")
-    processor = truss_transfer.MultimodalProcessor()
-    audio_config = truss_transfer.AudioConfig().with_use_pipes(True)
-
-    # MP3 should work with pipes (may fallback to tempfile if pipes fail)
-    audio_array, timing = processor.process_audio_from_url(AUDIO_URL, audio_config)
-    assert isinstance(audio_array, np.ndarray)
-    assert len(audio_array) > 0
-    assert isinstance(timing, truss_transfer.TimingInfo)
-    # Note: Pipes may fallback to tempfile if they fail
-    assert timing.input_method in ["pipe", "tempfile"], (
-        f"Should use pipe or tempfile, got {timing.input_method}"
-    )
-    print(f"✓ use_pipes=True works for MP3 (using {timing.input_method})")
-    print(f"  Timing: {timing}")
-
-
-def test_audio_config_use_pipes_false():
-    """Test forcing tempfile with use_pipes=False."""
-    print("Testing use_pipes=False...")
-    processor = truss_transfer.MultimodalProcessor()
-    audio_config = truss_transfer.AudioConfig().with_use_pipes(False)
-
-    # Should use tempfile for all formats
-    audio_array, timing = processor.process_audio_from_url(AUDIO_URL, audio_config)
-    assert isinstance(audio_array, np.ndarray)
-    assert len(audio_array) > 0
-    assert isinstance(timing, truss_transfer.TimingInfo)
-    assert timing.input_method == "tempfile", "Should use tempfile"
-    print("✓ use_pipes=False works")
-    print(f"  Timing: {timing}")
-
-
 def test_audio_config_use_pipes_none_auto():
     """Test auto-detection with use_pipes=None (default)."""
     print("Testing use_pipes=None (auto-detect)...")
