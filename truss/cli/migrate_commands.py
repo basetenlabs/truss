@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Any
 
 import rich_click as click
+import yaml
 from rich.console import Console
 from rich.syntax import Syntax
-from ruamel.yaml import YAML
 
 from truss.base.constants import MODEL_CACHE_PATH
 from truss.base.truss_config import ExternalDataItem, ModelRepo, ModelRepoSourceKind
@@ -25,11 +25,6 @@ error_console = Console(stderr=True)
 
 # Data directory path (where external_data files are downloaded)
 DATA_DIR_PATH = Path("/app/data")
-
-# Initialize ruamel.yaml for round-trip (comment-preserving) parsing
-yaml = YAML()
-yaml.preserve_quotes = True
-yaml.default_flow_style = False
 
 
 def generate_source_uri(model: ModelRepo) -> str:
@@ -175,9 +170,9 @@ def migrate_config_data(config_data: dict) -> tuple[list[dict], list[str]]:
 
 
 def dump_yaml_to_string(data) -> str:
-    """Dump ruamel.yaml data to string."""
+    """Dump YAML data to string."""
     stream = io.StringIO()
-    yaml.dump(data, stream)
+    yaml.safe_dump(data, stream)
     return stream.getvalue()
 
 
@@ -221,12 +216,12 @@ def migrate(target_directory: str) -> None:
         error_console.print(f"[red]Error: No config.yaml found at {config_path}[/red]")
         raise SystemExit(1)
 
-    # Read the original config with ruamel.yaml to preserve comments
+    # Read the original config
     with config_path.open() as f:
         original_yaml = f.read()
 
     with config_path.open() as f:
-        config_data = yaml.load(f)
+        config_data = yaml.safe_load(f)
 
     if config_data is None:
         config_data = {}
@@ -251,7 +246,7 @@ def migrate(target_directory: str) -> None:
     # Generate weights from model_cache and external_data
     weights_list, warnings = migrate_config_data(config_data)
 
-    # Modify the config in place (preserves comments and structure)
+    # Modify the config in place
     if "model_cache" in config_data:
         del config_data["model_cache"]
     if "external_data" in config_data:
@@ -284,7 +279,7 @@ def migrate(target_directory: str) -> None:
 
     # Write migrated config
     with config_path.open("w") as f:
-        yaml.dump(config_data, f)
+        yaml.safe_dump(config_data, f)
 
     console.print("[green]Migration complete![/green]")
 
