@@ -1,10 +1,14 @@
 import numpy as np
+import pytest
 import requests
 import truss_transfer
 
-print(f"truss_transfer version: {truss_transfer.__version__}")
-
 AUDIO_URL = "https://cdn.baseten.co/docs/production/Gettysburg.mp3"
+
+# skip if version < 0.0.40
+pytestmark = pytest.mark.skipif(
+    truss_transfer.__version__ < "0.0.40", reason="Requires truss_transfer >= 0.0.40"
+)
 
 
 def test_processor_creation():
