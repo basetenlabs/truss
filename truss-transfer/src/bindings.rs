@@ -199,6 +199,8 @@ pub fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(create_basetenpointer_from_models, m)?)?;
     m.add_class::<PyModelRepo>()?;
     m.add_class::<multimodal_processor::MultimodalProcessor>()?;
+    m.add_class::<multimodal_processor::AudioConfig>()?;
+    m.add_class::<multimodal_processor::Headers>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

@@ -2,31 +2,127 @@ use base64::{engine::general_purpose, Engine as _};
 use numpy::PyArray1;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict};
+use pyo3::types::PyBytes;
 use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AudioProcessorConfig {
-    pub sample_rate: u32,
-    pub channels: u32,
-    pub use_dynamic_normalization: bool,
-    pub format: String,
-    pub codec: String,
+    pub sample_rate: Option<u32>,
+    pub channels: Option<u32>,
+    pub use_dynamic_normalization: Option<bool>,
+    pub format: Option<String>,
+    pub codec: Option<String>,
+    pub raw_ffmpeg_args: Vec<String>,
 }
 
-impl Default for AudioProcessorConfig {
-    fn default() -> Self {
-        Self {
-            sample_rate: 16000,
-            channels: 1,
-            use_dynamic_normalization: false,
-            format: "f32le".to_string(),
-            codec: "pcm_f32le".to_string(),
+impl AudioProcessorConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Default)]
+pub struct AudioConfig {
+    #[pyo3(get, set)]
+    pub sample_rate: Option<u32>,
+    #[pyo3(get, set)]
+    pub channels: Option<u32>,
+    #[pyo3(get, set)]
+    pub use_dynamic_normalization: Option<bool>,
+    #[pyo3(get, set)]
+    pub format: Option<String>,
+    #[pyo3(get, set)]
+    pub codec: Option<String>,
+    #[pyo3(get, set)]
+    pub raw_ffmpeg_args: Option<Vec<String>>,
+}
+
+#[pymethods]
+impl AudioConfig {
+    #[new]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_sample_rate(&self, sample_rate: u32) -> Self {
+        let mut new_config = self.clone();
+        new_config.sample_rate = Some(sample_rate);
+        new_config
+    }
+
+    pub fn with_channels(&self, channels: u32) -> Self {
+        let mut new_config = self.clone();
+        new_config.channels = Some(channels);
+        new_config
+    }
+
+    pub fn with_use_dynamic_normalization(&self, use_dynamic_normalization: bool) -> Self {
+        let mut new_config = self.clone();
+        new_config.use_dynamic_normalization = Some(use_dynamic_normalization);
+        new_config
+    }
+
+    pub fn with_format(&self, format: String) -> Self {
+        let mut new_config = self.clone();
+        new_config.format = Some(format);
+        new_config
+    }
+
+    pub fn with_codec(&self, codec: String) -> Self {
+        let mut new_config = self.clone();
+        new_config.codec = Some(codec);
+        new_config
+    }
+
+    pub fn with_raw_ffmpeg_args(&self, args: Vec<String>) -> Self {
+        let mut new_config = self.clone();
+        new_config.raw_ffmpeg_args = Some(args);
+        new_config
+    }
+}
+
+impl AudioConfig {
+    pub fn build(&self) -> AudioProcessorConfig {
+        AudioProcessorConfig {
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+            use_dynamic_normalization: self.use_dynamic_normalization,
+            format: self.format.clone(),
+            codec: self.codec.clone(),
+            raw_ffmpeg_args: self.raw_ffmpeg_args.clone().unwrap_or_default(),
         }
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Default)]
+pub struct Headers {
+    #[pyo3(get, set)]
+    pub headers: HashMap<String, String>,
+}
+
+#[pymethods]
+impl Headers {
+    #[new]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&self, key: String, value: String) -> Self {
+        let mut new_headers = self.clone();
+        new_headers.headers.insert(key, value);
+        new_headers
+    }
+}
+
+impl Headers {
+    pub fn build(&self) -> HashMap<String, String> {
+        self.headers.clone()
     }
 }
 
@@ -49,33 +145,41 @@ fn process_audio(audio_bytes: &[u8], config: &AudioProcessorConfig) -> Result<Ve
     let input_path = temp_file.path();
 
     let mut ffmpeg_cmd = Command::new("ffmpeg");
-    ffmpeg_cmd
-        .arg("-i")
-        .arg(input_path)
-        .arg("-f")
-        .arg(&config.format)
-        .arg("-acodec")
-        .arg(&config.codec)
-        .arg("-ac")
-        .arg(config.channels.to_string())
-        .arg("-ar")
-        .arg(config.sample_rate.to_string())
-        .arg("-");
+    ffmpeg_cmd.arg("-i").arg(input_path);
 
-    if config.use_dynamic_normalization {
+    if let Some(format) = &config.format {
+        ffmpeg_cmd.arg("-f").arg(format);
+    }
+
+    if let Some(codec) = &config.codec {
+        ffmpeg_cmd.arg("-acodec").arg(codec);
+    }
+
+    if let Some(channels) = config.channels {
+        ffmpeg_cmd.arg("-ac").arg(channels.to_string());
+    }
+
+    if let Some(sample_rate) = config.sample_rate {
+        ffmpeg_cmd.arg("-ar").arg(sample_rate.to_string());
+    }
+
+    if config.use_dynamic_normalization.unwrap_or(false) {
         ffmpeg_cmd.args(["-af", "dynaudnorm"]);
     }
 
-    ffmpeg_cmd.arg("-y"); // Overwrite output files without asking
+    for arg in &config.raw_ffmpeg_args {
+        ffmpeg_cmd.arg(arg);
+    }
+
+    ffmpeg_cmd.arg("-y").arg("-");
 
     let output = ffmpeg_cmd
         .output()
         .map_err(|e| format!("ffmpeg execution failed: {}", e))?;
-    // TODO: print ffmpeg command for debugging
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         eprintln!("ffmpeg command: {:?}", ffmpeg_cmd);
-
         return Err(format!("ffmpeg command line execution failed: {}", stderr));
     }
 
@@ -94,36 +198,17 @@ fn process_audio(audio_bytes: &[u8], config: &AudioProcessorConfig) -> Result<Ve
 #[pyclass]
 pub struct MultimodalProcessor {
     client: Client,
-    config: AudioProcessorConfig,
 }
 
 #[pymethods]
 impl MultimodalProcessor {
     #[new]
     #[pyo3(signature = (
-        sample_rate=16000,
-        channels=1,
-        use_dynamic_normalization=false,
-        format="f32le",
-        codec="pcm_f32le",
-        timeout_secs=60
+        timeout_secs=300
     ))]
     pub fn new(
-        sample_rate: u32,
-        channels: u32,
-        use_dynamic_normalization: bool,
-        format: &str,
-        codec: &str,
         timeout_secs: u64,
     ) -> PyResult<Self> {
-        let config = AudioProcessorConfig {
-            sample_rate,
-            channels,
-            use_dynamic_normalization,
-            format: format.to_string(),
-            codec: codec.to_string(),
-        };
-
         let mut client_builder = Client::builder();
         client_builder = client_builder.timeout(std::time::Duration::from_secs(timeout_secs));
 
@@ -131,24 +216,21 @@ impl MultimodalProcessor {
             .build()
             .map_err(|e| PyException::new_err(format!("Failed to create client: {}", e)))?;
 
-        Ok(Self { client, config })
+        Ok(Self { client })
     }
 
-    #[pyo3(signature = (url, headers=None))]
+    #[pyo3(signature = (url, audio_config, headers=None))]
     pub fn process_audio_from_url(
         &self,
         py: Python,
         url: String,
-        headers: Option<Bound<'_, PyDict>>,
+        audio_config: Bound<'_, AudioConfig>,
+        headers: Option<Bound<'_, Headers>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        let headers_map: Option<HashMap<String, String>> = if let Some(h) = headers {
-            let mut map = HashMap::new();
-            for (key, value) in h.iter() {
-                let key_str = key.extract::<String>()?;
-                let value_str = value.extract::<String>()?;
-                map.insert(key_str, value_str);
-            }
-            Some(map)
+        let config = audio_config.borrow().build();
+
+        let headers_map: Option<HashMap<String, String>> = if let Some(headers_obj) = headers {
+            Some(headers_obj.borrow().build())
         } else {
             None
         };
@@ -176,7 +258,7 @@ impl MultimodalProcessor {
                     .map_err(|e| format!("Failed to read bytes: {}", e))?
                     .to_vec();
 
-                process_audio(&audio_bytes, &self.config)
+                process_audio(&audio_bytes, &config)
             })
             .map_err(|e| PyException::new_err(e))?;
 
@@ -188,12 +270,15 @@ impl MultimodalProcessor {
         &self,
         py: Python,
         encoded: String,
+        audio_config: Bound<'_, AudioConfig>,
     ) -> PyResult<Py<PyArray1<f32>>> {
+        let config = audio_config.borrow().build();
+
         let samples = py
             .allow_threads(|| {
                 let audio_bytes = decode_base64(&encoded)?;
 
-                process_audio(&audio_bytes, &self.config)
+                process_audio(&audio_bytes, &config)
             })
             .map_err(|e| PyException::new_err(e))?;
 
@@ -205,9 +290,12 @@ impl MultimodalProcessor {
         &self,
         py: Python,
         audio_bytes: Vec<u8>,
+        audio_config: Bound<'_, AudioConfig>,
     ) -> PyResult<Py<PyArray1<f32>>> {
+        let config = audio_config.borrow().build();
+
         let samples = py
-            .allow_threads(|| process_audio(&audio_bytes, &self.config))
+            .allow_threads(|| process_audio(&audio_bytes, &config))
             .map_err(|e| PyException::new_err(e))?;
 
         let numpy_array = PyArray1::from_vec(py, samples);
@@ -219,16 +307,10 @@ impl MultimodalProcessor {
         &self,
         py: Python,
         url: String,
-        headers: Option<Bound<'_, PyDict>>,
+        headers: Option<Bound<'_, Headers>>,
     ) -> PyResult<Py<PyBytes>> {
-        let headers_map: Option<HashMap<String, String>> = if let Some(h) = headers {
-            let mut map = HashMap::new();
-            for (key, value) in h.iter() {
-                let key_str = key.extract::<String>()?;
-                let value_str = value.extract::<String>()?;
-                map.insert(key_str, value_str);
-            }
-            Some(map)
+        let headers_map: Option<HashMap<String, String>> = if let Some(headers_obj) = headers {
+            Some(headers_obj.borrow().build())
         } else {
             None
         };
@@ -253,26 +335,27 @@ impl MultimodalProcessor {
         Ok(PyBytes::new(py, &bytes).into())
     }
 
-    #[pyo3(signature = (source_type, source_data, headers=None))]
+    #[pyo3(signature = (source_type, source_data, audio_config, headers=None))]
     pub fn process_audio(
         &self,
         py: Python,
         source_type: String,
         source_data: PyObject,
-        headers: Option<Bound<'_, PyDict>>,
+        audio_config: Bound<'_, AudioConfig>,
+        headers: Option<Bound<'_, Headers>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
         match source_type.as_str() {
             "url" => {
                 let url = source_data.extract::<String>(py)?;
-                self.process_audio_from_url(py, url, headers)
+                self.process_audio_from_url(py, url, audio_config, headers)
             }
             "base64" => {
                 let encoded = source_data.extract::<String>(py)?;
-                self.process_audio_from_base64(py, encoded)
+                self.process_audio_from_base64(py, encoded, audio_config)
             }
             "bytes" => {
                 let bytes = source_data.extract::<Vec<u8>>(py)?;
-                self.process_audio_from_bytes(py, bytes)
+                self.process_audio_from_bytes(py, bytes, audio_config)
             }
             _ => Err(PyException::new_err(format!(
                 "Unknown source type: {}",
