@@ -22,9 +22,7 @@ def test_processor_creation():
 def test_processor_with_config():
     """Test that MultimodalProcessor can be created with custom config."""
     print("Testing MultimodalProcessor with custom config...")
-    processor = truss_transfer.MultimodalProcessor(
-        sample_rate=16000, channels=1, use_dynamic_normalization=True, timeout_secs=60
-    )
+    processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     assert processor is not None
     print("✓ MultimodalProcessor with custom config created successfully")
 

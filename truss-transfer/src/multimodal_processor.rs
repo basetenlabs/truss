@@ -9,14 +9,27 @@ use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AudioProcessorConfig {
     pub sample_rate: Option<u32>,
     pub channels: Option<u32>,
     pub use_dynamic_normalization: Option<bool>,
-    pub format: Option<String>,
+    pub format: String,
     pub codec: Option<String>,
     pub raw_ffmpeg_args: Vec<String>,
+}
+
+impl Default for AudioProcessorConfig {
+    fn default() -> Self {
+        Self {
+            sample_rate: None,
+            channels: None,
+            use_dynamic_normalization: None,
+            format: "f32le".to_string(),
+            codec: None,
+            raw_ffmpeg_args: Vec::new(),
+        }
+    }
 }
 
 impl AudioProcessorConfig {
@@ -26,7 +39,7 @@ impl AudioProcessorConfig {
 }
 
 #[pyclass]
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AudioConfig {
     #[pyo3(get, set)]
     pub sample_rate: Option<u32>,
@@ -35,11 +48,24 @@ pub struct AudioConfig {
     #[pyo3(get, set)]
     pub use_dynamic_normalization: Option<bool>,
     #[pyo3(get, set)]
-    pub format: Option<String>,
+    pub format: String,
     #[pyo3(get, set)]
     pub codec: Option<String>,
     #[pyo3(get, set)]
     pub raw_ffmpeg_args: Option<Vec<String>>,
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            sample_rate: None,
+            channels: None,
+            use_dynamic_normalization: None,
+            format: "f32le".to_string(),
+            codec: None,
+            raw_ffmpeg_args: None,
+        }
+    }
 }
 
 #[pymethods]
@@ -69,7 +95,7 @@ impl AudioConfig {
 
     pub fn with_format(&self, format: String) -> Self {
         let mut new_config = self.clone();
-        new_config.format = Some(format);
+        new_config.format = format;
         new_config
     }
 
@@ -146,10 +172,7 @@ fn process_audio(audio_bytes: &[u8], config: &AudioProcessorConfig) -> Result<Ve
 
     let mut ffmpeg_cmd = Command::new("ffmpeg");
     ffmpeg_cmd.arg("-i").arg(input_path);
-
-    if let Some(format) = &config.format {
-        ffmpeg_cmd.arg("-f").arg(format);
-    }
+    ffmpeg_cmd.arg("-f").arg(&config.format);
 
     if let Some(codec) = &config.codec {
         ffmpeg_cmd.arg("-acodec").arg(codec);
@@ -206,9 +229,7 @@ impl MultimodalProcessor {
     #[pyo3(signature = (
         timeout_secs=300
     ))]
-    pub fn new(
-        timeout_secs: u64,
-    ) -> PyResult<Self> {
+    pub fn new(timeout_secs: u64) -> PyResult<Self> {
         let mut client_builder = Client::builder();
         client_builder = client_builder.timeout(std::time::Duration::from_secs(timeout_secs));
 
@@ -266,6 +287,7 @@ impl MultimodalProcessor {
         Ok(numpy_array.into())
     }
 
+    #[pyo3(signature = (encoded, audio_config))]
     pub fn process_audio_from_base64(
         &self,
         py: Python,
@@ -286,6 +308,7 @@ impl MultimodalProcessor {
         Ok(numpy_array.into())
     }
 
+    #[pyo3(signature = (audio_bytes, audio_config))]
     pub fn process_audio_from_bytes(
         &self,
         py: Python,
@@ -347,15 +370,15 @@ impl MultimodalProcessor {
         match source_type.as_str() {
             "url" => {
                 let url = source_data.extract::<String>(py)?;
-                self.process_audio_from_url(py, url, audio_config, headers)
+                self.process_audio_from_url(py, url, audio_config.clone(), headers)
             }
             "base64" => {
                 let encoded = source_data.extract::<String>(py)?;
-                self.process_audio_from_base64(py, encoded, audio_config)
+                self.process_audio_from_base64(py, encoded, audio_config.clone())
             }
             "bytes" => {
                 let bytes = source_data.extract::<Vec<u8>>(py)?;
-                self.process_audio_from_bytes(py, bytes, audio_config)
+                self.process_audio_from_bytes(py, bytes, audio_config.clone())
             }
             _ => Err(PyException::new_err(format!(
                 "Unknown source type: {}",
