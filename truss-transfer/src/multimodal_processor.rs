@@ -237,6 +237,10 @@ impl MultimodalProcessor {
             .build()
             .map_err(|e| PyException::new_err(format!("Failed to create client: {}", e)))?;
 
+        if Command::new("ffmpeg").arg("-version").output().is_err() {
+            eprintln!("Warning: ffmpeg is not installed or not in PATH. Audio processing features will not be available.");
+        }
+
         Ok(Self { client })
     }
 
