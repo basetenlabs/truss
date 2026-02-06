@@ -238,7 +238,25 @@ class WeightsAuthMethod(str, enum.Enum):
     GCP_OIDC = "GCP_OIDC"
 
 
-class WeightsAuth(custom_types.ConfigModel):
+class OIDCAuthFieldsMixin(custom_types.ConfigModel):
+    """Mixin for common OIDC authentication fields used across different auth configurations."""
+
+    aws_oidc_role_arn: Optional[str] = pydantic.Field(
+        default=None, description="AWS IAM role ARN for OIDC authentication."
+    )
+    aws_oidc_region: Optional[str] = pydantic.Field(
+        default=None, description="AWS region for OIDC authentication."
+    )
+    gcp_oidc_service_account: Optional[str] = pydantic.Field(
+        default=None, description="GCP service account name for OIDC authentication."
+    )
+    gcp_oidc_workload_id_provider: Optional[str] = pydantic.Field(
+        default=None,
+        description="GCP workload identity provider for OIDC authentication.",
+    )
+
+
+class WeightsAuth(OIDCAuthFieldsMixin):
     """Authentication configuration for a weights source.
 
     This can be used to specify OIDC-based authentication for cloud storage sources,
@@ -255,19 +273,6 @@ class WeightsAuth(custom_types.ConfigModel):
     auth_secret_name: Optional[str] = pydantic.Field(
         default=None,
         description="Baseten secret name containing credentials for accessing the source.",
-    )
-    aws_oidc_role_arn: Optional[str] = pydantic.Field(
-        default=None, description="AWS IAM role ARN for OIDC authentication."
-    )
-    aws_oidc_region: Optional[str] = pydantic.Field(
-        default=None, description="AWS region for OIDC authentication."
-    )
-    gcp_oidc_service_account: Optional[str] = pydantic.Field(
-        default=None, description="GCP service account name for OIDC authentication."
-    )
-    gcp_oidc_workload_id_provider: Optional[str] = pydantic.Field(
-        default=None,
-        description="GCP workload identity provider for OIDC authentication.",
     )
 
     @pydantic.field_validator("auth_method", mode="before")
@@ -789,7 +794,7 @@ class DockerAuthType(str, enum.Enum):
     GCP_OIDC = "GCP_OIDC"
 
 
-class DockerAuthSettings(custom_types.ConfigModel):
+class DockerAuthSettings(OIDCAuthFieldsMixin):
     """Provides information about how to authenticate to the docker registry containing
     the custom base image."""
 
@@ -803,14 +808,6 @@ class DockerAuthSettings(custom_types.ConfigModel):
     # names for the AWS credentials.
     aws_access_key_id_secret_name: str = DEFAULT_AWS_ACCESS_KEY_SECRET_NAME
     aws_secret_access_key_secret_name: str = DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME
-
-    # AWS OIDC authentication fields
-    aws_oidc_role_arn: Optional[str] = None
-    aws_oidc_region: Optional[str] = None
-
-    # GCP OIDC authentication fields
-    gcp_oidc_service_account: Optional[str] = None
-    gcp_oidc_workload_id_provider: Optional[str] = None
 
     @pydantic.field_validator("auth_method", mode="before")
     def _normalize_auth_method(cls, v: str) -> str:
