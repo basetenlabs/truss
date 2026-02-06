@@ -58,17 +58,15 @@ def test_process_audio_from_base64():
     # Create a simple base64 encoded audio (just for testing)
     import base64
 
-    test_data = b"test audio data"
-    encoded = base64.b64encode(test_data).decode("utf-8")
+    request = requests.get(AUDIO_URL)
+    encoded = base64.b64encode(request.content).decode("utf-8")
 
-    try:
-        audio_array = processor.process_audio_from_base64(encoded)
-        # This might fail if the test data isn't valid audio, but that's ok
-        print(f"✓ Processed {len(audio_array)} audio samples from base64")
-    except Exception as e:
-        print(
-            f"✓ Base64 processing test completed (expected error for invalid audio): {e}"
-        )
+    audio_array = processor.process_audio_from_base64(encoded)
+    # This might fail if the test data isn't valid audio, but that's ok
+    print(f"✓ Processed {len(audio_array)} audio samples from base64")
+    assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
+    assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
+    assert len(audio_array) > 0, "Processed audio should not be empty"
 
 
 def test_process_audio_from_bytes():
