@@ -33,25 +33,30 @@ def test_process_audio_from_url():
     print(f"Testing audio processing from {AUDIO_URL}...")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_config = truss_transfer.AudioConfig()
-    audio_array = processor.process_audio_from_url(AUDIO_URL, audio_config)
+    audio_array, timing = processor.process_audio_from_url(AUDIO_URL, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print(f"✓ Processed {len(audio_array)} audio samples from URL")
+    print(f"  Timing: {timing}")
 
     # check if requests + post + subprocess encode still works
     response = requests.get(AUDIO_URL)
     assert response.status_code == 200, "Failed to download audio"
     audio_bytes2 = response.content
-    audio_array2 = processor.process_audio_from_bytes(audio_bytes2, audio_config)
+    audio_array2, timing2 = processor.process_audio_from_bytes(
+        audio_bytes2, audio_config
+    )
     assert isinstance(audio_array2, np.ndarray), "Result should be numpy array"
     assert audio_array2.dtype == np.float32, (
         f"Expected float32, got {audio_array2.dtype}"
     )
     assert len(audio_array2) > 0, "Processed audio should not be empty"
     assert (audio_array2 == audio_array).all()
+    print(f"  Timing2: {timing2}")
 
 
 def test_process_audio_from_base64():
@@ -66,12 +71,14 @@ def test_process_audio_from_base64():
     request = requests.get(AUDIO_URL)
     encoded = base64.b64encode(request.content).decode("utf-8")
 
-    audio_array = processor.process_audio_from_base64(encoded, audio_config)
+    audio_array, timing = processor.process_audio_from_base64(encoded, audio_config)
     # This might fail if the test data isn't valid audio, but that's ok
     print(f"✓ Processed {len(audio_array)} audio samples from base64")
+    print(f"  Timing: {timing}")
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
 
 def test_process_audio_from_bytes():
@@ -82,13 +89,15 @@ def test_process_audio_from_bytes():
 
     # Use the audio URL to get bytes, then process
     audio_bytes = processor.download_bytes(AUDIO_URL)
-    audio_array = processor.process_audio_from_bytes(audio_bytes, audio_config)
+    audio_array, timing = processor.process_audio_from_bytes(audio_bytes, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print(f"✓ Processed {len(audio_array)} audio samples from bytes")
+    print(f"  Timing: {timing}")
 
 
 def test_download_bytes():
@@ -127,13 +136,15 @@ def test_process_audio():
     print("Testing unified process_audio method...")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_config = truss_transfer.AudioConfig()
-    audio_array = processor.process_audio("url", AUDIO_URL, audio_config)
+    audio_array, timing = processor.process_audio("url", AUDIO_URL, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print(f"✓ Processed {len(audio_array)} audio samples via process_audio")
+    print(f"  Timing: {timing}")
 
 
 def test_process_audio_with_base64():
@@ -148,8 +159,9 @@ def test_process_audio_with_base64():
     encoded = base64.b64encode(test_data).decode("utf-8")
 
     try:
-        audio_array = processor.process_audio("base64", encoded, audio_config)
+        audio_array, timing = processor.process_audio("base64", encoded, audio_config)
         print(f"✓ Processed {len(audio_array)} audio samples via process_audio(base64)")
+        print(f"  Timing: {timing}")
     except Exception:
         print(
             "✓ process_audio(base64) test completed (expected error for invalid audio)"
@@ -163,13 +175,15 @@ def test_process_audio_with_bytes():
     audio_config = truss_transfer.AudioConfig()
 
     audio_bytes = processor.download_bytes(AUDIO_URL)
-    audio_array = processor.process_audio("bytes", audio_bytes, audio_config)
+    audio_array, timing = processor.process_audio("bytes", audio_bytes, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print(f"✓ Processed {len(audio_array)} audio samples via process_audio(bytes)")
+    print(f"  Timing: {timing}")
 
 
 def test_audio_config_builder():
@@ -215,13 +229,15 @@ def test_audio_config_with_raw_ffmpeg():
     )
 
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
-    audio_array = processor.process_audio_from_url(AUDIO_URL, audio_config)
+    audio_array, timing = processor.process_audio_from_url(AUDIO_URL, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print("✓ AudioConfig with raw ffmpeg commands works")
+    print(f"  Timing: {timing}")
 
 
 def test_audio_config_per_call():
@@ -231,17 +247,19 @@ def test_audio_config_per_call():
     audio_config = truss_transfer.AudioConfig()
 
     # Process with default config
-    audio_array1 = processor.process_audio_from_url(AUDIO_URL, audio_config)
+    audio_array1, timing1 = processor.process_audio_from_url(AUDIO_URL, audio_config)
     assert isinstance(audio_array1, np.ndarray)
     assert len(audio_array1) > 0
+    assert isinstance(timing1, truss_transfer.TimingInfo)
 
     # Process with custom config per call
     audio_config2 = (
         truss_transfer.AudioConfig().with_sample_rate(22050).with_channels(2)
     )
-    audio_array2 = processor.process_audio_from_url(AUDIO_URL, audio_config2)
+    audio_array2, timing2 = processor.process_audio_from_url(AUDIO_URL, audio_config2)
     assert isinstance(audio_array2, np.ndarray)
     assert len(audio_array2) > 0
+    assert isinstance(timing2, truss_transfer.TimingInfo)
 
     print("✓ AudioConfig per call works")
 
@@ -257,13 +275,81 @@ def test_audio_config_with_bytes():
     audio_config = (
         truss_transfer.AudioConfig().with_sample_rate(8000).with_format("s16le")
     )
-    audio_array = processor.process_audio_from_bytes(audio_bytes, audio_config)
+    audio_array, timing = processor.process_audio_from_bytes(audio_bytes, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print("✓ AudioConfig with bytes source works")
+    print(f"  Timing: {timing}")
+
+
+def test_audio_config_use_pipes_true():
+    """Test forcing pipes with use_pipes=True."""
+    print("Testing use_pipes=True...")
+    processor = truss_transfer.MultimodalProcessor()
+    audio_config = truss_transfer.AudioConfig().with_use_pipes(True)
+
+    # MP3 should work with pipes (may fallback to tempfile if pipes fail)
+    audio_array, timing = processor.process_audio_from_url(AUDIO_URL, audio_config)
+    assert isinstance(audio_array, np.ndarray)
+    assert len(audio_array) > 0
+    assert isinstance(timing, truss_transfer.TimingInfo)
+    # Note: Pipes may fallback to tempfile if they fail
+    assert timing.input_method in ["pipe", "tempfile"], (
+        f"Should use pipe or tempfile, got {timing.input_method}"
+    )
+    print(f"✓ use_pipes=True works for MP3 (using {timing.input_method})")
+    print(f"  Timing: {timing}")
+
+
+def test_audio_config_use_pipes_false():
+    """Test forcing tempfile with use_pipes=False."""
+    print("Testing use_pipes=False...")
+    processor = truss_transfer.MultimodalProcessor()
+    audio_config = truss_transfer.AudioConfig().with_use_pipes(False)
+
+    # Should use tempfile for all formats
+    audio_array, timing = processor.process_audio_from_url(AUDIO_URL, audio_config)
+    assert isinstance(audio_array, np.ndarray)
+    assert len(audio_array) > 0
+    assert isinstance(timing, truss_transfer.TimingInfo)
+    assert timing.input_method == "tempfile", "Should use tempfile"
+    print("✓ use_pipes=False works")
+    print(f"  Timing: {timing}")
+
+
+def test_audio_config_use_pipes_none_auto():
+    """Test auto-detection with use_pipes=None (default)."""
+    print("Testing use_pipes=None (auto-detect)...")
+    processor = truss_transfer.MultimodalProcessor()
+    audio_config = truss_transfer.AudioConfig()  # Default is None
+
+    # MP3 should auto-detect and use pipes
+    audio_array, timing = processor.process_audio_from_url(AUDIO_URL, audio_config)
+    assert isinstance(audio_array, np.ndarray)
+    assert len(audio_array) > 0
+    assert isinstance(timing, truss_transfer.TimingInfo)
+    print("✓ Auto-detection works for MP3")
+    print(f"  Timing: {timing}")
+
+
+def test_m4a_auto_detect_tempfile():
+    """Test that M4A auto-detects and uses tempfile."""
+    print("Testing M4A auto-detection...")
+    processor = truss_transfer.MultimodalProcessor()
+    audio_config = truss_transfer.AudioConfig()  # Default is None
+
+    # M4A should auto-detect and use tempfile
+    audio_array, timing = processor.process_audio_from_url(AUDI_M4A, audio_config)
+    assert isinstance(audio_array, np.ndarray)
+    assert len(audio_array) > 0
+    assert isinstance(timing, truss_transfer.TimingInfo)
+    assert timing.input_method == "tempfile", "M4A should use tempfile"
+    print("✓ M4A auto-detects tempfile correctly")
+    print(f"  Timing: {timing}")
 
 
 def test_process_m4a_from_url():
@@ -271,13 +357,15 @@ def test_process_m4a_from_url():
     print(f"Testing M4A audio processing from {AUDI_M4A}...")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_config = truss_transfer.AudioConfig()
-    audio_array = processor.process_audio_from_url(AUDI_M4A, audio_config)
+    audio_array, timing = processor.process_audio_from_url(AUDI_M4A, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print(f"✓ Processed {len(audio_array)} audio samples from M4A URL")
+    print(f"  Timing: {timing}")
 
 
 def test_process_m4a_from_bytes():
@@ -288,13 +376,15 @@ def test_process_m4a_from_bytes():
 
     # Download M4A file as bytes
     audio_bytes = processor.download_bytes(AUDI_M4A)
-    audio_array = processor.process_audio_from_bytes(audio_bytes, audio_config)
+    audio_array, timing = processor.process_audio_from_bytes(audio_bytes, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
     assert audio_array.dtype == np.float32, f"Expected float32, got {audio_array.dtype}"
     assert len(audio_array) > 0, "Processed audio should not be empty"
+    assert isinstance(timing, truss_transfer.TimingInfo), "Timing should be TimingInfo"
 
     print(f"✓ Processed {len(audio_array)} audio samples from M4A bytes")
+    print(f"  Timing: {timing}")
 
 
 if __name__ == "__main__":
