@@ -255,6 +255,46 @@ class OIDCAuthFieldsMixin(custom_types.ConfigModel):
         description="GCP workload identity provider for OIDC authentication.",
     )
 
+    def _require_fields(self, *fields: str) -> None:
+        """Validate that all specified fields have non-empty values.
+
+        Args:
+            fields: Field names to check for presence
+
+        Raises:
+            ValueError: If any required fields are missing or empty
+        """
+        missing = [f for f in fields if getattr(self, f) in (None, "")]
+        if missing:
+            raise ValueError(
+                f"{', '.join(missing)} must be provided when auth_method is {self.auth_method.value}"
+            )
+
+    def _forbid_fields(self, *fields: str) -> None:
+        """Validate that all specified fields are empty or None.
+
+        Args:
+            fields: Field names to check for absence
+
+        Raises:
+            ValueError: If any forbidden fields are present
+        """
+        present = [f for f in fields if getattr(self, f) not in (None, "")]
+        if present:
+            raise ValueError(
+                f"{', '.join(present)} cannot be specified when auth_method is {self.auth_method.value}"
+            )
+
+    def _validate_fields(self, required: list[str], forbidden: list[str]) -> None:
+        """Validate that required fields are present and forbidden fields are absent.
+
+        Args:
+            required: List of field names that must have values
+            forbidden: List of field names that must be empty/None
+        """
+        self._require_fields(*required)
+        self._forbid_fields(*forbidden)
+
 
 class WeightsAuth(OIDCAuthFieldsMixin):
     """Authentication configuration for a weights source.
@@ -282,52 +322,36 @@ class WeightsAuth(OIDCAuthFieldsMixin):
 
     @pydantic.model_validator(mode="after")
     def _validate_auth_fields(self) -> "WeightsAuth":
-        def require(method: WeightsAuthMethod, *fields: str) -> None:
-            missing = [f for f in fields if getattr(self, f) in (None, "")]
-            if missing:
-                raise ValueError(
-                    f"{', '.join(missing)} must be provided when auth_method is {method.value}"
-                )
-
-        def forbid(method: WeightsAuthMethod, *fields: str) -> None:
-            present = [f for f in fields if getattr(self, f) not in (None, "")]
-            if present:
-                raise ValueError(
-                    f"{', '.join(present)} cannot be specified when auth_method is {method.value}"
-                )
-
         if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
-            require(WeightsAuthMethod.CUSTOM_SECRET, WEIGHTS_AUTH_SECRET_NAME_PARAM)
-            forbid(
-                WeightsAuthMethod.CUSTOM_SECRET,
-                AWS_OIDC_ROLE_ARN_PARAM,
-                AWS_OIDC_REGION_PARAM,
-                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            self._validate_fields(
+                required=[WEIGHTS_AUTH_SECRET_NAME_PARAM],
+                forbidden=[
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
             )
         elif self.auth_method == WeightsAuthMethod.AWS_OIDC:
-            require(
-                WeightsAuthMethod.AWS_OIDC,
-                AWS_OIDC_ROLE_ARN_PARAM,
-                AWS_OIDC_REGION_PARAM,
-            )
-            forbid(
-                WeightsAuthMethod.AWS_OIDC,
-                WEIGHTS_AUTH_SECRET_NAME_PARAM,
-                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            self._validate_fields(
+                required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
             )
         elif self.auth_method == WeightsAuthMethod.GCP_OIDC:
-            require(
-                WeightsAuthMethod.GCP_OIDC,
-                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-            )
-            forbid(
-                WeightsAuthMethod.GCP_OIDC,
-                WEIGHTS_AUTH_SECRET_NAME_PARAM,
-                AWS_OIDC_ROLE_ARN_PARAM,
-                AWS_OIDC_REGION_PARAM,
+            self._validate_fields(
+                required=[
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                ],
             )
 
         return self
@@ -815,52 +839,36 @@ class DockerAuthSettings(OIDCAuthFieldsMixin):
 
     @pydantic.model_validator(mode="after")
     def validate_auth_fields(self) -> "DockerAuthSettings":
-        def require(method: DockerAuthType, *fields: str) -> None:
-            missing = [f for f in fields if getattr(self, f) in (None, "")]
-            if missing:
-                raise ValueError(
-                    f"{', '.join(missing)} must be provided when auth_method is {method.value}"
-                )
-
-        def forbid(method: DockerAuthType, *fields: str) -> None:
-            present = [f for f in fields if getattr(self, f) not in (None, "")]
-            if present:
-                raise ValueError(
-                    f"{', '.join(present)} cannot be specified when auth_method is {method.value}"
-                )
-
         if self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
-            require(
-                DockerAuthType.GCP_SERVICE_ACCOUNT_JSON, DOCKER_AUTH_SECRET_NAME_PARAM
-            )
-            forbid(
-                DockerAuthType.GCP_SERVICE_ACCOUNT_JSON,
-                AWS_OIDC_ROLE_ARN_PARAM,
-                AWS_OIDC_REGION_PARAM,
-                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            self._validate_fields(
+                required=[DOCKER_AUTH_SECRET_NAME_PARAM],
+                forbidden=[
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
             )
         elif self.auth_method == DockerAuthType.AWS_OIDC:
-            require(
-                DockerAuthType.AWS_OIDC, AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM
-            )
-            forbid(
-                DockerAuthType.AWS_OIDC,
-                DOCKER_AUTH_SECRET_NAME_PARAM,
-                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+            self._validate_fields(
+                required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
+                forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
             )
         elif self.auth_method == DockerAuthType.GCP_OIDC:
-            require(
-                DockerAuthType.GCP_OIDC,
-                GCP_OIDC_SERVICE_ACCOUNT_PARAM,
-                GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
-            )
-            forbid(
-                DockerAuthType.GCP_OIDC,
-                DOCKER_AUTH_SECRET_NAME_PARAM,
-                AWS_OIDC_ROLE_ARN_PARAM,
-                AWS_OIDC_REGION_PARAM,
+            self._validate_fields(
+                required=[
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+                forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                ],
             )
 
         return self
