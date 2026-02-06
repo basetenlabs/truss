@@ -182,9 +182,7 @@ def test_audio_config_builder():
     audio_config = audio_config.with_codec("pcm_s16le")
     audio_config = audio_config.with_raw_ffmpeg_args(["-af", "highpass=f=200"])
 
-    processor = truss_transfer.MultimodalProcessor(
-        audio_config=audio_config, timeout_secs=60
-    )
+    processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     assert processor is not None
     print("✓ AudioConfig builder pattern works")
 
@@ -215,9 +213,7 @@ def test_audio_config_with_raw_ffmpeg():
         .with_raw_ffmpeg_args(["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"])
     )
 
-    processor = truss_transfer.MultimodalProcessor(
-        audio_config=audio_config, timeout_secs=60
-    )
+    processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_array = processor.process_audio_from_url(AUDIO_URL, audio_config)
 
     assert isinstance(audio_array, np.ndarray), "Result should be numpy array"
