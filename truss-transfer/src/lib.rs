@@ -13,6 +13,7 @@ mod download;
 mod download_core;
 mod hf_transfer;
 mod metrics;
+mod multimodal_processor;
 mod secrets;
 mod speed_checks;
 mod types;

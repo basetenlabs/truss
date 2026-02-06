@@ -13,6 +13,7 @@ use crate::constants::*;
 use crate::constants::{RUNTIME_MODEL_CACHE_PATH, TRUSS_TRANSFER_LOG};
 use crate::core::lazy_data_resolve_entrypoint;
 use crate::create::create_basetenpointer;
+use crate::multimodal_processor;
 use crate::types::{ModelRepo, ResolutionType};
 static INIT_LOGGER: Once = Once::new();
 use once_cell::sync::Lazy;
@@ -197,6 +198,7 @@ pub fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lazy_data_resolve, m)?)?;
     m.add_function(wrap_pyfunction!(create_basetenpointer_from_models, m)?)?;
     m.add_class::<PyModelRepo>()?;
+    m.add_class::<multimodal_processor::MultimodalProcessor>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
