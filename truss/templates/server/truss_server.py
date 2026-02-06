@@ -5,6 +5,7 @@ import logging.config
 import os
 import signal
 from collections.abc import AsyncGenerator, Awaitable, Generator
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional, Union
@@ -361,15 +362,24 @@ class TrussServer:
         if INFERENCE_SERVER_FAILED_FILE.exists():
             INFERENCE_SERVER_FAILED_FILE.unlink()
 
-    def on_startup(self):
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
         """
-        This method will be started inside the main process, so here is where
-        we want to setup our logging and model.
+        Lifespan context manager for startup and shutdown logic.
+
+        Uses the ASGI lifespan protocol to ensure startup logic runs before the
+        application starts receiving requests. This is the recommended approach
+        per FastAPI docs: https://fastapi.tiangolo.com/advanced/events/#async-context-manager
         """
+        # Startup: executed before the application starts receiving requests
         self.cleanup()
         self._model.start_load_thread()
         asyncio.create_task(self._shutdown_if_load_fails())
         self._model.setup_polling_for_environment_updates()
+
+        yield
+
+        # Shutdown: executed after the application finishes handling requests
 
     async def _shutdown_if_load_fails(self):
         while not self._model.ready:
@@ -386,7 +396,7 @@ class TrussServer:
             docs_url=None,
             redoc_url=None,
             default_response_class=ORJSONResponse,
-            on_startup=[self.on_startup],
+            lifespan=self.lifespan,
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", lambda: True),
