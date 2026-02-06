@@ -7,7 +7,20 @@ use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::Command;
+use std::sync::OnceLock;
 use tempfile::NamedTempFile;
+
+static FFMPEG_AVAILABLE: OnceLock<bool> = OnceLock::new();
+
+fn check_ffmpeg_available() -> bool {
+    *FFMPEG_AVAILABLE.get_or_init(|| Command::new("ffmpeg").arg("-version").output().is_ok())
+}
+
+fn warn_if_ffmpeg_not_available() {
+    if !check_ffmpeg_available() {
+        eprintln!("Warning: ffmpeg is not installed or not in PATH. Audio processing features will not be available.");
+    }
+}
 
 #[derive(Clone)]
 pub struct AudioProcessorConfig {
@@ -237,14 +250,10 @@ impl MultimodalProcessor {
             .build()
             .map_err(|e| PyException::new_err(format!("Failed to create client: {}", e)))?;
 
-        if Command::new("ffmpeg").arg("-version").output().is_err() {
-            eprintln!("Warning: ffmpeg is not installed or not in PATH. Audio processing features will not be available.");
-        }
-
         Ok(Self { client })
     }
 
-    #[pyo3(signature = (url, audio_config, headers=None))]
+    #[pyo3(signature = (url, audio_config, /, headers=None))]
     pub fn process_audio_from_url(
         &self,
         py: Python,
@@ -252,6 +261,7 @@ impl MultimodalProcessor {
         audio_config: Bound<'_, AudioConfig>,
         headers: Option<Bound<'_, Headers>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
+        warn_if_ffmpeg_not_available();
         let config = audio_config.borrow().build();
 
         let headers_map: Option<HashMap<String, String>> =
@@ -288,13 +298,13 @@ impl MultimodalProcessor {
         Ok(numpy_array.into())
     }
 
-    #[pyo3(signature = (encoded, audio_config))]
     pub fn process_audio_from_base64(
         &self,
         py: Python,
         encoded: String,
         audio_config: Bound<'_, AudioConfig>,
     ) -> PyResult<Py<PyArray1<f32>>> {
+        warn_if_ffmpeg_not_available();
         let config = audio_config.borrow().build();
 
         let samples = py
@@ -309,13 +319,13 @@ impl MultimodalProcessor {
         Ok(numpy_array.into())
     }
 
-    #[pyo3(signature = (audio_bytes, audio_config))]
     pub fn process_audio_from_bytes(
         &self,
         py: Python,
         audio_bytes: Vec<u8>,
         audio_config: Bound<'_, AudioConfig>,
     ) -> PyResult<Py<PyArray1<f32>>> {
+        warn_if_ffmpeg_not_available();
         let config = audio_config.borrow().build();
 
         let samples = py
@@ -326,7 +336,7 @@ impl MultimodalProcessor {
         Ok(numpy_array.into())
     }
 
-    #[pyo3(signature = (url, headers=None))]
+    #[pyo3(signature = (url, /, headers=None))]
     pub fn download_bytes(
         &self,
         py: Python,
@@ -356,7 +366,7 @@ impl MultimodalProcessor {
         Ok(PyBytes::new(py, &bytes).into())
     }
 
-    #[pyo3(signature = (source_type, source_data, audio_config, headers=None))]
+    #[pyo3(signature = (source_type, source_data, audio_config, /, headers=None))]
     pub fn process_audio(
         &self,
         py: Python,
@@ -365,6 +375,7 @@ impl MultimodalProcessor {
         audio_config: Bound<'_, AudioConfig>,
         headers: Option<Bound<'_, Headers>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
+        warn_if_ffmpeg_not_available();
         match source_type.as_str() {
             "url" => {
                 let url = source_data.extract::<String>(py)?;
