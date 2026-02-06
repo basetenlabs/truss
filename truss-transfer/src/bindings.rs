@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 // --- Global Tokio Runtime ---
-static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
+pub static GLOBAL_RUNTIME: Lazy<Arc<Runtime>> = Lazy::new(|| {
     Arc::new(
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()

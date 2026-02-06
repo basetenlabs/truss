@@ -3,6 +3,7 @@
 Benchmark to compare latency between pipe-based and tempfile-based audio processing.
 """
 
+import asyncio
 import time
 
 import numpy as np
@@ -16,7 +17,7 @@ TEST_URLS = {
 }
 
 
-def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
+async def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
     """Benchmark a specific method."""
     print(f"\n{'=' * 60}")
     print(f"Benchmarking: {method_name}")
@@ -28,7 +29,7 @@ def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
     # Download audio (timed)
     print("Downloading audio...")
     download_start = time.perf_counter()
-    audio_bytes = processor.download_bytes(url)
+    audio_bytes = await processor.download_bytes(url)
     download_end = time.perf_counter()
     download_us = (download_end - download_start) * 1_000_000
     print(f"Downloaded {len(audio_bytes):,} bytes in {download_us:.0f} µs")
@@ -40,7 +41,7 @@ def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
     # Warmup run
     print("Warmup run...")
     try:
-        audio_array, timing = processor.process_audio_from_bytes(
+        audio_array, timing = await processor.process_audio_from_bytes(
             audio_bytes, audio_config
         )
         print(f"Warmup successful - {timing}")
@@ -56,7 +57,7 @@ def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
     for i in range(iterations):
         start = time.perf_counter()
         try:
-            result, timing = processor.process_audio_from_bytes(
+            result, timing = await processor.process_audio_from_bytes(
                 audio_bytes, audio_config
             )
             end = time.perf_counter()
@@ -106,7 +107,7 @@ def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
         return None, None
 
 
-def main():
+async def main():
     """Run benchmarks comparing pipes vs tempfiles."""
     processor = truss_transfer.MultimodalProcessor(timeout_secs=300)
 
@@ -118,12 +119,12 @@ def main():
         print(f"{'#' * 60}")
 
         # Benchmark with pipes
-        pipe_avg, pipe_std, pipe_samples, pipe_timing = benchmark_method(
+        pipe_avg, pipe_std, pipe_samples, pipe_timing = await benchmark_method(
             processor, url, f"{test_name} (pipes)", use_pipes=False, iterations=5
         )
 
         # Benchmark with tempfiles
-        temp_avg, temp_std, temp_samples, temp_timing = benchmark_method(
+        temp_avg, temp_std, temp_samples, temp_timing = await benchmark_method(
             processor, url, f"{test_name} (tempfile)", use_pipes=False, iterations=5
         )
 
@@ -179,4 +180,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

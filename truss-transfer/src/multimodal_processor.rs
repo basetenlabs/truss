@@ -3,7 +3,6 @@ use numpy::PyArray1;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use reqwest::blocking::Client;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::Command;
@@ -281,11 +280,10 @@ fn process_audio(
 }
 
 #[pyclass]
-#[derive(Clone)]
 pub struct MultimodalProcessor {
     #[pyo3(get, set)]
     pub timeout_secs: u64,
-    client: Client,
+    async_client: reqwest::Client,
 }
 
 #[pymethods]
@@ -295,148 +293,194 @@ impl MultimodalProcessor {
     pub fn new(timeout_secs: u64) -> Self {
         Self {
             timeout_secs,
-            client: Client::new(),
+            async_client: reqwest::Client::new(),
         }
     }
 
     #[pyo3(signature = (url, audio_config, /, headers=None))]
-    pub fn process_audio_from_url(
+    pub fn process_audio_from_url<'py>(
         &self,
-        py: Python,
+        py: Python<'py>,
         url: String,
         audio_config: Bound<'_, AudioConfig>,
         headers: Option<Bound<'_, Headers>>,
-    ) -> PyResult<(Py<PyArray1<f32>>, Py<TimingInfo>)> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         warn_if_ffmpeg_not_available();
         let config = audio_config.borrow().build();
 
         let headers_map: Option<HashMap<String, String>> =
             headers.map(|headers_obj| headers_obj.borrow().build());
 
-        let (processed, download_us) = py
-            .allow_threads(|| {
-                let download_start = Instant::now();
-                let mut request = self.client.get(&url);
+        let async_client = self.async_client.clone();
 
-                if let Some(ref hdrs) = headers_map {
-                    for (key, value) in hdrs {
-                        request = request.header(key, value);
-                    }
+        let future = async move {
+            let download_start = Instant::now();
+
+            let mut request = async_client.get(&url);
+
+            if let Some(ref hdrs) = headers_map {
+                for (key, value) in hdrs {
+                    request = request.header(key, value);
                 }
+            }
 
-                let response = request
-                    .send()
-                    .map_err(|e| format!("Download failed: {}", e))?;
+            let response = request
+                .send()
+                .await
+                .map_err(|e| PyException::new_err(format!("Download failed: {}", e)))?;
 
-                let response = response
-                    .error_for_status()
-                    .map_err(|e| format!("HTTP error: {}", e))?;
+            let response = response
+                .error_for_status()
+                .map_err(|e| PyException::new_err(format!("HTTP error: {}", e)))?;
 
-                let audio_bytes = response
-                    .bytes()
-                    .map_err(|e| format!("Failed to read bytes: {}", e))?
-                    .to_vec();
+            let audio_bytes = response
+                .bytes()
+                .await
+                .map_err(|e| PyException::new_err(format!("Failed to read bytes: {}", e)))?;
 
-                let download_us = download_start.elapsed().as_secs_f64() * 1_000_000.0;
+            let download_us = download_start.elapsed().as_secs_f64() * 1_000_000.0;
 
-                let processed = process_audio(&audio_bytes, &config)?;
+            let processed = process_audio(&audio_bytes, &config)
+                .map_err(|e| PyException::new_err(e))?;
 
-                Ok((processed, download_us))
+            let timing = TimingInfo {
+                total_us: processed.timing.total_us,
+                download_us,
+                processing_us: processed.timing.processing_us,
+            };
+
+            Python::with_gil(|py| {
+                let numpy_array = PyArray1::from_vec(py, processed.samples);
+                let timing_py = Py::new(py, timing)?;
+                #[allow(deprecated)]
+                let numpy_obj = numpy_array.into_py(py);
+                #[allow(deprecated)]
+                let timing_obj = timing_py.into_py(py);
+                let tuple = (numpy_obj, timing_obj).into_pyobject(py)?;
+                #[allow(deprecated)]
+                Ok::<PyObject, PyErr>(tuple.into_py(py))
             })
-            .map_err(|e: String| PyException::new_err(e))?;
-
-        let timing = TimingInfo {
-            total_us: processed.timing.total_us,
-            download_us,
-            processing_us: processed.timing.processing_us,
         };
 
-        let numpy_array = PyArray1::from_vec(py, processed.samples);
-        let timing_py = Py::new(py, timing)?;
-        Ok((numpy_array.into(), timing_py))
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
     #[pyo3(signature = (encoded, audio_config))]
-    pub fn process_audio_from_base64(
+    pub fn process_audio_from_base64<'py>(
         &self,
-        py: Python,
+        py: Python<'py>,
         encoded: String,
         audio_config: Bound<'_, AudioConfig>,
-    ) -> PyResult<(Py<PyArray1<f32>>, Py<TimingInfo>)> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         warn_if_ffmpeg_not_available();
         let config = audio_config.borrow().build();
 
-        let processed = py
-            .allow_threads(|| {
-                let audio_bytes = decode_base64(&encoded)?;
+        let future = async move {
+            let audio_bytes = decode_base64(&encoded)
+                .map_err(|e| PyException::new_err(e))?;
 
-                process_audio(&audio_bytes, &config)
+            let processed = process_audio(&audio_bytes, &config)
+                .map_err(|e| PyException::new_err(e))?;
+
+            Python::with_gil(|py| {
+                let numpy_array = PyArray1::from_vec(py, processed.samples);
+                let timing_py = Py::new(py, processed.timing)?;
+                #[allow(deprecated)]
+                let numpy_obj = numpy_array.into_py(py);
+                #[allow(deprecated)]
+                let timing_obj = timing_py.into_py(py);
+                let tuple = (numpy_obj, timing_obj).into_pyobject(py)?;
+                #[allow(deprecated)]
+                Ok::<PyObject, PyErr>(tuple.into_py(py))
             })
-            .map_err(|e: String| PyException::new_err(e))?;
+        };
 
-        let numpy_array = PyArray1::from_vec(py, processed.samples);
-        let timing_py = Py::new(py, processed.timing)?;
-        Ok((numpy_array.into(), timing_py))
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
     #[pyo3(signature = (audio_bytes, audio_config))]
-    pub fn process_audio_from_bytes(
+    pub fn process_audio_from_bytes<'py>(
         &self,
-        py: Python,
+        py: Python<'py>,
         audio_bytes: Vec<u8>,
         audio_config: Bound<'_, AudioConfig>,
-    ) -> PyResult<(Py<PyArray1<f32>>, Py<TimingInfo>)> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         warn_if_ffmpeg_not_available();
         let config = audio_config.borrow().build();
 
-        let processed = py
-            .allow_threads(|| process_audio(&audio_bytes, &config))
-            .map_err(|e: String| PyException::new_err(e))?;
+        let future = async move {
+            let processed = process_audio(&audio_bytes, &config)
+                .map_err(|e| PyException::new_err(e))?;
 
-        let numpy_array = PyArray1::from_vec(py, processed.samples);
-        let timing_py = Py::new(py, processed.timing)?;
-        Ok((numpy_array.into(), timing_py))
+            Python::with_gil(|py| {
+                let numpy_array = PyArray1::from_vec(py, processed.samples);
+                let timing_py = Py::new(py, processed.timing)?;
+                #[allow(deprecated)]
+                let numpy_obj = numpy_array.into_py(py);
+                #[allow(deprecated)]
+                let timing_obj = timing_py.into_py(py);
+                let tuple = (numpy_obj, timing_obj).into_pyobject(py)?;
+                #[allow(deprecated)]
+                Ok::<PyObject, PyErr>(tuple.into_py(py))
+            })
+        };
+
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
     #[pyo3(signature = (url, /, headers=None))]
-    pub fn download_bytes(
+    pub fn download_bytes<'py>(
         &self,
-        py: Python,
+        py: Python<'py>,
         url: String,
         headers: Option<Bound<'_, Headers>>,
-    ) -> PyResult<Py<PyBytes>> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let headers_map: Option<HashMap<String, String>> =
             headers.map(|headers_obj| headers_obj.borrow().build());
 
-        let bytes = py
-            .allow_threads(|| {
-                let mut request = self.client.get(&url);
+        let async_client = self.async_client.clone();
 
-                if let Some(ref hdrs) = headers_map {
-                    for (key, value) in hdrs {
-                        request = request.header(key, value);
-                    }
+        let future = async move {
+            let mut request = async_client.get(&url);
+
+            if let Some(ref hdrs) = headers_map {
+                for (key, value) in hdrs {
+                    request = request.header(key, value);
                 }
+            }
 
-                request
-                    .send()
-                    .and_then(|resp| resp.bytes())
-                    .map_err(|e| format!("Download failed: {}", e))
+            let response = request
+                .send()
+                .await
+                .map_err(|e| PyException::new_err(format!("Download failed: {}", e)))?;
+
+            let response = response
+                .error_for_status()
+                .map_err(|e| PyException::new_err(format!("HTTP error: {}", e)))?;
+
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| PyException::new_err(format!("Failed to read bytes: {}", e)))?;
+
+            Python::with_gil(|py| {
+                let py_bytes = PyBytes::new(py, &bytes);
+                Ok(py_bytes.unbind())
             })
-            .map_err(PyException::new_err)?;
+        };
 
-        Ok(PyBytes::new(py, &bytes).into())
+        pyo3_async_runtimes::tokio::future_into_py(py, future)
     }
 
     #[pyo3(signature = (source_type, source_data, audio_config, /, headers=None))]
-    pub fn process_audio(
+    pub fn process_audio<'py>(
         &self,
-        py: Python,
+        py: Python<'py>,
         source_type: String,
         source_data: PyObject,
         audio_config: Bound<'_, AudioConfig>,
         headers: Option<Bound<'_, Headers>>,
-    ) -> PyResult<(Py<PyArray1<f32>>, Py<TimingInfo>)> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         warn_if_ffmpeg_not_available();
         match source_type.as_str() {
             "url" => {

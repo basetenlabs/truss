@@ -14,6 +14,7 @@ chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 bytes = "1.5"
 pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
+pyo3-async-runtimes = { version = "0.24", features = ["tokio-runtime"] }
 numpy = "0.24"
 base64 = "0.22"
 tempfile = "3.19"

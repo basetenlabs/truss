@@ -3,6 +3,7 @@
 Compare Rust truss_transfer vs ffmpeg-python for audio processing.
 """
 
+import asyncio
 import tempfile
 import time
 
@@ -15,7 +16,7 @@ processor = truss_transfer.MultimodalProcessor()
 session = requests.Session()
 
 
-def process_with_truss_transfer(audio_url, sample_rate=16000, channels=1):
+async def process_with_truss_transfer(audio_url, sample_rate=16000, channels=1):
     """Process audio using Rust truss_transfer including download."""
     audio_config = (
         truss_transfer.AudioConfig()
@@ -24,7 +25,7 @@ def process_with_truss_transfer(audio_url, sample_rate=16000, channels=1):
     )
 
     start = time.perf_counter()
-    result, timing = processor.process_audio_from_url(audio_url, audio_config)
+    result, timing = await processor.process_audio_from_url(audio_url, audio_config)
     end = time.perf_counter()
 
     return result, timing, (end - start) * 1_000_000
@@ -69,7 +70,7 @@ def process_with_ffmpeg_python(audio_url, sample_rate=16000, channels=1):
             raise ValueError(f"ffmpeg-python failed: {e}")
 
 
-def benchmark_comparison(audio_url, sample_rate=16000, channels=1, iterations=5):
+async def benchmark_comparison(audio_url, sample_rate=16000, channels=1, iterations=5):
     """Compare truss_transfer vs ffmpeg-python."""
 
     print(f"\n{'=' * 70}")
@@ -88,7 +89,7 @@ def benchmark_comparison(audio_url, sample_rate=16000, channels=1, iterations=5)
     truss_samples = []
 
     for i in range(iterations):
-        result, timing, elapsed = process_with_truss_transfer(
+        result, timing, elapsed = await process_with_truss_transfer(
             audio_url, sample_rate, channels
         )
 
@@ -174,7 +175,7 @@ def benchmark_comparison(audio_url, sample_rate=16000, channels=1, iterations=5)
     }
 
 
-def main():
+async def main():
     """Run comparison benchmarks."""
 
     # Test URLs
@@ -191,7 +192,9 @@ def main():
         print(f"# Testing: {test_name}")
         print(f"{'#' * 70}")
 
-        metrics = benchmark_comparison(url, sample_rate=16000, channels=1, iterations=5)
+        metrics = await benchmark_comparison(
+            url, sample_rate=16000, channels=1, iterations=5
+        )
         results[test_name] = metrics
 
     # Summary
@@ -210,4 +213,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
