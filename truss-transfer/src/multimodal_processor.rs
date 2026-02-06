@@ -567,7 +567,7 @@ impl MultimodalProcessor {
             .map_err(|e: String| PyException::new_err(e))?;
 
         let timing = TimingInfo {
-            total_us: processed.timing.total_us,
+            total_us: download_us + processed.timing.total_us,
             download_us,
             processing_us: processed.timing.processing_us,
             format_detection_us: processed.timing.format_detection_us,

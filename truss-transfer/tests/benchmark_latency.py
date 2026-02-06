@@ -26,8 +26,12 @@ def benchmark_method(processor, url, method_name, use_pipes, iterations=5):
 
     # Download audio once
     print("Downloading audio...")
+    time_start = time.perf_counter()
     audio_bytes = processor.download_bytes(url)
-    print(f"Downloaded {len(audio_bytes):,} bytes")
+    time_end = time.perf_counter()
+    print(
+        f"Downloaded {len(audio_bytes):,} bytes in {(time_end - time_start) * 1_000:.0f} ms"
+    )
 
     # Create config with specified pipe setting
     audio_config = truss_transfer.AudioConfig()
