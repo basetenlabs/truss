@@ -203,7 +203,7 @@ def test_whoami_with_show_oidc():
 
     assert result.exit_code == 0
     assert "test_workspace\\user@example.com" in result.output
-    assert "OIDC Information" in result.output
+    assert "OIDC Configuration for Workload Identity" in result.output
     assert "PJAd5Q0" in result.output
     assert "wgeyxoq (Default Team)" in result.output
     assert "abc123 (ML Team)" in result.output
