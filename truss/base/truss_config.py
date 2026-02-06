@@ -255,10 +255,11 @@ class OIDCAuthFieldsMixin(custom_types.ConfigModel):
         description="GCP workload identity provider for OIDC authentication.",
     )
 
-    def _require_fields(self, *fields: str) -> None:
+    def _require_fields(self, auth_method: str, *fields: str) -> None:
         """Validate that all specified fields have non-empty values.
 
         Args:
+            auth_method: The authentication method being validated (for error messages)
             fields: Field names to check for presence
 
         Raises:
@@ -267,13 +268,14 @@ class OIDCAuthFieldsMixin(custom_types.ConfigModel):
         missing = [f for f in fields if getattr(self, f) in (None, "")]
         if missing:
             raise ValueError(
-                f"{', '.join(missing)} must be provided when auth_method is {self.auth_method.value}"
+                f"{', '.join(missing)} must be provided when auth_method is {auth_method}"
             )
 
-    def _forbid_fields(self, *fields: str) -> None:
+    def _forbid_fields(self, auth_method: str, *fields: str) -> None:
         """Validate that all specified fields are empty or None.
 
         Args:
+            auth_method: The authentication method being validated (for error messages)
             fields: Field names to check for absence
 
         Raises:
@@ -282,18 +284,21 @@ class OIDCAuthFieldsMixin(custom_types.ConfigModel):
         present = [f for f in fields if getattr(self, f) not in (None, "")]
         if present:
             raise ValueError(
-                f"{', '.join(present)} cannot be specified when auth_method is {self.auth_method.value}"
+                f"{', '.join(present)} cannot be specified when auth_method is {auth_method}"
             )
 
-    def _validate_fields(self, required: list[str], forbidden: list[str]) -> None:
+    def _validate_fields(
+        self, auth_method: str, required: list[str], forbidden: list[str]
+    ) -> None:
         """Validate that required fields are present and forbidden fields are absent.
 
         Args:
+            auth_method: The authentication method being validated (for error messages)
             required: List of field names that must have values
             forbidden: List of field names that must be empty/None
         """
-        self._require_fields(*required)
-        self._forbid_fields(*forbidden)
+        self._require_fields(auth_method, *required)
+        self._forbid_fields(auth_method, *forbidden)
 
 
 class WeightsAuth(OIDCAuthFieldsMixin):
@@ -324,6 +329,7 @@ class WeightsAuth(OIDCAuthFieldsMixin):
     def _validate_auth_fields(self) -> "WeightsAuth":
         if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
             self._validate_fields(
+                self.auth_method.value,
                 required=[WEIGHTS_AUTH_SECRET_NAME_PARAM],
                 forbidden=[
                     AWS_OIDC_ROLE_ARN_PARAM,
@@ -334,6 +340,7 @@ class WeightsAuth(OIDCAuthFieldsMixin):
             )
         elif self.auth_method == WeightsAuthMethod.AWS_OIDC:
             self._validate_fields(
+                self.auth_method.value,
                 required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
                 forbidden=[
                     WEIGHTS_AUTH_SECRET_NAME_PARAM,
@@ -343,6 +350,7 @@ class WeightsAuth(OIDCAuthFieldsMixin):
             )
         elif self.auth_method == WeightsAuthMethod.GCP_OIDC:
             self._validate_fields(
+                self.auth_method.value,
                 required=[
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
@@ -841,6 +849,7 @@ class DockerAuthSettings(OIDCAuthFieldsMixin):
     def validate_auth_fields(self) -> "DockerAuthSettings":
         if self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
             self._validate_fields(
+                self.auth_method.value,
                 required=[DOCKER_AUTH_SECRET_NAME_PARAM],
                 forbidden=[
                     AWS_OIDC_ROLE_ARN_PARAM,
@@ -851,6 +860,7 @@ class DockerAuthSettings(OIDCAuthFieldsMixin):
             )
         elif self.auth_method == DockerAuthType.AWS_OIDC:
             self._validate_fields(
+                self.auth_method.value,
                 required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
                 forbidden=[
                     DOCKER_AUTH_SECRET_NAME_PARAM,
@@ -860,6 +870,7 @@ class DockerAuthSettings(OIDCAuthFieldsMixin):
             )
         elif self.auth_method == DockerAuthType.GCP_OIDC:
             self._validate_fields(
+                self.auth_method.value,
                 required=[
                     GCP_OIDC_SERVICE_ACCOUNT_PARAM,
                     GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
