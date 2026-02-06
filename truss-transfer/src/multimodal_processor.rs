@@ -250,7 +250,8 @@ impl MultimodalProcessor {
     ) -> PyResult<Py<PyArray1<f32>>> {
         let config = audio_config.borrow().build();
 
-        let headers_map: Option<HashMap<String, String>> = headers.map(|headers_obj| headers_obj.borrow().build());
+        let headers_map: Option<HashMap<String, String>> =
+            headers.map(|headers_obj| headers_obj.borrow().build());
 
         let samples = py
             .allow_threads(|| {
@@ -328,7 +329,8 @@ impl MultimodalProcessor {
         url: String,
         headers: Option<Bound<'_, Headers>>,
     ) -> PyResult<Py<PyBytes>> {
-        let headers_map: Option<HashMap<String, String>> = headers.map(|headers_obj| headers_obj.borrow().build());
+        let headers_map: Option<HashMap<String, String>> =
+            headers.map(|headers_obj| headers_obj.borrow().build());
 
         let bytes = py
             .allow_threads(|| {
