@@ -298,6 +298,7 @@ impl MultimodalProcessor {
         Ok(numpy_array.into())
     }
 
+    #[pyo3(signature = (encoded, audio_config))]
     pub fn process_audio_from_base64(
         &self,
         py: Python,
@@ -319,6 +320,7 @@ impl MultimodalProcessor {
         Ok(numpy_array.into())
     }
 
+    #[pyo3(signature = (audio_bytes, audio_config))]
     pub fn process_audio_from_bytes(
         &self,
         py: Python,
