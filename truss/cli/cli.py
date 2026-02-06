@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Optional, cast
 
+import rich.table
 import rich_click as click
 from rich import progress
 
@@ -135,6 +136,40 @@ def upgrade(ctx: click.Context, version: Optional[str]) -> None:
     self_upgrade.run_upgrade(version, interactive=interactive)
 
 
+def _create_oidc_table(oidc_info) -> rich.table.Table:
+    """Creates an OIDC information table."""
+    table = rich.table.Table(
+        show_header=False,
+        title="OIDC Configuration for Workload Identity",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column(style="cyan", min_width=20)
+    table.add_column(min_width=40)
+    table.add_row("Org ID", oidc_info.org_id)
+
+    if oidc_info.teams:
+        teams_display = ", ".join(
+            f"{team.id} ({team.name})" for team in oidc_info.teams
+        )
+        table.add_row("Teams", teams_display)
+    else:
+        table.add_row("Teams", "[ ]")
+
+    table.add_row("Issuer", oidc_info.issuer)
+    table.add_row("Audience", oidc_info.audience)
+    table.add_row("Workload Type Options", ", ".join(oidc_info.workload_types))
+
+    table.add_section()
+    table.add_row(
+        "Subject Claim Format",
+        "v=1:org=<org_id>:team=<team_id>:model=<model_id>:"
+        "deployment=<deployment_id>:env=<environment>:type=<workload_type>",
+    )
+
+    return table
+
+
 @truss_cli.command()
 @click.option(
     "--remote",
@@ -142,8 +177,14 @@ def upgrade(ctx: click.Context, version: Optional[str]) -> None:
     required=False,
     help="Name of the remote in .trussrc to check whoami.",
 )
+@click.option(
+    "--show-oidc",
+    is_flag=True,
+    default=False,
+    help="Show OIDC configuration for workload identity.",
+)
 @common.common_options()
-def whoami(remote: Optional[str]):
+def whoami(remote: Optional[str], show_oidc: bool):
     """
     Shows user information and exit.
     """
@@ -155,6 +196,15 @@ def whoami(remote: Optional[str]):
     user = whoami(remote)
 
     console.print(f"{user.workspace_name}\\{user.user_email}")
+
+    if show_oidc:
+        remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+        oidc_info = remote_provider.get_oidc_info()
+
+        console.print()
+        table = _create_oidc_table(oidc_info)
+        console.print(table)
+        # TODO(danielleef): Reference docs here once they're ready
 
 
 @truss_cli.command()

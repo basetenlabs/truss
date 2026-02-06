@@ -113,6 +113,23 @@ class BasetenRemote(TrussRemote):
         user_email = resp["data"]["user"]["email"]
         return RemoteUser(workspace_name, user_email)
 
+    def get_oidc_info(self) -> custom_types.OidcInfo:
+        """Get OIDC configuration information for workload identity."""
+        org_id = self._api.get_organization_id()
+        teams = self._api.get_teams()
+        team_info = [
+            custom_types.OidcTeamInfo(id=team.id, name=team.name)
+            for team in teams.values()
+        ]
+
+        return custom_types.OidcInfo(
+            org_id=org_id,
+            teams=team_info,
+            issuer="https://oidc.baseten.co",
+            audience="oidc.baseten.co",
+            workload_types=["model_container", "model_build"],
+        )
+
     # Validate and finalize options.
     # Upload Truss files to S3 and return S3 key.
     def _prepare_push(
