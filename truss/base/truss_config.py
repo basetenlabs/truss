@@ -238,8 +238,8 @@ class WeightsAuthMethod(str, enum.Enum):
     GCP_OIDC = "GCP_OIDC"
 
 
-class OIDCAuthFieldsMixin(custom_types.ConfigModel):
-    """Mixin for common OIDC authentication fields used across different auth configurations."""
+class AuthFieldsMixin(custom_types.ConfigModel):
+    """Mixin for common authentication fields used across different auth configurations."""
 
     aws_oidc_role_arn: Optional[str] = pydantic.Field(
         default=None, description="AWS IAM role ARN for OIDC authentication."
@@ -301,7 +301,7 @@ class OIDCAuthFieldsMixin(custom_types.ConfigModel):
         self._forbid_fields(auth_method, *forbidden)
 
 
-class WeightsAuth(OIDCAuthFieldsMixin):
+class WeightsAuth(AuthFieldsMixin):
     """Authentication configuration for a weights source.
 
     This can be used to specify OIDC-based authentication for cloud storage sources,
@@ -826,7 +826,7 @@ class DockerAuthType(str, enum.Enum):
     GCP_OIDC = "GCP_OIDC"
 
 
-class DockerAuthSettings(OIDCAuthFieldsMixin):
+class DockerAuthSettings(AuthFieldsMixin):
     """Provides information about how to authenticate to the docker registry containing
     the custom base image."""
 
