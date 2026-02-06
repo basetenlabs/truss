@@ -474,3 +474,91 @@ def test_push_wait_with_tail_fails():
         result.exception
         and "Cannot use --wait with --tail" in str(result.exception.__context__)
     )
+
+
+def test_push_watch_enters_watch_mode_on_deploying_status(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --watch enters watch mode early when status is LOADING_MODEL,
+    without waiting for ACTIVE."""
+    runner = CliRunner()
+
+    mock_service = MagicMock()
+    mock_service.is_draft = True
+    mock_service.logs_url = "https://example.com/logs"
+    # Simulate: BUILDING -> LOADING_MODEL — never reaches ACTIVE
+    mock_service.poll_deployment_status.return_value = iter(
+        ["BUILDING", "LOADING_MODEL"]
+    )
+    remote.push = Mock(return_value=mock_service)
+
+    mock_resolve = Mock(
+        return_value=(
+            {"id": "model_id", "name": "model_name"},
+            [{"id": "version_id", "is_draft": True}],
+        )
+    )
+    mock_start_watch = Mock()
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            with patch("truss.cli.cli.resolve_model_for_watch", mock_resolve):
+                with patch("truss.cli.cli._start_watch_mode", mock_start_watch):
+                    result = runner.invoke(
+                        truss_cli,
+                        [
+                            "push",
+                            str(custom_model_truss_dir_with_pre_and_post),
+                            "--remote",
+                            "baseten",
+                            "--model-name",
+                            "model_name",
+                            "--watch",
+                        ],
+                    )
+
+    assert result.exit_code == 0
+    mock_start_watch.assert_called_once()
+
+
+def test_push_watch_still_exits_on_deploy_failed(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --watch still sys.exit(1) on a real failure like DEPLOY_FAILED."""
+    runner = CliRunner()
+
+    mock_service = MagicMock()
+    mock_service.is_draft = True
+    mock_service.logs_url = "https://example.com/logs"
+    mock_service.poll_deployment_status.return_value = iter(
+        ["BUILDING", "DEPLOY_FAILED"]
+    )
+    remote.push = Mock(return_value=mock_service)
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "model_name",
+                    "--watch",
+                ],
+            )
+
+    # Should still exit with error on a hard failure
+    assert result.exit_code == 1

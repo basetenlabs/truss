@@ -886,6 +886,16 @@ def push(
                     console.print("Deployment succeeded.", style="bold green")
                     break
 
+                # For --watch (dev deployments), enter watch mode early
+                # once past BUILDING, so user can iterate on code
+                if watch_after_push and deployment_status in ("LOADING_MODEL"):
+                    console.print(
+                        f"Deployment status: {deployment_status}. "
+                        "Entering watch mode early for faster iteration...",
+                        style="bold blue",
+                    )
+                    break
+
                 if deployment_status not in DEPLOYING_STATUSES:
                     console.print(
                         f"Deployment failed with status {deployment_status}.",
