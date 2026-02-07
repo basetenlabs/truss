@@ -303,11 +303,19 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
         monitor_handle.abort();
 
         match copy_result {
-            Ok(_) => debug!("Successfully copied to incomplete cache file."),
-            Err(e) => {
+            Ok(inner_result) => match inner_result {
+                Ok(_) => debug!("Successfully copied to incomplete cache file."),
+                Err(e) => {
+                    warn!(
+                        "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
+                        e
+                    );
+                    return Ok(());
+                }
+            },
+            Err(_) => {
                 warn!(
-                    "Failed to copy local file to incomplete cache file: {}. Maybe b10cache has no storage or permission issues.",
-                    e
+                    "Timed out after 15 minutes while copying local file to incomplete cache file."
                 );
                 return Ok(());
             }
@@ -365,19 +373,6 @@ pub async fn handle_write_b10cache(download_path: &Path, cache_path: &Path) -> R
             }
         }
     }
-
-    // Create a symlink from the cache file to the original download location.
-    info!(
-        "Creating symlink from cache file {:?} to local file path {:?}",
-        cache_path, download_path
-    );
-    create_symlink_or_skip(cache_path, download_path, size)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to create symlink from cache file {cache_path:?} to local file path {download_path:?}"
-            )
-        })?;
 
     info!(
         "Successfully handled b10cache for file: {:?}",
