@@ -1,6 +1,6 @@
 [package]
 name = "truss_transfer"
-version = "0.0.39"
+version = "0.0.41"
 edition = "2021"
 
 [lib]
@@ -14,10 +14,14 @@ chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 bytes = "1.5"
 pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
+pyo3-async-runtimes = { version = "0.24", features = ["tokio-runtime"] }
+numpy = "0.24"
+base64 = "0.22"
+tempfile = "3.19"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "fs"] }
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "fs", "process"] }
 rand = "0.9"
 fs2 = "0.4"
 reqwest = { version = "0.12.23", default-features = false, features = ["blocking", "stream", "http2", "rustls-tls", "json"] }
