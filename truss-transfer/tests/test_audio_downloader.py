@@ -15,6 +15,14 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def url_available(url, timeout=5):
+    try:
+        response = requests.head(url, timeout=timeout)
+        return response.status_code == 200
+    except requests.RequestException:
+        return False
+
+
 def test_processor_creation():
     """Test that MultimodalProcessor can be created."""
     print("Testing MultimodalProcessor creation...")
@@ -166,6 +174,7 @@ async def test_process_audio():
 async def test_process_audio_with_base64():
     """Test process_audio with base64 source."""
     print("Testing process_audio with base64 source...")
+
     processor = truss_transfer.MultimodalProcessor()
     audio_config = truss_transfer.AudioConfig()
 
@@ -227,6 +236,8 @@ def test_audio_config_builder():
 async def test_headers_builder():
     """Test Headers builder pattern."""
     print("Testing Headers builder pattern...")
+    if not url_available(AUDIO_URL):
+        pytest.skip(f"Skipping test because {AUDIO_URL} is not available")
     headers = truss_transfer.Headers()
     headers = headers.add("User-Agent", "truss-transfer-test")
     headers = headers.add("Accept", "audio/mpeg")
@@ -245,6 +256,8 @@ async def test_headers_builder():
 async def test_audio_config_with_raw_ffmpeg():
     """Test AudioConfig with raw ffmpeg commands."""
     print("Testing AudioConfig with raw ffmpeg commands...")
+    if not url_available(AUDIO_URL):
+        pytest.skip(f"Skipping test because {AUDIO_URL} is not available")
     audio_config = (
         truss_transfer.AudioConfig()
         .with_sample_rate(16000)
@@ -269,6 +282,8 @@ async def test_audio_config_with_raw_ffmpeg():
 async def test_audio_config_per_call():
     """Test AudioConfig can be passed per call."""
     print("Testing AudioConfig per call...")
+    if not url_available(AUDIO_URL):
+        pytest.skip(f"Skipping test because {AUDIO_URL} is not available")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_config = truss_transfer.AudioConfig()
 
@@ -298,6 +313,8 @@ async def test_audio_config_per_call():
 async def test_audio_config_with_bytes():
     """Test AudioConfig with bytes source."""
     print("Testing AudioConfig with bytes source...")
+    if not url_available(AUDIO_URL):
+        pytest.skip(f"Skipping test because {AUDIO_URL} is not available")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
 
     audio_bytes = await processor.download_bytes(AUDIO_URL)
@@ -323,6 +340,8 @@ async def test_audio_config_with_bytes():
 async def test_audio_config_use_pipes_none_auto():
     """Test auto-detection with use_pipes=None (default)."""
     print("Testing use_pipes=None (auto-detect)...")
+    if not url_available(AUDIO_URL):
+        pytest.skip(f"Skipping test because {AUDIO_URL} is not available")
     processor = truss_transfer.MultimodalProcessor()
     audio_config = truss_transfer.AudioConfig()  # Default is None
 
@@ -341,6 +360,8 @@ async def test_audio_config_use_pipes_none_auto():
 async def test_process_m4a_from_url():
     """Test M4A audio processing from URL."""
     print(f"Testing M4A audio processing from {AUDI_M4A}...")
+    if not url_available(AUDI_M4A):
+        pytest.skip(f"Skipping test because {AUDI_M4A} is not available")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_config = truss_transfer.AudioConfig()
     audio_array, timing = await processor.process_audio_from_url(AUDI_M4A, audio_config)
@@ -358,6 +379,8 @@ async def test_process_m4a_from_url():
 async def test_process_m4a_from_bytes():
     """Test M4A audio processing from bytes."""
     print("Testing M4A audio processing from bytes...")
+    if not url_available(AUDI_M4A):
+        pytest.skip(f"Skipping test because {AUDI_M4A} is not available")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_config = truss_transfer.AudioConfig()
 
@@ -381,6 +404,8 @@ async def test_concurrent_downloads():
     """Test that concurrent downloads provide parallelism benefits."""
 
     print("Testing concurrent downloads for parallelism...")
+    if not url_available(AUDIO_URL):
+        pytest.skip(f"Skipping test because {AUDIO_URL} is not available")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
     audio_config = truss_transfer.AudioConfig()
 
