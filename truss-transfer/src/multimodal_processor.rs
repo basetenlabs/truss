@@ -14,7 +14,6 @@ use tempfile::NamedTempFile;
 enum AudioInput {
     Bytes(Vec<u8>),
     Stream(reqwest::Response),
-    Base64(String),
 }
 
 static FFMPEG_AVAILABLE: OnceLock<bool> = OnceLock::new();
@@ -218,97 +217,95 @@ async fn process_audio(
     config: &AudioProcessorConfig,
 ) -> Result<ProcessedAudio, String> {
     let start = Instant::now();
-    let mut temp_file =
-        NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {}", e))?;
 
-    match input {
-        AudioInput::Bytes(audio_bytes) => {
-            temp_file
-                .write_all(&audio_bytes)
-                .map_err(|e| format!("Failed to write to temp file: {}", e))?;
-            temp_file
-                .flush()
-                .map_err(|e| format!("Failed to flush temp file: {}", e))?;
-        }
+    let audio_bytes = match input {
+        AudioInput::Bytes(bytes) => bytes,
         AudioInput::Stream(response) => {
             let mut stream = response.bytes_stream();
+            let mut bytes = Vec::new();
             while let Some(chunk) = stream
                 .try_next()
                 .await
                 .map_err(|e| format!("Failed to read stream chunk: {}", e))?
             {
-                temp_file
-                    .write_all(&chunk)
-                    .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+                bytes.extend_from_slice(&chunk);
             }
-            temp_file
-                .flush()
-                .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+            bytes
         }
-        AudioInput::Base64(encoded) => {
-            let audio_bytes = decode_base64(&encoded)?;
-            temp_file
-                .write_all(&audio_bytes)
-                .map_err(|e| format!("Failed to write to temp file: {}", e))?;
-            temp_file
-                .flush()
-                .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+    };
+
+    let config = config.clone();
+    let (samples, processing_us) = tokio::task::spawn_blocking(move || {
+        let blocking_start = Instant::now();
+        let mut temp_file =
+            NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {}", e))?;
+
+        temp_file
+            .write_all(&audio_bytes)
+            .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+        temp_file
+            .flush()
+            .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+
+        let input_path = temp_file.path();
+
+        let mut ffmpeg_cmd = Command::new("ffmpeg");
+        ffmpeg_cmd.arg("-i").arg(input_path);
+        ffmpeg_cmd.arg("-f").arg(&config.format);
+
+        if let Some(codec) = &config.codec {
+            ffmpeg_cmd.arg("-acodec").arg(codec);
         }
-    }
 
-    let input_path = temp_file.path();
+        if let Some(channels) = config.channels {
+            ffmpeg_cmd.arg("-ac").arg(channels.to_string());
+        }
 
-    let mut ffmpeg_cmd = Command::new("ffmpeg");
-    ffmpeg_cmd.arg("-i").arg(input_path);
-    ffmpeg_cmd.arg("-f").arg(&config.format);
+        if let Some(sample_rate) = config.sample_rate {
+            ffmpeg_cmd.arg("-ar").arg(sample_rate.to_string());
+        }
 
-    if let Some(codec) = &config.codec {
-        ffmpeg_cmd.arg("-acodec").arg(codec);
-    }
+        if config.use_dynamic_normalization.unwrap_or(false) {
+            ffmpeg_cmd.args(["-af", "dynaudnorm"]);
+        }
 
-    if let Some(channels) = config.channels {
-        ffmpeg_cmd.arg("-ac").arg(channels.to_string());
-    }
+        for arg in &config.raw_ffmpeg_args {
+            ffmpeg_cmd.arg(arg);
+        }
 
-    if let Some(sample_rate) = config.sample_rate {
-        ffmpeg_cmd.arg("-ar").arg(sample_rate.to_string());
-    }
+        ffmpeg_cmd.arg("-y").arg("-");
 
-    if config.use_dynamic_normalization.unwrap_or(false) {
-        ffmpeg_cmd.args(["-af", "dynaudnorm"]);
-    }
+        let output = ffmpeg_cmd
+            .output()
+            .map_err(|e| format!("ffmpeg execution failed: {}", e))?;
 
-    for arg in &config.raw_ffmpeg_args {
-        ffmpeg_cmd.arg(arg);
-    }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("ffmpeg command: {:?}", ffmpeg_cmd);
+            return Err(format!("ffmpeg command line execution failed: {}", stderr));
+        }
 
-    ffmpeg_cmd.arg("-y").arg("-");
+        let audio_data = output.stdout;
+        let samples: Vec<f32> = audio_data
+            .chunks(4)
+            .map(|chunk: &[u8]| {
+                let bytes: [u8; 4] = chunk.try_into().unwrap_or([0, 0, 0, 0]);
+                f32::from_le_bytes(bytes)
+            })
+            .collect();
 
-    let output = ffmpeg_cmd
-        .output()
-        .map_err(|e| format!("ffmpeg execution failed: {}", e))?;
+        let processing_us = blocking_start.elapsed().as_secs_f64() * 1_000_000.0;
+        Ok::<(Vec<f32>, f64), String>((samples, processing_us))
+    })
+    .await
+    .map_err(|e| format!("Task join failed: {}", e))??;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("ffmpeg command: {:?}", ffmpeg_cmd);
-        return Err(format!("ffmpeg command line execution failed: {}", stderr));
-    }
-
-    let audio_data = output.stdout;
-    let samples: Vec<f32> = audio_data
-        .chunks(4)
-        .map(|chunk: &[u8]| {
-            let bytes: [u8; 4] = chunk.try_into().unwrap_or([0, 0, 0, 0]);
-            f32::from_le_bytes(bytes)
-        })
-        .collect();
-
-    let processing_us = start.elapsed().as_secs_f64() * 1_000_000.0;
+    let total_us = start.elapsed().as_secs_f64() * 1_000_000.0;
 
     Ok(ProcessedAudio {
         samples,
         timing: TimingInfo {
-            total_us: processing_us,
+            total_us,
             download_us: 0.0,
             processing_us,
         },
@@ -408,7 +405,9 @@ impl MultimodalProcessor {
         let config = audio_config.borrow().build();
 
         let future = async move {
-            let processed = process_audio(AudioInput::Base64(encoded), &config)
+            let audio_bytes = decode_base64(&encoded).map_err(|e| PyException::new_err(e))?;
+
+            let processed = process_audio(AudioInput::Bytes(audio_bytes), &config)
                 .await
                 .map_err(|e| PyException::new_err(e))?;
 
