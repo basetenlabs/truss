@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
+use futures_util::TryStreamExt;
 use numpy::PyArray1;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
@@ -9,6 +10,12 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Instant;
 use tempfile::NamedTempFile;
+
+enum AudioInput {
+    Bytes(Vec<u8>),
+    Stream(reqwest::Response),
+    Base64(String),
+}
 
 static FFMPEG_AVAILABLE: OnceLock<bool> = OnceLock::new();
 
@@ -206,19 +213,48 @@ struct ProcessedAudio {
     timing: TimingInfo,
 }
 
-fn process_audio(
-    audio_bytes: &[u8],
+async fn process_audio(
+    input: AudioInput,
     config: &AudioProcessorConfig,
 ) -> Result<ProcessedAudio, String> {
     let start = Instant::now();
     let mut temp_file =
         NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {}", e))?;
-    temp_file
-        .write_all(audio_bytes)
-        .map_err(|e| format!("Failed to write to temp file: {}", e))?;
-    temp_file
-        .flush()
-        .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+
+    match input {
+        AudioInput::Bytes(audio_bytes) => {
+            temp_file
+                .write_all(&audio_bytes)
+                .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+            temp_file
+                .flush()
+                .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+        }
+        AudioInput::Stream(response) => {
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream
+                .try_next()
+                .await
+                .map_err(|e| format!("Failed to read stream chunk: {}", e))?
+            {
+                temp_file
+                    .write_all(&chunk)
+                    .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+            }
+            temp_file
+                .flush()
+                .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+        }
+        AudioInput::Base64(encoded) => {
+            let audio_bytes = decode_base64(&encoded)?;
+            temp_file
+                .write_all(&audio_bytes)
+                .map_err(|e| format!("Failed to write to temp file: {}", e))?;
+            temp_file
+                .flush()
+                .map_err(|e| format!("Failed to flush temp file: {}", e))?;
+        }
+    }
 
     let input_path = temp_file.path();
 
@@ -261,7 +297,7 @@ fn process_audio(
     let audio_data = output.stdout;
     let samples: Vec<f32> = audio_data
         .chunks(4)
-        .map(|chunk| {
+        .map(|chunk: &[u8]| {
             let bytes: [u8; 4] = chunk.try_into().unwrap_or([0, 0, 0, 0]);
             f32::from_le_bytes(bytes)
         })
@@ -333,18 +369,14 @@ impl MultimodalProcessor {
                 .error_for_status()
                 .map_err(|e| PyException::new_err(format!("HTTP error: {}", e)))?;
 
-            let audio_bytes = response
-                .bytes()
-                .await
-                .map_err(|e| PyException::new_err(format!("Failed to read bytes: {}", e)))?;
-
             let download_us = download_start.elapsed().as_secs_f64() * 1_000_000.0;
 
-            let processed = process_audio(&audio_bytes, &config)
+            let processed = process_audio(AudioInput::Stream(response), &config)
+                .await
                 .map_err(|e| PyException::new_err(e))?;
 
             let timing = TimingInfo {
-                total_us: processed.timing.total_us,
+                total_us: processed.timing.total_us + download_us,
                 download_us,
                 processing_us: processed.timing.processing_us,
             };
@@ -376,10 +408,8 @@ impl MultimodalProcessor {
         let config = audio_config.borrow().build();
 
         let future = async move {
-            let audio_bytes = decode_base64(&encoded)
-                .map_err(|e| PyException::new_err(e))?;
-
-            let processed = process_audio(&audio_bytes, &config)
+            let processed = process_audio(AudioInput::Base64(encoded), &config)
+                .await
                 .map_err(|e| PyException::new_err(e))?;
 
             Python::with_gil(|py| {
@@ -409,7 +439,8 @@ impl MultimodalProcessor {
         let config = audio_config.borrow().build();
 
         let future = async move {
-            let processed = process_audio(&audio_bytes, &config)
+            let processed = process_audio(AudioInput::Bytes(audio_bytes), &config)
+                .await
                 .map_err(|e| PyException::new_err(e))?;
 
             Python::with_gil(|py| {
