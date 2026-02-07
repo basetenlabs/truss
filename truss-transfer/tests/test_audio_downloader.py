@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import time
 
 import numpy as np
@@ -12,6 +13,11 @@ AUDI_M4A = "https://test-audios-public.s3.us-west-2.amazonaws.com/30-sec-01-podc
 # skip if version < 0.0.40
 pytestmark = pytest.mark.skipif(
     truss_transfer.__version__ < "0.0.40", reason="Requires truss_transfer >= 0.0.40"
+)
+
+# skip if ffmpeg not available
+ffmpeg_skip = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None, reason="ffmpeg command not available"
 )
 
 
@@ -40,6 +46,7 @@ def test_processor_with_config():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_audio_from_url():
     """Test audio processing from URL."""
     print(f"Testing audio processing from {AUDIO_URL}...")
@@ -74,6 +81,7 @@ async def test_process_audio_from_url():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_audio_from_base64():
     """Test audio processing from base64."""
     print("Testing audio processing from base64...")
@@ -99,6 +107,7 @@ async def test_process_audio_from_base64():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_audio_from_bytes():
     """Test audio processing from bytes."""
     print("Testing audio processing from bytes...")
@@ -154,6 +163,7 @@ async def test_download_bytes_with_headers():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_audio():
     """Test unified process_audio method."""
     print("Testing unified process_audio method...")
@@ -171,6 +181,7 @@ async def test_process_audio():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_audio_with_base64():
     """Test process_audio with base64 source."""
     print("Testing process_audio with base64 source...")
@@ -196,6 +207,7 @@ async def test_process_audio_with_base64():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_audio_with_bytes():
     """Test process_audio with bytes source."""
     print("Testing process_audio with bytes source...")
@@ -253,6 +265,7 @@ async def test_headers_builder():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_audio_config_with_raw_ffmpeg():
     """Test AudioConfig with raw ffmpeg commands."""
     print("Testing AudioConfig with raw ffmpeg commands...")
@@ -279,6 +292,7 @@ async def test_audio_config_with_raw_ffmpeg():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_audio_config_per_call():
     """Test AudioConfig can be passed per call."""
     print("Testing AudioConfig per call...")
@@ -310,6 +324,7 @@ async def test_audio_config_per_call():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_audio_config_with_bytes():
     """Test AudioConfig with bytes source."""
     print("Testing AudioConfig with bytes source...")
@@ -337,6 +352,7 @@ async def test_audio_config_with_bytes():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_audio_config_use_pipes_none_auto():
     """Test auto-detection with use_pipes=None (default)."""
     print("Testing use_pipes=None (auto-detect)...")
@@ -357,6 +373,7 @@ async def test_audio_config_use_pipes_none_auto():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_m4a_from_url():
     """Test M4A audio processing from URL."""
     print(f"Testing M4A audio processing from {AUDI_M4A}...")
@@ -376,6 +393,7 @@ async def test_process_m4a_from_url():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_process_m4a_from_bytes():
     """Test M4A audio processing from bytes."""
     print("Testing M4A audio processing from bytes...")
@@ -400,6 +418,7 @@ async def test_process_m4a_from_bytes():
 
 
 @pytest.mark.asyncio
+@ffmpeg_skip
 async def test_concurrent_downloads():
     """Test that concurrent downloads provide parallelism benefits."""
 
