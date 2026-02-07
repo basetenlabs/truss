@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, Mock, patch
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
+from truss.remote.truss_remote import RemoteUser
 
 
 def test_push_with_grpc_transport_fails_for_development_deployment():
@@ -156,3 +158,54 @@ def test_cli_push_api_integration_deploy_timeout_minutes_propagated(
     mock_remote_factory.push.assert_called_once()
     _, push_kwargs = mock_remote_factory.push.call_args
     assert push_kwargs.get("deploy_timeout_minutes") == 1200
+
+
+def test_whoami_basic():
+    """Test basic whoami command."""
+    runner = CliRunner()
+
+    mock_user = RemoteUser("test_workspace", "user@example.com")
+
+    with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
+        with patch("truss.api.whoami", return_value=mock_user) as mock_whoami_fn:
+            result = runner.invoke(truss_cli, ["whoami", "--remote", "baseten"])
+
+    assert result.exit_code == 0
+    assert "test_workspace\\user@example.com" in result.output
+    mock_whoami_fn.assert_called_once_with("baseten")
+
+
+def test_whoami_with_show_oidc():
+    """Test whoami command with --show-oidc flag displays OIDC information."""
+    runner = CliRunner()
+
+    mock_user = RemoteUser("test_workspace", "user@example.com")
+    mock_oidc_info = OidcInfo(
+        org_id="PJAd5Q0",
+        teams=[
+            OidcTeamInfo(id="wgeyxoq", name="Default Team"),
+            OidcTeamInfo(id="abc123", name="ML Team"),
+        ],
+        issuer="https://oidc.baseten.co",
+        audience="oidc.baseten.co",
+        workload_types=["model_container", "model_build"],
+    )
+
+    mock_remote = MagicMock()
+    mock_remote.get_oidc_info.return_value = mock_oidc_info
+
+    with patch("truss.cli.remote_cli.inquire_remote_name", return_value="baseten"):
+        with patch("truss.api.whoami", return_value=mock_user):
+            with patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote):
+                result = runner.invoke(
+                    truss_cli, ["whoami", "--remote", "baseten", "--show-oidc"]
+                )
+
+    assert result.exit_code == 0
+    assert "test_workspace\\user@example.com" in result.output
+    assert "OIDC Configuration for Workload Identity" in result.output
+    assert "PJAd5Q0" in result.output
+    assert "wgeyxoq (Default Team)" in result.output
+    assert "abc123 (ML Team)" in result.output
+    assert "https://oidc.baseten.co" in result.output
+    assert "oidc.baseten.co" in result.output
