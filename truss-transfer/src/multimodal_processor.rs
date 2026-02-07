@@ -5,11 +5,11 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::collections::HashMap;
-use std::io::Write;
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Instant;
 use tempfile::NamedTempFile;
+use tokio::io::AsyncWriteExt;
 
 enum AudioInput {
     Bytes(Vec<u8>),
@@ -218,39 +218,52 @@ async fn process_audio(
 ) -> Result<ProcessedAudio, String> {
     let start = Instant::now();
 
-    let audio_bytes = match input {
-        AudioInput::Bytes(bytes) => bytes,
+    let temp_file_path = tokio::task::spawn_blocking(|| {
+        NamedTempFile::new()
+            .map(|f| f.path().to_path_buf())
+            .map_err(|e| format!("Failed to create temp file: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join failed: {}", e))??;
+
+    match input {
         AudioInput::Stream(response) => {
+            let mut file = tokio::fs::File::create(&temp_file_path)
+                .await
+                .map_err(|e| format!("Failed to create file: {}", e))?;
             let mut stream = response.bytes_stream();
-            let mut bytes = Vec::new();
             while let Some(chunk) = stream
                 .try_next()
                 .await
                 .map_err(|e| format!("Failed to read stream chunk: {}", e))?
             {
-                bytes.extend_from_slice(&chunk);
+                file.write_all(&chunk)
+                    .await
+                    .map_err(|e| format!("Failed to write to file: {}", e))?;
             }
-            bytes
+            file.flush()
+                .await
+                .map_err(|e| format!("Failed to flush file: {}", e))?;
         }
-    };
+        AudioInput::Bytes(bytes) => {
+            let mut file = tokio::fs::File::create(&temp_file_path)
+                .await
+                .map_err(|e| format!("Failed to create file: {}", e))?;
+            file.write_all(&bytes)
+                .await
+                .map_err(|e| format!("Failed to write to file: {}", e))?;
+            file.flush()
+                .await
+                .map_err(|e| format!("Failed to flush file: {}", e))?;
+        }
+    }
 
     let config = config.clone();
     let (samples, processing_us) = tokio::task::spawn_blocking(move || {
         let blocking_start = Instant::now();
-        let mut temp_file =
-            NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {}", e))?;
-
-        temp_file
-            .write_all(&audio_bytes)
-            .map_err(|e| format!("Failed to write to temp file: {}", e))?;
-        temp_file
-            .flush()
-            .map_err(|e| format!("Failed to flush temp file: {}", e))?;
-
-        let input_path = temp_file.path();
 
         let mut ffmpeg_cmd = Command::new("ffmpeg");
-        ffmpeg_cmd.arg("-i").arg(input_path);
+        ffmpeg_cmd.arg("-i").arg(&temp_file_path);
         ffmpeg_cmd.arg("-f").arg(&config.format);
 
         if let Some(codec) = &config.codec {

@@ -187,6 +187,11 @@ async def main():
 
     results = {}
 
+    # warmup 
+    await benchmark_comparison(
+        TEST_URLS["small_mp3"], sample_rate=16000, channels=1, iterations=1
+    )
+
     for test_name, url in TEST_URLS.items():
         print(f"\n{'#' * 70}")
         print(f"# Testing: {test_name}")

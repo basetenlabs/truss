@@ -113,7 +113,7 @@ async def main():
         single_time = await benchmark_single(processor, url, audio_config, iterations=3)
 
         # Benchmark different numbers of concurrent tasks
-        num_tasks_list = [2, 4, 8, 16, 32]
+        num_tasks_list = [2, 4, 8, 16, 32, 64, 128]
         results = {}
 
         for num_tasks in num_tasks_list:
