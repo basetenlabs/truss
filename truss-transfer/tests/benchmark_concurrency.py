@@ -12,7 +12,7 @@ import truss_transfer
 # Test audio URLs (different formats and sizes)
 TEST_URLS = {
     "small_mp3": "https://cdn.baseten.co/docs/production/Gettysburg.mp3",  # ~1.5 MB
-    "large": "https://storage.googleapis.com/public-lyrebird-test/v4_concat_1hr_16k_mono.wav" # 100Mb
+    "large": "https://storage.googleapis.com/public-lyrebird-test/v4_concat_1hr_16k_mono.wav",  # 100Mb
 }
 
 
@@ -44,7 +44,7 @@ async def benchmark_single(processor, url, audio_config, iterations=5):
     min_time = np.min(all_times)
     max_time = np.max(all_times)
 
-    print(f"\nSingle Task Results:")
+    print("\nSingle Task Results:")
     print(f"  Average: {avg_time:.3f}s")
     print(f"  Std dev: {std_time:.3f}s")
     print(f"  Min:     {min_time:.3f}s")
@@ -97,7 +97,9 @@ async def main():
     processor = truss_transfer.MultimodalProcessor(timeout_secs=300)
     audio_config = truss_transfer.AudioConfig()
 
-    await benchmark_single(processor, next(iter(TEST_URLS.items()))[1], audio_config, iterations=1)
+    await benchmark_single(
+        processor, next(iter(TEST_URLS.items()))[1], audio_config, iterations=1
+    )
 
     print(f"\n{'#' * 70}")
     print("# CONCURRENCY BENCHMARK")
@@ -156,8 +158,6 @@ async def main():
         print(f"\n  Optimal concurrency: {best_num_tasks} tasks")
         print(f"  Best efficiency: {best_efficiency:.1f}%")
         print(f"  Best speedup: {best_speedup:.2f}x")
-
-
 
 
 if __name__ == "__main__":

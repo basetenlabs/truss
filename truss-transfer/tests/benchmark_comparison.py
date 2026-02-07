@@ -187,7 +187,7 @@ async def main():
 
     results = {}
 
-    # warmup 
+    # warmup
     await benchmark_comparison(
         TEST_URLS["small_mp3"], sample_rate=16000, channels=1, iterations=1
     )

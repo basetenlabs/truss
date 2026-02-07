@@ -1,10 +1,10 @@
 import asyncio
-import asyncio
+import time
+
 import numpy as np
 import pytest
 import requests
 import truss_transfer
-import time
 
 AUDIO_URL = "https://cdn.baseten.co/docs/production/Gettysburg.mp3"
 AUDI_M4A = "https://test-audios-public.s3.us-west-2.amazonaws.com/30-sec-01-podcast.m4a"
@@ -379,7 +379,6 @@ async def test_process_m4a_from_bytes():
 @pytest.mark.asyncio
 async def test_concurrent_downloads():
     """Test that concurrent downloads provide parallelism benefits."""
-    import time
 
     print("Testing concurrent downloads for parallelism...")
     processor = truss_transfer.MultimodalProcessor(timeout_secs=60)
