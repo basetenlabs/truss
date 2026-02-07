@@ -36,6 +36,7 @@ url = "2.5"
 object_store = { version = "0.12.3", features = ["gcp", "aws", "azure"] }
 once_cell = "1.21"
 memmap2 = "0.9.4"
+http = "1.4.0"
 
 # Use patch to override the reqwest dependency used by all crates in the dependency tree
 [patch.crates-io]
