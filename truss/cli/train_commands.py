@@ -303,11 +303,17 @@ def _build_isession_table(
         return None
 
 
-def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: str):
+def _display_isession(
+    remote_provider: BasetenRemote, project_id: str, job_id: str, tail: bool = False
+):
     """Display auth codes table for a training job if available."""
     table = _build_isession_table(remote_provider, project_id, job_id)
     if table:
         console.print(table)
+        if tail:
+            console.print(
+                "[dim italic]Note: This table is displayed once and will not be dynamically updated.[/dim italic]"
+            )
         console.print()  # Add blank line before logs
 
 
@@ -342,7 +348,7 @@ def get_job_logs(
     )
 
     # Display auth codes once at the top for both modes
-    _display_isession(remote_provider, project_id, job_id)
+    _display_isession(remote_provider, project_id, job_id, tail=tail)
 
     if not tail:
         # Non-tail mode: Display all logs
