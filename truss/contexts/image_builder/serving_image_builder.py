@@ -420,7 +420,7 @@ def generate_docker_server_supervisord_config(build_dir, config):
     }
 
     cfg["eventlistener:quit_on_failure"] = {
-        "events": "PROCESS_STATE_FATAL",  # Listen for fatal process events
+        "events": "PROCESS_STATE_FATAL,PROCESS_STATE_EXITED",  # Listen for fatal process events
         # Stop supervisord (SIGTERM to PID 1) on fatal event
         "command": """sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'""",
     }
@@ -659,6 +659,14 @@ class ServingImageBuilder(ImageBuilder):
             generate_docker_server_nginx_config(build_dir, config)
 
             generate_docker_server_supervisord_config(build_dir, config)
+
+            # Copy event listener script
+            event_listener_script = (
+                TEMPLATES_DIR / "docker_server" / "event_listener.py"
+            )
+            self._copy_into_build_dir(
+                event_listener_script, build_dir, "event_listener.py"
+            )
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:

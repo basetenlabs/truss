@@ -1,6 +1,6 @@
 [project]
 name = "truss"
-version = "0.13.2"
+version = "0.13.3"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
@@ -43,7 +43,7 @@ dependencies = [
     "ruff>=0.4.8",
     "tenacity>=8.0.1",
     "watchfiles>=0.19.0,<0.20",
-    "truss-transfer>=0.0.37,<0.0.40",
+    "truss-transfer>=0.0.40,<0.0.44",
 ]
 
 [project.urls]
