@@ -254,67 +254,48 @@ def _format_local_time(utc_timestamp: str) -> str:
         return utc_timestamp
 
 
-def _build_isession_table(
-    remote_provider: BasetenRemote, project_id: str, job_id: str
-) -> Optional[rich.table.Table]:
-    """Build auth codes table for a training job. Returns None if no auth codes."""
-    try:
-        response = remote_provider.api.get_training_job_isession(
-            project_id=project_id, job_id=job_id
-        )
-        isession = response.get("auth_codes", [])
-
-        if not isession:
-            return None
-
-        def replica_sort_key(code: dict) -> int:
-            replica_id = code.get("replica_id", "")
-            if "r" in replica_id:
-                try:
-                    return int(replica_id.rsplit("r", 1)[-1])
-                except ValueError:
-                    return 0
-            return 0
-
-        isession.sort(key=replica_sort_key)
-
-        table = rich.table.Table(
-            show_header=True,
-            header_style="bold magenta",
-            title=f"Interactive Sessions for Job: {job_id}",
-            box=rich.table.box.ROUNDED,
-            border_style="blue",
-        )
-        table.add_column("Replica ID", style="cyan")
-        table.add_column("Auth Code", style="green bold")
-        table.add_column("Auth URL", style="blue")
-        table.add_column("Generated At (Local)", style="dim")
-
-        for code in isession:
-            table.add_row(
-                code.get("replica_id", ""),
-                code.get("auth_code", ""),
-                code.get("auth_url", ""),
-                _format_local_time(code.get("generated_at", "")),
-            )
-
-        return table
-    except Exception:
-        return None
-
-
-def _display_isession(
-    remote_provider: BasetenRemote, project_id: str, job_id: str, tail: bool = False
-):
+def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: str):
     """Display auth codes table for a training job if available."""
-    table = _build_isession_table(remote_provider, project_id, job_id)
-    if table:
-        console.print(table)
-        if tail:
-            console.print(
-                "[dim italic]Note: This table is displayed once and will not be dynamically updated.[/dim italic]"
-            )
-        console.print()  # Add blank line before logs
+    response = remote_provider.api.get_training_job_isession(
+        project_id=project_id, job_id=job_id
+    )
+    isession = response.get("auth_codes", [])
+
+    if not isession:
+        return
+
+    def replica_sort_key(code: dict) -> int:
+        replica_id = code.get("replica_id", "")
+        if "r" in replica_id:
+            try:
+                return int(replica_id.rsplit("r", 1)[-1])
+            except ValueError:
+                return 0
+        return 0
+
+    isession.sort(key=replica_sort_key)
+
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title=f"Interactive Sessions for Job: {job_id}",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Replica ID", style="cyan")
+    table.add_column("Auth Code", style="green bold")
+    table.add_column("Auth URL", style="blue")
+    table.add_column("Generated At (Local)", style="dim")
+
+    for code in isession:
+        table.add_row(
+            code.get("replica_id", ""),
+            code.get("auth_code", ""),
+            code.get("auth_url", ""),
+            _format_local_time(code.get("generated_at", "")),
+        )
+
+    console.print(table)
 
 
 @train.command(name="logs")
@@ -348,7 +329,7 @@ def get_job_logs(
     )
 
     # Display auth codes once at the top for both modes
-    _display_isession(remote_provider, project_id, job_id, tail=tail)
+    _display_isession(remote_provider, project_id, job_id)
 
     if not tail:
         # Non-tail mode: Display all logs

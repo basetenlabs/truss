@@ -599,7 +599,6 @@ def fetch_project_by_name_or_id(
     """
     try:
         projects = remote_provider.api.list_training_projects()
-        print(projects)
         projects_by_name = {project.get("name"): project for project in projects}
         projects_by_id = {project.get("id"): project for project in projects}
         if project_identifier in projects_by_id:
