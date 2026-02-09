@@ -218,7 +218,7 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     total_token_limit: int = 500000
     # only for embedding models (e.g. encoder models and encoder_bert models)
     webserver_default_route: Optional[
-        Literal["/v1/embeddings", "/rerank", "/predict"]
+        Literal["/v1/embeddings", "/rerank", "/predict", "/predict_tokens"]
     ] = None
 
 
