@@ -571,11 +571,17 @@ class VersionsOverrides(PydanticTrTBaseModel):
     engine_builder_version: Optional[str] = None
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
+    bei_bert_version: Optional[str] = None
     v2_llm_version: Optional[str] = None
 
     @model_validator(mode="before")
     def version_must_start_with_number(cls, data):
-        for field in ["engine_builder_version", "briton_version", "bei_version"]:
+        for field in [
+            "engine_builder_version",
+            "briton_version",
+            "bei_version",
+            "bei_bert_version",
+        ]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
                 raise ValueError(f"{field} must start with a number")
