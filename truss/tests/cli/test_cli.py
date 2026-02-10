@@ -1,8 +1,10 @@
+import threading
 from unittest.mock import MagicMock, Mock, patch
 
+import requests
 from click.testing import CliRunner
 
-from truss.cli.cli import truss_cli
+from truss.cli.cli import _keepalive_loop, truss_cli
 from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
 from truss.remote.truss_remote import RemoteUser
 
@@ -25,6 +27,318 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
         "Truss with gRPC transport cannot be used as a development deployment"
         in result.output
     )
+
+
+# _keepalive_loop tests
+
+
+def test_successful_ping_resets_failure_count():
+    """A 200 response should reset consecutive failures to 0."""
+    stop_event = threading.Event()
+    call_count = 0
+
+    def mock_get(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = Mock()
+        if call_count <= 2:
+            # First two calls fail
+            resp.status_code = 500
+            resp.json.return_value = {}
+        elif call_count == 3:
+            # Third call succeeds - should reset counter
+            resp.status_code = 200
+        else:
+            # Fourth call: stop
+            stop_event.set()
+            resp.status_code = 200
+        return resp
+
+    with patch("truss.cli.cli.requests_lib.get", side_effect=mock_get):
+        with patch("truss.cli.cli.console"):
+            # Use a very short wait so the test runs fast
+            with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                _keepalive_loop(
+                    "http://fake/development/sync/v1/models/model",
+                    "test_api_key",
+                    stop_event,
+                )
+    assert call_count == 4  # All calls were made, no early exit
+
+
+def test_exits_after_max_consecutive_failures():
+    """Should call os._exit(1) after max consecutive failures."""
+    stop_event = threading.Event()
+    mock_resp = Mock()
+    mock_resp.status_code = 500
+    mock_resp.json.return_value = {}
+    with patch("truss.cli.cli.requests_lib.get", return_value=mock_resp):
+        with patch("truss.cli.cli.console") as _mock_console:
+            with patch(
+                "truss.cli.cli.os._exit", side_effect=lambda code: stop_event.set()
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    _keepalive_loop(
+                        "http://fake/development/sync/v1/models/model",
+                        "test_api_key",
+                        stop_event,
+                    )
+    mock_exit.assert_called_once_with(1)
+
+
+def test_request_exception_counts_as_failure():
+    """Network errors should count toward consecutive failures."""
+    stop_event = threading.Event()
+
+    with patch(
+        "truss.cli.cli.requests_lib.get",
+        side_effect=requests.RequestException("connection error"),
+    ):
+        with patch("truss.cli.cli.console"):
+            with patch(
+                "truss.cli.cli.os._exit", side_effect=lambda code: stop_event.set()
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    _keepalive_loop(
+                        "http://fake/development/sync/v1/models/model",
+                        "test_api_key",
+                        stop_event,
+                    )
+
+    mock_exit.assert_called_once_with(1)
+
+
+def test_model_not_ready_does_not_count_as_failure():
+    """'Model is not ready' errors during patching should be ignored."""
+    stop_event = threading.Event()
+    call_count = 0
+
+    def mock_get(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = Mock()
+        if call_count <= 25:
+            resp.status_code = 400
+            resp.json.return_value = {
+                "error": "Model is not ready, it is still building or deploying"
+            }
+        else:
+            stop_event.set()
+            resp.status_code = 200
+        return resp
+
+    with patch("truss.cli.cli.requests_lib.get", side_effect=mock_get):
+        with patch("truss.cli.cli.console"):
+            with patch(
+                "truss.cli.cli.os._exit", side_effect=lambda code: stop_event.set()
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    _keepalive_loop(
+                        "http://fake/development/sync/v1/models/model",
+                        "test_api_key",
+                        stop_event,
+                    )
+
+    mock_exit.assert_not_called()
+
+
+# truss watch --no-sleep tests
+
+
+def _make_watch_mocks(
+    model_hostname="https://model-abc123.api.baseten.co", hostname_present=True
+):
+    """Helper to create common mocks for watch --no-sleep tests."""
+    resolved_model = {
+        "id": "model_id",
+        "name": "test_model",
+        "hostname": model_hostname if hostname_present else None,
+        "versions": [{"id": "dev_version_id", "is_draft": True, "is_primary": False}],
+    }
+    versions = resolved_model["versions"]
+    dev_version = versions[0]
+
+    mock_tr = Mock()
+    mock_tr.spec.config.model_name = "test_model"
+
+    remote_provider = MagicMock()
+    remote_provider._auth_service.authenticate.return_value = Mock(value="test_key")
+    remote_provider.remote_url = "https://app.baseten.co"
+    remote_provider.api.get_deployment.return_value = {"status": "ACTIVE"}
+
+    return resolved_model, versions, dev_version, mock_tr, remote_provider
+
+
+def _patch_watch_common(
+    remote_provider, mock_tr, resolved_model, versions, dev_version
+):
+    """Returns a contextmanager-like stack of patches for watch tests."""
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    stack.enter_context(
+        patch("truss.cli.cli.RemoteFactory.create", return_value=remote_provider)
+    )
+    stack.enter_context(
+        patch("truss.cli.cli._get_truss_from_directory", return_value=mock_tr)
+    )
+    stack.enter_context(
+        patch(
+            "truss.cli.cli.resolve_model_for_watch",
+            return_value=(resolved_model, versions),
+        )
+    )
+    stack.enter_context(
+        patch("truss.cli.cli.get_dev_version_from_versions", return_value=dev_version)
+    )
+    stack.enter_context(
+        patch("truss.cli.cli.RemoteFactory.get_remote_team", return_value=None)
+    )
+    stack.enter_context(patch("truss.cli.cli.time.sleep"))
+    return stack
+
+
+def test_watch_no_sleep_sends_wake_request():
+    """--no-sleep should POST to /development/wake before waiting."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    runner = CliRunner()
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.cli.requests_lib") as mock_requests:
+            mock_requests.post.return_value = Mock(status_code=202)
+            mock_requests.get.return_value = Mock(status_code=200)
+            mock_requests.RequestException = requests.RequestException
+            with patch("truss.cli.cli.threading.Thread") as mock_thread_cls:
+                mock_thread_cls.return_value = Mock()
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    _result = runner.invoke(
+                        truss_cli,
+                        ["watch", "/tmp/fake", "--remote", "baseten", "--no-sleep"],
+                    )
+
+    mock_requests.post.assert_called_once_with(
+        "https://model-abc123.api.baseten.co/development/wake",
+        headers={"Authorization": "Api-Key test_key"},
+        timeout=10,
+    )
+
+
+def test_watch_no_sleep_starts_keepalive_thread():
+    """--no-sleep should start a daemon keepalive thread after model is ready."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    runner = CliRunner()
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.cli.requests_lib") as mock_requests:
+            mock_requests.post.return_value = Mock(status_code=202)
+            mock_requests.get.return_value = Mock(status_code=200)
+            mock_requests.RequestException = requests.RequestException
+            with patch("truss.cli.cli.threading.Thread") as mock_thread_cls:
+                mock_thread = Mock()
+                mock_thread_cls.return_value = mock_thread
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    _result = runner.invoke(
+                        truss_cli,
+                        ["watch", "/tmp/fake", "--remote", "baseten", "--no-sleep"],
+                    )
+
+    mock_thread_cls.assert_called_once()
+    _, kwargs = mock_thread_cls.call_args
+    assert kwargs["daemon"] is True
+    assert kwargs["target"] == _keepalive_loop
+    thread_args = kwargs["args"]
+    assert (
+        thread_args[0]
+        == "https://model-abc123.api.baseten.co/development/sync/v1/models/model"
+    )
+    assert thread_args[1] == "test_key"
+    mock_thread.start.assert_called_once()
+
+
+def test_watch_no_sleep_waits_for_active_status():
+    """--no-sleep should poll deployment status until ACTIVE."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    remote_provider.api.get_deployment.side_effect = [
+        {"status": "SCALED_TO_ZERO"},
+        {"status": "WAKING_UP"},
+        {"status": "ACTIVE"},
+    ]
+    runner = CliRunner()
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.cli.requests_lib") as mock_requests:
+            mock_requests.post.return_value = Mock(status_code=202)
+            mock_requests.get.return_value = Mock(status_code=200)
+            mock_requests.RequestException = requests.RequestException
+            with patch("truss.cli.cli.threading.Thread") as mock_thread_cls:
+                mock_thread_cls.return_value = Mock()
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    result = runner.invoke(
+                        truss_cli,
+                        ["watch", "/tmp/fake", "--remote", "baseten", "--no-sleep"],
+                    )
+
+    assert result.exit_code == 0
+    assert remote_provider.api.get_deployment.call_count == 3
+
+
+def test_watch_no_sleep_exits_on_failed_deployment():
+    """--no-sleep should exit if deployment reaches a terminal failure status."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    remote_provider.api.get_deployment.return_value = {"status": "FAILED"}
+    runner = CliRunner()
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.cli.requests_lib") as mock_requests:
+            mock_requests.post.return_value = Mock(status_code=202)
+            mock_requests.RequestException = requests.RequestException
+            result = runner.invoke(
+                truss_cli, ["watch", "/tmp/fake", "--remote", "baseten", "--no-sleep"]
+            )
+
+    assert result.exit_code != 0
+    assert "Development model failed with status FAILED" in result.output
+
+
+def test_watch_without_no_sleep_does_not_start_thread():
+    """Without --no-sleep, no keepalive thread should be started."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    runner = CliRunner()
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.cli.threading.Thread") as mock_thread_cls:
+            with patch.object(remote_provider, "sync_truss_to_dev_version_with_model"):
+                _result = runner.invoke(
+                    truss_cli, ["watch", "/tmp/fake", "--remote", "baseten"]
+                )
+
+    mock_thread_cls.assert_not_called()
 
 
 def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
