@@ -173,7 +173,7 @@ def _run_with_sandbox_spinner(action_fn, action_label: str, subtitle: str):
 
 @click.group()
 def sandbox():
-    """Subcommands for truss train"""
+    """Subcommands for truss sandbox"""
 
 
 truss_cli.add_command(sandbox)
