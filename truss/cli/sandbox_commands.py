@@ -312,6 +312,18 @@ def exec_sandbox(sandbox_id: str, command: tuple[str, ...], timeout: int | None)
     raise SystemExit(result.exit_code)
 
 
+def _stream_command_output(sandbox: b10sb.Sandbox, cmd_str: str) -> int:
+    """Run command via execute_stream, print output, return exit code (no SystemExit)."""
+    exit_code = 0
+    for chunk in sandbox.execute_stream(cmd_str):
+        if chunk.get("type") == "log":
+            data = chunk.get("data", "")
+            console.print(data, end="" if data.endswith("\n") else "\n")
+        elif chunk.get("type") == "status":
+            exit_code = chunk.get("exit_code", 0)
+    return exit_code
+
+
 @sandbox.command(name="exec-stream")
 @click.argument("sandbox_id", type=str, required=True)
 @click.argument("command", type=str, nargs=-1, required=True)
@@ -323,14 +335,40 @@ def exec_stream_sandbox(sandbox_id: str, command: tuple[str, ...]):
     """
     sandbox = _get_sandbox_or_exit(sandbox_id)
     cmd_str = " ".join(shlex.quote(arg) for arg in command)
-    for chunk in sandbox.execute_stream(cmd_str):
-        if chunk.get("type") == "log":
-            data = chunk.get("data", "")
-            console.print(data, end="" if data.endswith("\n") else "\n")
-        elif chunk.get("type") == "status":
-            exit_code = chunk.get("exit_code", -1)
-            if exit_code != 0:
-                raise SystemExit(exit_code)
+    exit_code = _stream_command_output(sandbox, cmd_str)
+    if exit_code != 0:
+        raise SystemExit(exit_code)
+
+
+@sandbox.command(name="shell")
+@click.argument("sandbox_id", type=str, required=True)
+@common.common_options()
+def sandbox_shell(sandbox_id: str):
+    """Interactive session: run multiple commands in the sandbox until you exit.
+
+    Each command runs in isolation (no shared state; e.g. 'cd /tmp' does not
+    affect the next command). Type 'exit' or 'quit', or press Ctrl+D to end the session.
+    """
+    sandbox = _get_sandbox_or_exit(sandbox_id)
+    console.print(
+        f"[dim]Connected to sandbox [bold]{sandbox_id}[/bold]. "
+        "Commands run in isolation. Type 'exit' or 'quit', or Ctrl+D to quit.[/dim]"
+    )
+    console.print()
+    while True:
+        try:
+            line = input("sandbox> ").strip()
+        except EOFError:
+            console.print()
+            break
+        if not line:
+            continue
+        if line.lower() in ("exit", "quit"):
+            break
+        exit_code = _stream_command_output(sandbox, line)
+        if exit_code != 0:
+            console.print(f"[dim](exit code {exit_code})[/dim]")
+        console.print()
 
 
 @sandbox.command(name="get")
