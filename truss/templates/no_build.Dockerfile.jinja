@@ -1,13 +1,13 @@
 FROM {{ config.base_image.image }}
 
-{# Copy data before code for better caching #}
+{%- set NONROOT_DEFAULT_USER_ID = 60000 %}
+{%- if run_as_user_id == NONROOT_DEFAULT_USER_ID %}
+ENV HOME=${HOME:-/home/app}
+{%- else %}
+ENV HOME=${HOME:-/root}
+{%- endif %}
+
+{# Copy data directory if it exists #}
 {%- if data_dir_exists %}
 COPY ./{{ config.data_dir }} ${HOME}/data
 {%- endif %} {#- endif data_dir_exists #}
-
-{# Build commands #}
-{%- if build_commands %}
-{% for command in build_commands %}
-RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{ secret }},target={{ path }}{%- endfor %} {{ command }}
-{% endfor %} {#- endfor build_commands #}
-{%- endif %} {#- endif build_commands #}
