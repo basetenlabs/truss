@@ -1,12 +1,8 @@
 FROM {{ config.base_image.image }}
 
-{# Set up environment variables and directories #}
-ENV APP_HOME=/app
-RUN mkdir -p ${APP_HOME}
-
 {# Copy data before code for better caching #}
 {%- if data_dir_exists %}
-COPY --chown=root:root ./{{ config.data_dir }} ${APP_HOME}/data
+COPY ./{{ config.data_dir }} ${HOME}/data
 {%- endif %} {#- endif data_dir_exists #}
 
 {# Build commands #}
