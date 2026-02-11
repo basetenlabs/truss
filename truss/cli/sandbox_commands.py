@@ -139,6 +139,7 @@ def create_sandbox(instances: int):
 @sandbox.command(name="list")
 @common.common_options()
 def list_sandboxes():
+    """List all sandboxes"""
     remote_provider = b10sb.RemoteSandboxProvider(
         api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
     )
@@ -166,12 +167,7 @@ def _get_sandbox_or_exit(sandbox_id: str):
 @sandbox.command(name="exec")
 @click.argument("sandbox_id", type=str, required=True)
 @click.argument("command", type=str, nargs=-1, required=True)
-@click.option(
-    "--timeout",
-    type=int,
-    default=None,
-    help="Command timeout in seconds.",
-)
+@click.option("--timeout", type=int, default=None, help="Command timeout in seconds.")
 @common.common_options()
 def exec_sandbox(sandbox_id: str, command: tuple[str, ...], timeout: int | None):
     """Run a command in a sandbox and print stdout, stderr, and exit code."""
@@ -207,6 +203,7 @@ def exec_stream_sandbox(sandbox_id: str, command: tuple[str, ...]):
 @click.argument("sandbox_id", type=str, required=True)
 @common.common_options()
 def get_sandbox(sandbox_id: str):
+    """Get information about a sandbox"""
     remote_provider = b10sb.RemoteSandboxProvider(
         api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
     )
@@ -226,6 +223,7 @@ def get_sandbox(sandbox_id: str):
 @click.argument("sandbox_id", type=str, required=True)
 @common.common_options()
 def stop_sandbox(sandbox_id: str):
+    """Stop a sandbox"""
     remote_provider = b10sb.RemoteSandboxProvider(
         api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
     )
@@ -240,6 +238,7 @@ def stop_sandbox(sandbox_id: str):
 @click.argument("sandbox_id", type=str, required=True)
 @common.common_options()
 def resume_sandbox(sandbox_id: str):
+    """Resume a sandbox"""
     remote_provider = b10sb.RemoteSandboxProvider(
         api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
     )
