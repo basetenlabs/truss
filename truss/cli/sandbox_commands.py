@@ -33,15 +33,31 @@ def _styled_status(status: str) -> str:
     return f"[{style}]{status}[/{style}]"
 
 
-# Big "Baseten" ASCII art using slashes, backslashes, pipes
-_BASETEN_BANNER = (
-    "   __           \n"
-    '  |__|  .-"""""""""""""""-.    \n'
-    "   ||  /  .-.-.-.-.-.-.-.  \\  \n"
-    "  _||_ |  ~ ~ ~ ~ ~ ~ ~ ~  |  \n"
-    " |____||___________________|  \n"
-    "\n"
-)
+# Sand frames – the tildes slosh left then right inside the box.
+# Each entry is exactly 19 chars to fit between the box walls.
+_SAND_FRAMES = [
+    "  ~ ~ ~ ~ ~ ~ ~ ~  ",
+    " ~ ~ ~ ~ ~ ~ ~ ~   ",
+    "~ ~ ~ ~ ~ ~ ~ ~    ",
+    " ~ ~ ~ ~ ~ ~ ~ ~   ",
+    "  ~ ~ ~ ~ ~ ~ ~ ~  ",
+    "   ~ ~ ~ ~ ~ ~ ~ ~ ",
+    "    ~ ~ ~ ~ ~ ~ ~ ~",
+    "   ~ ~ ~ ~ ~ ~ ~ ~ ",
+]
+
+
+def _baseten_banner(frame: int) -> str:
+    """Return the sandbox ASCII art with animated sand for the given frame."""
+    sand = _SAND_FRAMES[(frame // 2) % len(_SAND_FRAMES)]
+    return (
+        "   __           \n"
+        '  |__|  .-"""""""""""""""-.    \n'
+        "   ||  /  .-.-.-.-.-.-.-.  \\  \n"
+        f"  _||_ |{sand}|  \n"
+        " |____||___________________|  \n"
+        "\n"
+    )
 
 
 def _sandbox_animation_frame(frame: int, instances: int = 1) -> Panel:
@@ -52,7 +68,7 @@ def _sandbox_animation_frame(frame: int, instances: int = 1) -> Panel:
     verb = "is" if instances == 1 else "are"
 
     content = Text()
-    content.append(_BASETEN_BANNER, style=f"bold {border_style}")
+    content.append(_baseten_banner(frame), style=f"bold {border_style}")
     content.append(f"  {spinner} ", style=border_style)
     content.append(f"Creating {noun}...", style="bold")
     content.append("\n\n  ", style="dim")
@@ -67,6 +83,91 @@ def _sandbox_animation_frame(frame: int, instances: int = 1) -> Panel:
         expand=False,
         width=56,
     )
+
+
+def _sandbox_complete_panel(sandbox_ids: list[str]) -> Panel:
+    """Build the completion panel shown after sandbox creation."""
+    content = Text()
+    content.append(_baseten_banner(0), style="bold green")
+    content.append("  ✓ ", style="bold green")
+
+    if len(sandbox_ids) == 1:
+        content.append("Sandbox created\n\n", style="bold")
+        content.append("  ID  ", style="dim")
+        content.append(sandbox_ids[0], style="bold")
+    else:
+        content.append(f"{len(sandbox_ids)} sandboxes created\n\n", style="bold")
+        for sid in sorted(sandbox_ids):
+            content.append("  • ", style="green")
+            content.append(f"{sid}\n", style="bold")
+
+    return Panel(
+        content,
+        title="[bold] Sandbox [/bold]",
+        title_align="left",
+        border_style="green",
+        padding=(1, 2),
+        expand=False,
+        width=56,
+    )
+
+
+def _sandbox_action_frame(frame: int, action_label: str, subtitle: str) -> Panel:
+    """Build one frame of a sandbox action animation (stop, resume, etc.)."""
+    spinner = _SPINNER_FRAMES[frame % len(_SPINNER_FRAMES)]
+    border_style = _SANDBOX_ANIM_BORDERS[frame % len(_SANDBOX_ANIM_BORDERS)]
+
+    content = Text()
+    content.append(f"  {spinner} ", style=border_style)
+    content.append(action_label, style="bold")
+    content.append("\n\n  ", style="dim")
+    content.append(subtitle, style="dim italic")
+
+    return Panel(
+        content,
+        title="[bold] Sandbox [/bold]",
+        title_align="left",
+        border_style=border_style,
+        padding=(1, 2),
+        expand=False,
+        width=56,
+    )
+
+
+def _run_with_sandbox_spinner(action_fn, action_label: str, subtitle: str):
+    """Run action_fn in a background thread while showing a sandbox spinner."""
+    done = threading.Event()
+    exception_holder: list[BaseException] = []
+    result_holder: list = []
+
+    def run():
+        try:
+            result_holder.append(action_fn())
+        except BaseException as e:
+            exception_holder.append(e)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+    frame = 0
+    with Live(
+        _sandbox_action_frame(0, action_label, subtitle),
+        refresh_per_second=8,
+        console=console,
+        transient=True,
+    ) as live:
+        while not done.is_set():
+            time.sleep(1 / 8)
+            frame += 1
+            live.update(_sandbox_action_frame(frame, action_label, subtitle))
+
+    thread.join(timeout=0)
+    if exception_holder:
+        raise exception_holder[0]
+
+    return result_holder[0] if result_holder else None
 
 
 @click.group()
@@ -118,7 +219,7 @@ def create_sandbox(instances: int):
         _sandbox_animation_frame(0, instances),
         refresh_per_second=8,
         console=console,
-        transient=False,
+        transient=True,
     ) as live:
         while not done.is_set():
             time.sleep(1 / 8)
@@ -129,12 +230,14 @@ def create_sandbox(instances: int):
     if exception_holder:
         raise exception_holder[0]
 
-    if instances == 1:
-        console.print("Created sandbox with ID: ", end="")
-        console.print(sorted(set(created_sandbox_ids)), style="bold green")
-    else:
-        console.print("Created sandboxes with IDs: ", end="")
-        console.print(sorted(set(created_sandbox_ids)), style="bold green")
+    ids = sorted(set(created_sandbox_ids))
+    console.print(_sandbox_complete_panel(ids))
+    if len(ids) == 1:
+        console.print()
+        console.print("  Quick start:", style="dim")
+        console.print(
+            f'  truss sandbox exec {ids[0]} -- echo "Hello world"', style="cyan"
+        )
 
 
 @sandbox.command(name="list")
@@ -234,7 +337,11 @@ def stop_sandbox(sandbox_id: str):
     remote_provider = b10sb.RemoteSandboxProvider(
         api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
     )
-    stopped = remote_provider.stop(sandbox_id)
+    stopped = _run_with_sandbox_spinner(
+        lambda: remote_provider.stop(sandbox_id),
+        "Putting the lid on the sandbox...",
+        "It'll be here when you get back.",
+    )
     if stopped:
         console.print(f"Sandbox {sandbox_id} stopped", style="bold green")
     else:
@@ -253,7 +360,9 @@ def resume_sandbox(sandbox_id: str):
     if not sandbox:
         console.print(f"Sandbox with ID {sandbox_id} not found", style="bold red")
         return
-    resumed = sandbox.resume()
+    resumed = _run_with_sandbox_spinner(
+        sandbox.resume, "Dusting off the sandbox...", "Almost ready to play."
+    )
     if resumed:
         console.print(f"Sandbox {sandbox_id} resumed", style="bold green")
     else:
