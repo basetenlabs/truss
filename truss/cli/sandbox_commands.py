@@ -362,6 +362,25 @@ def stop_sandbox(sandbox_id: str):
         console.print(f"Sandbox {sandbox_id} not found", style="bold red")
 
 
+@sandbox.command(name="delete")
+@click.argument("sandbox_id", type=str, required=True)
+@common.common_options()
+def delete_sandbox(sandbox_id: str):
+    """Permanently delete a sandbox (removes it; no longer appears in list)."""
+    remote_provider = b10sb.RemoteSandboxProvider(
+        api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
+    )
+    deleted = _run_with_sandbox_spinner(
+        lambda: remote_provider.delete(sandbox_id),
+        "Removing the sandbox...",
+        "Sandbox removed.",
+    )
+    if deleted:
+        console.print(f"Sandbox {sandbox_id} deleted", style="bold green")
+    else:
+        console.print(f"Sandbox {sandbox_id} not found", style="bold red")
+
+
 @sandbox.command(name="resume")
 @click.argument("sandbox_id", type=str, required=True)
 @common.common_options()
