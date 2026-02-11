@@ -187,7 +187,12 @@ truss_cli.add_command(sandbox)
     help="Number of instances to create.",
     default=1,
 )
-@click.option("--name", type=str, required=False, help="Name of the sandbox.")
+@click.option(
+    "--name",
+    type=str,
+    required=False,
+    help="Name of the sandbox. If instances > 1, each gets name-1, name-2, ...",
+)
 @click.option(
     "--ports",
     "ports",
@@ -209,11 +214,17 @@ def create_sandbox(instances: int, name: Optional[str], ports: tuple[int, ...]):
             remote_provider = b10sb.RemoteSandboxProvider(
                 api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
             )
-            config = b10sb.SandboxConfig(
-                image="debian:bookworm-slim", expose=list(ports), name=name
-            )
-            for _ in range(instances):
+            for i in range(instances):
                 try:
+                    # When instances > 1 and name is set, give each a distinct name (name-1, name-2, ...)
+                    instance_name = None
+                    if name:
+                        instance_name = f"{name}-{i + 1}" if instances > 1 else name
+                    config = b10sb.SandboxConfig(
+                        image="debian:bookworm-slim",
+                        expose=list(ports),
+                        name=instance_name,
+                    )
                     sandbox = remote_provider.create(config=config)
                     created_sandbox_ids.append(sandbox.sandbox_id)
                 except RuntimeError as e:
