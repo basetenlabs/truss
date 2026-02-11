@@ -88,7 +88,7 @@ impl UnifiedHandler {
         method: HttpMethod,
         headers: HeaderMap,
         body: Value,
-    ) -> Result<Value, (StatusCode, String)> {
+    ) -> Result<(Value, HeaderMap), (StatusCode, String)> {
         // Extract common request elements
         let api_key = match extract_api_key_from_header(&headers) {
             Ok(key) => Some(key),
@@ -168,7 +168,7 @@ impl UnifiedHandler {
         client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
-    ) -> Result<Value, (StatusCode, String)> {
+    ) -> Result<(Value, HeaderMap), (StatusCode, String)> {
         // Validate request body against CoreOpenAIEmbeddingsRequest schema
         let embeddings_request: CoreOpenAIEmbeddingsRequest = serde_json::from_value(body.clone())
             .map_err(|e| {
@@ -211,6 +211,8 @@ impl UnifiedHandler {
             durations.len()
         );
 
+        let prompt_tokens = response.usage.prompt_tokens;
+
         // Create response with proxy metadata
         let response_with_metadata = CoreOpenAIEmbeddingsResponse {
             object: response.object,
@@ -222,7 +224,20 @@ impl UnifiedHandler {
             response_headers: vec![],
         };
 
-        Ok(serde_json::to_value(response_with_metadata).unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert(
+            "X-Baseten-Input-Tokens",
+            prompt_tokens.to_string().parse().unwrap(),
+        );
+        response_headers.insert(
+            "X-Baseten-Customer-Input-Tokens",
+            prompt_tokens.to_string().parse().unwrap(),
+        );
+
+        Ok((
+            serde_json::to_value(response_with_metadata).unwrap(),
+            response_headers,
+        ))
     }
 
     /// Handle tokenized embeddings requests
@@ -231,7 +246,7 @@ impl UnifiedHandler {
         client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
-    ) -> Result<Value, (StatusCode, String)> {
+    ) -> Result<(Value, HeaderMap), (StatusCode, String)> {
         // Check if tokenizer manager is available
         let tokenizer_manager = match &self.tokenizer_manager {
             Some(tm) => tm,
@@ -306,6 +321,8 @@ impl UnifiedHandler {
             durations.len()
         );
 
+        let prompt_tokens = response.usage.prompt_tokens;
+
         // Create response with proxy metadata
         let response_with_metadata = CoreOpenAIEmbeddingsResponse {
             object: response.object,
@@ -317,7 +334,20 @@ impl UnifiedHandler {
             response_headers: vec![],
         };
 
-        Ok(serde_json::to_value(response_with_metadata).unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert(
+            "X-Baseten-Input-Tokens",
+            prompt_tokens.to_string().parse().unwrap(),
+        );
+        response_headers.insert(
+            "X-Baseten-Customer-Input-Tokens",
+            prompt_tokens.to_string().parse().unwrap(),
+        );
+
+        Ok((
+            serde_json::to_value(response_with_metadata).unwrap(),
+            response_headers,
+        ))
     }
 
     async fn handle_rerank(
@@ -325,7 +355,7 @@ impl UnifiedHandler {
         client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
-    ) -> Result<Value, (StatusCode, String)> {
+    ) -> Result<(Value, HeaderMap), (StatusCode, String)> {
         debug!("Handling rerank request");
 
         // Validate request body against CoreRerankRequest schema
@@ -370,7 +400,10 @@ impl UnifiedHandler {
         // Return only the data array as expected by the core library
         // The core library expects Vec<CoreRerankResult>, not the full response object
         debug!("Rerank response created successfully");
-        Ok(serde_json::to_value(response.data).unwrap())
+        Ok((
+            serde_json::to_value(response.data).unwrap(),
+            HeaderMap::new(),
+        ))
     }
 
     async fn handle_classify(
@@ -378,7 +411,7 @@ impl UnifiedHandler {
         client: Arc<PerformanceClientCore>,
         body: Value,
         preferences: RequestProcessingPreference,
-    ) -> Result<Value, (StatusCode, String)> {
+    ) -> Result<(Value, HeaderMap), (StatusCode, String)> {
         // Validate request body against CoreClassifyRequest schema
         let classify_request: CoreClassifyRequest =
             serde_json::from_value(body.clone()).map_err(|e| {
@@ -420,7 +453,10 @@ impl UnifiedHandler {
 
         // Return only the data array as expected by the core library
         // The core library expects Vec<Vec<CoreClassificationResult>>, not the full response object
-        Ok(serde_json::to_value(response.data).unwrap())
+        Ok((
+            serde_json::to_value(response.data).unwrap(),
+            HeaderMap::new(),
+        ))
     }
 
     async fn handle_generic_batch(
@@ -430,7 +466,7 @@ impl UnifiedHandler {
         method: HttpMethod,
         body: Value,
         preferences: RequestProcessingPreference,
-    ) -> Result<Value, (StatusCode, String)> {
+    ) -> Result<(Value, HeaderMap), (StatusCode, String)> {
         // Extract url_path and payloads from request body
         let url_path = body
             .get("url_path")
@@ -500,7 +536,7 @@ impl UnifiedHandler {
             }
         });
 
-        Ok(final_response)
+        Ok((final_response, HeaderMap::new()))
     }
 }
 

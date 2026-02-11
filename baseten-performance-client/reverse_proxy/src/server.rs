@@ -151,9 +151,11 @@ async fn handle_unified_request(
         .handle_request(path, method, headers, body_value)
         .await
     {
-        Ok(response) => {
+        Ok((response, response_headers)) => {
             debug!("Successfully processed request to {}", path);
-            (StatusCode::OK, Json(response)).into_response()
+            let mut axum_response = (StatusCode::OK, Json(response)).into_response();
+            axum_response.headers_mut().extend(response_headers);
+            axum_response
         }
         Err((status, error_message)) => {
             warn!("Request to {} failed: {}", path, error_message);
