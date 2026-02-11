@@ -286,3 +286,74 @@ class DeployCheckpointsConfig(custom_types.SafeModelNoExtra):
     model_name: Optional[str] = None
     runtime: Optional[DeployCheckpointsRuntime] = None
     compute: Optional[Compute] = None
+
+
+class MemoryRequirements(custom_types.SafeModelNoExtra):
+    """Memory scoping for auto-selecting H100, H200, or multinode H100."""
+
+    model_params_b: Optional[float] = None
+    """Model size in billions (e.g. 7 for 7B). Inferred from model name if not set."""
+
+    per_device_batch_size: int = 2
+    """Per-device batch size (affects activation memory)."""
+
+    max_seq_length: int = 2048
+    """Max sequence length (affects activation memory)."""
+
+
+class AutoSFT(custom_types.SafeModelNoExtra):
+    """Configuration for supervised fine-tuning (SFT) training.
+
+    Load from a config.yaml or config.py file via `truss train sft config.yaml`.
+    """
+
+    model: str
+    """Model identifier (e.g. HuggingFace model ID or path)."""
+
+    dataset: str
+    """Dataset identifier (e.g. HuggingFace dataset ID or path)."""
+
+    num_epochs: int
+    """Number of training epochs."""
+
+    optimizer: Optional[str] = None
+    """Optimizer name (e.g. 'adam', 'adamw', 'sgd')."""
+
+    learning_rate: Optional[float] = None
+    """Learning rate."""
+
+    lr_scheduler: Optional[str] = None
+    """Learning rate scheduler (e.g. 'cosine', 'linear', 'constant_with_warmup')."""
+
+    # Dataset loading (UniversalLLMLoader options)
+    max_samples: Optional[int] = None
+    """Limit to first N samples; auto-enables streaming for HF Hub."""
+
+    split: Optional[str] = None
+    """Dataset split (e.g. 'train', 'validation')."""
+
+    # Training project options
+    project_name: Optional[str] = None
+    """Training project name (default: derived from model)."""
+
+    base_image: Optional[str] = None
+    """Docker base image for training (default: pytorch with transformers)."""
+
+    accelerator: Optional[str] = None
+    """Accelerator spec. When memory or model_params_b is set, auto-scoped to H100, H200, or multinode H100."""
+
+    node_count: Optional[int] = None
+    """Number of compute nodes. Megatron (ms-swift) is auto-selected when > 1."""
+
+    framework: Optional[str] = None
+    """Training framework: 'transformers', 'trl', 'megatron'. Auto-selected if not specified (megatron when multinode)."""
+
+    model_params_b: Optional[float] = None
+    """Model size in billions (e.g. 235 for 235B). Drives hardware scoping when set. Overrides memory.model_params_b."""
+
+    memory: Optional[MemoryRequirements] = None
+    """Memory scoping. When set (or model_params_b is set), accelerator and node_count are auto-derived (H100/H200/multinode H100)."""
+
+    environment_variables: Optional[Dict[str, Union[str, Dict[str, str]]]] = None
+    """Extra env vars for the training container. Use {"secret": "name"} for secrets.
+    HF_TOKEN with hf_access_token is included by default."""

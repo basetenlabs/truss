@@ -217,6 +217,158 @@ def push_training_job(
     _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
+@train.command(name="sft")
+@click.argument("config", type=Path, required=True)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
+@click.option("--job-name", type=str, required=False, help="Name of the training job.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
+@click.option(
+    "--accelerator",
+    type=str,
+    required=False,
+    help="Accelerator type and count (e.g., H200:8)",
+)
+@click.option(
+    "--node-count",
+    type=int,
+    required=False,
+    help="Number of compute nodes (megatron auto-selected when > 1)",
+)
+@common.common_options()
+def sft_training_job(
+    config: Path,
+    remote: Optional[str],
+    tail: bool,
+    job_name: Optional[str],
+    provided_team_name: Optional[str],
+    accelerator: Optional[str],
+    node_count: Optional[int],
+):
+    """Run SFT training from AutoSFT config (YAML). Generates training project and pushes job."""
+    from truss_train import deployment, loader
+    from truss_train.memory_scoping import scope_from_config
+    from truss_train.sft_generator import generate_sft_project
+
+    if not config.exists():
+        error_console.print(f"Config file not found: {config}")
+        sys.exit(1)
+
+    suffix = config.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        try:
+            sft_config = loader.load_auto_sft_from_yaml(config)
+        except Exception as e:
+            error_console.print(f"Failed to load config from {config}: {e}")
+            error_console.print(
+                "Expected YAML format, e.g.:\n\n"
+                "  model: meta-llama/Llama-2-7b-hf\n"
+                "  dataset: imdb\n"
+                "  num_epochs: 3\n"
+                "  optimizer: adamw\n"
+                "  learning_rate: 2e-5\n"
+                "  lr_scheduler: cosine\n"
+                "  max_samples: 1000  # optional\n"
+                "  framework: transformers  # or trl, megatron\n"
+                "  model_params_b: 235  # optional, drives hardware (H100/H200/multinode)\n"
+                "  # or use memory block for finer control:\n"
+                "  # memory:\n"
+                "  #   model_params_b: 7\n"
+                "  #   per_device_batch_size: 2\n"
+                "  #   max_seq_length: 2048\n"
+                "  environment_variables:  # optional, HF_TOKEN default included\n"
+                "    MY_VAR: value\n"
+                "    CUSTOM_SECRET:\n"
+                "      secret: my_secret_name\n",
+            )
+            sys.exit(1)
+    else:
+        try:
+            with loader.import_auto_sft(config) as sft_config:
+                pass
+        except ValueError as e:
+            if "No " in str(e) and "AutoSFT" in str(e) and "was found" in str(e):
+                error_console.print(
+                    f"No AutoSFT config found in {config}. "
+                    "Your config file must define an AutoSFT instance.",
+                )
+                sys.exit(1)
+            raise
+
+    if node_count is not None:
+        sft_config.node_count = node_count
+
+    # Apply memory scoping before framework display so node_count/accelerator are resolved
+    if sft_config.memory is not None or sft_config.model_params_b is not None:
+        scoped = scope_from_config(
+            sft_config.model,
+            sft_config.memory,
+            model_params_b_override=sft_config.model_params_b,
+        )
+        if scoped is not None:
+            acc_spec, resolved_node_count = scoped
+            if sft_config.accelerator is None:
+                sft_config.accelerator = (
+                    f"{acc_spec.accelerator.value}:{acc_spec.count}"
+                )
+            if sft_config.node_count is None:
+                sft_config.node_count = resolved_node_count
+
+    framework_name = (sft_config.framework or ("megatron" if (sft_config.node_count or 1) > 1 else "transformers")).lower()
+    console.print(
+        f"AutoSFT config loaded, generating training project (framework: {framework_name})...",
+        style="green",
+    )
+    generated_config_path = generate_sft_project(sft_config)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    existing_teams = remote_provider.api.get_teams()
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+
+    with loader.import_training_project(generated_config_path) as training_project:
+        if accelerator:
+            from truss.base import truss_config
+
+            training_project.job.compute.accelerator = (
+                truss_config.AcceleratorSpec.model_validate(accelerator)
+            )
+        if node_count is not None:
+            training_project.job.compute.node_count = node_count
+        if job_name:
+            training_project.job.name = job_name
+
+        team_name, team_id = _resolve_team_name(
+            remote_provider,
+            effective_team_name,
+            existing_project_name=training_project.name,
+            existing_teams=existing_teams,
+        )
+
+        with console.status("Creating training job...", spinner="dots"):
+            job_resp = deployment.create_training_job(
+                remote_provider,
+                generated_config_path,
+                training_project,
+                job_name_from_cli=job_name,
+                team_name=team_name,
+                team_id=team_id,
+            )
+
+    _handle_post_create_logic(job_resp, remote_provider, tail)
+
+
 @train.command(name="recreate")
 @click.option(
     "--job-id", type=str, required=False, help="Job ID of Training Job to recreate"

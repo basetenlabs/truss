@@ -1,5 +1,6 @@
 from truss.base.truss_config import WeightsSource
 from truss_train.definitions import (
+    AutoSFT,
     AWSIAMDockerAuth,
     BasetenCheckpoint,
     CacheConfig,
@@ -24,6 +25,7 @@ from truss_train.definitions import (
 )
 
 __all__ = [
+    "AutoSFT",
     "Compute",
     "Runtime",
     "SecretReference",

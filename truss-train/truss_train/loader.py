@@ -4,6 +4,8 @@ import os
 import pathlib
 from typing import Iterator, Type, TypeVar
 
+import yaml
+
 from truss_train import definitions
 
 T = TypeVar("T")
@@ -23,6 +25,29 @@ def import_deploy_checkpoints_config(
 ) -> Iterator[definitions.DeployCheckpointsConfig]:
     with import_target(module_path, definitions.DeployCheckpointsConfig) as config:
         yield config
+
+
+@contextlib.contextmanager
+def import_auto_sft(
+    module_path: pathlib.Path,
+) -> Iterator[definitions.AutoSFT]:
+    with import_target(module_path, definitions.AutoSFT) as config:
+        yield config
+
+
+def load_auto_sft_from_yaml(yaml_path: pathlib.Path) -> definitions.AutoSFT:
+    """Load AutoSFT config from a YAML file."""
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f)
+    if not data:
+        raise ValueError(f"Config file {yaml_path} is empty or invalid.")
+    # PyYAML parses values like 2e-5 as strings; coerce learning_rate to float
+    if "learning_rate" in data and isinstance(data["learning_rate"], str):
+        try:
+            data["learning_rate"] = float(data["learning_rate"])
+        except ValueError:
+            pass
+    return definitions.AutoSFT.model_validate(data)
 
 
 @contextlib.contextmanager
