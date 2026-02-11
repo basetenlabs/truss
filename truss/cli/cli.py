@@ -70,6 +70,11 @@ click.rich_click.COMMAND_GROUPS = {
             "commands": ["train"],
             "table_styles": {"row_styles": ["magenta"]},  # type: ignore
         },
+        {
+            "name": "Sandbox",
+            "commands": ["sandbox"],
+            "table_styles": {"row_styles": ["beige"]},  # type: ignore
+        },
     ]
 }
 
@@ -1084,4 +1089,9 @@ def kill_all() -> None:
 
 
 # These imports are needed to register the subcommands
-from truss.cli import chains_commands, migrate_commands, train_commands  # noqa: F401
+from truss.cli import (  # noqa: F401
+    chains_commands,
+    migrate_commands,
+    sandbox_commands,
+    train_commands,
+)
