@@ -1,6 +1,7 @@
 import shlex
 import threading
 import time
+from typing import Optional
 
 import b10sb
 import rich_click as click
@@ -186,8 +187,17 @@ truss_cli.add_command(sandbox)
     help="Number of instances to create.",
     default=1,
 )
+@click.option("--name", type=str, required=False, help="Name of the sandbox.")
+@click.option(
+    "--ports",
+    "ports",
+    multiple=True,
+    type=int,
+    help="Ports to expose on the sandbox (repeat for multiple: --ports 8000 --ports 8001).",
+    default=(),
+)
 @common.common_options()
-def create_sandbox(instances: int):
+def create_sandbox(instances: int, name: Optional[str], ports: tuple[int, ...]):
     """Create a sandbox"""
     done = threading.Event()
     exception_holder: list[BaseException] = []
@@ -199,7 +209,9 @@ def create_sandbox(instances: int):
             remote_provider = b10sb.RemoteSandboxProvider(
                 api_base_url="https://dreambox.internal.basetensors.com/sandboxes"
             )
-            config = b10sb.SandboxConfig(image="debian:bookworm-slim", expose=[8000])
+            config = b10sb.SandboxConfig(
+                image="debian:bookworm-slim", expose=list(ports), name=name
+            )
             for _ in range(instances):
                 try:
                     sandbox = remote_provider.create(config=config)
@@ -250,9 +262,10 @@ def list_sandboxes():
     sandboxes = remote_provider.list()
     table = Table(title="Sandboxes")
     table.add_column("ID")
+    table.add_column("Name")
     table.add_column("Status")
     for sandbox in sandboxes:
-        table.add_row(sandbox.sandbox_id, _styled_status(sandbox.status))
+        table.add_row(sandbox.sandbox_id, sandbox.name, _styled_status(sandbox.status))
     console.print(table)
 
 
@@ -324,8 +337,9 @@ def get_sandbox(sandbox_id: str):
     info = sandbox.get_status()
     table = Table(title=f"Sandbox {sandbox_id}")
     table.add_column("ID")
+    table.add_column("Name")
     table.add_column("Status")
-    table.add_row(info.sandbox_id, _styled_status(info.status))
+    table.add_row(info.sandbox_id, info.name, _styled_status(info.status))
     console.print(table)
 
 
