@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "baseten-performance-reverse-proxy"
-version = "0.0.1"
+version = "0.0.6"
 dependencies = [
  "async-channel",
  "axum",
