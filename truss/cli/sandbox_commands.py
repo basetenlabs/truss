@@ -1,3 +1,4 @@
+import shlex
 import threading
 import time
 
@@ -170,9 +171,12 @@ def _get_sandbox_or_exit(sandbox_id: str):
 @click.option("--timeout", type=int, default=None, help="Command timeout in seconds.")
 @common.common_options()
 def exec_sandbox(sandbox_id: str, command: tuple[str, ...], timeout: int | None):
-    """Run a command in a sandbox and print stdout, stderr, and exit code."""
+    """Run a command in a sandbox and print stdout, stderr, and exit code.
+
+    Use '--' before the command if it contains options (e.g. -- python3 -c 'print(1)').
+    """
     sandbox = _get_sandbox_or_exit(sandbox_id)
-    cmd_str = " ".join(command)
+    cmd_str = " ".join(shlex.quote(arg) for arg in command)
     result = sandbox.execute(cmd_str, timeout=timeout)
     if result.stdout:
         console.print(result.stdout)
@@ -186,9 +190,12 @@ def exec_sandbox(sandbox_id: str, command: tuple[str, ...], timeout: int | None)
 @click.argument("command", type=str, nargs=-1, required=True)
 @common.common_options()
 def exec_stream_sandbox(sandbox_id: str, command: tuple[str, ...]):
-    """Run a command in a sandbox and stream output (SSE)."""
+    """Run a command in a sandbox and stream output (SSE).
+
+    Use '--' before the command if it contains options (e.g. -- python3 -c 'print(1)').
+    """
     sandbox = _get_sandbox_or_exit(sandbox_id)
-    cmd_str = " ".join(command)
+    cmd_str = " ".join(shlex.quote(arg) for arg in command)
     for chunk in sandbox.execute_stream(cmd_str):
         if chunk.get("type") == "log":
             data = chunk.get("data", "")
