@@ -1078,3 +1078,69 @@ class BasetenApi:
             body=body,
         )
         return resp_json
+
+    # ============== BIS LLM REST Endpoints ==============
+
+    def create_llm_model(
+        self,
+        name: str,
+        resources: Dict[str, Any],
+        llm_config: Dict[str, Any],
+        llm_version: str = "1.0",
+        environment_variables: Optional[Dict[str, Any]] = None,
+        autoscaling_settings: Optional[Dict[str, Any]] = None,
+        additional_autoscaling_config: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict] = None,
+    ) -> dict:
+        """Create a new BIS LLM model via REST API.
+
+        POST v1/llm_models
+        """
+        body: Dict[str, Any] = {
+            "name": name,
+            "resources": resources,
+            "llm_config": llm_config,
+            "llm_version": llm_version,
+        }
+        if environment_variables:
+            body["environment_variables"] = environment_variables
+        if autoscaling_settings is not None:
+            body["autoscaling_settings"] = autoscaling_settings
+        if additional_autoscaling_config is not None:
+            body["additional_autoscaling_config"] = additional_autoscaling_config
+        if metadata is not None:
+            body["metadata"] = metadata
+        return self._rest_api_client.post("v1/llm_models", body=body)
+
+    def create_llm_model_deployment(
+        self,
+        model_id: str,
+        resources: Dict[str, Any],
+        llm_config: Dict[str, Any],
+        llm_version: str = "1.0",
+        environment_variables: Optional[Dict[str, Any]] = None,
+        autoscaling_settings: Optional[Dict[str, Any]] = None,
+        additional_autoscaling_config: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict] = None,
+    ) -> dict:
+        """Create a new deployment for an existing BIS LLM model via REST API.
+
+        POST v1/llm_models/<model_id>/deployments
+        """
+        body: Dict[str, Any] = {
+            "resources": resources,
+            "llm_config": llm_config,
+            "llm_version": llm_version,
+        }
+        if environment_variables:
+            body["environment_variables"] = environment_variables
+        if autoscaling_settings is not None:
+            body["autoscaling_settings"] = autoscaling_settings
+        if additional_autoscaling_config is not None:
+            body["additional_autoscaling_config"] = additional_autoscaling_config
+        if metadata is not None:
+            body["metadata"] = metadata
+        return self._rest_api_client.post(
+            f"v1/llm_models/{model_id}/deployments", body=body
+        )
+

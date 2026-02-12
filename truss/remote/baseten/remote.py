@@ -24,6 +24,7 @@ from truss.remote.baseten.core import (
     ModelVersionId,
     archive_dir,
     create_chain_atomic,
+    create_llm_service,
     create_truss_service,
     exists_model,
     get_dev_version_from_versions,
@@ -34,7 +35,7 @@ from truss.remote.baseten.core import (
     validate_truss_config_against_backend,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
-from truss.remote.baseten.service import BasetenService, URLConfig
+from truss.remote.baseten.service import BasetenService, TrussService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import RemoteUser, TrussRemote
 from truss.truss_handle import build as truss_build
@@ -237,7 +238,21 @@ class BasetenRemote(TrussRemote):
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> BasetenService:
+    ) -> TrussService:
+        # Route BIS LLM models to the REST API push workflow.
+        if truss_handle._spec._config.llm_config is not None:
+            if not publish:
+                raise ValueError(
+                    "Development deployment is not supported for BIS LLM models. "
+                    "Use --publish to create a published deployment."
+                )
+            return self.push_llm(
+                truss_handle=truss_handle,
+                model_name=model_name,
+                team_id=team_id,
+                metadata=metadata,
+            )
+
         push_data = self._prepare_push(
             truss_handle=truss_handle,
             model_name=model_name,
@@ -294,6 +309,63 @@ class BasetenRemote(TrussRemote):
             service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
+        )
+
+    def push_llm(
+        self,
+        truss_handle: TrussHandle,
+        model_name: str,
+        team_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> BasetenService:
+        """Push workflow for BIS LLM models using REST API endpoints.
+
+        Unlike the regular `push` flow, this does not archive or upload to S3.
+        It reads the truss config and sends the structured fields directly
+        to the v1/llm_models REST endpoint.
+        """
+        if model_name.isspace():
+            raise ValueError("Model name cannot be empty")
+
+        if truss_handle.is_scattered():
+            truss_handle = TrussHandle(truss_handle.gather())
+
+        config = truss_handle._spec._config
+
+        # Build resources dict from typed config.
+        resources: Dict[str, Any] = {}
+        if config.resources.accelerator.accelerator:
+            resources["accelerator"] = config.resources.accelerator.accelerator.value
+
+        llm_config = config.llm_config or {}
+        llm_version = config.llm_version
+        autoscaling_settings = config.autoscaling_settings
+        additional_autoscaling_config = config.additional_autoscaling_config
+        environment_variables = config.environment_variables or {}
+
+        model_id = exists_model(self._api, model_name, team_id=team_id)
+
+        model_version_handle = create_llm_service(
+            api=self._api,
+            model_name=model_name,
+            resources=resources,
+            llm_config=llm_config,
+            llm_version=llm_version,
+            model_id=model_id,
+            environment_variables=environment_variables or None,
+            autoscaling_settings=autoscaling_settings,
+            additional_autoscaling_config=additional_autoscaling_config,
+            metadata=metadata,
+        )
+
+        return BasetenService(
+            model_version_handle=model_version_handle,
+            is_draft=False,
+            api_key=self._auth_service.authenticate().value,
+            service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
+            truss_handle=truss_handle,
+            api=self._api,
+            url_config=URLConfig.LLM,
         )
 
     def push_chain_atomic(

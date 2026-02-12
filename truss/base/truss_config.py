@@ -978,6 +978,10 @@ class TrussConfig(custom_types.ConfigModel):
     model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
     weights: Weights = pydantic.Field(default_factory=lambda: Weights([]))
     trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
+    llm_config: Optional[dict[str, Any]] = None
+    llm_version: str = "1.0"
+    autoscaling_settings: Optional[dict[str, Any]] = None
+    additional_autoscaling_config: Optional[dict[str, Any]] = None
 
     # deploying from checkpoint
     training_checkpoints: Optional[CheckpointList] = None

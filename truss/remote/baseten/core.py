@@ -93,6 +93,7 @@ class ModelVersionHandle(NamedTuple):
     instance_type_name: Optional[str] = None
 
 
+
 def get_chain_id_by_name(
     api: BasetenApi, chain_name: str, team_id: Optional[str] = None
 ) -> Optional[str]:
@@ -723,3 +724,73 @@ def get_training_job_logs_with_pagination(
     logging.info(f"Completed pagination for job {job_id}. Total logs: {len(all_logs)}")
 
     return all_logs
+
+
+# ============== BIS LLM Helpers ==============
+
+
+
+def create_llm_service(
+    api: BasetenApi,
+    model_name: str,
+    resources: Dict,
+    llm_config: Dict,
+    llm_version: str = "1.0",
+    model_id: Optional[str] = None,
+    environment_variables: Optional[Dict] = None,
+    autoscaling_settings: Optional[Dict] = None,
+    additional_autoscaling_config: Optional[Dict] = None,
+    metadata: Optional[dict] = None,
+) -> ModelVersionHandle:
+    """Create a BIS LLM model (or deployment) via REST API.
+
+    Args:
+        api: BasetenApi instance.
+        model_name: Name of the LLM model to create.
+        resources: Resource specification (e.g. {"accelerator": "H100"}).
+        llm_config: LLM-specific configuration dict.
+        llm_version: Helm chart version, defaults to "1.0".
+        model_id: Existing model ID. If None, creates a new model.
+        environment_variables: Optional environment variables.
+        autoscaling_settings: Optional autoscaling settings.
+        additional_autoscaling_config: Optional additional autoscaling config
+            (e.g. in-flight token metrics).
+        metadata: Optional deployment metadata.
+
+    Returns:
+        A ModelVersionHandle.
+    """
+    if model_id is None:
+        response = api.create_llm_model(
+            name=model_name,
+            resources=resources,
+            llm_config=llm_config,
+            llm_version=llm_version,
+            environment_variables=environment_variables,
+            autoscaling_settings=autoscaling_settings,
+            additional_autoscaling_config=additional_autoscaling_config,
+            metadata=metadata,
+        )
+        return ModelVersionHandle(
+            model_id=response["id"],
+            version_id=response.get("deployment_id", ""),
+            hostname=response.get("hostname", ""),
+            instance_type_name=response.get("instance_type_name"),
+        )
+
+    response = api.create_llm_model_deployment(
+        model_id=model_id,
+        resources=resources,
+        llm_config=llm_config,
+        llm_version=llm_version,
+        environment_variables=environment_variables,
+        autoscaling_settings=autoscaling_settings,
+        additional_autoscaling_config=additional_autoscaling_config,
+        metadata=metadata,
+    )
+    return ModelVersionHandle(
+        model_id=model_id,
+        version_id=response.get("deployment_id", ""),
+        hostname=response.get("hostname", ""),
+        instance_type_name=response.get("instance_type_name"),
+    )
