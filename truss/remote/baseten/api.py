@@ -869,6 +869,26 @@ class BasetenApi:
         )
         return resp_json
 
+    def update_interactive_session_expiry(
+        self, project_id: str, job_id: str, session_id: str, expires_at: str
+    ):
+        """Update the expiration time of an interactive session.
+
+        Args:
+            project_id: The training project ID
+            job_id: The training job ID
+            session_id: The interactive session ID
+            expires_at: New expiration time in ISO 8601 format (e.g., "2026-02-10T12:00:00Z")
+
+        Returns:
+            Response JSON with session_id and updated expires_at
+        """
+        resp_json = self._rest_api_client.patch(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_sessions/{session_id}",
+            {"expires_at": expires_at},
+        )
+        return resp_json
+
     def _prepare_time_range_query(
         self,
         start_epoch_millis: Optional[int] = None,
