@@ -3,12 +3,13 @@ import signal
 import sys
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Deque, Optional, cast
 
 import rich.table
 import rich_click as click
+from InquirerPy import inquirer
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -261,6 +262,34 @@ def _format_local_time(utc_timestamp: str) -> str:
         return utc_timestamp
 
 
+def _format_time_until_expiry(utc_timestamp: str) -> str:
+    """Format time until expiration in human-readable format (e.g., '2h 30m')."""
+    if not utc_timestamp:
+        return ""
+    try:
+        utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+        now = datetime.now(utc_dt.tzinfo)
+        time_diff = utc_dt - now
+
+        # If already expired
+        if time_diff.total_seconds() <= 0:
+            return "Expired"
+
+        # Calculate hours and minutes
+        total_seconds = int(time_diff.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        elif minutes > 0:
+            return f"{minutes}m"
+        else:
+            return "< 1m"
+    except (ValueError, TypeError):
+        return utc_timestamp
+
+
 def _build_isession_table(
     remote_provider: BasetenRemote, project_id: str, job_id: str
 ) -> Optional[rich.table.Table]:
@@ -297,6 +326,7 @@ def _build_isession_table(
         table.add_column("Auth Code", style="green bold")
         table.add_column("Auth URL", style="blue")
         table.add_column("Generated At (Local)", style="dim")
+        table.add_column("Expires In", style="dim")
 
         for code in isession:
             table.add_row(
@@ -305,6 +335,7 @@ def _build_isession_table(
                 code.get("auth_code", ""),
                 code.get("auth_url", ""),
                 _format_local_time(code.get("generated_at", "")),
+                _format_time_until_expiry(code.get("expires_at", "")),
             )
 
         return table
@@ -948,8 +979,9 @@ def update_session(
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--bump", is_flag=True, help="Interactively extend the session timeout")
 @common.common_options()
-def get_isession(job_id: str, remote: Optional[str]):
+def get_isession(job_id: str, remote: Optional[str], bump: bool):
     """Get auth codes for a training job's interactive session."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -970,13 +1002,87 @@ def get_isession(job_id: str, remote: Optional[str]):
         response = remote_provider.api.get_training_job_isession(
             project_id=project_id, job_id=job_id
         )
+
         isession = response.get("auth_codes", [])
 
         if not isession:
             console.print("No auth codes found for this job.", style="yellow")
             return
 
+        # Handle --bump flag for extending session timeout
+        if bump:
+            _bump_session_timeout(remote_provider, project_id, job_id, isession)
+            # Refresh the session info after bumping
+            response = remote_provider.api.get_training_job_isession(
+                project_id=project_id, job_id=job_id
+            )
+
         _display_isession(remote_provider, project_id, job_id)
     except Exception as e:
         error_console.print(f"Failed to get auth codes: {str(e)}")
+        sys.exit(1)
+
+
+def _bump_session_timeout(
+    remote_provider: BasetenRemote, project_id: str, job_id: str, isession: list
+):
+    """Interactively extend the session timeout."""
+    if not isession:
+        error_console.print("No interactive sessions found to extend.")
+        sys.exit(1)
+
+    # Define extension duration options
+    extension_options = [
+        ("30 minutes", 30),
+        ("1 hour", 60),
+        ("2 hours", 120),
+        ("4 hours", 240),
+        ("8 hours", 480),
+    ]
+
+    # Prompt user to choose extension duration with arrow keys
+    selected = inquirer.select(
+        message="How much do you want to extend the session timeout?",
+        choices=[label for label, _ in extension_options],
+        default="1 hour",
+        qmark="⏱️",
+    ).execute()
+
+    # Find the minutes for the selected option
+    minutes = next(m for label, m in extension_options if label == selected)
+
+    # Calculate new expiration time
+    new_expires_at = (datetime.utcnow() + timedelta(minutes=minutes)).isoformat() + "Z"
+
+    # Update each session
+    updated_count = 0
+    for session in isession:
+        session_id = session.get("session_id")
+        replica_id = session.get("replica_id", "")
+
+        if not session_id:
+            console.print(
+                f"[yellow]Warning: No session_id found for replica {replica_id}, skipping[/yellow]"
+            )
+            continue
+
+        try:
+            remote_provider.api.update_interactive_session_expiry(
+                project_id=project_id,
+                job_id=job_id,
+                session_id=session_id,
+                expires_at=new_expires_at,
+            )
+            updated_count += 1
+        except Exception as e:
+            error_console.print(
+                f"Failed to update session {session_id} (replica {replica_id}): {str(e)}"
+            )
+
+    if updated_count > 0:
+        console.print(
+            f"\n[green]✓ Successfully extended {updated_count} session(s) by {minutes} minutes[/green]"
+        )
+    else:
+        error_console.print("Failed to update any sessions.")
         sys.exit(1)
