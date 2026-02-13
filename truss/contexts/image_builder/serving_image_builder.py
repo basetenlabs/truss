@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import configparser
 import json
 import logging
 import os
@@ -378,56 +377,19 @@ def generate_docker_server_nginx_config(build_dir, config):
     nginx_filepath.write_text(nginx_content)
 
 
-def generate_docker_server_supervisord_config(build_dir, config):
-    """Generate supervisord.conf for docker_server deployments.
+def generate_docker_server_wrapper_script(build_dir, config):
+    """Copy server_wrapper.sh for docker_server deployments.
 
-    Uses configparser to properly handle multiline commands - configparser
-    automatically formats continuation lines with leading whitespace, which
-    supervisord's INI parser correctly interprets as multiline values.
+    The shell script manages nginx and model server processes with
+    auto-restart, replacing supervisord.
     """
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
 
-    cfg = configparser.ConfigParser()
-
-    cfg["supervisord"] = {
-        "pidfile": "/tmp/supervisord.pid",  # PID file in /tmp to be writable by non-root user
-        "nodaemon": "true",  # Run in foreground (required for containers)
-        "logfile": "/dev/null",  # Disable file logging
-        "logfile_maxbytes": "0",  # No size limit (logging disabled)
-    }
-
-    cfg["program:model-server"] = {
-        "command": config.docker_server.start_command,  # Command to start the model server
-        "startsecs": "30",  # Wait 30s before assuming server is running
-        "startretries": "0",  # Don't retry if server fails to start
-        "autostart": "true",  # Start automatically with supervisord
-        "autorestart": "false",  # Don't restart on exit
-        "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
-        "stdout_logfile_maxbytes": "0",  # No size limit on stdout
-        "redirect_stderr": "true",  # Combine stderr into stdout
-    }
-
-    cfg["program:nginx"] = {
-        "command": 'nginx -g "daemon off;"',  # Run nginx in foreground
-        "startsecs": "0",  # Assume nginx starts immediately
-        "autostart": "true",  # Start automatically with supervisord
-        "autorestart": "true",  # Always restart nginx on exit
-        "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
-        "stdout_logfile_maxbytes": "0",  # No size limit on stdout
-        "redirect_stderr": "true",  # Combine stderr into stdout
-    }
-
-    cfg["eventlistener:quit_on_failure"] = {
-        "events": "PROCESS_STATE_FATAL,PROCESS_STATE_EXITED",  # Listen for fatal process events
-        # Stop supervisord (SIGTERM to PID 1) on fatal event
-        "command": """sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'""",
-    }
-
-    supervisord_filepath = build_dir / "supervisord.conf"
-    with open(supervisord_filepath, "w") as f:
-        cfg.write(f)
+    wrapper_source = DOCKER_SERVER_TEMPLATES_DIR / "server_wrapper.sh"
+    wrapper_filepath = build_dir / "server_wrapper.sh"
+    shutil.copy2(wrapper_source, wrapper_filepath)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -650,23 +612,9 @@ class ServingImageBuilder(ImageBuilder):
             config.docker_server is not None
             and config.docker_server.no_build is not True
         ):
-            self._copy_into_build_dir(
-                TEMPLATES_DIR / "docker_server_requirements.txt",
-                build_dir,
-                "docker_server_requirements.txt",
-            )
-
             generate_docker_server_nginx_config(build_dir, config)
 
-            generate_docker_server_supervisord_config(build_dir, config)
-
-            # Copy event listener script
-            event_listener_script = (
-                TEMPLATES_DIR / "docker_server" / "event_listener.py"
-            )
-            self._copy_into_build_dir(
-                event_listener_script, build_dir, "event_listener.py"
-            )
+            generate_docker_server_wrapper_script(build_dir, config)
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
