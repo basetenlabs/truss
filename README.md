@@ -104,8 +104,10 @@ To set up the Baseten remote, you'll need a [Baseten API key](https://app.basete
 With your Baseten API key ready to paste when prompted, you can deploy your model:
 
 ```sh
-truss push
+truss push --publish
 ```
+
+For development with hot reload support, use `truss push --watch` instead.
 
 You can monitor your model deployment from [your model dashboard on Baseten](https://app.baseten.co/models/).
 
