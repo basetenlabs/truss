@@ -26,7 +26,14 @@ from truss.util.path import load_trussignore_patterns_from_truss_dir
 logger = logging.getLogger(__name__)
 
 
-DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
+DEPLOYING_STATUSES = [
+    "BUILDING",
+    "DEPLOYING",
+    "LOADING_MODEL",
+    "UPDATING",
+    "WAKING_UP",
+    "SCALED_TO_ZERO",
+]
 ACTIVE_STATUS = "ACTIVE"
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
     "Model hasn't been deployed yet. No environments exist."
