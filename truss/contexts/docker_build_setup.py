@@ -53,6 +53,7 @@ def _fill_trt_llm_versions(
             accelerator = tr.spec.config.resources.accelerator.accelerator
             docker_image_suffix = {  # not ideal, but build may fail if version is not pushed.
                 Accelerator.L4: "89-",
+                Accelerator.L40S: "26-",
                 Accelerator.A100: "",
                 Accelerator.H100: "hopper-",
                 Accelerator.H100_40GB: "hopper-",
