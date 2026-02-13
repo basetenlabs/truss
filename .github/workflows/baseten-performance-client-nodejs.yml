@@ -152,26 +152,31 @@ jobs:
           cache: yarn
           cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
           architecture: x86
+      # We use `docker run` directly instead of a third-party action to avoid
+      # Docker API version mismatches (Docker 29+ requires API >= 1.44).
       - name: Build in docker
-        uses: addnab/docker-run-action@v3
         if: ${{ matrix.settings.docker }}
-        with:
-          image: ${{ matrix.settings.docker }}
-          options: '--user 0:0 -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
-          run: |
-            if command -v apk &> /dev/null; then
-              # Alpine-based image
-              apk add --no-cache perl openssl-dev build-base
-            elif command -v apt-get &> /dev/null; then
-              # Debian-based image
-              apt-get update && apt-get install -y perl libssl-dev libatomic-ops-dev
-            elif command -v yum &> /dev/null; then
+        run: |
+          docker run --rm --user 0:0 \
+            -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db \
+            -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache \
+            -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index \
+            -v ${{ github.workspace }}:/build \
+            -w /build/baseten-performance-client/node_bindings \
+            ${{ matrix.settings.docker }} \
+            bash -c '
+              if command -v apk &> /dev/null; then
+                apk add --no-cache perl openssl-dev build-base
+              elif command -v apt-get &> /dev/null; then
+                apt-get update && apt-get install -y perl libssl-dev libatomic-ops-dev
+              elif command -v yum &> /dev/null; then
                 yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
-            else
-              echo "Unsupported package manager. Please install perl and openssl-dev manually."
-              exit 1
-            fi
-            ${{ matrix.settings.build }}
+              else
+                echo "Unsupported package manager. Please install perl and openssl-dev manually."
+                exit 1
+              fi
+              ${{ matrix.settings.build }}
+            '
       - name: Build
         run: ${{ matrix.settings.build }}
         if: ${{ !matrix.settings.docker }}
@@ -382,15 +387,11 @@ jobs:
           platforms: arm64
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
       - name: Setup and run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: node:${{ matrix.node }}-slim
-          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/'
-          run: |
-            set -e
-            cp baseten_performance_client/node_bindings/*.node .
-            yarn test
-            ls -la
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/build -w /build/ \
+            node:${{ matrix.node }}-slim \
+            bash -c 'set -e && cp baseten_performance_client/node_bindings/*.node . && yarn test && ls -la'
   test-linux-aarch64-musl-binding:
     if: false # TODO: we don't compile for this yet
     name: Test bindings on aarch64-unknown-linux-musl - node@${{ matrix.node }}
@@ -418,14 +419,11 @@ jobs:
           platforms: arm64
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
       - name: Setup and run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: node:lts-alpine
-          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/'
-          run: |
-            set -e
-            cp baseten_performance_client/node_bindings/*.node .
-            yarn test
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/build -w /build/ \
+            node:lts-alpine \
+            sh -c 'set -e && cp baseten_performance_client/node_bindings/*.node . && yarn test'
   test-linux-arm-gnueabihf-binding:
     if: false # relative path issue.
     name: Test bindings on armv7-unknown-linux-gnueabihf - node@${{ matrix.node }}
@@ -458,17 +456,11 @@ jobs:
           platforms: arm
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
       - name: Setup and run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: node:${{ matrix.node }}-bullseye-slim
-          options: '--platform linux/arm/v7 -v ${{ github.workspace }}:/build -w /build/'
-          run: |
-            set -e
-            # cannot stat baseten_performance_client/node_bindings/*.node: No such file or directory
-            # --
-            cp baseten_performance_client/node_bindings/*.node .
-            yarn test
-            ls -la
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v ${{ github.workspace }}:/build -w /build/ \
+            node:${{ matrix.node }}-bullseye-slim \
+            bash -c 'set -e && cp baseten_performance_client/node_bindings/*.node . && yarn test && ls -la'
   universal-macOS:
     if: true # we currently do not compile this
     name: Build universal macOS binary
