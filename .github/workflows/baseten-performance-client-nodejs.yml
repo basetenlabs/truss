@@ -152,8 +152,6 @@ jobs:
           cache: yarn
           cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
           architecture: x86
-      # We use `docker run` directly instead of a third-party action to avoid
-      # Docker API version mismatches (Docker 29+ requires API >= 1.44).
       - name: Build in docker
         if: ${{ matrix.settings.docker }}
         run: |

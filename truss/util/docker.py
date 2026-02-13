@@ -33,9 +33,7 @@ def get_containers(labels: Dict, all: bool = False) -> list["Container"]:
 
 def get_images(labels: Dict):
     """Gets images given labels."""
-    # NB(nikhil): Docker v29 recently modified behavior where untagged images aren't exposed unless `--all=True` is passed. Our tests expect to fetch all
-    # images and then further filter by labels.
-    return Docker.client().image.list(filters=_create_label_filters(labels), all=True)
+    return Docker.client().image.list(filters=_create_label_filters(labels))
 
 
 def get_urls_from_container(container: Union[str, "Container"]) -> Dict[int, List[str]]:
