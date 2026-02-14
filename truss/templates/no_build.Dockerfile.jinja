@@ -1,1 +1,5 @@
 FROM {{ config.base_image.image }}
+
+{%- if data_dir_exists %}
+COPY ./{{ config.data_dir }} /tmp/data
+{%- endif %}
