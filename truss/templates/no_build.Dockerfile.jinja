@@ -1,13 +1,5 @@
 FROM {{ config.base_image.image }}
 
-{%- set NONROOT_DEFAULT_USER_ID = 60000 %}
-{%- if run_as_user_id == NONROOT_DEFAULT_USER_ID %}
-ENV HOME=${HOME:-/home/app}
-{%- else %}
-ENV HOME=${HOME:-/root}
-{%- endif %}
-
-{# Copy data directory if it exists #}
 {%- if data_dir_exists %}
-COPY ./{{ config.data_dir }} ${HOME}/data
-{%- endif %} {#- endif data_dir_exists #}
+COPY ./{{ config.data_dir }} /tmp/data
+{%- endif %}
