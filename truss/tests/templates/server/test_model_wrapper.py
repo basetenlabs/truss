@@ -226,6 +226,29 @@ async def test_open_ai_completion_endpoints(
         assert chat_completions_resp == "chat_completions"
 
 
+@pytest.mark.anyio
+async def test_messages_endpoint(
+    open_ai_container_fs, helpers, connected_request
+):
+    app_path = open_ai_container_fs / "app"
+    with (
+        _clear_model_load_modules(),
+        helpers.sys_paths(app_path),
+        _change_directory(app_path),
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper.load()
+
+        messages_resp = await model_wrapper.messages(
+            {}, connected_request
+        )
+        assert messages_resp == "messages"
+
+
 @contextmanager
 def _change_directory(new_directory: Path):
     original_directory = os.getcwd()

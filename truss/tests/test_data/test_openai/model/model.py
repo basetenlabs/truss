@@ -13,3 +13,6 @@ class Model:
 
     def predict(self, input: Dict) -> str:
         return "predict"
+
+    def messages(self, input: Dict) -> str:
+        return "messages"
