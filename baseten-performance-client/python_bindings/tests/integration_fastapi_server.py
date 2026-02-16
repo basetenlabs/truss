@@ -181,6 +181,8 @@ def build_server():
         # Simulate a hijack payload
         hijack_payloads = validate_hijack_payload(request.input)
         await action_hijack_payload(hijack_payloads[0], fapi)
+        if fapi.headers.get("x-add-custom-header") == "1":
+            response.headers["X-Add-Custom-Header-Response"] = "1"
         response.headers["X-Custom-Header"] = "CustomValue"
         return OpenAIEmbeddingResponse(
             model=request.model,
@@ -281,6 +283,7 @@ def run_client():
             batch_size=4,
             max_concurrent_requests=64,
             max_chars_per_request=max_chars_per_request,
+            extra_headers={"x-add-custom-header": "1"},
         )
         response = client.embed(
             model="text-embedding-ada-002",
@@ -293,6 +296,11 @@ def run_client():
         )
         assert response.response_headers[0].get(("x-custom-header")) == "CustomValue", (
             f"Expected custom header 'X-Custom-Header' but got {response.response_headers[0]}"
+        )
+        assert (
+            response.response_headers[0].get(("x-add-custom-header-response")) == "1"
+        ), (
+            f"Expected custom header 'X-Add-Custom-Header-Response' but got {response.response_headers[0]}"
         )
         assert all(len(embedding.embedding) == 1 for embedding in response.data), (
             "Each embedding should be a list with one element"

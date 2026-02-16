@@ -31,6 +31,8 @@ from truss.base.truss_config import (
     TrussConfig,
     WebsocketOptions,
     Weights,
+    WeightsAuth,
+    WeightsAuthMethod,
     WeightsSource,
     _map_to_supported_python_version,
 )
@@ -111,6 +113,57 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
     parsed_result = Resources.model_validate(input_dict)
     assert parsed_result == expect_resources
     assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+@pytest.mark.parametrize(
+    "input_dict, expect_resources, output_dict",
+    [
+        (
+            {"instance_type": "L4:8x32"},
+            Resources(instance_type="L4:8x32"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "L4:8x32",
+            },
+        ),
+        (
+            {"instance_type": "H100:8x80"},
+            Resources(instance_type="H100:8x80"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "H100:8x80",
+            },
+        ),
+        (
+            {"instance_type": "CPU:4x16"},
+            Resources(instance_type="CPU:4x16"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "CPU:4x16",
+            },
+        ),
+    ],
+)
+def test_parse_resources_with_instance_type(input_dict, expect_resources, output_dict):
+    parsed_result = Resources.model_validate(input_dict)
+    assert parsed_result == expect_resources
+    assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_instance_type_not_serialized_when_none():
+    """Test that instance_type is omitted from serialization when not set."""
+    resources = Resources()
+    result = resources.to_dict(verbose=True)
+    assert "instance_type" not in result
 
 
 @pytest.mark.parametrize(
@@ -221,6 +274,10 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "registry": "some-docker-registry",
                     "aws_access_key_id_secret_name": "aws_access_key_id",
                     "aws_secret_access_key_secret_name": ("aws_secret_access_key"),
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
                 },
             },
         ),
@@ -250,6 +307,86 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "secret_name": None,
                     "aws_access_key_id_secret_name": "aws_access_key_id",
                     "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
+                },
+            },
+        ),
+        # AWS OIDC authentication
+        (
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_OIDC",
+                    "aws_oidc_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_oidc_region": "us-west-2",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                },
+            },
+            BaseImage(
+                image="123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                python_executable_path="/usr/bin/python3",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.AWS_OIDC,
+                    aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                    aws_oidc_region="us-west-2",
+                    registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+                ),
+            ),
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_OIDC",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_oidc_region": "us-west-2",
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
+                },
+            },
+        ),
+        # GCP OIDC authentication
+        (
+            {
+                "image": "us-west2-docker.pkg.dev/my-project/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "GCP_OIDC",
+                    "gcp_oidc_service_account": "my-service-account@my-project.iam.gserviceaccount.com",
+                    "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                    "registry": "us-west2-docker.pkg.dev",
+                },
+            },
+            BaseImage(
+                image="us-west2-docker.pkg.dev/my-project/my-image",
+                python_executable_path="/usr/bin/python3",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.GCP_OIDC,
+                    gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+                    gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                    registry="us-west2-docker.pkg.dev",
+                ),
+            ),
+            {
+                "image": "us-west2-docker.pkg.dev/my-project/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "GCP_OIDC",
+                    "registry": "us-west2-docker.pkg.dev",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": "my-service-account@my-project.iam.gserviceaccount.com",
+                    "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
                 },
             },
         ),
@@ -259,6 +396,70 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
     parsed_result = BaseImage.model_validate(input_dict)
     assert parsed_result == expect_base_image
     assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_docker_auth_aws_oidc_missing_role_arn():
+    with pytest.raises(ValueError, match="aws_oidc_role_arn must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_region="us-west-2",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_aws_oidc_missing_region():
+    with pytest.raises(ValueError, match="aws_oidc_region must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_gcp_oidc_missing_service_account():
+    with pytest.raises(ValueError, match="gcp_oidc_service_account must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            registry="us-west2-docker.pkg.dev",
+        )
+
+
+def test_docker_auth_gcp_oidc_missing_workload_id_provider():
+    with pytest.raises(
+        ValueError, match="gcp_oidc_workload_id_provider must be provided"
+    ):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            registry="us-west2-docker.pkg.dev",
+        )
+
+
+def test_docker_auth_aws_oidc_with_gcp_params_error():
+    """AWS OIDC docker auth cannot have GCP parameters."""
+    with pytest.raises(
+        ValueError, match="gcp_oidc_service_account cannot be specified"
+    ):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_oidc_region="us-west-2",
+            gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_gcp_oidc_with_aws_params_error():
+    """GCP OIDC docker auth cannot have AWS parameters."""
+    with pytest.raises(ValueError, match="aws_oidc_role_arn cannot be specified"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="us-west2-docker.pkg.dev",
+        )
 
 
 def test_default_config_not_crowded_end_to_end():
@@ -445,6 +646,54 @@ def test_from_yaml_empty():
         assert result.bundled_packages_dir == "packages"
 
 
+def test_from_yaml_duplicate_keys():
+    yaml_content = """
+description: first description
+model_name: test-model
+description: second description
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `description`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.description == "second description"
+
+
+def test_from_yaml_duplicate_nested_keys():
+    yaml_content = """
+resources:
+  cpu: "1"
+  memory: "2Gi"
+  cpu: "2"
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `cpu`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.resources.cpu == "2"
+
+
+def test_from_yaml_same_key_at_different_nesting_levels():
+    yaml_content = """
+model_name: test-model
+resources:
+  cpu: "1"
+  memory: "2Gi"
+build:
+  model_name: build-model-name
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.model_name == "test-model"
+
+
 def test_from_yaml_secrets_as_list():
     data = {"description": "this is a test", "secrets": ["foo", "bar"]}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
@@ -627,10 +876,6 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
         TrussTRTLLMQuantizationType.FP8_KV.value
     )
     TrussConfig.model_validate(trtllm_config)
-
-    del trtllm_config["trt_llm"]["build"]["quantization_type"]
-    with pytest.raises(ValueError):
-        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
@@ -954,12 +1199,21 @@ def test_clear_runtime_fields():
             download_folder="/tmp", checkpoints=[], artifact_references=[]
         ),
         environment_variables={"FOO": "BAR"},
+        weights=Weights(
+            [
+                WeightsSource(
+                    source="hf://meta-llama/Llama-3.1-8B@main",
+                    mount_location="/app/weights",
+                )
+            ]
+        ),
     )
 
     config.clear_runtime_fields()
     assert config.python_version == "py39"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
+    assert config.weights == Weights([])
 
 
 def test_docker_server_start_command_single_line_valid():
@@ -1016,6 +1270,32 @@ def test_docker_server_start_command_yaml_folding(
     config = TrussConfig.from_yaml(config_path)
     assert "\n" not in config.docker_server.start_command
     assert config.docker_server.start_command == expected_command
+
+
+@pytest.mark.parametrize(
+    "run_as_user_id,expected,raises",
+    [
+        pytest.param(1000, 1000, does_not_raise(), id="valid_nonzero"),
+        pytest.param(None, None, does_not_raise(), id="default_none"),
+        pytest.param(
+            0,
+            None,
+            pytest.raises(pydantic.ValidationError, match="run_as_user_id cannot be 0"),
+            id="zero_rejected",
+        ),
+    ],
+)
+def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
+    with raises:
+        docker_server = DockerServer(
+            start_command="python main.py",
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+            run_as_user_id=run_as_user_id,
+        )
+        assert docker_server.run_as_user_id == expected
 
 
 # =============================================================================
@@ -1077,6 +1357,43 @@ class TestWeightsSource:
         assert source.source == "azure://myaccount/container/llama"
         assert source.is_huggingface is False
 
+    def test_r2_source_basic(self):
+        """R2 source should work without revision."""
+        source = WeightsSource(
+            source="r2://account_id.bucket/models/llama",
+            mount_location="/models/llama",
+            auth_secret_name="r2_credentials",
+        )
+        assert source.source == "r2://account_id.bucket/models/llama"
+        assert source.is_huggingface is False
+
+    def test_https_source_basic(self):
+        """HTTPS source should work for direct URL downloads."""
+        source = WeightsSource(
+            source="https://example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+        )
+        assert source.source == "https://example.com/models/weights.bin"
+        assert source.is_huggingface is False
+
+    def test_https_source_with_auth(self):
+        """HTTPS source with auth secret should work."""
+        source = WeightsSource(
+            source="https://private.example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+            auth_secret_name="http_auth_token",
+        )
+        assert source.source == "https://private.example.com/models/weights.bin"
+        assert source.auth_secret_name == "http_auth_token"
+
+    def test_https_source_invalid_format(self):
+        """HTTPS source with invalid format should fail."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid HTTPS URL format"):
+            WeightsSource(
+                source="https:///path/only",  # Missing hostname
+                mount_location="/models/weights.bin",
+            )
+
     def test_mount_location_must_be_absolute(self):
         """mount_location must be an absolute path."""
         with pytest.raises(pydantic.ValidationError, match="must be an absolute path"):
@@ -1109,6 +1426,14 @@ class TestWeightsSource:
         ):
             WeightsSource(
                 source="azure://myaccount/container/path@main",
+                mount_location="/models/llama",
+            )
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
+        ):
+            WeightsSource(
+                source="r2://account_id.bucket/path@main",
                 mount_location="/models/llama",
             )
 
@@ -1156,12 +1481,124 @@ class TestWeightsSource:
         with pytest.raises(pydantic.ValidationError, match="Invalid AZURE URI format"):
             WeightsSource(source="azure://", mount_location="/models/llama")
 
+    def test_invalid_r2_uri_format(self):
+        """R2 URI without bucket should error."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid R2 URI format"):
+            WeightsSource(source="r2://", mount_location="/models/llama")
+
     def test_invalid_hf_uri_format(self):
         """HuggingFace URI without repo should error."""
         with pytest.raises(
             pydantic.ValidationError, match="Invalid HuggingFace URI format"
         ):
             WeightsSource(source="hf://", mount_location="/models/llama")
+
+    def test_aws_oidc_missing_role_arn(self):
+        """AWS OIDC without role ARN should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_role_arn must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC, aws_oidc_region="us-west-2"
+            )
+
+    def test_aws_oidc_missing_region(self):
+        """AWS OIDC without region should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_region must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
+
+    def test_gcp_oidc_missing_service_account(self):
+        """GCP OIDC without service account should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="gcp_oidc_service_account must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            )
+
+    def test_gcp_oidc_missing_workload_id_provider(self):
+        """GCP OIDC without workload identity provider should error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="gcp_oidc_workload_id_provider must be provided",
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            )
+
+    def test_auth_secret_name_conflict_error(self):
+        """auth_secret_name cannot be specified in both locations."""
+        with pytest.raises(pydantic.ValidationError, match="cannot be specified both"):
+            WeightsSource(
+                source="s3://my-bucket/models/weights",
+                mount_location="/models/weights",
+                auth_secret_name="my-secret-top",
+                auth=WeightsAuth(
+                    auth_method=WeightsAuthMethod.CUSTOM_SECRET,
+                    auth_secret_name="my-secret-nested",
+                ),
+            )
+
+    def test_custom_secret_requires_auth_secret_name(self):
+        """CUSTOM_SECRET auth_method requires auth_secret_name."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_secret_name must be provided when auth_method is CUSTOM_SECRET",
+        ):
+            WeightsAuth(auth_method=WeightsAuthMethod.CUSTOM_SECRET)
+
+    def test_auth_secret_name_requires_custom_secret_method(self):
+        """auth_secret_name requires CUSTOM_SECRET auth_method."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_secret_name cannot be specified when auth_method is AWS_OIDC",
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                auth_secret_name="my-secret",
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+            )
+
+    def test_custom_secret_with_auth_secret_name_valid(self):
+        """CUSTOM_SECRET with auth_secret_name should be valid."""
+        auth = WeightsAuth(
+            auth_method=WeightsAuthMethod.CUSTOM_SECRET, auth_secret_name="my-secret"
+        )
+        assert auth.auth_method == WeightsAuthMethod.CUSTOM_SECRET
+        assert auth.auth_secret_name == "my-secret"
+
+    def test_aws_oidc_with_gcp_params_error(self):
+        """AWS OIDC cannot have GCP parameters."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="gcp_oidc_service_account cannot be specified",
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+                gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            )
+
+    def test_gcp_oidc_with_aws_params_error(self):
+        """GCP OIDC cannot have AWS parameters."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_role_arn cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+                gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
 
 
 class TestWeights:

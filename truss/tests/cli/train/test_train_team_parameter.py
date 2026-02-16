@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from click.testing import CliRunner
 
 from truss.cli.cli import truss_cli
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 
 
@@ -28,7 +29,11 @@ class TestTeamParameter:
         mock_remote = Mock(spec=BasetenRemote)
         mock_api = Mock()
         mock_remote.api = mock_api
-        mock_api.get_teams.return_value = teams
+        # Convert dictionaries to TeamType objects
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        mock_api.get_teams.return_value = teams_with_type
         return mock_remote
 
     @staticmethod
@@ -80,7 +85,7 @@ class TestTeamParameter:
         assert call_args[1]["team_name"] == expected_team_name
         # Verify team_id is resolved and passed correctly
         if expected_team_name and expected_teams:
-            expected_team_id = expected_teams[expected_team_name]["id"]
+            expected_team_id = expected_teams[expected_team_name].id
             assert call_args[1]["team_id"] == expected_team_id
         elif expected_team_name is None:
             # If no team_name, team_id should also be None
@@ -100,7 +105,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 1: --team PROVIDED with valid team name, user has access."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         training_project = self._create_mock_training_project()
         job_response = self._create_mock_job_response()
 
@@ -115,8 +120,15 @@ class TestTeamParameter:
         result = self._invoke_train_push(runner, config_path, team_name="Team Alpha")
 
         assert result.exit_code == 0
+        # Convert to TeamType objects for assertion
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         self._assert_training_job_called_with_team(
-            mock_create_job, "Team Alpha", training_project, expected_teams=teams
+            mock_create_job,
+            "Team Alpha",
+            training_project,
+            expected_teams=teams_with_type,
         )
 
     # SCENARIO 2: --team PROVIDED: Invalid team name (does not exist)
@@ -128,7 +140,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_remote_factory
     ):
         """Scenario 2: --team PROVIDED with invalid team name that does not exist."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         training_project = self._create_mock_training_project()
 
         mock_remote = self._setup_mock_remote(teams)
@@ -163,9 +175,9 @@ class TestTeamParameter:
     ):
         """Scenario 3: --team NOT PROVIDED, user has multiple teams, no existing project."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         training_project = self._create_mock_training_project()
         job_response = self._create_mock_job_response()
@@ -184,9 +196,16 @@ class TestTeamParameter:
 
         assert result.exit_code == 0
         mock_inquire_team.assert_called_once()
-        assert mock_inquire_team.call_args[1]["existing_teams"] == teams
+        # Convert teams to TeamType objects for comparison
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        assert mock_inquire_team.call_args[1]["existing_teams"] == teams_with_type
         self._assert_training_job_called_with_team(
-            mock_create_job, "Team Beta", training_project, expected_teams=teams
+            mock_create_job,
+            "Team Beta",
+            training_project,
+            expected_teams=teams_with_type,
         )
 
     # SCENARIO 4: --team NOT PROVIDED: User has multiple teams, existing project in exactly one team
@@ -201,9 +220,9 @@ class TestTeamParameter:
     ):
         """Scenario 4: --team NOT PROVIDED, multiple teams, existing project in exactly one team."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         existing_project = {
             "id": "project123",
@@ -227,8 +246,15 @@ class TestTeamParameter:
         result = self._invoke_train_push(runner, config_path)
 
         assert result.exit_code == 0
+        # Convert to TeamType objects for assertion
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         self._assert_training_job_called_with_team(
-            mock_create_job, "Team Beta", training_project, expected_teams=teams
+            mock_create_job,
+            "Team Beta",
+            training_project,
+            expected_teams=teams_with_type,
         )
         mock_remote.api.list_training_projects.assert_called_once()
 
@@ -250,9 +276,9 @@ class TestTeamParameter:
     ):
         """Scenario 5: --team NOT PROVIDED, multiple teams, existing project in multiple teams."""
         teams = {
-            "Team Alpha": {"id": "team1", "name": "Team Alpha"},
-            "Team Beta": {"id": "team2", "name": "Team Beta"},
-            "Team Gamma": {"id": "team3", "name": "Team Gamma"},
+            "Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True},
+            "Team Beta": {"id": "team2", "name": "Team Beta", "default": False},
+            "Team Gamma": {"id": "team3", "name": "Team Gamma", "default": False},
         }
         existing_projects = [
             {"id": "project123", "name": "existing-project", "team_name": "Team Alpha"},
@@ -277,9 +303,16 @@ class TestTeamParameter:
 
         assert result.exit_code == 0
         mock_inquire_team.assert_called_once()
-        assert mock_inquire_team.call_args[1]["existing_teams"] == teams
+        # Convert teams to TeamType objects for comparison
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
+        assert mock_inquire_team.call_args[1]["existing_teams"] == teams_with_type
         self._assert_training_job_called_with_team(
-            mock_create_job, "Team Alpha", training_project, expected_teams=teams
+            mock_create_job,
+            "Team Alpha",
+            training_project,
+            expected_teams=teams_with_type,
         )
 
     # SCENARIO 6: --team NOT PROVIDED: User has exactly one team, no existing project
@@ -293,7 +326,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 6: --team NOT PROVIDED, user has exactly one team, no existing project."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         training_project = self._create_mock_training_project()
         job_response = self._create_mock_job_response()
 
@@ -309,8 +342,15 @@ class TestTeamParameter:
         result = self._invoke_train_push(runner, config_path)
 
         assert result.exit_code == 0
+        # Convert to TeamType objects for assertion
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         self._assert_training_job_called_with_team(
-            mock_create_job, "Team Alpha", training_project, expected_teams=teams
+            mock_create_job,
+            "Team Alpha",
+            training_project,
+            expected_teams=teams_with_type,
         )
 
     # SCENARIO 7: --team NOT PROVIDED: User has exactly one team, existing project matches the team
@@ -324,7 +364,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 7: --team NOT PROVIDED, single team, existing project matches the team."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         existing_project = {
             "id": "project123",
             "name": "existing-project",
@@ -347,8 +387,15 @@ class TestTeamParameter:
         result = self._invoke_train_push(runner, config_path)
 
         assert result.exit_code == 0
+        # Convert to TeamType objects for assertion
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         self._assert_training_job_called_with_team(
-            mock_create_job, "Team Alpha", training_project, expected_teams=teams
+            mock_create_job,
+            "Team Alpha",
+            training_project,
+            expected_teams=teams_with_type,
         )
         mock_remote.api.list_training_projects.assert_called_once()
 
@@ -364,7 +411,7 @@ class TestTeamParameter:
         self, mock_import_project, mock_status, mock_remote_factory, mock_create_job
     ):
         """Scenario 8: --team NOT PROVIDED, single team, existing project in different team."""
-        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha"}}
+        teams = {"Team Alpha": {"id": "team1", "name": "Team Alpha", "default": True}}
         existing_project = {
             "id": "project123",
             "name": "existing-project",
@@ -390,6 +437,13 @@ class TestTeamParameter:
         # the resolver uses the user's single team (exit 0). The Excel table shows exit code 1, but
         # that would require backend validation. Current behavior uses the single team.
         assert result.exit_code == 0
+        # Convert to TeamType objects for assertion
+        teams_with_type = {
+            name: TeamType(**team_data) for name, team_data in teams.items()
+        }
         self._assert_training_job_called_with_team(
-            mock_create_job, "Team Alpha", training_project, expected_teams=teams
+            mock_create_job,
+            "Team Alpha",
+            training_project,
+            expected_teams=teams_with_type,
         )

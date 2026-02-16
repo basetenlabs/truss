@@ -83,7 +83,8 @@ preference = RequestProcessingPreference(
     timeout_s=360,
     max_chars_per_request=10000,  # Character-based batching (50-256,000)
     hedge_delay=0.5,  # Request hedging delay in seconds (min 0.2s)
-    total_timeout_s=600  # Total timeout for all batched requests
+    total_timeout_s=600,  # Total timeout for all batched requests
+    extra_headers={"x-custom-header": "value"}  # Custom headers
 )
 response = client.embed(
     input=texts,
@@ -210,12 +211,12 @@ preference = RequestProcessingPreference(
     max_concurrent_requests=32,
     timeout_s=360,
     hedge_delay=0.5,  # Enable hedging with 0.5s delay
-    total_timeout_s=360  # Total operation timeout
+    total_timeout_s=360,  # Total operation timeout
+    extra_headers={"x-custom-header": "value"}  # Custom headers
 )
 response_obj = client.batch_post(
     url_path="/v1/embeddings", # Example path, adjust to your needs
     payloads=[payload1, payload2],
-    custom_headers={"x-custom-header": "value"},  # Custom headers
     preference=preference,
     method="POST"  # HTTP method: GET, POST, PUT, PATCH, DELETE (default: POST)
 )
@@ -235,16 +236,16 @@ async def async_batch_post_example():
 
     payload1 = {"model": "my_model", "input": ["Async batch sample 1"]}
     payload2 = {"model": "my_model", "input": ["Async batch sample 2"]}
-    preference = RequestProcessingPreference(
-        max_concurrent_requests=32,
-        timeout_s=360,
-        hedge_delay=0.5,  # Enable hedging with 0.5s delay
-        total_timeout_s=360  # Total operation timeout
-    )
+preference = RequestProcessingPreference(
+    max_concurrent_requests=32,
+    timeout_s=360,
+    hedge_delay=0.5,  # Enable hedging with 0.5s delay
+    total_timeout_s=360,  # Total operation timeout
+    extra_headers={"x-custom-header": "value"}  # Custom headers
+)
 response_obj = await client.async_batch_post(
     url_path="/v1/embeddings",
     payloads=[payload1, payload2],
-    custom_headers={"x-custom-header": "value"},  # Custom headers
     preference=preference,
     method="POST"  # HTTP method: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS (default: POST)
 )
@@ -558,23 +559,114 @@ const client1 = new PerformanceClient(baseUrl1, apiKey, 1, wrapper);
 const client2 = new PerformanceClient(baseUrl2, apiKey, 1, wrapper);
 ```
 
-#### Custom Headers
-Add custom headers to batch requests:
+#### HTTP Proxy Support
+Route all HTTP requests through a proxy (e.g., for connection pooling with Envoy):
 
 ```python
-response = client.batch_post(
-    url_path="/v1/embeddings",
-    payloads=payloads,
-    custom_headers={
+from baseten_performance_client import HttpClientWrapper
+
+# Create wrapper with HTTP proxy
+wrapper = HttpClientWrapper(
+    http_version=1,
+    proxy="http://envoy-proxy.local:8080"
+)
+
+# Share the wrapper across multiple clients
+client1 = PerformanceClient(
+    base_url="https://api1.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+client2 = PerformanceClient(
+    base_url="https://api2.example.com",
+    api_key="your_key",
+    client_wrapper=wrapper
+)
+# Both clients will use the same connection pool and proxy
+```
+
+You can also specify the proxy directly when creating a client:
+
+```python
+client = PerformanceClient(
+    base_url="https://api.example.com",
+    api_key="your_key",
+    proxy="http://envoy-proxy.local:8080"
+)
+```
+
+```javascript
+const { HttpClientWrapper } = require('baseten-performance-client');
+
+// Create wrapper with HTTP proxy
+const wrapper = new HttpClientWrapper(
+    1,  // http_version
+    "http://envoy-proxy.local:8080"  // proxy
+);
+
+// Share the wrapper across multiple clients
+const client1 = new PerformanceClient(
+    "https://api1.example.com",
+    "your_key",
+    undefined,  // http_version
+    wrapper
+);
+const client2 = new PerformanceClient(
+    "https://api2.example.com",
+    "your_key",
+    undefined,  // http_version
+    wrapper
+);
+// Both clients will use the same connection pool and proxy
+```
+
+You can also specify the proxy directly when creating a client:
+
+```javascript
+const client = new PerformanceClient(
+    "https://api.example.com",
+    "your_key",
+    undefined,  // http_version
+    undefined,  // client_wrapper
+    "http://envoy-proxy.local:8080"  // proxy
+);
+```
+
+#### Custom Headers
+Add custom headers to all requests using RequestProcessingPreference:
+
+```python
+from baseten_performance_client import RequestProcessingPreference
+
+# Configure preference with custom headers
+preference = RequestProcessingPreference(
+    max_concurrent_requests=32,
+    batch_size=16,
+    extra_headers={
         "x-custom-header": "value",
         "authorization": "Bearer token"
     }
+)
+
+# Use with any method (embed, rerank, classify, batch_post)
+response = client.embed(
+    input=["Hello world"],
+    model="my_model",
+    preference=preference
+)
+
+response = client.batch_post(
+    url_path="/v1/embeddings",
+    payloads=payloads,
+    preference=preference
 )
 ```
 
 ```javascript
 const { RequestProcessingPreference } = require('baseten-performance-client');
 
+// Note: Node.js support for extra_headers coming soon
+// For now, use the existing custom_headers approach
 const preference = new RequestProcessingPreference(32, undefined, undefined, 360.0, 0.5, 360.0);
 const response = await client.batchPost(
     "/v1/embeddings",
@@ -702,7 +794,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("BASETEN_API_KEY").expect("BASETEN_API_KEY not set");
     let base_url = "https://model-yqv4yjjq.api.baseten.co/environments/production/sync";
 
-    let client = PerformanceClientCore::new(base_url, Some(api_key), None, None); // http_version, client_wrapper
+    let client = PerformanceClientCore::new(
+        base_url,
+        Some(api_key),
+        None,  // http_version
+        None,  // client_wrapper
+        None   // proxy
+    );
 
     // Embedding example
     let texts = vec!["Hello world".to_string(), "Example text".to_string()];
@@ -726,14 +824,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::json!({"model": "my_model", "input": ["Rust sample 2"]}),
     ];
 
+    // Create preference with extra headers
+    let mut preference = RequestProcessingPreference::new();
+    preference.max_concurrent_requests = Some(32);
+    preference.timeout_s = Some(360.0);
+    preference.hedge_delay = Some(0.5);
+    preference.total_timeout_s = Some(360.0);
+
+    // Add extra headers
+    let mut extra_headers = std::collections::HashMap::new();
+    extra_headers.insert("x-custom-header".to_string(), "value".to_string());
+    preference.extra_headers = Some(extra_headers);
+
     let batch_response = client.batch_post(
         "/v1/embeddings".to_string(),
         payloads,
-        Some(32),                   // max_concurrent_requests
-        Some(360.0),                // timeout_s
-        Some(0.5),                  // hedge_delay
-        Some(360.0),                // total_timeout_s
-        None,                       // custom_headers
+        &preference,
+        HttpMethod::POST,
     ).await?;
 
     println!("Batch POST total time: {:.4}s", batch_response.total_time);

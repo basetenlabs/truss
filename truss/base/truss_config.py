@@ -26,6 +26,7 @@ from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
 from truss.util.requirements import parse_requirement_string, raise_insufficent_revision
+from truss.util.yaml_utils import safe_load_yaml_with_no_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,13 @@ DEFAULT_AWS_ACCESS_KEY_SECRET_NAME = "aws_access_key_id"
 DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME = "aws_secret_access_key"
 
 DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/training_checkpoints"
+
+WEIGHTS_AUTH_SECRET_NAME_PARAM = "auth_secret_name"
+DOCKER_AUTH_SECRET_NAME_PARAM = "secret_name"
+AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
+AWS_OIDC_REGION_PARAM = "aws_oidc_region"
+GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
+GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
 
 
 def _is_numeric(number_like: str) -> bool:
@@ -222,12 +230,149 @@ class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
         return self.root
 
 
+class WeightsAuthMethod(str, enum.Enum):
+    """Authentication methods for weights sources."""
+
+    CUSTOM_SECRET = "CUSTOM_SECRET"
+    AWS_OIDC = "AWS_OIDC"
+    GCP_OIDC = "GCP_OIDC"
+
+
+class AuthFieldsMixin(custom_types.ConfigModel):
+    """Mixin for common authentication fields used across different auth configurations."""
+
+    aws_oidc_role_arn: Optional[str] = pydantic.Field(
+        default=None, description="AWS IAM role ARN for OIDC authentication."
+    )
+    aws_oidc_region: Optional[str] = pydantic.Field(
+        default=None, description="AWS region for OIDC authentication."
+    )
+    gcp_oidc_service_account: Optional[str] = pydantic.Field(
+        default=None, description="GCP service account name for OIDC authentication."
+    )
+    gcp_oidc_workload_id_provider: Optional[str] = pydantic.Field(
+        default=None,
+        description="GCP workload identity provider for OIDC authentication.",
+    )
+
+    def _require_fields(self, auth_method: str, *fields: str) -> None:
+        """Validate that all specified fields have non-empty values.
+
+        Args:
+            auth_method: The authentication method being validated (for error messages)
+            fields: Field names to check for presence
+
+        Raises:
+            ValueError: If any required fields are missing or empty
+        """
+        missing = [f for f in fields if getattr(self, f) in (None, "")]
+        if missing:
+            raise ValueError(
+                f"{', '.join(missing)} must be provided when auth_method is {auth_method}"
+            )
+
+    def _forbid_fields(self, auth_method: str, *fields: str) -> None:
+        """Validate that all specified fields are empty or None.
+
+        Args:
+            auth_method: The authentication method being validated (for error messages)
+            fields: Field names to check for absence
+
+        Raises:
+            ValueError: If any forbidden fields are present
+        """
+        present = [f for f in fields if getattr(self, f) not in (None, "")]
+        if present:
+            raise ValueError(
+                f"{', '.join(present)} cannot be specified when auth_method is {auth_method}"
+            )
+
+    def _validate_fields(
+        self, auth_method: str, required: list[str], forbidden: list[str]
+    ) -> None:
+        """Validate that required fields are present and forbidden fields are absent.
+
+        Args:
+            auth_method: The authentication method being validated (for error messages)
+            required: List of field names that must have values
+            forbidden: List of field names that must be empty/None
+        """
+        self._require_fields(auth_method, *required)
+        self._forbid_fields(auth_method, *forbidden)
+
+
+class WeightsAuth(AuthFieldsMixin):
+    """Authentication configuration for a weights source.
+
+    This can be used to specify OIDC-based authentication for cloud storage sources,
+    or a Baseten secret name for access key authentication.
+    """
+
+    auth_method: Annotated[
+        WeightsAuthMethod,
+        pydantic.Field(
+            ...,
+            description="Authentication method for downloading weights from the source.",
+        ),
+    ]
+    auth_secret_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="Baseten secret name containing credentials for accessing the source.",
+    )
+
+    @pydantic.field_validator("auth_method", mode="before")
+    @classmethod
+    def _normalize_auth_method(cls, v: Optional[str]) -> Optional[str]:
+        return v.upper() if isinstance(v, str) else v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_auth_fields(self) -> "WeightsAuth":
+        if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[WEIGHTS_AUTH_SECRET_NAME_PARAM],
+                forbidden=[
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+        elif self.auth_method == WeightsAuthMethod.AWS_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+        elif self.auth_method == WeightsAuthMethod.GCP_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                ],
+            )
+
+        return self
+
+
 # URI prefixes for cloud storage sources
-_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://"})
+_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://"})
 # HuggingFace prefix
 _HF_PREFIX = "hf://"
-# All supported URI schemes (cloud storage + HuggingFace)
-_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX}
+# HTTPS prefix for direct URL downloads
+_HTTPS_PREFIX = "https://"
+# All supported URI schemes (cloud storage + HuggingFace + HTTPS)
+_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX, _HTTPS_PREFIX}
 
 
 class WeightsSource(custom_types.ConfigModel):
@@ -238,14 +383,24 @@ class WeightsSource(custom_types.ConfigModel):
     - s3:// -> AWS S3 (e.g., "s3://bucket/path")
     - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
     - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+    - r2:// -> CloudFlare R2 Storage (e.g., "r2://account_id.bucket/path")
+    - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
 
     For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
     using the @{rev} suffix: "hf://owner/repo@revision"
+
+    Authentication can be specified either:
+    - Using the `auth` section (required for OIDC):
+        auth:
+          auth_method: AWS_OIDC
+          aws_oidc_role_arn: <role_arn>
+          aws_oidc_region: <region>
+    - Using `auth_secret_name` at the top level (or in the `auth` section)
     """
 
     source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
         ...,
-        description="URI with scheme prefix. Use hf://, s3://, gs://, or azure://. "
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, or https://. "
         "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
     )
     mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
@@ -253,9 +408,13 @@ class WeightsSource(custom_types.ConfigModel):
             ..., description="Absolute path where weights will be mounted at runtime."
         )
     )
+    auth: Optional[WeightsAuth] = pydantic.Field(
+        default=None,
+        description="Authentication configuration for accessing the weights source.",
+    )
     auth_secret_name: Optional[str] = pydantic.Field(
         default=None,
-        description="Baseten secret name containing credentials for accessing the source.",
+        description="Baseten secret name containing credentials. Can also be specified in auth.auth_secret_name.",
     )
     allow_patterns: Optional[list[str]] = pydantic.Field(
         default=None, description="File patterns to include (e.g., ['*.safetensors'])."
@@ -305,6 +464,15 @@ class WeightsSource(custom_types.ConfigModel):
                     f"Source '{v}' uses {scheme[:-3].upper()} which does not support revisions."
                 )
 
+        # Validate https:// format
+        if scheme == _HTTPS_PREFIX:
+            url_part = v[len(_HTTPS_PREFIX) :]
+            if not url_part or url_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid HTTPS URL format: '{v}'. "
+                    f"Expected format: https://hostname/path"
+                )
+
         # Validate hf:// format
         if scheme == _HF_PREFIX:
             repo_part = v[len(_HF_PREFIX) :]
@@ -324,6 +492,16 @@ class WeightsSource(custom_types.ConfigModel):
                 f"mount_location must be an absolute path (start with /), got: {v}"
             )
         return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_auth_secret_name(self) -> "WeightsSource":
+        """Validate that auth_secret_name is not specified in conflicting locations."""
+        if self.auth_secret_name and (self.auth and self.auth.auth_secret_name):
+            raise ValueError(
+                "auth_secret_name cannot be specified both at the top level and in auth section. "
+                "Please use only one location."
+            )
+        return self
 
 
 class Weights(pydantic.RootModel[list[WeightsSource]]):
@@ -511,6 +689,13 @@ class Resources(custom_types.ConfigModel):
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
+    instance_type: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "Full SKU name for the instance type (e.g., 'L4:8x32'). "
+            "When specified, cpu, memory, and accelerator fields are ignored."
+        ),
+    )
     node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
@@ -584,10 +769,12 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` if at default."""
+        """Custom omission of `node_count` and `instance_type` if at default."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
+        if not self.instance_type:
+            result.pop("instance_type", None)
         return result
 
 
@@ -635,9 +822,11 @@ class DockerAuthType(str, enum.Enum):
 
     GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
     AWS_IAM = "AWS_IAM"
+    AWS_OIDC = "AWS_OIDC"
+    GCP_OIDC = "GCP_OIDC"
 
 
-class DockerAuthSettings(custom_types.ConfigModel):
+class DockerAuthSettings(AuthFieldsMixin):
     """Provides information about how to authenticate to the docker registry containing
     the custom base image."""
 
@@ -657,14 +846,42 @@ class DockerAuthSettings(custom_types.ConfigModel):
         return v.upper() if isinstance(v, str) else v
 
     @pydantic.model_validator(mode="after")
-    def validate_secret_name(self) -> "DockerAuthSettings":
-        if (
-            self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON
-            and self.secret_name is None
-        ):
-            raise ValueError(
-                "secret_name must be provided when auth_method is GCP_SERVICE_ACCOUNT_JSON"
+    def validate_auth_fields(self) -> "DockerAuthSettings":
+        if self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[DOCKER_AUTH_SECRET_NAME_PARAM],
+                forbidden=[
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
             )
+        elif self.auth_method == DockerAuthType.AWS_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
+                forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+        elif self.auth_method == DockerAuthType.GCP_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+                forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                ],
+            )
+
         return self
 
 
@@ -690,6 +907,13 @@ class DockerServer(custom_types.ConfigModel):
     liveness_endpoint: str
     run_as_user_id: Optional[int] = None
     no_build: Optional[bool] = None
+
+    @pydantic.field_validator("run_as_user_id")
+    @classmethod
+    def _validate_run_as_user_id(cls, v: Optional[int]) -> Optional[int]:
+        if v == 0 or v == constants.DEFAULT_NON_ROOT_USER_ID:
+            raise ValueError(f"run_as_user_id cannot be {v}. Use a different user ID.")
+        return v
 
     @pydantic.model_validator(mode="after")
     def _validate_start_command(self) -> "DockerServer":
@@ -811,7 +1035,7 @@ class TrussConfig(custom_types.ConfigModel):
         if not os.path.isfile(path):
             raise ValueError(f"Expected a truss configuration file at {path}")
         with path.open() as f:
-            raw_data = yaml.safe_load(f) or {}
+            raw_data = safe_load_yaml_with_no_duplicates(f) or {}
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
@@ -887,6 +1111,7 @@ class TrussConfig(custom_types.ConfigModel):
     def clear_runtime_fields(self) -> None:
         self.training_checkpoints = None
         self.environment_variables = {}
+        self.weights = Weights([])
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

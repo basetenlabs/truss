@@ -63,19 +63,35 @@ def test_get_service_by_model_name(remote):
         {"id": "2", "is_draft": False, "is_primary": True},
         {"id": "3", "is_draft": True, "is_primary": False},
     ]
-    model_response = {
+
+    # Mock responses for the new team disambiguation flow
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
+            "models": [
+                {
+                    "name": "model_name",
+                    "id": "model_id",
+                    "hostname": "hostname",
+                    "team": {"id": "team1", "name": "Team Alpha"},
+                    "versions": versions,
+                }
+            ]
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": teams_response},
+                {"json": models_response},
+                {"json": teams_response},
+                {"json": models_response},
+            ],
+        )
 
         # Check that the production version is returned when published is True.
         service = remote.get_service(
@@ -94,19 +110,35 @@ def test_get_service_by_model_name(remote):
 
 def test_get_service_by_model_name_no_dev_version(remote):
     versions = [{"id": "1", "is_draft": False, "is_primary": True}]
-    model_response = {
+
+    # Mock responses for the new team disambiguation flow
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
+            "models": [
+                {
+                    "name": "model_name",
+                    "id": "model_id",
+                    "hostname": "hostname",
+                    "team": {"id": "team1", "name": "Team Alpha"},
+                    "versions": versions,
+                }
+            ]
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": teams_response},
+                {"json": models_response},
+                {"json": teams_response},
+                {"json": models_response},
+            ],
+        )
 
         # Check that the production version is returned when published is True.
         service = remote.get_service(
@@ -125,19 +157,35 @@ def test_get_service_by_model_name_no_dev_version(remote):
 
 def test_get_service_by_model_name_no_prod_version(remote):
     versions = [{"id": "1", "is_draft": True, "is_primary": False}]
-    model_response = {
+
+    # Mock responses for the new team disambiguation flow
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
+            "models": [
+                {
+                    "name": "model_name",
+                    "id": "model_id",
+                    "hostname": "hostname",
+                    "team": {"id": "team1", "name": "Team Alpha"},
+                    "versions": versions,
+                }
+            ]
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": teams_response},
+                {"json": models_response},
+                {"json": teams_response},
+                {"json": models_response},
+            ],
+        )
 
         # Since no production version exists, calling get_service with
         # published=True should raise an error.
@@ -677,3 +725,25 @@ def test_api_push_integration_deploy_timeout_minutes_propagated(
     mock_remote_factory.push.assert_called_once()
     _, push_kwargs = mock_remote_factory.push.call_args
     assert push_kwargs.get("deploy_timeout_minutes") == 1200
+
+
+def test_api_push_integration_metadata_propagated(
+    custom_model_truss_dir_with_pre_and_post,
+    mock_remote_factory,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+
+    metadata = {"team": "ml", "run_id": 123, "flags": {"fast": True}}
+    push(
+        str(mock_truss_handle.truss_dir),
+        remote="baseten",
+        model_name="test_model",
+        metadata=metadata,
+    )
+
+    mock_remote_factory.push.assert_called_once()
+    _, push_kwargs = mock_remote_factory.push.call_args
+    assert push_kwargs.get("metadata") == metadata

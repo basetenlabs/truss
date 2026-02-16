@@ -1,3 +1,4 @@
+import json
 import logging
 from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
@@ -8,7 +9,7 @@ from pydantic import BaseModel, Field
 from truss.base.custom_types import SafeModel
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
-from truss.remote.baseten.custom_types import APIKeyCategory
+from truss.remote.baseten.custom_types import APIKeyCategory, TeamType
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.rest_client import RestAPIClient
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -202,9 +203,10 @@ class BasetenApi:
         environment: Optional[str] = None,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
                 create_model_from_truss(
                     name: "{model_name}"
                     s3_key: "{s3_key}"
@@ -217,6 +219,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
+                    user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
                         id
@@ -233,7 +236,13 @@ class BasetenApi:
             }}
         """
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": truss_user_env.json()}
+            query_string,
+            variables={
+                "trussUserEnv": truss_user_env.json(),
+                "userDeployMetadata": json.dumps(metadata)
+                if metadata is not None
+                else None,
+            },
         )
         return resp["data"]["create_model_from_truss"]["model_version"]
 
@@ -249,9 +258,10 @@ class BasetenApi:
         environment: Optional[str] = None,
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
+        metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
                 create_model_version_from_truss(
                     model_id: "{model_id}"
                     s3_key: "{s3_key}"
@@ -263,6 +273,7 @@ class BasetenApi:
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
                         id
@@ -280,7 +291,13 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": truss_user_env.json()}
+            query_string,
+            variables={
+                "trussUserEnv": truss_user_env.json(),
+                "userDeployMetadata": json.dumps(metadata)
+                if metadata is not None
+                else None,
+            },
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
 
@@ -294,9 +311,10 @@ class BasetenApi:
         origin: Optional[b10_types.ModelOrigin] = None,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
                 deploy_draft_truss(name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
@@ -305,6 +323,7 @@ class BasetenApi:
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
+                    user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
                         id
@@ -322,7 +341,13 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": truss_user_env.json()}
+            query_string,
+            variables={
+                "trussUserEnv": truss_user_env.json(),
+                "userDeployMetadata": json.dumps(metadata)
+                if metadata is not None
+                else None,
+            },
         )
         return resp["data"]["deploy_draft_truss"]["model_version"]
 
@@ -500,16 +525,52 @@ class BasetenApi:
                     id
                     name
                 }}
-                versions{{
-                    id,
-                    semver,
-                    current_deployment_status,
-                    is_primary,
-                }}
             }}
         }}
         """
 
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    def get_models_for_watch(
+        self, team_id: Optional[str] = None, chainlets_only: Optional[bool] = False
+    ):
+        """Get models with full version info needed for watch disambiguation."""
+        # If team_id is provided, filter by team; otherwise get all models
+        if team_id:
+            filter_arg = f'team_id: "{team_id}"'
+        else:
+            filter_arg = "all: true"
+
+        # Add chainlets_only filter to query chainlet oracles (origin=CHAINS)
+        # instead of regular models (origin=BASETEN). Only include if True.
+        if chainlets_only:
+            filter_arg += ", chainlets_only: true"
+
+        query_string = f"""
+        {{
+            models({filter_arg}) {{
+                id
+                name
+                hostname
+                team {{
+                    id
+                    name
+                }}
+                versions {{
+                    id
+                    semver
+                    truss_hash
+                    truss_signature
+                    is_draft
+                    is_primary
+                    current_model_deployment_status {{
+                        status
+                    }}
+                }}
+            }}
+        }}
+        """
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
@@ -802,6 +863,12 @@ class BasetenApi:
         )
         return resp_json
 
+    def get_training_job_isession(self, project_id: str, job_id: str):
+        resp_json = self._rest_api_client.get(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/auth_codes"
+        )
+        return resp_json
+
     def _prepare_time_range_query(
         self,
         start_epoch_millis: Optional[int] = None,
@@ -956,16 +1023,17 @@ class BasetenApi:
             InstanceTypeV1(**instance_type) for instance_type in instance_types_data
         ]
 
-    def get_teams(self) -> Dict[str, Dict[str, str]]:
+    def get_teams(self) -> Dict[str, TeamType]:
         """
         Get all available teams via GraphQL API.
-        Returns a dictionary mapping team name to team data (with 'id' and 'name' keys).
+        Returns a dictionary mapping team name to team data.
         """
         query_string = """
         query Teams {
             teams {
                 id
                 name
+                default
             }
         }
         """
@@ -973,4 +1041,40 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         teams_data = resp["data"]["teams"]
         # Convert list to dict mapping team_name -> team
-        return {team["name"]: team for team in teams_data}
+        return {team["name"]: TeamType(**team) for team in teams_data}
+
+    def get_organization_id(self) -> str:
+        """
+        Get the organization ID via GraphQL API.
+        Returns the organization identifier.
+        """
+        query_string = """
+        query {
+            organization {
+                id
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["organization"]["id"]
+
+    def update_interactive_session(
+        self,
+        project_id: str,
+        job_id: str,
+        trigger: Optional[str] = None,
+        timeout_minutes: Optional[int] = None,
+    ):
+        """Update interactive session configuration for a training job."""
+        body: Dict[str, Any] = {}
+        if trigger is not None:
+            body["trigger"] = trigger
+        if timeout_minutes is not None:
+            body["timeout_minutes"] = timeout_minutes
+
+        resp_json = self._rest_api_client.patch(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_session",
+            body=body,
+        )
+        return resp_json

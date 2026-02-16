@@ -36,6 +36,7 @@ from truss.util import log_utils, user_config
 from truss.util import path as truss_path
 from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import code_gen
+from truss_chains.deployment.chain_gatherer import gather_chain
 
 if TYPE_CHECKING:
     from rich import console as rich_console
@@ -72,6 +73,38 @@ def _get_chain_root(entrypoint: Type[private_types.ABCChainlet]) -> pathlib.Path
         "be included as dependencies in the remote deployments and are importable)."
     )
     return chain_root
+
+
+def _collect_external_package_dirs(
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+) -> list[pathlib.Path]:
+    """Collect unique external_package_dirs from all chainlets.
+
+    Args:
+        chainlet_descriptors: Iterable of chainlet descriptors to collect from.
+
+    Returns:
+        List of unique absolute paths to external package directories.
+    """
+    seen: set[pathlib.Path] = set()
+    result: list[pathlib.Path] = []
+    for desc in chainlet_descriptors:
+        ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
+        if not ext_dirs:
+            continue
+        for ext_dir in ext_dirs:
+            abs_path = pathlib.Path(ext_dir.abs_path)
+            if abs_path in seen:
+                continue
+            seen.add(abs_path)
+            result.append(abs_path)
+            if abs_path.name != "packages":
+                logging.warning(
+                    f'"{abs_path.name}" is a non-standard directory name for '
+                    f"external_package_dirs and may not work after a chain download. "
+                    f'Consider naming it "packages" instead.'
+                )
+    return result
 
 
 class ChainService(abc.ABC):
@@ -522,6 +555,15 @@ def _create_baseten_chain(
     if entrypoint_descriptor is not None:
         chain_root = _get_chain_root(entrypoint_descriptor.chainlet_cls)
 
+        # Gather external packages from all chainlets into the chain archive.
+        # This ensures that when users download the chain, all external
+        # dependencies are included in the artifact.
+        all_external_dirs = _collect_external_package_dirs(
+            _get_ordered_dependencies([entrypoint_descriptor.chainlet_cls])
+        )
+        if all_external_dirs:
+            chain_root = gather_chain(chain_root, all_external_dirs)
+
     chain_deployment_handle = remote_provider.push_chain_atomic(
         baseten_options.chain_name,
         entrypoint_artifact,
@@ -677,7 +719,10 @@ class _Watcher:
         error_console: "rich_console.Console",
         show_stack_trace: bool,
         included_chainlets: Optional[list[str]],
+        provided_team_name: Optional[str] = None,
     ) -> None:
+        from truss.cli.resolvers.chain_team_resolver import resolve_chain_for_watch
+
         self._source = source
         self._entrypoint = entrypoint
         self._console = console
@@ -708,13 +753,10 @@ class _Watcher:
         else:
             self._included_chainlets = chainlet_names
 
-        chain_id = b10_core.get_chain_id_by_name(
-            self._remote_provider.api, self._deployed_chain_name
+        resolved_chain = resolve_chain_for_watch(
+            self._remote_provider, self._deployed_chain_name, provided_team_name
         )
-        if not chain_id:
-            raise public_types.ChainsDeploymentError(
-                f"Chain `{self._deployed_chain_name}` was not found."
-            )
+        chain_id = resolved_chain["id"]
         self._status_page_url = b10_service.URLConfig.status_page_url(
             self._remote_provider.remote_url, b10_service.URLConfig.CHAIN, chain_id
         )
@@ -901,6 +943,7 @@ def watch(
     error_console: "rich_console.Console",
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
+    provided_team_name: Optional[str] = None,
 ) -> None:
     console.print(
         (
@@ -918,6 +961,7 @@ def watch(
         error_console,
         show_stack_trace,
         included_chainlets,
+        provided_team_name,
     )
     patcher.watch()
 

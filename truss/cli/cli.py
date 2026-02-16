@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Optional, cast
 
+import rich.table
 import rich_click as click
 from rich import progress
 
@@ -19,8 +20,11 @@ from truss.base.truss_config import Build, ModelServer, TransportKind
 from truss.cli import remote_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.model_log_watcher import ModelDeploymentLogWatcher
-from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
-from truss.cli.utils import common
+from truss.cli.resolvers.model_team_resolver import (
+    resolve_model_for_watch,
+    resolve_model_team_name,
+)
+from truss.cli.utils import common, self_upgrade
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -29,6 +33,7 @@ from truss.remote.baseten.core import (
     ModelIdentifier,
     ModelName,
     ModelVersionId,
+    get_dev_version_from_versions,
 )
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
@@ -69,17 +74,20 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-def _get_truss_from_directory(target_directory: Optional[str] = None):
+def _get_truss_from_directory(
+    target_directory: Optional[str] = None, config: Optional[str] = None
+):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
+    config_path = Path(config) if config else None
     if not os.path.isfile(target_directory):
-        return load(target_directory)
+        return load(target_directory, config_path=config_path)
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains.deployment import code_gen
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
-    return load(truss_dir)
+    return load(truss_dir, config_path=config_path)
 
 
 ### Top-level & utility commands. ######################################################
@@ -119,14 +127,64 @@ def login(api_key: Optional[str]):
 
 
 @truss_cli.command()
+@click.argument("version", required=False)
+@common.common_options()
+@click.pass_context
+def upgrade(ctx: click.Context, version: Optional[str]) -> None:
+    """Upgrade truss to the latest (or specified) version."""
+    interactive = not ctx.obj.get("non_interactive", False)
+    self_upgrade.run_upgrade(version, interactive=interactive)
+
+
+def _create_oidc_table(oidc_info) -> rich.table.Table:
+    """Creates an OIDC information table."""
+    table = rich.table.Table(
+        show_header=False,
+        title="OIDC Configuration for Workload Identity",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column(style="cyan", min_width=20)
+    table.add_column(min_width=40)
+    table.add_row("Org ID", oidc_info.org_id)
+
+    if oidc_info.teams:
+        teams_display = ", ".join(
+            f"{team.id} ({team.name})" for team in oidc_info.teams
+        )
+        table.add_row("Teams", teams_display)
+    else:
+        table.add_row("Teams", "[ ]")
+
+    table.add_row("Issuer", oidc_info.issuer)
+    table.add_row("Audience", oidc_info.audience)
+    table.add_row("Workload Type Options", ", ".join(oidc_info.workload_types))
+
+    table.add_section()
+    table.add_row(
+        "Subject Claim Format",
+        "v=1:org=<org_id>:team=<team_id>:model=<model_id>:"
+        "deployment=<deployment_id>:env=<environment>:type=<workload_type>",
+    )
+
+    return table
+
+
+@truss_cli.command()
 @click.option(
     "--remote",
     type=str,
     required=False,
     help="Name of the remote in .trussrc to check whoami.",
 )
+@click.option(
+    "--show-oidc",
+    is_flag=True,
+    default=False,
+    help="Show OIDC configuration for workload identity.",
+)
 @common.common_options()
-def whoami(remote: Optional[str]):
+def whoami(remote: Optional[str], show_oidc: bool):
     """
     Shows user information and exit.
     """
@@ -138,6 +196,15 @@ def whoami(remote: Optional[str]):
     user = whoami(remote)
 
     console.print(f"{user.workspace_name}\\{user.user_email}")
+
+    if show_oidc:
+        remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+        oidc_info = remote_provider.get_oidc_info()
+
+        console.print()
+        table = _create_oidc_table(oidc_info)
+        console.print(table)
+        # TODO(danielleef): Reference docs here once they're ready
 
 
 @truss_cli.command()
@@ -395,6 +462,12 @@ def run_python(script, target_directory):
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
+    "--config",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to a custom config file (default: config.yaml in truss directory)",
+)
+@click.option(
     "--remote",
     type=str,
     required=False,
@@ -515,9 +588,16 @@ def run_python(script, target_directory):
     required=False,
     help="Team name for the model",
 )
+@click.option(
+    "--metadata",
+    type=str,
+    required=False,
+    help="JSON string of metadata key-value pairs.",
+)
 @common.common_options()
 def push(
     target_directory: str,
+    config: Optional[str],
     remote: str,
     model_name: str,
     publish: bool = False,
@@ -534,6 +614,7 @@ def push(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
+    metadata: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -541,7 +622,14 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _get_truss_from_directory(target_directory=target_directory, config=config)
+
+    if tr.spec.config.resources.instance_type:
+        console.print(
+            "Field 'instance_type' specified - ignoring 'cpu', 'memory', 'accelerator', and 'use_gpu' fields.",
+            style="yellow",
+        )
+
     if (
         tr.spec.config.runtime.transport.kind == TransportKind.GRPC
         and not publish
@@ -567,9 +655,13 @@ def push(
     team_id = None
     if isinstance(remote_provider, BasetenRemote):
         existing_teams = remote_provider.api.get_teams()
+        # Use config team as fallback if --team not provided
+        effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
+            remote
+        )
         _, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
-            provided_team_name=provided_team_name,
+            provided_team_name=effective_team_name,
             existing_model_name=model_name,
             existing_teams=existing_teams,
         )
@@ -606,6 +698,16 @@ def push(
     if trusted is not None:
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
+
+    # Parse metadata from CLI option
+    metadata_dict: dict = {}
+    if metadata:
+        try:
+            metadata_dict = json.loads(metadata)
+            if not isinstance(metadata_dict, dict):
+                raise click.UsageError("--metadata must be a JSON object.")
+        except json.JSONDecodeError as e:
+            raise click.UsageError(f"Invalid JSON in --metadata: {e}")
 
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
@@ -656,6 +758,7 @@ def push(
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
+        metadata=metadata_dict,
     )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -753,13 +856,31 @@ def model_logs(
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
+    "--config",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to a custom config file (default: config.yaml in truss directory)",
+)
+@click.option(
     "--remote",
     type=str,
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the model to watch",
+)
 @common.common_options()
-def watch(target_directory: str, remote: str) -> None:
+def watch(
+    target_directory: str,
+    config: Optional[str],
+    remote: str,
+    provided_team_name: Optional[str] = None,
+) -> None:
     """
     Seamless remote development with truss
 
@@ -769,9 +890,9 @@ def watch(target_directory: str, remote: str) -> None:
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    remote_provider = RemoteFactory.create(remote=remote)
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _get_truss_from_directory(target_directory=target_directory, config=config)
     model_name = tr.spec.config.model_name
     if not model_name:
         console.print(
@@ -780,14 +901,30 @@ def watch(target_directory: str, remote: str) -> None:
         )
         sys.exit(1)
 
-    service = remote_provider.get_service(model_identifier=ModelName(model_name))
+    # Resolve the model once with team disambiguation (prompts only once if needed)
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+    resolved_model, versions = resolve_model_for_watch(
+        remote_provider, model_name, provided_team_name=effective_team_name
+    )
+    model_id = resolved_model["id"]
+
+    # Verify dev version exists
+    dev_version = get_dev_version_from_versions(versions)
+    if not dev_version:
+        console.print("❌ No development model found. Run `truss push` then try again.")
+        sys.exit(1)
+
+    # Use model_id to get service (no additional resolution needed)
+    service = remote_provider.get_service(model_identifier=ModelId(model_id))
     console.print(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
 
     if not os.path.isfile(target_directory):
-        remote_provider.sync_truss_to_dev_version_by_name(
-            model_name, target_directory, console, error_console
+        # Pass the resolved model to avoid re-resolution
+        remote_provider.sync_truss_to_dev_version_with_model(
+            resolved_model, versions, target_directory, console, error_console
         )
     else:
         # These imports are delayed, to handle pydantic v1 envs gracefully.
@@ -947,4 +1084,4 @@ def kill_all() -> None:
 
 
 # These imports are needed to register the subcommands
-from truss.cli import chains_commands, train_commands  # noqa: F401
+from truss.cli import chains_commands, migrate_commands, train_commands  # noqa: F401

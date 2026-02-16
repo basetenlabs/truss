@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
 
+import rich.table
 import rich_click as click
 
 import truss.cli.train.core as train_cli
@@ -33,6 +34,7 @@ from truss.cli.train.types import DeploySuccessResult
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
@@ -57,7 +59,7 @@ def _print_training_job_success_message(
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
     should_print_cache_summary = job_object and (
-        job_object.runtime.enable_cache
+        getattr(job_object.runtime, "enable_cache", None)
         or job_object.runtime.cache_config
         and job_object.runtime.cache_config.enabled
     )
@@ -118,7 +120,7 @@ def _resolve_team_name(
     remote_provider: BasetenRemote,
     provided_team_name: Optional[str],
     existing_project_name: Optional[str] = None,
-    existing_teams: Optional[dict[str, dict[str, str]]] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     return resolve_training_project_team_name(
         remote_provider=remote_provider,
@@ -140,6 +142,26 @@ def _resolve_team_name(
     required=False,
     help="Team name for the training project",
 )
+@click.option(
+    "--interactive",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="Interactive session trigger mode",
+)
+@click.option(
+    "--interactive-timeout-minutes",
+    type=int,
+    required=False,
+    help="Interactive session timeout in minutes",
+)
+@click.option(
+    "--accelerator",
+    type=str,
+    required=False,
+    help="Accelerator type and count (e.g., H200:8)",
+)
+@click.option("--node-count", type=int, required=False, help="Number of compute nodes")
+@click.option("--entrypoint", type=str, required=False, help="Entrypoint command.")
 @common.common_options()
 def push_training_job(
     config: Path,
@@ -147,6 +169,11 @@ def push_training_job(
     tail: bool,
     job_name: Optional[str],
     provided_team_name: Optional[str],
+    interactive: Optional[str],
+    interactive_timeout_minutes: Optional[int],
+    accelerator: Optional[str],
+    node_count: Optional[int],
+    entrypoint: Optional[str],
 ):
     """Run a training job"""
     from truss_train import deployment, loader
@@ -159,11 +186,13 @@ def push_training_job(
     )
 
     existing_teams = remote_provider.api.get_teams()
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
 
     with loader.import_training_project(config) as training_project:
         team_name, team_id = _resolve_team_name(
             remote_provider,
-            provided_team_name,
+            effective_team_name,
             existing_project_name=training_project.name,
             existing_teams=existing_teams,
         )
@@ -176,6 +205,11 @@ def push_training_job(
                 job_name_from_cli=job_name,
                 team_name=team_name,
                 team_id=team_id,
+                interactive_trigger=interactive,
+                interactive_timeout_minutes=interactive_timeout_minutes,
+                accelerator=accelerator,
+                node_count=node_count,
+                entrypoint=entrypoint,
             )
 
     # Note: This post create logic needs to happen outside the context
@@ -208,6 +242,68 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
     _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
+def _format_local_time(utc_timestamp: str) -> str:
+    """Convert UTC ISO timestamp to local time string."""
+    if not utc_timestamp:
+        return ""
+    try:
+        utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+        local_dt = utc_dt.astimezone()
+        return local_dt.strftime("%H:%M:%S %Z")
+    except (ValueError, TypeError):
+        return utc_timestamp
+
+
+def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: str):
+    """Display auth codes table for a training job if available."""
+    try:
+        response = remote_provider.api.get_training_job_isession(
+            project_id=project_id, job_id=job_id
+        )
+        isession = response.get("auth_codes", [])
+
+        if not isession:
+            return
+
+        def replica_sort_key(code: dict) -> int:
+            replica_id = code.get("replica_id", "")
+            if "r" in replica_id:
+                try:
+                    return int(replica_id.rsplit("r", 1)[-1])
+                except ValueError:
+                    return 0
+            return 0
+
+        isession.sort(key=replica_sort_key)
+
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title=f"Interactive Sessions for Job: {job_id}",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        table.add_column("Replica ID", style="cyan")
+        table.add_column("Tunnel Name", style="yellow")
+        table.add_column("Auth Code", style="green bold")
+        table.add_column("Auth URL", style="blue")
+        table.add_column("Generated At (Local)", style="dim")
+
+        for code in isession:
+            table.add_row(
+                code.get("replica_id", ""),
+                code.get("tunnel_name", ""),
+                code.get("auth_code", ""),
+                code.get("auth_url", ""),
+                _format_local_time(code.get("generated_at", "")),
+            )
+
+        console.print(table)
+    except Exception:
+        # Silently skip if auth codes aren't available
+        pass
+
+
 @train.command(name="logs")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
@@ -238,13 +334,18 @@ def get_job_logs(
         remote_provider, project_id, job_id
     )
 
+    # Display auth codes once at the top for both modes
+    _display_isession(remote_provider, project_id, job_id)
+
     if not tail:
+        # Non-tail mode: Display all logs
         logs = get_training_job_logs_with_pagination(
             remote_provider.api, project_id, job_id
         )
         for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log)
     else:
+        # Tail mode: Stream logs continuously
         log_watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
         for log in log_watcher.watch():
             cli_log_utils.output_log(log)
@@ -637,3 +738,98 @@ def _maybe_resolve_project_id_from_id_or_name(
     if not project_str:
         return None
     return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]
+
+
+@train.command(name="update_session")
+@click.argument("job_id", type=str, required=True)
+@click.option(
+    "--trigger",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="When to create the interactive session: 'on_startup' creates on job start, 'on_failure' creates on job failure, 'on_demand' allows manual session creation.",
+)
+@click.option(
+    "--timeout-minutes",
+    type=int,
+    required=False,
+    help="Number of hours before the interactive session times out.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def update_session(
+    job_id: str,
+    trigger: Optional[str],
+    timeout_minutes: Optional[int],
+    remote: Optional[str],
+):
+    """Update interactive session configuration for a training job."""
+
+    if trigger is None and timeout_minutes is None:
+        error_console.print(
+            "At least one of --trigger or --timeout-minutes must be provided."
+        )
+        sys.exit(1)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        remote_provider.api.update_interactive_session(
+            project_id=project_id,
+            job_id=job_id,
+            trigger=trigger,
+            timeout_minutes=timeout_minutes,
+        )
+        console.print("Interactive session configuration updated.", style="green")
+    except Exception as e:
+        error_console.print(f"Failed to update interactive session: {str(e)}")
+        sys.exit(1)
+
+
+@train.command(name="isession")
+@click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def get_isession(job_id: str, remote: Optional[str]):
+    """Get auth codes for a training job's interactive session."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        response = remote_provider.api.get_training_job_isession(
+            project_id=project_id, job_id=job_id
+        )
+        isession = response.get("auth_codes", [])
+
+        if not isession:
+            console.print("No auth codes found for this job.", style="yellow")
+            return
+
+        _display_isession(remote_provider, project_id, job_id)
+    except Exception as e:
+        error_console.print(f"Failed to get auth codes: {str(e)}")
+        sys.exit(1)

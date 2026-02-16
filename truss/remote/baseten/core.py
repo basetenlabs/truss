@@ -242,11 +242,6 @@ def exists_model(
     return None
 
 
-def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:
-    query_result = api.get_model(model_name.value)["model"]
-    return query_result, query_result["versions"]
-
-
 def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
     """Given a list of model version dicts, returns the development version.
 
@@ -411,6 +406,7 @@ def create_truss_service(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     team_id: Optional[str] = None,
+    metadata: Optional[dict] = None,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -441,6 +437,7 @@ def create_truss_service(
             origin=origin,
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
+            metadata=metadata,
         )
 
         return ModelVersionHandle(
@@ -467,6 +464,7 @@ def create_truss_service(
             environment=environment,
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
+            metadata=metadata,
         )
 
         return ModelVersionHandle(
@@ -491,6 +489,7 @@ def create_truss_service(
         environment=environment,
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
+        metadata=metadata,
     )
 
     return ModelVersionHandle(

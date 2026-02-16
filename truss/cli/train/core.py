@@ -244,7 +244,7 @@ def create_model_version_from_inference_template(
             args.job_id,
             args.dry_run,
         )
-    #### User provided a checkpoint deploy config file
+    # User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:

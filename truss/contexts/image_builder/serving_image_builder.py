@@ -28,6 +28,7 @@ from truss.base.constants import (
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
+    DEFAULT_NON_ROOT_USER_ID,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_CACHE_PATH,
@@ -371,6 +372,7 @@ def generate_docker_server_nginx_config(build_dir, config):
         liveness_endpoint=config.docker_server.liveness_endpoint,
         server_port=config.docker_server.server_port,
         client_max_body_size=TRUSSLESS_MAX_PAYLOAD_SIZE,
+        transport_kind=config.runtime.transport.kind,
     )
     nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
@@ -418,7 +420,7 @@ def generate_docker_server_supervisord_config(build_dir, config):
     }
 
     cfg["eventlistener:quit_on_failure"] = {
-        "events": "PROCESS_STATE_FATAL",  # Listen for fatal process events
+        "events": "PROCESS_STATE_FATAL,PROCESS_STATE_EXITED",  # Listen for fatal process events
         # Stop supervisord (SIGTERM to PID 1) on fatal event
         "command": """sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'""",
     }
@@ -658,6 +660,14 @@ class ServingImageBuilder(ImageBuilder):
 
             generate_docker_server_supervisord_config(build_dir, config)
 
+            # Copy event listener script
+            event_listener_script = (
+                TEMPLATES_DIR / "docker_server" / "event_listener.py"
+            )
+            self._copy_into_build_dir(
+                event_listener_script, build_dir, "event_listener.py"
+            )
+
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(verbose=True), config_file)
@@ -863,7 +873,14 @@ class ServingImageBuilder(ImageBuilder):
             config
         )
 
-        non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
+        docker_server = config.docker_server
+        if docker_server and docker_server.run_as_user_id:
+            run_as_user_id = docker_server.run_as_user_id
+        elif os.getenv("BT_USE_NON_ROOT_USER", False):
+            run_as_user_id = DEFAULT_NON_ROOT_USER_ID
+        else:
+            run_as_user_id = 0
+
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -899,7 +916,7 @@ class ServingImageBuilder(ImageBuilder):
             build_commands=build_commands,
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
-            non_root_user=non_root_user,
+            run_as_user_id=run_as_user_id,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
