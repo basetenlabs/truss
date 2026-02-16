@@ -9,7 +9,7 @@ Truss is the CLI for deploying and serving ML models on Baseten. Package your mo
 
 Deploy models from any framework: `transformers`, `diffusers`, PyTorch, TensorFlow, vLLM, SGLang, TensorRT-LLM, and more:
 
-* 🦙 [Llama 4 Scout](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-4-scout-17b-16e-instruct-bf16-vllm) · [Llama 3](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-8b-instruct) ([70B](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-70b-instruct))
+* 🦙 [Llama 3](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-8b-instruct) ([70B](https://github.com/basetenlabs/truss-examples/tree/main/llama/llama-3-70b-instruct)) · [Qwen3](https://github.com/basetenlabs/truss-examples/tree/main/qwen/qwen-3)
 * 🧠 [DeepSeek R1](https://github.com/basetenlabs/truss-examples/tree/main/deepseek) — reasoning models
 * 🎨 [FLUX.1](https://github.com/basetenlabs/truss-examples/tree/main/flux) — image generation
 * 🗣 [Whisper v3](https://github.com/basetenlabs/truss-examples/tree/main/whisper/whisper-v3-truss) — speech recognition
