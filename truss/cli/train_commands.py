@@ -833,23 +833,34 @@ def update_session(
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
-    "--update",
+    "--update-timeout",
     is_flag=True,
-    help="Extend the session timeout (uses interactive picker unless --timeout-minutes is set)",
+    help="Extend the session timeout (interactive picker unless --timeout-minutes is also set)",
 )
 @click.option(
     "--timeout-minutes",
     type=int,
     required=False,
-    help="Minutes to extend the session timeout by (implies --update)",
+    help="Minutes to extend the session timeout by (implies --update-timeout)",
+)
+@click.option(
+    "--update-trigger",
+    "trigger",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="Change the session trigger (cannot be changed on on_startup sessions)",
 )
 @common.common_options()
 def get_isession(
-    job_id: str, remote: Optional[str], update: bool, timeout_minutes: Optional[int]
+    job_id: str,
+    remote: Optional[str],
+    update_timeout: bool,
+    timeout_minutes: Optional[int],
+    trigger: Optional[str],
 ):
     """Get auth codes for a training job's interactive session."""
     if timeout_minutes is not None:
-        update = True
+        update_timeout = True
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -877,12 +888,33 @@ def get_isession(
             console.print("No auth codes found for this job.", style="yellow")
             return
 
-        # Handle --update flag for extending session timeout
-        if update:
+        # Validate trigger change: on_startup sessions cannot have their trigger changed
+        if trigger is not None:
+            current_triggers = {s.get("trigger") for s in isession if s.get("trigger")}
+            if "on_startup" in current_triggers:
+                error_console.print(
+                    "Cannot change trigger on on_startup sessions. "
+                    "Use --timeout-minutes to extend the session instead."
+                )
+                sys.exit(1)
+
+        needs_refresh = False
+
+        # Handle --update-trigger: update trigger on all sessions
+        if trigger is not None:
+            _patch_sessions(
+                remote_provider, project_id, job_id, isession, trigger=trigger
+            )
+            needs_refresh = True
+
+        # Handle --update-timeout: extend timeout (wizard if --timeout-minutes not set)
+        if update_timeout:
             _update_session_timeout(
                 remote_provider, project_id, job_id, isession, timeout_minutes
             )
-            # Refresh the session info after updating
+            needs_refresh = True
+
+        if needs_refresh:
             response = remote_provider.api.get_training_job_isession(
                 project_id=project_id, job_id=job_id
             )
@@ -890,6 +922,52 @@ def get_isession(
         _display_isession(remote_provider, project_id, job_id)
     except Exception as e:
         error_console.print(f"Failed to get auth codes: {str(e)}")
+        sys.exit(1)
+
+
+def _patch_sessions(
+    remote_provider: BasetenRemote,
+    project_id: str,
+    job_id: str,
+    isession: list,
+    timeout_minutes: Optional[int] = None,
+    trigger: Optional[str] = None,
+):
+    """PATCH each session with the given timeout_minutes and/or trigger."""
+    updated_count = 0
+    for session in isession:
+        session_id = session.get("session_id")
+        replica_id = session.get("replica_id", "")
+
+        if not session_id:
+            console.print(
+                f"[yellow]Warning: No session_id found for replica {replica_id}, skipping[/yellow]"
+            )
+            continue
+
+        try:
+            resp = remote_provider.api.patch_interactive_session(
+                project_id=project_id,
+                job_id=job_id,
+                session_id=session_id,
+                timeout_minutes=timeout_minutes,
+                trigger=trigger,
+            )
+            updated_count += 1
+            msg = resp.get("message")
+            if msg:
+                console.print(f"  [green]Replica {replica_id}[/green]: {msg}")
+        except Exception as e:
+            error_console.print(
+                f"Failed to update session {session_id} (replica {replica_id}): {str(e)}"
+            )
+
+    if updated_count > 0:
+        console.print(
+            f"\n[green]✓ Successfully updated {updated_count} session(s)[/green]"
+        )
+    else:
+        error_console.print("Failed to update any sessions.")
         sys.exit(1)
 
 
@@ -910,7 +988,7 @@ def _update_session_timeout(
     the stored timeout_minutes value.
     """
     if not isession:
-        error_console.print("No interactive sessions found to extend.")
+        error_console.print("No interactive sessions found to update.")
         sys.exit(1)
 
     if timeout_minutes is not None:
@@ -933,37 +1011,6 @@ def _update_session_timeout(
 
         minutes = next(m for label, m in extension_options if label == selected)
 
-    updated_count = 0
-    for session in isession:
-        session_id = session.get("session_id")
-        replica_id = session.get("replica_id", "")
-
-        if not session_id:
-            console.print(
-                f"[yellow]Warning: No session_id found for replica {replica_id}, skipping[/yellow]"
-            )
-            continue
-
-        try:
-            resp = remote_provider.api.patch_interactive_session(
-                project_id=project_id,
-                job_id=job_id,
-                session_id=session_id,
-                timeout_minutes=minutes,
-            )
-            updated_count += 1
-            msg = resp.get("message")
-            if msg:
-                console.print(f"  [green]Replica {replica_id}[/green]: {msg}")
-        except Exception as e:
-            error_console.print(
-                f"Failed to update session {session_id} (replica {replica_id}): {str(e)}"
-            )
-
-    if updated_count > 0:
-        console.print(
-            f"\n[green]✓ Successfully updated {updated_count} session(s)[/green]"
-        )
-    else:
-        error_console.print("Failed to update any sessions.")
-        sys.exit(1)
+    _patch_sessions(
+        remote_provider, project_id, job_id, isession, timeout_minutes=minutes
+    )
