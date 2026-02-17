@@ -983,8 +983,8 @@ def _keepalive_loop(url: str, api_key: str, stop_event: threading.Event) -> None
                     body = {}
                 msg = body.get("error", "")
                 if "Model is not ready, it is still building or deploying" not in msg:
-                    # Readiness will fail when the model is being patched (status LOADING_MODEL), we don't want to count that as a failure
-                    # TODO, ideally we do this based on error code, but beefeater returns a generic 400
+                    # Readiness will fail when the model is being patched (put back into status LOADING_MODEL), we don't want to count that as a failure
+                    # TODO, ideally we do this based on error code, but right now beefeater returns a generic 400
                     consecutive_failures += 1
         except requests_lib.RequestException:
             consecutive_failures += 1
@@ -1116,9 +1116,7 @@ def watch(
                     f"[bold green]Waiting for development model to be ready... "
                     f"Current Status: {deployment_status}"
                 )
-                if deployment_status in [ACTIVE_STATUS] + ["LOADING_MODEL"]:
-                    # by the time we have status LOADING_MODEL, we should be able to start patching.
-                    # keepalive thread also handles this state
+                if deployment_status == ACTIVE_STATUS:
                     break
                 if deployment_status not in DEPLOYING_STATUSES + [
                     "SCALED_TO_ZERO",
