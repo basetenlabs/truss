@@ -832,10 +832,25 @@ def update_session(
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option("--update", is_flag=True, help="Interactively extend the session timeout")
+@click.option(
+    "--update",
+    is_flag=True,
+    help="Extend the session timeout (uses interactive picker unless --timeout-minutes is set)",
+)
+@click.option(
+    "--timeout-minutes",
+    type=int,
+    required=False,
+    help="Minutes to extend the session timeout by (implies --update)",
+)
 @common.common_options()
-def get_isession(job_id: str, remote: Optional[str], update: bool):
+def get_isession(
+    job_id: str, remote: Optional[str], update: bool, timeout_minutes: Optional[int]
+):
     """Get auth codes for a training job's interactive session."""
+    if timeout_minutes is not None:
+        update = True
+
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -864,7 +879,9 @@ def get_isession(job_id: str, remote: Optional[str], update: bool):
 
         # Handle --update flag for extending session timeout
         if update:
-            _update_session_timeout(remote_provider, project_id, job_id, isession)
+            _update_session_timeout(
+                remote_provider, project_id, job_id, isession, timeout_minutes
+            )
             # Refresh the session info after updating
             response = remote_provider.api.get_training_job_isession(
                 project_id=project_id, job_id=job_id
@@ -877,9 +894,16 @@ def get_isession(job_id: str, remote: Optional[str], update: bool):
 
 
 def _update_session_timeout(
-    remote_provider: BasetenRemote, project_id: str, job_id: str, isession: list
+    remote_provider: BasetenRemote,
+    project_id: str,
+    job_id: str,
+    isession: list,
+    timeout_minutes: Optional[int] = None,
 ):
-    """Interactively extend the session timeout.
+    """Extend the session timeout.
+
+    If *timeout_minutes* is provided it is used directly; otherwise an
+    interactive picker is shown.
 
     For on_startup sessions the backend *adds* the chosen minutes to the
     current expires_at.  For on_demand / on_failure sessions it replaces
@@ -889,22 +913,25 @@ def _update_session_timeout(
         error_console.print("No interactive sessions found to extend.")
         sys.exit(1)
 
-    extension_options = [
-        ("30 minutes", 30),
-        ("1 hour", 60),
-        ("2 hours", 120),
-        ("4 hours", 240),
-        ("8 hours", 480),
-    ]
+    if timeout_minutes is not None:
+        minutes = timeout_minutes
+    else:
+        extension_options = [
+            ("30 minutes", 30),
+            ("1 hour", 60),
+            ("2 hours", 120),
+            ("4 hours", 240),
+            ("8 hours", 480),
+        ]
 
-    selected = inquirer.select(
-        message="How long do you want to extend the session timeout by?",
-        choices=[label for label, _ in extension_options],
-        default="1 hour",
-        qmark="⏱️",
-    ).execute()
+        selected = inquirer.select(
+            message="How long do you want to extend the session timeout by?",
+            choices=[label for label, _ in extension_options],
+            default="1 hour",
+            qmark="⏱️",
+        ).execute()
 
-    minutes = next(m for label, m in extension_options if label == selected)
+        minutes = next(m for label, m in extension_options if label == selected)
 
     updated_count = 0
     for session in isession:
