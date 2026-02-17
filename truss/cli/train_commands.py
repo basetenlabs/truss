@@ -6,7 +6,6 @@ from typing import Optional, cast
 
 import rich.table
 import rich_click as click
-from InquirerPy import inquirer
 
 import truss.cli.train.core as train_cli
 from truss.base.constants import TRAINING_TEMPLATE_DIR
@@ -833,15 +832,10 @@ def update_session(
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
-    "--update-timeout",
-    is_flag=True,
-    help="Extend the session timeout (interactive picker unless --timeout-minutes is also set)",
-)
-@click.option(
     "--timeout-minutes",
     type=int,
     required=False,
-    help="Minutes to extend the session timeout by (implies --update-timeout)",
+    help="Minutes to extend the session timeout by",
 )
 @click.option(
     "--update-trigger",
@@ -854,14 +848,10 @@ def update_session(
 def get_isession(
     job_id: str,
     remote: Optional[str],
-    update_timeout: bool,
     timeout_minutes: Optional[int],
     trigger: Optional[str],
 ):
     """Get auth codes for a training job's interactive session."""
-    if timeout_minutes is not None:
-        update_timeout = True
-
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
@@ -898,23 +888,17 @@ def get_isession(
                 )
                 sys.exit(1)
 
-        needs_refresh = False
-
-        # Handle --update-trigger: update trigger on all sessions
-        if trigger is not None:
+        # PATCH sessions if any update flags were provided
+        if trigger is not None or timeout_minutes is not None:
             _patch_sessions(
-                remote_provider, project_id, job_id, isession, trigger=trigger
+                remote_provider,
+                project_id,
+                job_id,
+                isession,
+                timeout_minutes=timeout_minutes,
+                trigger=trigger,
             )
-            needs_refresh = True
-
-        # Handle --update-timeout: extend timeout (wizard if --timeout-minutes not set)
-        if update_timeout:
-            _update_session_timeout(
-                remote_provider, project_id, job_id, isession, timeout_minutes
-            )
-            needs_refresh = True
-
-        if needs_refresh:
+            # Refresh after patching
             response = remote_provider.api.get_training_job_isession(
                 project_id=project_id, job_id=job_id
             )
@@ -969,48 +953,3 @@ def _patch_sessions(
     else:
         error_console.print("Failed to update any sessions.")
         sys.exit(1)
-
-
-def _update_session_timeout(
-    remote_provider: BasetenRemote,
-    project_id: str,
-    job_id: str,
-    isession: list,
-    timeout_minutes: Optional[int] = None,
-):
-    """Extend the session timeout.
-
-    If *timeout_minutes* is provided it is used directly; otherwise an
-    interactive picker is shown.
-
-    For on_startup sessions the backend *adds* the chosen minutes to the
-    current expires_at.  For on_demand / on_failure sessions it replaces
-    the stored timeout_minutes value.
-    """
-    if not isession:
-        error_console.print("No interactive sessions found to update.")
-        sys.exit(1)
-
-    if timeout_minutes is not None:
-        minutes = timeout_minutes
-    else:
-        extension_options = [
-            ("30 minutes", 30),
-            ("1 hour", 60),
-            ("2 hours", 120),
-            ("4 hours", 240),
-            ("8 hours", 480),
-        ]
-
-        selected = inquirer.select(
-            message="How long do you want to extend the session timeout by?",
-            choices=[label for label, _ in extension_options],
-            default="1 hour",
-            qmark="⏱️",
-        ).execute()
-
-        minutes = next(m for label, m in extension_options if label == selected)
-
-    _patch_sessions(
-        remote_provider, project_id, job_id, isession, timeout_minutes=minutes
-    )
