@@ -1,6 +1,7 @@
 import threading
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
 import requests
 from click.testing import CliRunner
 
@@ -347,6 +348,32 @@ def test_watch_without_no_sleep_does_not_start_thread():
                 )
 
     mock_thread_cls.assert_not_called()
+
+
+def test_keepalive_loop_continues_before_max_duration():
+    """Keepalive loop should keep running before 24 hours."""
+    stop_event = threading.Event()
+
+    with patch("truss.cli.cli.requests_lib") as mock_requests:
+        mock_requests.get.return_value = Mock(status_code=200)
+        mock_requests.RequestException = requests.RequestException
+
+        with patch("truss.cli.cli.time.time") as mock_time:
+            mock_time.side_effect = [
+                0,  # start_time = 0
+                100,  # first check: 100 < 86400 → continue
+                200,  # second check: 200 < 86400 → continue
+                86401,  # third check: 86401 > 86400 → exit
+            ]
+            with patch(
+                "truss.cli.cli.os._exit", side_effect=SystemExit(0)
+            ) as mock_exit:
+                with patch.object(stop_event, "wait"):
+                    with pytest.raises(SystemExit):
+                        _keepalive_loop("http://fake/url", "fake_key", stop_event)
+
+    assert mock_requests.get.call_count == 2
+    mock_exit.assert_called_once_with(0)
 
 
 def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(

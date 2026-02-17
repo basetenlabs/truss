@@ -965,13 +965,22 @@ def model_logs(
 
 _KEEPALIVE_INTERVAL_SEC = 30
 _KEEPALIVE_MAX_CONSECUTIVE_FAILURES = 20  # be very generous
+_KEEPALIVE_MAX_DURATION_SEC = 24 * 60 * 60  # 24 hours
 
 
 def _keepalive_loop(url: str, api_key: str, stop_event: threading.Event) -> None:
     headers = {"Authorization": f"Api-Key {api_key}"}
     consecutive_failures = 0
+    start_time = time.time()
 
     while not stop_event.is_set():
+        if time.time() - start_time > _KEEPALIVE_MAX_DURATION_SEC:
+            console.print(
+                "⚠️  Keepalive has been running for 24 hours. Exiting truss watch.",
+                style="yellow",
+            )
+            os._exit(0)
+
         try:
             resp = requests_lib.get(url, headers=headers, timeout=10)
             if resp.status_code == 200:
