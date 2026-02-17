@@ -3,7 +3,7 @@ import signal
 import sys
 import time
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Deque, Optional, cast
 
@@ -979,9 +979,9 @@ def update_session(
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
-@click.option("--bump", is_flag=True, help="Interactively extend the session timeout")
+@click.option("--update", is_flag=True, help="Interactively extend the session timeout")
 @common.common_options()
-def get_isession(job_id: str, remote: Optional[str], bump: bool):
+def get_isession(job_id: str, remote: Optional[str], update: bool):
     """Get auth codes for a training job's interactive session."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -1009,10 +1009,10 @@ def get_isession(job_id: str, remote: Optional[str], bump: bool):
             console.print("No auth codes found for this job.", style="yellow")
             return
 
-        # Handle --bump flag for extending session timeout
-        if bump:
-            _bump_session_timeout(remote_provider, project_id, job_id, isession)
-            # Refresh the session info after bumping
+        # Handle --update flag for extending session timeout
+        if update:
+            _update_session_timeout(remote_provider, project_id, job_id, isession)
+            # Refresh the session info after updating
             response = remote_provider.api.get_training_job_isession(
                 project_id=project_id, job_id=job_id
             )
@@ -1023,15 +1023,19 @@ def get_isession(job_id: str, remote: Optional[str], bump: bool):
         sys.exit(1)
 
 
-def _bump_session_timeout(
+def _update_session_timeout(
     remote_provider: BasetenRemote, project_id: str, job_id: str, isession: list
 ):
-    """Interactively extend the session timeout."""
+    """Interactively extend the session timeout.
+
+    For on_startup sessions the backend *adds* the chosen minutes to the
+    current expires_at.  For on_demand / on_failure sessions it replaces
+    the stored timeout_minutes value.
+    """
     if not isession:
         error_console.print("No interactive sessions found to extend.")
         sys.exit(1)
 
-    # Define extension duration options
     extension_options = [
         ("30 minutes", 30),
         ("1 hour", 60),
@@ -1040,21 +1044,15 @@ def _bump_session_timeout(
         ("8 hours", 480),
     ]
 
-    # Prompt user to choose extension duration with arrow keys
     selected = inquirer.select(
-        message="How much do you want to extend the session timeout?",
+        message="How long do you want to extend the session timeout by?",
         choices=[label for label, _ in extension_options],
         default="1 hour",
         qmark="⏱️",
     ).execute()
 
-    # Find the minutes for the selected option
     minutes = next(m for label, m in extension_options if label == selected)
 
-    # Calculate new expiration time
-    new_expires_at = (datetime.utcnow() + timedelta(minutes=minutes)).isoformat() + "Z"
-
-    # Update each session
     updated_count = 0
     for session in isession:
         session_id = session.get("session_id")
@@ -1067,13 +1065,16 @@ def _bump_session_timeout(
             continue
 
         try:
-            remote_provider.api.update_interactive_session_expiry(
+            resp = remote_provider.api.patch_interactive_session(
                 project_id=project_id,
                 job_id=job_id,
                 session_id=session_id,
-                expires_at=new_expires_at,
+                timeout_minutes=minutes,
             )
             updated_count += 1
+            msg = resp.get("message")
+            if msg:
+                console.print(f"  [green]Replica {replica_id}[/green]: {msg}")
         except Exception as e:
             error_console.print(
                 f"Failed to update session {session_id} (replica {replica_id}): {str(e)}"
@@ -1081,7 +1082,7 @@ def _bump_session_timeout(
 
     if updated_count > 0:
         console.print(
-            f"\n[green]✓ Successfully extended {updated_count} session(s) by {minutes} minutes[/green]"
+            f"\n[green]✓ Successfully updated {updated_count} session(s)[/green]"
         )
     else:
         error_console.print("Failed to update any sessions.")
