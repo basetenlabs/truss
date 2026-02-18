@@ -869,6 +869,32 @@ class BasetenApi:
         )
         return resp_json
 
+    def patch_interactive_session(
+        self,
+        project_id: str,
+        job_id: str,
+        session_id: str,
+        timeout_minutes: Optional[int] = None,
+        trigger: Optional[str] = None,
+    ):
+        """Patch an interactive session's timeout or trigger.
+
+        For on_startup sessions, timeout_minutes extends expires_at by that
+        many minutes.  For on_demand / on_failure sessions it replaces the
+        stored timeout_minutes value.  trigger cannot be changed on
+        on_startup sessions.
+        """
+        body: Dict[str, Any] = {}
+        if timeout_minutes is not None:
+            body["timeout_minutes"] = timeout_minutes
+        if trigger is not None:
+            body["trigger"] = trigger
+        resp_json = self._rest_api_client.patch(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_sessions/{session_id}",
+            body,
+        )
+        return resp_json
+
     def _prepare_time_range_query(
         self,
         start_epoch_millis: Optional[int] = None,

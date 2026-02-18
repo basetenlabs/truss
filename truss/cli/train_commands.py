@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from datetime import datetime
@@ -254,6 +255,34 @@ def _format_local_time(utc_timestamp: str) -> str:
         return utc_timestamp
 
 
+def _format_time_until_expiry(utc_timestamp: str) -> str:
+    """Format time until expiration in human-readable format (e.g., '2h 30m')."""
+    if not utc_timestamp:
+        return ""
+    try:
+        utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+        now = datetime.now(utc_dt.tzinfo)
+        time_diff = utc_dt - now
+
+        # If already expired
+        if time_diff.total_seconds() <= 0:
+            return "Expired"
+
+        # Calculate hours and minutes
+        total_seconds = int(time_diff.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        elif minutes > 0:
+            return f"{minutes}m"
+        else:
+            return "< 1m"
+    except (ValueError, TypeError):
+        return utc_timestamp
+
+
 def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: str):
     """Display auth codes table for a training job if available."""
     try:
@@ -283,20 +312,27 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             box=rich.table.box.ROUNDED,
             border_style="blue",
         )
+        has_expiry = any(code.get("expires_at") for code in isession)
+
         table.add_column("Replica ID", style="cyan")
         table.add_column("Tunnel Name", style="yellow")
         table.add_column("Auth Code", style="green bold")
         table.add_column("Auth URL", style="blue")
         table.add_column("Generated At (Local)", style="dim")
+        if has_expiry:
+            table.add_column("Expires In", style="dim")
 
         for code in isession:
-            table.add_row(
+            row = [
                 code.get("replica_id", ""),
                 code.get("tunnel_name", ""),
                 code.get("auth_code", ""),
                 code.get("auth_url", ""),
                 _format_local_time(code.get("generated_at", "")),
-            )
+            ]
+            if has_expiry:
+                row.append(_format_time_until_expiry(code.get("expires_at", "")))
+            table.add_row(*row)
 
         console.print(table)
     except Exception:
@@ -801,8 +837,35 @@ def update_session(
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--update-timeout",
+    "timeout_minutes",
+    type=int,
+    required=False,
+    help="Minutes to extend the session timeout by",
+)
+@click.option(
+    "--update-trigger",
+    "trigger",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="Change the session trigger (cannot be changed on on_startup sessions)",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"], case_sensitive=False),
+    default="table",
+    help="Output format (default: table)",
+)
 @common.common_options()
-def get_isession(job_id: str, remote: Optional[str]):
+def get_isession(
+    job_id: str,
+    remote: Optional[str],
+    timeout_minutes: Optional[int],
+    trigger: Optional[str],
+    output_format: str,
+):
     """Get auth codes for a training job's interactive session."""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -823,13 +886,105 @@ def get_isession(job_id: str, remote: Optional[str]):
         response = remote_provider.api.get_training_job_isession(
             project_id=project_id, job_id=job_id
         )
+
         isession = response.get("auth_codes", [])
 
         if not isession:
             console.print("No auth codes found for this job.", style="yellow")
             return
 
-        _display_isession(remote_provider, project_id, job_id)
+        # Validate trigger change: on_startup sessions cannot have their trigger changed
+        if trigger is not None:
+            current_triggers = {s.get("trigger") for s in isession if s.get("trigger")}
+            if "on_startup" in current_triggers:
+                error_console.print(
+                    "Cannot change trigger on on_startup sessions. "
+                    "Use --timeout-minutes to extend the session instead."
+                )
+                sys.exit(1)
+
+        # PATCH sessions if any update flags were provided
+        patch_messages: list[str] = []
+        if trigger is not None or timeout_minutes is not None:
+            patch_messages = _patch_sessions(
+                remote_provider,
+                project_id,
+                job_id,
+                isession,
+                timeout_minutes=timeout_minutes,
+                trigger=trigger,
+                quiet=output_format == "json",
+            )
+            # Refresh after patching
+            response = remote_provider.api.get_training_job_isession(
+                project_id=project_id, job_id=job_id
+            )
+
+        if output_format == "json":
+            output = response
+            if patch_messages:
+                output["update_messages"] = patch_messages
+            print(json.dumps(output, indent=2))
+        else:
+            _display_isession(remote_provider, project_id, job_id)
     except Exception as e:
         error_console.print(f"Failed to get auth codes: {str(e)}")
         sys.exit(1)
+
+
+def _patch_sessions(
+    remote_provider: BasetenRemote,
+    project_id: str,
+    job_id: str,
+    isession: list,
+    timeout_minutes: Optional[int] = None,
+    trigger: Optional[str] = None,
+    quiet: bool = False,
+) -> list[str]:
+    """PATCH each session with the given timeout_minutes and/or trigger.
+
+    Returns a list of backend response messages. When *quiet* is True,
+    messages are collected but not printed (useful for JSON output).
+    """
+    updated_count = 0
+    messages: list[str] = []
+    for session in isession:
+        session_id = session.get("session_id")
+        replica_id = session.get("replica_id", "")
+
+        if not session_id:
+            if not quiet:
+                console.print(
+                    f"[yellow]Warning: No session_id found for replica {replica_id}, skipping[/yellow]"
+                )
+            continue
+
+        try:
+            resp = remote_provider.api.patch_interactive_session(
+                project_id=project_id,
+                job_id=job_id,
+                session_id=session_id,
+                timeout_minutes=timeout_minutes,
+                trigger=trigger,
+            )
+            updated_count += 1
+            msg = resp.get("message")
+            if msg:
+                messages.append(msg)
+                if not quiet:
+                    console.print(f"  [green]Replica {replica_id}[/green]: {msg}")
+        except Exception as e:
+            error_console.print(
+                f"Failed to update session {session_id} (replica {replica_id}): {str(e)}"
+            )
+
+    if updated_count > 0:
+        if not quiet:
+            console.print(
+                f"\n[green]✓ Successfully updated {updated_count} session(s)[/green]"
+            )
+    else:
+        error_console.print("Failed to update any sessions.")
+        sys.exit(1)
+
+    return messages
