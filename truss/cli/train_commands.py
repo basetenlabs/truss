@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from datetime import datetime
@@ -311,22 +312,27 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             box=rich.table.box.ROUNDED,
             border_style="blue",
         )
+        has_expiry = any(code.get("expires_at") for code in isession)
+
         table.add_column("Replica ID", style="cyan")
         table.add_column("Tunnel Name", style="yellow")
         table.add_column("Auth Code", style="green bold")
         table.add_column("Auth URL", style="blue")
         table.add_column("Generated At (Local)", style="dim")
-        table.add_column("Expires In", style="dim")
+        if has_expiry:
+            table.add_column("Expires In", style="dim")
 
         for code in isession:
-            table.add_row(
+            row = [
                 code.get("replica_id", ""),
                 code.get("tunnel_name", ""),
                 code.get("auth_code", ""),
                 code.get("auth_url", ""),
                 _format_local_time(code.get("generated_at", "")),
-                _format_time_until_expiry(code.get("expires_at", "")),
-            )
+            ]
+            if has_expiry:
+                row.append(_format_time_until_expiry(code.get("expires_at", "")))
+            table.add_row(*row)
 
         console.print(table)
     except Exception:
@@ -832,7 +838,8 @@ def update_session(
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(
-    "--timeout-minutes",
+    "--update-timeout",
+    "timeout_minutes",
     type=int,
     required=False,
     help="Minutes to extend the session timeout by",
@@ -844,12 +851,20 @@ def update_session(
     required=False,
     help="Change the session trigger (cannot be changed on on_startup sessions)",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"], case_sensitive=False),
+    default="table",
+    help="Output format (default: table)",
+)
 @common.common_options()
 def get_isession(
     job_id: str,
     remote: Optional[str],
     timeout_minutes: Optional[int],
     trigger: Optional[str],
+    output_format: str,
 ):
     """Get auth codes for a training job's interactive session."""
     if not remote:
@@ -889,21 +904,29 @@ def get_isession(
                 sys.exit(1)
 
         # PATCH sessions if any update flags were provided
+        patch_messages: list[str] = []
         if trigger is not None or timeout_minutes is not None:
-            _patch_sessions(
+            patch_messages = _patch_sessions(
                 remote_provider,
                 project_id,
                 job_id,
                 isession,
                 timeout_minutes=timeout_minutes,
                 trigger=trigger,
+                quiet=output_format == "json",
             )
             # Refresh after patching
             response = remote_provider.api.get_training_job_isession(
                 project_id=project_id, job_id=job_id
             )
 
-        _display_isession(remote_provider, project_id, job_id)
+        if output_format == "json":
+            output = response
+            if patch_messages:
+                output["update_messages"] = patch_messages
+            print(json.dumps(output, indent=2))
+        else:
+            _display_isession(remote_provider, project_id, job_id)
     except Exception as e:
         error_console.print(f"Failed to get auth codes: {str(e)}")
         sys.exit(1)
@@ -916,17 +939,24 @@ def _patch_sessions(
     isession: list,
     timeout_minutes: Optional[int] = None,
     trigger: Optional[str] = None,
-):
-    """PATCH each session with the given timeout_minutes and/or trigger."""
+    quiet: bool = False,
+) -> list[str]:
+    """PATCH each session with the given timeout_minutes and/or trigger.
+
+    Returns a list of backend response messages. When *quiet* is True,
+    messages are collected but not printed (useful for JSON output).
+    """
     updated_count = 0
+    messages: list[str] = []
     for session in isession:
         session_id = session.get("session_id")
         replica_id = session.get("replica_id", "")
 
         if not session_id:
-            console.print(
-                f"[yellow]Warning: No session_id found for replica {replica_id}, skipping[/yellow]"
-            )
+            if not quiet:
+                console.print(
+                    f"[yellow]Warning: No session_id found for replica {replica_id}, skipping[/yellow]"
+                )
             continue
 
         try:
@@ -940,16 +970,21 @@ def _patch_sessions(
             updated_count += 1
             msg = resp.get("message")
             if msg:
-                console.print(f"  [green]Replica {replica_id}[/green]: {msg}")
+                messages.append(msg)
+                if not quiet:
+                    console.print(f"  [green]Replica {replica_id}[/green]: {msg}")
         except Exception as e:
             error_console.print(
                 f"Failed to update session {session_id} (replica {replica_id}): {str(e)}"
             )
 
     if updated_count > 0:
-        console.print(
-            f"\n[green]✓ Successfully updated {updated_count} session(s)[/green]"
-        )
+        if not quiet:
+            console.print(
+                f"\n[green]✓ Successfully updated {updated_count} session(s)[/green]"
+            )
     else:
         error_console.print("Failed to update any sessions.")
         sys.exit(1)
+
+    return messages
