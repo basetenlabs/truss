@@ -131,7 +131,7 @@ class InteractiveSession(custom_types.SafeModelNoExtra):
     timeout_minutes: int = DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES
     session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
     auth_provider: InteractiveSessionAuthProvider = (
-        InteractiveSessionAuthProvider.GITHUB
+        InteractiveSessionAuthProvider.MICROSOFT
     )
 
 

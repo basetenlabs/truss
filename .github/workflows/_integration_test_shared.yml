@@ -67,6 +67,11 @@ jobs:
           path: test_durations.json
           key: integration-test-durations-v1
         continue-on-error: true
+      # NB(nikhil): Pin Docker to v28, since integration tests newly break on v29.
+      - name: Set up Docker
+        uses: docker/setup-docker-action@v4
+        with:
+          version: v28.5.2
       - uses: ./.github/actions/setup-python/
         with:
           python-version: ${{ matrix.python_version }}
