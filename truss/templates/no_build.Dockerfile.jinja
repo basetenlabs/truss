@@ -1,5 +1,5 @@
 FROM {{ config.base_image.image }}
 
 {%- if data_dir_exists %}
-COPY ./{{ config.data_dir }} /tmp/data
+COPY --chown={{ run_as_user_id }}:{{ run_as_user_id }} ./{{ config.data_dir }} /app/data
 {%- endif %}
