@@ -902,6 +902,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
         truss_config.Accelerator.H100_40GB,
         truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
+        truss_config.Accelerator.L40S,
         truss_config.Accelerator.A100_40GB,
     ]:
         raise ValueError(
