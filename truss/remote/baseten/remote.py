@@ -1,8 +1,20 @@
 import enum
 import logging
 import re
+import sys
+import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+)
 
 import yaml
 from requests import ReadTimeout
@@ -55,6 +67,30 @@ class PatchStatus(enum.Enum):
 class PatchResult(NamedTuple):
     status: PatchStatus
     message: str
+
+
+def retry_patch(
+    patch_fn: Callable[[], Optional[PatchResult]],
+    console: "rich_console.Console",
+    error_console: "rich_console.Console",
+    max_retries: int = 5,
+    retry_delay_seconds: int = 5,
+) -> None:
+    for attempt in range(max_retries):
+        result = patch_fn()
+        if result is not None and result.status in (
+            PatchStatus.SUCCESS,
+            PatchStatus.SKIPPED,
+        ):
+            return
+        if attempt < max_retries - 1:
+            time.sleep(retry_delay_seconds)
+        else:
+            msg = result.message if result else "Unknown error"
+            error_console.print(
+                f"Initial sync failed after {max_retries} attempts: {msg}"
+            )
+            sys.exit(1)
 
 
 class FinalPushData(custom_types.OracleData):
@@ -380,7 +416,7 @@ class BasetenRemote(TrussRemote):
             dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
                 raise RemoteError(
-                    "No development model found. Run `truss push` then try again."
+                    "No development model found. Run `truss push --watch` then try again."
                 )
             return dev_version
 
@@ -388,7 +424,7 @@ class BasetenRemote(TrussRemote):
         prod_version = get_prod_version_from_versions(model_versions)
         if not prod_version:
             raise RemoteError(
-                "No production model found. Run `truss push --publish` then try again."
+                "No production model found. Run `truss push` then try again."
             )
         return prod_version
 
@@ -473,12 +509,15 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
         console: "rich_console.Console",
         error_console: "rich_console.Console",
+        team_name: Optional[str] = None,
     ) -> None:
         # Resolve model with team disambiguation and verify development deployment exists
         # Import here to avoid circular import
         from truss.cli.resolvers.model_team_resolver import resolve_model_for_watch
 
-        model, versions = resolve_model_for_watch(self, model_name)
+        model, versions = resolve_model_for_watch(
+            self, model_name, provided_team_name=team_name
+        )
         self.sync_truss_to_dev_version_with_model(
             model, versions, target_directory, console, error_console
         )
@@ -495,7 +534,7 @@ class BasetenRemote(TrussRemote):
         dev_version = get_dev_version_from_versions(resolved_versions)
         if not dev_version:
             raise RemoteError(
-                "No development model found. Run `truss push` then try again."
+                "No development model found. Run `truss push --watch` then try again."
             )
 
         watch_path = Path(target_directory)
@@ -508,13 +547,17 @@ class BasetenRemote(TrussRemote):
         logging.getLogger("watchfiles.main").disabled = True
 
         console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        self._patch_with_model(
-            watch_path,
-            truss_ignore_patterns,
-            resolved_model,
-            resolved_versions,
-            console,
-            error_console,
+        retry_patch(
+            patch_fn=lambda: self._patch_with_model(
+                watch_path,
+                truss_ignore_patterns,
+                resolved_model,
+                resolved_versions,
+                console,
+                error_console,
+            ),
+            console=console,
+            error_console=error_console,
         )
 
         # Prepare watch paths including external package directories
@@ -699,12 +742,13 @@ class BasetenRemote(TrussRemote):
         truss_ignore_patterns: List[str],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
-    ):
+    ) -> PatchResult:
         result = self._patch(watch_path, truss_ignore_patterns, console=console)
         if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
             console.print(result.message, style="green")
         else:
             error_console.print(result.message)
+        return result
 
     def patch_for_chainlet(
         self, watch_path: Path, truss_ignore_patterns: List[str]
@@ -723,7 +767,7 @@ class BasetenRemote(TrussRemote):
         resolved_versions: List[dict],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
-    ):
+    ) -> PatchResult:
         """Patch with pre-resolved model (no team re-prompting)."""
         result = self._patch(
             watch_path,
@@ -736,6 +780,7 @@ class BasetenRemote(TrussRemote):
             console.print(result.message, style="green")
         else:
             error_console.print(result.message)
+        return result
 
     def upsert_training_project(self, training_project, team_id=None):
         return self._api.upsert_training_project(training_project, team_id=team_id)
