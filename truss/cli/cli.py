@@ -1089,55 +1089,53 @@ def watch(
         f"🪵  View logs for your development model at {common.format_link(logs_url)}"
     )
 
+    model_hostname = resolved_model.get("hostname")
+    if not model_hostname:
+        console.print("❌ Could not determine model hostname", style="red")
+        sys.exit(1)
+
+    # Wake the model in case it's scaled to zero
+    wake_url = f"{model_hostname}/development/wake"
+    api_key = remote_provider._auth_service.authenticate().value
+    headers = {"Authorization": f"Api-Key {api_key}"}
+    try:
+        requests_lib.post(wake_url, headers=headers, timeout=10)
+    except requests_lib.RequestException:
+        # best effort
+        pass
+
+    # Wait for model to be ready before starting keepalive
+    with console.status(
+        "[bold green]Waiting for development model to be ready..."
+    ) as status:
+        while True:
+            time.sleep(1)
+            try:
+                deployment = remote_provider.api.get_deployment(
+                    model_id, dev_version_id
+                )
+                deployment_status = deployment["status"]
+            except Exception:
+                continue
+            status.update(
+                f"[bold green]Waiting for development model to be ready... "
+                f"Current Status: {deployment_status}"
+            )
+            if deployment_status in [ACTIVE_STATUS, "LOADING_MODEL"]:
+                break
+            if deployment_status not in DEPLOYING_STATUSES + [
+                "SCALED_TO_ZERO",
+                "WAKING_UP",
+                "UPDATING",
+            ]:
+                console.print(
+                    f"❌ Development model failed with status {deployment_status}.",
+                    style="red",
+                )
+                sys.exit(1)
+
     stop_event = threading.Event()
     if no_sleep:
-        model_hostname = resolved_model.get("hostname")
-        if not model_hostname:
-            console.print(
-                "❌ Could not determine model hostname for --no-sleep.", style="red"
-            )
-            sys.exit(1)
-
-        # Wake the model in case it's scaled to zero
-        wake_url = f"{model_hostname}/development/wake"
-        api_key = remote_provider._auth_service.authenticate().value
-        headers = {"Authorization": f"Api-Key {api_key}"}
-        try:
-            requests_lib.post(wake_url, headers=headers, timeout=10)
-        except requests_lib.RequestException:
-            # best effort
-            pass
-
-        # Wait for model to be ready before starting keepalive
-        with console.status(
-            "[bold green]Waiting for development model to be ready..."
-        ) as status:
-            while True:
-                time.sleep(1)
-                try:
-                    deployment = remote_provider.api.get_deployment(
-                        model_id, dev_version_id
-                    )
-                    deployment_status = deployment["status"]
-                except Exception:
-                    continue
-                status.update(
-                    f"[bold green]Waiting for development model to be ready... "
-                    f"Current Status: {deployment_status}"
-                )
-                if deployment_status == ACTIVE_STATUS:
-                    break
-                if deployment_status not in DEPLOYING_STATUSES + [
-                    "SCALED_TO_ZERO",
-                    "WAKING_UP",
-                    "UPDATING",
-                ]:
-                    console.print(
-                        f"❌ Development model failed with status {deployment_status}.",
-                        style="red",
-                    )
-                    sys.exit(1)
-
         keepalive_url = f"{model_hostname}/development/sync/v1/models/model"
         console.print("💤 --no-sleep enabled: keeping development model warm")
         keepalive_thread = threading.Thread(
@@ -1147,6 +1145,10 @@ def watch(
         )
         keepalive_thread.start()
 
+    # Re-resolve the model to get the latest version and truss hash and latest push before watching
+    resolved_model, versions = resolve_model_for_watch(
+        remote_provider, model_name, provided_team_name=effective_team_name
+    )
     _start_watch_mode(
         target_directory=target_directory,
         model_name=model_name,
