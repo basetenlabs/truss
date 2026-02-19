@@ -1,8 +1,20 @@
 import enum
 import logging
 import re
+import sys
+import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+)
 
 import yaml
 from requests import ReadTimeout
@@ -55,6 +67,31 @@ class PatchStatus(enum.Enum):
 class PatchResult(NamedTuple):
     status: PatchStatus
     message: str
+
+
+def retry_patch(
+    patch_fn: Callable[[], Optional[PatchResult]],
+    console: "rich_console.Console",
+    error_console: "rich_console.Console",
+    max_retries: int = 5,
+    retry_delay_seconds: int = 5,
+) -> None:
+    for attempt in range(max_retries):
+        result = patch_fn()
+        if result is not None and result.status in (
+            PatchStatus.SUCCESS,
+            PatchStatus.SKIPPED,
+        ):
+            return
+        if attempt < max_retries - 1:
+            error_console.print(f"Retrying patch in {retry_delay_seconds} seconds...")
+            time.sleep(retry_delay_seconds)
+        else:
+            msg = result.message if result else "Unknown error"
+            error_console.print(
+                f"Initial sync failed after {max_retries} attempts: {msg}"
+            )
+            sys.exit(1)
 
 
 class FinalPushData(custom_types.OracleData):
@@ -511,13 +548,17 @@ class BasetenRemote(TrussRemote):
         logging.getLogger("watchfiles.main").disabled = True
 
         console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        self._patch_with_model(
-            watch_path,
-            truss_ignore_patterns,
-            resolved_model,
-            resolved_versions,
-            console,
-            error_console,
+        retry_patch(
+            patch_fn=lambda: self._patch_with_model(
+                watch_path,
+                truss_ignore_patterns,
+                resolved_model,
+                resolved_versions,
+                console,
+                error_console,
+            ),
+            console=console,
+            error_console=error_console,
         )
 
         # Prepare watch paths including external package directories
@@ -702,12 +743,13 @@ class BasetenRemote(TrussRemote):
         truss_ignore_patterns: List[str],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
-    ):
+    ) -> PatchResult:
         result = self._patch(watch_path, truss_ignore_patterns, console=console)
         if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
             console.print(result.message, style="green")
         else:
             error_console.print(result.message)
+        return result
 
     def patch_for_chainlet(
         self, watch_path: Path, truss_ignore_patterns: List[str]
@@ -726,7 +768,7 @@ class BasetenRemote(TrussRemote):
         resolved_versions: List[dict],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
-    ):
+    ) -> PatchResult:
         """Patch with pre-resolved model (no team re-prompting)."""
         result = self._patch(
             watch_path,
@@ -739,6 +781,7 @@ class BasetenRemote(TrussRemote):
             console.print(result.message, style="green")
         else:
             error_console.print(result.message)
+        return result
 
     def upsert_training_project(self, training_project, team_id=None):
         return self._api.upsert_training_project(training_project, team_id=team_id)

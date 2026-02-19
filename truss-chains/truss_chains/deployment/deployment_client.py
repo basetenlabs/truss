@@ -659,7 +659,7 @@ class _ModelWatcher:
                 "No development model found. Run `truss push --watch` then try again."
             )
 
-    def _patch(self) -> None:
+    def _patch(self) -> Optional[b10_remote.PatchResult]:
         exception_raised = None
         with (
             log_utils.LogInterceptor() as log_interceptor,
@@ -681,10 +681,15 @@ class _ModelWatcher:
         _handle_intercepted_logs(logs, self._console)
         if exception_raised:
             _handle_import_error(exception_raised, self._console, self._error_console)
+        return None
 
     def watch(self) -> None:
-        # Perform one initial patch at startup.
-        self._patch()
+        self._console.print("🚰 Attempting to sync truss with remote")
+        b10_remote.retry_patch(
+            patch_fn=self._patch,
+            console=self._console,
+            error_console=self._error_console,
+        )
         self._console.print("👀 Watching for new changes.", style="blue")
 
         # TODO(nikhil): Improve detection of directory structure, since right now
