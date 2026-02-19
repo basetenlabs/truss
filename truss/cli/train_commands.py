@@ -256,7 +256,7 @@ def _format_local_time(utc_timestamp: str) -> str:
 
 
 _ONE_YEAR_SECONDS = 365 * 24 * 3600
-_INFINITE_ALIASES = {"inf", "infinity", "infinite"}
+_INFINITE_ALIASES = {"inf", "infinity", "infinite", "none", "no-timeout"}
 
 
 class _TimeoutType(click.ParamType):
@@ -274,7 +274,7 @@ class _TimeoutType(click.ParamType):
         except (ValueError, TypeError):
             self.fail(
                 f"'{value}' is not a valid timeout. "
-                f"Use a positive integer, or 'inf' / 'infinity' for infinite.",
+                f"Use a positive integer, or 'inf' / 'infinity' for no timeout.",
                 param,
                 ctx,
             )
@@ -284,7 +284,7 @@ def _format_time_until_expiry(utc_timestamp: str) -> str:
     """Format time until expiration in human-readable format (e.g., '2h 30m').
 
     Expiry more than a year away (i.e. infinite / -1 timeout) is shown as
-    'Infinite'.
+    'No timeout'.
     """
     if not utc_timestamp:
         return ""
@@ -299,7 +299,7 @@ def _format_time_until_expiry(utc_timestamp: str) -> str:
         total_seconds = int(time_diff.total_seconds())
 
         if total_seconds > _ONE_YEAR_SECONDS:
-            return "Infinite"
+            return "No timeout"
 
         hours = total_seconds // 3600
         minutes = (total_seconds % 3600) // 60
