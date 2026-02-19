@@ -84,7 +84,6 @@ def retry_patch(
         ):
             return
         if attempt < max_retries - 1:
-            error_console.print(f"Retrying patch in {retry_delay_seconds} seconds...")
             time.sleep(retry_delay_seconds)
         else:
             msg = result.message if result else "Unknown error"
