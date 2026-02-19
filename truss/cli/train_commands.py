@@ -265,7 +265,7 @@ class _TimeoutType(click.ParamType):
     name = "INT or inf"
 
     def convert(self, value, param, ctx):
-        if isinstance(value, int):
+        if isinstance(value, int) and value >= 0:
             return value
         if isinstance(value, str) and value.strip().lower() in _INFINITE_ALIASES:
             return -1
@@ -274,7 +274,7 @@ class _TimeoutType(click.ParamType):
         except (ValueError, TypeError):
             self.fail(
                 f"'{value}' is not a valid timeout. "
-                f"Use a positive integer, or 'inf' / 'infinity' for no timeout.",
+                f"Use a non-negative integer, or 'inf' / 'infinity' for no timeout.",
                 param,
                 ctx,
             )
@@ -936,10 +936,10 @@ def get_isession(
         if (
             timeout_minutes is not None
             and timeout_minutes != -1
-            and timeout_minutes < 1
+            and timeout_minutes < 0
         ):
             error_console.print(
-                "--update-timeout must be -1 (infinite) or a positive integer."
+                '--update-timeout must be "infinite" or a non-negative integer.'
             )
             sys.exit(1)
 
