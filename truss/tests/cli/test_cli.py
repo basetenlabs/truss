@@ -68,11 +68,7 @@ def test_successful_ping_resets_failure_count():
         with patch("truss.cli.utils.common.console"):
             # Use a very short wait so the test runs fast
             with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                common.keepalive_loop(
-                    "http://fake",
-                    "test_api_key",
-                    stop_event,
-                )
+                common.keepalive_loop("http://fake", "test_api_key", stop_event)
     assert call_count == 4  # All calls were made, no early exit
 
 
@@ -85,14 +81,11 @@ def test_exits_after_max_consecutive_failures():
     with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
         with patch("truss.cli.utils.common.console") as _mock_console:
             with patch(
-                "truss.cli.utils.common.os._exit", side_effect=lambda code: stop_event.set()
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop(
-                        "http://fake",
-                        "test_api_key",
-                        stop_event,
-                    )
+                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
     mock_exit.assert_called_once_with(1)
 
 
@@ -106,14 +99,11 @@ def test_request_exception_counts_as_failure():
     ):
         with patch("truss.cli.utils.common.console"):
             with patch(
-                "truss.cli.utils.common.os._exit", side_effect=lambda code: stop_event.set()
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop(
-                        "http://fake",
-                        "test_api_key",
-                        stop_event,
-                    )
+                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
 
     mock_exit.assert_called_once_with(1)
 
@@ -140,14 +130,11 @@ def test_model_not_ready_does_not_count_as_failure():
     with patch("truss.cli.utils.common.requests_lib.get", side_effect=mock_get):
         with patch("truss.cli.utils.common.console"):
             with patch(
-                "truss.cli.utils.common.os._exit", side_effect=lambda code: stop_event.set()
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop(
-                        "http://fake",
-                        "test_api_key",
-                        stop_event,
-                    )
+                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
 
     mock_exit.assert_not_called()
 
@@ -417,7 +404,9 @@ def test_watch_without_no_sleep_does_not_start_thread():
             mock_requests.post.return_value = Mock(status_code=202)
             mock_requests.RequestException = requests.RequestException
             with patch("truss.cli.cli.threading.Thread") as mock_thread_cls:
-                with patch.object(remote_provider, "sync_truss_to_dev_version_with_model"):
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
                     _result = runner.invoke(
                         truss_cli, ["watch", "/tmp/fake", "--remote", "baseten"]
                     )
