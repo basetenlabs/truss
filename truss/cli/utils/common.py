@@ -329,16 +329,12 @@ def keepalive_loop(
             resp = requests_lib.get(keepalive_url, headers=headers, timeout=10)
             if resp.status_code == 200:
                 consecutive_failures = 0
+            elif 400 <= resp.status_code < 500:
+                # Ignore 4xx errors
+                pass
             else:
-                try:
-                    body = resp.json()
-                except Exception:
-                    body = {}
-                msg = body.get("error", "")
-                if "Model is not ready, it is still building or deploying" not in msg:
-                    # Readiness will fail when the model is being patched (put back into status LOADING_MODEL), we don't want to count that as a failure
-                    # TODO, ideally we do this based on error code, but right now beefeater returns a generic 400
-                    consecutive_failures += 1
+                # Count 5xx errors as failures
+                consecutive_failures += 1
         except requests_lib.RequestException:
             consecutive_failures += 1
 

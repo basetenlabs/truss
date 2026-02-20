@@ -43,7 +43,7 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
 
 
 def test_successful_ping_resets_failure_count():
-    """A 200 response should reset consecutive failures to 0."""
+    """A 200 response should reset consecutive 5xx failures to 0."""
     stop_event = threading.Event()
     call_count = 0
 
@@ -52,9 +52,8 @@ def test_successful_ping_resets_failure_count():
         call_count += 1
         resp = Mock()
         if call_count <= 2:
-            # First two calls fail
+            # First two calls fail with 5xx
             resp.status_code = 500
-            resp.json.return_value = {}
         elif call_count == 3:
             # Third call succeeds - should reset counter
             resp.status_code = 200
@@ -73,11 +72,10 @@ def test_successful_ping_resets_failure_count():
 
 
 def test_exits_after_max_consecutive_failures():
-    """Should call os._exit(1) after max consecutive failures."""
+    """Should call os._exit(1) after max consecutive 5xx failures."""
     stop_event = threading.Event()
     mock_resp = Mock()
     mock_resp.status_code = 500
-    mock_resp.json.return_value = {}
     with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
         with patch("truss.cli.utils.common.console") as _mock_console:
             with patch(
@@ -109,7 +107,7 @@ def test_request_exception_counts_as_failure():
 
 
 def test_model_not_ready_does_not_count_as_failure():
-    """'Model is not ready' errors during patching should be ignored."""
+    """4xx errors (like model not ready during patching) should be ignored."""
     stop_event = threading.Event()
     call_count = 0
 
@@ -118,10 +116,8 @@ def test_model_not_ready_does_not_count_as_failure():
         call_count += 1
         resp = Mock()
         if call_count <= 25:
+            # 4xx errors should be ignored
             resp.status_code = 400
-            resp.json.return_value = {
-                "error": "Model is not ready, it is still building or deploying"
-            }
         else:
             stop_event.set()
             resp.status_code = 200
@@ -137,6 +133,24 @@ def test_model_not_ready_does_not_count_as_failure():
                     common.keepalive_loop("http://fake", "test_api_key", stop_event)
 
     mock_exit.assert_not_called()
+
+
+def test_5xx_errors_count_as_failures():
+    """5xx errors should count toward consecutive failures."""
+    stop_event = threading.Event()
+    mock_resp = Mock()
+    mock_resp.status_code = 503  # Service unavailable
+
+    with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
+        with patch("truss.cli.utils.common.console"):
+            with patch(
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+
+    mock_exit.assert_called_once_with(1)
 
 
 def test_keepalive_loop_emits_30min_warning():
