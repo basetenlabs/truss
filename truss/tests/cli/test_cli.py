@@ -5,7 +5,8 @@ import pytest
 import requests
 from click.testing import CliRunner
 
-from truss.cli.cli import _keepalive_loop, truss_cli
+from truss.cli.cli import truss_cli
+from truss.cli.utils import common
 from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
 from truss.remote.truss_remote import RemoteUser
 
@@ -38,7 +39,7 @@ def test_push_with_grpc_transport_fails_for_development_deployment():
     )
 
 
-# _keepalive_loop tests
+# keepalive_loop tests
 
 
 def test_successful_ping_resets_failure_count():
@@ -67,7 +68,7 @@ def test_successful_ping_resets_failure_count():
         with patch("truss.cli.cli.console"):
             # Use a very short wait so the test runs fast
             with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                _keepalive_loop(
+                common.keepalive_loop(
                     "http://fake/development/sync/v1/models/model",
                     "test_api_key",
                     stop_event,
@@ -87,7 +88,7 @@ def test_exits_after_max_consecutive_failures():
                 "truss.cli.cli.os._exit", side_effect=lambda code: stop_event.set()
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    _keepalive_loop(
+                    common.keepalive_loop(
                         "http://fake/development/sync/v1/models/model",
                         "test_api_key",
                         stop_event,
@@ -108,7 +109,7 @@ def test_request_exception_counts_as_failure():
                 "truss.cli.cli.os._exit", side_effect=lambda code: stop_event.set()
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    _keepalive_loop(
+                    common.keepalive_loop(
                         "http://fake/development/sync/v1/models/model",
                         "test_api_key",
                         stop_event,
@@ -142,13 +143,58 @@ def test_model_not_ready_does_not_count_as_failure():
                 "truss.cli.cli.os._exit", side_effect=lambda code: stop_event.set()
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    _keepalive_loop(
+                    common.keepalive_loop(
                         "http://fake/development/sync/v1/models/model",
                         "test_api_key",
                         stop_event,
                     )
 
     mock_exit.assert_not_called()
+
+
+def test_keepalive_loop_emits_30min_warning():
+    """Test that keepalive loop emits a warning 30 minutes before the 24-hour exit."""
+    stop_event = threading.Event()
+
+    # Mock time.time() to simulate being just past 23.5 hours (to trigger warning)
+    time_23_5_hours_plus = (23.5 * 60 * 60) + 1  # 84601 seconds
+
+    iteration_count = [0]
+
+    def mock_time():
+        """First call returns 0 (start_time), subsequent calls return 23.5+ hours"""
+        if iteration_count[0] == 0:
+            iteration_count[0] += 1
+            return 0.0
+        return time_23_5_hours_plus
+
+    def mock_wait(timeout=None):
+        """Stop after first iteration"""
+        stop_event.set()
+        return False
+
+    with patch("truss.cli.utils.common.time.time", side_effect=mock_time):
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_requests.get.return_value = mock_response
+            mock_requests.RequestException = requests.RequestException
+
+            with patch("truss.cli.utils.common.console.print") as mock_console_print:
+                # Patch the wait method to stop after first call
+                stop_event.wait = mock_wait
+
+                common.keepalive_loop(
+                    model_hostname="https://test.baseten.co",
+                    api_key="test-key",
+                    stop_event=stop_event,
+                )
+
+                # Verify the warning was printed
+                mock_console_print.assert_any_call(
+                    "⚠️  Keepalive will automatically exit in 30 minutes (24 hour limit).",
+                    style="yellow",
+                )
 
 
 # truss watch --no-sleep tests
@@ -207,8 +253,8 @@ def _patch_watch_common(
     return stack
 
 
-def test_watch_no_sleep_sends_wake_request():
-    """--no-sleep should POST to /development/wake before waiting."""
+def test_watch_sends_wake_request():
+    """Watch command should POST to /development/wake before waiting (regardless of --no-sleep)."""
     resolved_model, versions, dev_version, mock_tr, remote_provider = (
         _make_watch_mocks()
     )
@@ -217,19 +263,15 @@ def test_watch_no_sleep_sends_wake_request():
     with _patch_watch_common(
         remote_provider, mock_tr, resolved_model, versions, dev_version
     ):
-        with patch("truss.cli.cli.requests_lib") as mock_requests:
+        # Need to patch requests_lib in common.py now since wake is called from there
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
             mock_requests.post.return_value = Mock(status_code=202)
-            mock_requests.get.return_value = Mock(status_code=200)
             mock_requests.RequestException = requests.RequestException
-            with patch("truss.cli.cli.threading.Thread") as mock_thread_cls:
-                mock_thread_cls.return_value = Mock()
-                with patch.object(
-                    remote_provider, "sync_truss_to_dev_version_with_model"
-                ):
-                    _result = runner.invoke(
-                        truss_cli,
-                        ["watch", "/tmp/fake", "--remote", "baseten", "--no-sleep"],
-                    )
+            with patch.object(remote_provider, "sync_truss_to_dev_version_with_model"):
+                _result = runner.invoke(
+                    truss_cli,
+                    ["watch", "/tmp/fake", "--remote", "baseten"],  # No --no-sleep
+                )
 
     mock_requests.post.assert_called_once_with(
         "https://model-abc123.api.baseten.co/development/wake",
@@ -248,7 +290,7 @@ def test_watch_no_sleep_starts_keepalive_thread():
     with _patch_watch_common(
         remote_provider, mock_tr, resolved_model, versions, dev_version
     ):
-        with patch("truss.cli.cli.requests_lib") as mock_requests:
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
             mock_requests.post.return_value = Mock(status_code=202)
             mock_requests.get.return_value = Mock(status_code=200)
             mock_requests.RequestException = requests.RequestException
@@ -266,14 +308,44 @@ def test_watch_no_sleep_starts_keepalive_thread():
     mock_thread_cls.assert_called_once()
     _, kwargs = mock_thread_cls.call_args
     assert kwargs["daemon"] is True
-    assert kwargs["target"] == _keepalive_loop
+    assert kwargs["target"] == common.keepalive_loop
     thread_args = kwargs["args"]
-    assert (
-        thread_args[0]
-        == "https://model-abc123.api.baseten.co/development/sync/v1/models/model"
-    )
+    assert thread_args[0] == "https://model-abc123.api.baseten.co"
     assert thread_args[1] == "test_key"
     mock_thread.start.assert_called_once()
+
+
+def test_keepalive_loop_constructs_correct_url():
+    """Keepalive loop should construct the correct health check URL from hostname."""
+    stop_event = threading.Event()
+
+    with patch("truss.cli.utils.common.time.time") as mock_time:
+        # First call: start_time, subsequent calls: still within duration
+        mock_time.side_effect = [0.0, 100.0, 200.0]
+
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
+            mock_requests.RequestException = requests.RequestException
+            mock_response = Mock(status_code=200)
+            mock_requests.get.return_value = mock_response
+
+            # Stop after first iteration
+            def stop_after_first(*args, **kwargs):
+                stop_event.set()
+                return False
+
+            with patch.object(stop_event, "wait", side_effect=stop_after_first):
+                common.keepalive_loop(
+                    model_hostname="https://model-abc123.api.baseten.co",
+                    api_key="test-key",
+                    stop_event=stop_event,
+                )
+
+            # Verify the URL was constructed correctly
+            mock_requests.get.assert_called_once_with(
+                "https://model-abc123.api.baseten.co/development/sync/v1/models/model",
+                headers={"Authorization": "Api-Key test-key"},
+                timeout=10,
+            )
 
 
 def test_watch_no_sleep_waits_for_active_status():
@@ -354,23 +426,30 @@ def test_keepalive_loop_continues_before_max_duration():
     """Keepalive loop should keep running before 24 hours."""
     stop_event = threading.Event()
 
-    with patch("truss.cli.cli.requests_lib") as mock_requests:
+    with patch("truss.cli.utils.common.requests_lib") as mock_requests:
         mock_requests.get.return_value = Mock(status_code=200)
         mock_requests.RequestException = requests.RequestException
 
-        with patch("truss.cli.cli.time.time") as mock_time:
+        with patch("truss.cli.utils.common.time.time") as mock_time:
             mock_time.side_effect = [
                 0,  # start_time = 0
-                100,  # first check: 100 < 86400 → continue
-                200,  # second check: 200 < 86400 → continue
-                86401,  # third check: 86401 > 86400 → exit
+                100,  # iteration 1: elapsed_time check
+                100,  # iteration 1: max duration check (100 < 86400 → continue)
+                200,  # iteration 2: elapsed_time check
+                200,  # iteration 2: max duration check (200 < 86400 → continue)
+                86401,  # iteration 3: elapsed_time check
+                86401,  # iteration 3: max duration check (86401 > 86400 → exit)
             ]
             with patch(
-                "truss.cli.cli.os._exit", side_effect=SystemExit(0)
+                "truss.cli.utils.common.os._exit", side_effect=SystemExit(0)
             ) as mock_exit:
                 with patch.object(stop_event, "wait"):
                     with pytest.raises(SystemExit):
-                        _keepalive_loop("http://fake/url", "fake_key", stop_event)
+                        common.keepalive_loop(
+                            "https://model-abc123.api.baseten.co",
+                            "fake_key",
+                            stop_event,
+                        )
 
     assert mock_requests.get.call_count == 2
     mock_exit.assert_called_once_with(0)

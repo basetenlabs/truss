@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 from typing import Optional, cast
 
-import requests as requests_lib
 import rich.table
 import rich_click as click
 from rich import console as rich_console
@@ -963,52 +962,6 @@ def model_logs(
             cli_log_utils.output_log(log)
 
 
-_KEEPALIVE_INTERVAL_SEC = 30
-_KEEPALIVE_MAX_CONSECUTIVE_FAILURES = 20  # be very generous
-_KEEPALIVE_MAX_DURATION_SEC = 24 * 60 * 60  # 24 hours
-
-
-def _keepalive_loop(url: str, api_key: str, stop_event: threading.Event) -> None:
-    headers = {"Authorization": f"Api-Key {api_key}"}
-    consecutive_failures = 0
-    start_time = time.time()
-
-    while not stop_event.is_set():
-        if time.time() - start_time > _KEEPALIVE_MAX_DURATION_SEC:
-            console.print(
-                "⚠️  Keepalive has been running for 24 hours. Exiting truss watch.",
-                style="yellow",
-            )
-            os._exit(0)
-
-        try:
-            resp = requests_lib.get(url, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                consecutive_failures = 0
-            else:
-                try:
-                    body = resp.json()
-                except Exception:
-                    body = {}
-                msg = body.get("error", "")
-                if "Model is not ready, it is still building or deploying" not in msg:
-                    # Readiness will fail when the model is being patched (put back into status LOADING_MODEL), we don't want to count that as a failure
-                    # TODO, ideally we do this based on error code, but right now beefeater returns a generic 400
-                    consecutive_failures += 1
-        except requests_lib.RequestException:
-            consecutive_failures += 1
-
-        if consecutive_failures >= _KEEPALIVE_MAX_CONSECUTIVE_FAILURES:
-            console.print(
-                f"⚠️  Keepalive ping failed {consecutive_failures} times in a row. "
-                "Exiting truss watch.",
-                style="red",
-            )
-            os._exit(1)  # kill process not just the thread
-
-        stop_event.wait(timeout=_KEEPALIVE_INTERVAL_SEC)
-
-
 @truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
@@ -1094,53 +1047,23 @@ def watch(
         console.print("❌ Could not determine model hostname", style="red")
         sys.exit(1)
 
-    # Wake the model in case it's scaled to zero
-    wake_url = f"{model_hostname}/development/wake"
     api_key = remote_provider._auth_service.authenticate().value
-    headers = {"Authorization": f"Api-Key {api_key}"}
-    try:
-        requests_lib.post(wake_url, headers=headers, timeout=10)
-    except requests_lib.RequestException:
-        # best effort
-        pass
 
-    # Wait for model to be ready before starting keepalive
-    with console.status(
-        "[bold green]Waiting for development model to be ready..."
-    ) as status:
-        while True:
-            time.sleep(1)
-            try:
-                deployment = remote_provider.api.get_deployment(
-                    model_id, dev_version_id
-                )
-                deployment_status = deployment["status"]
-            except Exception:
-                continue
-            status.update(
-                f"[bold green]Waiting for development model to be ready... "
-                f"Current Status: {deployment_status}"
-            )
-            if deployment_status in [ACTIVE_STATUS, "LOADING_MODEL"]:
-                break
-            if deployment_status not in DEPLOYING_STATUSES + [
-                "SCALED_TO_ZERO",
-                "WAKING_UP",
-                "UPDATING",
-            ]:
-                console.print(
-                    f"❌ Development model failed with status {deployment_status}.",
-                    style="red",
-                )
-                sys.exit(1)
+    common.wait_for_development_model_ready(
+        model_hostname=model_hostname,
+        model_id=model_id,
+        dev_version_id=dev_version_id,
+        remote_provider=remote_provider,
+        console=console,
+        api_key=api_key,
+    )
 
     stop_event = threading.Event()
     if no_sleep:
-        keepalive_url = f"{model_hostname}/development/sync/v1/models/model"
         console.print("💤 --no-sleep enabled: keeping development model warm")
         keepalive_thread = threading.Thread(
-            target=_keepalive_loop,
-            args=(keepalive_url, api_key, stop_event),
+            target=common.keepalive_loop,
+            args=(model_hostname, api_key, stop_event),
             daemon=True,
         )
         keepalive_thread.start()
