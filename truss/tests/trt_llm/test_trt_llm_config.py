@@ -214,6 +214,7 @@ def test_trt_llm_config_additional_fields(trtllm_config_v2):
     config_data = copy.deepcopy(trtllm_config_v2["trt_llm"])
     config_data["build"]["future_field"] = "some_value"
     config_data["build"]["another_unknown_field"] = 123
+    config_data["runtime"]["future_runtime_field"] = "other-runtime-value"
 
     config = TRTLLMConfigurationV2(**config_data)
 
