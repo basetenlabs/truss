@@ -740,6 +740,11 @@ class TRTLLMConfigurationV2(PydanticTrTBaseModel):
             quantization_config=TrussTRTQuantizationConfiguration(),
         ).model_dump(exclude_unset=False)
         for field in build_settings:
+            # NB(nikhil): By default we `allow_extra` for these configuration classes, but we want to
+            # ignore newer client versions/data for the purpose of this validation.
+            if field not in self.build.model_fields:
+                continue
+
             if (
                 field not in allowed_modify_fields
                 and build_settings[field] != build_settings_reference[field]
