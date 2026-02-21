@@ -2,6 +2,7 @@ import inspect
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
@@ -982,12 +983,19 @@ def model_logs(
     required=False,
     help="Team name for the model to watch",
 )
+@click.option(
+    "--no-sleep",
+    is_flag=True,
+    default=False,
+    help="Keep the development model warm by preventing scale-to-zero while watching.",
+)
 @common.common_options()
 def watch(
     target_directory: str,
     config: Optional[str],
     remote: str,
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = False,
 ) -> None:
     """
     Seamless remote development with truss
@@ -1025,6 +1033,7 @@ def watch(
         )
         sys.exit(1)
 
+    # Use model_id to get service (no additional resolution needed)
     dev_version_id = dev_version["id"]
     logs_url = URLConfig.model_logs_url(
         remote_provider.remote_url, model_id, dev_version_id
@@ -1033,6 +1042,36 @@ def watch(
         f"🪵  View logs for your development model at {common.format_link(logs_url)}"
     )
 
+    model_hostname = resolved_model.get("hostname")
+    if not model_hostname:
+        console.print("❌ Could not determine model hostname", style="red")
+        sys.exit(1)
+
+    api_key = remote_provider._auth_service.authenticate().value
+
+    common.wait_for_development_model_ready(
+        model_hostname=model_hostname,
+        model_id=model_id,
+        dev_version_id=dev_version_id,
+        remote_provider=remote_provider,
+        console=console,
+        api_key=api_key,
+    )
+
+    stop_event = threading.Event()
+    if no_sleep:
+        console.print("💤 --no-sleep enabled: keeping development model warm")
+        keepalive_thread = threading.Thread(
+            target=common.keepalive_loop,
+            args=(model_hostname, api_key, stop_event),
+            daemon=True,
+        )
+        keepalive_thread.start()
+
+    # Re-resolve the model to get the latest version and truss hash and latest push before watching
+    resolved_model, versions = resolve_model_for_watch(
+        remote_provider, model_name, provided_team_name=effective_team_name
+    )
     _start_watch_mode(
         target_directory=target_directory,
         model_name=model_name,

@@ -1,12 +1,16 @@
 import datetime
 import logging
+import os
 import re
 import sys
+import threading
+import time
 import warnings
 from functools import wraps
 from typing import Any, Callable, Optional
 
 import pydantic
+import requests as requests_lib
 import rich
 import rich.live
 import rich.logging
@@ -17,8 +21,11 @@ import rich_click as click
 from rich.markup import escape
 
 import truss
+from truss.cli.cli import rich_console
 from truss.cli.utils import self_upgrade
 from truss.cli.utils.output import console
+from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.remote import BasetenRemote
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +44,12 @@ _log_level_str_to_level = {
     "D": logging.DEBUG,
     "DEBUG": logging.DEBUG,
 }
+
+# Keepalive constants
+_KEEPALIVE_INTERVAL_SEC = 30
+_KEEPALIVE_MAX_CONSECUTIVE_FAILURES = 20  # be very generous
+_KEEPALIVE_MAX_DURATION_SEC = 24 * 60 * 60  # 24 hours
+_KEEPALIVE_WARNING_BEFORE_EXIT_SEC = 30 * 60  # 30 minutes
 
 
 def set_logging_level() -> None:
@@ -233,3 +246,104 @@ def format_bytes_to_human_readable(bytes: int) -> str:
         return f"{bytes / 1000:.2f} KB"
     else:
         return f"{bytes} B"
+
+
+def wait_for_development_model_ready(
+    model_hostname: str,
+    model_id: str,
+    dev_version_id: str,
+    remote_provider: BasetenRemote,
+    console: "rich_console.Console",
+    api_key: str,
+) -> None:
+    # Wake the model in case it's scaled to zero
+    wake_url = f"{model_hostname}/development/wake"
+    headers = {"Authorization": f"Api-Key {api_key}"}
+    try:
+        requests_lib.post(wake_url, headers=headers, timeout=10)
+    except requests_lib.RequestException:
+        # best effort
+        pass
+
+    # Wait for model to be ready before starting keepalive
+    with console.status(
+        "[bold green]Waiting for development model to be ready..."
+    ) as status:
+        while True:
+            time.sleep(1)
+            try:
+                deployment = remote_provider.api.get_deployment(
+                    model_id, dev_version_id
+                )
+                deployment_status = deployment["status"]
+            except Exception:
+                continue
+            status.update(
+                f"[bold green]Waiting for development model to be ready... "
+                f"Current Status: {deployment_status}"
+            )
+            if deployment_status in [ACTIVE_STATUS, "LOADING_MODEL"]:
+                break
+            if deployment_status not in DEPLOYING_STATUSES + [
+                "SCALED_TO_ZERO",
+                "WAKING_UP",
+                "UPDATING",
+            ]:
+                console.print(
+                    f"❌ Development model failed with status {deployment_status}.",
+                    style="red",
+                )
+                sys.exit(1)
+
+
+def keepalive_loop(
+    model_hostname: str, api_key: str, stop_event: threading.Event
+) -> None:
+    headers = {"Authorization": f"Api-Key {api_key}"}
+    consecutive_failures = 0
+    start_time = time.time()
+    keepalive_url = f"{model_hostname}/development/sync/v1/models/model"
+    warning_emitted = False
+
+    while not stop_event.is_set():
+        elapsed_time = time.time() - start_time
+
+        if time.time() - start_time > _KEEPALIVE_MAX_DURATION_SEC:
+            console.print(
+                "⚠️  Keepalive has been running for 24 hours. Exiting truss watch.",
+                style="yellow",
+            )
+            os._exit(0)
+
+        # emit warning before exit once
+        if not warning_emitted and elapsed_time > (
+            _KEEPALIVE_MAX_DURATION_SEC - _KEEPALIVE_WARNING_BEFORE_EXIT_SEC
+        ):
+            console.print(
+                "⚠️  Keepalive will automatically exit in 30 minutes (24 hour limit).",
+                style="yellow",
+            )
+            warning_emitted = True
+
+        try:
+            resp = requests_lib.get(keepalive_url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                consecutive_failures = 0
+            elif 400 <= resp.status_code < 500:
+                # Ignore 4xx errors
+                pass
+            else:
+                # Count 5xx errors as failures
+                consecutive_failures += 1
+        except requests_lib.RequestException:
+            consecutive_failures += 1
+
+        if consecutive_failures >= _KEEPALIVE_MAX_CONSECUTIVE_FAILURES:
+            console.print(
+                f"⚠️  Keepalive ping failed {consecutive_failures} times in a row. "
+                "Exiting truss watch.",
+                style="red",
+            )
+            os._exit(1)  # kill process not just the thread
+
+        stop_event.wait(timeout=_KEEPALIVE_INTERVAL_SEC)
