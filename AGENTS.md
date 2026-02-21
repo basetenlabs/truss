@@ -50,6 +50,6 @@ uv run pytest truss/tests/test_config.py::test_name -v
 
 ## Architecture Notes
 
-- `docker_server` deployments use supervisord to manage processes
+- `docker_server` deployments use a shell script wrapper to manage processes
 - Config is validated via Pydantic models in `truss_config.py`
 - Image build generates Dockerfile from Jinja templates
