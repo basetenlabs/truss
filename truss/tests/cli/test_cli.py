@@ -187,8 +187,7 @@ def test_4xx_with_deploying_status_exits_gracefully():
     mock_exit.assert_called_once_with(0)
     # Should tell user to restart
     mock_console.print.assert_called_with(
-        "⚠️  Model is building/deploying (likely from a new push). "
-        "Restart 'truss watch' after the deployment completes.",
+        "⚠️  Model is building/deploying (likely from a new push). Restart 'truss watch'.",
         style="yellow",
     )
 
