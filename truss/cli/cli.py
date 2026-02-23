@@ -1063,7 +1063,14 @@ def watch(
         console.print("💤 --no-sleep enabled: keeping development model warm")
         keepalive_thread = threading.Thread(
             target=common.keepalive_loop,
-            args=(model_hostname, api_key, stop_event),
+            args=(
+                model_hostname,
+                api_key,
+                stop_event,
+                remote_provider,
+                model_id,
+                dev_version_id,
+            ),
             daemon=True,
         )
         keepalive_thread.start()

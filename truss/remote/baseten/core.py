@@ -31,6 +31,7 @@ ACTIVE_STATUS = "ACTIVE"
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
     "Model hasn't been deployed yet. No environments exist."
 )
+BUILDING_OR_DEPLOY_STATUS = ["BUILDING", "DEPLOYING"]
 
 # Maximum number of iterations to prevent infinite loops when paginating logs
 MAX_ITERATIONS = 10_000
