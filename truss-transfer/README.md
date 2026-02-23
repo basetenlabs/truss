@@ -198,8 +198,8 @@ def create_and_resolve_bptr():
             revision="main",
             # write to folder named
             volume_folder="dialogpt",
-            # read secret from /secrets/hf-access-token
-            runtime_secret_name="hf-access-token"
+            # read secret from /secrets/hf_access_token
+            runtime_secret_name="hf_access_token"
         ),
         # requires a gcs service account json
     ]
