@@ -465,6 +465,7 @@ class RemoteConfig(custom_types.SafeModelNonSerializable):
     """
 
     docker_image: DockerImage = DockerImage()
+    docker_server: Optional[truss_config.DockerServer] = None
     compute: Compute = Compute()
     assets: Assets = Assets()
     name: Optional[str] = None

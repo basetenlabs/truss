@@ -851,6 +851,10 @@ def _validate_engine_builder_fields(
         public_types.RemoteConfig, "docker_image"
     ):
         violations.append("docker_image")
+    if remote_config.docker_server != utils.get_pydantic_field_default_value(
+        public_types.RemoteConfig, "docker_server"
+    ):
+        violations.append("docker_server")
     if remote_config.assets.get_spec().cached != utils.get_pydantic_field_default_value(
         public_types.AssetSpec, "cached"
     ):

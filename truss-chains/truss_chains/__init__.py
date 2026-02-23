@@ -1,4 +1,4 @@
-from truss.base.truss_config import WeightsSource
+from truss.base.truss_config import DockerServer, WeightsSource
 from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
 from truss_chains.public_api import (
     depends,
@@ -39,6 +39,7 @@ __all__ = [
     "CustomImage",
     "DeployedServiceDescriptor",
     "DeploymentContext",
+    "DockerServer",
     "DockerImage",
     "Environment",
     "GenericRemoteException",

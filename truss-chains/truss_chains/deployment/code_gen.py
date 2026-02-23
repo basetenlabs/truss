@@ -757,6 +757,8 @@ def _gen_truss_config(
     config.model_class_name = _MODEL_CLS_NAME
 
     config.runtime.health_checks = remote_config.options.health_checks
+    if remote_config.docker_server is not None:
+        config.docker_server = remote_config.docker_server.model_copy(deep=True)
     # Image.
     _inplace_fill_base_image(remote_config.docker_image, config)
     pip_requirements = _make_requirements(remote_config.docker_image)
