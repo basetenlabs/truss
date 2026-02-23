@@ -263,7 +263,7 @@ def push(
         if has_engine_builder_chainlets and not options.publish:
             raise public_types.ChainsDeploymentError(
                 "This chain contains engine builder chainlets. Development models are "
-                "not supportd, push with `--publish`."
+                "not supportd, push as a published deployment."
             )
         return _create_baseten_chain(
             options,
@@ -656,10 +656,10 @@ class _ModelWatcher:
         dev_version = b10_core.get_dev_version(self._remote_provider.api, model_name)
         if not dev_version:
             raise b10_errors.RemoteError(
-                "No development model found. Run `truss push` then try again."
+                "No development model found. Run `truss push --watch` then try again."
             )
 
-    def _patch(self) -> None:
+    def _patch(self) -> Optional[b10_remote.PatchResult]:
         exception_raised = None
         with (
             log_utils.LogInterceptor() as log_interceptor,
@@ -681,10 +681,15 @@ class _ModelWatcher:
         _handle_intercepted_logs(logs, self._console)
         if exception_raised:
             _handle_import_error(exception_raised, self._console, self._error_console)
+        return None
 
     def watch(self) -> None:
-        # Perform one initial patch at startup.
-        self._patch()
+        self._console.print("🚰 Attempting to sync truss with remote")
+        b10_remote.retry_patch(
+            patch_fn=self._patch,
+            console=self._console,
+            error_console=self._error_console,
+        )
         self._console.print("👀 Watching for new changes.", style="blue")
 
         # TODO(nikhil): Improve detection of directory structure, since right now
