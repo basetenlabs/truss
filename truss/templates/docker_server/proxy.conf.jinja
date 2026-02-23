@@ -1,6 +1,6 @@
 {# NB(dhruv/nikhil): We intentionally turn logs off since they've caused issues at volume with certain nodes. #}
-access_log off;
-error_log /dev/null;
+access_log /dev/stderr;
+error_log stderr debug;
 
 {# NB(dhruv/nikhil): /dev/shm is memory backed at runtime in our deployed environments, less dependencies on overlayfs #}
 client_body_temp_path /dev/shm/nginx_client_temp;
@@ -100,3 +100,4 @@ server {
         {% endif %}
     }
 }
+
