@@ -748,6 +748,24 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def render_whetstone_config(self, config_request: Dict[str, Any]):
+        return self._rest_api_client.post(
+            "v1/training/whetstone/config-renders", body={"config": config_request}
+        )
+
+    def validate_whetstone_plan(self, plan_request: Dict[str, Any]):
+        return self._rest_api_client.post(
+            "v1/training/whetstone/plan-validations", body={"plan": plan_request}
+        )
+
+    def create_whetstone_training_job(
+        self, project_id: str, whetstone_job_request: Dict[str, Any]
+    ):
+        return self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/whetstone-jobs",
+            body=whetstone_job_request,
+        )
+
     def stop_training_job(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.post(
             f"v1/training_projects/{project_id}/jobs/{job_id}/stop", body={}

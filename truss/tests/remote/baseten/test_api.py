@@ -593,3 +593,94 @@ def test_fetch_log_batch(baseten_api):
     mock_rest_client.post.assert_called_with(
         "v1/training_projects/project-123/jobs/job-456/logs", body=query_params
     )
+
+
+def test_render_whetstone_config(baseten_api):
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.return_value = {
+        "run_name": "example-run",
+        "rendered_yaml": "model: qwen3\n",
+        "config_sha256": "deadbeef",
+    }
+    baseten_api._rest_api_client = mock_rest_client
+
+    result = baseten_api.render_whetstone_config(
+        {
+            "config_path": "configs/SFT/qwen3_4b.yaml",
+            "dataset": "swift/self-cognition#500",
+        }
+    )
+
+    assert result["run_name"] == "example-run"
+    mock_rest_client.post.assert_called_with(
+        "v1/training/whetstone/config-renders",
+        body={
+            "config": {
+                "config_path": "configs/SFT/qwen3_4b.yaml",
+                "dataset": "swift/self-cognition#500",
+            }
+        },
+    )
+
+
+def test_validate_whetstone_plan_and_create_job(baseten_api):
+    mock_rest_client = mock.Mock()
+    mock_rest_client.post.side_effect = [
+        {
+            "available": True,
+            "found": True,
+            "reason": None,
+            "suggestion": {"tp": 2, "pp": 2, "cp": 1, "ep": 1},
+            "rendered_yaml": "patched: true\n",
+            "checkpoint_preset_applied": "aggressive",
+        },
+        {
+            "training_job": {
+                "id": "job-123",
+                "current_status": "TRAINING_JOB_CREATED",
+                "training_project": {"id": "project-1", "name": "proj"},
+            }
+        },
+    ]
+    baseten_api._rest_api_client = mock_rest_client
+
+    plan_result = baseten_api.validate_whetstone_plan(
+        {
+            "rendered_yaml": "model: qwen3\n",
+            "accelerator": "H100",
+            "target_gpus": 8,
+            "global_batch_size": 64,
+            "apply_checkpointing": True,
+        }
+    )
+    create_result = baseten_api.create_whetstone_training_job(
+        "project-1",
+        {
+            "config": {
+                "config_path": "configs/SFT/qwen3_4b.yaml",
+                "dataset": "swift/self-cognition#500",
+            },
+            "planner": {"accelerator": "H100", "target_gpus": 8},
+            "runtime": {"name": "example-run"},
+        },
+    )
+
+    assert plan_result["found"] is True
+    assert create_result["training_job"]["id"] == "job-123"
+    assert mock_rest_client.post.call_args_list[0].kwargs == {
+        "body": {
+            "plan": {
+                "rendered_yaml": "model: qwen3\n",
+                "accelerator": "H100",
+                "target_gpus": 8,
+                "global_batch_size": 64,
+                "apply_checkpointing": True,
+            }
+        }
+    }
+    assert mock_rest_client.post.call_args_list[0].args == (
+        "v1/training/whetstone/plan-validations",
+    )
+    assert mock_rest_client.post.call_args_list[1].args == (
+        "v1/training_projects/project-1/whetstone-jobs",
+    )

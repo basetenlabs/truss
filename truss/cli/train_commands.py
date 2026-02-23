@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Optional, cast
 
 import rich_click as click
+import yaml
+from rich import box
+from rich.table import Table
 
 import truss.cli.train.core as train_cli
 from truss.base.constants import TRAINING_TEMPLATE_DIR
@@ -37,7 +40,9 @@ from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
-from truss_train import TrainingJob
+from truss_train import Image, TrainingJob, TrainingProject
+
+DEFAULT_LOCAL_WHETSTONE_PROJECT_NAME = "whetstone-local"
 
 
 @click.group()
@@ -46,6 +51,8 @@ def train():
 
 
 truss_cli.add_command(train)
+
+_TEB_SUPPORTED_SKUS = {"h100", "h200", "b200"}
 
 
 def _print_training_job_success_message(
@@ -185,6 +192,284 @@ def push_training_job(
     # of the above context manager, as only one console session can be active
     # at a time.
     _handle_post_create_logic(job_resp, remote_provider, tail)
+
+
+def _parse_accelerator_spec(accelerator: str) -> tuple[str, int, int]:
+    parts = accelerator.split(":")
+    accel_type = parts[0].strip()
+    if not accel_type:
+        raise click.UsageError("Invalid accelerator. Expected 'TYPE[:GPUS[:NODES]]'.")
+    gpu_count = int(parts[1]) if len(parts) > 1 and parts[1] else 8
+    node_count = int(parts[2]) if len(parts) > 2 and parts[2] else 1
+    if gpu_count <= 0 or node_count <= 0:
+        raise click.UsageError("Accelerator GPU count and node count must be > 0.")
+    return accel_type, gpu_count, node_count
+
+
+def _accelerator_supports_teb(accelerator_type: str) -> bool:
+    return accelerator_type.strip().lower() in _TEB_SUPPORTED_SKUS
+
+
+def _print_sft_summary(
+    run_name: str,
+    dataset: str,
+    split: str,
+    config_path: str,
+    accelerator_type: str,
+    target_gpus: int,
+    final_yaml: str,
+    suggestion: dict,
+    output_path: Optional[Path] = None,
+    show_yaml: bool = False,
+) -> None:
+    cfg = yaml.safe_load(final_yaml) or {}
+
+    table = Table(
+        title="Whetstone SFT Plan",
+        box=box.ROUNDED,
+        header_style="bold cyan",
+        border_style="blue",
+    )
+    table.add_column("Section", style="bold")
+    table.add_column("Key")
+    table.add_column("Value", overflow="fold")
+
+    model = cfg.get("model", "-")
+    table.add_row("Run", "Name", str(run_name))
+    table.add_row("Run", "Template", str(config_path))
+    table.add_row("Data", "Dataset", str(dataset))
+    table.add_row("Data", "Split", str(split))
+    table.add_row("Model", "Model", str(model))
+    table.add_row("Compute", "Accelerator", f"{accelerator_type} x {target_gpus} GPUs")
+    table.add_row("Training", "LR", str(cfg.get("lr", "-")))
+    table.add_row(
+        "Training",
+        "Epochs",
+        str(cfg.get("num_train_epochs", cfg.get("max_epochs", "-"))),
+    )
+    table.add_row("Training", "Global Batch", str(cfg.get("global_batch_size", "-")))
+    table.add_row("Training", "Micro Batch", str(cfg.get("micro_batch_size", "-")))
+    table.add_row("Training", "Max Length", str(cfg.get("max_length", "-")))
+    table.add_row(
+        "Parallelism",
+        "TP/PP/CP/EP",
+        f"{cfg.get('tensor_model_parallel_size', '-')} / {cfg.get('pipeline_model_parallel_size', '-')} / {cfg.get('context_parallel_size', '-')} / {cfg.get('expert_model_parallel_size', '-')}",
+    )
+    planner_mode = "Skipped" if suggestion.get("teb_skipped") else "TEB Applied"
+    table.add_row("Planner", "Decision", planner_mode)
+    if suggestion.get("reason"):
+        table.add_row("Planner", "Reason", str(suggestion.get("reason")))
+    table.add_row("Planner", "Headroom (GiB)", str(suggestion.get("headroom_gb", "-")))
+    table.add_row(
+        "Planner",
+        "Checkpoint Preset",
+        str(
+            suggestion.get("checkpoint_preset_applied")
+            or suggestion.get("checkpoint_preset")
+            or "-"
+        ),
+    )
+    if output_path:
+        table.add_row("Output", "Config File", str(output_path))
+
+    console.print(table)
+    if show_yaml:
+        console.print("\n[bold]Rendered YAML[/bold]")
+        console.print(final_yaml)
+
+
+@train.command(name="sft")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--dataset", type=str, required=True, help="Dataset ID.")
+@click.option(
+    "--config",
+    type=str,
+    default="configs/SFT/qwen3_4b.yaml",
+    show_default=True,
+    help="Whetstone config template path.",
+)
+@click.option(
+    "--split", type=str, default="train", show_default=True, help="Dataset split."
+)
+@click.option(
+    "--accelerator",
+    type=str,
+    default="H100:8:1",
+    show_default=True,
+    help="Accelerator in TYPE:GPUS:NODES format.",
+)
+@click.option("--name", type=str, required=False, help="Run name override.")
+@click.option(
+    "--max-seq-length", type=int, required=False, help="Override max sequence length."
+)
+@click.option(
+    "--save-interval", type=int, required=False, help="Override save interval."
+)
+@click.option("--epochs", type=int, required=False, help="Override number of epochs.")
+@click.option(
+    "--learning-rate", type=str, required=False, help="Override learning rate."
+)
+@click.option(
+    "--global-batch-size", type=int, required=False, help="Override global batch size."
+)
+@click.option(
+    "--baseten",
+    is_flag=True,
+    help="Deprecated no-op. Non-dry-run now always creates a Whetstone training job.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Render and validate only. Save final config locally and do not create a job.",
+)
+@click.option(
+    "--output-config",
+    type=click.Path(dir_okay=False, writable=True, resolve_path=True),
+    required=False,
+    help="Optional output path for dry-run rendered config.",
+)
+@click.option("--show-yaml", is_flag=True, help="Print the full rendered YAML.")
+@click.option("--tail", is_flag=True, help="Tail logs after creating job.")
+@common.common_options()
+def sft_training_job(
+    remote: Optional[str],
+    dataset: str,
+    config: str,
+    split: str,
+    accelerator: str,
+    name: Optional[str],
+    max_seq_length: Optional[int],
+    save_interval: Optional[int],
+    epochs: Optional[int],
+    learning_rate: Optional[str],
+    global_batch_size: Optional[int],
+    baseten: bool,
+    dry_run: bool,
+    output_config: Optional[str],
+    show_yaml: bool,
+    tail: bool,
+):
+    """Render + validate Whetstone SFT config via training API, optionally create a job."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    accel_type, gpu_count, node_count = _parse_accelerator_spec(accelerator)
+    target_gpus = gpu_count * node_count
+
+    config_request = {
+        "config_path": config,
+        "dataset": dataset,
+        "run_name": name,
+        "split": split,
+        "max_seq_length": max_seq_length,
+        "save_interval": save_interval,
+        "max_epochs": epochs,
+        "learning_rate": learning_rate,
+        "global_batch_size": global_batch_size,
+    }
+    config_request = {k: v for k, v in config_request.items() if v is not None}
+
+    with console.status("Rendering Whetstone config...", spinner="dots"):
+        render_resp = remote_provider.api.render_whetstone_config(config_request)
+
+    rendered_yaml = render_resp["rendered_yaml"]
+    run_name = render_resp["run_name"]
+    rendered_cfg = yaml.safe_load(rendered_yaml) or {}
+    planner_gbs = global_batch_size or rendered_cfg.get("global_batch_size")
+    if not planner_gbs:
+        raise click.UsageError(
+            "global_batch_size is required either via --global-batch-size or in template defaults."
+        )
+
+    if _accelerator_supports_teb(accel_type):
+        with console.status("Running TEB validation...", spinner="dots"):
+            plan_resp = remote_provider.api.validate_whetstone_plan(
+                {
+                    "rendered_yaml": rendered_yaml,
+                    "accelerator": accel_type,
+                    "target_gpus": target_gpus,
+                    "global_batch_size": int(planner_gbs),
+                    "apply_checkpointing": True,
+                }
+            )
+
+        if not plan_resp.get("available", False):
+            raise click.ClickException(
+                f"TEB planner unavailable: {plan_resp.get('reason', 'unknown error')}"
+            )
+        if not plan_resp.get("found", False):
+            raise click.ClickException(
+                f"No feasible plan found: {plan_resp.get('reason', 'unknown reason')}"
+            )
+
+        final_yaml = plan_resp["rendered_yaml"]
+        suggestion = plan_resp.get("suggestion", {})
+    else:
+        final_yaml = rendered_yaml
+        suggestion = {
+            "teb_skipped": True,
+            "reason": f"unsupported hardware sku '{accel_type.lower()}'",
+        }
+        console.print(
+            f"Skipping TEB validation for accelerator '{accel_type}' (unsupported by local TEB).",
+            style="yellow",
+        )
+
+    if dry_run:
+        output_path = (
+            Path(output_config) if output_config else Path.cwd() / f"{run_name}.yaml"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(final_yaml, encoding="utf-8")
+        _print_sft_summary(
+            run_name=run_name,
+            dataset=dataset,
+            split=split,
+            config_path=config,
+            accelerator_type=accel_type,
+            target_gpus=target_gpus,
+            final_yaml=final_yaml,
+            suggestion=suggestion,
+            output_path=output_path,
+            show_yaml=show_yaml,
+        )
+        console.print("✨ Dry run complete.", style="green")
+        return
+
+    _print_sft_summary(
+        run_name=run_name,
+        dataset=dataset,
+        split=split,
+        config_path=config,
+        accelerator_type=accel_type,
+        target_gpus=target_gpus,
+        final_yaml=final_yaml,
+        suggestion=suggestion,
+        show_yaml=show_yaml,
+    )
+
+    resolved_project_id = _get_or_create_default_local_whetstone_project_id(
+        remote_provider
+    )
+
+    create_req = {
+        "config": config_request,
+        "planner": {
+            "accelerator": accel_type,
+            "target_gpus": target_gpus,
+            "global_batch_size": int(planner_gbs),
+            "apply_checkpointing": True,
+        },
+        "runtime": {"name": run_name},
+    }
+    with console.status("Creating Whetstone training job...", spinner="dots"):
+        create_resp = remote_provider.api.create_whetstone_training_job(
+            resolved_project_id, create_req
+        )
+    _handle_post_create_logic(create_resp["training_job"], remote_provider, tail)
 
 
 @train.command(name="recreate")
@@ -640,3 +925,24 @@ def _maybe_resolve_project_id_from_id_or_name(
     if not project_str:
         return None
     return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]
+
+
+def _get_or_create_default_local_whetstone_project_id(remote_provider: BasetenRemote) -> str:
+    projects = remote_provider.api.list_training_projects()
+    for existing_project in projects:
+        if existing_project.get("name") == DEFAULT_LOCAL_WHETSTONE_PROJECT_NAME:
+            return existing_project["id"]
+
+    # Bootstrap a default project so plain `truss train sft` can create jobs without
+    # requiring explicit --project/--project-id arguments.
+    created_project = remote_provider.upsert_training_project(
+        TrainingProject(
+            name=DEFAULT_LOCAL_WHETSTONE_PROJECT_NAME,
+            job=TrainingJob(image=Image(base_image="busybox:1.36")),
+        )
+    )
+    console.print(
+        f"Created default local project '{DEFAULT_LOCAL_WHETSTONE_PROJECT_NAME}'.",
+        style="green",
+    )
+    return created_project["id"]

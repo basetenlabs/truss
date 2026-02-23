@@ -400,7 +400,8 @@ def _ensure_compute_spec(
     compute: Optional[Compute], remote_provider: BasetenRemote
 ) -> Compute:
     if not compute:
-        compute = Compute(cpu_count=0, memory="0Mi")
+        # Default to 4 CPUs and 16Gi memory for CPU deployments
+        compute = Compute(cpu_count=4, memory="16Gi")
     compute = _get_accelerator_if_specified(compute, remote_provider)
     return compute
 
@@ -425,7 +426,7 @@ def _get_accelerator_if_specified(
 
     if not choices or choices == [None]:
         console.print("No GPU instance types available, using CPU", style="yellow")
-        return Compute(cpu_count=0, memory="0Mi", accelerator=None)
+        return Compute(cpu_count=4, memory="16Gi", accelerator=None)
 
     # prompt user for accelerator
     gpu_type = inquirer.select(
@@ -434,7 +435,7 @@ def _get_accelerator_if_specified(
     ).execute()
 
     if gpu_type is None:
-        return Compute(cpu_count=0, memory="0Mi", accelerator=None)
+        return Compute(cpu_count=4, memory="16Gi", accelerator=None)
 
     # Get available counts for the selected GPU type
     available_counts = set()
