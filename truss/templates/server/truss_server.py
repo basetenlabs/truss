@@ -39,6 +39,7 @@ from prometheus_client import (
 )
 from pydantic import BaseModel
 from shared import log_config, serialization
+from shared.log_config import request_id_context
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
@@ -178,6 +179,8 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         request_id = request.headers.get("x-baseten-request-id")
+        # Set request_id in context so it's included in all log records
+        request_id_context.set(request_id)
 
         logging.debug(
             f"[DEBUG] Request received - {request.method} /{method.__name__} "
@@ -234,6 +237,10 @@ class BasetenEndpoints:
 
     async def websocket(self, ws: WebSocket) -> None:
         self.check_healthy()
+        # Set request_id in context so it's included in all log records
+        request_id = ws.headers.get("x-baseten-request-id")
+        request_id_context.set(request_id)
+
         trace_ctx = otel_propagate.extract(ws.headers) or None
         # We don't go through the typical execute_request path, since we don't need
         # to parse request body or attempt to serialize results.
