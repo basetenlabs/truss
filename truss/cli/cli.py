@@ -501,7 +501,12 @@ def run_python(script, target_directory):
     required=False,
     help="Name of the remote in .trussrc to push to",
 )
-@click.option("--model-name", type=str, required=False, help="Name of the model")
+@click.option(
+    "--model-name",
+    type=str,
+    required=False,
+    help="Temporarily override the name of the model",
+)
 @click.option(
     "--publish",
     is_flag=True,
@@ -770,8 +775,14 @@ def push(
             preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
             console.print(preserve_env_info)
 
-    # Write model name to config if it's not already there
-    if model_name != tr.spec.config.model_name:
+    # model_name from CLI flag (explicit), or fall back to config
+    cli_model_name = model_name  # what the user inputted for `--model-name`
+    model_name = model_name or tr.spec.config.model_name
+    if not model_name:
+        model_name = remote_cli.inquire_model_name()
+
+    # Only persist back to config.yaml if it wasn't provided on the CLI
+    if not cli_model_name and model_name != tr.spec.config.model_name:
         tr.spec.config.model_name = model_name
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
@@ -989,6 +1000,12 @@ def model_logs(
     default=False,
     help="Keep the development model warm by preventing scale-to-zero while watching.",
 )
+@click.option(
+    "--model-name",
+    type=str,
+    required=False,
+    help="Temporarily override the name of the model",
+)
 @common.common_options()
 def watch(
     target_directory: str,
@@ -996,6 +1013,7 @@ def watch(
     remote: str,
     provided_team_name: Optional[str] = None,
     no_sleep: bool = False,
+    model_name: Optional[str] = None,
 ) -> None:
     """
     Seamless remote development with truss
@@ -1009,11 +1027,10 @@ def watch(
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
     tr = _get_truss_from_directory(target_directory=target_directory, config=config)
-    model_name = tr.spec.config.model_name
+    model_name = model_name or tr.spec.config.model_name
     if not model_name:
         console.print(
-            "🧐 NoneType model_name provided in config.yaml. "
-            "Please check that you have the correct model name in your config file."
+            "🧐 No model name provided. Either set model_name in config.yaml or use --model-name."
         )
         sys.exit(1)
 
