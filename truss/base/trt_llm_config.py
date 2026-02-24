@@ -571,11 +571,17 @@ class VersionsOverrides(PydanticTrTBaseModel):
     engine_builder_version: Optional[str] = None
     briton_version: Optional[str] = None
     bei_version: Optional[str] = None
+    bei_bert_version: Optional[str] = None
     v2_llm_version: Optional[str] = None
 
     @model_validator(mode="before")
     def version_must_start_with_number(cls, data):
-        for field in ["engine_builder_version", "briton_version", "bei_version"]:
+        for field in [
+            "engine_builder_version",
+            "briton_version",
+            "bei_version",
+            "bei_bert_version",
+        ]:
             v = data.get(field)
             if v is not None and (not v or not v[0].isdigit()):
                 raise ValueError(f"{field} must start with a number")
@@ -734,6 +740,11 @@ class TRTLLMConfigurationV2(PydanticTrTBaseModel):
             quantization_config=TrussTRTQuantizationConfiguration(),
         ).model_dump(exclude_unset=False)
         for field in build_settings:
+            # NB(nikhil): By default we `allow_extra` for these configuration classes, but we want to
+            # ignore newer client versions/data for the purpose of this validation.
+            if field not in self.build.model_fields:
+                continue
+
             if (
                 field not in allowed_modify_fields
                 and build_settings[field] != build_settings_reference[field]
@@ -896,6 +907,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
         truss_config.Accelerator.H100_40GB,
         truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
+        truss_config.Accelerator.L40S,
         truss_config.Accelerator.A100_40GB,
     ]:
         raise ValueError(

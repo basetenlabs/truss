@@ -61,7 +61,7 @@ def test_prepare_push(
 
     prepared_job = deployment.prepare_push(
         mock_api,
-        pathlib.Path(__file__),
+        pathlib.Path(__file__).parent,
         TrainingJob(
             image=Image(base_image="hello-world"),
             compute=compute,
@@ -97,7 +97,7 @@ class TestGatherTrainingDir:
         config_path = tmp_path / "config.py"
         config_path.touch()
 
-        result = deployment._gather_training_dir(config_path, workspace=None)
+        result = deployment._gather_training_dir(config_path.parent, workspace=None)
         assert result is None
 
     def test_empty_workspace_returns_none(self, tmp_path):
@@ -105,7 +105,9 @@ class TestGatherTrainingDir:
         config_path.touch()
 
         workspace = Workspace()
-        result = deployment._gather_training_dir(config_path, workspace=workspace)
+        result = deployment._gather_training_dir(
+            config_path.parent, workspace=workspace
+        )
         assert result is None
 
     def test_workspace_root_contains_config(self, tmp_path):
@@ -121,7 +123,9 @@ class TestGatherTrainingDir:
         (project_dir / "train.py").write_text("# training code")
 
         workspace = Workspace(workspace_root=".")
-        result = deployment._gather_training_dir(config_path, workspace=workspace)
+        result = deployment._gather_training_dir(
+            config_path.parent, workspace=workspace
+        )
 
         assert result is not None
         assert (result / "config.py").exists()
@@ -143,7 +147,9 @@ class TestGatherTrainingDir:
         (project_dir / "shared.py").write_text("# shared code")
 
         workspace = Workspace(workspace_root="..")
-        result = deployment._gather_training_dir(config_path, workspace=workspace)
+        result = deployment._gather_training_dir(
+            config_path.parent, workspace=workspace
+        )
 
         assert result is not None
         assert (result / "subdir" / "config.py").exists()
@@ -166,7 +172,9 @@ class TestGatherTrainingDir:
         (shared_lib / "utils.py").write_text("# utils")
 
         workspace = Workspace(external_dirs=["../shared_lib"])
-        result = deployment._gather_training_dir(config_path, workspace=workspace)
+        result = deployment._gather_training_dir(
+            config_path.parent, workspace=workspace
+        )
 
         assert result is not None
         assert (result / "config.py").exists()
@@ -195,7 +203,9 @@ class TestGatherTrainingDir:
         (tests_dir / "test_foo.py").write_text("# test")
 
         workspace = Workspace(exclude_dirs=["./data", "./tests"])
-        result = deployment._gather_training_dir(config_path, workspace=workspace)
+        result = deployment._gather_training_dir(
+            config_path.parent, workspace=workspace
+        )
 
         assert result is not None
         assert (result / "config.py").exists()
@@ -238,7 +248,9 @@ class TestGatherTrainingDir:
             external_dirs=["../../external"],
             exclude_dirs=["../data"],
         )
-        result = deployment._gather_training_dir(config_path, workspace=workspace)
+        result = deployment._gather_training_dir(
+            config_path.parent, workspace=workspace
+        )
 
         assert result is not None
         assert (result / "subdir" / "config.py").exists()
@@ -268,7 +280,7 @@ class TestWorkspaceValidation:
         workspace = Workspace(workspace_root="../other_project")
 
         with pytest.raises(ValueError, match="must be inside workspace_root"):
-            deployment._gather_training_dir(config_path, workspace=workspace)
+            deployment._gather_training_dir(config_path.parent, workspace=workspace)
 
     def test_external_dir_inside_workspace_root_warns_and_skips(self, tmp_path, capsys):
         # Structure:
@@ -289,7 +301,9 @@ class TestWorkspaceValidation:
         workspace = Workspace(external_dirs=["./subdir"])
 
         # Should succeed but skip the external_dir
-        result = deployment._gather_training_dir(config_path, workspace=workspace)
+        result = deployment._gather_training_dir(
+            config_path.parent, workspace=workspace
+        )
 
         # The subdir is included via workspace_root, not as separate external dir
         assert result is not None
@@ -318,7 +332,7 @@ class TestWorkspaceValidation:
         workspace = Workspace(external_dirs=["../other/src"])
 
         with pytest.raises(ValueError, match="Name collision"):
-            deployment._gather_training_dir(config_path, workspace=workspace)
+            deployment._gather_training_dir(config_path.parent, workspace=workspace)
 
     def test_external_dir_name_collision_between_external_dirs_fails(self, tmp_path):
         # Structure:
@@ -345,7 +359,7 @@ class TestWorkspaceValidation:
         workspace = Workspace(external_dirs=["../dir_a/shared", "../dir_b/shared"])
 
         with pytest.raises(ValueError, match="Name collision"):
-            deployment._gather_training_dir(config_path, workspace=workspace)
+            deployment._gather_training_dir(config_path.parent, workspace=workspace)
 
     def test_external_dir_does_not_exist_fails(self, tmp_path):
         project_dir = tmp_path / "project"
@@ -356,7 +370,7 @@ class TestWorkspaceValidation:
         workspace = Workspace(external_dirs=["../nonexistent"])
 
         with pytest.raises(ValueError, match="does not exist"):
-            deployment._gather_training_dir(config_path, workspace=workspace)
+            deployment._gather_training_dir(config_path.parent, workspace=workspace)
 
     def test_external_dir_is_file_not_directory_fails(self, tmp_path):
         project_dir = tmp_path / "project"
@@ -371,7 +385,7 @@ class TestWorkspaceValidation:
         workspace = Workspace(external_dirs=["../some_file.txt"])
 
         with pytest.raises(ValueError, match="not a directory"):
-            deployment._gather_training_dir(config_path, workspace=workspace)
+            deployment._gather_training_dir(config_path.parent, workspace=workspace)
 
 
 class TestArchiveSizeValidation:
@@ -394,6 +408,6 @@ class TestArchiveSizeValidation:
         with pytest.raises(ValueError, match="exceeds maximum allowed size"):
             deployment.prepare_push(
                 mock_api,
-                config_path,
+                config_path.parent,
                 TrainingJob(image=Image(base_image="hello-world")),
             )

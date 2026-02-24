@@ -2,12 +2,14 @@ import inspect
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
 
 import rich.table
 import rich_click as click
+from rich import console as rich_console
 from rich import progress
 
 import truss
@@ -36,7 +38,7 @@ from truss.remote.baseten.core import (
     get_dev_version_from_versions,
 )
 from truss.remote.baseten.remote import BasetenRemote
-from truss.remote.baseten.service import BasetenService
+from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     has_no_tags_trt_llm_builder,
@@ -88,6 +90,32 @@ def _get_truss_from_directory(
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
     return load(truss_dir, config_path=config_path)
+
+
+def _start_watch_mode(
+    target_directory: str,
+    model_name: str,
+    remote_provider: BasetenRemote,
+    resolved_model: dict,
+    resolved_versions: list,
+    console: "rich_console.Console",
+    error_console: "rich_console.Console",
+) -> None:
+    if not os.path.isfile(target_directory):
+        remote_provider.sync_truss_to_dev_version_with_model(
+            resolved_model, resolved_versions, target_directory, console, error_console
+        )
+    else:
+        # These imports are delayed, to handle pydantic v1 envs gracefully.
+        from truss_chains.deployment import deployment_client
+
+        deployment_client.watch_model(
+            source=Path(target_directory),
+            model_name=model_name,
+            remote_provider=remote_provider,
+            console=console,
+            error_console=error_console,
+        )
 
 
 ### Top-level & utility commands. ######################################################
@@ -164,7 +192,7 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     table.add_row(
         "Subject Claim Format",
         "v=1:org=<org_id>:team=<team_id>:model=<model_id>:"
-        "deployment=<deployment_id>:env=<environment>:type=<workload_type>",
+        "deployment=<deployment_id>:environment=<environment>:type=<workload_type>",
     )
 
     return table
@@ -480,6 +508,7 @@ def run_python(script, target_directory):
     required=False,
     default=False,
     help=(
+        "[DEPRECATED] Published deployments are now the default."
         "Push the truss as a published deployment. If no production "
         "deployment exists, promote the truss to production "
         "after deploy completes."
@@ -502,7 +531,7 @@ def run_python(script, target_directory):
     required=False,
     help=(
         "Push the truss as a published deployment to the specified environment."
-        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+        "If specified, publish is implied and the supplied value of --promote will be ignored."
     ),
 )
 @click.option(
@@ -535,8 +564,8 @@ def run_python(script, target_directory):
     type=str,
     required=False,
     help=(
-        "Name of the deployment created by the push. Can only be "
-        "used in combination with --publish or --promote."
+        "Name of the deployment created by the push. Cannot be "
+        "used with --watch (development deployments)."
     ),
 )
 @click.option(
@@ -594,6 +623,18 @@ def run_python(script, target_directory):
     required=False,
     help="JSON string of labels as key-value pairs.",
 )
+@click.option(
+    "--watch",
+    "watch_after_push",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Deploy as a development model and watch for changes. "
+        "Waits for deployment to complete, then starts watching for code changes "
+        "to apply live patches. Cannot be used with --promote, --environment, or --tail."
+    ),
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -615,6 +656,7 @@ def push(
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
     labels: Optional[str] = None,
+    watch_after_push: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -622,6 +664,45 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+
+    if publish:
+        console.print(
+            "[DEPRECATED] The --publish flag is deprecated. Published deployments are now the default.",
+            style="yellow",
+        )
+
+    # Handle --watch flag: deploys as development and then watches
+    if watch_after_push:
+        if publish:
+            raise click.UsageError(
+                "Cannot use --watch with --publish. Watch mode requires a development deployment."
+            )
+        if promote:
+            raise click.UsageError(
+                "Cannot use --watch with --promote. Watch mode runs a development deployment."
+            )
+        if environment:
+            raise click.UsageError(
+                "Cannot use --watch with --environment. Watch mode runs a development deployment."
+            )
+        if tail:
+            raise click.UsageError("Cannot use --watch with --tail.")
+        # Development deployment for watch mode
+        publish = False
+        wait = True
+    else:
+        # Default is now published deployment
+        publish = True
+        console.print(
+            "Deploying as a published deployment. Use --watch for a development deployment.",
+            style="green",
+        )
+
+    if wait and tail:
+        raise click.UsageError(
+            "Cannot use --wait with --tail. Use --tail by itself to wait for deployment and tail logs."
+        )
+
     tr = _get_truss_from_directory(target_directory=target_directory, config=config)
 
     if tr.spec.config.resources.instance_type:
@@ -636,7 +717,7 @@ def push(
         and not promote
     ):
         raise click.UsageError(
-            "Truss with gRPC transport cannot be used as a development deployment. Please rerun the command with --publish or --promote."
+            "Truss with gRPC transport cannot be used as a development deployment. Remove --watch to deploy as a published model."
         )
 
     if not remote:
@@ -659,7 +740,7 @@ def push(
         effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
             remote
         )
-        _, team_id = resolve_model_team_name(
+        team_name, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
             provided_team_name=effective_team_name,
             existing_model_name=model_name,
@@ -713,7 +794,7 @@ def push(
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
         if not publish:
-            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow. Remove --watch to deploy as a published model."
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
 
@@ -771,8 +852,7 @@ def push(
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
 | When you are ready to publish your deployed model as a new deployment,                |
-| pass '--publish' to the 'truss push' command. To monitor changes to your model and    |
-| rapidly iterate, run the 'truss watch' command.                                       |
+| run 'truss push' without --watch.                                                     |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """
@@ -792,8 +872,6 @@ def push(
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
-            # Poll for the deployment status until we have reached. Either ACTIVE,
-            # or a non-deploying status (in which case the deployment has failed).
             for deployment_status in service.poll_deployment_status():
                 if (
                     timeout_seconds is not None
@@ -808,7 +886,17 @@ def push(
 
                 if deployment_status == ACTIVE_STATUS:
                     console.print("Deployment succeeded.", style="bold green")
-                    return
+                    break
+
+                # For --watch (dev deployments), enter watch mode early
+                # once past BUILDING, so user can iterate on code
+                if watch_after_push and deployment_status in ("LOADING_MODEL"):
+                    console.print(
+                        f"Deployment status: {deployment_status}. "
+                        "Entering watch mode early for faster iteration...",
+                        style="bold blue",
+                    )
+                    break
 
                 if deployment_status not in DEPLOYING_STATUSES:
                     console.print(
@@ -816,6 +904,27 @@ def push(
                         style="red",
                     )
                     sys.exit(1)
+
+        # If --watch was used, start watching after deploy success
+        if watch_after_push:
+            if not isinstance(remote_provider, BasetenRemote):
+                raise click.UsageError(
+                    f"Watch mode is not supported for remote provider type: {type(remote_provider).__name__}"
+                )
+            bt_remote = cast(BasetenRemote, remote_provider)
+            console.print("Starting watch mode...", style="bold blue")
+            resolved_model, versions = resolve_model_for_watch(
+                bt_remote, model_name, provided_team_name=team_name
+            )
+            _start_watch_mode(
+                target_directory=target_directory,
+                model_name=model_name,
+                remote_provider=bt_remote,
+                resolved_model=resolved_model,
+                resolved_versions=versions,
+                console=console,
+                error_console=error_console,
+            )
 
     elif tail and isinstance(service, BasetenService):
         bt_remote = cast(BasetenRemote, remote_provider)
@@ -875,12 +984,19 @@ def model_logs(
     required=False,
     help="Team name for the model to watch",
 )
+@click.option(
+    "--no-sleep",
+    is_flag=True,
+    default=False,
+    help="Keep the development model warm by preventing scale-to-zero while watching.",
+)
 @common.common_options()
 def watch(
     target_directory: str,
     config: Optional[str],
     remote: str,
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = False,
 ) -> None:
     """
     Seamless remote development with truss
@@ -913,31 +1029,59 @@ def watch(
     # Verify dev version exists
     dev_version = get_dev_version_from_versions(versions)
     if not dev_version:
-        console.print("❌ No development model found. Run `truss push` then try again.")
+        console.print(
+            "❌ No development model found. Run `truss push --watch` then try again."
+        )
         sys.exit(1)
 
     # Use model_id to get service (no additional resolution needed)
-    service = remote_provider.get_service(model_identifier=ModelId(model_id))
+    dev_version_id = dev_version["id"]
+    logs_url = URLConfig.model_logs_url(
+        remote_provider.remote_url, model_id, dev_version_id
+    )
     console.print(
-        f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
+        f"🪵  View logs for your development model at {common.format_link(logs_url)}"
     )
 
-    if not os.path.isfile(target_directory):
-        # Pass the resolved model to avoid re-resolution
-        remote_provider.sync_truss_to_dev_version_with_model(
-            resolved_model, versions, target_directory, console, error_console
-        )
-    else:
-        # These imports are delayed, to handle pydantic v1 envs gracefully.
-        from truss_chains.deployment import deployment_client
+    model_hostname = resolved_model.get("hostname")
+    if not model_hostname:
+        console.print("❌ Could not determine model hostname", style="red")
+        sys.exit(1)
 
-        deployment_client.watch_model(
-            source=Path(target_directory),
-            model_name=model_name,
-            remote_provider=remote_provider,
-            console=console,
-            error_console=error_console,
+    api_key = remote_provider._auth_service.authenticate().value
+
+    common.wait_for_development_model_ready(
+        model_hostname=model_hostname,
+        model_id=model_id,
+        dev_version_id=dev_version_id,
+        remote_provider=remote_provider,
+        console=console,
+        api_key=api_key,
+    )
+
+    stop_event = threading.Event()
+    if no_sleep:
+        console.print("💤 --no-sleep enabled: keeping development model warm")
+        keepalive_thread = threading.Thread(
+            target=common.keepalive_loop,
+            args=(model_hostname, api_key, stop_event),
+            daemon=True,
         )
+        keepalive_thread.start()
+
+    # Re-resolve the model to get the latest version and truss hash and latest push before watching
+    resolved_model, versions = resolve_model_for_watch(
+        remote_provider, model_name, provided_team_name=effective_team_name
+    )
+    _start_watch_mode(
+        target_directory=target_directory,
+        model_name=model_name,
+        remote_provider=remote_provider,
+        resolved_model=resolved_model,
+        resolved_versions=versions,
+        console=console,
+        error_console=error_console,
+    )
 
 
 ### Image commands. ####################################################################

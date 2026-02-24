@@ -223,6 +223,7 @@ def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
         ("H200", AcceleratorSpec(accelerator=Accelerator.H200, count=1)),
         ("H100_40GB", AcceleratorSpec(accelerator=Accelerator.H100_40GB, count=1)),
         ("B200", AcceleratorSpec(accelerator=Accelerator.B200, count=1)),
+        ("L40S", AcceleratorSpec(accelerator=Accelerator.L40S, count=1)),
     ],
 )
 def test_acc_spec_from_str(input_str, expected_acc):

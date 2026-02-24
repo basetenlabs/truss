@@ -1,35 +1,53 @@
 from pathlib import Path
-from typing import cast
+from typing import Optional, Union, cast, overload
 
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss_train import loader
-from truss_train.deployment import create_training_job
+from truss_train.definitions import TrainingProject
+from truss_train.deployment import _upsert_project_and_create_job, create_training_job
 
 
-def push(config: Path, remote: str = "baseten"):
+@overload
+def push(config: Path, *, remote: str = "baseten") -> dict: ...
+
+
+@overload
+def push(
+    config: TrainingProject,
+    *,
+    remote: str = "baseten",
+    source_dir: Optional[Path] = None,
+) -> dict: ...
+
+
+def push(
+    config: Union[Path, TrainingProject],
+    *,
+    remote: str = "baseten",
+    source_dir: Optional[Path] = None,
+) -> dict:
     """Create or update a training project and create a training job.
 
-    This function performs the following operations:
-    1. Creates or updates a training project
-    2. Creates a training job within the training project
-
     Args:
-        config: Path to the Python file that defines the training project and job.
+        config: Either a Path to a Python config file that defines the training
+            project and job, or a TrainingProject instance constructed in code.
         remote: The remote provider to use. Defaults to "baseten".
+        source_dir: Base directory for workspace path resolution and archiving.
+            Only used when config is a TrainingProject. Defaults to Path.cwd().
 
     Returns:
-        dict: A dictionary containing the created training project and job:
-            {
-                "training_project": TrainingProject,
-                "training_job": TrainingJob,
-            }
-
-        For detailed definitions of TrainingProject and TrainingJob, see the API docs:
-        https://docs.baseten.co/reference/training-api/get-training-job
+        dict: A dictionary containing the created training project and job.
     """
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    with loader.import_training_project(config) as training_project:
-        return create_training_job(remote_provider, config, training_project)
+
+    if isinstance(config, Path):
+        with loader.import_training_project(config) as training_project:
+            return create_training_job(remote_provider, config, training_project)
+    else:
+        resolved_source_dir = source_dir if source_dir is not None else Path.cwd()
+        return _upsert_project_and_create_job(
+            remote_provider, config, resolved_source_dir
+        )
