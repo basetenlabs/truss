@@ -640,6 +640,7 @@ def test_whoami_with_show_oidc():
     assert "abc123 (ML Team)" in result.output
     assert "https://oidc.baseten.co" in result.output
     assert "oidc.baseten.co" in result.output
+    assert "v=1:org=<org_id>:team=<team_id>:model=<model_id>:deployment=<deployment_id>:environment=<environment>:type=<workload_type>" in result.output
 
 
 def test_push_defaults_to_published(
