@@ -1,12 +1,18 @@
+import contextvars
 import logging
 import os
 import urllib.parse
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Optional
 
 from pythonjsonlogger import jsonlogger
 
 LOCAL_DATE_FORMAT = "%H:%M:%S"
+
+# Context variable for request ID - can be set per-request and accessed in logging
+request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "request_id", default=None
+)
 
 
 def _disable_json_logging() -> bool:
@@ -38,6 +44,14 @@ class _MetricsFilter(logging.Filter):
         return "/metrics" not in record.getMessage()
 
 
+class _RequestIDFilter(logging.Filter):
+    """Injects request_id from context into all log records."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_id_context.get()
+        return True
+
+
 class _AccessJsonFormatter(jsonlogger.JsonFormatter):
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
@@ -53,6 +67,21 @@ class _AccessJsonFormatter(jsonlogger.JsonFormatter):
             record.msg = new_message
             record.args = ()  # Ensure Python doesn't reapply the old format string
         return super().format(record)
+
+
+class _DefaultJsonFormatter(jsonlogger.JsonFormatter):
+    """JSON formatter that includes request_id if present."""
+
+    def add_fields(
+        self,
+        log_record: dict,
+        record: logging.LogRecord,
+        message_dict: dict,
+    ) -> None:
+        super().add_fields(log_record, record, message_dict)
+        # Add request_id if it exists and is not None
+        if hasattr(record, "request_id") and record.request_id:
+            log_record["request_id"] = record.request_id
 
 
 class _AccessFormatter(logging.Formatter):
@@ -87,7 +116,7 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
         if _disable_json_logging()
         else {
             "default_formatter": {
-                "()": jsonlogger.JsonFormatter,
+                "()": _DefaultJsonFormatter,
                 "format": "%(asctime)s %(levelname)s %(message)s",
             },
             "access_formatter": {
@@ -104,6 +133,7 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
             "health_check_filter": {"()": _HealthCheckFilter},
             "websocket_filter": {"()": _WebsocketOpenFilter},
             "metrics_filter": {"()": _MetricsFilter},
+            "request_id_filter": {"()": _RequestIDFilter},
         },
         "formatters": formatters,
         "handlers": {
@@ -111,11 +141,13 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
                 "formatter": "default_formatter",
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stderr",
+                "filters": ["request_id_filter"],
             },
             "access_handler": {
                 "formatter": "access_formatter",
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stdout",
+                "filters": ["request_id_filter"],
             },
         },
         "loggers": {
