@@ -3,3 +3,9 @@ FROM {{ config.base_image.image }}
 {%- if data_dir_exists %}
 COPY --chown={{ run_as_user_id }}:{{ run_as_user_id }} ./{{ config.data_dir }} /app/data
 {%- endif %}
+
+{# With no_build, the base image's ENTRYPOINT would otherwise run. Override so start_command runs. #}
+{%- if config.docker_server and config.docker_server.start_command %}
+ENTRYPOINT ["sh", "-c"]
+CMD [{{ config.docker_server.start_command | tojson }}]
+{%- endif %}
