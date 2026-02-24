@@ -98,7 +98,7 @@ def _get_truss_from_directory(
 @click.version_option(truss.__version__)
 @common.common_options(add_middleware=False)
 def truss_cli(ctx) -> None:
-    """truss: The hardest way to serve models in production"""
+    """truss: The simplest way to serve models in production"""
     # Click "stacks" the root command and group/subcommands, to avoid running the
     # middleware twice, we don't add it via decorator to the root command, but instead
     # selective run it here inline.
