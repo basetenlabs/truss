@@ -192,7 +192,7 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     table.add_row(
         "Subject Claim Format",
         "v=1:org=<org_id>:team=<team_id>:model=<model_id>:"
-        "deployment=<deployment_id>:env=<environment>:type=<workload_type>",
+        "deployment=<deployment_id>:environment=<environment>:type=<workload_type>",
     )
 
     return table
