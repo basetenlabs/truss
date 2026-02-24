@@ -618,10 +618,10 @@ def run_python(script, target_directory):
     help="Team name for the model",
 )
 @click.option(
-    "--metadata",
+    "--labels",
     type=str,
     required=False,
-    help="JSON string of metadata key-value pairs.",
+    help="JSON string of labels as key-value pairs.",
 )
 @click.option(
     "--watch",
@@ -655,7 +655,7 @@ def push(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
-    metadata: Optional[str] = None,
+    labels: Optional[str] = None,
     watch_after_push: bool = False,
 ) -> None:
     """
@@ -780,15 +780,16 @@ def push(
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
-    # Parse metadata from CLI option
-    metadata_dict: dict = {}
-    if metadata:
+    # Parse labels from CLI option
+    labels_dict: Optional[dict] = None
+    if labels:
         try:
-            metadata_dict = json.loads(metadata)
-            if not isinstance(metadata_dict, dict):
-                raise click.UsageError("--metadata must be a JSON object.")
+            parsed_labels = json.loads(labels)
+            if not isinstance(parsed_labels, dict):
+                raise click.UsageError("--labels must be a JSON object.")
+            labels_dict = parsed_labels
         except json.JSONDecodeError as e:
-            raise click.UsageError(f"Invalid JSON in --metadata: {e}")
+            raise click.UsageError(f"Invalid JSON in --labels: {e}")
 
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
@@ -839,7 +840,7 @@ def push(
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
-        metadata=metadata_dict,
+        labels=labels_dict,
     )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")

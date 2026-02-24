@@ -605,15 +605,15 @@ def test_fetch_log_batch(baseten_api):
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
-def test_create_model_from_truss_with_metadata(mock_post, baseten_api):
-    metadata = {"git_sha": "abc123", "environment": "production"}
+def test_create_model_from_truss_with_labels(mock_post, baseten_api):
+    labels = {"git_sha": "abc123", "environment": "production"}
     baseten_api.create_model_from_truss(
         "model_name",
         "s3key",
         "config_str",
         "semver_bump",
         b10_types.TrussUserEnv.collect(),
-        metadata=metadata,
+        labels=labels,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -628,7 +628,7 @@ def test_create_model_from_truss_with_metadata(mock_post, baseten_api):
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
-def test_create_model_from_truss_without_metadata(mock_post, baseten_api):
+def test_create_model_from_truss_without_labels(mock_post, baseten_api):
     baseten_api.create_model_from_truss(
         "model_name",
         "s3key",
@@ -642,15 +642,15 @@ def test_create_model_from_truss_without_metadata(mock_post, baseten_api):
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
-def test_create_model_version_from_truss_with_metadata(mock_post, baseten_api):
-    metadata = {"git_sha": "abc123", "count": 42}
+def test_create_model_version_from_truss_with_labels(mock_post, baseten_api):
+    labels = {"git_sha": "abc123", "count": 42}
     baseten_api.create_model_version_from_truss(
         "model_id",
         "s3key",
         "config_str",
         "semver_bump",
         b10_types.TrussUserEnv.collect(),
-        metadata=metadata,
+        labels=labels,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
@@ -661,14 +661,14 @@ def test_create_model_version_from_truss_with_metadata(mock_post, baseten_api):
 
 
 @mock.patch("requests.post", return_value=mock_create_development_model_response())
-def test_create_development_model_from_truss_with_metadata(mock_post, baseten_api):
-    metadata = {"git_sha": "abc123"}
+def test_create_development_model_from_truss_with_labels(mock_post, baseten_api):
+    labels = {"git_sha": "abc123"}
     baseten_api.create_development_model_from_truss(
         "model_name",
         "s3key",
         "config_str",
         b10_types.TrussUserEnv.collect(),
-        metadata=metadata,
+        labels=labels,
     )
 
     gql_mutation = mock_post.call_args[1]["json"]["query"]
