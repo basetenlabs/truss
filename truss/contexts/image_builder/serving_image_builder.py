@@ -92,7 +92,7 @@ USER_TRUSS_IGNORE_FILE = ".truss_ignore"
 GCS_CREDENTIALS = "service_account.json"
 S3_CREDENTIALS = "s3_credentials.json"
 
-HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
+HF_ACCESS_TOKEN_FILE_NAME = "hf_access_token"
 
 CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 
