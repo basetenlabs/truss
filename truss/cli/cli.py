@@ -733,9 +733,16 @@ def push(
 
     remote_provider = RemoteFactory.create(remote=remote)
 
+    # model_name from CLI flag (explicit), or fall back to config
+    cli_model_name = model_name  # what the user inputted for `--model-name`
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = remote_cli.inquire_model_name()
+
+    # Only persist back to config.yaml if it wasn't provided on the CLI
+    if not cli_model_name and model_name != tr.spec.config.model_name:
+        tr.spec.config.model_name = model_name
+        tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # Resolve team_id if BasetenRemote
     team_id = None
@@ -774,17 +781,6 @@ def push(
         else:
             preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
             console.print(preserve_env_info)
-
-    # model_name from CLI flag (explicit), or fall back to config
-    cli_model_name = model_name  # what the user inputted for `--model-name`
-    model_name = model_name or tr.spec.config.model_name
-    if not model_name:
-        model_name = remote_cli.inquire_model_name()
-
-    # Only persist back to config.yaml if it wasn't provided on the CLI
-    if not cli_model_name and model_name != tr.spec.config.model_name:
-        tr.spec.config.model_name = model_name
-        tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # Log a warning if using --trusted.
     if trusted is not None:
