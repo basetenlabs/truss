@@ -33,6 +33,9 @@ HF_TOKEN_ENVVAR_NAME = "HF_TOKEN"
 # If we change this, make sure to update the logic in backend codebase
 CHECKPOINT_PATTERN = re.compile(r".*checkpoint-\d+(?:-\d+)?$")
 ALLOWED_DEPLOYMENT_NAMES = re.compile(r"^[0-9a-zA-Z_\-\.]*$")
+# The UI represents root checkpoints as "(root)", but the actual value is "."
+ROOT_CHECKPOINT_UI_NOTATION = "(root)"
+ROOT_CHECKPOINT_VALUE = "."
 
 
 def create_model_version_from_inference_template(
@@ -276,6 +279,18 @@ def _hydrate_deploy_config(
     )
 
 
+def _normalize_checkpoint_id(checkpoint_id: str) -> str:
+    """
+    Normalize the checkpoint ID.
+
+    The UI represents root checkpoints as "(root)", but the actual value is ".".
+    This function converts "(root)" to "." for consistency with the backend.
+    """
+    if checkpoint_id == ROOT_CHECKPOINT_UI_NOTATION:
+        return ROOT_CHECKPOINT_VALUE
+    return checkpoint_id
+
+
 def hydrate_checkpoint(
     job_id: str, checkpoint_id: str, checkpoint: dict, checkpoint_type: str
 ) -> Checkpoint:
@@ -283,6 +298,8 @@ def hydrate_checkpoint(
     Generic function to create a Checkpoint object for different model weight formats.
     This function can be extended to support additional checkpoint types beyond LoRA.
     """
+    # Normalize checkpoint_id (e.g., "(root)" -> ".")
+    checkpoint_id = _normalize_checkpoint_id(checkpoint_id)
 
     if checkpoint_type.lower() == ModelWeightsFormat.LORA.value:
         return hydrate_lora_checkpoint(job_id, checkpoint_id, checkpoint)

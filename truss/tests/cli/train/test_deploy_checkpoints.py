@@ -5,6 +5,7 @@ import pytest
 import truss_train.definitions as definitions
 from truss.cli.train.deploy_checkpoints.deploy_checkpoints import (
     _get_checkpoint_ids_to_deploy,
+    _normalize_checkpoint_id,
     hydrate_checkpoint,
 )
 from truss.cli.train.deploy_checkpoints.deploy_full_checkpoints import (
@@ -276,4 +277,38 @@ def test_hydrate_whisper_checkpoint():
     assert result.training_job_id == job_id
     assert result.checkpoint_name == checkpoint_id
     assert result.model_weight_format == definitions.ModelWeightsFormat.WHISPER
+    assert isinstance(result, definitions.WhisperCheckpoint)
+
+
+def test_normalize_checkpoint_id_root():
+    """Test that (root) is normalized to '.' for root checkpoints."""
+    assert _normalize_checkpoint_id("(root)") == "."
+
+
+def test_normalize_checkpoint_id_regular():
+    """Test that regular checkpoint IDs are not modified."""
+    assert _normalize_checkpoint_id("checkpoint-123") == "checkpoint-123"
+    assert _normalize_checkpoint_id("checkpoint-456-789") == "checkpoint-456-789"
+    assert _normalize_checkpoint_id(".") == "."
+
+
+def test_hydrate_checkpoint_normalizes_root():
+    """Test that hydrate_checkpoint normalizes (root) to '.' for all checkpoint types."""
+    job_id = "test-job-123"
+    checkpoint_data = {"checkpoint_type": "full"}
+
+    # Test with FULL checkpoint type
+    result = hydrate_checkpoint(job_id, "(root)", checkpoint_data, "full")
+    assert result.checkpoint_name == "."
+    assert isinstance(result, definitions.FullCheckpoint)
+
+    # Test with LORA checkpoint type
+    lora_checkpoint_data = {"lora_adapter_config": {"r": 16}}
+    result = hydrate_checkpoint(job_id, "(root)", lora_checkpoint_data, "lora")
+    assert result.checkpoint_name == "."
+    assert isinstance(result, definitions.LoRACheckpoint)
+
+    # Test with WHISPER checkpoint type
+    result = hydrate_checkpoint(job_id, "(root)", {}, "whisper")
+    assert result.checkpoint_name == "."
     assert isinstance(result, definitions.WhisperCheckpoint)
