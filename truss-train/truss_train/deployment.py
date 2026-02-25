@@ -1,5 +1,4 @@
 import logging
-import pathlib
 import shutil
 import tempfile
 import time
@@ -37,13 +36,13 @@ def _resolve_path(path_str: str, base_dir: Path) -> Path:
     return (base_dir / path).resolve()
 
 
-def _validate_workspace_root(workspace_root: Path, config_path: Path) -> None:
-    """Validate that config.py is inside workspace_root."""
+def _validate_workspace_root(workspace_root: Path, source_dir: Path) -> None:
+    """Validate that source_dir is inside workspace_root."""
     try:
-        config_path.resolve().relative_to(workspace_root.resolve())
+        source_dir.resolve().relative_to(workspace_root.resolve())
     except ValueError:
         raise ValueError(
-            f"config.py ({config_path}) must be inside workspace_root ({workspace_root})"
+            f"source_dir ({source_dir}) must be inside workspace_root ({workspace_root})"
         )
 
 
@@ -143,7 +142,7 @@ def _calculate_dir_size(path: Path, exclude_set: set, is_root: bool = True) -> i
 
 
 def _gather_training_dir(
-    config_path: Path, workspace: Optional[Workspace]
+    source_dir: Path, workspace: Optional[Workspace]
 ) -> Optional[Path]:
     """
     Gather workspace and external directories into a temporary directory for archiving.
@@ -154,7 +153,7 @@ def _gather_training_dir(
     if not workspace:
         return None
 
-    config_dir = config_path.absolute().parent
+    config_dir = source_dir.resolve()
     workspace_root = workspace.workspace_root
     external_dirs = workspace.external_dirs
     exclude_dirs = workspace.exclude_dirs
@@ -164,7 +163,7 @@ def _gather_training_dir(
 
     if workspace_root:
         resolved_workspace_root = _resolve_path(workspace_root, config_dir)
-        _validate_workspace_root(resolved_workspace_root, config_path)
+        _validate_workspace_root(resolved_workspace_root, source_dir)
     else:
         resolved_workspace_root = config_dir
 
@@ -244,15 +243,13 @@ class PreparedTrainingJob(TrainingJob):
 
 def prepare_push(
     api: BasetenApi,
-    config: pathlib.Path,
+    source_dir: Path,
     training_job: TrainingJob,
     truss_user_env: Optional[b10_types.TrussUserEnv] = None,
 ):
-    source_dir = config.absolute().parent
-
     gather_start = time.time()
     gathered_dir = _gather_training_dir(
-        config_path=config, workspace=training_job.workspace
+        source_dir=source_dir, workspace=training_job.workspace
     )
     dir_to_archive = gathered_dir if gathered_dir else source_dir
     gather_elapsed = time.time() - gather_start
@@ -303,19 +300,20 @@ def prepare_push(
 def _upsert_project_and_create_job(
     remote_provider: BasetenRemote,
     training_project: TrainingProject,
-    config: Path,
+    source_dir: Path,
     team_id: Optional[str] = None,
 ) -> dict:
     project_resp = remote_provider.upsert_training_project(
         training_project=training_project, team_id=team_id
     )
 
-    # Collect TrussUserEnv with git info from the config directory
-    working_dir = config.absolute().parent
-    truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
+    truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(source_dir)
 
     prepared_job = prepare_push(
-        remote_provider.api, config, training_project.job, truss_user_env=truss_user_env
+        remote_provider.api,
+        source_dir,
+        training_project.job,
+        truss_user_env=truss_user_env,
     )
 
     job_resp = remote_provider.api.create_training_job(
@@ -417,10 +415,11 @@ def create_training_job(
         entrypoint=entrypoint,
     )
 
+    source_dir = config.absolute().parent
     job_resp = _upsert_project_and_create_job(
         remote_provider=remote_provider,
         training_project=training_project,
-        config=config,
+        source_dir=source_dir,
         team_id=team_id,
     )
     job_resp["job_object"] = training_project.job

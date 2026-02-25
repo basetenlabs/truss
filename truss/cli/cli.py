@@ -2,6 +2,7 @@ import inspect
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
@@ -191,7 +192,7 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     table.add_row(
         "Subject Claim Format",
         "v=1:org=<org_id>:team=<team_id>:model=<model_id>:"
-        "deployment=<deployment_id>:env=<environment>:type=<workload_type>",
+        "deployment=<deployment_id>:environment=<environment>:type=<workload_type>",
     )
 
     return table
@@ -617,10 +618,10 @@ def run_python(script, target_directory):
     help="Team name for the model",
 )
 @click.option(
-    "--metadata",
+    "--labels",
     type=str,
     required=False,
-    help="JSON string of metadata key-value pairs.",
+    help="JSON string of labels as key-value pairs.",
 )
 @click.option(
     "--watch",
@@ -654,7 +655,7 @@ def push(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     provided_team_name: Optional[str] = None,
-    metadata: Optional[str] = None,
+    labels: Optional[str] = None,
     watch_after_push: bool = False,
 ) -> None:
     """
@@ -779,15 +780,16 @@ def push(
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
-    # Parse metadata from CLI option
-    metadata_dict: dict = {}
-    if metadata:
+    # Parse labels from CLI option
+    labels_dict: Optional[dict] = None
+    if labels:
         try:
-            metadata_dict = json.loads(metadata)
-            if not isinstance(metadata_dict, dict):
-                raise click.UsageError("--metadata must be a JSON object.")
+            parsed_labels = json.loads(labels)
+            if not isinstance(parsed_labels, dict):
+                raise click.UsageError("--labels must be a JSON object.")
+            labels_dict = parsed_labels
         except json.JSONDecodeError as e:
-            raise click.UsageError(f"Invalid JSON in --metadata: {e}")
+            raise click.UsageError(f"Invalid JSON in --labels: {e}")
 
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
@@ -838,7 +840,7 @@ def push(
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
-        metadata=metadata_dict,
+        labels=labels_dict,
     )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -982,12 +984,19 @@ def model_logs(
     required=False,
     help="Team name for the model to watch",
 )
+@click.option(
+    "--no-sleep",
+    is_flag=True,
+    default=False,
+    help="Keep the development model warm by preventing scale-to-zero while watching.",
+)
 @common.common_options()
 def watch(
     target_directory: str,
     config: Optional[str],
     remote: str,
     provided_team_name: Optional[str] = None,
+    no_sleep: bool = False,
 ) -> None:
     """
     Seamless remote development with truss
@@ -1025,6 +1034,7 @@ def watch(
         )
         sys.exit(1)
 
+    # Use model_id to get service (no additional resolution needed)
     dev_version_id = dev_version["id"]
     logs_url = URLConfig.model_logs_url(
         remote_provider.remote_url, model_id, dev_version_id
@@ -1033,6 +1043,36 @@ def watch(
         f"🪵  View logs for your development model at {common.format_link(logs_url)}"
     )
 
+    model_hostname = resolved_model.get("hostname")
+    if not model_hostname:
+        console.print("❌ Could not determine model hostname", style="red")
+        sys.exit(1)
+
+    api_key = remote_provider._auth_service.authenticate().value
+
+    common.wait_for_development_model_ready(
+        model_hostname=model_hostname,
+        model_id=model_id,
+        dev_version_id=dev_version_id,
+        remote_provider=remote_provider,
+        console=console,
+        api_key=api_key,
+    )
+
+    stop_event = threading.Event()
+    if no_sleep:
+        console.print("💤 --no-sleep enabled: keeping development model warm")
+        keepalive_thread = threading.Thread(
+            target=common.keepalive_loop,
+            args=(model_hostname, api_key, stop_event),
+            daemon=True,
+        )
+        keepalive_thread.start()
+
+    # Re-resolve the model to get the latest version and truss hash and latest push before watching
+    resolved_model, versions = resolve_model_for_watch(
+        remote_provider, model_name, provided_team_name=effective_team_name
+    )
     _start_watch_mode(
         target_directory=target_directory,
         model_name=model_name,

@@ -203,7 +203,7 @@ class BasetenApi:
         environment: Optional[str] = None,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        labels: Optional[dict] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -239,8 +239,8 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "userDeployMetadata": json.dumps(metadata)
-                if metadata is not None
+                "userDeployMetadata": json.dumps(labels)
+                if labels is not None
                 else None,
             },
         )
@@ -258,7 +258,7 @@ class BasetenApi:
         environment: Optional[str] = None,
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
-        metadata: Optional[dict] = None,
+        labels: Optional[dict] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -294,8 +294,8 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "userDeployMetadata": json.dumps(metadata)
-                if metadata is not None
+                "userDeployMetadata": json.dumps(labels)
+                if labels is not None
                 else None,
             },
         )
@@ -311,7 +311,7 @@ class BasetenApi:
         origin: Optional[b10_types.ModelOrigin] = None,
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        labels: Optional[dict] = None,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -344,8 +344,8 @@ class BasetenApi:
             query_string,
             variables={
                 "trussUserEnv": truss_user_env.json(),
-                "userDeployMetadata": json.dumps(metadata)
-                if metadata is not None
+                "userDeployMetadata": json.dumps(labels)
+                if labels is not None
                 else None,
             },
         )

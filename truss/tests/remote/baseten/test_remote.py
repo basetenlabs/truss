@@ -729,7 +729,7 @@ def test_api_push_integration_deploy_timeout_minutes_propagated(
     assert push_kwargs.get("deploy_timeout_minutes") == 1200
 
 
-def test_api_push_integration_metadata_propagated(
+def test_api_push_integration_labels_propagated(
     custom_model_truss_dir_with_pre_and_post,
     mock_remote_factory,
     temp_trussrc_dir,
@@ -738,17 +738,17 @@ def test_api_push_integration_metadata_propagated(
 ):
     from truss.api import push
 
-    metadata = {"team": "ml", "run_id": 123, "flags": {"fast": True}}
+    labels = {"team": "ml", "run_id": 123, "flags": {"fast": True}}
     push(
         str(mock_truss_handle.truss_dir),
         remote="baseten",
         model_name="test_model",
-        metadata=metadata,
+        labels=labels,
     )
 
     mock_remote_factory.push.assert_called_once()
     _, push_kwargs = mock_remote_factory.push.call_args
-    assert push_kwargs.get("metadata") == metadata
+    assert push_kwargs.get("labels") == labels
 
 
 @patch("truss.remote.baseten.remote.time.sleep")

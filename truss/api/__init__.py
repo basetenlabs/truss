@@ -66,7 +66,7 @@ def push(
     include_git_info: bool = False,
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    labels: Optional[Dict[str, Any]] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -95,7 +95,7 @@ def push(
           specified in the truss config to resolve the instance type or preserve the instance type
           configured in the specified environment.
         deploy_timeout_minutes: Optional timeout in minutes for the deployment operation.
-        metadata: Optional JSON-serializable dictionary of metadata key-value pairs.
+        labels: Optional JSON-serializable dictionary of label key-value pairs.
 
     Returns:
         The newly created ModelDeployment.
@@ -106,8 +106,8 @@ def push(
             "trusted by default now.",
             DeprecationWarning,
         )
-    if metadata is not None and not isinstance(metadata, dict):
-        raise ValueError("metadata must be a JSON-serializable dictionary.")
+    if labels is not None and not isinstance(labels, dict):
+        raise ValueError("labels must be a JSON-serializable dictionary.")
 
     if not remote:
         available_remotes = RemoteFactory.get_available_config_names()
@@ -142,7 +142,7 @@ def push(
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
-        metadata=metadata,
+        labels=labels,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))
