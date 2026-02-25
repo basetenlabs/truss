@@ -1082,7 +1082,7 @@ class TrussConfig(custom_types.ConfigModel):
             raise e
 
     def _load_pip_requirements(self, truss_dir: pathlib.Path) -> list[str]:
-        requirements_path = truss_dir / self.requirements_file
+        requirements_path = truss_dir / self.requirements_file  # type: ignore[operator]
         requirements = []
         with open(requirements_path) as f:
             for line in f.readlines():
@@ -1093,9 +1093,9 @@ class TrussConfig(custom_types.ConfigModel):
 
     def _resolve_pyproject_path(self, truss_dir: pathlib.Path) -> pathlib.Path:
         if self.requirements_file_type == RequirementsFileType.PYPROJECT:
-            return truss_dir / self.requirements_file
+            return truss_dir / self.requirements_file  # type: ignore[operator]
 
-        return (truss_dir / self.requirements_file).parent / PYPROJECT_TOML_FILENAME
+        return (truss_dir / self.requirements_file).parent / PYPROJECT_TOML_FILENAME  # type: ignore[operator]
 
     @staticmethod
     def load_requirements_file_from_filepath(yaml_path: pathlib.Path) -> list[str]:

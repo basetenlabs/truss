@@ -160,4 +160,3 @@ def test_is_pypi_requirement_valid(req):
 )
 def test_is_pypi_requirement_invalid(req):
     assert _is_pypi_requirement(req) is False
-

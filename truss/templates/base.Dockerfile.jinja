@@ -136,7 +136,7 @@ RUN uv export --frozen --format requirements-txt > /tmp/uv_requirements.txt && \
 
     {%- elif requirements_file_type == "pyproject" %}
 COPY --chown={{ default_owner }} ./{{ pyproject_toml_filename }} {{ pyproject_toml_filename }}
-RUN {{ sys_pip_install_command }} . --no-cache-dir
+RUN {{ sys_pip_install_command }} -r {{ pyproject_toml_filename }} --no-cache-dir
 
     {%- elif requirements_file_type == "pip" %}
 COPY --chown={{ default_owner }} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
