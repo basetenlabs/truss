@@ -1,11 +1,6 @@
 from typing import Callable
 
-from tenacity import (
-    Retrying,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_fixed,
-)
+from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 
 def retry(
