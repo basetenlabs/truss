@@ -39,10 +39,14 @@ USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME = "user_requirements.txt"
 BASE_SERVER_REQUIREMENTS_TXT_FILENAME = "base_server_requirements.txt"
 SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
+PYPROJECT_TOML_FILENAME = "pyproject.toml"
+UV_LOCK_FILENAME = "uv.lock"
 
 FILENAME_CONSTANTS_MAP = {
     "config_requirements_filename": REQUIREMENTS_TXT_FILENAME,
     "user_supplied_requirements_filename": USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
+    "pyproject_toml_filename": PYPROJECT_TOML_FILENAME,
+    "uv_lock_filename": UV_LOCK_FILENAME,
     "base_server_requirements_filename": BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     "server_requirements_filename": SERVER_REQUIREMENTS_TXT_FILENAME,
     "system_packages_filename": SYSTEM_PACKAGES_TXT_FILENAME,
