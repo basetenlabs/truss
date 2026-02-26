@@ -988,3 +988,75 @@ def test_push_watch_still_exits_on_deploy_failed(
 
     # Should still exit with error on a hard failure
     assert result.exit_code == 1
+
+
+def test_push_with_model_name_flag_does_not_write_to_config(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """--model-name should be used for the push but not written back to config.yaml."""
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            with patch(
+                "truss.base.truss_config.TrussConfig.write_to_yaml_file"
+            ) as mock_write:
+                result = runner.invoke(
+                    truss_cli,
+                    [
+                        "push",
+                        str(custom_model_truss_dir_with_pre_and_post),
+                        "--remote",
+                        "baseten",
+                        "--model-name",
+                        "override-name",
+                    ],
+                )
+
+    assert result.exit_code == 0
+    mock_write.assert_not_called()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs["model_name"] == "override-name"
+
+
+def test_watch_model_name_flag_overrides_config(
+    custom_model_truss_dir_with_pre_and_post,
+):
+    """--model-name on `truss watch` should be passed to resolve_model_for_watch."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    # Config has a different name than what --model-name provides
+    mock_tr.spec.config.model_name = "config-name"
+
+    runner = CliRunner()
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.cli.resolve_model_for_watch") as mock_resolve:
+            mock_resolve.return_value = (resolved_model, versions)
+            with patch("truss.cli.utils.common.requests_lib") as mock_requests:
+                mock_requests.post.return_value = Mock(status_code=202)
+                mock_requests.RequestException = __import__("requests").RequestException
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    runner.invoke(
+                        truss_cli,
+                        [
+                            "watch",
+                            "/tmp/fake",
+                            "--remote",
+                            "baseten",
+                            "--model-name",
+                            "flag-name",
+                        ],
+                    )
+
+    # The flag value should be used, not the config value
+    first_call_args = mock_resolve.call_args_list[0]
+    assert first_call_args[0][1] == "flag-name"
