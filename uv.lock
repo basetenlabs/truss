@@ -3393,7 +3393,11 @@ wheels = [
 
 [[package]]
 name = "truss"
+<<<<<<< HEAD
 version = "0.15.1"
+=======
+version = "0.14.2rc3"
+>>>>>>> c3cd0e04 (RC for logs spike)
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
