@@ -12,6 +12,10 @@ def parse_requirement_string(req_str: str) -> Optional[str]:
     stripped_line = req_str.strip()
     if not stripped_line or stripped_line.startswith("#"):
         return None
+
+    # NB(nikhil): We intentionally don't delegate to `_is_valid_requirement` here, since `pip` technically supports
+    # non PEP 508 compliant requirement strings (e.g. `git+` URLs). We want to be as permissive as possible here, and let `pip`
+    # handle the validation of the requirement string.
     return stripped_line
 
 
