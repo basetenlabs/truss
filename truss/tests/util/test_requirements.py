@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 
 from truss.util.requirements import (
-    _is_pypi_requirement,
+    _is_valid_requirement,
+    parse_requirement_string,
     parse_requirements_from_pyproject,
 )
 
@@ -65,7 +66,7 @@ line-length = 88
     assert parse_requirements_from_pyproject(path) == []
 
 
-def test_parse_filters_direct_url_references(write_pyproject):
+def test_parse_includes_url_references(write_pyproject):
     path = write_pyproject(
         """
 [project]
@@ -77,7 +78,11 @@ dependencies = [
 """
     )
     result = parse_requirements_from_pyproject(path)
-    assert result == ["requests>=2.28", "numpy==1.24.0"]
+    assert result == [
+        "requests>=2.28",
+        "my-package @ https://example.com/my-package.tar.gz",
+        "numpy==1.24.0",
+    ]
 
 
 def test_parse_filters_local_path_dependencies(write_pyproject):
@@ -140,23 +145,32 @@ def test_parse_file_not_found(tmp_path):
         "torch",
         "pandas[sql]>=2.0",
         "my-package~=1.0",
+        "my-package @ https://example.com/pkg.tar.gz",
+        "pkg @ file:///local/path",
     ],
 )
-def test_is_pypi_requirement_valid(req):
-    assert _is_pypi_requirement(req) is True
+def test_is_valid_requirement(req):
+    assert _is_valid_requirement(req) is True
 
 
 @pytest.mark.parametrize(
-    "req",
-    [
-        "my-package @ https://example.com/pkg.tar.gz",
-        "pkg @ file:///local/path",
-        "./local_package",
-        "/absolute/path",
-        "../relative/path",
-        "",
-        "# comment",
-    ],
+    "req", ["./local_package", "/absolute/path", "../relative/path"]
 )
-def test_is_pypi_requirement_invalid(req):
-    assert _is_pypi_requirement(req) is False
+def test_is_not_valid_requirement(req):
+    assert _is_valid_requirement(req) is False
+
+
+def test_parse_requirement_string_valid():
+    assert parse_requirement_string("requests>=2.28") == "requests>=2.28"
+    assert parse_requirement_string("  torch  ") == "torch"
+    assert (
+        parse_requirement_string("git+https://github.com/foo/bar.git")
+        == "git+https://github.com/foo/bar.git"
+    )
+    assert parse_requirement_string("./local_path") == "./local_path"
+
+
+def test_parse_requirement_string_filtered():
+    assert parse_requirement_string("") is None
+    assert parse_requirement_string("# comment") is None
+    assert parse_requirement_string("   ") is None

@@ -772,7 +772,7 @@ class ServingImageBuilder(ImageBuilder):
                 else base_server_requirements
             )
 
-        if spec.requirements_file is not None:
+        if spec.requirements_file:
             self._copy_requirements_files(truss_dir, spec, build_dir)
 
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
@@ -794,6 +794,10 @@ class ServingImageBuilder(ImageBuilder):
     def _copy_requirements_files(
         self, truss_dir: Path, spec: TrussSpec, build_dir: Path
     ) -> None:
+        # NB(nikhil): Typically checked by caller, but required for type constraining here.
+        if not spec.requirements_file:
+            return None
+
         req_file_type = spec.requirements_file_type
         # For pip, use the legacy build dir name; otherwise preserve the filename.
         build_filename = Path(spec.requirements_file).name

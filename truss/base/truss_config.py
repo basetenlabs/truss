@@ -67,6 +67,9 @@ class RequirementsFileType(str, enum.Enum):
     NOT_PROVIDED = "not_provided"
     PIP = "pip"
     PYPROJECT = "pyproject"
+
+    # NB(nikhil): `uv.lock` requires the sibling `pyproject.toml`, so we need to make some assumptions about
+    # the location of that file.
     UV_LOCK = "uv_lock"
 
 
@@ -1073,6 +1076,7 @@ class TrussConfig(custom_types.ConfigModel):
                 return self._load_pip_requirements(truss_dir)
 
             # NB(nikhil): For patching, we resolve from `pyproject.toml` for (1) easier parsing (2) smaller file footprint.
+            # If the user specified `uv.lock` as the source of truth, we'll bypass it for the patch process.
             pyproject_path = self._resolve_pyproject_path(truss_dir)
             return parse_requirements_from_pyproject(pyproject_path)
         except Exception as e:

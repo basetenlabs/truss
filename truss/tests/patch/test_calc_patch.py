@@ -1032,11 +1032,7 @@ def test_calc_patch_pyproject_filters_non_pypi_deps(custom_model_truss_dir: Path
     def config_op(config: TrussConfig):
         _write_pyproject(
             custom_model_truss_dir,
-            [
-                "requests>=2.28",
-                "numpy==1.24.0",
-                "my-pkg @ https://example.com/pkg.tar.gz",
-            ],
+            ["requests>=2.28", "numpy==1.24.0", "git+https://github.com/foo/bar.git"],
         )
 
     patches = _apply_config_change_and_calc_patches(
