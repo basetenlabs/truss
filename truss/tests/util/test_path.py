@@ -156,6 +156,74 @@ def test_copy_tree_path_with_truss_ignore(custom_model_truss_dir_with_truss_igno
         assert (dest_dir / "random_folder_2").exists()
 
 
+def test_collect_files_skips_ignored_dirs(tmp_path):
+    (tmp_path / "keep" / "sub").mkdir(parents=True)
+    (tmp_path / "skip_me" / "deep" / "nested").mkdir(parents=True)
+    (tmp_path / "also_skip").mkdir()
+
+    (tmp_path / "root.txt").write_text("r")
+    (tmp_path / "keep" / "a.txt").write_text("a")
+    (tmp_path / "keep" / "sub" / "b.txt").write_text("b")
+    (tmp_path / "skip_me" / "c.txt").write_text("c")
+    (tmp_path / "skip_me" / "deep" / "d.txt").write_text("d")
+    (tmp_path / "skip_me" / "deep" / "nested" / "e.txt").write_text("e")
+    (tmp_path / "also_skip" / "f.txt").write_text("f")
+
+    result = path.collect_files(tmp_path, ["skip_me/", "also_skip/"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == ["keep/a.txt", "keep/sub/b.txt", "root.txt"]
+
+
+def test_collect_files_skips_by_wildcard(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("code")
+    (tmp_path / "src" / "app.pyc").write_text("bytecode")
+    (tmp_path / "notes.txt").write_text("note")
+
+    result = path.collect_files(tmp_path, ["*.pyc"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == ["notes.txt", "src/app.py"]
+
+
+def test_collect_files_no_patterns_returns_all(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "b.txt").write_text("b")
+    (tmp_path / "c.txt").write_text("c")
+
+    result_none = path.collect_files(tmp_path, None)
+    result_empty = path.collect_files(tmp_path, [])
+    rel_none = sorted(str(p.relative_to(tmp_path)) for p in result_none)
+    rel_empty = sorted(str(p.relative_to(tmp_path)) for p in result_empty)
+
+    assert rel_none == ["a/b.txt", "c.txt"]
+    assert rel_empty == ["a/b.txt", "c.txt"]
+
+
+def test_collect_files_nested_ignore_pattern(tmp_path):
+    (tmp_path / "data" / "cache").mkdir(parents=True)
+    (tmp_path / "data" / "important.csv").write_text("1,2,3")
+    (tmp_path / "data" / "cache" / "tmp.bin").write_text("bin")
+    (tmp_path / "readme.md").write_text("hi")
+
+    result = path.collect_files(tmp_path, ["data/cache/"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == ["data/important.csv", "readme.md"]
+
+
+def test_collect_files_ignores_symlinks(tmp_path):
+    (tmp_path / "real_dir").mkdir()
+    (tmp_path / "real_dir" / "file.txt").write_text("real")
+    (tmp_path / "link_dir").symlink_to(tmp_path / "real_dir")
+
+    result = path.collect_files(tmp_path)
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == ["real_dir/file.txt"]
+
+
 def test_get_ignored_relative_paths():
     ignore_patterns = [".mypy_cache/", "venv/", "*.tmp", ".git", "data/*"]
 
