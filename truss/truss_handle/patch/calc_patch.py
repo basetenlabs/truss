@@ -172,9 +172,9 @@ def _changed_path_is_requirements_file(changed_path: str, new_config: TrussConfi
     _changed_path_is_requirements_file determines if `changed_path` is the same path
     as the requirements file on a new configuration.
     """
-    return new_config.requirements_file and Path(changed_path) == Path(
-        new_config.requirements_file
-    )
+    if not new_config.requirements_file:
+        return False
+    return Path(changed_path) == Path(new_config.requirements_file)
 
 
 def _calc_changed_paths(
@@ -231,9 +231,7 @@ def _calc_config_patches(
     prev_config: TrussConfig,
     new_config: TrussConfig,
 ) -> List[Patch]:
-    """Calculate patch based on changes to config.
-
-    Returns None if patch cannot be calculated. Empty list means no relevant
+    """Calculate patch based on changes to config. Empty list means no relevant
     differences found.
     """
     try:

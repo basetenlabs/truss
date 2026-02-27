@@ -34,6 +34,7 @@ from truss.base.constants import (
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
     NO_BUILD_DOCKERFILE_TEMPLATE_NAME,
+    PYPROJECT_TOML_FILENAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -58,6 +59,7 @@ from truss.base.trt_llm_config import (
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     DockerServer,
+    RequirementsFileType,
     TrussConfig,
 )
 from truss.base.truss_spec import TrussSpec
@@ -769,12 +771,10 @@ class ServingImageBuilder(ImageBuilder):
                 if spec.requirements
                 else base_server_requirements
             )
-        if spec.requirements_file is not None:
-            self._copy_into_build_dir(
-                truss_dir / spec.requirements_file,
-                build_dir,
-                USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
-            )
+
+        if spec.requirements_file:
+            self._copy_requirements_files(truss_dir, spec, build_dir)
+
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
             user_provided_python_requirements
         )
@@ -790,6 +790,32 @@ class ServingImageBuilder(ImageBuilder):
             self._spec.build_commands,
         )
         self._setup_build_hash_directory(build_dir)
+
+    def _copy_requirements_files(
+        self, truss_dir: Path, spec: TrussSpec, build_dir: Path
+    ) -> None:
+        # NB(nikhil): Typically checked by caller, but required for type constraining here.
+        if not spec.requirements_file:
+            return None
+
+        req_file_type = spec.requirements_file_type
+        # For pip, use the legacy build dir name; otherwise preserve the filename.
+        build_filename = Path(spec.requirements_file).name
+        if req_file_type == RequirementsFileType.PIP:
+            build_filename = USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
+
+        self._copy_into_build_dir(
+            truss_dir / spec.requirements_file, build_dir, build_filename
+        )
+
+        # NB(nikhil): uv.lock requires a sibling pyproject.toml
+        if req_file_type == RequirementsFileType.UV_LOCK:
+            pyproject_path = (
+                truss_dir / spec.requirements_file
+            ).parent / PYPROJECT_TOML_FILENAME
+            self._copy_into_build_dir(
+                pyproject_path, build_dir, PYPROJECT_TOML_FILENAME
+            )
 
     def _setup_build_hash_directory(self, build_dir: Path) -> None:
         build_hash_path = build_dir / "build_hash"
@@ -861,10 +887,6 @@ class ServingImageBuilder(ImageBuilder):
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
-        should_install_user_requirements_file = file_is_not_empty(
-            build_dir / USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
-        )
-
         min_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[0])
         max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
@@ -891,7 +913,7 @@ class ServingImageBuilder(ImageBuilder):
             supported_python_major_version_in_custom_base_image=min_py_version.major,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
-            should_install_user_requirements_file=should_install_user_requirements_file,
+            requirements_file_type=config.requirements_file_type.value,
             config=config,
             python_version=python_version,
             control_python_version=SUPPORTED_PYTHON_VERSIONS[-1],  # Use highest.

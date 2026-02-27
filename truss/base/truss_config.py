@@ -6,6 +6,7 @@ import pathlib
 import re
 import sys
 import warnings
+from functools import cached_property
 from typing import (
     Annotated,
     Any,
@@ -25,7 +26,12 @@ from pydantic import json_schema
 from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
-from truss.util.requirements import parse_requirement_string, raise_insufficent_revision
+from truss.base.constants import PYPROJECT_TOML_FILENAME, UV_LOCK_FILENAME
+from truss.util.requirements import (
+    parse_requirement_string,
+    parse_requirements_from_pyproject,
+    raise_insufficent_revision,
+)
 from truss.util.yaml_utils import safe_load_yaml_with_no_duplicates
 
 logger = logging.getLogger(__name__)
@@ -55,6 +61,16 @@ def _is_numeric(number_like: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+class RequirementsFileType(str, enum.Enum):
+    NOT_PROVIDED = "not_provided"
+    PIP = "pip"
+    PYPROJECT = "pyproject"
+
+    # NB(nikhil): `uv.lock` requires the sibling `pyproject.toml`, so we need to make some assumptions about
+    # the location of that file.
+    UV_LOCK = "uv_lock"
 
 
 class Accelerator(str, enum.Enum):
@@ -1046,23 +1062,44 @@ class TrussConfig(custom_types.ConfigModel):
     def clone(self) -> "TrussConfig":
         return self.from_dict(self.to_dict())
 
+    @cached_property
+    def requirements_file_type(self) -> RequirementsFileType:
+        return self._detect_requirements_file_type()
+
     def load_requirements_from_file(self, truss_dir: pathlib.Path) -> list[str]:
-        if self.requirements_file:
-            requirements_path = truss_dir / self.requirements_file
-            try:
-                requirements = []
-                with open(requirements_path) as f:
-                    for line in f.readlines():
-                        parsed_line = parse_requirement_string(line)
-                        if parsed_line:
-                            requirements.append(parsed_line)
-                return requirements
-            except Exception as e:
-                logger.exception(
-                    f"failed to read requirements file: {self.requirements_file}"
-                )
-                raise e
-        return []
+        file_type = self.requirements_file_type
+        if file_type == RequirementsFileType.NOT_PROVIDED:
+            return []
+
+        try:
+            if file_type == RequirementsFileType.PIP:
+                return self._load_pip_requirements(truss_dir)
+
+            # NB(nikhil): For patching, we resolve from `pyproject.toml` for (1) easier parsing (2) smaller file footprint.
+            # If the user specified `uv.lock` as the source of truth, we'll bypass it for the patch process.
+            pyproject_path = self._resolve_pyproject_path(truss_dir)
+            return parse_requirements_from_pyproject(pyproject_path)
+        except Exception as e:
+            logger.exception(
+                f"failed to read requirements file: {self.requirements_file}"
+            )
+            raise e
+
+    def _load_pip_requirements(self, truss_dir: pathlib.Path) -> list[str]:
+        requirements_path = truss_dir / self.requirements_file  # type: ignore[operator]
+        requirements = []
+        with open(requirements_path) as f:
+            for line in f.readlines():
+                parsed_line = parse_requirement_string(line)
+                if parsed_line:
+                    requirements.append(parsed_line)
+        return requirements
+
+    def _resolve_pyproject_path(self, truss_dir: pathlib.Path) -> pathlib.Path:
+        if self.requirements_file_type == RequirementsFileType.PYPROJECT:
+            return truss_dir / self.requirements_file  # type: ignore[operator]
+
+        return (truss_dir / self.requirements_file).parent / PYPROJECT_TOML_FILENAME  # type: ignore[operator]
 
     @staticmethod
     def load_requirements_file_from_filepath(yaml_path: pathlib.Path) -> list[str]:
@@ -1113,6 +1150,17 @@ class TrussConfig(custom_types.ConfigModel):
         self.training_checkpoints = None
         self.environment_variables = {}
         self.weights = Weights([])
+
+    def _detect_requirements_file_type(self) -> RequirementsFileType:
+        if not self.requirements_file:
+            return RequirementsFileType.NOT_PROVIDED
+
+        basename = pathlib.Path(self.requirements_file).name
+        if basename == UV_LOCK_FILENAME:
+            return RequirementsFileType.UV_LOCK
+        elif basename == PYPROJECT_TOML_FILENAME:
+            return RequirementsFileType.PYPROJECT
+        return RequirementsFileType.PIP
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

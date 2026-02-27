@@ -123,17 +123,31 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ sys
 
 
 {% block install_requirements %}
-    {%- if should_install_user_requirements_file %}
+    {%- if requirements_file_type == "uv_lock" %}
+COPY --chown={{ default_owner }} ./{{ pyproject_toml_filename }} {{ pyproject_toml_filename }}
+COPY --chown={{ default_owner }} ./{{ uv_lock_filename }} {{ uv_lock_filename }}
+{#
+  NB(nikhil) By default, `uv sync --frozen` manages its own venv, but we need to install into the provided python
+  env. To get around this, we leverage `uv export` to dump the requirements in a format that `uv pip install` can use
+#}
+RUN uv export --frozen --format requirements-txt > /tmp/uv_requirements.txt && \
+    {{ sys_pip_install_command }} -r /tmp/uv_requirements.txt --no-cache-dir && \
+    rm -f /tmp/uv_requirements.txt
+
+    {%- elif requirements_file_type == "pyproject" %}
+COPY --chown={{ default_owner }} ./{{ pyproject_toml_filename }} {{ pyproject_toml_filename }}
+RUN {{ sys_pip_install_command }} -r {{ pyproject_toml_filename }} --no-cache-dir
+
+    {%- elif requirements_file_type == "pip" %}
 COPY --chown={{ default_owner }} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} --no-cache-dir
     {%- endif %}
+
     {%- if should_install_requirements %}
 COPY --chown={{ default_owner }} ./{{ config_requirements_filename }} {{ config_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} --no-cache-dir
-{%- endif %}
+    {%- endif %}
 {% endblock %}
-
-
 
 {%- if not config.docker_server %}
 WORKDIR $APP_HOME
