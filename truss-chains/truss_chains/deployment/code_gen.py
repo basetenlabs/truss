@@ -39,9 +39,12 @@ import libcst
 import pydantic
 
 import truss
+from truss.base import constants as truss_constants
 from truss.base import custom_types, truss_config
+from truss.base.truss_config import RequirementsFileType
 from truss.contexts.image_builder import serving_image_builder
 from truss.util import path as truss_path
+from truss.util import requirements as truss_requirements
 from truss_chains import framework, private_types, public_types, utils
 
 _INDENT = " " * 4
@@ -636,13 +639,27 @@ def _gen_truss_chainlet_file(
 # Truss Gen ############################################################################
 
 
-def _make_requirements(image: public_types.DockerImage) -> list[str]:
-    """Merges file- and list-based requirements and adds truss git if not present."""
+def _detect_requirements_file_type(
+    image: public_types.DockerImage,
+) -> RequirementsFileType:
+    """Detect the type of requirements file from the DockerImage config."""
+    if not image.requirements_file:
+        return RequirementsFileType.NOT_PROVIDED
+    basename = pathlib.Path(image.requirements_file.abs_path).name
+    if basename == truss_constants.UV_LOCK_FILENAME:
+        return RequirementsFileType.UV_LOCK
+    elif basename == truss_constants.PYPROJECT_TOML_FILENAME:
+        return RequirementsFileType.PYPROJECT
+    return RequirementsFileType.PIP
+
+
+def _make_pip_requirements(image: public_types.DockerImage) -> list[str]:
+    """Merges file- and list-based pip requirements and adds truss if not present."""
     pip_requirements: set[str] = set()
-    if image.pip_requirements_file:
+    if image.requirements_file:
         pip_requirements.update(
             req
-            for req in pathlib.Path(image.pip_requirements_file.abs_path)
+            for req in pathlib.Path(image.requirements_file.abs_path)
             .read_text()
             .splitlines()
             if not req.strip().startswith("#")
@@ -680,6 +697,76 @@ def _make_requirements(image: public_types.DockerImage) -> list[str]:
         pip_requirements.add(truss_pip)
 
     return sorted(pip_requirements)
+
+
+def _check_truss_in_project_deps(req_file_path: pathlib.Path) -> None:
+    """Warn if truss is not found in pyproject.toml dependencies."""
+    pyproject_path = req_file_path
+    if req_file_path.name == truss_constants.UV_LOCK_FILENAME:
+        pyproject_path = req_file_path.parent / truss_constants.PYPROJECT_TOML_FILENAME
+    deps = truss_requirements.parse_requirements_from_pyproject(pyproject_path)
+    has_truss = any(_TRUSS_PIP_PATTERN.match(dep) for dep in deps)
+    has_truss_git = any(_TRUSS_GIT in dep for dep in deps)
+    if not (has_truss or has_truss_git):
+        logging.warning(
+            f"truss is not found in the dependencies of `{pyproject_path.name}`. "
+            f"The deployed chainlet may not have the correct truss version. "
+            f"Add `truss=={truss.__version__}` to your project dependencies."
+        )
+
+
+def _prepare_pyproject_requirements(
+    image: public_types.DockerImage,
+    chainlet_dir: pathlib.Path,
+    req_file_type: RequirementsFileType,
+) -> str:
+    """Copy pyproject.toml/uv.lock into chainlet_dir and return the config filename."""
+    if image.pip_requirements:
+        raise public_types.ChainsUsageError(
+            "`pip_requirements` cannot be used together with a "
+            f"`{req_file_type.value}` requirements file. Manage all "
+            "dependencies in your pyproject.toml instead."
+        )
+    req_file_path = pathlib.Path(image.requirements_file.abs_path)
+    _check_truss_in_project_deps(req_file_path)
+    if req_file_type == RequirementsFileType.UV_LOCK:
+        # Copy both uv.lock and its sibling pyproject.toml.
+        shutil.copy2(req_file_path, chainlet_dir / truss_constants.UV_LOCK_FILENAME)
+        pyproject_path = req_file_path.parent / truss_constants.PYPROJECT_TOML_FILENAME
+        shutil.copy2(
+            pyproject_path, chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
+        )
+        return truss_constants.UV_LOCK_FILENAME
+    else:
+        shutil.copy2(
+            req_file_path, chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
+        )
+        return truss_constants.PYPROJECT_TOML_FILENAME
+
+
+def _prepare_legacy_requirements(
+    image: public_types.DockerImage, chainlet_dir: pathlib.Path
+) -> str:
+    """Merge file- and list-based pip requirements and return the config filename."""
+    pip_requirements = _make_pip_requirements(image)
+    # TODO: `pip_requirements` will add server requirements which give version
+    #  conflicts. Check if that's still the case after relaxing versions.
+    # config.requirements = pip_requirements
+    pip_requirements_file_path = chainlet_dir / _REQUIREMENTS_FILENAME
+    pip_requirements_file_path.write_text("\n".join(pip_requirements))
+    # Absolute paths don't work with remote build.
+    return _REQUIREMENTS_FILENAME
+
+
+def _prepare_requirements(
+    image: public_types.DockerImage, chainlet_dir: pathlib.Path
+) -> str:
+    """Prepare requirements files in chainlet_dir and return the config filename."""
+    req_file_type = _detect_requirements_file_type(image)
+    if req_file_type in (RequirementsFileType.PYPROJECT, RequirementsFileType.UV_LOCK):
+        return _prepare_pyproject_requirements(image, chainlet_dir, req_file_type)
+    else:
+        return _prepare_legacy_requirements(image, chainlet_dir)
 
 
 def _inplace_fill_base_image(
@@ -759,14 +846,9 @@ def _gen_truss_config(
     config.runtime.health_checks = remote_config.options.health_checks
     # Image.
     _inplace_fill_base_image(remote_config.docker_image, config)
-    pip_requirements = _make_requirements(remote_config.docker_image)
-    # TODO: `pip_requirements` will add server requirements which give version
-    #  conflicts. Check if that's still the case after relaxing versions.
-    # config.requirements = pip_requirements
-    pip_requirements_file_path = chainlet_dir / _REQUIREMENTS_FILENAME
-    pip_requirements_file_path.write_text("\n".join(pip_requirements))
-    # Absolute paths don't work with remote build.
-    config.requirements_file = _REQUIREMENTS_FILENAME
+    config.requirements_file = _prepare_requirements(
+        remote_config.docker_image, chainlet_dir
+    )
     config.system_packages = remote_config.docker_image.apt_requirements
     if remote_config.docker_image.external_package_dirs:
         for ext_dir in remote_config.docker_image.external_package_dirs:
