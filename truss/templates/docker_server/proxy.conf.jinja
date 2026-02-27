@@ -61,6 +61,7 @@ server {
         proxy_redirect off;
         proxy_read_timeout 18030s;
         proxy_http_version 1.1;
+        proxy_set_header Expect $http_expect;
 
         rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
 
