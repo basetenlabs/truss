@@ -1547,6 +1547,35 @@ class TestWeightsSource:
                 ),
             )
 
+    def test_top_level_auth_secret_name_deprecation_warning(self):
+        """Top-level auth_secret_name should emit a deprecation warning."""
+        with pytest.warns(
+            DeprecationWarning,
+            match="Specifying 'auth_secret_name' at the top level.*is deprecated",
+        ):
+            ws = WeightsSource(
+                source="s3://my-bucket/models/weights",
+                mount_location="/models/weights",
+                auth_secret_name="my-secret",
+            )
+        assert ws.auth_secret_name == "my-secret"
+
+    def test_auth_section_secret_name_no_deprecation_warning(self):
+        """Using auth_secret_name inside the auth section should not emit a warning."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            ws = WeightsSource(
+                source="s3://my-bucket/models/weights",
+                mount_location="/models/weights",
+                auth=WeightsAuth(
+                    auth_method=WeightsAuthMethod.CUSTOM_SECRET,
+                    auth_secret_name="my-secret",
+                ),
+            )
+        assert ws.auth.auth_secret_name == "my-secret"
+
     def test_custom_secret_requires_auth_secret_name(self):
         """CUSTOM_SECRET auth_method requires auth_secret_name."""
         with pytest.raises(

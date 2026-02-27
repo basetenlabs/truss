@@ -518,6 +518,17 @@ class WeightsSource(custom_types.ConfigModel):
                 "auth_secret_name cannot be specified both at the top level and in auth section. "
                 "Please use only one location."
             )
+        if self.auth_secret_name and not self.auth:
+            warnings.warn(
+                "Specifying 'auth_secret_name' at the top level of a weights source is "
+                "deprecated. Please use the 'auth' section with 'CUSTOM_SECRET' auth method "
+                "instead:\n"
+                "  auth:\n"
+                "    auth_method: CUSTOM_SECRET\n"
+                f"    auth_secret_name: {self.auth_secret_name}",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         return self
 
 
