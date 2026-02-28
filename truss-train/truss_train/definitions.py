@@ -218,11 +218,6 @@ class TrainingJob(custom_types.SafeModelNoExtra):
                         f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
                         "OIDC (AWS_OIDC, GCP_OIDC) is not supported."
                     )
-                if not (w.auth.auth_secret_name):
-                    raise ValueError(
-                        f"weight {w.source}: auth_secret_name is required when using CUSTOM_SECRET for training jobs. "
-                        "Specify it in the auth section or at the top level of the weight source."
-                    )
         return self
 
     def model_dump(self, *args, **kwargs):
