@@ -1,5 +1,6 @@
 from truss.base.truss_config import WeightsSource
 from truss_train.definitions import (
+    INTERACTIVE_SESSION_TIMEOUT_INFINITE,
     AWSIAMDockerAuth,
     BasetenCheckpoint,
     CacheConfig,
@@ -12,6 +13,7 @@ from truss_train.definitions import (
     FullCheckpoint,
     GCPServiceAccountJSONDockerAuth,
     Image,
+    InteractiveSession,
     LoadCheckpointConfig,
     LoRACheckpoint,
     LoRADetails,
@@ -27,6 +29,8 @@ from truss_train.public_api import push
 __all__ = [
     "push",
     "Compute",
+    "INTERACTIVE_SESSION_TIMEOUT_INFINITE",
+    "InteractiveSession",
     "Runtime",
     "SecretReference",
     "TrainingJob",

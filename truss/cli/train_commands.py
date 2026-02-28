@@ -255,8 +255,37 @@ def _format_local_time(utc_timestamp: str) -> str:
         return utc_timestamp
 
 
+_ONE_YEAR_SECONDS = 365 * 24 * 3600
+_INFINITE_ALIASES = {"inf", "infinity", "infinite", "none", "no-timeout"}
+
+
+class _TimeoutType(click.ParamType):
+    """Click parameter type that accepts an integer or an 'infinite' alias."""
+
+    name = "INT or inf"
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, int) and value >= 0:
+            return value
+        if isinstance(value, str) and value.strip().lower() in _INFINITE_ALIASES:
+            return -1
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            self.fail(
+                f"'{value}' is not a valid timeout. "
+                f"Use a non-negative integer, or 'inf' / 'infinity' for no timeout.",
+                param,
+                ctx,
+            )
+
+
 def _format_time_until_expiry(utc_timestamp: str) -> str:
-    """Format time until expiration in human-readable format (e.g., '2h 30m')."""
+    """Format time until expiration in human-readable format (e.g., '2h 30m').
+
+    Expiry more than a year away (i.e. infinite / -1 timeout) is shown as
+    'No timeout'.
+    """
     if not utc_timestamp:
         return ""
     try:
@@ -264,12 +293,14 @@ def _format_time_until_expiry(utc_timestamp: str) -> str:
         now = datetime.now(utc_dt.tzinfo)
         time_diff = utc_dt - now
 
-        # If already expired
         if time_diff.total_seconds() <= 0:
             return "Expired"
 
-        # Calculate hours and minutes
         total_seconds = int(time_diff.total_seconds())
+
+        if total_seconds > _ONE_YEAR_SECONDS:
+            return "No timeout"
+
         hours = total_seconds // 3600
         minutes = (total_seconds % 3600) // 60
 
@@ -839,9 +870,9 @@ def update_session(
 @click.option(
     "--update-timeout",
     "timeout_minutes",
-    type=int,
+    type=_TimeoutType(),
     required=False,
-    help="Minutes to extend the session timeout by",
+    help="Minutes to extend the session timeout ('inf' for infinite)",
 )
 @click.option(
     "--update-trigger",
@@ -892,15 +923,24 @@ def get_isession(
             console.print("No auth codes found for this job.", style="yellow")
             return
 
-        # Validate trigger change: on_startup sessions cannot have their trigger changed
         if trigger is not None:
             current_triggers = {s.get("trigger") for s in isession if s.get("trigger")}
             if "on_startup" in current_triggers:
                 error_console.print(
                     "Cannot change trigger on on_startup sessions. "
-                    "Use --timeout-minutes to extend the session instead."
+                    "Use --update-timeout to extend the session instead."
                 )
                 sys.exit(1)
+
+        if (
+            timeout_minutes is not None
+            and timeout_minutes != -1
+            and timeout_minutes < 0
+        ):
+            error_console.print(
+                '--update-timeout must be "infinite" or a non-negative integer.'
+            )
+            sys.exit(1)
 
         # PATCH sessions if any update flags were provided
         patch_messages: list[str] = []
