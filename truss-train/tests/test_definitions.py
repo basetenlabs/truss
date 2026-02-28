@@ -18,7 +18,9 @@ class TestTrainingJobWeightsAuthValidation:
     """Training jobs only allow CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
 
     def test_weights_with_aws_oidc_raises(self):
-        with pytest.raises(ValidationError, match="weight s3://bucket/path.*CUSTOM_SECRET"):
+        with pytest.raises(
+            ValidationError, match="weight s3://bucket/path.*CUSTOM_SECRET"
+        ):
             _minimal_job(
                 weights=[
                     truss_config.WeightsSource(
@@ -34,7 +36,9 @@ class TestTrainingJobWeightsAuthValidation:
             )
 
     def test_weights_with_gcp_oidc_raises(self):
-        with pytest.raises(ValidationError, match="weight gs://bucket/path.*CUSTOM_SECRET"):
+        with pytest.raises(
+            ValidationError, match="weight gs://bucket/path.*CUSTOM_SECRET"
+        ):
             _minimal_job(
                 weights=[
                     truss_config.WeightsSource(
@@ -63,7 +67,10 @@ class TestTrainingJobWeightsAuthValidation:
             ]
         )
         assert len(job.weights) == 1
-        assert job.weights[0].auth.auth_method == truss_config.WeightsAuthMethod.CUSTOM_SECRET
+        assert (
+            job.weights[0].auth.auth_method
+            == truss_config.WeightsAuthMethod.CUSTOM_SECRET
+        )
         assert job.weights[0].auth.auth_secret_name == "my-secret"
 
     def test_weights_with_top_level_auth_secret_name_accepted(self):
@@ -87,8 +94,7 @@ class TestTrainingJobWeightsAuthValidation:
         job = _minimal_job(
             weights=[
                 truss_config.WeightsSource(
-                    source="hf://owner/repo",
-                    mount_location="/weights",
+                    source="hf://owner/repo", mount_location="/weights"
                 )
             ]
         )
