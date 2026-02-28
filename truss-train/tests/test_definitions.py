@@ -18,7 +18,7 @@ class TestTrainingJobWeightsAuthValidation:
     """Training jobs only allow CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
 
     def test_weights_with_aws_oidc_raises(self):
-        with pytest.raises(ValidationError, match="CUSTOM_SECRET with auth_secret_name"):
+        with pytest.raises(ValidationError, match="weight s3://bucket/path.*CUSTOM_SECRET"):
             _minimal_job(
                 weights=[
                     truss_config.WeightsSource(
@@ -34,7 +34,7 @@ class TestTrainingJobWeightsAuthValidation:
             )
 
     def test_weights_with_gcp_oidc_raises(self):
-        with pytest.raises(ValidationError, match="CUSTOM_SECRET with auth_secret_name"):
+        with pytest.raises(ValidationError, match="weight gs://bucket/path.*CUSTOM_SECRET"):
             _minimal_job(
                 weights=[
                     truss_config.WeightsSource(
