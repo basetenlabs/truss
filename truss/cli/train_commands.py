@@ -17,6 +17,7 @@ from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.resolvers.training_project_team_resolver import (
     resolve_training_project_team_name,
 )
+from truss.cli.train import checkpoint as checkpoint_mod
 from truss.cli.train import common as train_common
 from truss.cli.train import core
 from truss.cli.train.cache import (
@@ -760,6 +761,76 @@ def view_cache_summary(
 
     train_cli.view_cache_summary_by_project(
         remote_provider, project, sort, order, output_format
+    )
+
+
+@train.group(name="checkpoint")
+def checkpoint():
+    """Checkpoint-related subcommands for truss train"""
+
+
+@checkpoint.command(name="list")
+@click.argument("job_id", type=str)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--sort",
+    type=click.Choice(
+        [
+            checkpoint_mod.SORT_BY_CHECKPOINT_ID,
+            checkpoint_mod.SORT_BY_SIZE,
+            checkpoint_mod.SORT_BY_CREATED,
+            checkpoint_mod.SORT_BY_TYPE,
+        ]
+    ),
+    default=checkpoint_mod.SORT_BY_CREATED,
+    help="Sort checkpoints by checkpoint-id, size, created date, or type.",
+)
+@click.option(
+    "--order",
+    type=click.Choice([checkpoint_mod.SORT_ORDER_ASC, checkpoint_mod.SORT_ORDER_DESC]),
+    default=checkpoint_mod.SORT_ORDER_ASC,
+    help="Sort order: ascending or descending.",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [
+            checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+            checkpoint_mod.OUTPUT_FORMAT_CSV,
+            checkpoint_mod.OUTPUT_FORMAT_JSON,
+        ]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
+@common.common_options()
+def list_checkpoints(
+    job_id: str, remote: Optional[str], sort: str, order: str, output_format: str
+):
+    """List checkpoints for a training job"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    job = train_cli._get_job_by_job_id(remote_provider, job_id)
+    project_id = job["training_project"]["id"]
+
+    ctx = click.get_current_context()
+    non_interactive = ctx.find_root().obj.get("non_interactive", False)
+    interactive = common.check_is_interactive() and not non_interactive
+
+    checkpoint_mod.view_checkpoint_list(
+        remote_provider=remote_provider,
+        project_id=project_id,
+        job_id=job_id,
+        sort_by=sort,
+        order=order,
+        output_format=output_format,
+        interactive=interactive,
     )
 
 
