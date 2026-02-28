@@ -117,26 +117,21 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 {%- if config.docker_server %}
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
         curl nginx && rm -rf /var/lib/apt/lists/*
-COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
-
-{# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
-RUN uv python install {{ control_python_version }}
-RUN uv venv /docker_server/.venv --python {{ control_python_version }}
-RUN uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt --no-cache-dir
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
-{% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
-{% set supervisor_server_url = "http://localhost:8080" %}
+{% set server_wrapper_path = "/docker_server/server_wrapper.sh" %}
 COPY --chown={{ default_owner }} ./proxy.conf {{ proxy_config_path }}
-COPY --chown={{ default_owner }} ./supervisord.conf {{ supervisor_config_path }}
-ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
-ENV SERVER_START_CMD="/docker_server/.venv/bin/supervisord -c {{ supervisor_config_path }}"
+COPY --chown={{ default_owner }} ./server_wrapper.sh {{ server_wrapper_path }}
+RUN chmod +x {{ server_wrapper_path }}
+ENV START_COMMAND={{ config.docker_server.start_command | tojson }}
+ENV SERVER_PORT={{ config.docker_server.server_port | tojson }}
+ENV SERVER_START_CMD={{ server_wrapper_path | tojson }}
 {#- default configuration uses port 80, which requires root privileges, so we remove it #}
 RUN rm -f /etc/nginx/sites-enabled/default
 {# NB(nikhil): Ensure /dev/shm exists, but we expect this to get overwritten at runtime with volume mounts #}
 RUN mkdir -p /dev/shm
 {#- nginx writes to /var/lib/nginx, /var/log/nginx, /dev/shm, and /run directories #}
 {{ chown_and_switch_to_regular_user_if_enabled(["/var/lib/nginx", "/var/log/nginx", "/run", "/dev/shm"]) }}
-ENTRYPOINT ["/docker_server/.venv/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
+ENTRYPOINT ["{{ server_wrapper_path }}"]
 
 {%- elif requires_live_reload %} {#- elif requires_live_reload #}
 ENV HASH_TRUSS="{{ truss_hash }}"
