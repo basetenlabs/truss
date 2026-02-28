@@ -1866,6 +1866,40 @@ def test_openai_client_streaming():
         ] == ["1", "2"]
 
 
+@pytest.mark.integration
+def test_messages_streaming():
+    """
+    Test a Truss that exposes a messages endpoint with streaming.
+    """
+    model = """
+    from typing import AsyncGenerator
+
+    class Model:
+        async def messages(self, inputs) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        response = requests.post(
+            urls.messages_url,
+            json={"nums": ["1", "2"]},
+            stream=True,
+            headers={
+                "accept": "application/json",
+                "user-agent": "OpenAI/Python 1.61.0",
+            },
+        )
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_raise_predict_and_websocket_endpoint():
