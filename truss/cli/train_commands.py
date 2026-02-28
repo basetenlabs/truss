@@ -643,24 +643,42 @@ def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) 
 
 
 @train.command(name="init")
+@click.argument("project_name", type=str, required=False, default="hello-world")
 @click.option("--list-examples", is_flag=True, help="List all available examples.")
-@click.option("--target-directory", type=str, required=False)
-@click.option("--examples", type=str, required=False)
+@click.option(
+    "--target-directory",
+    type=str,
+    required=False,
+    help="Directory to download examples into (only used with --examples).",
+)
+@click.option(
+    "--examples",
+    type=str,
+    required=False,
+    help="Comma-separated list of examples to download from ml-cookbook.",
+)
 @common.common_options()
 def init_training_job(
+    project_name: str,
     list_examples: Optional[bool],
     target_directory: Optional[str],
     examples: Optional[str],
 ) -> None:
+    """
+    Initialize a new training project.
+
+    PROJECT_NAME: Name of the directory to create for the training project.
+    Defaults to 'hello-world' if not specified.
+    """
     try:
         if list_examples:
             all_examples = train_cli._get_all_train_init_example_options()
             console.print("Available training examples:", style="bold")
             for example in all_examples:
                 console.print(f"- {example}")
+            console.print("\nTo download examples, run:", style="bold")
             console.print(
-                "To launch, run `truss train init --examples <example1,example2>`",
-                style="bold",
+                "  truss train init --examples <example1,example2>", style="cyan"
             )
             return
 
@@ -668,17 +686,31 @@ def init_training_job(
 
         # No examples selected, initialize empty training project structure
         if not selected_options:
-            if target_directory is None:
-                target_directory = "truss-train-init"
-            console.print(f"Initializing empty training project at {target_directory}")
-            os.makedirs(target_directory)
-            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), Path(target_directory))
+            target_path = Path(project_name)
+
+            if target_path.exists():
+                error_console.print(
+                    f"Error: Directory '{project_name}' already exists. "
+                    "Please choose a different name or remove the existing directory."
+                )
+                sys.exit(1)
+
+            console.print(f"Initializing training project at '{project_name}'...")
+            os.makedirs(project_name)
+            copy_tree_path(Path(TRAINING_TEMPLATE_DIR), target_path)
             console.print(
-                f"✨ Empty training project initialized at {target_directory}",
+                f"\n✨ Training project initialized at '{project_name}/'",
                 style="bold green",
             )
+            console.print("\nNext steps:", style="bold")
+            console.print(f"  cd {project_name}", style="cyan")
+            console.print(
+                "  # Edit config.py to configure your training job", style="dim"
+            )
+            console.print("  truss train push config.py", style="cyan")
             return
 
+        # Examples mode: download examples to target directory or current directory
         if target_directory is None:
             target_directory = os.getcwd()
         for example_to_download in selected_options:
@@ -690,7 +722,8 @@ def init_training_job(
             if not download_info:
                 all_examples = train_cli._get_all_train_init_example_options()
                 error_console.print(
-                    f"Example {example_to_download} not found in the ml-cookbook repository. Examples have to be one or more comma separated values from: {', '.join(all_examples)}"
+                    f"Example '{example_to_download}' not found in the ml-cookbook repository. "
+                    f"Examples must be one or more comma-separated values from: {', '.join(all_examples)}"
                 )
                 continue
             success = train_cli.download_git_directory(
@@ -698,12 +731,12 @@ def init_training_job(
             )
             if success:
                 console.print(
-                    f"✨ Training directory for {example_to_download} initialized at {local_dir}",
+                    f"✨ Training directory for '{example_to_download}' initialized at '{local_dir}'",
                     style="bold green",
                 )
             else:
                 error_console.print(
-                    f"Failed to initialize training artifacts to {local_dir}"
+                    f"Failed to initialize training artifacts to '{local_dir}'"
                 )
 
     except Exception as e:
