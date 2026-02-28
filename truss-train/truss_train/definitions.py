@@ -223,11 +223,6 @@ class TrainingJob(custom_types.SafeModelNoExtra):
                         f"weight {w.source}: auth_secret_name is required when using CUSTOM_SECRET for training jobs. "
                         "Specify it in the auth section or at the top level of the weight source."
                     )
-                if w.auth_secret_name and w.auth.auth_secret_name != w.auth_secret_name:
-                    raise ValueError(
-                        f"weight {w.source}: auth_secret_name specified at both the top level of the weight source and in the auth section. "
-                        "Specify it in at most one location"
-                    )
         return self
 
     def model_dump(self, *args, **kwargs):
