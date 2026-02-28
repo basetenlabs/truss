@@ -668,6 +668,7 @@ class Build(custom_types.ConfigModel):
     model_server: ModelServer = ModelServer.TrussServer
     arguments: dict[str, Any] = pydantic.Field(default_factory=dict)
     secret_to_path_mapping: Mapping[str, str] = pydantic.Field(default_factory=dict)
+    no_cache: bool = False
 
     _SECRET_NAME_REGEX: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
     _MAX_SECRET_NAME_LENGTH: ClassVar[int] = 253
