@@ -1,4 +1,5 @@
 from unittest import mock
+from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
@@ -13,6 +14,7 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
+from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
 from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
@@ -727,7 +729,7 @@ def test_api_push_integration_deploy_timeout_minutes_propagated(
     assert push_kwargs.get("deploy_timeout_minutes") == 1200
 
 
-def test_api_push_integration_metadata_propagated(
+def test_api_push_integration_labels_propagated(
     custom_model_truss_dir_with_pre_and_post,
     mock_remote_factory,
     temp_trussrc_dir,
@@ -736,14 +738,70 @@ def test_api_push_integration_metadata_propagated(
 ):
     from truss.api import push
 
-    metadata = {"team": "ml", "run_id": 123, "flags": {"fast": True}}
+    labels = {"team": "ml", "run_id": 123, "flags": {"fast": True}}
     push(
         str(mock_truss_handle.truss_dir),
         remote="baseten",
         model_name="test_model",
-        metadata=metadata,
+        labels=labels,
     )
 
     mock_remote_factory.push.assert_called_once()
     _, push_kwargs = mock_remote_factory.push.call_args
-    assert push_kwargs.get("metadata") == metadata
+    assert push_kwargs.get("labels") == labels
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_succeeds_first_try(mock_sleep):
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(return_value=PatchResult(PatchStatus.SUCCESS, "ok"))
+
+    retry_patch(patch_fn, console, error_console)
+
+    patch_fn.assert_called_once()
+    mock_sleep.assert_not_called()
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_succeeds_after_failures(mock_sleep):
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(
+        side_effect=[
+            PatchResult(PatchStatus.FAILED, "server down"),
+            PatchResult(PatchStatus.FAILED, "server down"),
+            PatchResult(PatchStatus.SUCCESS, "ok"),
+        ]
+    )
+
+    retry_patch(patch_fn, console, error_console, max_retries=5, retry_delay_seconds=1)
+
+    assert patch_fn.call_count == 3
+    assert mock_sleep.call_count == 2
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_exhausts_retries(mock_sleep):
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(return_value=PatchResult(PatchStatus.FAILED, "server down"))
+
+    with pytest.raises(SystemExit):
+        retry_patch(
+            patch_fn, console, error_console, max_retries=3, retry_delay_seconds=1
+        )
+
+    assert patch_fn.call_count == 3
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_handles_none_result(mock_sleep):
+    """Test file path case where _patch() returns None on exception."""
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(side_effect=[None, PatchResult(PatchStatus.SUCCESS, "ok")])
+
+    retry_patch(patch_fn, console, error_console, max_retries=5, retry_delay_seconds=1)
+
+    assert patch_fn.call_count == 2

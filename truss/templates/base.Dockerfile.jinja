@@ -75,6 +75,15 @@ RUN {{ python_exec_path }} -c "import sys; \
     || { echo "ERROR: Supplied base image does not have {{ min_supported_python_version_in_custom_base_image }} <= python <= {{ max_supported_python_version_in_custom_base_image }}"; exit 1; }
 {% endblock %}
 
+{# mirrors.ubuntu.com is a redirector service (uses mirrors.txt) that provides the best mirror based on location #}
+{# Handle old format (Ubuntu 22.04 and earlier): /etc/apt/sources.list, and new format (Ubuntu 24.04+): /etc/apt/sources.list.d/ubuntu.sources #}
+{%- set ubuntu_sources_list_files = ["/etc/apt/sources.list", "/etc/apt/sources.list.d/ubuntu.sources"] %}
+{%- for ubuntu_sources_list_file in ubuntu_sources_list_files %}
+RUN if [ -f {{ ubuntu_sources_list_file }} ]; then \
+    sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|mirror://mirrors.ubuntu.com/mirrors.txt|g' {{ ubuntu_sources_list_file }}; \
+fi
+{%- endfor %}
+
 {% block install_tools %}
 {# Install curl if not already present. Required for uv installation and truss-transfer-cli. #}
 RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
@@ -114,17 +123,31 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ sys
 
 
 {% block install_requirements %}
-    {%- if should_install_user_requirements_file %}
+    {%- if requirements_file_type == "uv_lock" %}
+COPY --chown={{ default_owner }} ./{{ pyproject_toml_filename }} {{ pyproject_toml_filename }}
+COPY --chown={{ default_owner }} ./{{ uv_lock_filename }} {{ uv_lock_filename }}
+{#
+  NB(nikhil) By default, `uv sync --frozen` manages its own venv, but we need to install into the provided python
+  env. To get around this, we leverage `uv export` to dump the requirements in a format that `uv pip install` can use
+#}
+RUN uv export --frozen --format requirements-txt > /tmp/uv_requirements.txt && \
+    {{ sys_pip_install_command }} -r /tmp/uv_requirements.txt --no-cache-dir && \
+    rm -f /tmp/uv_requirements.txt
+
+    {%- elif requirements_file_type == "pyproject" %}
+COPY --chown={{ default_owner }} ./{{ pyproject_toml_filename }} {{ pyproject_toml_filename }}
+RUN {{ sys_pip_install_command }} -r {{ pyproject_toml_filename }} --no-cache-dir
+
+    {%- elif requirements_file_type == "pip" %}
 COPY --chown={{ default_owner }} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} --no-cache-dir
     {%- endif %}
+
     {%- if should_install_requirements %}
 COPY --chown={{ default_owner }} ./{{ config_requirements_filename }} {{ config_requirements_filename }}
 RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} --no-cache-dir
-{%- endif %}
+    {%- endif %}
 {% endblock %}
-
-
 
 {%- if not config.docker_server %}
 WORKDIR $APP_HOME

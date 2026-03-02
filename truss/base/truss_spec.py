@@ -137,6 +137,10 @@ class TrussSpec:
         )
 
     @property
+    def requirements_file_type(self) -> "truss_config.RequirementsFileType":
+        return self._config.requirements_file_type
+
+    @property
     def system_packages(self) -> List[str]:
         return self._config.system_packages
 
