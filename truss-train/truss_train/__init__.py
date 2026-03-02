@@ -22,8 +22,10 @@ from truss_train.definitions import (
     TrainingProject,
     Workspace,
 )
+from truss_train.public_api import push
 
 __all__ = [
+    "push",
     "Compute",
     "Runtime",
     "SecretReference",

@@ -131,7 +131,7 @@ class InteractiveSession(custom_types.SafeModelNoExtra):
     timeout_minutes: int = DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES
     session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
     auth_provider: InteractiveSessionAuthProvider = (
-        InteractiveSessionAuthProvider.GITHUB
+        InteractiveSessionAuthProvider.MICROSOFT
     )
 
 
@@ -207,6 +207,18 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     workspace: Optional[Workspace] = None
     weights: List[truss_config.WeightsSource] = []
     """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
+
+    @model_validator(mode="after")
+    def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
+        """Training jobs only support CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
+        for w in self.weights:
+            if w.auth is not None:
+                if w.auth.auth_method != truss_config.WeightsAuthMethod.CUSTOM_SECRET:
+                    raise ValueError(
+                        f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
+                        "OIDC (AWS_OIDC, GCP_OIDC) is not supported."
+                    )
+        return self
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)

@@ -7,7 +7,7 @@ from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Type
 if TYPE_CHECKING:
     from rich import progress
 
-from truss.util.path import is_ignored
+from truss.util.path import collect_files
 
 
 class ReadProgressIndicatorFileHandle:
@@ -32,11 +32,7 @@ def create_tar_with_progress_bar(
     delete=True,
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ):
-    files_to_include = [
-        f
-        for f in source_dir.rglob("*")
-        if f.is_file() and not is_ignored(f, ignore_patterns or [], source_dir)
-    ]
+    files_to_include = collect_files(source_dir, ignore_patterns)
 
     total_size = sum(f.stat().st_size for f in files_to_include)
     temp_file = tempfile.NamedTemporaryFile(suffix=".tgz", delete=delete)

@@ -23,17 +23,12 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
     if not dest.exists():
         dest.mkdir(parents=True)
 
-    for sub_path in src.rglob("*"):
-        if is_ignored(sub_path, patterns, base_dir=src):
-            continue
-
-        dest_fp = dest / sub_path.relative_to(src)
-
-        if sub_path.is_dir():
-            dest_fp.mkdir(exist_ok=True)
-        else:
-            dest_fp.parent.mkdir(exist_ok=True, parents=True)
-            shutil.copy2(str(sub_path), str(dest_fp))
+    for dirpath, dirs, filenames in walk_filtered(src, patterns):
+        rel_root = Path(dirpath).relative_to(src)
+        for d in dirs:
+            (dest / rel_root / d).mkdir(exist_ok=True)
+        for filename in filenames:
+            shutil.copy2(str(Path(dirpath) / filename), str(dest / rel_root / filename))
 
 
 def copy_file_path(src: Path, dest: Path) -> str:
@@ -145,6 +140,39 @@ def is_ignored(
         path = path.relative_to(base_dir)
 
     return ignore_spec.match_file(path)
+
+
+def walk_filtered(
+    root: Path, ignore_patterns: Optional[List[str]] = None
+) -> Iterator[tuple]:
+    """Like os.walk, but prunes ignored directories and filters ignored files.
+
+    Yields (dirpath, dirs, filenames) tuples where dirs and filenames have already
+    been filtered. Pruning ignored directories prevents descending into them,
+    which is dramatically faster than walking everything and filtering afterwards.
+    """
+    patterns = ignore_patterns or []
+    spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, patterns)
+    for dirpath, dirs, filenames in os.walk(root, followlinks=False):
+        rel_root = Path(dirpath).relative_to(root)
+        dirs[:] = sorted(d for d in dirs if not spec.match_file(rel_root / d))
+        filtered = [f for f in filenames if not spec.match_file(rel_root / f)]
+        yield dirpath, dirs, filtered
+
+
+def collect_files(
+    root: Path, ignore_patterns: Optional[List[str]] = None
+) -> List[Path]:
+    """Walk a directory tree and collect files, pruning ignored directories during traversal.
+
+    Unlike rglob-based approaches, this skips ignored directories entirely rather than
+    walking into them and filtering after the fact.
+    """
+    files: List[Path] = []
+    for dirpath, _dirs, filenames in walk_filtered(root, ignore_patterns):
+        for filename in filenames:
+            files.append(Path(dirpath) / filename)
+    return files
 
 
 def get_ignored_relative_paths(
