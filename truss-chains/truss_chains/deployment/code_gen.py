@@ -744,6 +744,12 @@ def _prepare_pyproject_requirements(
             "dependencies in your pyproject.toml instead."
         )
 
+    # NB(nikhil): At this point we should know the `requirements_file` exists, but helps with type constraining.
+    if not image.requirements_file:
+        raise public_types.ChainsUsageError(
+            "requirements_file must be set for pyproject requirements"
+        )
+
     req_file_path = pathlib.Path(image.requirements_file.abs_path)
     copied_pyproject = chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
 
