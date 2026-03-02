@@ -247,8 +247,9 @@ class DockerImage(custom_types.SafeModelNonSerializable):
                     "`DockerImage.base_image` as string is deprecated. Specify as "
                     f"`BasetenImage` or `CustomImage` (see docs: {doc_link})."
                 )
-        if "pip_requirements_file" in values and values["pip_requirements_file"]:
-            if "requirements_file" in values and values["requirements_file"]:
+
+        if values.get("pip_requirements_file"):
+            if values.get("requirements_file"):
                 raise ChainsUsageError(
                     "Cannot specify both `pip_requirements_file` and "
                     "`requirements_file`. Use `requirements_file` only — "
