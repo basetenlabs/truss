@@ -221,7 +221,9 @@ class DockerImage(custom_types.SafeModelNonSerializable):
     """
 
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
-    pip_requirements_file: Optional[AbsPath] = None
+    pip_requirements_file: Optional[AbsPath] = pydantic.Field(
+        default=None, deprecated="Use `requirements_file` instead."
+    )
     pip_requirements: list[str] = pydantic.Field(default_factory=list)
     apt_requirements: list[str] = pydantic.Field(default_factory=list)
     requirements_file: Optional[AbsPath] = None

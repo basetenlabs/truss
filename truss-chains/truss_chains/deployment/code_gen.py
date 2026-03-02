@@ -46,6 +46,7 @@ from truss.base.truss_config import RequirementsFileType
 from truss.contexts.image_builder import serving_image_builder
 from truss.util import path as truss_path
 from truss.util import requirements as truss_requirements
+from truss.util.path import copy_file_path
 from truss_chains import framework, private_types, public_types, utils
 
 _INDENT = " " * 4
@@ -723,10 +724,10 @@ def _add_truss_to_pyproject(pyproject_path: pathlib.Path) -> None:
         tomlkit.dump(doc, f)
 
 
-def _ensure_truss_in_pyproject(pyproject_path: pathlib.Path) -> bool:
-    """Ensure truss is in the copied pyproject.toml. Returns True if it was added."""
+def _maybe_add_truss_pyproject(pyproject_path: pathlib.Path) -> bool:
     if _has_truss_dependency(pyproject_path):
         return False
+
     _add_truss_to_pyproject(pyproject_path)
     return True
 
@@ -751,20 +752,20 @@ def _prepare_pyproject_requirements(
         )
 
     req_file_path = pathlib.Path(image.requirements_file.abs_path)
-    copied_pyproject = chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
+    pyproject_path = chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
 
     req_filename = truss_constants.UV_LOCK_FILENAME
     if req_file_type == RequirementsFileType.UV_LOCK:
-        shutil.copy2(req_file_path, chainlet_dir / truss_constants.UV_LOCK_FILENAME)
-        shutil.copy2(
+        copy_file_path(req_file_path, chainlet_dir / truss_constants.UV_LOCK_FILENAME)
+        copy_file_path(
             req_file_path.parent / truss_constants.PYPROJECT_TOML_FILENAME,
-            copied_pyproject,
+            pyproject_path,
         )
     else:
         req_filename = truss_constants.PYPROJECT_TOML_FILENAME
-        shutil.copy2(req_file_path, copied_pyproject)
+        copy_file_path(req_file_path, pyproject_path)
 
-    if _ensure_truss_in_pyproject(copied_pyproject):
+    if _maybe_add_truss_pyproject(pyproject_path):
         if req_file_type == RequirementsFileType.UV_LOCK:
             subprocess.run(
                 ["uv", "lock"], cwd=chainlet_dir, check=True, capture_output=True
