@@ -37,6 +37,7 @@ from typing import Any, Iterable, Mapping, Optional, cast, get_args, get_origin
 
 import libcst
 import pydantic
+import tomlkit
 
 import truss
 from truss.base import constants as truss_constants
@@ -699,20 +700,35 @@ def _make_pip_requirements(image: public_types.DockerImage) -> list[str]:
     return sorted(pip_requirements)
 
 
-def _check_truss_in_project_deps(req_file_path: pathlib.Path) -> None:
-    """Warn if truss is not found in pyproject.toml dependencies."""
-    pyproject_path = req_file_path
-    if req_file_path.name == truss_constants.UV_LOCK_FILENAME:
-        pyproject_path = req_file_path.parent / truss_constants.PYPROJECT_TOML_FILENAME
+def _has_truss_dependency(pyproject_path: pathlib.Path) -> bool:
+    """Check if truss is listed in a pyproject.toml's dependencies."""
     deps = truss_requirements.parse_requirements_from_pyproject(pyproject_path)
     has_truss = any(_TRUSS_PIP_PATTERN.match(dep) for dep in deps)
     has_truss_git = any(_TRUSS_GIT in dep for dep in deps)
-    if not (has_truss or has_truss_git):
-        logging.warning(
-            f"truss is not found in the dependencies of `{pyproject_path.name}`. "
-            f"The deployed chainlet may not have the correct truss version. "
-            f"Add `truss=={truss.__version__}` to your project dependencies."
-        )
+    return has_truss or has_truss_git
+
+
+def _add_truss_to_pyproject(pyproject_path: pathlib.Path) -> None:
+    truss_pip = f"truss=={truss.__version__}"
+    logging.warning(
+        f"truss is not found in the dependencies of `{pyproject_path.name}`. "
+        f"Auto-adding `{truss_pip}` to the build copy."
+    )
+    with open(pyproject_path) as f:
+        doc = tomlkit.load(f)
+    project = doc.setdefault("project", {})
+    deps = project.setdefault("dependencies", [])
+    deps.append(truss_pip)
+    with open(pyproject_path, "w") as f:
+        tomlkit.dump(doc, f)
+
+
+def _ensure_truss_in_pyproject(pyproject_path: pathlib.Path) -> bool:
+    """Ensure truss is in the copied pyproject.toml. Returns True if it was added."""
+    if _has_truss_dependency(pyproject_path):
+        return False
+    _add_truss_to_pyproject(pyproject_path)
+    return True
 
 
 def _prepare_pyproject_requirements(
@@ -727,21 +743,28 @@ def _prepare_pyproject_requirements(
             f"`{req_file_type.value}` requirements file. Manage all "
             "dependencies in your pyproject.toml instead."
         )
+
     req_file_path = pathlib.Path(image.requirements_file.abs_path)
-    _check_truss_in_project_deps(req_file_path)
+    copied_pyproject = chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
+
+    req_filename = truss_constants.UV_LOCK_FILENAME
     if req_file_type == RequirementsFileType.UV_LOCK:
-        # Copy both uv.lock and its sibling pyproject.toml.
         shutil.copy2(req_file_path, chainlet_dir / truss_constants.UV_LOCK_FILENAME)
-        pyproject_path = req_file_path.parent / truss_constants.PYPROJECT_TOML_FILENAME
         shutil.copy2(
-            pyproject_path, chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
+            req_file_path.parent / truss_constants.PYPROJECT_TOML_FILENAME,
+            copied_pyproject,
         )
-        return truss_constants.UV_LOCK_FILENAME
     else:
-        shutil.copy2(
-            req_file_path, chainlet_dir / truss_constants.PYPROJECT_TOML_FILENAME
-        )
-        return truss_constants.PYPROJECT_TOML_FILENAME
+        req_filename = truss_constants.PYPROJECT_TOML_FILENAME
+        shutil.copy2(req_file_path, copied_pyproject)
+
+    if _ensure_truss_in_pyproject(copied_pyproject):
+        if req_file_type == RequirementsFileType.UV_LOCK:
+            subprocess.run(
+                ["uv", "lock"], cwd=chainlet_dir, check=True, capture_output=True
+            )
+
+    return req_filename
 
 
 def _prepare_legacy_requirements(

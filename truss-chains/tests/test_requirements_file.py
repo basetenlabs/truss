@@ -135,20 +135,54 @@ def test_make_pip_requirements_list_only():
     assert any(r.startswith("truss==") for r in reqs)
 
 
-def test_pyproject_with_pip_requirements_raises(tmp_pyproject_toml):
+def test_pyproject_with_pip_requirements_raises(tmp_pyproject_toml, tmp_chainlet_dir):
     image = public_types.DockerImage(
         requirements_file=_make_abs_path(tmp_pyproject_toml),
         pip_requirements=["extra-package"],
     )
-    req_file_type = code_gen._detect_requirements_file_type(image)
-    assert req_file_type == RequirementsFileType.PYPROJECT
-    # The error is raised during config generation, not DockerImage creation.
-    # Simulate the code_gen check here.
     with pytest.raises(
         public_types.ChainsUsageError, match="pip_requirements.*cannot be used"
     ):
-        if image.pip_requirements:
-            raise public_types.ChainsUsageError(
-                "`pip_requirements` cannot be used together with a "
-                f"`{req_file_type.value}` requirements file."
-            )
+        code_gen._prepare_pyproject_requirements(
+            image, tmp_chainlet_dir, RequirementsFileType.PYPROJECT
+        )
+
+
+def test_pyproject_auto_adds_truss(tmp_path, tmp_chainlet_dir):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "my-chain"\nversion = "0.1.0"\n'
+        'dependencies = [\n  "numpy>=1.21",\n]\n'
+    )
+    image = public_types.DockerImage(requirements_file=_make_abs_path(pyproject))
+    code_gen._prepare_pyproject_requirements(
+        image, tmp_chainlet_dir, RequirementsFileType.PYPROJECT
+    )
+    import tomlkit
+
+    copied = tmp_chainlet_dir / "pyproject.toml"
+    with open(copied) as f:
+        doc = tomlkit.load(f)
+    deps = doc["project"]["dependencies"]
+    assert any("truss==" in dep for dep in deps)
+    # Original file should be unchanged.
+    with open(pyproject) as f:
+        original = tomlkit.load(f)
+    assert not any("truss==" in dep for dep in original["project"]["dependencies"])
+
+
+def test_pyproject_does_not_add_truss_if_present(tmp_pyproject_toml, tmp_chainlet_dir):
+    image = public_types.DockerImage(
+        requirements_file=_make_abs_path(tmp_pyproject_toml)
+    )
+    code_gen._prepare_pyproject_requirements(
+        image, tmp_chainlet_dir, RequirementsFileType.PYPROJECT
+    )
+    import tomlkit
+
+    copied = tmp_chainlet_dir / "pyproject.toml"
+    with open(copied) as f:
+        doc = tomlkit.load(f)
+    deps = doc["project"]["dependencies"]
+    truss_deps = [dep for dep in deps if "truss" in dep]
+    assert len(truss_deps) == 1
