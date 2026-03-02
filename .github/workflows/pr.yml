@@ -28,13 +28,19 @@ jobs:
 
   test:
     timeout-minutes: 30
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
-      - run: |
+      - name: Create test directories (Linux)
+        if: runner.os == 'Linux'
+        run: |
           sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
           sudo mkdir -p /static-bptr && sudo chown $(whoami):$(whoami) /static-bptr
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache

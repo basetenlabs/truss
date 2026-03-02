@@ -465,7 +465,7 @@ def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
 
 
 def _relative_to(path: str, relative_to_path: str):
-    return str(Path(path).relative_to(relative_to_path))
+    return Path(path).relative_to(relative_to_path).as_posix()
 
 
 def _strictly_under(path: str, parent_paths: List[str]) -> bool:

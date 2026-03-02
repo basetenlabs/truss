@@ -11,8 +11,8 @@ import pytest
 from truss.templates.shared.lazy_data_resolver import LazyDataResolverV2
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason="BPTR tests require a specific directory and will fail on macOS",
+    sys.platform != "linux",
+    reason="BPTR tests require a specific directory and will fail on macOS/Windows",
 )
 
 BPTR_PATH = Path("/static-bptr/static-bptr-manifest.json")
