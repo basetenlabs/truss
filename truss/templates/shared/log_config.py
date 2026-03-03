@@ -9,7 +9,6 @@ from pythonjsonlogger import jsonlogger
 
 LOCAL_DATE_FORMAT = "%H:%M:%S"
 
-# Context variable for request ID - can be set per-request and accessed in logging
 request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "request_id", default=None
 )
@@ -45,8 +44,6 @@ class _MetricsFilter(logging.Filter):
 
 
 class _RequestIDFilter(logging.Filter):
-    """Injects request_id from context into all log records."""
-
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_context.get()
         return True
@@ -70,18 +67,12 @@ class _AccessJsonFormatter(jsonlogger.JsonFormatter):
 
 
 class _DefaultJsonFormatter(jsonlogger.JsonFormatter):
-    """JSON formatter that includes request_id if present."""
-
     def add_fields(
-        self,
-        log_record: dict,
-        record: logging.LogRecord,
-        message_dict: dict,
+        self, log_record: dict, record: logging.LogRecord, message_dict: dict
     ) -> None:
         super().add_fields(log_record, record, message_dict)
-        # Add request_id if it exists and is not None
-        if hasattr(record, "request_id") and record.request_id:
-            log_record["request_id"] = record.request_id
+        if request_id := getattr(record, "request_id", None):
+            log_record["request_id"] = request_id
 
 
 class _AccessFormatter(logging.Formatter):
