@@ -766,6 +766,16 @@ def test_build_no_cache_from_config(default_config):
         assert truss_config.build.no_cache is True
 
 
+def test_build_no_cache_defaults_to_false(default_config):
+    data = {"description": "this is a test", "build": {}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        truss_config = TrussConfig.from_yaml(yaml_path)
+        assert truss_config.build.no_cache is False
+
+
 @pytest.mark.parametrize(
     "secret_name, should_error",
     [
