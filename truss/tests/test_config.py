@@ -757,10 +757,7 @@ def test_secret_to_path_mapping_correct_type(default_config):
 
 
 def test_build_no_cache_from_config(default_config):
-    data = {
-        "description": "this is a test",
-        "build": {"no_cache": True},
-    }
+    data = {"description": "this is a test", "build": {"no_cache": True}}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
         yaml_path = Path(yaml_file.name)
         yaml.safe_dump(data, yaml_file)
