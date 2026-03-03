@@ -796,9 +796,6 @@ def push(
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
-    if no_cache:
-        tr.spec.config.build.no_cache = True
-
     # Parse labels from CLI option
     labels_dict: Optional[dict] = None
     if labels:
@@ -860,6 +857,7 @@ def push(
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
         labels=labels_dict,
+        no_cache=no_cache,
     )
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")

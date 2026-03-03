@@ -668,10 +668,18 @@ class Build(custom_types.ConfigModel):
     model_server: ModelServer = ModelServer.TrussServer
     arguments: dict[str, Any] = pydantic.Field(default_factory=dict)
     secret_to_path_mapping: Mapping[str, str] = pydantic.Field(default_factory=dict)
-    no_cache: bool = False
 
     _SECRET_NAME_REGEX: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
     _MAX_SECRET_NAME_LENGTH: ClassVar[int] = 253
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def _reject_no_cache_in_config(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "no_cache" in data:
+            raise ValueError(
+                "no_cache is not supported in config. Use the --no-cache CLI flag instead."
+            )
+        return data
 
     class Config:
         protected_namespaces = ()  # Silence warnings about fields starting with `model_`.

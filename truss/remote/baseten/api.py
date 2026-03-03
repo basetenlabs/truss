@@ -204,6 +204,7 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        no_cache: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -214,6 +215,7 @@ class BasetenApi:
                     semver_bump: "{semver_bump}"
                     truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
+                    no_cache: {"true" if no_cache else "false"}
                     {f'version_name: "{deployment_name}"' if deployment_name else ""}
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
@@ -259,6 +261,7 @@ class BasetenApi:
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
         labels: Optional[dict] = None,
+        no_cache: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -270,6 +273,7 @@ class BasetenApi:
                     truss_user_env: $trussUserEnv
                     scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"}
                     preserve_env_instance_type: {"true" if preserve_env_instance_type else "false"}
+                    no_cache: {"true" if no_cache else "false"}
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
@@ -312,6 +316,7 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        no_cache: bool = False,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -320,6 +325,7 @@ class BasetenApi:
                     config: "{config}"
                     truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
+                    no_cache: {"true" if no_cache else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}

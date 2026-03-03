@@ -703,11 +703,10 @@ def test_push_no_cache_sets_build_no_cache_on_config(
 
     assert result.exit_code == 0
     remote.push.assert_called_once()
-    truss_handle = remote.push.call_args[1]["truss_handle"]
-    assert truss_handle.spec.config.build.no_cache is True
+    assert remote.push.call_args[1]["no_cache"] is True
 
 
-def test_push_without_no_cache_leaves_build_no_cache_false(
+def test_push_without_no_cache_passes_no_cache_false(
     custom_model_truss_dir_with_pre_and_post,
     remote,
     mock_baseten_requests,
@@ -737,8 +736,7 @@ def test_push_without_no_cache_leaves_build_no_cache_false(
 
     assert result.exit_code == 0
     remote.push.assert_called_once()
-    truss_handle = remote.push.call_args[1]["truss_handle"]
-    assert truss_handle.spec.config.build.no_cache is False
+    assert remote.push.call_args[1].get("no_cache", False) is False
 
 
 def test_push_publish_flag_shows_deprecation_warning(

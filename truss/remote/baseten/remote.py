@@ -105,6 +105,7 @@ class FinalPushData(custom_types.OracleData):
     allow_truss_download: bool
     team_id: Optional[str] = None
     labels: Optional[Dict[str, Any]] = None
+    no_cache: bool = False
 
 
 class BasetenRemote(TrussRemote):
@@ -183,6 +184,7 @@ class BasetenRemote(TrussRemote):
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[Dict[str, Any]] = None,
+        no_cache: bool = False,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -253,6 +255,7 @@ class BasetenRemote(TrussRemote):
             allow_truss_download=not disable_truss_download,
             team_id=team_id,
             labels=labels,
+            no_cache=no_cache,
         )
 
     def push(  # type: ignore
@@ -273,6 +276,7 @@ class BasetenRemote(TrussRemote):
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[Dict[str, Any]] = None,
+        no_cache: bool = False,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -288,6 +292,7 @@ class BasetenRemote(TrussRemote):
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
             labels=labels,
+            no_cache=no_cache,
         )
 
         if include_git_info:
@@ -316,6 +321,7 @@ class BasetenRemote(TrussRemote):
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=push_data.team_id,
             labels=push_data.labels,
+            no_cache=push_data.no_cache,
         )
 
         if model_version_handle.instance_type_name:
