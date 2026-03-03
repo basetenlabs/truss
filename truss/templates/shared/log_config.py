@@ -5,7 +5,7 @@ import urllib.parse
 from collections.abc import Mapping
 from typing import Any, Optional
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json as json_logger
 
 LOCAL_DATE_FORMAT = "%H:%M:%S"
 
@@ -49,7 +49,7 @@ class _RequestIDFilter(logging.Filter):
         return True
 
 
-class _AccessJsonFormatter(jsonlogger.JsonFormatter):
+class _AccessJsonFormatter(json_logger.JsonFormatter):
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
         # record.args = (addr, method, path, version, status).
@@ -66,7 +66,7 @@ class _AccessJsonFormatter(jsonlogger.JsonFormatter):
         return super().format(record)
 
 
-class _DefaultJsonFormatter(jsonlogger.JsonFormatter):
+class _DefaultJsonFormatter(json_logger.JsonFormatter):
     def add_fields(
         self, log_record: dict, record: logging.LogRecord, message_dict: dict
     ) -> None:
