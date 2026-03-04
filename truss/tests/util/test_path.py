@@ -233,7 +233,7 @@ def test_collect_files_trailing_slash_pattern_prunes_dirs(tmp_path):
     assert rel_paths == ["keep/important.py", "root.txt"]
 
     walked_dirs = []
-    for dirpath, dirs, _filenames in path.walk_filtered(tmp_path, ["data/", "test/"]):
+    for dirpath, _dirs, _filenames in path.walk_filtered(tmp_path, ["data/", "test/"]):
         walked_dirs.append(Path(dirpath).relative_to(tmp_path))
     walked_dir_names = {str(d) for d in walked_dirs}
     assert "data" not in walked_dir_names, "data/ should be pruned, not walked into"
