@@ -213,6 +213,33 @@ def test_collect_files_nested_ignore_pattern(tmp_path):
     assert rel_paths == ["data/important.csv", "readme.md"]
 
 
+def test_collect_files_trailing_slash_pattern_prunes_dirs(tmp_path):
+    """Patterns with trailing slash (e.g. 'data/') should prune the directory
+    during walk, not just filter individual files inside it."""
+    (tmp_path / "data" / "subdir").mkdir(parents=True)
+    (tmp_path / "test" / "subdir").mkdir(parents=True)
+    (tmp_path / "keep").mkdir()
+
+    (tmp_path / "data" / "big_file.bin").write_text("big")
+    (tmp_path / "data" / "subdir" / "nested.txt").write_text("nested")
+    (tmp_path / "test" / "test_foo.py").write_text("test")
+    (tmp_path / "test" / "subdir" / "deep.py").write_text("deep")
+    (tmp_path / "keep" / "important.py").write_text("keep")
+    (tmp_path / "root.txt").write_text("root")
+
+    result = path.collect_files(tmp_path, ["data/", "test/"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == ["keep/important.py", "root.txt"]
+
+    walked_dirs = []
+    for dirpath, dirs, _filenames in path.walk_filtered(tmp_path, ["data/", "test/"]):
+        walked_dirs.append(Path(dirpath).relative_to(tmp_path))
+    walked_dir_names = {str(d) for d in walked_dirs}
+    assert "data" not in walked_dir_names, "data/ should be pruned, not walked into"
+    assert "test" not in walked_dir_names, "test/ should be pruned, not walked into"
+
+
 def test_collect_files_ignores_symlinks(tmp_path):
     (tmp_path / "real_dir").mkdir()
     (tmp_path / "real_dir" / "file.txt").write_text("real")
