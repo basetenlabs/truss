@@ -158,10 +158,12 @@ def walk_filtered(
         dirs[:] = sorted(
             d
             for d in dirs
-            if not spec.match_file(rel_root / d)
-            and not spec.match_file(str(rel_root / d) + "/")
+            if not spec.match_file((rel_root / d).as_posix())
+            and not spec.match_file((rel_root / d).as_posix() + "/")
         )
-        filtered = [f for f in filenames if not spec.match_file(rel_root / f)]
+        filtered = [
+            f for f in filenames if not spec.match_file((rel_root / f).as_posix())
+        ]
         yield dirpath, dirs, filtered
 
 
