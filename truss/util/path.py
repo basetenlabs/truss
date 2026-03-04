@@ -155,8 +155,15 @@ def walk_filtered(
     spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, patterns)
     for dirpath, dirs, filenames in os.walk(root, followlinks=False):
         rel_root = Path(dirpath).relative_to(root)
-        dirs[:] = sorted(d for d in dirs if not spec.match_file(rel_root / d))
-        filtered = [f for f in filenames if not spec.match_file(rel_root / f)]
+        dirs[:] = sorted(
+            d
+            for d in dirs
+            if not spec.match_file((rel_root / d).as_posix())
+            and not spec.match_file((rel_root / d).as_posix() + "/")
+        )
+        filtered = [
+            f for f in filenames if not spec.match_file((rel_root / f).as_posix())
+        ]
         yield dirpath, dirs, filtered
 
 
