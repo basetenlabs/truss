@@ -3,7 +3,7 @@ from abc import ABC
 from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import ValidationError, field_validator, model_validator
+from pydantic import ValidationError, model_validator
 
 from truss.base import constants, custom_types, truss_config
 
