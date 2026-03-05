@@ -1,8 +1,4 @@
-from truss_train.definitions import (
-    DEFAULT_LORA_RANK,
-    LoRACheckpoint,
-    LoRADetails,
-)
+from truss_train.definitions import DEFAULT_LORA_RANK, LoRACheckpoint, LoRADetails
 
 
 def hydrate_lora_checkpoint(
