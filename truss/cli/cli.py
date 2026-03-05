@@ -195,6 +195,8 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
         "deployment=<deployment_id>:environment=<environment>:type=<workload_type>",
     )
 
+    table.caption = "Docs: https://docs.baseten.co/organization/oidc"
+
     return table
 
 
