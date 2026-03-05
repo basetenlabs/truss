@@ -1054,6 +1054,12 @@ class TrussConfig(custom_types.ConfigModel):
             raise ValueError(f"Expected a truss configuration file at {path}")
         with path.open() as f:
             raw_data = safe_load_yaml_with_no_duplicates(f) or {}
+        # TODO(deepakn): Remove this once we have a way to pass no_cache through the context.
+        build_section = raw_data.get("build")
+        if isinstance(build_section, dict) and build_section.get("no_cache") is True:
+            raise ValueError(
+                "no_cache cannot be specified in config.yaml. Use the --no-cache CLI flag instead."
+            )
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
