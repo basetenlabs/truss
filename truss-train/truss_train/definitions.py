@@ -10,9 +10,6 @@ from truss.base import constants, custom_types, truss_config
 DEFAULT_LORA_RANK = 16
 DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES = 8 * 60
 
-# Allowed LoRA rank values for vLLM
-ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
-
 
 class ModelWeightsFormat(str, enum.Enum):
     """Predefined supported model weights formats for deploying model from checkpoints via `truss train deploy_checkpoints`."""
