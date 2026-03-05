@@ -237,7 +237,7 @@ def test_collect_files_trailing_slash_pattern_prunes_dirs(tmp_path):
     result = path.collect_files(tmp_path, ["data/", "test/"])
     rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
 
-    assert rel_paths == ["keep/important.py", "root.txt"]
+    assert rel_paths == [os.path.join("keep", "important.py"), "root.txt"]
 
     walked_dirs = []
     for dirpath, _dirs, _filenames in path.walk_filtered(tmp_path, ["data/", "test/"]):
