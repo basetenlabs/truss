@@ -18,5 +18,4 @@ def _get_lora_rank(checkpoint_resp: dict) -> int:
     lora_adapter_config = checkpoint_resp.get("lora_adapter_config") or {}
     lora_rank = lora_adapter_config.get("r") or DEFAULT_LORA_RANK
 
-
     return lora_rank
