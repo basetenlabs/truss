@@ -734,6 +734,7 @@ def test_patch_ping_flow(
         assert stats[f"{patch_path}_called_count"] == expected_call_count
 
 
+@pytest.mark.integration
 def test_handle_if_container_dne(custom_model_truss_dir):
     def return_container_dne(self):
         return "DNE"
@@ -747,6 +748,7 @@ def test_handle_if_container_dne(custom_model_truss_dir):
     kill_all_with_retries()
 
 
+@pytest.mark.integration
 def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
     def return_container_dne(self):
         return "DNE"

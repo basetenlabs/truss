@@ -184,7 +184,7 @@ class ModelRepo(custom_types.ConfigModel):
         return v
 
     @property
-    def runtime_path(self) -> pathlib.Path:
+    def runtime_path(self) -> pathlib.PurePosixPath:
         assert self.volume_folder is not None
         return constants.MODEL_CACHE_PATH / self.volume_folder
 

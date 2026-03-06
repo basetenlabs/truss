@@ -92,7 +92,7 @@ dev-server = [
     "opentelemetry-sdk>=1.25.0",
     "prometheus-client>=0.21.1,<0.22",
     "uvicorn>=0.24.0",
-    "uvloop>=0.17.0",
+    "uvloop>=0.17.0; sys_platform != 'win32'",
     "websockets>=14.0",
 ]
 

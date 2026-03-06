@@ -7,7 +7,7 @@ import difflib
 import io
 import os
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import rich_click as click
@@ -24,7 +24,7 @@ console = Console()
 error_console = Console(stderr=True)
 
 # Data directory path (where external_data files are downloaded)
-DATA_DIR_PATH = Path("/app/data")
+DATA_DIR_PATH = PurePosixPath("/app/data")
 
 
 def generate_source_uri(model: ModelRepo) -> str:
