@@ -764,12 +764,12 @@ def view_cache_summary(
     )
 
 
-@train.group(name="checkpoint")
-def checkpoint():
+@train.group(name="checkpoints")
+def checkpoints():
     """Checkpoint-related subcommands for truss train"""
 
 
-@checkpoint.command(name="list")
+@checkpoints.command(name="list")
 @click.argument("job_id", type=str)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option(

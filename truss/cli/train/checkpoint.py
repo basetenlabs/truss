@@ -14,7 +14,7 @@ import rich
 from InquirerPy.prompts.fuzzy import FuzzyPrompt, InquirerPyFuzzyControl
 from InquirerPy.utils import get_style
 
-from truss.cli.utils import common as cli_common
+from truss.cli.train import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
 
@@ -349,13 +349,13 @@ def _show_url(url: str) -> None:
     def _exit(event):
         event.app.exit()
 
-    text = [
+    text: list[tuple[str, str]] = [
         ("", "Download URL:\n\n"),
         ("underline", url),
         ("#888888", "\n\nPress left arrow to go back"),
     ]
     app: Application = Application(
-        layout=Layout(Window(FormattedTextControl(text))),
+        layout=Layout(Window(FormattedTextControl(text))),  # type: ignore[arg-type]
         key_bindings=kb,
         full_screen=True,
     )
@@ -605,7 +605,7 @@ def view_checkpoint_list(
     interactive: bool = False,
 ) -> None:
     """View checkpoints for a training job, with optional interactive drill-down."""
-    viewer_factories = {
+    viewer_factories: dict[str, type[CheckpointListViewer]] = {
         OUTPUT_FORMAT_CSV: CSVCheckpointViewer,
         OUTPUT_FORMAT_JSON: JSONCheckpointViewer,
         OUTPUT_FORMAT_CLI_TABLE: CLITableCheckpointViewer,
