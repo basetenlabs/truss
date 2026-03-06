@@ -46,7 +46,7 @@ jobs:
           sudo mkdir -p /cache && sudo chown $(whoami):$(whoami) /cache
       - run: uv sync
       - name: run tests
-        run: uv run pytest --durations=0  -m 'not integration' --junitxml=report.xml
+        run: uv run pytest --durations=0  -m 'not integration' --junitxml=report.xml --basetemp=$RUNNER_TEMP/pytest-temp
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
         if: always()
