@@ -43,13 +43,14 @@ class _MetricsFilter(logging.Filter):
         return "/metrics" not in record.getMessage()
 
 
-class _RequestIDFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = request_id_context.get()
-        return True
-
-
 class _AccessJsonFormatter(json_logger.JsonFormatter):
+    def add_fields(
+        self, log_record: dict, record: logging.LogRecord, message_dict: dict
+    ) -> None:
+        super().add_fields(log_record, record, message_dict)
+        if request_id := request_id_context.get():
+            log_record["request_id"] = request_id
+
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
         # record.args = (addr, method, path, version, status).
@@ -71,7 +72,7 @@ class _DefaultJsonFormatter(json_logger.JsonFormatter):
         self, log_record: dict, record: logging.LogRecord, message_dict: dict
     ) -> None:
         super().add_fields(log_record, record, message_dict)
-        if request_id := getattr(record, "request_id", None):
+        if request_id := request_id_context.get():
             log_record["request_id"] = request_id
 
 
@@ -124,7 +125,6 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
             "health_check_filter": {"()": _HealthCheckFilter},
             "websocket_filter": {"()": _WebsocketOpenFilter},
             "metrics_filter": {"()": _MetricsFilter},
-            "request_id_filter": {"()": _RequestIDFilter},
         },
         "formatters": formatters,
         "handlers": {
@@ -132,13 +132,11 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
                 "formatter": "default_formatter",
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stderr",
-                "filters": ["request_id_filter"],
             },
             "access_handler": {
                 "formatter": "access_formatter",
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stdout",
-                "filters": ["request_id_filter"],
             },
         },
         "loggers": {
