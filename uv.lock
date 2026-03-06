@@ -3393,15 +3393,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-<<<<<<< HEAD
-<<<<<<< HEAD
 version = "0.15.1"
-=======
-version = "0.14.2rc3"
->>>>>>> c3cd0e04 (RC for logs spike)
-=======
-version = "0.14.1"
->>>>>>> 6f6b7ed8 (Revert pyproject and uvlock)
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
