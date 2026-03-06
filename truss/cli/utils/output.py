@@ -1,3 +1,6 @@
+import json
+import sys
+
 import rich
 import rich.live
 import rich.logging
@@ -15,3 +18,8 @@ rich.spinner.SPINNERS["failed"] = {"interval": 500, "frames": ["😤 ", " 😤"]
 
 console = Console()
 error_console = Console(stderr=True, style="bold red")
+
+
+def json_output(data: object) -> None:
+    """Write structured JSON to stdout for machine consumption."""
+    print(json.dumps(data), file=sys.stdout, flush=True)

@@ -27,7 +27,8 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_team_name,
 )
 from truss.cli.utils import common, self_upgrade
-from truss.cli.utils.output import console, error_console
+from truss.cli.utils.common import is_json_output
+from truss.cli.utils.output import console, error_console, json_output
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -394,6 +395,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
 )
 @click.option("--model", type=str, required=False, help="ID of model to call")
 @common.log_level_option
+@common._output_format_option
 def predict(
     target_directory: str,
     remote: str,
@@ -451,7 +453,10 @@ def predict(
         for chunk in result:
             click.echo(chunk, nl=False)
         return
-    console.print_json(data=result)
+    if is_json_output() or not sys.stdout.isatty():
+        json_output(result)
+    else:
+        console.print_json(data=result)
 
 
 @truss_cli.command()
@@ -640,6 +645,13 @@ def run_python(script, target_directory):
         "to apply live patches. Cannot be used with --promote, --environment, or --tail."
     ),
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Validate and resolve the deployment without actually pushing. Shows what would happen.",
+)
+@common._output_format_option
 @common.common_options()
 def push(
     target_directory: str,
@@ -662,6 +674,7 @@ def push(
     provided_team_name: Optional[str] = None,
     labels: Optional[str] = None,
     watch_after_push: bool = False,
+    dry_run: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -669,9 +682,12 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+    json_mode = is_json_output()
+    # In JSON mode, use stderr for human messages to keep stdout clean
+    out = error_console if json_mode else console
 
     if publish:
-        console.print(
+        out.print(
             "[DEPRECATED] The --publish flag is deprecated. Published deployments are now the default.",
             style="yellow",
         )
@@ -692,16 +708,24 @@ def push(
             )
         if tail:
             raise click.UsageError("Cannot use --watch with --tail.")
+        if dry_run:
+            raise click.UsageError("Cannot use --watch with --dry-run.")
         # Development deployment for watch mode
         publish = False
         wait = True
     else:
         # Default is now published deployment
         publish = True
-        console.print(
-            "Deploying as a published deployment. Use --watch for a development deployment.",
-            style="green",
-        )
+        if not json_mode:
+            out.print(
+                "Deploying as a published deployment. Use --watch for a development deployment.",
+                style="green",
+            )
+
+    if dry_run and wait:
+        raise click.UsageError("Cannot use --dry-run with --wait.")
+    if dry_run and tail:
+        raise click.UsageError("Cannot use --dry-run with --tail.")
 
     if wait and tail:
         raise click.UsageError(
@@ -711,7 +735,7 @@ def push(
     tr = _get_truss_from_directory(target_directory=target_directory, config=config)
 
     if tr.spec.config.resources.instance_type:
-        console.print(
+        out.print(
             "Field 'instance_type' specified - ignoring 'cpu', 'memory', 'accelerator', and 'use_gpu' fields.",
             style="yellow",
         )
@@ -768,7 +792,7 @@ def push(
 
     if preserve_env_instance_type is not None and not environment:
         preserve_env_warning = "'preserve-env-instance-type' flag specified without the 'environment' parameter. Ignoring the value of `preserve-env-instance-type`"
-        console.print(preserve_env_warning, style="yellow")
+        out.print(preserve_env_warning, style="yellow")
     if preserve_env_instance_type is None:
         # If the flag is not specified, we set it to True by default. We handle the default here instead of in click.options
         # to only print the warning above when the flag was specified by the user.
@@ -777,15 +801,15 @@ def push(
     if environment:
         if preserve_env_instance_type:
             preserve_env_info = f"'preserve-env-instance-type' used. Resources from the config will be ignored and the current instance type of the '{environment}' environment will be used."
-            console.print(preserve_env_info)
+            out.print(preserve_env_info)
         else:
             preserve_env_info = f"'no-preserve-env-instance-type' used. Instance type will be derived from the config and updated in the '{environment}' environment."
-            console.print(preserve_env_info)
+            out.print(preserve_env_info)
 
     # Log a warning if using --trusted.
     if trusted is not None:
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
-        console.print(trusted_deprecation_notice, style="yellow")
+        out.print(trusted_deprecation_notice, style="yellow")
 
     # Parse labels from CLI option
     labels_dict: Optional[dict] = None
@@ -802,18 +826,18 @@ def push(
     if uses_trt_llm_builder(tr):
         if not publish:
             live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow. Remove --watch to deploy as a published model."
-            console.print(live_reload_disabled_text, style="red")
+            out.print(live_reload_disabled_text, style="red")
             sys.exit(1)
 
         if memory_updated_for_trt_llm_builder(tr):
-            console.print(
+            out.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
         message_oai, raised_message_oai = has_no_tags_trt_llm_builder(tr)
         if message_oai:
-            console.print(message_oai, style="yellow")
+            out.print(message_oai, style="yellow")
             if raised_message_oai:
-                console.print(message_oai, style="red")
+                out.print(message_oai, style="red")
                 sys.exit(1)
 
         trt_llm_build_config = tr.spec.config.trt_llm.build
@@ -827,7 +851,49 @@ def push(
                 "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
                 "'num_builder_gpus' can be used to specify the number of GPUs to use at build time."
             )
-            console.print(fp8_and_num_builder_gpus_text, style="yellow")
+            out.print(fp8_and_num_builder_gpus_text, style="yellow")
+
+    if dry_run:
+        resources = tr.spec.config.resources
+        resource_info = {}
+        if resources.instance_type:
+            resource_info["instance_type"] = resources.instance_type
+        else:
+            if resources.accelerator:
+                resource_info["accelerator"] = str(resources.accelerator)
+            if resources.cpu:
+                resource_info["cpu"] = str(resources.cpu)
+            if resources.memory:
+                resource_info["memory"] = str(resources.memory)
+
+        summary = {
+            "dry_run": True,
+            "model_name": model_name,
+            "is_draft": not publish,
+            "environment": environment,
+            "team": provided_team_name,
+            "config_valid": True,
+            "resources": resource_info,
+        }
+
+        if json_mode:
+            json_output(summary)
+        else:
+            console.print("[bold]Dry run summary:[/bold]")
+            console.print(f"  Model name: {model_name}")
+            console.print(
+                f"  Deployment type: {'development' if not publish else 'published'}"
+            )
+            console.print(f"  Environment: {environment or 'None'}")
+            console.print(f"  Team: {provided_team_name or 'None'}")
+            console.print("  Config valid: Yes")
+            if resource_info:
+                for k, v in resource_info.items():
+                    console.print(f"  {k}: {v}")
+            console.print(
+                "\n[yellow]Did not deploy because --dry-run flag was provided.[/yellow]"
+            )
+        return
 
     source = Path(target_directory)
     working_dir = source.parent if source.is_file() else source.resolve()
@@ -850,10 +916,25 @@ def push(
         labels=labels_dict,
     )
 
-    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+    if json_mode:
+        result_data: dict = {
+            "model_name": model_name,
+            "is_draft": service.is_draft,
+            "logs_url": service.logs_url,
+            "predict_url": service.predict_url,
+        }
+        if isinstance(service, BasetenService):
+            result_data["model_id"] = service.model_id
+            result_data["model_version_id"] = service.model_version_id
+        if not wait:
+            json_output(result_data)
+            return
+        # If --wait, continue to wait loop below, then emit JSON with status
+    else:
+        click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 
-    if service.is_draft:
-        draft_model_text = """
+        if service.is_draft:
+            draft_model_text = """
 |---------------------------------------------------------------------------------------|
 | Your model is deploying as a development model. Development models allow you to       |
 | iterate quickly during the deployment process.                                        |
@@ -864,53 +945,84 @@ def push(
 |---------------------------------------------------------------------------------------|
 """
 
-        click.echo(draft_model_text)
+            click.echo(draft_model_text)
 
-    if environment:
-        promotion_text = (
-            f"Your Truss has been deployed into the {environment} environment. After it successfully "
-            f"deploys, it will become the next {environment} deployment of your model."
+        if environment:
+            promotion_text = (
+                f"Your Truss has been deployed into the {environment} environment. After it successfully "
+                f"deploys, it will become the next {environment} deployment of your model."
+            )
+            console.print(promotion_text, style="green")
+
+        console.print(
+            f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
         )
-        console.print(promotion_text, style="green")
-
-    console.print(
-        f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
-    )
     if wait:
         start_time = time.time()
-        with console.status("[bold green]Deploying...") as status:
+        final_status = None
+        deployment_status = None
+        if json_mode:
+            # Suppress spinners for JSON output; just poll silently
             for deployment_status in service.poll_deployment_status():
                 if (
                     timeout_seconds is not None
                     and time.time() - start_time > timeout_seconds
                 ):
-                    console.print("Deployment timed out.", style="red")
+                    result_data["status"] = "TIMED_OUT"
+                    json_output(result_data)
                     sys.exit(1)
 
-                status.update(
-                    f"[bold green]Deploying...Current Status: {deployment_status}"
-                )
-
                 if deployment_status == ACTIVE_STATUS:
-                    console.print("Deployment succeeded.", style="bold green")
+                    final_status = deployment_status
                     break
 
-                # For --watch (dev deployments), enter watch mode early
-                # once past BUILDING, so user can iterate on code
                 if watch_after_push and deployment_status in ("LOADING_MODEL"):
-                    console.print(
-                        f"Deployment status: {deployment_status}. "
-                        "Entering watch mode early for faster iteration...",
-                        style="bold blue",
-                    )
+                    final_status = deployment_status
                     break
 
                 if deployment_status not in DEPLOYING_STATUSES:
-                    console.print(
-                        f"Deployment failed with status {deployment_status}.",
-                        style="red",
-                    )
+                    result_data["status"] = deployment_status
+                    json_output(result_data)
                     sys.exit(1)
+
+            result_data["status"] = final_status or deployment_status
+            json_output(result_data)
+            if not watch_after_push:
+                return
+        else:
+            with console.status("[bold green]Deploying...") as status:
+                for deployment_status in service.poll_deployment_status():
+                    if (
+                        timeout_seconds is not None
+                        and time.time() - start_time > timeout_seconds
+                    ):
+                        console.print("Deployment timed out.", style="red")
+                        sys.exit(1)
+
+                    status.update(
+                        f"[bold green]Deploying...Current Status: {deployment_status}"
+                    )
+
+                    if deployment_status == ACTIVE_STATUS:
+                        console.print("Deployment succeeded.", style="bold green")
+                        break
+
+                    # For --watch (dev deployments), enter watch mode early
+                    # once past BUILDING, so user can iterate on code
+                    if watch_after_push and deployment_status in ("LOADING_MODEL"):
+                        console.print(
+                            f"Deployment status: {deployment_status}. "
+                            "Entering watch mode early for faster iteration...",
+                            style="bold blue",
+                        )
+                        break
+
+                    if deployment_status not in DEPLOYING_STATUSES:
+                        console.print(
+                            f"Deployment failed with status {deployment_status}.",
+                            style="red",
+                        )
+                        sys.exit(1)
 
         # If --watch was used, start watching after deploy success
         if watch_after_push:
