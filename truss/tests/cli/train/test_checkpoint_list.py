@@ -12,7 +12,6 @@ from truss.cli.train.checkpoint import (
     SORT_ORDER_DESC,
     _build_directory_listing,
     _fetch_and_display_file,
-    _filter_files_for_checkpoint,
     view_checkpoint_list,
 )
 from truss.remote.baseten.remote import BasetenRemote
@@ -225,19 +224,54 @@ def test_view_checkpoint_list_json_no_checkpoints(capsys):
     assert output["checkpoints"] == []
 
 
-def test_filter_files_for_checkpoint():
-    """Test filtering files by checkpoint name prefix."""
-    files = SAMPLE_FILES
-    result = _filter_files_for_checkpoint(files, "ckpt-001")
-    assert len(result) == 2
-    assert all(f["relative_file_name"].startswith("ckpt-001/") for f in result)
+def test_build_directory_listing_with_checkpoint_lookup():
+    """Test that directories matching checkpoint IDs are annotated."""
+    files = [
+        {"_rel_path": "ckpt-001/adapter_model.safetensors", "size_bytes": 1000},
+        {"_rel_path": "ckpt-001/adapter_config.json", "size_bytes": 200},
+        {"_rel_path": "ckpt-002/model.safetensors", "size_bytes": 5000},
+        {"_rel_path": "other-dir/data.bin", "size_bytes": 300},
+    ]
+    checkpoint_lookup = {
+        "ckpt-001": {
+            "checkpoint_type": "lora",
+            "base_model": "meta-llama/Llama-3-8B",
+            "size_bytes": 1024 * 1024 * 50,
+        },
+        "ckpt-002": {
+            "checkpoint_type": "full",
+            "base_model": "",
+            "size_bytes": 1024 * 1024 * 1024 * 2,
+        },
+    }
+    dirs, dir_files = _build_directory_listing(files, "", checkpoint_lookup)
 
-    result2 = _filter_files_for_checkpoint(files, "ckpt-002")
-    assert len(result2) == 1
-    assert result2[0]["relative_file_name"] == "ckpt-002/model.safetensors"
+    assert len(dirs) == 3
+    assert len(dir_files) == 0
 
-    result3 = _filter_files_for_checkpoint(files, "ckpt-999")
-    assert len(result3) == 0
+    dirs_by_name = {d["name"]: d for d in dirs}
+
+    # ckpt-001 should be annotated
+    assert dirs_by_name["ckpt-001"]["checkpoint_type"] == "lora"
+    assert dirs_by_name["ckpt-001"]["base_model"] == "meta-llama/Llama-3-8B"
+    assert dirs_by_name["ckpt-001"]["size_bytes"] == 1024 * 1024 * 50
+
+    # ckpt-002 should be annotated
+    assert dirs_by_name["ckpt-002"]["checkpoint_type"] == "full"
+
+    # other-dir should NOT be annotated
+    assert "checkpoint_type" not in dirs_by_name["other-dir"]
+
+
+def test_build_directory_listing_without_checkpoint_lookup():
+    """Test that directories are not annotated when no lookup is provided."""
+    files = [
+        {"_rel_path": "ckpt-001/adapter_model.safetensors", "size_bytes": 1000},
+    ]
+    dirs, _ = _build_directory_listing(files, "")
+
+    assert len(dirs) == 1
+    assert "checkpoint_type" not in dirs[0]
 
 
 @patch("truss.cli.train.checkpoint._open_in_pager")

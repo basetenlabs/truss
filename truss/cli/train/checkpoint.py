@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -10,7 +11,8 @@ from typing import Any, Callable, Optional
 
 import requests
 import rich
-from InquirerPy import inquirer
+from InquirerPy.prompts.fuzzy import FuzzyPrompt, InquirerPyFuzzyControl
+from InquirerPy.utils import get_style
 
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
@@ -178,29 +180,24 @@ class JSONCheckpointViewer(CheckpointListViewer):
         print(json.dumps(output, indent=2))
 
 
-def _select_checkpoint(checkpoints: list[dict]) -> Optional[str]:
-    """Prompt user to select a checkpoint from the list."""
-    choices = [ckpt["checkpoint_id"] for ckpt in checkpoints] + [EXIT_OPTION]
-    selected = inquirer.select(
-        message="Select a checkpoint to view files:", choices=choices
-    ).execute()
-    if selected == EXIT_OPTION:
-        return None
-    return selected
-
-
 def _build_directory_listing(
-    files: list[dict], current_path: str
+    files: list[dict],
+    current_path: str,
+    checkpoint_lookup: Optional[dict[str, dict]] = None,
 ) -> tuple[list[dict], list[dict]]:
     """Build a listing of immediate child directories and files for current_path.
 
     Args:
-        files: List of file dicts, each with a "_rel_path" key (checkpoint prefix stripped).
+        files: List of file dicts, each with a "_rel_path" key.
         current_path: Current directory path (e.g. "" for root, "rank-0" for inside rank-0).
+        checkpoint_lookup: Optional mapping from checkpoint_id to metadata
+            (checkpoint_type, base_model, size_bytes). Directories matching a
+            checkpoint_id will be annotated with these fields.
 
     Returns:
         Tuple of (dirs, dir_files):
-        - dirs: list of {"name": str, "total_size": int, "file_count": int}
+        - dirs: list of {"name": str, "total_size": int, "file_count": int,
+          and optionally "checkpoint_type", "base_model", "size_bytes"}
         - dir_files: list of original file dicts that are direct children of current_path
     """
     dir_stats: dict[str, dict] = {}
@@ -231,73 +228,203 @@ def _build_directory_listing(
             # Direct child file
             dir_files.append(f)
 
+    # Annotate directories that match detected checkpoints
+    if checkpoint_lookup:
+        for d in dir_stats.values():
+            ckpt_meta = checkpoint_lookup.get(d["name"])
+            if ckpt_meta:
+                d["checkpoint_type"] = ckpt_meta.get("checkpoint_type", "")
+                d["base_model"] = ckpt_meta.get("base_model", "")
+                d["size_bytes"] = ckpt_meta.get("size_bytes", 0)
+
     return list(dir_stats.values()), dir_files
 
 
-def _explore_checkpoint_files(files: list[dict], checkpoint_name: str) -> bool:
-    """Interactive file explorer. Returns True to exit entirely, False to go back to checkpoint selection."""
-    prefix = checkpoint_name + "/"
-    stripped_files = []
-    for f in files:
-        rel = f.get("relative_file_name", "")
-        if rel.startswith(prefix):
-            rel = rel[len(prefix) :]
-        stripped_files.append({**f, "_rel_path": rel})
+_DIR_STYLE = get_style({"dir": "#30B77E", "fuzzy_match": "#c678dd bold"})
+
+
+class _ColoredFuzzyControl(InquirerPyFuzzyControl):
+    """Fuzzy control that colors directory choices."""
+
+    def _get_style_for_choice(self, choice) -> str:
+        value = choice.get("value")
+        if isinstance(value, tuple) and len(value) >= 1 and value[0] == "dir":
+            return "class:dir"
+        return ""
+
+    def _get_normal_text(self, choice):
+        display_choices = []
+        display_choices.append(("class:pointer", len(self._pointer) * " "))
+        display_choices.append(
+            (
+                "class:marker",
+                self._marker
+                if self.choices[choice["index"]]["enabled"]
+                else self._marker_pl,
+            )
+        )
+        style = self._get_style_for_choice(choice)
+        if not choice["indices"]:
+            display_choices.append((style, choice["name"]))
+        else:
+            indices = set(choice["indices"])
+            for index, char in enumerate(choice["name"]):
+                if index in indices:
+                    display_choices.append(("class:fuzzy_match", char))
+                else:
+                    display_choices.append((style, char))
+        return display_choices
+
+    def _get_hover_text(self, choice):
+        display_choices = []
+        display_choices.append(("class:pointer", self._pointer))
+        display_choices.append(
+            (
+                "class:marker",
+                self._marker
+                if self.choices[choice["index"]]["enabled"]
+                else self._marker_pl,
+            )
+        )
+        display_choices.append(("[SetCursorPosition]", ""))
+        style = self._get_style_for_choice(choice) or "class:pointer"
+        if not choice["indices"]:
+            display_choices.append((style, choice["name"]))
+        else:
+            indices = set(choice["indices"])
+            for index, char in enumerate(choice["name"]):
+                if index in indices:
+                    display_choices.append(("class:fuzzy_match", char))
+                else:
+                    display_choices.append((style, char))
+        return display_choices
+
+
+def _colored_fuzzy(*, choices: list[dict], **kwargs) -> Any:
+    """Create a fuzzy prompt that colors directory choices.
+
+    Right-arrow on a file shows its download URL.
+    """
+    prompt = FuzzyPrompt(
+        choices=choices,
+        style=_DIR_STYLE,
+        long_instruction="← back  → open/url  ↑↓ navigate  enter select  ctrl-c quit",
+        **kwargs,
+    )
+    prompt._content_control.__class__ = _ColoredFuzzyControl
+
+    @prompt.register_kb("right")
+    def _right_action(event):
+        control = prompt._content_control
+        idx = control._selected_choice_index
+        filtered = control._filtered_choices
+        if 0 <= idx < len(filtered):
+            value = filtered[idx].get("value")
+            if isinstance(value, tuple) and value[0] == "file":
+                event.app.exit(result=("url", value[1].get("url", "")))
+            elif isinstance(value, tuple) and value[0] == "dir":
+                event.app.exit(result=value)
+
+    @prompt.register_kb("left")
+    def _go_back(event):
+        event.app.exit(result=("back", None))
+
+    return prompt
+
+
+def _show_url(url: str) -> None:
+    """Display a download URL and wait for left-arrow to dismiss."""
+    from prompt_toolkit import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout
+    from prompt_toolkit.layout.containers import Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+
+    kb = KeyBindings()
+
+    @kb.add("left")
+    @kb.add("escape")
+    @kb.add("q")
+    @kb.add("enter")
+    def _exit(event):
+        event.app.exit()
+
+    text = [
+        ("", "Download URL:\n\n"),
+        ("underline", url),
+        ("#888888", "\n\nPress left arrow to go back"),
+    ]
+    app: Application = Application(
+        layout=Layout(Window(FormattedTextControl(text))),
+        key_bindings=kb,
+        full_screen=True,
+    )
+    app.run()
+
+
+def _explore_files(
+    files: list[dict], job_id: str, checkpoint_lookup: Optional[dict[str, dict]] = None
+) -> None:
+    """Interactive file explorer starting from the root of the checkpoint volume."""
+    prepared_files = [
+        {**f, "_rel_path": f.get("relative_file_name", "")} for f in files
+    ]
 
     path_stack: list[str] = []
 
     while True:
         current_path = "/".join(path_stack)
-        dirs, dir_files = _build_directory_listing(stripped_files, current_path)
+        dirs, dir_files = _build_directory_listing(
+            prepared_files, current_path, checkpoint_lookup
+        )
 
         console.clear()
-        display_path = (
-            checkpoint_name + "/" + current_path
-            if current_path
-            else checkpoint_name + "/"
-        )
-        console.print(f"\U0001f4c2 {display_path}", style="bold cyan")
+        display_path = job_id + "/" + current_path if current_path else job_id + "/"
+        console.print(display_path, style="bold cyan")
 
         # Build inquirer choices
-        choices: list[dict] = [{"name": "..", "value": ("back", None)}]
+        choices: list[dict] = []
+        if path_stack:
+            choices.append({"name": "..", "value": ("back", None)})
         for d in sorted(dirs, key=lambda x: x["name"]):
             size_str = cli_common.format_bytes_to_human_readable(d["total_size"])
-            choices.append(
-                {
-                    "name": f"\U0001f4c1 {d['name']}/ ({size_str}, {d['file_count']} files)",
-                    "value": ("dir", d["name"]),
-                }
-            )
+            label = f"{d['name']}/ ({size_str}, {d['file_count']} files)"
+            if d.get("checkpoint_type"):
+                ckpt_type = d["checkpoint_type"]
+                base_model = d.get("base_model", "")
+                annotation_parts = [ckpt_type]
+                if base_model:
+                    annotation_parts.append(base_model)
+                label += f" [{' \u00b7 '.join(annotation_parts)}]"
+            choices.append({"name": label, "value": ("dir", d["name"])})
         for f in sorted(dir_files, key=lambda x: x["_rel_path"]):
             name = f["_rel_path"].split("/")[-1]
             size_str = cli_common.format_bytes_to_human_readable(f.get("size_bytes", 0))
-            choices.append(
-                {"name": f"\U0001f4c4 {name} ({size_str})", "value": ("file", f)}
-            )
+            choices.append({"name": f"{name} ({size_str})", "value": ("file", f)})
         choices.append({"name": EXIT_OPTION, "value": ("exit", None)})
 
-        selected = inquirer.select(message="Navigate:", choices=choices).execute()
+        selected = _colored_fuzzy(
+            message="", qmark="", prompt="Navigate: ", choices=choices
+        ).execute()
         action, payload = selected
 
         if action == "dir":
             path_stack.append(payload)
         elif action == "file":
-            if payload.get("size_bytes", 0) >= MAX_VIEWABLE_FILE_SIZE:
-                console.print(
-                    "File too large to view inline (> 1 MB). Download URL:",
-                    style="dim",
-                )
-                console.print(payload.get("url", ""), style="underline blue")
-                console.input("[dim]Press Enter to continue...[/dim]")
+            file_name = payload.get("relative_file_name", "")
+            if file_name.endswith(".safetensors"):
+                _view_safetensor_file(payload)
+            elif payload.get("size_bytes", 0) >= MAX_VIEWABLE_FILE_SIZE:
+                _show_url(payload.get("url", ""))
             else:
                 _fetch_and_display_file(payload)
+        elif action == "url":
+            _show_url(payload)
         elif action == "back":
             if path_stack:
                 path_stack.pop()
-            else:
-                return False
         elif action == "exit":
-            return True
+            return
 
 
 def _get_pager_command() -> list[str]:
@@ -313,6 +440,19 @@ def _get_pager_command() -> list[str]:
     return []
 
 
+def _highlight_content(content: str, file_name: str) -> str:
+    """Apply syntax highlighting with ANSI escape codes if a lexer is available."""
+    try:
+        from pygments import highlight
+        from pygments.formatters import TerminalFormatter
+        from pygments.lexers import get_lexer_for_filename
+
+        lexer = get_lexer_for_filename(file_name)
+        return highlight(content, lexer, TerminalFormatter())
+    except Exception:
+        return content
+
+
 def _open_in_pager(content: str, file_name: str) -> None:
     """Open content in the user's pager. Falls back to printing if no pager is available."""
     pager_cmd = _get_pager_command()
@@ -320,11 +460,13 @@ def _open_in_pager(content: str, file_name: str) -> None:
         console.print(content)
         return
 
+    highlighted = _highlight_content(content, file_name)
+
     suffix = os.path.splitext(file_name)[1] or ".txt"
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=suffix, prefix="ckpt-", delete=False
     ) as tmp:
-        tmp.write(content)
+        tmp.write(highlighted)
         tmp_path = tmp.name
 
     try:
@@ -333,10 +475,109 @@ def _open_in_pager(content: str, file_name: str) -> None:
         os.unlink(tmp_path)
 
 
+DTYPE_SIZES = {
+    "F64": 8,
+    "F32": 4,
+    "F16": 2,
+    "BF16": 2,
+    "I64": 8,
+    "I32": 4,
+    "I16": 2,
+    "I8": 1,
+    "U8": 1,
+    "BOOL": 1,
+}
+
+
+def _fetch_safetensor_header(url: str) -> Optional[dict]:
+    """Fetch only the header of a safetensors file using range requests."""
+    try:
+        size_resp = requests.get(url, headers={"Range": "bytes=0-7"}, timeout=10)
+        size_resp.raise_for_status()
+        header_size = struct.unpack("<Q", size_resp.content)[0]
+
+        if header_size > 10_000_000:
+            return None
+
+        header_resp = requests.get(
+            url, headers={"Range": f"bytes=8-{8 + header_size - 1}"}, timeout=30
+        )
+        header_resp.raise_for_status()
+        return json.loads(header_resp.content)
+    except Exception:
+        return None
+
+
+def _format_safetensor_header(header: dict) -> str:
+    """Format safetensor header into a readable table string."""
+    metadata = header.pop("__metadata__", {})
+    tensors = []
+    for name, info in sorted(header.items()):
+        dtype = info.get("dtype", "?")
+        shape = info.get("shape", [])
+        num_params = 1
+        for dim in shape:
+            num_params *= dim
+        size_bytes = num_params * DTYPE_SIZES.get(dtype, 0)
+        tensors.append((name, dtype, shape, num_params, size_bytes))
+
+    total_params = sum(t[3] for t in tensors)
+    total_bytes = sum(t[4] for t in tensors)
+
+    lines = []
+    if metadata:
+        lines.append("Metadata:")
+        for k, v in sorted(metadata.items()):
+            lines.append(f"  {k}: {v}")
+        lines.append("")
+
+    lines.append(
+        f"Tensors: {len(tensors)}  |  Parameters: {total_params:,}  |  Size: {cli_common.format_bytes_to_human_readable(total_bytes)}"
+    )
+    lines.append("")
+
+    # Table header
+    name_width = max(len(t[0]) for t in tensors) if tensors else 4
+    name_width = max(name_width, 4)
+    lines.append(
+        f"{'Name':<{name_width}}  {'Dtype':<6}  {'Shape':<20}  {'Params':>12}  {'Size':>10}"
+    )
+    lines.append("-" * (name_width + 56))
+
+    for name, dtype, shape, num_params, size_bytes in tensors:
+        shape_str = str(shape)
+        size_str = cli_common.format_bytes_to_human_readable(size_bytes)
+        lines.append(
+            f"{name:<{name_width}}  {dtype:<6}  {shape_str:<20}  {num_params:>12,}  {size_str:>10}"
+        )
+
+    return "\n".join(lines)
+
+
+def _view_safetensor_file(file_info: dict) -> None:
+    """Fetch and display safetensor layer information."""
+    url = file_info.get("url", "")
+    file_name = file_info.get("relative_file_name", "")
+
+    with console.status("Fetching safetensor header...", spinner="dots"):
+        header = _fetch_safetensor_header(url)
+
+    if header is None:
+        console.print("Failed to read safetensor header.", style="red")
+        return
+
+    content = f"# {file_name}\n\n" + _format_safetensor_header(header)
+    _open_in_pager(content, file_name)
+
+
 def _fetch_and_display_file(file_info: dict) -> None:
     """Fetch a file via its presigned URL and open it in a pager."""
     url = file_info.get("url", "")
     file_name = file_info.get("relative_file_name", "")
+
+    if file_name.endswith(".safetensors"):
+        _view_safetensor_file(file_info)
+        return
 
     try:
         resp = requests.get(url, timeout=30)
@@ -352,14 +593,6 @@ def _fetch_and_display_file(file_info: dict) -> None:
         _open_in_pager(content, file_name)
     except requests.RequestException as e:
         console.print(f"Failed to fetch file: {e}", style="red")
-
-
-def _filter_files_for_checkpoint(
-    all_files: list[dict], checkpoint_name: str
-) -> list[dict]:
-    """Filter presigned URL files that belong to a specific checkpoint."""
-    prefix = checkpoint_name + "/"
-    return [f for f in all_files if f.get("relative_file_name", "").startswith(prefix)]
 
 
 def view_checkpoint_list(
@@ -386,45 +619,39 @@ def view_checkpoint_list(
         raw = remote_provider.api.list_training_job_checkpoints(project_id, job_id)
         checkpoints = raw.get("checkpoints", [])
 
-        if not checkpoints:
-            viewer.output_no_checkpoints_message(job_id)
-            return
-
         reverse = order == SORT_ORDER_DESC
         sort_key = _get_sort_key(sort_by)
         checkpoints.sort(key=sort_key, reverse=reverse)
 
-        viewer.output_checkpoints(checkpoints, job_id)
-
         if not interactive or output_format != OUTPUT_FORMAT_CLI_TABLE:
+            if not checkpoints:
+                viewer.output_no_checkpoints_message(job_id)
+            else:
+                viewer.output_checkpoints(checkpoints, job_id)
             return
 
-        # Interactive drill-down loop
-        all_files: Optional[list[dict]] = None
-        while True:
-            selected_id = _select_checkpoint(checkpoints)
-            if selected_id is None:
-                break
+        # Build checkpoint lookup for annotations
+        checkpoint_lookup: dict[str, dict] = {}
+        for ckpt in checkpoints:
+            cid = ckpt.get("checkpoint_id", "")
+            if cid and cid != ".":
+                checkpoint_lookup[cid] = {
+                    "checkpoint_type": ckpt.get("checkpoint_type", ""),
+                    "base_model": ckpt.get("base_model", ""),
+                    "size_bytes": ckpt.get("size_bytes", 0),
+                }
 
-            # Lazy-fetch all checkpoint files on first drill-down
-            if all_files is None:
-                with console.status("Fetching checkpoint files...", spinner="dots"):
-                    all_files = (
-                        remote_provider.api.get_training_job_checkpoint_presigned_url(
-                            project_id, job_id, page_size=1000
-                        )
-                    )
+        # Fetch all files and launch the file explorer from root
+        with console.status("Fetching checkpoint files...", spinner="dots"):
+            all_files = remote_provider.api.get_training_job_checkpoint_presigned_url(
+                project_id, job_id, page_size=1000
+            )
 
-            files = _filter_files_for_checkpoint(all_files, selected_id)
-            if not files:
-                console.print(
-                    f"No files found for checkpoint: {selected_id}", style="yellow"
-                )
-                continue
+        if not all_files:
+            console.print("No files found in checkpoint volume.", style="yellow")
+            return
 
-            should_exit = _explore_checkpoint_files(files, selected_id)
-            if should_exit:
-                return
+        _explore_files(all_files, job_id, checkpoint_lookup or None)
 
     except Exception as e:
         if output_format in (OUTPUT_FORMAT_CSV, OUTPUT_FORMAT_JSON):
