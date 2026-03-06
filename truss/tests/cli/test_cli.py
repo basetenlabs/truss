@@ -672,6 +672,75 @@ def test_push_defaults_to_published(
     assert kwargs["is_draft"] is False
 
 
+def test_push_no_cache_sets_build_no_cache_on_config(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    runner = CliRunner()
+    mock_service = MagicMock()
+    mock_service.is_draft = False
+    mock_service.logs_url = "https://example.com/logs"
+    remote.push = Mock(return_value=mock_service)
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "model_name",
+                    "--no-cache",
+                ],
+            )
+
+    assert result.exit_code == 0
+    remote.push.assert_called_once()
+    truss_handle = remote.push.call_args[1]["truss_handle"]
+    assert truss_handle.spec.config.build.no_cache is True
+
+
+def test_push_without_no_cache_leaves_build_no_cache_false(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    runner = CliRunner()
+    mock_service = MagicMock()
+    mock_service.is_draft = False
+    mock_service.logs_url = "https://example.com/logs"
+    remote.push = Mock(return_value=mock_service)
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "model_name",
+                ],
+            )
+
+    assert result.exit_code == 0
+    remote.push.assert_called_once()
+    truss_handle = remote.push.call_args[1]["truss_handle"]
+    assert truss_handle.spec.config.build.no_cache is False
+
+
 def test_push_publish_flag_shows_deprecation_warning(
     custom_model_truss_dir_with_pre_and_post,
     remote,
