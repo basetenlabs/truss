@@ -36,6 +36,7 @@ from truss.util import log_utils, user_config
 from truss.util import path as truss_path
 from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import code_gen
+from truss_chains.deployment.chain_gatherer import gather_chain
 
 if TYPE_CHECKING:
     from rich import console as rich_console
@@ -72,6 +73,38 @@ def _get_chain_root(entrypoint: Type[private_types.ABCChainlet]) -> pathlib.Path
         "be included as dependencies in the remote deployments and are importable)."
     )
     return chain_root
+
+
+def _collect_external_package_dirs(
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+) -> list[pathlib.Path]:
+    """Collect unique external_package_dirs from all chainlets.
+
+    Args:
+        chainlet_descriptors: Iterable of chainlet descriptors to collect from.
+
+    Returns:
+        List of unique absolute paths to external package directories.
+    """
+    seen: set[pathlib.Path] = set()
+    result: list[pathlib.Path] = []
+    for desc in chainlet_descriptors:
+        ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
+        if not ext_dirs:
+            continue
+        for ext_dir in ext_dirs:
+            abs_path = pathlib.Path(ext_dir.abs_path)
+            if abs_path in seen:
+                continue
+            seen.add(abs_path)
+            result.append(abs_path)
+            if abs_path.name != "packages":
+                logging.warning(
+                    f'"{abs_path.name}" is a non-standard directory name for '
+                    f"external_package_dirs and may not work after a chain download. "
+                    f'Consider naming it "packages" instead.'
+                )
+    return result
 
 
 class ChainService(abc.ABC):
@@ -230,7 +263,7 @@ def push(
         if has_engine_builder_chainlets and not options.publish:
             raise public_types.ChainsDeploymentError(
                 "This chain contains engine builder chainlets. Development models are "
-                "not supportd, push with `--publish`."
+                "not supportd, push as a published deployment."
             )
         return _create_baseten_chain(
             options,
@@ -522,6 +555,15 @@ def _create_baseten_chain(
     if entrypoint_descriptor is not None:
         chain_root = _get_chain_root(entrypoint_descriptor.chainlet_cls)
 
+        # Gather external packages from all chainlets into the chain archive.
+        # This ensures that when users download the chain, all external
+        # dependencies are included in the artifact.
+        all_external_dirs = _collect_external_package_dirs(
+            _get_ordered_dependencies([entrypoint_descriptor.chainlet_cls])
+        )
+        if all_external_dirs:
+            chain_root = gather_chain(chain_root, all_external_dirs)
+
     chain_deployment_handle = remote_provider.push_chain_atomic(
         baseten_options.chain_name,
         entrypoint_artifact,
@@ -614,10 +656,10 @@ class _ModelWatcher:
         dev_version = b10_core.get_dev_version(self._remote_provider.api, model_name)
         if not dev_version:
             raise b10_errors.RemoteError(
-                "No development model found. Run `truss push` then try again."
+                "No development model found. Run `truss push --watch` then try again."
             )
 
-    def _patch(self) -> None:
+    def _patch(self) -> Optional[b10_remote.PatchResult]:
         exception_raised = None
         with (
             log_utils.LogInterceptor() as log_interceptor,
@@ -639,10 +681,15 @@ class _ModelWatcher:
         _handle_intercepted_logs(logs, self._console)
         if exception_raised:
             _handle_import_error(exception_raised, self._console, self._error_console)
+        return None
 
     def watch(self) -> None:
-        # Perform one initial patch at startup.
-        self._patch()
+        self._console.print("🚰 Attempting to sync truss with remote")
+        b10_remote.retry_patch(
+            patch_fn=self._patch,
+            console=self._console,
+            error_console=self._error_console,
+        )
         self._console.print("👀 Watching for new changes.", style="blue")
 
         # TODO(nikhil): Improve detection of directory structure, since right now

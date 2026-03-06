@@ -980,15 +980,15 @@ def test_create_truss_service_passes_deploy_timeout_minutes_for_development_mode
     assert kwargs["deploy_timeout_minutes"] == 600
 
 
-def test_create_truss_service_passes_metadata():
-    """Test that metadata is passed through to create_model_from_truss"""
+def test_create_truss_service_passes_labels():
+    """Test that labels are passed through to create_model_from_truss"""
     api = MagicMock()
     return_value = {
         "id": "model_version_id",
         "oracle": {"id": "model_id", "hostname": "hostname"},
     }
     api.create_model_from_truss.return_value = return_value
-    metadata = {"git_sha": "abc123", "environment": "production"}
+    labels = {"git_sha": "abc123", "environment": "production"}
 
     version_handle = create_truss_service(
         api,
@@ -998,17 +998,17 @@ def test_create_truss_service_passes_metadata():
         b10_types.TrussUserEnv.collect(),
         is_draft=False,
         model_id=None,
-        metadata=metadata,
+        labels=labels,
     )
 
     assert version_handle.version_id == "model_version_id"
     api.create_model_from_truss.assert_called_once()
     _, kwargs = api.create_model_from_truss.call_args
-    assert kwargs["metadata"] == metadata
+    assert kwargs["labels"] == labels
 
 
-def test_create_truss_service_passes_metadata_for_development_model():
-    """Test that metadata is passed through to create_development_model_from_truss"""
+def test_create_truss_service_passes_labels_for_development_model():
+    """Test that labels are passed through to create_development_model_from_truss"""
     api = MagicMock()
     return_value = {
         "id": "model_version_id",
@@ -1016,7 +1016,7 @@ def test_create_truss_service_passes_metadata_for_development_model():
         "instance_type": {"name": "1x2"},
     }
     api.create_development_model_from_truss.return_value = return_value
-    metadata = {"git_sha": "abc123"}
+    labels = {"git_sha": "abc123"}
 
     version_handle = create_truss_service(
         api,
@@ -1026,17 +1026,17 @@ def test_create_truss_service_passes_metadata_for_development_model():
         b10_types.TrussUserEnv.collect(),
         is_draft=True,
         model_id=None,
-        metadata=metadata,
+        labels=labels,
     )
 
     assert version_handle.version_id == "model_version_id"
     api.create_development_model_from_truss.assert_called_once()
     _, kwargs = api.create_development_model_from_truss.call_args
-    assert kwargs["metadata"] == metadata
+    assert kwargs["labels"] == labels
 
 
-def test_create_truss_service_passes_metadata_for_existing_model():
-    """Test that metadata is passed through to create_model_version_from_truss"""
+def test_create_truss_service_passes_labels_for_existing_model():
+    """Test that labels are passed through to create_model_version_from_truss"""
     api = MagicMock()
     return_value = {
         "id": "model_version_id",
@@ -1044,7 +1044,7 @@ def test_create_truss_service_passes_metadata_for_existing_model():
         "instance_type": {"name": "1x2"},
     }
     api.create_model_version_from_truss.return_value = return_value
-    metadata = {"git_sha": "abc123", "count": 42}
+    labels = {"git_sha": "abc123", "count": 42}
 
     version_handle = create_truss_service(
         api,
@@ -1054,10 +1054,10 @@ def test_create_truss_service_passes_metadata_for_existing_model():
         b10_types.TrussUserEnv.collect(),
         is_draft=False,
         model_id="existing_model_id",
-        metadata=metadata,
+        labels=labels,
     )
 
     assert version_handle.version_id == "model_version_id"
     api.create_model_version_from_truss.assert_called_once()
     _, kwargs = api.create_model_version_from_truss.call_args
-    assert kwargs["metadata"] == metadata
+    assert kwargs["labels"] == labels

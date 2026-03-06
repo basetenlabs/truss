@@ -738,6 +738,11 @@ class TRTLLMConfigurationV2(PydanticTrTBaseModel):
             quantization_config=TrussTRTQuantizationConfiguration(),
         ).model_dump(exclude_unset=False)
         for field in build_settings:
+            # NB(nikhil): By default we `allow_extra` for these configuration classes, but we want to
+            # ignore newer client versions/data for the purpose of this validation.
+            if field not in self.build.model_fields:
+                continue
+
             if (
                 field not in allowed_modify_fields
                 and build_settings[field] != build_settings_reference[field]
@@ -900,6 +905,7 @@ def trt_llm_common_validation(config: "TrussConfig"):
         truss_config.Accelerator.H100_40GB,
         truss_config.Accelerator.H200,
         truss_config.Accelerator.L4,
+        truss_config.Accelerator.L40S,
         truss_config.Accelerator.A100_40GB,
     ]:
         raise ValueError(

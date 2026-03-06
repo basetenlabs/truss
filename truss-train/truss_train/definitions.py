@@ -3,15 +3,12 @@ from abc import ABC
 from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import ValidationError, field_validator, model_validator
+from pydantic import ValidationError, model_validator
 
 from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
 DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES = 8 * 60
-
-# Allowed LoRA rank values for vLLM
-ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
 
 
 class ModelWeightsFormat(str, enum.Enum):
@@ -131,7 +128,7 @@ class InteractiveSession(custom_types.SafeModelNoExtra):
     timeout_minutes: int = DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES
     session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
     auth_provider: InteractiveSessionAuthProvider = (
-        InteractiveSessionAuthProvider.GITHUB
+        InteractiveSessionAuthProvider.MICROSOFT
     )
 
 
@@ -208,6 +205,18 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     weights: List[truss_config.WeightsSource] = []
     """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
 
+    @model_validator(mode="after")
+    def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
+        """Training jobs only support CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
+        for w in self.weights:
+            if w.auth is not None:
+                if w.auth.auth_method != truss_config.WeightsAuthMethod.CUSTOM_SECRET:
+                    raise ValueError(
+                        f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
+                        "OIDC (AWS_OIDC, GCP_OIDC) is not supported."
+                    )
+        return self
+
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
         data["compute"] = self.compute.model_dump()
@@ -238,15 +247,6 @@ class LoRADetails(custom_types.ConfigModel):
     """Configuration details specific to LoRA (Low-Rank Adaptation) models."""
 
     rank: int = DEFAULT_LORA_RANK
-
-    @field_validator("rank")
-    @classmethod
-    def validate_lora_rank(cls, v):
-        if v not in ALLOWED_LORA_RANKS:
-            raise ValueError(
-                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}.model_weight_format = checkpoints[0].model_weight_format"
-            )
-        return v
 
 
 class FullCheckpoint(Checkpoint):

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 IMAGE_BASETEN = chains.DockerImage(
     base_image=chains.BasetenImage.PY310,
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+    requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
 
 IMAGE_CUSTOM = chains.DockerImage(
@@ -19,7 +19,7 @@ IMAGE_CUSTOM = chains.DockerImage(
     base_image=chains.CustomImage(
         image="python:3.11-slim-bookworm"  # , python_executable_path="/usr/local/bin/python"
     ),
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+    requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
 
 
