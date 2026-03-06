@@ -1,3 +1,4 @@
+import json
 import threading
 from unittest.mock import MagicMock, Mock, patch
 
@@ -1060,3 +1061,256 @@ def test_watch_model_name_flag_overrides_config(
     # The flag value should be used, not the config value
     first_call_args = mock_resolve.call_args_list[0]
     assert first_call_args[0][1] == "flag-name"
+
+
+def test_push_output_json(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --output json emits structured JSON on push."""
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "test-model",
+                    "--output",
+                    "json",
+                ],
+            )
+    assert result.exit_code == 0
+    lines = [line for line in result.output.strip().split("\n") if line.strip()]
+    output = json.loads(lines[-1])
+    assert "model_id" in output
+    assert "model_version_id" in output
+    assert output["model_name"] == "test-model"
+
+
+def test_push_output_json_suppresses_human_text(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --output json suppresses Rich/click human-readable output."""
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "test-model",
+                    "--output",
+                    "json",
+                ],
+            )
+    assert result.exit_code == 0
+    # Should NOT contain human-friendly text
+    assert "Deploying as a published deployment" not in result.output
+    assert "\u2728" not in result.output
+    # Should be valid JSON
+    lines = [line for line in result.output.strip().split("\n") if line.strip()]
+    output = json.loads(lines[-1])
+    assert isinstance(output, dict)
+
+
+def test_push_output_text_default(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that default output (text) still shows human-friendly messages."""
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "test-model",
+                ],
+            )
+    assert result.exit_code == 0
+    assert "\u2728" in result.output or "Model" in result.output
+
+
+# --dry-run tests
+
+
+def test_push_dry_run_does_not_deploy(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --dry-run does NOT call remote_provider.push()."""
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "test-model",
+                    "--dry-run",
+                ],
+            )
+    assert result.exit_code == 0
+    assert "dry run" in result.output.lower() or "Did not deploy" in result.output
+    mock_create_truss_service.assert_not_called()
+
+
+def test_push_dry_run_shows_model_info(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --dry-run shows model name and deployment type."""
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "my-model",
+                    "--dry-run",
+                ],
+            )
+    assert result.exit_code == 0
+    assert "my-model" in result.output
+    assert "published" in result.output
+
+
+def test_push_dry_run_json_output(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --dry-run with --output json emits valid JSON."""
+    runner = CliRunner()
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            result = runner.invoke(
+                truss_cli,
+                [
+                    "push",
+                    str(custom_model_truss_dir_with_pre_and_post),
+                    "--remote",
+                    "baseten",
+                    "--model-name",
+                    "test-model",
+                    "--dry-run",
+                    "--output",
+                    "json",
+                ],
+            )
+    assert result.exit_code == 0
+    lines = [line for line in result.output.strip().split("\n") if line.strip()]
+    output = json.loads(lines[-1])
+    assert output["dry_run"] is True
+    assert output["model_name"] == "test-model"
+    assert output["is_draft"] is False
+
+
+def test_push_dry_run_with_watch_fails():
+    """Test that --dry-run with --watch fails."""
+    mock_truss = Mock()
+    mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.resources.instance_type = None
+    runner = CliRunner()
+    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
+        result = runner.invoke(
+            truss_cli,
+            [
+                "push",
+                "test_truss",
+                "--remote",
+                "r",
+                "--model-name",
+                "n",
+                "--dry-run",
+                "--watch",
+            ],
+        )
+    assert result.exit_code == 2
+
+
+def test_push_dry_run_with_wait_fails():
+    """Test that --dry-run with --wait fails."""
+    mock_truss = Mock()
+    mock_truss.spec.config.runtime.transport.kind = "http"
+    mock_truss.spec.config.resources.instance_type = None
+    runner = CliRunner()
+    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
+        result = runner.invoke(
+            truss_cli,
+            [
+                "push",
+                "test_truss",
+                "--remote",
+                "r",
+                "--model-name",
+                "n",
+                "--dry-run",
+                "--wait",
+            ],
+        )
+    assert result.exit_code == 2
+
+
+# CONTEXT.md tests
+
+
+def test_context_md_exists_and_has_required_sections():
+    """Verify CONTEXT.md ships with agent-facing guidance."""
+    import pathlib
+
+    context_path = pathlib.Path(__file__).parent.parent.parent.parent / "CONTEXT.md"
+    assert context_path.exists(), "CONTEXT.md must exist at repo root"
+    content = context_path.read_text()
+    assert "BASETEN_API_KEY" in content
+    assert "--non-interactive" in content
+    assert "truss push" in content
+    assert "truss predict" in content
+    assert "config.yaml" in content

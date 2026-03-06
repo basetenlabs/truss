@@ -7,7 +7,7 @@ import threading
 import time
 import warnings
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 
 import pydantic
 import requests as requests_lib
@@ -122,6 +122,18 @@ def _non_interactive_option(f: Callable[..., object]) -> Callable[..., object]:
     )(f)
 
 
+def _output_format_option(f: Callable[..., object]) -> Callable[..., object]:
+    return click.option(
+        "--output",
+        "output_format",
+        type=click.Choice(["text", "json"], case_sensitive=False),
+        default="text",
+        help="Output format. Use 'json' for machine-readable output.",
+        expose_value=False,
+        callback=_store_param_callback,
+    )(f)
+
+
 def _error_handling(f: Callable[..., object]) -> Callable[..., object]:
     @wraps(f)
     def wrapper(*args: object, **kwargs: object) -> None:
@@ -191,6 +203,15 @@ def format_link(url: str, display_text: Optional[str] = None) -> str:
 
 def is_human_log_level(ctx: click.Context) -> bool:
     return get_required_option(ctx, "log") != _HUMANFRIENDLY_LOG_LEVEL
+
+
+def get_output_format(ctx: click.Context) -> str:
+    return cast(str, get_required_option(ctx, "output_format"))
+
+
+def is_json_output() -> bool:
+    ctx = click.get_current_context()
+    return get_output_format(ctx) == "json"
 
 
 def _normalize_iso_timestamp(iso_timestamp: str) -> str:
