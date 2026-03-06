@@ -265,9 +265,7 @@ def test_build_directory_listing_with_checkpoint_lookup():
 
 def test_build_directory_listing_without_checkpoint_lookup():
     """Test that directories are not annotated when no lookup is provided."""
-    files = [
-        {"_rel_path": "ckpt-001/adapter_model.safetensors", "size_bytes": 1000},
-    ]
+    files = [{"_rel_path": "ckpt-001/adapter_model.safetensors", "size_bytes": 1000}]
     dirs, _ = _build_directory_listing(files, "")
 
     assert len(dirs) == 1

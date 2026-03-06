@@ -7,12 +7,21 @@ import subprocess
 import sys
 import tempfile
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 import requests
 import rich
 from InquirerPy.prompts.fuzzy import FuzzyPrompt, InquirerPyFuzzyControl
 from InquirerPy.utils import get_style
+from prompt_toolkit import Application
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.containers import Window
+from prompt_toolkit.layout.controls import FormattedTextControl
+from pygments import highlight
+from pygments.formatters import TerminalFormatter
+from pygments.lexers import get_lexer_for_filename
 
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
@@ -33,6 +42,9 @@ OUTPUT_FORMAT_JSON = "json"
 
 # Max file size for inline viewing (1 MB)
 MAX_VIEWABLE_FILE_SIZE = 1_000_000
+
+# Safetensor headers contain JSON metadata on layer names, shapes, and dtypes.
+MAX_SAFETENSOR_HEADER_SIZE = 10_000_000
 
 EXIT_OPTION = "[Exit]"
 
@@ -334,12 +346,6 @@ def _colored_fuzzy(*, choices: list[dict], **kwargs) -> Any:
 
 def _show_url(url: str) -> None:
     """Display a download URL and wait for left-arrow to dismiss."""
-    from prompt_toolkit import Application
-    from prompt_toolkit.key_binding import KeyBindings
-    from prompt_toolkit.layout import Layout
-    from prompt_toolkit.layout.containers import Window
-    from prompt_toolkit.layout.controls import FormattedTextControl
-
     kb = KeyBindings()
 
     @kb.add("left")
@@ -349,17 +355,43 @@ def _show_url(url: str) -> None:
     def _exit(event):
         event.app.exit()
 
-    text = [
+    text: list[tuple[str, str]] = [
         ("", "Download URL:\n\n"),
         ("underline", url),
         ("#888888", "\n\nPress left arrow to go back"),
     ]
     app: Application = Application(
-        layout=Layout(Window(FormattedTextControl(text))),
+        layout=Layout(Window(FormattedTextControl(text))),  # type: ignore[arg-type]
         key_bindings=kb,
         full_screen=True,
     )
     app.run()
+
+
+def _build_explorer_choices(
+    dirs: list[dict], dir_files: list[dict], has_parent: bool
+) -> list[dict]:
+    """Build the list of fuzzy-prompt choices for the file explorer."""
+    choices: list[dict] = []
+    if has_parent:
+        choices.append({"name": "..", "value": ("back", None)})
+    for d in sorted(dirs, key=lambda x: x["name"]):
+        size_str = cli_common.format_bytes_to_human_readable(d["total_size"])
+        label = f"{d['name']}/ ({size_str}, {d['file_count']} files)"
+        if d.get("checkpoint_type"):
+            ckpt_type = d["checkpoint_type"]
+            base_model = d.get("base_model", "")
+            annotation_parts = [ckpt_type]
+            if base_model:
+                annotation_parts.append(base_model)
+            label += f" [{' \u00b7 '.join(annotation_parts)}]"
+        choices.append({"name": label, "value": ("dir", d["name"])})
+    for f in sorted(dir_files, key=lambda x: x["_rel_path"]):
+        name = f["_rel_path"].split("/")[-1]
+        size_str = cli_common.format_bytes_to_human_readable(f.get("size_bytes", 0))
+        choices.append({"name": f"{name} ({size_str})", "value": ("file", f)})
+    choices.append({"name": EXIT_OPTION, "value": ("exit", None)})
+    return choices
 
 
 def _explore_files(
@@ -382,26 +414,7 @@ def _explore_files(
         display_path = job_id + "/" + current_path if current_path else job_id + "/"
         console.print(display_path, style="bold cyan")
 
-        # Build inquirer choices
-        choices: list[dict] = []
-        if path_stack:
-            choices.append({"name": "..", "value": ("back", None)})
-        for d in sorted(dirs, key=lambda x: x["name"]):
-            size_str = cli_common.format_bytes_to_human_readable(d["total_size"])
-            label = f"{d['name']}/ ({size_str}, {d['file_count']} files)"
-            if d.get("checkpoint_type"):
-                ckpt_type = d["checkpoint_type"]
-                base_model = d.get("base_model", "")
-                annotation_parts = [ckpt_type]
-                if base_model:
-                    annotation_parts.append(base_model)
-                label += f" [{' \u00b7 '.join(annotation_parts)}]"
-            choices.append({"name": label, "value": ("dir", d["name"])})
-        for f in sorted(dir_files, key=lambda x: x["_rel_path"]):
-            name = f["_rel_path"].split("/")[-1]
-            size_str = cli_common.format_bytes_to_human_readable(f.get("size_bytes", 0))
-            choices.append({"name": f"{name} ({size_str})", "value": ("file", f)})
-        choices.append({"name": EXIT_OPTION, "value": ("exit", None)})
+        choices = _build_explorer_choices(dirs, dir_files, has_parent=bool(path_stack))
 
         selected = _colored_fuzzy(
             message="", qmark="", prompt="Navigate: ", choices=choices
@@ -443,10 +456,6 @@ def _get_pager_command() -> list[str]:
 def _highlight_content(content: str, file_name: str) -> str:
     """Apply syntax highlighting with ANSI escape codes if a lexer is available."""
     try:
-        from pygments import highlight
-        from pygments.formatters import TerminalFormatter
-        from pygments.lexers import get_lexer_for_filename
-
         lexer = get_lexer_for_filename(file_name)
         return highlight(content, lexer, TerminalFormatter())
     except Exception:
@@ -489,6 +498,79 @@ DTYPE_SIZES = {
 }
 
 
+@dataclass
+class TensorSummary:
+    name: str
+    dtype: str
+    shape: list[int]
+    num_params: int
+    size_bytes: Optional[int]
+
+    @staticmethod
+    def from_header_entry(name: str, info: dict) -> "TensorSummary":
+        dtype = info.get("dtype", "?")
+        shape = info.get("shape", [])
+        num_params = 1
+        for dim in shape:
+            num_params *= dim
+        dtype_size = DTYPE_SIZES.get(dtype)
+        size_bytes = num_params * dtype_size if dtype_size is not None else None
+        return TensorSummary(name, dtype, shape, num_params, size_bytes)
+
+
+@dataclass
+class SafetensorSummary:
+    metadata: dict[str, str]
+    tensors: list[TensorSummary]
+
+    @staticmethod
+    def from_header(header: dict) -> "SafetensorSummary":
+        metadata = header.pop("__metadata__", {})
+        tensors = [
+            TensorSummary.from_header_entry(name, info)
+            for name, info in sorted(header.items())
+        ]
+        return SafetensorSummary(metadata, tensors)
+
+    def __str__(self) -> str:
+        total_params = sum(t.num_params for t in self.tensors)
+        total_bytes = sum(
+            t.size_bytes for t in self.tensors if t.size_bytes is not None
+        )
+
+        lines: list[str] = []
+        if self.metadata:
+            lines.append("Metadata:")
+            for k, v in sorted(self.metadata.items()):
+                lines.append(f"  {k}: {v}")
+            lines.append("")
+
+        lines.append(
+            f"Tensors: {len(self.tensors)}  |  Parameters: {total_params:,}  |  Size: {cli_common.format_bytes_to_human_readable(total_bytes)}"
+        )
+        lines.append("")
+
+        name_width = max((len(t.name) for t in self.tensors), default=4)
+        name_width = max(name_width, 4)
+        lines.append(
+            f"{'Name':<{name_width}}  {'Dtype':<6}  {'Shape':<20}  {'Params':>12}  {'Size':>10}"
+        )
+        lines.append("-" * (name_width + 56))
+
+        for t in self.tensors:
+            shape_str = str(t.shape)
+            size_str = (
+                cli_common.format_bytes_to_human_readable(t.size_bytes)
+                if t.size_bytes is not None
+                else "?"
+            )
+            lines.append(
+                f"{t.name:<{name_width}}  {t.dtype:<6}  {shape_str:<20}  {t.num_params:>12,}  {size_str:>10}"
+            )
+
+        return "\n".join(lines)
+
+
 def _fetch_safetensor_header(url: str) -> Optional[dict]:
     """Fetch only the header of a safetensors file using range requests."""
     try:
@@ -496,7 +578,7 @@ def _fetch_safetensor_header(url: str) -> Optional[dict]:
         size_resp.raise_for_status()
         header_size = struct.unpack("<Q", size_resp.content)[0]
 
-        if header_size > 10_000_000:
+        if header_size > MAX_SAFETENSOR_HEADER_SIZE:
             return None
 
         header_resp = requests.get(
@@ -506,52 +588,6 @@ def _fetch_safetensor_header(url: str) -> Optional[dict]:
         return json.loads(header_resp.content)
     except Exception:
         return None
-
-
-def _format_safetensor_header(header: dict) -> str:
-    """Format safetensor header into a readable table string."""
-    metadata = header.pop("__metadata__", {})
-    tensors = []
-    for name, info in sorted(header.items()):
-        dtype = info.get("dtype", "?")
-        shape = info.get("shape", [])
-        num_params = 1
-        for dim in shape:
-            num_params *= dim
-        size_bytes = num_params * DTYPE_SIZES.get(dtype, 0)
-        tensors.append((name, dtype, shape, num_params, size_bytes))
-
-    total_params = sum(t[3] for t in tensors)
-    total_bytes = sum(t[4] for t in tensors)
-
-    lines = []
-    if metadata:
-        lines.append("Metadata:")
-        for k, v in sorted(metadata.items()):
-            lines.append(f"  {k}: {v}")
-        lines.append("")
-
-    lines.append(
-        f"Tensors: {len(tensors)}  |  Parameters: {total_params:,}  |  Size: {cli_common.format_bytes_to_human_readable(total_bytes)}"
-    )
-    lines.append("")
-
-    # Table header
-    name_width = max(len(t[0]) for t in tensors) if tensors else 4
-    name_width = max(name_width, 4)
-    lines.append(
-        f"{'Name':<{name_width}}  {'Dtype':<6}  {'Shape':<20}  {'Params':>12}  {'Size':>10}"
-    )
-    lines.append("-" * (name_width + 56))
-
-    for name, dtype, shape, num_params, size_bytes in tensors:
-        shape_str = str(shape)
-        size_str = cli_common.format_bytes_to_human_readable(size_bytes)
-        lines.append(
-            f"{name:<{name_width}}  {dtype:<6}  {shape_str:<20}  {num_params:>12,}  {size_str:>10}"
-        )
-
-    return "\n".join(lines)
 
 
 def _view_safetensor_file(file_info: dict) -> None:
@@ -564,9 +600,11 @@ def _view_safetensor_file(file_info: dict) -> None:
 
     if header is None:
         console.print("Failed to read safetensor header.", style="red")
+        input("Press Enter to continue...")
         return
 
-    content = f"# {file_name}\n\n" + _format_safetensor_header(header)
+    summary = SafetensorSummary.from_header(header)
+    content = f"# {file_name}\n\n" + str(summary)
     _open_in_pager(content, file_name)
 
 
@@ -593,6 +631,7 @@ def _fetch_and_display_file(file_info: dict) -> None:
         _open_in_pager(content, file_name)
     except requests.RequestException as e:
         console.print(f"Failed to fetch file: {e}", style="red")
+        input("Press Enter to continue...")
 
 
 def view_checkpoint_list(
@@ -605,7 +644,7 @@ def view_checkpoint_list(
     interactive: bool = False,
 ) -> None:
     """View checkpoints for a training job, with optional interactive drill-down."""
-    viewer_factories = {
+    viewer_factories: dict[str, type[CheckpointListViewer]] = {
         OUTPUT_FORMAT_CSV: CSVCheckpointViewer,
         OUTPUT_FORMAT_JSON: JSONCheckpointViewer,
         OUTPUT_FORMAT_CLI_TABLE: CLITableCheckpointViewer,
