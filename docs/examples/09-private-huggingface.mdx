@@ -88,8 +88,10 @@ system_packages: []
 # Deploying the model
 
 ```bash
-$ truss push
+$ truss push --publish
 ```
+
+For development with hot reload, use `truss push --watch` instead.
 
 After the model finishes deploying, you can invoke it with:
 ```bash
