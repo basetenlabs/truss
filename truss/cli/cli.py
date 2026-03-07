@@ -195,8 +195,6 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
         "deployment=<deployment_id>:environment=<environment>:type=<workload_type>",
     )
 
-    table.caption = "Docs: https://docs.baseten.co/organization/oidc"
-
     return table
 
 
@@ -234,7 +232,9 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print()
         table = _create_oidc_table(oidc_info)
         console.print(table)
-        # TODO(danielleef): Reference docs here once they're ready
+        console.print(
+            f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
+        )
 
 
 @truss_cli.command()
