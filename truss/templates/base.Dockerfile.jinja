@@ -49,7 +49,7 @@ RUN useradd -u {{ NONROOT_DEFAULT_USER_ID }} -ms /bin/bash {{ app_username }}
 ENV DEBIAN_FRONTEND=noninteractive
 
 
-{%- set UV_VERSION = "0.8.22" %}
+{%- set UV_VERSION = "0.10.0" %}
 {#
 NB(nikhil): We use a semi-complex uv installation command across the board:
 - A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
