@@ -842,6 +842,7 @@ class DockerAuthType(str, enum.Enum):
     AWS_IAM = "AWS_IAM"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
+    REGISTRY_SECRET = "REGISTRY_SECRET"
 
 
 class DockerAuthSettings(AuthFieldsMixin):
