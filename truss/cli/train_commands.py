@@ -787,7 +787,7 @@ def _maybe_resolve_project_id_from_id_or_name(
     "--timeout-minutes",
     type=int,
     required=False,
-    help="Number of hours before the interactive session times out.",
+    help="Number of minutes before the interactive session times out.",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
