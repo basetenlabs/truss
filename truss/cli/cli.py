@@ -291,10 +291,13 @@ def init(target_directory, backend, name, python_config) -> None:
     TARGET_DIRECTORY: A Truss is created in this directory
     """
     if os.path.isdir(target_directory):
-        raise click.ClickException(
-            f"Error: Directory '{target_directory}' already exists "
-            "and cannot be overwritten."
-        )
+        if not click.confirm(
+            f"Directory '{target_directory}' already exists. "
+            "Files in the directory may be overwritten. "
+            "Are you sure you want to continue?"
+        ):
+            click.echo("Init aborted.")
+            return
     tr_path = Path(target_directory)
     build_config = Build(model_server=ModelServer[backend])
     if name:
