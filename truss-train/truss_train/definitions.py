@@ -175,6 +175,10 @@ class GCPServiceAccountJSONDockerAuth(custom_types.SafeModelNoExtra):
     service_account_json_secret_ref: SecretReference
 
 
+class RegistrySecretDockerAuth(custom_types.SafeModelNoExtra):
+    secret_ref: SecretReference
+
+
 class DockerAuth(custom_types.SafeModelNoExtra):
     auth_method: truss_config.DockerAuthType
     registry: str
@@ -182,6 +186,7 @@ class DockerAuth(custom_types.SafeModelNoExtra):
     gcp_service_account_json_docker_auth: Optional[GCPServiceAccountJSONDockerAuth] = (
         None
     )
+    registry_secret_docker_auth: Optional[RegistrySecretDockerAuth] = None
 
 
 class Image(custom_types.SafeModelNoExtra):
