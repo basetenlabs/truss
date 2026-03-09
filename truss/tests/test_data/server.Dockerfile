@@ -24,7 +24,7 @@ RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
 fi
 RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
 RUN if ! command -v uv >/dev/null 2>&1; then \
-    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.8.22/install.sh | sh && \
+    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.10.0/install.sh | sh && \
     test -x ${HOME}/.local/bin/uv; \
 fi
 ENV PATH=${PATH}:${HOME}/.local/bin
