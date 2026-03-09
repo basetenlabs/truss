@@ -55,6 +55,11 @@ GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
 GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
 
 
+_UNSAFE_URL_CHARS = re.compile(r'[\n\r"`$]')
+_UNSAFE_PATH_CHARS = re.compile(r"[\n\r;|&`\"'$() ]")
+_UNSAFE_SECRET_PATH_CHARS = re.compile(r'[\n\r" ]')
+
+
 def _is_numeric(number_like: str) -> bool:
     try:
         float(number_like)
@@ -700,6 +705,12 @@ class Build(custom_types.ConfigModel):
     def _validate_secrets(self) -> "Build":
         for secret_name, path in self.secret_to_path_mapping.items():
             self.validate_secret_name(secret_name)
+            if _UNSAFE_SECRET_PATH_CHARS.search(path):
+                raise ValueError(
+                    f"Secret path `{path}` for secret `{secret_name}` contains "
+                    "unsupported characters. "
+                    r"Paths must not contain any of: \n \r \" or spaces."
+                )
         return self
 
 
@@ -821,6 +832,26 @@ class ExternalDataItem(custom_types.ConfigModel):
         default=None,
         description="Optional name for the download. Path relative to data directory.",
     )
+
+    @pydantic.field_validator("url")
+    @classmethod
+    def _validate_url(cls, v: str) -> str:
+        if _UNSAFE_URL_CHARS.search(v):
+            raise ValueError(
+                f"URL contains unsupported characters: {v!r}. "
+                r"URLs must not contain any of: \n \r \" ` $"
+            )
+        return v
+
+    @pydantic.field_validator("local_data_path")
+    @classmethod
+    def _validate_local_data_path(cls, v: str) -> str:
+        if _UNSAFE_PATH_CHARS.search(v):
+            raise ValueError(
+                f"local_data_path contains unsupported characters: {v!r}. "
+                r"Paths must not contain any of: \n \r ; | & ` \" ' $ ( ) or spaces."
+            )
+        return v
 
 
 class ExternalData(pydantic.RootModel[list[ExternalDataItem]]):
@@ -1113,6 +1144,17 @@ class TrussConfig(custom_types.ConfigModel):
     def load_requirements_file_from_filepath(yaml_path: pathlib.Path) -> list[str]:
         config = TrussConfig.from_yaml(yaml_path)
         return config.load_requirements_from_file(yaml_path.parent)
+
+    @pydantic.field_validator("build_commands")
+    @classmethod
+    def _validate_build_commands(cls, commands: list[str]) -> list[str]:
+        for i, cmd in enumerate(commands):
+            if "\n" in cmd or "\r" in cmd:
+                raise ValueError(
+                    f"build_commands[{i}] contains newline characters, which are "
+                    "not allowed. Use '&&' to chain multiple shell commands instead."
+                )
+        return commands
 
     @pydantic.field_validator("python_version")
     def _validate_python_version(cls, v: str) -> str:

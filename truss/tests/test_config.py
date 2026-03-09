@@ -21,6 +21,7 @@ from truss.base.truss_config import (
     DockerAuthSettings,
     DockerAuthType,
     DockerServer,
+    ExternalDataItem,
     HTTPOptions,
     ModelCache,
     ModelRepo,
@@ -834,6 +835,142 @@ def test_secret_to_path_mapping_incorrect_type(default_config):
 
         with pytest.raises(ValueError):
             TrussConfig.from_yaml(yaml_path)
+
+
+def test_build_commands_valid():
+    config = TrussConfig.from_dict(
+        {"build_commands": ["apt-get update && apt-get install -y curl"]}
+    )
+    assert config.build_commands == ["apt-get update && apt-get install -y curl"]
+
+
+def test_build_commands_literal_backslash_n_is_allowed():
+    config = TrussConfig.from_dict(
+        {"build_commands": ["echo 'hello\\nworld' > /tmp/file"]}
+    )
+    assert len(config.build_commands) == 1
+
+
+def test_build_commands_rejects_real_newline():
+    with pytest.raises(pydantic.ValidationError, match="not allowed"):
+        TrussConfig.from_dict({"build_commands": ["echo harmless\nARG INJECT=true"]})
+
+
+def test_build_commands_rejects_carriage_return():
+    with pytest.raises(pydantic.ValidationError, match="not allowed"):
+        TrussConfig.from_dict({"build_commands": ["echo harmless\rARG INJECT=true"]})
+
+
+def test_build_commands_rejects_crlf():
+    with pytest.raises(pydantic.ValidationError, match="not allowed"):
+        TrussConfig.from_dict({"build_commands": ["echo harmless\r\nRUN ls /proc/"]})
+
+
+def test_external_data_url_valid():
+    item = ExternalDataItem(
+        url="https://example.com/model.bin", local_data_path="model.bin"
+    )
+    assert item.url == "https://example.com/model.bin"
+
+
+def test_external_data_url_rejects_double_quote():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        ExternalDataItem(
+            url='https://example.com/x" && exit 1 && echo "',
+            local_data_path="model.bin",
+        )
+
+
+def test_external_data_url_rejects_newline():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        ExternalDataItem(
+            url="https://example.com/x\nRUN evil", local_data_path="model.bin"
+        )
+
+
+def test_external_data_url_rejects_backtick():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        ExternalDataItem(
+            url="https://example.com/`whoami`", local_data_path="model.bin"
+        )
+
+
+def test_external_data_url_rejects_dollar_sign():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        ExternalDataItem(
+            url="https://example.com/$(whoami)", local_data_path="model.bin"
+        )
+
+
+def test_external_data_local_data_path_valid():
+    item = ExternalDataItem(
+        url="https://example.com/model.bin", local_data_path="models/model.bin"
+    )
+    assert item.local_data_path == "models/model.bin"
+
+
+def test_external_data_local_data_path_rejects_semicolon():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        ExternalDataItem(
+            url="https://example.com/model.bin", local_data_path="model.bin; rm -rf /"
+        )
+
+
+def test_external_data_local_data_path_rejects_pipe():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        ExternalDataItem(
+            url="https://example.com/model.bin",
+            local_data_path="model.bin | cat /etc/passwd",
+        )
+
+
+def test_external_data_local_data_path_rejects_ampersand():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        ExternalDataItem(
+            url="https://example.com/model.bin", local_data_path="model.bin && evil"
+        )
+
+
+def test_secret_path_valid():
+    config = TrussConfig.from_dict(
+        {"build": {"secret_to_path_mapping": {"mysecret": "/run/secrets/mysecret"}}}
+    )
+    assert config.build.secret_to_path_mapping["mysecret"] == "/run/secrets/mysecret"
+
+
+def test_secret_path_rejects_newline():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        TrussConfig.from_dict(
+            {
+                "build": {
+                    "secret_to_path_mapping": {
+                        "mysecret": "/run/secrets/x\nARG INJECT=true"
+                    }
+                }
+            }
+        )
+
+
+def test_secret_path_rejects_double_quote():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        TrussConfig.from_dict(
+            {
+                "build": {
+                    "secret_to_path_mapping": {"mysecret": '/run/secrets/x" --evil'}
+                }
+            }
+        )
+
+
+def test_secret_path_rejects_space():
+    with pytest.raises(pydantic.ValidationError, match="unsupported characters"):
+        TrussConfig.from_dict(
+            {
+                "build": {
+                    "secret_to_path_mapping": {"mysecret": "/run/secrets/my secret"}
+                }
+            }
+        )
 
 
 def test_max_beam_width_check(trtllm_config):
