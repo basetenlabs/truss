@@ -44,6 +44,13 @@ class _MetricsFilter(logging.Filter):
 
 
 class _AccessJsonFormatter(json_logger.JsonFormatter):
+    def add_fields(
+        self, log_record: dict, record: logging.LogRecord, message_dict: dict
+    ) -> None:
+        super().add_fields(log_record, record, message_dict)
+        if request_id := request_id_context.get():
+            log_record["request_id"] = request_id
+
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
         # record.args = (addr, method, path, version, status).
