@@ -27,7 +27,6 @@ import logging
 import os
 import pathlib
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -81,10 +80,8 @@ def _indent(text: str, num: int = 1) -> str:
     return textwrap.indent(text, _INDENT * num)
 
 
-def _run_simple_subprocess(cmd: str) -> None:
-    process = subprocess.Popen(
-        shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+def _run_simple_subprocess(cmd: list[str]) -> None:
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     _, stderr = process.communicate()
     if process.returncode != 0:
         raise ChildProcessError(f"Error: {stderr.decode()}")
@@ -92,8 +89,10 @@ def _run_simple_subprocess(cmd: str) -> None:
 
 def _format_python_file(file_path: pathlib.Path) -> None:
     # Resolve importing sorting and unused import issues.
-    _run_simple_subprocess(f"ruff check {file_path} --fix --select F401,I")
-    _run_simple_subprocess(f"ruff format {file_path}")
+    _run_simple_subprocess(
+        ["ruff", "check", str(file_path), "--fix", "--select", "F401,I"]
+    )
+    _run_simple_subprocess(["ruff", "format", str(file_path)])
 
 
 class _Source(custom_types.SafeModelNonSerializable):
