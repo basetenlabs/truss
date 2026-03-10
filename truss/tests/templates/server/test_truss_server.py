@@ -1,13 +1,138 @@
+import importlib
 import os
 import signal
 import socket
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from multiprocessing import Process
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import opentelemetry.sdk.trace as sdk_trace
 import pytest
+import yaml
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.fixture
+def app_path(truss_container_fs, helpers):
+    truss_container_app_path = truss_container_fs / "app"
+    with helpers.sys_path(truss_container_app_path):
+        yield truss_container_app_path
+
+
+@contextmanager
+def _change_directory(new_directory: Path):
+    original_directory = os.getcwd()
+    os.chdir(str(new_directory))
+    try:
+        yield
+    finally:
+        os.chdir(original_directory)
+
+
+@contextmanager
+def _clear_truss_server_modules():
+    """Clear truss_server module for clean import."""
+    modules_to_remove = ["truss_server"]
+    for mod in modules_to_remove:
+        sys.modules.pop(mod, None)
+    yield
+    for mod in modules_to_remove:
+        sys.modules.pop(mod, None)
+
+
+def _get_endpoints(app_path):
+    """Create BasetenEndpoints from container app path."""
+    model_wrapper_module = importlib.import_module("model_wrapper")
+    truss_server_module = importlib.import_module("truss_server")
+    config = yaml.safe_load((app_path / "config.yaml").read_text())
+    model_wrapper = model_wrapper_module.ModelWrapper(config, sdk_trace.NoOpTracer())
+    model_wrapper.load()
+    time.sleep(1)  # Allow load thread to complete
+
+    tracer = truss_server_module.tracing.get_truss_tracer(
+        truss_server_module.SecretsResolver.get_secrets(config), config
+    )
+    return truss_server_module.BasetenEndpoints(model_wrapper, tracer)
+
+
+def _make_connected_request(request_id=None):
+    """Create a mock Request with headers and is_disconnected for predict flow."""
+    mock_request = MagicMock()
+    mock_request.headers.get = lambda key, default=None: (
+        request_id if key == "x-baseten-request-id" else default
+    )
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+    return mock_request
+
+
+@pytest.mark.anyio
+async def test_execute_request_sets_request_id_in_context(app_path):
+    """Verify _execute_request sets request_id from x-baseten-request-id header in context."""
+    request_id = "test-request-id-12345"
+    mock_request = _make_connected_request(request_id)
+
+    with (
+        _clear_truss_server_modules(),
+        _change_directory(app_path),
+        patch("shared.log_config.request_id_context") as mock_request_id_context,
+    ):
+        endpoints = _get_endpoints(app_path)
+
+        await endpoints.predict(
+            model_name="model", request=mock_request, body_raw=b"{}"
+        )
+
+        mock_request_id_context.set.assert_called_once_with(request_id)
+
+
+@pytest.mark.anyio
+async def test_execute_request_sets_none_when_no_request_id_header(app_path):
+    """Verify _execute_request sets None in context when x-baseten-request-id is missing."""
+    mock_request = _make_connected_request()
+
+    with (
+        _clear_truss_server_modules(),
+        _change_directory(app_path),
+        patch("shared.log_config.request_id_context") as mock_request_id_context,
+    ):
+        endpoints = _get_endpoints(app_path)
+
+        await endpoints.predict(
+            model_name="model", request=mock_request, body_raw=b"{}"
+        )
+
+        mock_request_id_context.set.assert_called_once_with(None)
+
+
+@pytest.mark.anyio
+async def test_websocket_sets_request_id_in_context(app_path):
+    """Verify websocket sets request_id from x-baseten-request-id header in context."""
+    request_id = "ws-request-id-67890"
+    mock_ws = MagicMock()
+    mock_ws.headers.get = lambda key, default=None: (
+        request_id if key == "x-baseten-request-id" else default
+    )
+    mock_ws.accept = AsyncMock()
+    mock_ws.close = AsyncMock()
+
+    with (
+        _clear_truss_server_modules(),
+        _change_directory(app_path),
+        patch("shared.log_config.request_id_context") as mock_request_id_context,
+    ):
+        endpoints = _get_endpoints(app_path)
+
+        await endpoints.websocket(mock_ws)
+
+        mock_request_id_context.set.assert_called_once_with(request_id)
 
 
 def _start_truss_server(

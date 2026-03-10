@@ -668,6 +668,7 @@ class Build(custom_types.ConfigModel):
     model_server: ModelServer = ModelServer.TrussServer
     arguments: dict[str, Any] = pydantic.Field(default_factory=dict)
     secret_to_path_mapping: Mapping[str, str] = pydantic.Field(default_factory=dict)
+    no_cache: bool = False
 
     _SECRET_NAME_REGEX: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
     _MAX_SECRET_NAME_LENGTH: ClassVar[int] = 253
@@ -841,6 +842,7 @@ class DockerAuthType(str, enum.Enum):
     AWS_IAM = "AWS_IAM"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
+    REGISTRY_SECRET = "REGISTRY_SECRET"
 
 
 class DockerAuthSettings(AuthFieldsMixin):
@@ -1053,6 +1055,12 @@ class TrussConfig(custom_types.ConfigModel):
             raise ValueError(f"Expected a truss configuration file at {path}")
         with path.open() as f:
             raw_data = safe_load_yaml_with_no_duplicates(f) or {}
+        # TODO(deepakn): Remove this once we have a way to pass no_cache through the context.
+        build_section = raw_data.get("build")
+        if isinstance(build_section, dict) and build_section.get("no_cache") is True:
+            raise ValueError(
+                "no_cache cannot be specified in config.yaml. Use the --no-cache CLI flag instead."
+            )
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):

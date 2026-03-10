@@ -232,7 +232,9 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print()
         table = _create_oidc_table(oidc_info)
         console.print(table)
-        # TODO(danielleef): Reference docs here once they're ready
+        console.print(
+            f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
+        )
 
 
 @truss_cli.command()
@@ -640,6 +642,14 @@ def run_python(script, target_directory):
         "to apply live patches. Cannot be used with --promote, --environment, or --tail."
     ),
 )
+@click.option(
+    "--no-cache",
+    "no_cache",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Force a full rebuild without using cached layers.",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -662,6 +672,7 @@ def push(
     provided_team_name: Optional[str] = None,
     labels: Optional[str] = None,
     watch_after_push: bool = False,
+    no_cache: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -786,6 +797,9 @@ def push(
     if trusted is not None:
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
+
+    if no_cache:
+        tr.spec.config.build.no_cache = True
 
     # Parse labels from CLI option
     labels_dict: Optional[dict] = None

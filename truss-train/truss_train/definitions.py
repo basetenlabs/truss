@@ -3,15 +3,12 @@ from abc import ABC
 from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import ValidationError, field_validator, model_validator
+from pydantic import ValidationError, model_validator
 
 from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
 DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES = 8 * 60
-
-# Allowed LoRA rank values for vLLM
-ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
 
 
 class ModelWeightsFormat(str, enum.Enum):
@@ -178,6 +175,10 @@ class GCPServiceAccountJSONDockerAuth(custom_types.SafeModelNoExtra):
     service_account_json_secret_ref: SecretReference
 
 
+class RegistrySecretDockerAuth(custom_types.SafeModelNoExtra):
+    secret_ref: SecretReference
+
+
 class DockerAuth(custom_types.SafeModelNoExtra):
     auth_method: truss_config.DockerAuthType
     registry: str
@@ -185,6 +186,7 @@ class DockerAuth(custom_types.SafeModelNoExtra):
     gcp_service_account_json_docker_auth: Optional[GCPServiceAccountJSONDockerAuth] = (
         None
     )
+    registry_secret_docker_auth: Optional[RegistrySecretDockerAuth] = None
 
 
 class Image(custom_types.SafeModelNoExtra):
@@ -250,15 +252,6 @@ class LoRADetails(custom_types.ConfigModel):
     """Configuration details specific to LoRA (Low-Rank Adaptation) models."""
 
     rank: int = DEFAULT_LORA_RANK
-
-    @field_validator("rank")
-    @classmethod
-    def validate_lora_rank(cls, v):
-        if v not in ALLOWED_LORA_RANKS:
-            raise ValueError(
-                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}.model_weight_format = checkpoints[0].model_weight_format"
-            )
-        return v
 
 
 class FullCheckpoint(Checkpoint):

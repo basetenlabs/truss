@@ -756,6 +756,26 @@ def test_secret_to_path_mapping_correct_type(default_config):
         assert truss_config.build.secret_to_path_mapping == {"foo": "/bar"}
 
 
+def test_build_no_cache_rejected_from_config(default_config):
+    data = {"description": "this is a test", "build": {"no_cache": True}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        with pytest.raises(ValueError, match="no_cache cannot be specified in config"):
+            TrussConfig.from_yaml(yaml_path)
+
+
+def test_build_no_cache_defaults_to_false(default_config):
+    data = {"description": "this is a test", "build": {}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        truss_config = TrussConfig.from_yaml(yaml_path)
+        assert truss_config.build.no_cache is False
+
+
 @pytest.mark.parametrize(
     "secret_name, should_error",
     [
