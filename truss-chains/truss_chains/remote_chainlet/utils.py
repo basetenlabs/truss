@@ -357,6 +357,9 @@ _trace_parent_context: contextvars.ContextVar[Optional[str]] = contextvars.Conte
 _request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "request_id", default=None
 )
+_chain_request_id_context: contextvars.ContextVar[Optional[str]] = (
+    contextvars.ContextVar("chain_request_id", default=None)
+)
 
 
 @contextlib.contextmanager
@@ -394,6 +397,21 @@ def _request_id(headers: Mapping[str, str]) -> Iterator[None]:
 
 def get_request_id() -> Optional[str]:
     return _request_id_context.get()
+
+
+@contextlib.contextmanager
+def _chain_request_id(headers: Mapping[str, str]) -> Iterator[None]:
+    token = _chain_request_id_context.set(
+        headers.get(private_types.CHAIN_REQUEST_ID_HEADER_KEY)
+    )
+    try:
+        yield
+    finally:
+        _chain_request_id_context.reset(token)
+
+
+def get_chain_request_id() -> Optional[str]:
+    return _chain_request_id_context.get()
 
 
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
@@ -602,7 +620,7 @@ async def async_response_raise_errors(
 
 @contextlib.contextmanager
 def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
-    with _trace_parent(headers), _request_id(headers):
+    with _trace_parent(headers), _request_id(headers), _chain_request_id(headers):
         try:
             yield
         except Exception as e:
