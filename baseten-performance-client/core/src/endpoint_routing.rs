@@ -110,15 +110,29 @@ impl EndpointPoolConfig {
 
     pub fn with_standard_health_checks(
         mut self,
+        deep_health_urls: Option<Vec<String>>,
         fail_on_first: bool,
         deployment_health_path: Option<String>,
         deployment_timeout_is_no_vote: bool,
+        deep_timeout_is_no_vote: bool,
     ) -> Self {
         let deployment_health_path =
             deployment_health_path.unwrap_or_else(|| DEFAULT_HEALTH_CHECK_PATH.to_string());
         let endpoint_count = self.urls.len();
-        self.endpoint_health = Some(
-            (0..endpoint_count)
+        self.endpoint_health = Some(match deep_health_urls {
+            Some(deep_health_urls) => deep_health_urls
+                .into_iter()
+                .map(|deep_url| EndpointHealthConfig {
+                    checks: vec![
+                        EndpointHealthCheckConfig::relative(deployment_health_path.clone())
+                            .with_timeout_is_no_vote(deployment_timeout_is_no_vote),
+                        EndpointHealthCheckConfig::absolute(deep_url)
+                            .with_timeout_is_no_vote(deep_timeout_is_no_vote),
+                    ],
+                    fail_on_first,
+                })
+                .collect(),
+            None => (0..endpoint_count)
                 .map(|_| EndpointHealthConfig {
                     checks: vec![EndpointHealthCheckConfig::relative(
                         deployment_health_path.clone(),
@@ -127,7 +141,7 @@ impl EndpointPoolConfig {
                     fail_on_first,
                 })
                 .collect(),
-        );
+        });
         self
     }
 
