@@ -575,7 +575,7 @@ impl PerformanceClient {
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
         let core_client =
-            PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy)
+            PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy, None)
                 .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {

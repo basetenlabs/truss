@@ -1,5 +1,6 @@
 use crate::cancellation::JoinSetGuard;
 use crate::constants::*;
+use crate::endpoint_routing::EndpointPool;
 use crate::errors::ClientError;
 use crate::http::*;
 use crate::http_client::*;
@@ -136,6 +137,7 @@ impl HttpClientWrapper {
 ///     2, // HTTP/2
 ///     None,
 ///     None, // proxy
+///     None, // endpoint pool
 /// )?;
 ///
 /// // Configure processing preferences
@@ -174,6 +176,8 @@ pub struct PerformanceClientCore {
     /// It's exposed as public for advanced use cases but typically shouldn't
     /// be modified directly.
     pub client_wrapper: Arc<HttpClientWrapper>,
+
+    endpoint_pool: Option<Arc<EndpointPool>>,
 }
 
 impl PerformanceClientCore {
@@ -183,6 +187,7 @@ impl PerformanceClientCore {
         http_version: u8,
         client_wrapper: Option<Arc<HttpClientWrapper>>,
         proxy: Option<String>,
+        endpoint_pool: Option<Arc<EndpointPool>>,
     ) -> Result<Self, ClientError> {
         let api_key = Self::get_api_key(api_key)?;
 
@@ -202,11 +207,54 @@ impl PerformanceClientCore {
             );
         }
 
-        Ok(PerformanceClientCore {
+        let base_url = endpoint_pool
+            .as_ref()
+            .map(|pool| pool.primary_url().to_string())
+            .unwrap_or(base_url);
+
+        let client = PerformanceClientCore {
             api_key,
             base_url: base_url.into(),
             client_wrapper,
-        })
+            endpoint_pool,
+        };
+
+        client.start_endpoint_health_worker();
+        Ok(client)
+    }
+
+    fn start_endpoint_health_worker(&self) {
+        let Some(endpoint_pool) = &self.endpoint_pool else {
+            return;
+        };
+
+        if endpoint_pool.endpoint_count() <= 1 || !endpoint_pool.mark_health_worker_started() {
+            return;
+        }
+
+        let weak_pool = Arc::downgrade(endpoint_pool);
+        let client_wrapper = Arc::clone(&self.client_wrapper);
+        let api_key = self.api_key.clone();
+
+        let task = async move {
+            loop {
+                let Some(endpoint_pool) = weak_pool.upgrade() else {
+                    break;
+                };
+
+                let client = client_wrapper.get_client();
+                endpoint_pool.refresh_health(&client, &api_key).await;
+                tokio::time::sleep(endpoint_pool.health_check_interval()).await;
+            }
+        };
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(task);
+        } else {
+            tracing::warn!(
+                "endpoint pool configured, but no Tokio runtime is active; health worker was not started"
+            );
+        }
     }
 
     pub fn get_api_key(api_key: Option<String>) -> Result<String, ClientError> {
@@ -332,12 +380,12 @@ impl PerformanceClientCore {
         batches: Vec<Vec<String>>,
         config: &RequestProcessingConfig,
         create_payload: impl Fn(Vec<String>) -> T + Send + Sync + 'static,
-        endpoint_url: Arc<str>,
+        endpoint_path: Arc<str>,
         adjust_indices: impl Fn(&mut R, usize) + Send + Sync + 'static,
         total_timeout: Option<Duration>,
     ) -> Result<(R, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError>
     where
-        T: serde::Serialize + Send + 'static,
+        T: serde::Serialize + Clone + Send + Sync + 'static,
         R: serde::de::DeserializeOwned + Combinable + Send + 'static,
     {
         let start_time = std::time::Instant::now();
@@ -387,7 +435,7 @@ impl PerformanceClientCore {
 
             // Create payload and URL outside async block
             let payload = create_payload(batch);
-            let url = endpoint_url.clone();
+            let endpoint_path = endpoint_path.clone();
 
             // Generate individual request ID for this batch
             let request_customer_id = config_clone.create_request_customer_id(batch_index);
@@ -401,10 +449,13 @@ impl PerformanceClientCore {
 
                 let request_time_start = Instant::now();
 
-                // Send request with pre-created payload and URL
                 let (response, headers): (R, HeaderMap) = send_http_request_with_retry(
                     &client,
-                    url.to_string(),
+                    format!(
+                        "{}/{}",
+                        config_clone.base_url.trim_end_matches('/'),
+                        endpoint_path.trim_start_matches('/')
+                    ),
                     payload,
                     api_key,
                     request_timeout_duration,
@@ -540,17 +591,17 @@ impl PerformanceClientCore {
         ClientError,
     > {
         // Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            texts.len(),
-            self.api_key.clone(),
-        )?;
+        let config = preference
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                texts.len(),
+                self.api_key.clone(),
+            )?
+            .with_endpoint_pool(self.endpoint_pool.clone());
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
-        // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> =
-            format!("{}/v1/embeddings", config.base_url.trim_end_matches('/')).into();
+        let endpoint_path: Arc<str> = "/v1/embeddings".into();
 
         let total_timeout = config.total_timeout_duration();
 
@@ -565,7 +616,7 @@ impl PerformanceClientCore {
                     dimensions,
                     user: user.clone(),
                 },
-                endpoint_url,
+                endpoint_path,
                 |response: &mut CoreOpenAIEmbeddingsResponse, start_index| {
                     for item in &mut response.data {
                         item.index += start_index;
@@ -598,18 +649,18 @@ impl PerformanceClientCore {
         preference: &RequestProcessingPreference,
     ) -> Result<(CoreRerankResponse, Vec<Duration>, Vec<HeaderMap>, Duration), ClientError> {
         // Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            texts.len(),
-            self.api_key.clone(),
-        )?;
+        let config = preference
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                texts.len(),
+                self.api_key.clone(),
+            )?
+            .with_endpoint_pool(self.endpoint_pool.clone());
 
         // Create batches
         let batches = self.create_batches_with_config(texts, &config);
 
-        // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> =
-            format!("{}/rerank", config.base_url.trim_end_matches('/')).into();
+        let endpoint_path: Arc<str> = "/rerank".into();
 
         let total_timeout = config.total_timeout_duration();
 
@@ -626,7 +677,7 @@ impl PerformanceClientCore {
                     truncate,
                     truncation_direction: truncation_direction.clone(),
                 },
-                endpoint_url,
+                endpoint_path,
                 |results: &mut Vec<CoreRerankResult>, start_index| {
                     for item in results {
                         item.index += start_index;
@@ -667,18 +718,18 @@ impl PerformanceClientCore {
         ClientError,
     > {
         // Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            inputs.len(),
-            self.api_key.clone(),
-        )?;
+        let config = preference
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                inputs.len(),
+                self.api_key.clone(),
+            )?
+            .with_endpoint_pool(self.endpoint_pool.clone());
 
         // Create batches
         let batches = self.create_batches_with_config(inputs, &config);
 
-        // Pre-compute endpoint URL
-        let endpoint_url: Arc<str> =
-            format!("{}/predict", config.base_url.trim_end_matches('/')).into();
+        let endpoint_path: Arc<str> = "/predict".into();
 
         let total_timeout = config.total_timeout_duration();
 
@@ -697,7 +748,7 @@ impl PerformanceClientCore {
                         truncation_direction: truncation_direction.clone(),
                     }
                 },
-                endpoint_url,
+                endpoint_path,
                 |_results: &mut Vec<Vec<CoreClassificationResult>>, _start_index| {
                     // Classification responses don't have index fields to adjust
                 },
@@ -729,11 +780,13 @@ impl PerformanceClientCore {
         let total_payloads = payloads_json.len();
 
         // Create and validate config from preference
-        let config = preference.pair_with_request_validate_and_convert(
-            self.base_url.to_string(),
-            total_payloads,
-            self.api_key.clone(),
-        )?;
+        let config = preference
+            .pair_with_request_validate_and_convert(
+                self.base_url.to_string(),
+                total_payloads,
+                self.api_key.clone(),
+            )?
+            .with_endpoint_pool(self.endpoint_pool.clone());
 
         let total_timeout = config.total_timeout_duration();
         let request_timeout_duration = config.timeout_duration();
@@ -751,7 +804,6 @@ impl PerformanceClientCore {
             let config_clone = config.clone();
             let client_wrapper = self.client_wrapper.clone();
             let api_key = self.api_key.clone();
-            let base_url = self.base_url.clone();
             let url_path = url_path.clone();
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;
@@ -766,17 +818,15 @@ impl PerformanceClientCore {
                     .await
                     .map_err(|e| ClientError::Network(format!("Semaphore closed: {}", e)))?;
                 let client = client_wrapper.get_client();
-
-                let full_url = format!(
-                    "{}/{}",
-                    base_url.trim_end_matches('/'),
-                    url_path.trim_start_matches('/')
-                );
                 let request_time_start = std::time::Instant::now();
 
                 let result_tuple = send_http_request_with_headers(
                     &client,
-                    full_url,
+                    format!(
+                        "{}/{}",
+                        config_clone.base_url.trim_end_matches('/'),
+                        url_path.trim_start_matches('/')
+                    ),
                     payload_item_json,
                     api_key,
                     individual_request_timeout,

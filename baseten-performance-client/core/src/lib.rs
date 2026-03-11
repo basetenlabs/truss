@@ -2,6 +2,7 @@ pub mod cancellation;
 pub mod client;
 pub mod constants;
 pub mod customer_request_id;
+pub mod endpoint_routing;
 pub mod errors;
 pub mod http;
 pub mod http_client;
@@ -12,6 +13,10 @@ pub mod utils;
 pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
+pub use endpoint_routing::{
+    EndpointHealthCheckConfig, EndpointHealthConfig, EndpointHealthStatus, EndpointPool,
+    EndpointPoolConfig, EndpointPoolHealthSnapshot,
+};
 pub use errors::ClientError;
 pub use http::*;
 // http_client is internal only - not reexported

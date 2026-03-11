@@ -371,8 +371,9 @@ impl PerformanceClient {
   ) -> napi::Result<Self> {
     let http_version = http_version.unwrap_or(1);
     let wrapper = client_wrapper.map(|c| Arc::clone(&c.inner));
-    let core_client = PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy)
-      .map_err(convert_core_error_to_napi_error)?;
+    let core_client =
+      PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy, None)
+        .map_err(convert_core_error_to_napi_error)?;
 
     Ok(Self { core_client })
   }

@@ -24,23 +24,25 @@ where
     T: serde::Serialize,
     R: serde::de::DeserializeOwned,
 {
-    let mut request_builder = client
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&payload)
-        .timeout(request_timeout);
+    let customer_request_id_header = customer_request_id.to_string();
+    let response = send_request_with_retry(&url, config, |attempt_url| {
+        let mut request_builder = client
+            .post(attempt_url)
+            .bearer_auth(&api_key)
+            .json(&payload)
+            .timeout(request_timeout)
+            .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
 
-    // Add customer request ID header
-    request_builder = request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
-
-    // Add extra headers from config if present
-    if let Some(ref headers) = config.extra_headers {
-        for (key, value) in headers {
-            request_builder = request_builder.header(key, value);
+        if let Some(ref headers) = config.extra_headers {
+            for (key, value) in headers {
+                request_builder = request_builder.header(key, value);
+            }
         }
-    }
 
-    let response = send_request_with_retry(request_builder, config).await?;
+        request_builder
+    })
+    .await?;
+
     let successful_response =
         ensure_successful_response(response, Some(customer_request_id.to_string())).await?;
 
@@ -76,28 +78,28 @@ pub(crate) async fn send_http_request_with_headers<T>(
 where
     T: serde::Serialize,
 {
-    let mut request_builder = client
-        .request(method.into(), &url)
-        .bearer_auth(api_key)
-        .timeout(request_timeout);
+    let customer_request_id_header = customer_request_id.to_string();
+    let response = send_request_with_retry(&url, config, |attempt_url| {
+        let mut request_builder = client
+            .request(method.into(), attempt_url)
+            .bearer_auth(&api_key)
+            .timeout(request_timeout)
+            .header(CUSTOMER_HEADER_NAME, &customer_request_id_header);
 
-    // Only add JSON body for methods that support it
-    if method.has_body() {
-        request_builder = request_builder.json(&payload);
-    }
-
-    // Add customer request ID header
-    request_builder = request_builder.header(CUSTOMER_HEADER_NAME, customer_request_id.to_string());
-
-    // Add extra headers from config if present
-    if let Some(ref headers) = config.extra_headers {
-        for (key, value) in headers {
-            request_builder = request_builder.header(key, value);
+        if method.has_body() {
+            request_builder = request_builder.json(&payload);
         }
-    }
 
-    let response = send_request_with_retry(request_builder, config).await?;
-    // hedge here with a second workstream, awaiting the first one or time of hedge
+        if let Some(ref headers) = config.extra_headers {
+            for (key, value) in headers {
+                request_builder = request_builder.header(key, value);
+            }
+        }
+
+        request_builder
+    })
+    .await?;
+
     let successful_response =
         ensure_successful_response(response, Some(customer_request_id.to_string())).await?;
 
@@ -146,17 +148,21 @@ async fn ensure_successful_response(
 }
 
 async fn send_request_with_retry(
-    request_builder: reqwest::RequestBuilder,
+    original_url: &str,
     config: &RequestProcessingConfig,
+    build_request: impl Fn(&str) -> reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, ClientError> {
     let mut retries_done = 0;
     let mut current_backoff = config.initial_backoff;
     let max_retries = config.max_retries;
+    let mut attempted_endpoint_indices: Vec<usize> = Vec::new();
 
     loop {
-        let request_builder_clone = request_builder.try_clone().ok_or_else(|| {
-            ClientError::Network("Failed to clone request builder for retry".to_string())
-        })?;
+        let (attempt_url, selected_endpoint_index) =
+            config.select_attempt_url(original_url, &attempted_endpoint_indices);
+        if !attempted_endpoint_indices.contains(&selected_endpoint_index) {
+            attempted_endpoint_indices.push(selected_endpoint_index);
+        }
 
         // Only hedge on the first request (retries_done <= 1)
         let should_hedge = retries_done <= 1
@@ -172,17 +178,18 @@ async fn send_request_with_retry(
         }
 
         let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
-            send_request_with_hedging(request_builder_clone, config).await
+            let request_builder = build_request(&attempt_url);
+            let hedge_url = config.select_hedge_url(original_url, selected_endpoint_index);
+            let hedge_builder = build_request(&hedge_url);
+            send_request_with_hedging(request_builder, hedge_builder, config).await
         } else {
-            request_builder_clone.send().await.map_err(|e| {
+            build_request(&attempt_url).send().await.map_err(|e| {
                 convert_reqwest_error_with_customer_id(e, config.customer_request_id.clone())
             })
         };
 
         // Decide retry exactly once per iteration.
-        let mut should_retry_iteration = false;
-
-        match response_result {
+        let should_retry_iteration = match response_result {
             Ok(resp) => {
                 let status = resp.status();
 
@@ -191,9 +198,9 @@ async fn send_request_with_retry(
                 }
 
                 let retryable = is_retryable_status(status.as_u16());
-                should_retry_iteration = retryable && retries_done < max_retries;
+                let should_retry = retryable && retries_done < max_retries;
 
-                if !should_retry_iteration {
+                if !should_retry {
                     return ensure_successful_response(
                         resp,
                         Some(config.customer_request_id.to_string()),
@@ -203,10 +210,11 @@ async fn send_request_with_retry(
 
                 // Retryable status: drain the body so the connection can be reused.
                 let _ = resp.bytes().await;
+                true
             }
 
             Err(client_error) => {
-                should_retry_iteration = match &client_error {
+                let should_retry = match &client_error {
                     ClientError::LocalTimeout(_, _) => {
                         let remaining_budget = config.retry_budget.fetch_sub(1, Ordering::SeqCst);
                         tracing::debug!(
@@ -250,10 +258,16 @@ async fn send_request_with_retry(
                     }
                 } && retries_done < max_retries;
 
-                if !should_retry_iteration {
+                if !should_retry {
                     return Err(client_error);
                 }
+
+                true
             }
+        };
+
+        if !should_retry_iteration {
+            unreachable!("retry loop must return before reaching this branch");
         }
 
         // If we got here, we are retrying this iteration.
@@ -268,6 +282,7 @@ async fn send_request_with_retry(
 
 pub(crate) async fn send_request_with_hedging(
     request_builder: reqwest::RequestBuilder,
+    request_builder_hedge: reqwest::RequestBuilder,
     config: &RequestProcessingConfig,
 ) -> Result<reqwest::Response, ClientError> {
     // Validate that we have hedge budget and hedge delay
@@ -282,10 +297,6 @@ pub(crate) async fn send_request_with_hedging(
         tracing::debug!("No hedge budget available, using normal request");
         return request_builder.send().await.map_err(ClientError::from);
     }
-
-    let request_builder_hedge = request_builder.try_clone().ok_or_else(|| {
-        ClientError::Network("Failed to clone request builder for hedging".to_string())
-    })?;
 
     // Use JoinSetGuard to ensure all spawned tasks are aborted on drop
     let mut join_set: JoinSetGuard<Result<reqwest::Response, ClientError>> = JoinSetGuard::new();

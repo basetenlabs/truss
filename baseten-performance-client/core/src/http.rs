@@ -121,7 +121,7 @@ pub struct CoreOpenAIEmbeddingsResponse {
 }
 
 // --- Core Rerank Structures ---
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreRerankRequest {
     pub query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -169,7 +169,7 @@ impl CoreRerankResponse {
 }
 
 // --- Core Classification Structures ---
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CoreClassifyRequest {
     pub inputs: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
