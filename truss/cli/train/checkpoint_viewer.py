@@ -312,16 +312,18 @@ class _ColoredFuzzyControl(InquirerPyFuzzyControl):
         return display_choices
 
 
-def _colored_fuzzy(*, choices: list[dict], **kwargs) -> Any:
+def _colored_fuzzy(*, choices: list[dict], allow_back: bool = True, **kwargs) -> Any:
     """Create a fuzzy prompt that colors directory choices.
 
     Right-arrow on a file shows its download URL.
     """
+    if allow_back:
+        instruction = "← back  → open/url  ↑↓ navigate  enter select  ctrl-c quit"
+    else:
+        instruction = "→ enter  ↑↓ navigate  enter select  ctrl-c quit"
+
     prompt = FuzzyPrompt(
-        choices=choices,
-        style=_DIR_STYLE,
-        long_instruction="← back  → open/url  ↑↓ navigate  enter select  ctrl-c quit",
-        **kwargs,
+        choices=choices, style=_DIR_STYLE, long_instruction=instruction, **kwargs
     )
     prompt._content_control.__class__ = _ColoredFuzzyControl
 
@@ -334,12 +336,14 @@ def _colored_fuzzy(*, choices: list[dict], **kwargs) -> Any:
             value = filtered[idx].get("value")
             if isinstance(value, tuple) and value[0] == "file":
                 event.app.exit(result=("url", value[1].get("url", "")))
-            elif isinstance(value, tuple) and value[0] == "dir":
+            elif isinstance(value, tuple) and value[0] in ("dir", "checkpoint"):
                 event.app.exit(result=value)
 
-    @prompt.register_kb("left")
-    def _go_back(event):
-        event.app.exit(result=("back", None))
+    if allow_back:
+
+        @prompt.register_kb("left")
+        def _go_back(event):
+            event.app.exit(result=("back", None))
 
     return prompt
 
@@ -395,14 +399,18 @@ def _build_explorer_choices(
 
 
 def _explore_files(
-    files: list[dict], job_id: str, checkpoint_lookup: Optional[dict[str, dict]] = None
+    files: list[dict],
+    job_id: str,
+    checkpoint_lookup: Optional[dict[str, dict]] = None,
+    initial_path: Optional[str] = None,
 ) -> None:
     """Interactive file explorer starting from the root of the checkpoint volume."""
     prepared_files = [
         {**f, "_rel_path": f.get("relative_file_name", "")} for f in files
     ]
 
-    path_stack: list[str] = []
+    path_stack: list[str] = initial_path.split("/") if initial_path else []
+    min_depth = len(path_stack)
 
     while True:
         current_path = "/".join(path_stack)
@@ -414,7 +422,9 @@ def _explore_files(
         display_path = job_id + "/" + current_path if current_path else job_id + "/"
         console.print(display_path, style="bold cyan")
 
-        choices = _build_explorer_choices(dirs, dir_files, has_parent=bool(path_stack))
+        choices = _build_explorer_choices(
+            dirs, dir_files, has_parent=len(path_stack) > min_depth
+        )
 
         selected = _colored_fuzzy(
             message="", qmark="", prompt="Navigate: ", choices=choices
@@ -434,8 +444,10 @@ def _explore_files(
         elif action == "url":
             _show_url(payload)
         elif action == "back":
-            if path_stack:
+            if len(path_stack) > min_depth:
                 path_stack.pop()
+            else:
+                return
         elif action == "exit":
             return
 
@@ -634,6 +646,33 @@ def _fetch_and_display_file(file_info: dict) -> None:
         input("Press Enter to continue...")
 
 
+def _select_checkpoint(checkpoints: list[dict], job_id: str) -> Optional[str]:
+    """Prompt the user to select a checkpoint. Returns checkpoint_id or None to exit."""
+    choices = []
+    for ckpt in checkpoints:
+        cid = ckpt.get("checkpoint_id", "")
+        ckpt_type = ckpt.get("checkpoint_type", "")
+        size_str = cli_common.format_bytes_to_human_readable(ckpt.get("size_bytes", 0))
+        created_str = cli_common.format_localized_time(ckpt.get("created_at", ""))
+        label = f"{cid}  [{ckpt_type}]  {size_str}  {created_str}"
+        choices.append({"name": label, "value": ("checkpoint", cid)})
+    choices.append({"name": EXIT_OPTION, "value": ("exit", None)})
+
+    console.clear()
+    console.print(f"Checkpoints for job: {job_id}", style="bold cyan")
+    result = _colored_fuzzy(
+        message="",
+        qmark="",
+        prompt="Select checkpoint: ",
+        choices=choices,
+        allow_back=False,
+    ).execute()
+    action, payload = result
+    if action == "checkpoint":
+        return payload
+    return None
+
+
 def view_checkpoint_list(
     remote_provider: BasetenRemote,
     project_id: str,
@@ -642,6 +681,7 @@ def view_checkpoint_list(
     order: str = SORT_ORDER_ASC,
     output_format: str = OUTPUT_FORMAT_CLI_TABLE,
     interactive: bool = False,
+    checkpoint_name: Optional[str] = None,
 ) -> None:
     """View checkpoints for a training job, with optional interactive drill-down."""
     viewer_factories: dict[str, type[CheckpointListViewer]] = {
@@ -662,13 +702,6 @@ def view_checkpoint_list(
         sort_key = _get_sort_key(sort_by)
         checkpoints.sort(key=sort_key, reverse=reverse)
 
-        if not interactive or output_format != OUTPUT_FORMAT_CLI_TABLE:
-            if not checkpoints:
-                viewer.output_no_checkpoints_message(job_id)
-            else:
-                viewer.output_checkpoints(checkpoints, job_id)
-            return
-
         # Build checkpoint lookup for annotations
         checkpoint_lookup: dict[str, dict] = {}
         for ckpt in checkpoints:
@@ -680,7 +713,43 @@ def view_checkpoint_list(
                     "size_bytes": ckpt.get("size_bytes", 0),
                 }
 
-        # Fetch all files and launch the file explorer from root
+        if checkpoint_name:
+            with console.status("Fetching checkpoint files...", spinner="dots"):
+                all_files = (
+                    remote_provider.api.get_training_job_checkpoint_presigned_url(
+                        project_id, job_id, page_size=1000
+                    )
+                )
+            if not all_files:
+                console.print("No files found in checkpoint volume.", style="yellow")
+                return
+            if not any(
+                f.get("relative_file_name", "").startswith(f"{checkpoint_name}/")
+                for f in all_files
+            ):
+                console.print(
+                    f"No files found for checkpoint: {checkpoint_name}", style="yellow"
+                )
+                return
+            _explore_files(
+                all_files,
+                job_id,
+                checkpoint_lookup or None,
+                initial_path=checkpoint_name,
+            )
+            return
+
+        if not interactive or output_format != OUTPUT_FORMAT_CLI_TABLE:
+            if not checkpoints:
+                viewer.output_no_checkpoints_message(job_id)
+            else:
+                viewer.output_checkpoints(checkpoints, job_id)
+            return
+
+        if not checkpoints:
+            viewer.output_no_checkpoints_message(job_id)
+            return
+
         with console.status("Fetching checkpoint files...", spinner="dots"):
             all_files = remote_provider.api.get_training_job_checkpoint_presigned_url(
                 project_id, job_id, page_size=1000
@@ -690,7 +759,16 @@ def view_checkpoint_list(
             console.print("No files found in checkpoint volume.", style="yellow")
             return
 
-        _explore_files(all_files, job_id, checkpoint_lookup or None)
+        while True:
+            selected_checkpoint = _select_checkpoint(checkpoints, job_id)
+            if selected_checkpoint is None:
+                return
+            _explore_files(
+                all_files,
+                job_id,
+                checkpoint_lookup or None,
+                initial_path=selected_checkpoint,
+            )
 
     except Exception as e:
         if output_format in (OUTPUT_FORMAT_CSV, OUTPUT_FORMAT_JSON):

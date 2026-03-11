@@ -17,7 +17,7 @@ from truss.cli.logs.training_log_watcher import TrainingLogWatcher
 from truss.cli.resolvers.training_project_team_resolver import (
     resolve_training_project_team_name,
 )
-from truss.cli.train import checkpoint as checkpoint_mod
+from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.train import common as train_common
 from truss.cli.train import core
 from truss.cli.train.cache import (
@@ -770,8 +770,16 @@ def checkpoints():
 
 
 @checkpoints.command(name="list")
-@click.argument("job_id", type=str)
 @click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option(
+    "--checkpoint-name",
+    type=str,
+    required=False,
+    help="Jump directly into a specific checkpoint's files.",
+)
 @click.option(
     "--sort",
     type=click.Choice(
@@ -806,7 +814,14 @@ def checkpoints():
 )
 @common.common_options()
 def list_checkpoints(
-    job_id: str, remote: Optional[str], sort: str, order: str, output_format: str
+    remote: Optional[str],
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    checkpoint_name: Optional[str],
+    sort: str,
+    order: str,
+    output_format: str,
 ):
     """List checkpoints for a training job"""
     if not remote:
@@ -816,8 +831,12 @@ def list_checkpoints(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    job = train_cli._get_job_by_job_id(remote_provider, job_id)
-    project_id = job["training_project"]["id"]
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+    project_id, job_id = train_common.get_most_recent_job(
+        remote_provider, project_id, job_id
+    )
 
     ctx = click.get_current_context()
     non_interactive = ctx.find_root().obj.get("non_interactive", False)
@@ -831,6 +850,7 @@ def list_checkpoints(
         order=order,
         output_format=output_format,
         interactive=interactive,
+        checkpoint_name=checkpoint_name,
     )
 
 
