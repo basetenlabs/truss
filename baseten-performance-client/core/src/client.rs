@@ -228,7 +228,18 @@ impl PerformanceClientCore {
             return;
         };
 
-        if endpoint_pool.endpoint_count() <= 1 || !endpoint_pool.mark_health_worker_started() {
+        if endpoint_pool.endpoint_count() <= 1 {
+            return;
+        }
+
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            tracing::warn!(
+                "endpoint pool configured, but no Tokio runtime is active; health worker was not started"
+            );
+            return;
+        };
+
+        if !endpoint_pool.mark_health_worker_started() {
             return;
         }
 
@@ -248,13 +259,7 @@ impl PerformanceClientCore {
             }
         };
 
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(task);
-        } else {
-            tracing::warn!(
-                "endpoint pool configured, but no Tokio runtime is active; health worker was not started"
-            );
-        }
+        handle.spawn(task);
     }
 
     pub fn get_api_key(api_key: Option<String>) -> Result<String, ClientError> {

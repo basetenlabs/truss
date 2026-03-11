@@ -462,6 +462,29 @@ client = PerformanceClient(
 )
 ```
 
+#### Endpoint Pool and Health Checks
+Route traffic across multiple deployments with weighted balancing and a background health worker:
+
+```python
+from baseten_performance_client import EndpointPool, PerformanceClient
+
+endpoint_pool = EndpointPool(
+    endpoint_urls=[
+        "https://deployment-a.example.com/sync",
+        "https://deployment-b.example.com/sync",
+    ],
+    endpoint_weights=[1.0, 0.2], # weighted round robin algo
+    deployment_health_path="/health",
+    deployment_timeout_is_no_vote=True,
+)
+
+client = PerformanceClient(
+    base_url="https://deployment-a.example.com/sync",
+    api_key="your_key",
+    endpoint_pool=endpoint_pool,
+)
+```
+
 ### Error Handling
 
 The client can raise several types of errors. Here's how to handle common ones:

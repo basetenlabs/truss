@@ -108,6 +108,29 @@ impl EndpointPoolConfig {
         self
     }
 
+    pub fn with_standard_health_checks(
+        mut self,
+        fail_on_first: bool,
+        deployment_health_path: Option<String>,
+        deployment_timeout_is_no_vote: bool,
+    ) -> Self {
+        let deployment_health_path =
+            deployment_health_path.unwrap_or_else(|| DEFAULT_HEALTH_CHECK_PATH.to_string());
+        let endpoint_count = self.urls.len();
+        self.endpoint_health = Some(
+            (0..endpoint_count)
+                .map(|_| EndpointHealthConfig {
+                    checks: vec![EndpointHealthCheckConfig::relative(
+                        deployment_health_path.clone(),
+                    )
+                    .with_timeout_is_no_vote(deployment_timeout_is_no_vote)],
+                    fail_on_first,
+                })
+                .collect(),
+        );
+        self
+    }
+
     pub fn primary_url(&self) -> Option<&str> {
         self.urls.first().map(String::as_str)
     }
