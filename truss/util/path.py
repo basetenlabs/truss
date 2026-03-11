@@ -30,16 +30,15 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
             (dest / rel_root / d).mkdir(exist_ok=True)
         for filename in filenames:
             src_file = Path(dirpath) / filename
-            try:
-                shutil.copy2(str(src_file), str(dest / rel_root / filename))
-            except FileNotFoundError:
+            if src_file.is_symlink() and not src_file.exists():
                 rel_file = rel_root / filename
                 print(
-                    f"WARNING: Skipping '{rel_file}': file not found "
-                    f"(possibly a broken symlink). "
+                    f"WARNING: Skipping '{rel_file}': broken symlink. "
                     f"Consider adding it to .trussignore.",
                     file=sys.stderr,
                 )
+                continue
+            shutil.copy2(str(src_file), str(dest / rel_root / filename))
 
 
 def copy_file_path(src: Path, dest: Path) -> str:
