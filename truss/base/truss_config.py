@@ -1057,9 +1057,11 @@ class TrussConfig(custom_types.ConfigModel):
             # so check for that and provide a helpful error message if we find one.
             resolved_path = path.resolve()
             stem = resolved_path.stem
-            alternative_path = resolved_path.parent / f'{stem}.yml'
+            alternative_path = resolved_path.parent / f"{stem}.yml"
             if os.path.isfile(alternative_path):
-                raise ValueError(f"No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?")
+                raise ValueError(
+                    "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+                )
             else:
                 raise ValueError(f"Expected a truss configuration file at {path}")
 

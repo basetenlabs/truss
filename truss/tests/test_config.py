@@ -648,28 +648,32 @@ def test_from_yaml_empty():
 
 
 def test_from_yaml_no_config():
-    data = {}
     with tempfile.TemporaryDirectory() as temp_dir_path:
-        yaml_path = Path(temp_dir_path) / 'config.yaml'
+        yaml_path = Path(temp_dir_path) / "config.yaml"
 
         with pytest.raises(ValueError) as exc_info:
             TrussConfig.from_yaml(yaml_path)
 
         print(exc_info.value.args[0])
-        assert exc_info.value.args[0] == f"Expected a truss configuration file at {yaml_path}"
+        assert (
+            exc_info.value.args[0]
+            == f"Expected a truss configuration file at {yaml_path}"
+        )
 
 
 def test_from_yaml_wrong_extension():
-    data = {}
     with tempfile.TemporaryDirectory() as temp_dir_path:
-        nonexistent_path = Path(temp_dir_path) / 'config.yaml'
-        existing_path = Path(temp_dir_path) / 'config.yml'
+        nonexistent_path = Path(temp_dir_path) / "config.yaml"
+        existing_path = Path(temp_dir_path) / "config.yml"
         existing_path.touch()
 
         with pytest.raises(ValueError) as exc_info:
             TrussConfig.from_yaml(nonexistent_path)
 
-        assert exc_info.value.args[0] == f"No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+        assert (
+            exc_info.value.args[0]
+            == "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+        )
 
 
 def test_from_yaml_duplicate_keys():
