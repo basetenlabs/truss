@@ -546,6 +546,7 @@ class HealthChecks(custom_types.ConfigModel):
     restart_check_delay_seconds: Optional[int] = None
     restart_threshold_seconds: Optional[int] = None
     stop_traffic_threshold_seconds: Optional[int] = None
+    startup_threshold_seconds: Optional[int] = None
 
 
 class TransportKind(str, enum.Enum):

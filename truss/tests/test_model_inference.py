@@ -935,12 +935,14 @@ def test_health_check_configuration():
         assert (
             tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
         )
+        assert tr.spec.config.runtime.health_checks.startup_threshold_seconds is None
 
     config = """runtime:
     health_checks:
         restart_check_delay_seconds: 1200
         restart_threshold_seconds: 90
         stop_traffic_threshold_seconds: 50
+        startup_threshold_seconds: 120
     """
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
@@ -949,6 +951,7 @@ def test_health_check_configuration():
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 1200
         assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 90
         assert tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 50
+        assert tr.spec.config.runtime.health_checks.startup_threshold_seconds == 120
 
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         container, urls = tr.docker_run_for_test()
@@ -958,6 +961,7 @@ def test_health_check_configuration():
         assert (
             tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
         )
+        assert tr.spec.config.runtime.health_checks.startup_threshold_seconds is None
 
 
 @pytest.mark.integration
