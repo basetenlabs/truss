@@ -524,7 +524,7 @@ impl PerformanceClient {
 
     // Parse method parameter using core function
     let http_method =
-      baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+      baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
         .map_err(|e| create_napi_error(&e))?;
 
     let result = self

@@ -1014,7 +1014,7 @@ impl PerformanceClient {
 
         // Parse method parameter using core function
         let http_method =
-            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+            baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
                 .map_err(|e| PyValueError::new_err(e))?;
 
         let result_from_async_task = py.allow_threads(move || {
@@ -1105,7 +1105,7 @@ impl PerformanceClient {
 
         // Parse method parameter using core function
         let http_method =
-            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+            baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
                 .map_err(|e| PyValueError::new_err(e))?;
 
         let future = async move {

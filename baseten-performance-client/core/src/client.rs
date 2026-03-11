@@ -807,7 +807,6 @@ impl PerformanceClientCore {
             let url_path = url_path.clone();
             let semaphore: Arc<Semaphore> = Arc::clone(&semaphore);
             let individual_request_timeout = request_timeout_duration;
-            let method = method;
 
             // Generate individual request ID for this batch
             let request_customer_id = config.create_request_customer_id(index);

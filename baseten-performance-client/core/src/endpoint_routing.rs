@@ -4,7 +4,6 @@ use futures::future::join_all;
 use reqwest::Client;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 
 const DEFAULT_HEALTH_CHECK_PATH: &str = "/health";
@@ -220,28 +219,10 @@ pub(crate) struct EndpointSelection {
     pub base_url: Arc<str>,
 }
 
-impl EndpointSelection {
-    pub(crate) fn primary(base_url: &str) -> Self {
-        Self {
-            endpoint_index: 0,
-            base_url: Arc::<str>::from(base_url),
-        }
-    }
-
-    pub(crate) fn full_url(&self, endpoint_path: &str) -> String {
-        format!(
-            "{}/{}",
-            self.base_url.trim_end_matches('/'),
-            endpoint_path.trim_start_matches('/')
-        )
-    }
-}
-
 #[derive(Debug)]
 pub struct EndpointPool {
     endpoints: Vec<ManagedEndpoint>,
     weights: Vec<f64>,
-    current_weights: Mutex<Vec<f64>>,
     endpoint_health: Vec<EndpointHealthConfig>,
     health_check_interval: Duration,
     health_check_timeout: Duration,
@@ -286,7 +267,6 @@ impl EndpointPool {
                     healthy: Arc::new(AtomicBool::new(true)),
                 })
                 .collect(),
-            current_weights: Mutex::new(vec![0.0; endpoint_count]),
             weights,
             endpoint_health,
             health_check_interval,
@@ -313,51 +293,47 @@ impl EndpointPool {
         !self.health_worker_started.swap(true, Ordering::SeqCst)
     }
 
-    fn weighted_selection_from_candidates(
-        &self,
-        candidates: Vec<usize>,
-    ) -> Option<EndpointSelection> {
+    fn select_from_candidates(&self, candidates: &[usize]) -> Option<EndpointSelection> {
         if candidates.is_empty() {
             return None;
         }
 
-        let mut current_weights = self.current_weights.lock().ok()?;
-        let mut total_weight = 0.0;
-        let mut chosen_endpoint_index = None;
-        let mut chosen_weight = f64::NEG_INFINITY;
+        let ticket = self.round_robin_counter.fetch_add(1, Ordering::SeqCst);
+        let configured_total_weight: f64 = candidates
+            .iter()
+            .map(|&candidate| self.weights[candidate])
+            .filter(|&weight| weight > 0.0)
+            .sum();
+        let use_equal_weights = configured_total_weight <= 0.0;
+        let all_equal_positive_weights = !use_equal_weights
+            && candidates.iter().all(|&candidate| {
+                let weight = self.weights[candidate];
+                weight > 0.0 && (weight - self.weights[candidates[0]]).abs() <= f64::EPSILON
+            });
 
-        for candidate in candidates {
+        if use_equal_weights || all_equal_positive_weights {
+            let endpoint_index = candidates[ticket % candidates.len()];
+            return Some(EndpointSelection {
+                endpoint_index,
+                base_url: Arc::clone(&self.endpoints[endpoint_index].base_url),
+            });
+        }
+
+        let mut target = weighted_target(ticket as u64, configured_total_weight);
+        let mut chosen = None;
+        for &candidate in candidates {
             let weight = self.weights[candidate];
             if weight <= 0.0 {
                 continue;
             }
-
-            total_weight += weight;
-            current_weights[candidate] += weight;
-            if current_weights[candidate] > chosen_weight {
-                chosen_weight = current_weights[candidate];
-                chosen_endpoint_index = Some(candidate);
+            chosen = Some(candidate);
+            if target < weight {
+                break;
             }
+            target -= weight;
         }
+        let endpoint_index = chosen?;
 
-        let endpoint_index = chosen_endpoint_index?;
-        current_weights[endpoint_index] -= total_weight;
-        Some(EndpointSelection {
-            endpoint_index,
-            base_url: Arc::clone(&self.endpoints[endpoint_index].base_url),
-        })
-    }
-
-    fn fallback_round_robin_selection_from_candidates(
-        &self,
-        candidates: Vec<usize>,
-    ) -> Option<EndpointSelection> {
-        if candidates.is_empty() {
-            return None;
-        }
-
-        let slot = self.round_robin_counter.fetch_add(1, Ordering::SeqCst) % candidates.len();
-        let endpoint_index = candidates[slot];
         Some(EndpointSelection {
             endpoint_index,
             base_url: Arc::clone(&self.endpoints[endpoint_index].base_url),
@@ -377,35 +353,20 @@ impl EndpointPool {
     }
 
     pub(crate) fn select_endpoint(&self, excluded_indices: &[usize]) -> EndpointSelection {
-        self.weighted_selection_from_candidates(self.candidate_indices(excluded_indices, true))
-            .or_else(|| self.weighted_selection_from_candidates(self.candidate_indices(&[], true)))
-            .or_else(|| {
-                self.fallback_round_robin_selection_from_candidates(
-                    self.candidate_indices(excluded_indices, true),
-                )
-            })
-            .or_else(|| {
-                self.fallback_round_robin_selection_from_candidates(
-                    self.candidate_indices(&[], true),
-                )
-            })
-            .or_else(|| {
-                self.weighted_selection_from_candidates(
-                    self.candidate_indices(excluded_indices, false),
-                )
-            })
-            .or_else(|| self.weighted_selection_from_candidates(self.candidate_indices(&[], false)))
-            .or_else(|| {
-                self.fallback_round_robin_selection_from_candidates(
-                    self.candidate_indices(excluded_indices, false),
-                )
-            })
-            .or_else(|| {
-                self.fallback_round_robin_selection_from_candidates(
-                    self.candidate_indices(&[], false),
-                )
-            })
-            .expect("endpoint pool must contain at least one endpoint")
+        let candidate_tiers = [
+            self.candidate_indices(excluded_indices, true),
+            self.candidate_indices(&[], true),
+            self.candidate_indices(excluded_indices, false),
+            self.candidate_indices(&[], false),
+        ];
+
+        for candidates in &candidate_tiers {
+            if let Some(selection) = self.select_from_candidates(candidates) {
+                return selection;
+            }
+        }
+
+        panic!("endpoint pool must contain at least one endpoint")
     }
 
     pub(crate) fn select_hedge_endpoint(
@@ -510,6 +471,21 @@ impl EndpointPool {
 
 fn normalize_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_string()
+}
+
+fn weighted_target(ticket: u64, total_weight: f64) -> f64 {
+    // Deterministic per-attempt pseudo-random target in [0, total_weight)
+    // to support arbitrary floating-point weight totals.
+    let mixed = splitmix64(ticket);
+    let unit = (mixed as f64) / (u64::MAX as f64 + 1.0);
+    unit * total_weight
+}
+
+fn splitmix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    x ^ (x >> 31)
 }
 
 fn rewrite_url_for_selected_endpoint(
@@ -717,5 +693,32 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_fractional_weights_do_not_stick_to_first_endpoint() {
+        let pool = EndpointPool::new(
+            EndpointPoolConfig::new(vec![
+                "https://a.example.com".to_string(),
+                "https://b.example.com".to_string(),
+            ])
+            .with_weights(vec![0.1, 0.9]),
+        )
+        .expect("pool should be valid");
+
+        let mut saw_first = false;
+        let mut saw_second = false;
+        for _ in 0..64 {
+            let selected = pool.select_endpoint(&[]);
+            if selected.endpoint_index == 0 {
+                saw_first = true;
+            }
+            if selected.endpoint_index == 1 {
+                saw_second = true;
+            }
+        }
+
+        assert!(saw_first);
+        assert!(saw_second);
     }
 }

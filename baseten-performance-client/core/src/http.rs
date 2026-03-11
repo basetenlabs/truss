@@ -33,7 +33,7 @@ impl From<HttpMethod> for reqwest::Method {
 
 impl HttpMethod {
     /// Parse a string into an HttpMethod, defaulting to POST for None or empty strings
-    pub fn from_str(method: Option<&str>) -> Result<Self, String> {
+    pub fn from_optional_str(method: Option<&str>) -> Result<Self, String> {
         match method {
             Some("GET") => Ok(HttpMethod::GET),
             Some("PUT") => Ok(HttpMethod::PUT),

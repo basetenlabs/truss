@@ -796,7 +796,7 @@ mod tests {
         for batch in &batches {
             let _total_chars: usize = batch.iter().map(|s| s.chars().count()).sum();
             // Allow some flexibility due to batching algorithm
-            assert!(batch.len() > 0, "No empty batches should be created");
+            assert!(!batch.is_empty(), "No empty batches should be created");
         }
     }
 

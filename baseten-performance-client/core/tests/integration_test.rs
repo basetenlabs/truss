@@ -37,7 +37,7 @@ async fn test_embeddings_with_max_chars_per_request() {
             total_chars
         );
         // Allow some flexibility in the algorithm
-        assert!(batch.len() > 0, "No empty batches should be created");
+        assert!(!batch.is_empty(), "No empty batches should be created");
     }
 
     // Test that very large character limits result in single batch
