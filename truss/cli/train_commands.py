@@ -732,6 +732,7 @@ def slurm():
 @click.option(
     "--self-test", is_flag=True, help="Push a test worker from the login node"
 )
+@click.option("--image", type=str, default=None, help="Base Docker image")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_login(
@@ -740,6 +741,7 @@ def slurm_login(
     gpus_per_node: int,
     partition: str,
     self_test: bool,
+    image: Optional[str],
     remote: Optional[str],
 ):
     """Start a SLURM login/controller node on Baseten training."""
@@ -761,6 +763,7 @@ def slurm_login(
         gpus_per_node=gpus_per_node,
         partition=partition,
         self_test=self_test,
+        image=image,
     )
 
     with console.status("Pushing login node...", spinner="dots"):
@@ -795,6 +798,7 @@ def slurm_login(
 @click.option(
     "--job-name", "-J", type=str, default=None, help="Name for the worker job"
 )
+@click.option("--image", type=str, default=None, help="Base Docker image")
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_sbatch(
@@ -805,6 +809,7 @@ def slurm_sbatch(
     partition: str,
     project: Optional[str],
     job_name: Optional[str],
+    image: Optional[str],
     remote: Optional[str],
 ):
     """Submit a SLURM batch job via Baseten training infrastructure."""
@@ -849,6 +854,7 @@ def slurm_sbatch(
         gpus_per_node=gpus_per_node,
         partition=partition,
         sbatch_script=job_script,
+        image=image,
     )
 
     with console.status("Pushing worker job...", spinner="dots"):

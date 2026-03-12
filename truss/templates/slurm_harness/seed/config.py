@@ -18,7 +18,7 @@ if config_path.exists():
 else:
     runtime_config = {}
 
-BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
 
 training_runtime = definitions.Runtime(
     start_commands=[

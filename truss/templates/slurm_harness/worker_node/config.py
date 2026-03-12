@@ -28,7 +28,7 @@ ACCELERATOR_MAP = {
 }
 accelerator_type = ACCELERATOR_MAP.get(PARTITION, truss_config.Accelerator.H100)
 
-BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
 
 training_runtime = definitions.Runtime(
     start_commands=[

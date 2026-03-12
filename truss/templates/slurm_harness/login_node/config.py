@@ -17,7 +17,7 @@ runtime_config = json.loads(config_path.read_text()) if config_path.exists() els
 EXPECTED_WORKERS = runtime_config.get("node_count", 1)
 GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
 
-BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
 
 training_runtime = definitions.Runtime(
     start_commands=[

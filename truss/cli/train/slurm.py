@@ -4,12 +4,14 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 from truss.base.constants import SLURM_HARNESS_TEMPLATE_DIR
 
 # Canonical accelerator partition names
 PARTITIONS = ("H100", "H200", "A100")
 DEFAULT_PARTITION = "H200"
+DEFAULT_BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
 
 # Path to runtime_config.json on a login node (written by push before push)
 WORKSPACE_RUNTIME_CONFIG = Path("/workspace/runtime_config.json")
@@ -41,10 +43,15 @@ def parse_gres(gres_str: str) -> int:
 
 
 def build_login_runtime_config(
-    project: str, workers: int, gpus_per_node: int, partition: str, self_test: bool
+    project: str,
+    workers: int,
+    gpus_per_node: int,
+    partition: str,
+    self_test: bool,
+    image: Optional[str] = None,
 ) -> dict:
     """Build runtime_config dict for the login node."""
-    return {
+    config: dict = {
         "project_name": project,
         "job_name": "slurm-login",
         "node_count": workers,
@@ -52,6 +59,9 @@ def build_login_runtime_config(
         "partition": partition,
         "self_test": self_test,
     }
+    if image:
+        config["base_image"] = image
+    return config
 
 
 def build_sbatch_runtime_config(
@@ -61,9 +71,10 @@ def build_sbatch_runtime_config(
     gpus_per_node: int,
     partition: str,
     sbatch_script: str,
+    image: Optional[str] = None,
 ) -> dict:
     """Build runtime_config dict for the worker node."""
-    return {
+    config: dict = {
         "project_name": project,
         "job_name": job_name,
         "node_count": node_count,
@@ -71,6 +82,9 @@ def build_sbatch_runtime_config(
         "partition": partition,
         "sbatch_script": sbatch_script,
     }
+    if image:
+        config["base_image"] = image
+    return config
 
 
 def push_node(node_type: str, runtime_config: dict, remote: str = "baseten") -> dict:
