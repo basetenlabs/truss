@@ -196,7 +196,7 @@ def _gather_training_dir(
         size_gb = total_size / (1024 * 1024 * 1024)
         raise ValueError(
             f"Workspace size ({size_gb:.2f}GB) exceeds maximum allowed size (5GB). "
-            f"Please use 'exclude_dirs' to exclude large files/directories, "
+            f"Please use 'exclude_dirs' or a '.truss_ignore' file to exclude large files/directories, "
             f"or contact Baseten support for assistance."
         )
 
@@ -267,7 +267,7 @@ def prepare_push(
         size_gb = archive_size / (1024 * 1024 * 1024)
         raise ValueError(
             f"Archive size ({size_gb:.2f}GB) exceeds maximum allowed size (5GB). "
-            f"Please reduce the size of your workspace by using 'exclude_dirs' to "
+            f"Please reduce the size of your workspace by using 'exclude_dirs' or a '.truss_ignore' file to "
             f"exclude large files/directories, or contact Baseten support for assistance."
         )
 
