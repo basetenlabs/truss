@@ -1053,7 +1053,18 @@ class TrussConfig(custom_types.ConfigModel):
     @classmethod
     def from_yaml(cls, path: pathlib.Path) -> "TrussConfig":
         if not os.path.isfile(path):
-            raise ValueError(f"Expected a truss configuration file at {path}")
+            # It's common for users to create a .yml instead of a .yaml,
+            # so check for that and provide a helpful error message if we find one.
+            resolved_path = path.resolve()
+            stem = resolved_path.stem
+            alternative_path = resolved_path.parent / f"{stem}.yml"
+            if os.path.isfile(alternative_path):
+                raise ValueError(
+                    "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+                )
+            else:
+                raise ValueError(f"Expected a truss configuration file at {path}")
+
         with path.open() as f:
             raw_data = safe_load_yaml_with_no_duplicates(f) or {}
         # TODO(deepakn): Remove this once we have a way to pass no_cache through the context.
