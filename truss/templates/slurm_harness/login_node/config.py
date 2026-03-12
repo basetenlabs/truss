@@ -22,7 +22,7 @@ BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
 training_runtime = definitions.Runtime(
     start_commands=[
         "apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1",
-        "pip install --quiet truss",
+        "pip install --quiet 'truss @ git+https://github.com/basetenlabs/truss.git@rcano/slurm-cli'",
         "bash login_node/setup_login.sh",
     ],
     environment_variables={
