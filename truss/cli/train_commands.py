@@ -711,6 +711,154 @@ def init_training_job(
         sys.exit(1)
 
 
+@train.group(name="slurm")
+def slurm():
+    """SLURM harness commands for multi-node GPU jobs"""
+
+
+@slurm.command(name="login")
+@click.option(
+    "--project", type=str, default="slurm-harness", help="Training project name"
+)
+@click.option("--workers", type=int, default=1, help="Number of expected worker nodes")
+@click.option("--gpus-per-node", type=int, default=8, help="GPUs per worker node")
+@click.option(
+    "--partition",
+    "-p",
+    type=click.Choice(("H100", "H200", "A100"), case_sensitive=False),
+    default="H200",
+    help="Accelerator partition",
+)
+@click.option(
+    "--self-test", is_flag=True, help="Push a test worker from the login node"
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def slurm_login(
+    project: str,
+    workers: int,
+    gpus_per_node: int,
+    partition: str,
+    self_test: bool,
+    remote: Optional[str],
+):
+    """Start a SLURM login/controller node on Baseten training."""
+    from truss.cli.train.slurm import build_login_runtime_config, push_node
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    console.print("Starting SLURM login node:")
+    console.print(f"  Project:       {project}")
+    console.print(f"  Workers:       {workers}")
+    console.print(f"  GPUs/node:     {gpus_per_node}")
+    console.print(f"  Partition:     {partition}")
+    console.print()
+
+    runtime_config = build_login_runtime_config(
+        project=project,
+        workers=workers,
+        gpus_per_node=gpus_per_node,
+        partition=partition,
+        self_test=self_test,
+    )
+
+    with console.status("Pushing login node...", spinner="dots"):
+        result = push_node("login_node", runtime_config, remote=remote)
+
+    job_id = result.get("id", "unknown")
+    console.print(f"Login node pushed: {job_id}", style="green")
+    console.print(f"Monitor with: [cyan]truss train logs --job-id {job_id}[/cyan]")
+    console.print(
+        f"Once LOGIN_READY, submit jobs with: "
+        f"[cyan]truss train slurm sbatch <script.sh> --project {project}[/cyan]"
+    )
+
+
+@slurm.command(name="sbatch")
+@click.argument("script", type=click.Path(exists=True), required=False, default=None)
+@click.option(
+    "--wrap", type=str, default=None, help="Inline command to wrap in a batch script"
+)
+@click.option("--nodes", "-N", type=int, default=1, help="Number of nodes")
+@click.option(
+    "--gres", type=str, default="gpu:8", help="GPU resources per node (default: gpu:8)"
+)
+@click.option(
+    "--partition",
+    "-p",
+    type=click.Choice(("H100", "H200", "A100"), case_sensitive=False),
+    default="H200",
+    help="Accelerator partition",
+)
+@click.option("--project", type=str, default=None, help="Training project name")
+@click.option(
+    "--job-name", "-J", type=str, default=None, help="Name for the worker job"
+)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@common.common_options()
+def slurm_sbatch(
+    script: Optional[str],
+    wrap: Optional[str],
+    nodes: int,
+    gres: str,
+    partition: str,
+    project: Optional[str],
+    job_name: Optional[str],
+    remote: Optional[str],
+):
+    """Submit a SLURM batch job via Baseten training infrastructure."""
+    from truss.cli.train.slurm import (
+        build_sbatch_runtime_config,
+        detect_default_project,
+        parse_gres,
+        push_node,
+    )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    if project is None:
+        project = detect_default_project()
+
+    if wrap:
+        job_script = f"#!/bin/bash\n{wrap}\n"
+    elif script:
+        script_path = Path(script)
+        job_script = script_path.read_text()
+    else:
+        error_console.print("Provide a script path or --wrap command")
+        sys.exit(1)
+
+    gpus_per_node = parse_gres(gres)
+
+    console.print("Submitting SLURM job:")
+    console.print(f"  Script:      {script or '(--wrap)'}")
+    console.print(f"  Nodes:       {nodes}")
+    console.print(f"  GPUs/node:   {gpus_per_node}")
+    console.print(f"  Partition:   {partition}")
+    console.print(f"  Project:     {project}")
+    console.print()
+
+    effective_job_name = job_name or "slurm-worker"
+
+    runtime_config = build_sbatch_runtime_config(
+        project=project,
+        job_name=effective_job_name,
+        node_count=nodes,
+        gpus_per_node=gpus_per_node,
+        partition=partition,
+        sbatch_script=job_script,
+    )
+
+    with console.status("Pushing worker job...", spinner="dots"):
+        result = push_node("worker_node", runtime_config, remote=remote)
+
+    job_id = result.get("id", "unknown")
+    console.print(f"Worker job pushed: {job_id}", style="green")
+    console.print(f"Monitor with: [cyan]truss train logs --job-id {job_id}[/cyan]")
+
+
 @train.group(name="cache")
 def cache():
     """Cache-related subcommands for truss train"""
