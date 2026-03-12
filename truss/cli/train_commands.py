@@ -725,9 +725,9 @@ def slurm():
 @click.option(
     "--partition",
     "-p",
-    type=click.Choice(("H100", "H200", "A100"), case_sensitive=False),
+    type=str,
     default="H200",
-    help="Accelerator partition",
+    help="Accelerator partition (e.g. H100, H200, A100)",
 )
 @click.option(
     "--self-test", is_flag=True, help="Push a test worker from the login node"
@@ -787,9 +787,9 @@ def slurm_login(
 @click.option(
     "--partition",
     "-p",
-    type=click.Choice(("H100", "H200", "A100"), case_sensitive=False),
+    type=str,
     default="H200",
-    help="Accelerator partition",
+    help="Accelerator partition (e.g. H100, H200, A100)",
 )
 @click.option("--project", type=str, default=None, help="Training project name")
 @click.option(
