@@ -60,6 +60,7 @@ def push(
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
     trusted: Optional[bool] = None,
+    disable_truss_download: bool = False,
     deployment_name: Optional[str] = None,
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
@@ -88,6 +89,7 @@ def push(
             only contain alphanumeric, '.', '-' or '_' characters.
         environment: Name of stable environment on baseten.
         progress_bar: Optional `rich.progress.Progress` if output is desired.
+        disable_truss_download: Disable downloading of the truss directory from the UI.
         include_git_info: Whether to attach git versioning info (sha, branch, tag) to
           deployments made from within a git repo. If set to True in `.trussrc`, it
           will always be attached.
@@ -138,6 +140,7 @@ def push(
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
         environment=environment,
+        disable_truss_download=disable_truss_download,
         progress_bar=progress_bar,
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
