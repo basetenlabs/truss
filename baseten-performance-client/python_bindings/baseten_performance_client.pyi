@@ -425,6 +425,43 @@ class HttpClientWrapper:
         """
         ...
 
+class EndpointPool:
+    """
+    Endpoint pool configuration used by PerformanceClient for weighted endpoint routing
+    and background health monitoring.
+    """
+
+    def __init__(
+        self,
+        endpoint_urls: builtins.list[builtins.str],
+        endpoint_weights: typing.Optional[builtins.list[builtins.float]] = None,
+        deep_health_urls: typing.Optional[builtins.list[builtins.str]] = None,
+        deployment_health_path: typing.Optional[builtins.str] = None,
+        health_check_interval_s: typing.Optional[builtins.float] = None,
+        health_check_timeout_s: typing.Optional[builtins.float] = None,
+        health_check_retries: typing.Optional[builtins.int] = None,
+        health_fail_on_first: builtins.bool = False,
+        deployment_timeout_is_no_vote: builtins.bool = True,
+        deep_timeout_is_no_vote: builtins.bool = True,
+    ) -> None:
+        """
+        Args:
+            endpoint_urls: List of deployment base URLs.
+            endpoint_weights: Optional per-endpoint traffic weights.
+            deep_health_urls: Optional per-endpoint absolute deep health URLs.
+                When provided, each endpoint health cycle checks `/health` on the base URL
+                and then checks the corresponding deep health URL.
+            deployment_health_path: Optional base-url health path override (default `/health`).
+            health_check_interval_s: Optional background health check interval in seconds.
+            health_check_timeout_s: Optional per-health-check timeout in seconds.
+            health_check_retries: Optional number of retries for each health poll cycle.
+            health_fail_on_first: If true, stop evaluating additional checks for an endpoint
+                after the first negative vote in a health cycle.
+            deployment_timeout_is_no_vote: If true, timeout on `/health` keeps previous health state.
+            deep_timeout_is_no_vote: If true, timeout on deep health keeps previous health state.
+        """
+        ...
+
 class PerformanceClient:
     """
     Baseten.co API client for embedding, reranking, and classification, and custom workloads.
@@ -448,6 +485,7 @@ class PerformanceClient:
         http_version: builtins.int = 1,
         client_wrapper: typing.Optional[HttpClientWrapper] = None,
         proxy: typing.Optional[builtins.str] = None,
+        endpoint_pool: typing.Optional[EndpointPool] = None,
     ) -> None:
         """
         Initialize the sync client with the API base URL and optional API key.
@@ -460,6 +498,7 @@ class PerformanceClient:
             client_wrapper: Optional HttpClientWrapper instance to reuse connection pooling
                 across multiple PerformanceClient instances.
             proxy: Optional proxy URL to route all HTTP requests through (e.g., "http://proxy:8080").
+            endpoint_pool: Optional EndpointPool for weighted endpoint routing and background health checks.
 
         Example:
             >>> client = PerformanceClient(base_url="https://example.api.baseten.co/sync", api_key="your_key", http_version=1)

@@ -235,6 +235,7 @@ dependencies = [
 name = "baseten_performance_client_core"
 version = "0.1.5"
 dependencies = [
+ "axum",
  "ctor 0.6.3",
  "futures",
  "once_cell",

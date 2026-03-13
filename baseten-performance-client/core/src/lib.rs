@@ -2,6 +2,7 @@ pub mod cancellation;
 pub mod client;
 pub mod constants;
 pub mod customer_request_id;
+pub mod endpoint_routing;
 pub mod errors;
 pub mod http;
 pub mod http_client;
@@ -12,6 +13,10 @@ pub mod utils;
 pub use cancellation::CancellationToken;
 pub use client::{HttpClientWrapper, PerformanceClientCore};
 pub use constants::*;
+pub use endpoint_routing::{
+    EndpointHealthCheckConfig, EndpointHealthConfig, EndpointHealthStatus, EndpointPool,
+    EndpointPoolConfig, EndpointPoolHealthSnapshot,
+};
 pub use errors::ClientError;
 pub use http::*;
 // http_client is internal only - not reexported
@@ -35,9 +40,10 @@ fn init_tracing() {
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {
         // Try to initialize tracing, but don't panic if it's already initialized
-        if let Err(_) = tracing_subscriber::fmt()
+        if tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .try_init()
+            .is_err()
         {
             // Tracing is already initialized, which is fine
         }

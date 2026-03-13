@@ -76,21 +76,6 @@ impl<T: 'static> JoinSetGuard<T> {
     pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
         self.join_set.join_next().await
     }
-
-    pub(crate) fn abort_all(&mut self) {
-        if let Some(ref token) = self.cancel_token {
-            token.cancel();
-        }
-        self.join_set.abort_all();
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.join_set.len()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.join_set.is_empty()
-    }
 }
 
 impl<T: 'static> Default for JoinSetGuard<T> {

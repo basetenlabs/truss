@@ -4,10 +4,10 @@ use baseten_performance_client_core::{
     CancellationToken as CoreCancellationToken, ClientError, CoreClassificationResponse,
     CoreClassificationResult, CoreEmbeddingVariant, CoreOpenAIEmbeddingData,
     CoreOpenAIEmbeddingsResponse, CoreOpenAIUsage, CoreRerankResponse, CoreRerankResult,
-    HttpClientWrapper as HttpClientWrapperRs, PerformanceClientCore,
-    RequestProcessingPreference as RustRequestProcessingPreference, DEFAULT_BATCH_SIZE,
-    DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE, INITIAL_BACKOFF_MS,
-    MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
+    EndpointPool, EndpointPoolConfig, HttpClientWrapper as HttpClientWrapperRs,
+    PerformanceClientCore, RequestProcessingPreference as RustRequestProcessingPreference,
+    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_REQUEST_TIMEOUT_S, HEDGE_BUDGET_PERCENTAGE,
+    INITIAL_BACKOFF_MS, MAX_HTTP_RETRIES, RETRY_BUDGET_PERCENTAGE,
 };
 
 use ndarray::Array2;
@@ -369,6 +369,72 @@ impl HttpClientWrapper {
     }
 }
 
+#[pyclass(name = "EndpointPool")]
+struct PyEndpointPool {
+    inner: Arc<EndpointPool>,
+}
+
+#[pymethods]
+impl PyEndpointPool {
+    #[new]
+    #[pyo3(signature = (
+        endpoint_urls,
+        endpoint_weights = None,
+        deep_health_urls = None,
+        deployment_health_path = None,
+        health_check_interval_s = None,
+        health_check_timeout_s = None,
+        health_check_retries = None,
+        health_fail_on_first = false,
+        deployment_timeout_is_no_vote = true,
+        deep_timeout_is_no_vote = true
+    ))]
+    fn new(
+        endpoint_urls: Vec<String>,
+        endpoint_weights: Option<Vec<f64>>,
+        deep_health_urls: Option<Vec<String>>,
+        deployment_health_path: Option<String>,
+        health_check_interval_s: Option<f64>,
+        health_check_timeout_s: Option<f64>,
+        health_check_retries: Option<u32>,
+        health_fail_on_first: bool,
+        deployment_timeout_is_no_vote: bool,
+        deep_timeout_is_no_vote: bool,
+    ) -> PyResult<Self> {
+        if endpoint_urls.is_empty() {
+            return Err(PyValueError::new_err("endpoint_urls must not be empty"));
+        }
+
+        let mut config = EndpointPoolConfig::new(endpoint_urls);
+        if let Some(weights) = endpoint_weights {
+            config = config.with_weights(weights);
+        }
+        if let Some(interval_s) = health_check_interval_s {
+            config =
+                config.with_health_check_interval(std::time::Duration::from_secs_f64(interval_s));
+        }
+        if let Some(timeout_s) = health_check_timeout_s {
+            config =
+                config.with_health_check_timeout(std::time::Duration::from_secs_f64(timeout_s));
+        }
+        if let Some(retries) = health_check_retries {
+            config = config.with_health_check_retries(retries);
+        }
+        config = config.with_standard_health_checks(
+            deep_health_urls,
+            health_fail_on_first,
+            deployment_health_path,
+            deployment_timeout_is_no_vote,
+            deep_timeout_is_no_vote,
+        );
+
+        let inner = EndpointPool::new(config).map_err(|e| {
+            PyValueError::new_err(format!("Invalid endpoint pool configuration: {}", e))
+        })?;
+        Ok(Self { inner })
+    }
+}
+
 /// User-facing configuration for request processing with budget percentages.
 /// CancellationToken for cancelling async operations
 #[derive(Debug, Clone)]
@@ -565,18 +631,26 @@ impl PerformanceClient {
 #[pymethods]
 impl PerformanceClient {
     #[new]
-    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None))]
+    #[pyo3(signature = (base_url, api_key = None, http_version = 1, client_wrapper = None, proxy = None, endpoint_pool = None))]
     fn new(
         base_url: String,
         api_key: Option<String>,
         http_version: u8,
         client_wrapper: Option<HttpClientWrapper>,
         proxy: Option<String>,
+        endpoint_pool: Option<&PyEndpointPool>,
     ) -> PyResult<Self> {
         let wrapper = client_wrapper.map(|w| w.inner);
-        let core_client =
-            PerformanceClientCore::new(base_url, api_key, http_version, wrapper, proxy)
-                .map_err(Self::convert_core_error_to_py_err)?;
+        let endpoint_pool = endpoint_pool.map(|pool| Arc::clone(&pool.inner));
+        let core_client = PerformanceClientCore::new(
+            base_url,
+            api_key,
+            http_version,
+            wrapper,
+            proxy,
+            endpoint_pool,
+        )
+        .map_err(Self::convert_core_error_to_py_err)?;
 
         Ok(PerformanceClient {
             core_client,
@@ -1014,7 +1088,7 @@ impl PerformanceClient {
 
         // Parse method parameter using core function
         let http_method =
-            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+            baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
                 .map_err(|e| PyValueError::new_err(e))?;
 
         let result_from_async_task = py.allow_threads(move || {
@@ -1105,7 +1179,7 @@ impl PerformanceClient {
 
         // Parse method parameter using core function
         let http_method =
-            baseten_performance_client_core::http::HttpMethod::from_str(method.as_deref())
+            baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
                 .map_err(|e| PyValueError::new_err(e))?;
 
         let future = async move {
@@ -1164,6 +1238,7 @@ impl PerformanceClient {
 fn baseten_performance_client(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PerformanceClient>()?;
     m.add_class::<HttpClientWrapper>()?;
+    m.add_class::<PyEndpointPool>()?;
     m.add_class::<RequestProcessingPreference>()?;
     m.add_class::<CancellationToken>()?;
     m.add_class::<OpenAIEmbeddingsResponse>()?;
