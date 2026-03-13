@@ -409,7 +409,9 @@ def _explore_files(
         {**f, "_rel_path": f.get("relative_file_name", "")} for f in files
     ]
 
-    path_stack: list[str] = initial_path.split("/") if initial_path else []
+    path_stack: list[str] = (
+        [p for p in initial_path.split("/") if p and p != "."] if initial_path else []
+    )
     min_depth = len(path_stack)
 
     while True:

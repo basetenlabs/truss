@@ -18,6 +18,7 @@ from truss.cli.train.checkpoint_viewer import (
     TensorSummary,
     _build_directory_listing,
     _build_explorer_choices,
+    _explore_files,
     _fetch_and_display_file,
     _fetch_safetensor_header,
     _highlight_content,
@@ -711,3 +712,91 @@ def test_select_checkpoint_uses_allow_back_false():
         mock_fuzzy.return_value.execute.return_value = ("exit", None)
         _select_checkpoint(SAMPLE_CHECKPOINTS[:1], "job456")
     assert mock_fuzzy.call_args[1].get("allow_back") is False
+
+
+# ---------------------------------------------------------------------------
+# _explore_files — initial_path normalization
+# ---------------------------------------------------------------------------
+
+
+def _make_explore_fuzzy_exit():
+    """Return a _colored_fuzzy mock that immediately exits."""
+    mock = Mock()
+    mock.return_value.execute.return_value = ("exit", None)
+    return mock
+
+
+def test_explore_files_dot_initial_path_shows_root_files():
+    """initial_path='.' should show root-level checkpoint directories, not be empty."""
+    with patch(
+        "truss.cli.train.checkpoint_viewer._colored_fuzzy", _make_explore_fuzzy_exit()
+    ):
+        # Should not raise and should reach the fuzzy prompt (not return immediately
+        # due to an empty listing)
+        _explore_files(SAMPLE_FILES, "job123", initial_path=".")
+
+
+def test_explore_files_dot_initial_path_same_as_no_path():
+    """initial_path='.' and initial_path=None should produce identical listings."""
+    choices_dot = []
+    choices_none = []
+
+    def capture(target):
+        def fuzzy(**kwargs):
+            target.extend(kwargs.get("choices", []))
+            m = Mock()
+            m.execute.return_value = ("exit", None)
+            return m
+
+        return fuzzy
+
+    with patch(
+        "truss.cli.train.checkpoint_viewer._colored_fuzzy", capture(choices_dot)
+    ):
+        _explore_files(SAMPLE_FILES, "job123", initial_path=".")
+
+    with patch(
+        "truss.cli.train.checkpoint_viewer._colored_fuzzy", capture(choices_none)
+    ):
+        _explore_files(SAMPLE_FILES, "job123", initial_path=None)
+
+    assert choices_dot == choices_none
+
+
+def test_explore_files_dot_slash_prefix_stripped():
+    """initial_path='./ckpt-001' should start inside ckpt-001, not be empty."""
+    choices_captured = []
+
+    def fuzzy(**kwargs):
+        choices_captured.extend(kwargs.get("choices", []))
+        m = Mock()
+        m.execute.return_value = ("exit", None)
+        return m
+
+    with patch("truss.cli.train.checkpoint_viewer._colored_fuzzy", fuzzy):
+        _explore_files(SAMPLE_FILES, "job123", initial_path="./ckpt-001")
+
+    # Should show files inside ckpt-001 (adapter_model.safetensors, adapter_config.json)
+    names = [
+        c["name"] for c in choices_captured if c.get("value", (None,))[0] != "exit"
+    ]
+    assert any("adapter" in n for n in names)
+
+
+def test_explore_files_normal_initial_path_unaffected():
+    """A normal initial_path like 'ckpt-001' should still work correctly."""
+    choices_captured = []
+
+    def fuzzy(**kwargs):
+        choices_captured.extend(kwargs.get("choices", []))
+        m = Mock()
+        m.execute.return_value = ("exit", None)
+        return m
+
+    with patch("truss.cli.train.checkpoint_viewer._colored_fuzzy", fuzzy):
+        _explore_files(SAMPLE_FILES, "job123", initial_path="ckpt-001")
+
+    names = [
+        c["name"] for c in choices_captured if c.get("value", (None,))[0] != "exit"
+    ]
+    assert any("adapter" in n for n in names)
