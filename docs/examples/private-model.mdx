@@ -155,8 +155,10 @@ You'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys
 We have successfully packaged a gated model as a Truss. Let's deploy!
 
 ```sh
-truss push
+truss push --publish
 ```
+
+For development with hot reload, use `truss push --watch` instead.
 
 Wait for the model to finish deployment before invoking.
 
