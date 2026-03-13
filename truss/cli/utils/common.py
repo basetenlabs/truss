@@ -26,7 +26,11 @@ from truss.cli.utils import self_upgrade
 if TYPE_CHECKING:
     from truss.cli.cli import rich_console
 from truss.cli.utils.output import console
-from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
+from truss.remote.baseten.core import (
+    ACTIVE_STATUS,
+    BUILDING_OR_DEPLOY_STATUS,
+    DEPLOYING_STATUSES,
+)
 from truss.remote.baseten.remote import BasetenRemote
 
 logger = logging.getLogger(__name__)
@@ -299,7 +303,12 @@ def wait_for_development_model_ready(
 
 
 def keepalive_loop(
-    model_hostname: str, api_key: str, stop_event: threading.Event
+    model_hostname: str,
+    api_key: str,
+    stop_event: threading.Event,
+    remote_provider: BasetenRemote,
+    model_id: str,
+    dev_version_id: str,
 ) -> None:
     headers = {"Authorization": f"Api-Key {api_key}"}
     consecutive_failures = 0
@@ -332,8 +341,23 @@ def keepalive_loop(
             if resp.status_code == 200:
                 consecutive_failures = 0
             elif 400 <= resp.status_code < 500:
-                # Ignore 4xx errors
-                pass
+                # check if model is building/deploying - if so, exit and tell user to restart.
+                # this is almost certainly due to a new push which means we have a new initial truss hash,
+                # we must re-resolve the model and pull the new initial truss hash
+                try:
+                    deployment = remote_provider.api.get_deployment(
+                        model_id, dev_version_id
+                    )
+                    deployment_status = deployment.get("status", "")
+                    if deployment_status in BUILDING_OR_DEPLOY_STATUS:
+                        console.print(
+                            "⚠️  Model is building/deploying (likely from a new push). Restart 'truss watch'.",
+                            style="yellow",
+                        )
+                        os._exit(0)
+                except Exception:
+                    # Best effort - if we can't check status, just ignore the 4xx error
+                    pass
             else:
                 # Count 5xx errors as failures
                 consecutive_failures += 1

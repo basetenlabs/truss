@@ -63,11 +63,20 @@ def test_successful_ping_resets_failure_count():
             resp.status_code = 200
         return resp
 
+    mock_remote_provider = Mock()
+
     with patch("truss.cli.utils.common.requests_lib.get", side_effect=mock_get):
         with patch("truss.cli.utils.common.console"):
             # Use a very short wait so the test runs fast
             with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                common.keepalive_loop(
+                    "http://fake",
+                    "test_api_key",
+                    stop_event,
+                    mock_remote_provider,
+                    "model_id",
+                    "dev_version_id",
+                )
     assert call_count == 4  # All calls were made, no early exit
 
 
@@ -76,6 +85,8 @@ def test_exits_after_max_consecutive_failures():
     stop_event = threading.Event()
     mock_resp = Mock()
     mock_resp.status_code = 500
+    mock_remote_provider = Mock()
+
     with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
         with patch("truss.cli.utils.common.console") as _mock_console:
             with patch(
@@ -83,13 +94,21 @@ def test_exits_after_max_consecutive_failures():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        "test_api_key",
+                        stop_event,
+                        mock_remote_provider,
+                        "model_id",
+                        "dev_version_id",
+                    )
     mock_exit.assert_called_once_with(1)
 
 
 def test_request_exception_counts_as_failure():
     """Network errors should count toward consecutive failures."""
     stop_event = threading.Event()
+    mock_remote_provider = Mock()
 
     with patch(
         "truss.cli.utils.common.requests_lib.get",
@@ -101,38 +120,16 @@ def test_request_exception_counts_as_failure():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        "test_api_key",
+                        stop_event,
+                        mock_remote_provider,
+                        "model_id",
+                        "dev_version_id",
+                    )
 
     mock_exit.assert_called_once_with(1)
-
-
-def test_model_not_ready_does_not_count_as_failure():
-    """4xx errors (like model not ready during patching) should be ignored."""
-    stop_event = threading.Event()
-    call_count = 0
-
-    def mock_get(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        resp = Mock()
-        if call_count <= 25:
-            # 4xx errors should be ignored
-            resp.status_code = 400
-        else:
-            stop_event.set()
-            resp.status_code = 200
-        return resp
-
-    with patch("truss.cli.utils.common.requests_lib.get", side_effect=mock_get):
-        with patch("truss.cli.utils.common.console"):
-            with patch(
-                "truss.cli.utils.common.os._exit",
-                side_effect=lambda code: stop_event.set(),
-            ) as mock_exit:
-                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
-
-    mock_exit.assert_not_called()
 
 
 def test_5xx_errors_count_as_failures():
@@ -140,6 +137,7 @@ def test_5xx_errors_count_as_failures():
     stop_event = threading.Event()
     mock_resp = Mock()
     mock_resp.status_code = 503  # Service unavailable
+    mock_remote_provider = Mock()
 
     with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
         with patch("truss.cli.utils.common.console"):
@@ -148,9 +146,92 @@ def test_5xx_errors_count_as_failures():
                 side_effect=lambda code: stop_event.set(),
             ) as mock_exit:
                 with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
-                    common.keepalive_loop("http://fake", "test_api_key", stop_event)
+                    common.keepalive_loop(
+                        "http://fake",
+                        "test_api_key",
+                        stop_event,
+                        mock_remote_provider,
+                        "model_id",
+                        "dev_version_id",
+                    )
 
     mock_exit.assert_called_once_with(1)
+
+
+def test_4xx_with_deploying_status_exits_gracefully():
+    """4xx errors with DEPLOYING status should exit and tell user to restart."""
+    stop_event = threading.Event()
+    mock_resp = Mock()
+    mock_resp.status_code = 400
+
+    mock_remote_provider = Mock()
+    mock_remote_provider.api.get_deployment.return_value = {"status": "DEPLOYING"}
+
+    with patch("truss.cli.utils.common.requests_lib.get", return_value=mock_resp):
+        with patch("truss.cli.utils.common.console") as mock_console:
+            with patch(
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    common.keepalive_loop(
+                        "http://fake",
+                        "test_api_key",
+                        stop_event,
+                        mock_remote_provider,
+                        "model_id",
+                        "dev_version_id",
+                    )
+
+    # Should exit gracefully with code 0
+    mock_exit.assert_called_once_with(0)
+    # Should tell user to restart
+    mock_console.print.assert_called_with(
+        "⚠️  Model is building/deploying (likely from a new push). Restart 'truss watch'.",
+        style="yellow",
+    )
+
+
+def test_4xx_with_loading_model_status_is_ignored():
+    """4xx errors with non-DEPLOYING status should be ignored and not count as failures."""
+    stop_event = threading.Event()
+    call_count = 0
+
+    def mock_get(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = Mock()
+        if call_count <= 25:
+            # Multiple 4xx errors
+            resp.status_code = 400
+        else:
+            # Eventually succeed
+            stop_event.set()
+            resp.status_code = 200
+        return resp
+
+    mock_remote_provider = Mock()
+    # Status is LOADING_MODEL (not deploying), so 4xx should be ignored
+    mock_remote_provider.api.get_deployment.return_value = {"status": "LOADING_MODEL"}
+
+    with patch("truss.cli.utils.common.requests_lib.get", side_effect=mock_get):
+        with patch("truss.cli.utils.common.console"):
+            with patch(
+                "truss.cli.utils.common.os._exit",
+                side_effect=lambda code: stop_event.set(),
+            ) as mock_exit:
+                with patch.object(stop_event, "wait", side_effect=lambda timeout: None):
+                    common.keepalive_loop(
+                        "http://fake",
+                        "test_api_key",
+                        stop_event,
+                        mock_remote_provider,
+                        "model_id",
+                        "dev_version_id",
+                    )
+
+    # Should not exit - 4xx errors with ACTIVE status are ignored
+    mock_exit.assert_not_called()
 
 
 def test_keepalive_loop_emits_30min_warning():
@@ -174,6 +255,8 @@ def test_keepalive_loop_emits_30min_warning():
         stop_event.set()
         return False
 
+    mock_remote_provider = Mock()
+
     with patch("truss.cli.utils.common.time.time", side_effect=mock_time):
         with patch("truss.cli.utils.common.requests_lib") as mock_requests:
             mock_response = MagicMock()
@@ -189,6 +272,9 @@ def test_keepalive_loop_emits_30min_warning():
                     model_hostname="https://test.baseten.co",
                     api_key="test-key",
                     stop_event=stop_event,
+                    remote_provider=mock_remote_provider,
+                    model_id="model_id",
+                    dev_version_id="dev_version_id",
                 )
 
                 # Verify the warning was printed
@@ -313,12 +399,17 @@ def test_watch_no_sleep_starts_keepalive_thread():
     thread_args = kwargs["args"]
     assert thread_args[0] == "https://model-abc123.api.baseten.co"
     assert thread_args[1] == "test_key"
+    assert thread_args[2]  # stop_event
+    assert thread_args[3] == remote_provider
+    assert thread_args[4] == "model_id"
+    assert thread_args[5] == "dev_version_id"
     mock_thread.start.assert_called_once()
 
 
 def test_keepalive_loop_constructs_correct_url():
     """Keepalive loop should construct the correct health check URL from hostname."""
     stop_event = threading.Event()
+    mock_remote_provider = Mock()
 
     with patch("truss.cli.utils.common.time.time") as mock_time:
         # First call: start_time, subsequent calls: still within duration
@@ -339,6 +430,9 @@ def test_keepalive_loop_constructs_correct_url():
                     model_hostname="https://model-abc123.api.baseten.co",
                     api_key="test-key",
                     stop_event=stop_event,
+                    remote_provider=mock_remote_provider,
+                    model_id="model_id",
+                    dev_version_id="dev_version_id",
                 )
 
             # Verify the URL was constructed correctly
@@ -431,6 +525,7 @@ def test_watch_without_no_sleep_does_not_start_thread():
 def test_keepalive_loop_continues_before_max_duration():
     """Keepalive loop should keep running before 24 hours."""
     stop_event = threading.Event()
+    mock_remote_provider = Mock()
 
     with patch("truss.cli.utils.common.requests_lib") as mock_requests:
         mock_requests.get.return_value = Mock(status_code=200)
@@ -455,6 +550,9 @@ def test_keepalive_loop_continues_before_max_duration():
                             "https://model-abc123.api.baseten.co",
                             "fake_key",
                             stop_event,
+                            mock_remote_provider,
+                            "model_id",
+                            "dev_version_id",
                         )
 
     assert mock_requests.get.call_count == 2
