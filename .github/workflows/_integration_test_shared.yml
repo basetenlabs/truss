@@ -50,7 +50,9 @@ jobs:
   truss-integration-tests:
     if: ${{ !inputs.store_durations_serially }}
     needs: determine-python-versions
-    runs-on: ubuntu-24.04
+    # Use larger runner (150GB disk) for Docker builds with large CUDA base images (e.g., test_docker_predict_custom_base_image)
+    # Note: ubuntu-latest-4-cores uses Ubuntu 24.04; ubuntu-24.04-4-cores may not be available
+    runs-on: ubuntu-latest-4-cores
     strategy:
       fail-fast: false
       matrix:
