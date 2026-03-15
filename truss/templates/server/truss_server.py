@@ -237,6 +237,13 @@ class BasetenEndpoints:
             method=self._model.completions, request=request, body_raw=body_raw
         )
 
+    async def messages(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.messages, request=request, body_raw=body_raw
+        )
+
     async def websocket(self, ws: WebSocket) -> None:
         self.check_healthy()
         # Set request_id in context so it's included in all log records
@@ -439,6 +446,12 @@ class TrussServer:
                 FastAPIRoute(
                     r"/v1/completions",
                     self._endpoints.completions,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
+                    r"/v1/messages",
+                    self._endpoints.messages,
                     methods=["POST"],
                     tags=["V1"],
                 ),
