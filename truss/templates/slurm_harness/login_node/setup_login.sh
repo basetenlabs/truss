@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eux
+set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SLURM_HARNESS_DIR="${BT_PROJECT_CACHE_DIR}/slurm_harness"
@@ -19,7 +19,7 @@ source "${SCRIPT_DIR}/../shared/install_slurm.sh"
 
 # Configure truss remote so workers can be pushed from the login node
 if [ -n "${BASETEN_API_KEY:-}" ]; then
-    python3 -c "import truss; truss.login('${BASETEN_API_KEY}')"
+    python3 -c "import truss, os; truss.login(os.environ['BASETEN_API_KEY'])"
     echo "Truss remote configured for login node."
 fi
 

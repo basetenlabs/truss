@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eux
+set -eu
 
 # Common SLURM + munge installation for both login and worker nodes.
 # This script is sourced (not executed) by setup_login.sh and setup_worker.sh.
