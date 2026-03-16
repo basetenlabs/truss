@@ -80,6 +80,10 @@ truss train logs --job-id <login-job-id>
 
 # Job status
 truss train view --job-id <job-id>
+
+# SSH into the login node (interactive session)
+truss train isession --job-id <login-job-id>
+# Follow the instructions to authenticate, then connect via VS Code/Cursor remote tunnels
 ```
 
 ## CLI Reference
