@@ -73,8 +73,7 @@ pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
 }
 
 /// Get secret by name, checking environment variable first, then file system.
-/// This allows build-time usage (where /secrets/ doesn't exist) by setting
-/// the secret value as an env var named TRUSS_SECRET_{runtime_secret_name}.
+/// This allows builds where /secrets does not exist to still work.
 pub fn get_secret(runtime_secret_name: &str) -> Option<String> {
     let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, runtime_secret_name);
     if let Ok(value) = env::var(&env_var_name) {
