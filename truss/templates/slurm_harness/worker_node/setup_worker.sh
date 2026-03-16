@@ -184,6 +184,16 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
         exit 1
     fi
 
+    # Stream SLURM job output to stdout so it appears in training logs.
+    # SLURM writes job output to slurm-<id>.out in the working directory.
+    SLURM_OUTPUT_FILE="/slurm-${SLURM_JOB_ID}.out"
+    (
+        # Wait for the output file to appear, then tail it
+        while [ ! -f "$SLURM_OUTPUT_FILE" ]; do sleep 1; done
+        tail -f "$SLURM_OUTPUT_FILE"
+    ) &
+    TAIL_PID=$!
+
     # Monitor the SLURM job until completion.
     # COMPLETING is a transient state where SLURM runs epilog — the job
     # itself has already finished, so we treat it as done.
@@ -198,6 +208,13 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
         echo "Job ${SLURM_JOB_ID} state: ${JOB_STATE}"
         sleep 15
     done
+
+    # Stop tailing and dump any final output
+    kill "$TAIL_PID" 2>/dev/null || true
+    if [ -f "$SLURM_OUTPUT_FILE" ]; then
+        echo "=== Final SLURM job output ==="
+        cat "$SLURM_OUTPUT_FILE"
+    fi
 
     echo "Worker 0 exiting after job completion."
     exit 0
