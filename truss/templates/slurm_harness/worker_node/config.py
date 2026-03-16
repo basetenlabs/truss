@@ -56,6 +56,9 @@ training_job = definitions.TrainingJob(
     image=definitions.Image(base_image=BASE_IMAGE),
     compute=training_compute,
     runtime=training_runtime,
+    interactive_session=definitions.InteractiveSession(
+        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP,
+    ),
     name=runtime_config.get("job_name"),
 )
 
