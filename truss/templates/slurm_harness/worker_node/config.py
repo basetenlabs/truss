@@ -42,6 +42,9 @@ training_runtime = definitions.Runtime(
     cache_config=definitions.CacheConfig(
         enabled=True,
     ),
+    checkpointing_config=definitions.CheckpointingConfig(
+        enabled=True,
+    ),
 )
 
 training_compute = definitions.Compute(
