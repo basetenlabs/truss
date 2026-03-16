@@ -10,6 +10,18 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 
 
+def _validate_provided_team(
+    provided_team_name: str, existing_teams: dict[str, TeamType]
+) -> str:
+    """Validate provided team name exists and return team_id."""
+    if provided_team_name not in existing_teams:
+        available_teams_str = remote_cli.format_available_teams(existing_teams)
+        raise ValueError(
+            f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
+        )
+    return existing_teams[provided_team_name].id
+
+
 def _get_matching_models(
     model_name: str,
     existing_teams: dict[str, TeamType],
@@ -70,12 +82,10 @@ def resolve_model_for_watch(
     existing_teams = remote_provider.api.get_teams()
 
     if provided_team_name is not None:
-        available_teams_str = remote_cli.format_available_teams(existing_teams)
-        if provided_team_name not in existing_teams:
-            raise click.ClickException(
-                f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
-            )
-        team_id = existing_teams[provided_team_name].id
+        try:
+            team_id = _validate_provided_team(provided_team_name, existing_teams)
+        except ValueError as e:
+            raise click.ClickException(str(e)) from None
         models_data = remote_provider.api.get_models_for_watch(
             team_id=team_id, chainlets_only=chainlets_only
         )
@@ -151,12 +161,7 @@ def resolve_model_team_name(
         effective_team_name = RemoteFactory.get_remote_team(remote_name)
 
     if effective_team_name is not None:
-        if effective_team_name not in existing_teams:
-            available_teams_str = remote_cli.format_available_teams(existing_teams)
-            raise ValueError(
-                f"Team '{effective_team_name}' does not exist. "
-                f"Available teams: {available_teams_str}"
-            )
+        _validate_provided_team(effective_team_name, existing_teams)
         return (effective_team_name, _get_team_id(effective_team_name))
 
     if existing_model_name is not None:
