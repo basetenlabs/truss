@@ -17,7 +17,9 @@ runtime_config = json.loads(config_path.read_text()) if config_path.exists() els
 GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
 PARTITION = runtime_config.get("partition", None)
 
-BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
+BASE_IMAGE = runtime_config.get(
+    "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+)
 
 training_runtime = definitions.Runtime(
     start_commands=[
@@ -29,36 +31,28 @@ training_runtime = definitions.Runtime(
         "GPUS_PER_NODE": str(GPUS_PER_NODE),
         "BASETEN_API_KEY": definitions.SecretReference(name="baseten_api_key"),
     },
-    cache_config=definitions.CacheConfig(
-        enabled=True,
-        require_cache_affinity=False,
-    ),
+    cache_config=definitions.CacheConfig(enabled=True, require_cache_affinity=False),
 )
 
 if PARTITION:
     training_compute = definitions.Compute(
         accelerator=truss_config.AcceleratorSpec(
-            accelerator=truss_config.Accelerator(PARTITION),
-            count=GPUS_PER_NODE,
-        ),
+            accelerator=truss_config.Accelerator(PARTITION), count=GPUS_PER_NODE
+        )
     )
 else:
-    training_compute = definitions.Compute(
-        cpu_count=4,
-        memory="16Gi",
-    )
+    training_compute = definitions.Compute(cpu_count=4, memory="16Gi")
 
 training_job = definitions.TrainingJob(
     image=definitions.Image(base_image=BASE_IMAGE),
     compute=training_compute,
     runtime=training_runtime,
     interactive_session=definitions.InteractiveSession(
-        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP,
+        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP
     ),
     name=runtime_config.get("job_name"),
 )
 
 training_project = definitions.TrainingProject(
-    name=runtime_config.get("project_name", "slurm-harness"),
-    job=training_job,
+    name=runtime_config.get("project_name", "slurm-harness"), job=training_job
 )

@@ -18,22 +18,19 @@ if config_path.exists():
 else:
     runtime_config = {}
 
-BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
+BASE_IMAGE = runtime_config.get(
+    "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+)
 
 training_runtime = definitions.Runtime(
-    start_commands=[
-        "echo 'SEED_READY' && sleep 30",
-    ],
-    cache_config=definitions.CacheConfig(
-        enabled=True,
-    ),
+    start_commands=["echo 'SEED_READY' && sleep 30"],
+    cache_config=definitions.CacheConfig(enabled=True),
 )
 
 training_compute = definitions.Compute(
     accelerator=truss_config.AcceleratorSpec(
-        accelerator=truss_config.Accelerator.H200,
-        count=1,
-    ),
+        accelerator=truss_config.Accelerator.H200, count=1
+    )
 )
 
 training_job = definitions.TrainingJob(
@@ -43,6 +40,5 @@ training_job = definitions.TrainingJob(
 )
 
 training_project = definitions.TrainingProject(
-    name=runtime_config.get("project_name", "slurm-harness"),
-    job=training_job,
+    name=runtime_config.get("project_name", "slurm-harness"), job=training_job
 )

@@ -22,30 +22,25 @@ SBATCH_SCRIPT = runtime_config.get("sbatch_script", "")
 
 accelerator_type = truss_config.Accelerator(PARTITION)
 
-BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
+BASE_IMAGE = runtime_config.get(
+    "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+)
 
 training_runtime = definitions.Runtime(
-    start_commands=[
-        "bash worker_node/setup_worker.sh",
-    ],
+    start_commands=["bash worker_node/setup_worker.sh"],
     environment_variables={
         "EXPECTED_WORKERS": str(NODE_COUNT),
         "GPUS_PER_NODE": str(GPUS_PER_NODE),
         "SBATCH_SCRIPT": SBATCH_SCRIPT,
     },
-    cache_config=definitions.CacheConfig(
-        enabled=True,
-    ),
-    checkpointing_config=definitions.CheckpointingConfig(
-        enabled=True,
-    ),
+    cache_config=definitions.CacheConfig(enabled=True),
+    checkpointing_config=definitions.CheckpointingConfig(enabled=True),
 )
 
 training_compute = definitions.Compute(
     node_count=NODE_COUNT,
     accelerator=truss_config.AcceleratorSpec(
-        accelerator=accelerator_type,
-        count=GPUS_PER_NODE,
+        accelerator=accelerator_type, count=GPUS_PER_NODE
     ),
 )
 
@@ -54,12 +49,11 @@ training_job = definitions.TrainingJob(
     compute=training_compute,
     runtime=training_runtime,
     interactive_session=definitions.InteractiveSession(
-        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP,
+        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP
     ),
     name=runtime_config.get("job_name"),
 )
 
 training_project = definitions.TrainingProject(
-    name=runtime_config.get("project_name", "slurm-harness"),
-    job=training_job,
+    name=runtime_config.get("project_name", "slurm-harness"), job=training_job
 )
