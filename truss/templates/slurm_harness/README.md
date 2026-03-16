@@ -39,10 +39,7 @@ This pushes a CPU-only job that runs `slurmctld`. It stays alive indefinitely, a
 Options:
 
 ```bash
-# Custom worker count and GPU config
-truss train slurm login --project my-slurm-cluster --workers 4 --gpus-per-node 8
-
-# Use a specific partition
+# Use a specific GPU partition (default is CPU-only)
 truss train slurm login --project my-slurm-cluster -p H100
 
 # Self-test: automatically push a test worker to verify the setup
@@ -92,9 +89,8 @@ truss train view --job-id <job-id>
 | Flag | Default | Description |
 |---|---|---|
 | `--project` | `slurm-harness` | Project name (shared cache scope) |
-| `--workers` | `1` | Expected number of worker nodes |
 | `--gpus-per-node` | `8` | GPUs per worker |
-| `--partition`, `-p` | `H200` | GPU type (e.g. H100, H200, A100) |
+| `--partition`, `-p` | none (CPU-only) | GPU type (e.g. H100, H200, A100) |
 | `--self-test` | off | Push a test worker from inside the login node |
 | `--image` | `pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime` | Base Docker image |
 | `--remote` | auto-detected | Baseten remote name |
@@ -119,7 +115,7 @@ truss train view --job-id <job-id>
 
 2. **Workers start**: Install SLURM, write their IPs to shared cache, copy the munge key, wait for `slurm.conf` to appear with their hostname, then start `slurmd`.
 
-3. **Login detects workers**: Once all worker IPs appear in the cache, the login node generates `slurm.conf` with the worker hostnames/IPs and starts `slurmctld`.
+3. **Login detects workers**: Workers write their count to the shared cache. Once all worker IPs appear, the login node generates `slurm.conf` with the worker hostnames/IPs and starts `slurmctld`.
 
 4. **Worker 0 submits the job**: After `sinfo` shows all workers as idle, worker 0 writes the batch script (passed via env var) and runs `sbatch`.
 
