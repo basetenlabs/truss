@@ -94,7 +94,7 @@ truss train isession --job-id <login-job-id>
 |---|---|---|
 | `--project` | `slurm-harness` | Project name (shared cache scope) |
 | `--gpus-per-node` | `8` | GPUs per worker |
-| `--partition`, `-p` | none (CPU-only) | GPU type (e.g. H100, H200, A100) |
+| `--partition`, `-p` | none (CPU-only) | GPU type (e.g. H200, H100) |
 | `--self-test` | off | Push a test worker from inside the login node |
 | `--image` | `pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime` | Base Docker image |
 | `--remote` | auto-detected | Baseten remote name |
@@ -107,7 +107,7 @@ truss train isession --job-id <login-job-id>
 | `--wrap` | | Inline command (alternative to script) |
 | `--nodes`, `-N` | `1` | Number of worker nodes |
 | `--gres` | `gpu:8` | GPU resources per node |
-| `--partition`, `-p` | `H200` | GPU type (e.g. H100, H200, A100) |
+| `--partition`, `-p` | `H200` | GPU type (e.g. H200, H100) |
 | `--job-name`, `-J` | `slurm-worker` | Name for the worker job |
 | `--project` | auto-detected | Project name (must match login node) |
 | `--image` | `pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime` | Base Docker image |
