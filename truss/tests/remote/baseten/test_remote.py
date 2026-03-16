@@ -751,6 +751,81 @@ def test_api_push_integration_labels_propagated(
     assert push_kwargs.get("labels") == labels
 
 
+def test_api_push_team_resolved_and_passed(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+    from truss.remote.baseten.remote import BasetenRemote
+
+    mock_remote = MagicMock(spec=BasetenRemote)
+    mock_service = MagicMock()
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_remote.push.return_value = mock_service
+    mock_remote.api.get_teams.return_value = {
+        "my-team": TeamType(id="team_123", name="my-team", default=True),
+        "other-team": TeamType(id="team_456", name="other-team", default=False),
+    }
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir),
+            remote="baseten",
+            model_name="test_model",
+            team="my-team",
+        )
+
+    mock_remote.api.get_teams.assert_called_once()
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_123"
+
+
+def test_api_push_invalid_team_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+    from truss.remote.baseten.remote import BasetenRemote
+
+    mock_remote = MagicMock(spec=BasetenRemote)
+    mock_remote.api.get_teams.return_value = {
+        "my-team": TeamType(id="team_123", name="my-team", default=True)
+    }
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Team 'nonexistent' does not exist"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="test_model",
+                team="nonexistent",
+            )
+
+
+def test_api_push_no_team_passes_none(
+    custom_model_truss_dir_with_pre_and_post,
+    mock_remote_factory,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+
+    push(str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model")
+
+    mock_remote_factory.push.assert_called_once()
+    _, push_kwargs = mock_remote_factory.push.call_args
+    assert push_kwargs.get("team_id") is None
+
+
 @patch("truss.remote.baseten.remote.time.sleep")
 def test_retry_patch_succeeds_first_try(mock_sleep):
     console = MagicMock()
