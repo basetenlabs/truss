@@ -82,10 +82,7 @@ def resolve_model_for_watch(
     existing_teams = remote_provider.api.get_teams()
 
     if provided_team_name is not None:
-        try:
-            team_id = _validate_provided_team(provided_team_name, existing_teams)
-        except ValueError as e:
-            raise click.ClickException(str(e)) from None
+        team_id = _validate_provided_team(provided_team_name, existing_teams)
         models_data = remote_provider.api.get_models_for_watch(
             team_id=team_id, chainlets_only=chainlets_only
         )
@@ -122,19 +119,33 @@ def resolve_model_team_name(
     allow_interactive: bool = True,
     remote_name: Optional[str] = None,
 ) -> tuple[Optional[str], Optional[str]]:
-    """Resolve team name and team_id for a model push.
-
+    """Resolve team name and team_id from provided team name or by prompting the user.
     Returns a tuple of (team_name, team_id).
+    This function handles 8 distinct scenarios organized into 3 high-level categories:
 
-    Raises ValueError when resolution fails (invalid team name, or ambiguous
-    teams when allow_interactive=False).
+    HIGH-LEVEL SCENARIO 1: --team PROVIDED (or configured in .trussrc via remote_name)
+        SCENARIO 1: Valid team name, user has access
+            → Returns (team_name, team_id) for that team (no prompt, no error)
+        SCENARIO 2: Invalid team name (does not exist)
+            → Raises ValueError with error message listing available teams
 
-    Resolution order:
-        1. Use provided_team_name if given, or fall back to .trussrc config
-           via remote_name.
-        2. If model already exists in exactly one accessible team, use that team.
-        3. If there is exactly one team, use it.
-        4. If allow_interactive, prompt the user. Otherwise raise ValueError.
+    HIGH-LEVEL SCENARIO 2: --team NOT PROVIDED, Model does not exist
+        SCENARIO 3: User has multiple teams, no existing model
+            → Prompts user to select a team via inquire_team() (or raises ValueError
+              if allow_interactive=False)
+        SCENARIO 6: User has exactly one team, no existing model
+            → Returns (team_name, team_id) for the single team automatically (no prompt)
+
+    HIGH-LEVEL SCENARIO 3: --team NOT PROVIDED, Model exists
+        SCENARIO 4: User has multiple teams, existing model in exactly one team
+            → Auto-detects and returns (team_name, team_id) for that team (no prompt)
+        SCENARIO 5: User has multiple teams, existing model exists in multiple teams
+            → Prompts user to select a team via inquire_team() (or raises ValueError
+              if allow_interactive=False)
+        SCENARIO 7: User has exactly one team, existing model matches the team
+            → Auto-detects and returns (team_name, team_id) for the single team (no prompt)
+        SCENARIO 8: User has exactly one team, existing model exists in different team
+            → Returns (team_name, team_id) for the single team automatically (no prompt, uses user's only team)
 
     Args:
         remote_provider: The Baseten remote provider.
