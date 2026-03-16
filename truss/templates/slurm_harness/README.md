@@ -40,7 +40,7 @@ Options:
 
 ```bash
 # Use a specific GPU partition (default is CPU-only)
-truss train slurm login --project my-slurm-cluster -p H100
+truss train slurm login --project my-slurm-cluster -p H200
 
 # Self-test: automatically push a test worker to verify the setup
 truss train slurm login --project my-slurm-cluster --self-test
