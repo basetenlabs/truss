@@ -16,6 +16,14 @@ runtime_config = json.loads(config_path.read_text()) if config_path.exists() els
 
 EXPECTED_WORKERS = runtime_config.get("node_count", 1)
 GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
+PARTITION = runtime_config.get("partition", "H200")
+
+ACCELERATOR_MAP = {
+    "H100": truss_config.Accelerator.H100,
+    "H200": truss_config.Accelerator.H200,
+    "A100": truss_config.Accelerator.A100,
+}
+accelerator_type = ACCELERATOR_MAP.get(PARTITION, truss_config.Accelerator.H100)
 
 BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
 
@@ -37,8 +45,10 @@ training_runtime = definitions.Runtime(
 )
 
 training_compute = definitions.Compute(
-    cpu_count=4,
-    memory="16Gi",
+    accelerator=truss_config.AcceleratorSpec(
+        accelerator=accelerator_type,
+        count=GPUS_PER_NODE,
+    ),
 )
 
 training_job = definitions.TrainingJob(
