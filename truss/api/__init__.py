@@ -63,7 +63,7 @@ def _resolve_team_id(
     """Resolve team_id using the same logic as the CLI's ``--team`` flag.
 
     Uses :func:`resolve_model_team_name` with ``allow_interactive=False`` so that
-    ambiguous cases raise an error instead of prompting.
+    ambiguous cases raise ValueError instead of prompting.
     """
     _, team_id = resolve_model_team_name(
         remote_provider=remote_provider,

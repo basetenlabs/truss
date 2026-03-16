@@ -66,7 +66,7 @@ class TestModelTeamResolver:
         mock_remote = self._setup_mock_remote(teams)
 
         if should_raise:
-            with pytest.raises(click.ClickException) as exc_info:
+            with pytest.raises(ValueError) as exc_info:
                 resolve_model_team_name(
                     remote_provider=mock_remote,
                     provided_team_name=provided_team_name,
