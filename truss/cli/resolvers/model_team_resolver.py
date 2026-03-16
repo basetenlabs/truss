@@ -11,14 +11,17 @@ from truss.remote.remote_factory import RemoteFactory
 
 
 def _validate_provided_team(
-    provided_team_name: str, existing_teams: dict[str, TeamType]
+    provided_team_name: str,
+    existing_teams: dict[str, TeamType],
+    allow_interactive: bool = True,
 ) -> str:
     """Validate provided team name exists and return team_id."""
     if provided_team_name not in existing_teams:
         available_teams_str = remote_cli.format_available_teams(existing_teams)
-        raise click.ClickException(
-            f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
-        )
+        msg = f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
+        if allow_interactive:
+            raise click.ClickException(msg)
+        raise ValueError(msg)
     return existing_teams[provided_team_name].id
 
 
@@ -172,16 +175,9 @@ def resolve_model_team_name(
         effective_team_name = RemoteFactory.get_remote_team(remote_name)
 
     if effective_team_name is not None:
-        try:
-            _validate_provided_team(effective_team_name, existing_teams)
-        except click.ClickException:
-            if not allow_interactive:
-                available_teams_str = remote_cli.format_available_teams(existing_teams)
-                raise ValueError(
-                    f"Team '{effective_team_name}' does not exist. "
-                    f"Available teams: {available_teams_str}"
-                ) from None
-            raise
+        _validate_provided_team(
+            effective_team_name, existing_teams, allow_interactive=allow_interactive
+        )
         return (effective_team_name, _get_team_id(effective_team_name))
 
     if existing_model_name is not None:
