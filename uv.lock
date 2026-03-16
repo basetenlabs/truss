@@ -3393,7 +3393,7 @@ wheels = [
 
 [[package]]
 name = "truss"
-version = "0.15.4"
+version = "0.15.5"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -3463,7 +3463,7 @@ dev-server = [
     { name = "opentelemetry-sdk" },
     { name = "prometheus-client" },
     { name = "uvicorn" },
-    { name = "uvloop" },
+    { name = "uvloop", marker = "sys_platform != 'win32'" },
     { name = "websockets" },
 ]
 
@@ -3533,7 +3533,7 @@ dev-server = [
     { name = "opentelemetry-sdk", specifier = ">=1.25.0" },
     { name = "prometheus-client", specifier = ">=0.21.1,<0.22" },
     { name = "uvicorn", specifier = ">=0.24.0" },
-    { name = "uvloop", specifier = ">=0.17.0" },
+    { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.17.0" },
     { name = "websockets", specifier = ">=14.0" },
 ]
 

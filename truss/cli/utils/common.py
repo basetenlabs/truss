@@ -7,7 +7,7 @@ import threading
 import time
 import warnings
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pydantic
 import requests as requests_lib
@@ -21,8 +21,10 @@ import rich_click as click
 from rich.markup import escape
 
 import truss
-from truss.cli.cli import rich_console
 from truss.cli.utils import self_upgrade
+
+if TYPE_CHECKING:
+    from truss.cli.cli import rich_console
 from truss.cli.utils.output import console
 from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
 from truss.remote.baseten.remote import BasetenRemote

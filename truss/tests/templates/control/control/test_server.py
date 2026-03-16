@@ -1,5 +1,7 @@
 import os
+import platform
 import socket
+import sys
 from contextlib import contextmanager
 from typing import Dict, List
 from unittest.mock import AsyncMock, patch
@@ -48,7 +50,7 @@ def app(truss_container_fs, truss_original_hash, ports):
         control_app = create_app(
             {
                 "inference_server_home": inf_serv_home,
-                "inference_server_process_args": ["python", "main.py"],
+                "inference_server_process_args": [sys.executable, "main.py"],
                 "control_server_host": "*",
                 "control_server_port": ports["control_server_port"],
                 "inference_server_port": ports["inference_server_port"],
@@ -66,7 +68,13 @@ def app(truss_container_fs, truss_original_hash, ports):
 
 @pytest.fixture(
     params=[
-        pytest.param(("asyncio", {"use_uvloop": True}), id="asyncio+uvloop"),
+        pytest.param(
+            ("asyncio", {"use_uvloop": True}),
+            id="asyncio+uvloop",
+            marks=pytest.mark.skipif(
+                platform.system() == "Windows", reason="uvloop does not support Windows"
+            ),
+        ),
         pytest.param(("asyncio", {"use_uvloop": False}), id="asyncio"),
     ]
 )
