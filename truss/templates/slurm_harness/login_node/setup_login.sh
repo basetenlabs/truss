@@ -12,7 +12,8 @@ rm -f "$SLURM_HARNESS_DIR"/controller_* \
       "$SLURM_HARNESS_DIR"/worker_*_ip \
       "$SLURM_HARNESS_DIR"/worker_*_hostname \
       "$SLURM_HARNESS_DIR"/worker_*_cpus \
-      "$SLURM_HARNESS_DIR"/worker_job_id
+      "$SLURM_HARNESS_DIR"/worker_job_id \
+      "$SLURM_HARNESS_DIR"/worker_node_count
 
 # Install SLURM and munge
 source "${SCRIPT_DIR}/../shared/install_slurm.sh"
@@ -42,7 +43,6 @@ CONTROLLER_HOSTNAME=$(hostname -s)
 echo "$CONTROLLER_IP" > "$SLURM_HARNESS_DIR/controller_ip"
 echo "$CONTROLLER_HOSTNAME" > "$SLURM_HARNESS_DIR/controller_hostname"
 
-EXPECTED_WORKERS="${EXPECTED_WORKERS:-1}"
 GPUS_PER_NODE="${GPUS_PER_NODE:-8}"
 
 # Create required directories
@@ -162,22 +162,38 @@ if [ -f /workspace/runtime_config.json ]; then
     if [ "$SELF_TEST" = "True" ]; then
         PROJECT=$(python3 -c "import json; print(json.load(open('/workspace/runtime_config.json')).get('project_name', 'slurm-harness'))")
         PARTITION=$(python3 -c "import json; print(json.load(open('/workspace/runtime_config.json')).get('partition', 'H200'))")
+        SELF_TEST_WORKERS=$(python3 -c "import json; print(json.load(open('/workspace/runtime_config.json')).get('node_count', 1))")
         echo "SELF_TEST: Pushing a worker job from login node..."
         truss train slurm sbatch --wrap "echo SELF_TEST_OK && hostname && nvidia-smi -L && sleep 30 && echo SELF_TEST_DONE" \
-            --project "$PROJECT" -p "$PARTITION" --gres "gpu:${GPUS_PER_NODE}" -N "${EXPECTED_WORKERS}" 2>&1 \
+            --project "$PROJECT" -p "$PARTITION" --gres "gpu:${GPUS_PER_NODE}" -N "${SELF_TEST_WORKERS}" 2>&1 \
             || echo "SELF_TEST: sbatch failed with exit code $?"
         echo "SELF_TEST: Worker push initiated, now waiting for it to register..."
     fi
 fi
 
-# Wait for worker job ID and all worker IPs to appear in shared cache.
-echo "Waiting for ${EXPECTED_WORKERS} worker(s) to register..."
+# Wait for workers to register. The worker count is discovered dynamically
+# from worker_node_count (written by workers), not from this node's config.
+echo "Waiting for worker_node_count and worker_job_id to appear..."
 MAX_WAIT=600
 WAITED=0
+while [ ! -f "$SLURM_HARNESS_DIR/worker_node_count" ] || [ ! -f "$SLURM_HARNESS_DIR/worker_job_id" ]; do
+    sleep 5
+    WAITED=$((WAITED + 5))
+    if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+        echo "ERROR: Timed out waiting for worker metadata after ${MAX_WAIT}s"
+        exit 1
+    fi
+    echo "Waiting for worker metadata... (${WAITED}s)"
+done
+
+EXPECTED_WORKERS=$(cat "$SLURM_HARNESS_DIR/worker_node_count")
+echo "Discovered worker count: ${EXPECTED_WORKERS}"
+
+echo "Waiting for ${EXPECTED_WORKERS} worker(s) to register..."
 while true; do
     REGISTERED=0
     for i in $(seq 0 $((EXPECTED_WORKERS - 1))); do
-        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_ip" ] && [ -f "$SLURM_HARNESS_DIR/worker_job_id" ]; then
+        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_ip" ]; then
             REGISTERED=$((REGISTERED + 1))
         fi
     done
@@ -210,6 +226,11 @@ while true; do
         CURRENT_JOB_ID=$(cat "$SLURM_HARNESS_DIR/worker_job_id")
         if [ "$CURRENT_JOB_ID" != "$WORKER_JOB_ID" ]; then
             echo "New worker job detected: ${CURRENT_JOB_ID} (was ${WORKER_JOB_ID})"
+
+            # Re-read worker count (may differ between jobs)
+            if [ -f "$SLURM_HARNESS_DIR/worker_node_count" ]; then
+                EXPECTED_WORKERS=$(cat "$SLURM_HARNESS_DIR/worker_node_count")
+            fi
 
             # Check if all worker IPs are available before reconfiguring.
             ALL_READY=true

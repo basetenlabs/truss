@@ -14,7 +14,6 @@ from truss_train import definitions
 config_path = Path(__file__).parent / "runtime_config.json"
 runtime_config = json.loads(config_path.read_text()) if config_path.exists() else {}
 
-EXPECTED_WORKERS = runtime_config.get("node_count", 1)
 GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
 PARTITION = runtime_config.get("partition", None)
 
@@ -33,7 +32,6 @@ training_runtime = definitions.Runtime(
         "bash login_node/setup_login.sh",
     ],
     environment_variables={
-        "EXPECTED_WORKERS": str(EXPECTED_WORKERS),
         "GPUS_PER_NODE": str(GPUS_PER_NODE),
         "BASETEN_API_KEY": definitions.SecretReference(name="baseten_api_key"),
     },

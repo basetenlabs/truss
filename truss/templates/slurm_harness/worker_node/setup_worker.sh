@@ -21,6 +21,9 @@ echo "Worker ${BT_NODE_RANK} CPU count: $(nproc)"
 # All nodes in this job share the same job ID, so any rank can write it
 echo "$WORKER_HOSTNAME" | sed 's/baseten-training-job-\(.*\)-multinode-.*/\1/' > "$SLURM_HARNESS_DIR/worker_job_id"
 
+# Write total node count so the login node knows how many workers to expect
+echo "$EXPECTED_WORKERS" > "$SLURM_HARNESS_DIR/worker_node_count"
+
 echo "Worker ${BT_NODE_RANK} registered: hostname=${WORKER_HOSTNAME} ip=${WORKER_IP}"
 
 # Poll for controller IP (login node must be running)
