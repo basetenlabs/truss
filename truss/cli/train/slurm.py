@@ -46,7 +46,7 @@ def build_login_runtime_config(
     project: str,
     workers: int,
     gpus_per_node: int,
-    partition: str,
+    partition: Optional[str],
     self_test: bool,
     image: Optional[str] = None,
 ) -> dict:
@@ -56,9 +56,10 @@ def build_login_runtime_config(
         "job_name": "slurm-login",
         "node_count": workers,
         "gpus_per_node": gpus_per_node,
-        "partition": partition,
         "self_test": self_test,
     }
+    if partition:
+        config["partition"] = partition
     if image:
         config["base_image"] = image
     return config

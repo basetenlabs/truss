@@ -726,8 +726,8 @@ def slurm():
     "--partition",
     "-p",
     type=str,
-    default="H200",
-    help="Accelerator partition (e.g. H100, H200, A100)",
+    default=None,
+    help="Accelerator partition (e.g. H100, H200, A100). Defaults to CPU-only.",
 )
 @click.option(
     "--self-test", is_flag=True, help="Push a test worker from the login node"
@@ -739,7 +739,7 @@ def slurm_login(
     project: str,
     workers: int,
     gpus_per_node: int,
-    partition: str,
+    partition: Optional[str],
     self_test: bool,
     image: Optional[str],
     remote: Optional[str],
@@ -753,8 +753,7 @@ def slurm_login(
     console.print("Starting SLURM login node:")
     console.print(f"  Project:       {project}")
     console.print(f"  Workers:       {workers}")
-    console.print(f"  GPUs/node:     {gpus_per_node}")
-    console.print(f"  Partition:     {partition}")
+    console.print(f"  Compute:       {partition or 'CPU-only'}")
     console.print()
 
     runtime_config = build_login_runtime_config(
