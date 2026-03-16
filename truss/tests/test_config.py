@@ -1348,6 +1348,36 @@ def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
         assert docker_server.run_as_user_id == expected
 
 
+def test_docker_server_no_build_with_predict_endpoint_raises():
+    """no_build=true with predict_endpoint should raise validation error."""
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="predict_endpoint is not supported when no_build is true",
+    ):
+        DockerServer(
+            start_command="python main.py",
+            server_port=8000,
+            predict_endpoint="/v1/completions",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+            no_build=True,
+        )
+
+
+def test_docker_server_no_build_without_predict_endpoint_valid():
+    """no_build=true without predict_endpoint should be valid."""
+    docker_server = DockerServer(
+        start_command="python main.py",
+        server_port=8000,
+        predict_endpoint="/v1/completions",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+        no_build=False,
+    )
+    assert docker_server.no_build is False
+    assert docker_server.predict_endpoint == "/v1/completions"
+
+
 # =============================================================================
 # Weights Configuration Tests
 # =============================================================================
