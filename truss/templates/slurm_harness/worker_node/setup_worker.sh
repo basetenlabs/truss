@@ -188,9 +188,10 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     # SLURM writes job output to slurm-<id>.out in the working directory.
     SLURM_OUTPUT_FILE="/slurm-${SLURM_JOB_ID}.out"
     (
-        # Wait for the output file to appear, then tail it
+        # Wait for the output file to appear, then tail it to PID 1's stdout
+        # so the container log collector picks it up.
         while [ ! -f "$SLURM_OUTPUT_FILE" ]; do sleep 1; done
-        tail -f "$SLURM_OUTPUT_FILE"
+        tail -f "$SLURM_OUTPUT_FILE" > /proc/1/fd/1 2>&1
     ) &
     TAIL_PID=$!
 
