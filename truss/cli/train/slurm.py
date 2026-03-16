@@ -8,8 +8,6 @@ from typing import Optional
 
 from truss.base.constants import SLURM_HARNESS_TEMPLATE_DIR
 
-# Canonical accelerator partition names
-PARTITIONS = ("H100", "H200", "A100")
 DEFAULT_PARTITION = "H200"
 DEFAULT_BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
 

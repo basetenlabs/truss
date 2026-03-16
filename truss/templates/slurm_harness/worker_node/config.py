@@ -20,13 +20,7 @@ GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
 PARTITION = runtime_config.get("partition", "H200")
 SBATCH_SCRIPT = runtime_config.get("sbatch_script", "")
 
-# Map partition name to accelerator type
-ACCELERATOR_MAP = {
-    "H100": truss_config.Accelerator.H100,
-    "H200": truss_config.Accelerator.H200,
-    "A100": truss_config.Accelerator.A100,
-}
-accelerator_type = ACCELERATOR_MAP.get(PARTITION, truss_config.Accelerator.H100)
+accelerator_type = truss_config.Accelerator(PARTITION)
 
 BASE_IMAGE = runtime_config.get("base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime")
 
