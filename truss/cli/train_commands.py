@@ -720,7 +720,6 @@ def slurm():
 @click.option(
     "--project", type=str, default="slurm-harness", help="Training project name"
 )
-@click.option("--workers", type=int, default=1, help="Number of expected worker nodes")
 @click.option("--gpus-per-node", type=int, default=8, help="GPUs per worker node")
 @click.option(
     "--partition",
@@ -737,7 +736,6 @@ def slurm():
 @common.common_options()
 def slurm_login(
     project: str,
-    workers: int,
     gpus_per_node: int,
     partition: Optional[str],
     self_test: bool,
@@ -752,13 +750,11 @@ def slurm_login(
 
     console.print("Starting SLURM login node:")
     console.print(f"  Project:       {project}")
-    console.print(f"  Workers:       {workers}")
     console.print(f"  Compute:       {partition or 'CPU-only'}")
     console.print()
 
     runtime_config = build_login_runtime_config(
         project=project,
-        workers=workers,
         gpus_per_node=gpus_per_node,
         partition=partition,
         self_test=self_test,

@@ -42,7 +42,6 @@ def parse_gres(gres_str: str) -> int:
 
 def build_login_runtime_config(
     project: str,
-    workers: int,
     gpus_per_node: int,
     partition: Optional[str],
     self_test: bool,
@@ -52,7 +51,6 @@ def build_login_runtime_config(
     config: dict = {
         "project_name": project,
         "job_name": "slurm-login",
-        "node_count": workers,
         "gpus_per_node": gpus_per_node,
         "self_test": self_test,
     }

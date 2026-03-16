@@ -33,7 +33,6 @@ class TestBuildLoginRuntimeConfig:
     def test_basic(self):
         config = build_login_runtime_config(
             project="my-project",
-            workers=2,
             gpus_per_node=4,
             partition="H100",
             self_test=True,
@@ -41,7 +40,6 @@ class TestBuildLoginRuntimeConfig:
         assert config == {
             "project_name": "my-project",
             "job_name": "slurm-login",
-            "node_count": 2,
             "gpus_per_node": 4,
             "partition": "H100",
             "self_test": True,
@@ -116,7 +114,7 @@ class TestSlurmLoginCLI:
         runner = CliRunner()
         result = runner.invoke(
             truss_cli,
-            ["train", "slurm", "login", "--project", "my-proj", "--workers", "2"],
+            ["train", "slurm", "login", "--project", "my-proj"],
         )
         assert result.exit_code == 0, result.output
         assert "job-abc" in result.output
