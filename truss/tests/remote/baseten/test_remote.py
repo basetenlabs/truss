@@ -893,6 +893,38 @@ def test_api_push_existing_model_auto_resolves_team(
     assert push_kwargs.get("team_id") == "team_b"
 
 
+@patch(
+    "truss.cli.resolvers.model_team_resolver.RemoteFactory.get_remote_team",
+    return_value="team-b",
+)
+def test_api_push_falls_back_to_trussrc_team(
+    mock_get_remote_team,
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_get_remote_team.assert_called_once_with("baseten")
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_b"
+
+
 @patch("truss.remote.baseten.remote.time.sleep")
 def test_retry_patch_succeeds_first_try(mock_sleep):
     console = MagicMock()
