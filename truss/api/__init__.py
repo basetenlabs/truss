@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from rich import progress
 
 from truss.api import definitions
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
@@ -68,6 +69,7 @@ def push(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     labels: Optional[Dict[str, Any]] = None,
+    team: Optional[str] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -98,6 +100,7 @@ def push(
           configured in the specified environment.
         deploy_timeout_minutes: Optional timeout in minutes for the deployment operation.
         labels: Optional JSON-serializable dictionary of label key-value pairs.
+        team: Name of the team to push the model to.
 
     Returns:
         The newly created ModelDeployment.
@@ -125,6 +128,17 @@ def push(
             )
 
     remote_provider = RemoteFactory.create(remote=remote)
+
+    team_id = None
+    if team is not None and isinstance(remote_provider, BasetenRemote):
+        existing_teams = remote_provider.api.get_teams()
+        if team not in existing_teams:
+            available = ", ".join(sorted(existing_teams.keys()))
+            raise ValueError(
+                f"Team '{team}' does not exist. Available teams: {available}"
+            )
+        team_id = existing_teams[team].id
+
     tr = load(target_directory)
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
@@ -145,6 +159,7 @@ def push(
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
+        team_id=team_id,
         labels=labels,
     )  # type: ignore
 
