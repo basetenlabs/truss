@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eu
+set -eux
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SLURM_HARNESS_DIR="${BT_PROJECT_CACHE_DIR}/slurm_harness"
