@@ -1,11 +1,12 @@
-use log::{debug, warn};
+use log::{debug, info, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::constants::{HF_TOKEN, SECRETS_BASE_PATH, SECRET_PATH_WHITELIST};
+use crate::constants::{HF_TOKEN, SECRETS_BASE_PATH, SECRET_ENV_VAR_PREFIX, SECRET_PATH_WHITELIST};
 
 static WARNED_SECRETS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
@@ -71,18 +72,22 @@ pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
     }
 }
 
-pub fn get_secret_path(runtime_secret_name: &str) -> String {
-    let secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
-
-    if !is_secret_path_allowed(secret_path.clone()) {
-        warn!(
-            "Secret path '{}' does not match any allowed prefix in whitelist",
-            secret_path.display()
-        );
-        return String::new();
+/// Get secret by name, checking environment variable first, then file system.
+/// This allows build-time usage (where /secrets/ doesn't exist) by setting
+/// the secret value as an env var named TRUSS_SECRET_{runtime_secret_name}.
+pub fn get_secret(runtime_secret_name: &str) -> Option<String> {
+    let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, runtime_secret_name);
+    if let Ok(value) = env::var(&env_var_name) {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            info!(
+                "Secret '{}' resolved from environment variable '{}'",
+                runtime_secret_name, env_var_name
+            );
+            return Some(trimmed);
+        }
     }
-
-    secret_path.display().to_string()
+    get_secret_from_file(runtime_secret_name)
 }
 
 /// Get HuggingFace token from multiple sources
