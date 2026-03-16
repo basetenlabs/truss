@@ -101,3 +101,74 @@ pub fn get_hf_secret_from_file(hf_token_name: &str) -> Option<String> {
         (*HF_TOKEN).clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_get_secret_returns_env_var_value() {
+        let secret_name = "test_get_secret_basic";
+        let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+
+        unsafe { env::set_var(&env_var_name, "my-secret-value") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&env_var_name) };
+
+        assert_eq!(result, Some("my-secret-value".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_trims_whitespace() {
+        let secret_name = "test_get_secret_trim";
+        let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+
+        unsafe { env::set_var(&env_var_name, "  my-secret  \n") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&env_var_name) };
+
+        assert_eq!(result, Some("my-secret".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_empty_env_var_falls_through() {
+        let secret_name = "test_get_secret_empty";
+        let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+
+        unsafe { env::set_var(&env_var_name, "") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&env_var_name) };
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_no_env_var_no_file_returns_none() {
+        assert_eq!(get_secret("nonexistent_secret_xyz_42"), None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_uses_correct_prefix() {
+        let secret_name = "test_prefix_check";
+        let correct_env_var = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+        let wrong_env_var = secret_name.to_string();
+
+        // Only set the unprefixed var — should NOT be found
+        unsafe { env::set_var(&wrong_env_var, "wrong-value") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&wrong_env_var) };
+        assert_eq!(result, None);
+
+        // Set the prefixed var — should be found
+        unsafe { env::set_var(&correct_env_var, "correct-value") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&correct_env_var) };
+        assert_eq!(result, Some("correct-value".to_string()));
+    }
+}
