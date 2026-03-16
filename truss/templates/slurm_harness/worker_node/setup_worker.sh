@@ -187,35 +187,37 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     # Stream SLURM job output to stdout so it appears in training logs.
     # SLURM writes job output to slurm-<id>.out in the working directory.
     SLURM_OUTPUT_FILE="/slurm-${SLURM_JOB_ID}.out"
-    (
-        # Wait for the output file to appear, then tail it to PID 1's stdout
-        # so the container log collector picks it up.
-        while [ ! -f "$SLURM_OUTPUT_FILE" ]; do sleep 1; done
-        tail -f "$SLURM_OUTPUT_FILE" > /proc/1/fd/1 2>&1
-    ) &
-    TAIL_PID=$!
+    SLURM_OUTPUT_LINES=0
 
-    # Monitor the SLURM job until completion.
+    # Monitor the SLURM job until completion, streaming output each iteration.
     # COMPLETING is a transient state where SLURM runs epilog — the job
     # itself has already finished, so we treat it as done.
     echo "Monitoring SLURM job ${SLURM_JOB_ID}..."
     while true; do
+        # Stream new lines from SLURM output file
+        if [ -f "$SLURM_OUTPUT_FILE" ]; then
+            TOTAL_LINES=$(wc -l < "$SLURM_OUTPUT_FILE" 2>/dev/null || echo "0")
+            if [ "$TOTAL_LINES" -gt "$SLURM_OUTPUT_LINES" ]; then
+                tail -n "+$((SLURM_OUTPUT_LINES + 1))" "$SLURM_OUTPUT_FILE" | head -n "$((TOTAL_LINES - SLURM_OUTPUT_LINES))"
+                SLURM_OUTPUT_LINES=$TOTAL_LINES
+            fi
+        fi
+
         JOB_STATE=$(squeue -j "$SLURM_JOB_ID" --noheader -o "%T" 2>/dev/null || echo "GONE")
         if [ "$JOB_STATE" = "GONE" ] || [ -z "$JOB_STATE" ] || [ "$JOB_STATE" = "COMPLETING" ] || [ "$JOB_STATE" = "COMPLETED" ]; then
+            # Flush any remaining output
+            if [ -f "$SLURM_OUTPUT_FILE" ]; then
+                TOTAL_LINES=$(wc -l < "$SLURM_OUTPUT_FILE" 2>/dev/null || echo "0")
+                if [ "$TOTAL_LINES" -gt "$SLURM_OUTPUT_LINES" ]; then
+                    tail -n "+$((SLURM_OUTPUT_LINES + 1))" "$SLURM_OUTPUT_FILE"
+                fi
+            fi
             echo "SLURM job ${SLURM_JOB_ID} completed (state: ${JOB_STATE})"
             echo "SBATCH_COMPLETED:${SLURM_JOB_ID}"
             break
         fi
-        echo "Job ${SLURM_JOB_ID} state: ${JOB_STATE}"
-        sleep 15
+        sleep 5
     done
-
-    # Stop tailing and dump any final output
-    kill "$TAIL_PID" 2>/dev/null || true
-    if [ -f "$SLURM_OUTPUT_FILE" ]; then
-        echo "=== Final SLURM job output ==="
-        cat "$SLURM_OUTPUT_FILE"
-    fi
 
     echo "Worker 0 exiting after job completion."
     exit 0
