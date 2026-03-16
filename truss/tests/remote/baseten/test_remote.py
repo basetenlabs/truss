@@ -751,6 +751,20 @@ def test_api_push_integration_labels_propagated(
     assert push_kwargs.get("labels") == labels
 
 
+def _make_baseten_remote_mock(teams, models=None):
+    """Helper to create a mock BasetenRemote with teams and optional models."""
+    from truss.remote.baseten.remote import BasetenRemote
+
+    mock_remote = MagicMock(spec=BasetenRemote)
+    mock_service = MagicMock()
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_remote.push.return_value = mock_service
+    mock_remote.api.get_teams.return_value = teams
+    mock_remote.api.models.return_value = {"models": models or []}
+    return mock_remote
+
+
 def test_api_push_team_resolved_and_passed(
     custom_model_truss_dir_with_pre_and_post,
     temp_trussrc_dir,
@@ -759,17 +773,13 @@ def test_api_push_team_resolved_and_passed(
 ):
     from truss.api import push
     from truss.remote.baseten.custom_types import TeamType
-    from truss.remote.baseten.remote import BasetenRemote
 
-    mock_remote = MagicMock(spec=BasetenRemote)
-    mock_service = MagicMock()
-    mock_service.model_id = "model_id"
-    mock_service.model_version_id = "version_id"
-    mock_remote.push.return_value = mock_service
-    mock_remote.api.get_teams.return_value = {
-        "my-team": TeamType(id="team_123", name="my-team", default=True),
-        "other-team": TeamType(id="team_456", name="other-team", default=False),
-    }
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "my-team": TeamType(id="team_123", name="my-team", default=True),
+            "other-team": TeamType(id="team_456", name="other-team", default=False),
+        }
+    )
 
     with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
         push(
@@ -793,12 +803,10 @@ def test_api_push_invalid_team_raises_error(
 ):
     from truss.api import push
     from truss.remote.baseten.custom_types import TeamType
-    from truss.remote.baseten.remote import BasetenRemote
 
-    mock_remote = MagicMock(spec=BasetenRemote)
-    mock_remote.api.get_teams.return_value = {
-        "my-team": TeamType(id="team_123", name="my-team", default=True)
-    }
+    mock_remote = _make_baseten_remote_mock(
+        teams={"my-team": TeamType(id="team_123", name="my-team", default=True)}
+    )
 
     with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
         with pytest.raises(ValueError, match="Team 'nonexistent' does not exist"):
@@ -810,20 +818,79 @@ def test_api_push_invalid_team_raises_error(
             )
 
 
-def test_api_push_no_team_passes_none(
+def test_api_push_single_team_auto_resolved(
     custom_model_truss_dir_with_pre_and_post,
-    mock_remote_factory,
     temp_trussrc_dir,
     mock_available_config_names,
     mock_truss_handle,
 ):
     from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
 
-    push(str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model")
+    mock_remote = _make_baseten_remote_mock(
+        teams={"only-team": TeamType(id="team_789", name="only-team", default=True)}
+    )
 
-    mock_remote_factory.push.assert_called_once()
-    _, push_kwargs = mock_remote_factory.push.call_args
-    assert push_kwargs.get("team_id") is None
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_789"
+
+
+def test_api_push_multiple_teams_no_team_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="new_model",
+            )
+
+
+def test_api_push_existing_model_auto_resolves_team(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        },
+        models=[{"name": "test_model", "team": {"id": "team_b", "name": "team-b"}}],
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_b"
 
 
 @patch("truss.remote.baseten.remote.time.sleep")

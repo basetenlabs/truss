@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from rich import progress
 
 from truss.api import definitions
+from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import RemoteFactory
@@ -51,6 +52,27 @@ def whoami(remote: Optional[str] = None):
 
     remote_provider = RemoteFactory.create(remote=remote)
     return remote_provider.whoami()
+
+
+def _resolve_team_id(
+    remote_provider: BasetenRemote,
+    provided_team_name: Optional[str],
+    remote_name: Optional[str],
+    model_name: str,
+) -> Optional[str]:
+    """Resolve team_id using the same logic as the CLI's ``--team`` flag.
+
+    Uses :func:`resolve_model_team_name` with ``allow_interactive=False`` so that
+    ambiguous cases raise an error instead of prompting.
+    """
+    _, team_id = resolve_model_team_name(
+        remote_provider=remote_provider,
+        provided_team_name=provided_team_name,
+        existing_model_name=model_name,
+        allow_interactive=False,
+        remote_name=remote_name,
+    )
+    return team_id
 
 
 def push(
@@ -129,22 +151,17 @@ def push(
 
     remote_provider = RemoteFactory.create(remote=remote)
 
-    team_id = None
-    if team is not None and isinstance(remote_provider, BasetenRemote):
-        existing_teams = remote_provider.api.get_teams()
-        if team not in existing_teams:
-            available = ", ".join(sorted(existing_teams.keys()))
-            raise ValueError(
-                f"Team '{team}' does not exist. Available teams: {available}"
-            )
-        team_id = existing_teams[team].id
-
     tr = load(target_directory)
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         raise ValueError(
             "No model name provided. Please specify a model name in config.yaml."
         )
+
+    team_id = None
+    if isinstance(remote_provider, BasetenRemote):
+        team_id = _resolve_team_id(remote_provider, team, remote, model_name)
+
     service = remote_provider.push(
         tr,
         model_name=model_name,
