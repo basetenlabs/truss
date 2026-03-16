@@ -22,7 +22,7 @@ Login and worker nodes discover each other through a shared filesystem (`BT_PROJ
 ## Prerequisites
 
 ```bash
-pip install truss
+pip install 'truss @ git+https://github.com/basetenlabs/truss.git@rcano/slurm-cli'
 truss login  # or set BASETEN_API_KEY
 ```
 
