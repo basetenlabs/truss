@@ -195,7 +195,7 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
         while [ ! -f "$SLURM_OUTPUT_FILE" ]; do
             sleep 1
             TWAIT=$((TWAIT + 1))
-            if [ "$TWAIT" -ge 60 ]; then break; fi
+            if [ "$TWAIT" -ge 300 ]; then break; fi
         done
         [ -f "$SLURM_OUTPUT_FILE" ] && exec tail -f "$SLURM_OUTPUT_FILE"
     ) &
