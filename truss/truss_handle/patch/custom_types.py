@@ -53,6 +53,7 @@ class PatchDetails:
     next_hash: str
     next_signature: TrussSignature
     patch_ops: List[Patch]
+    hot_reload: bool = False
 
     def to_dict(self):
         return {
@@ -61,6 +62,7 @@ class PatchDetails:
             "next_hash": self.next_hash,
             "next_signature": self.next_signature.to_dict(),
             "patch_ops": [patch_op.to_dict() for patch_op in self.patch_ops],
+            "hot_reload": self.hot_reload,
         }
 
     def is_empty(self) -> bool:
@@ -78,6 +80,7 @@ class PatchDetails:
             patch_ops=[
                 Patch.from_dict(patch_op) for patch_op in patch_details["patch_ops"]
             ],
+            hot_reload=patch_details.get("hot_reload", False),
         )
 
 
@@ -87,12 +90,14 @@ class PatchRequest(BaseModel):
     hash: str
     prev_hash: str
     patches: List[Patch]
+    hot_reload: bool = False
 
     def to_dict(self):
         return {
             "hash": self.hash,
             "prev_hash": self.prev_hash,
             "patches": [patch.to_dict() for patch in self.patches],
+            "hot_reload": self.hot_reload,
         }
 
     @staticmethod
@@ -100,4 +105,10 @@ class PatchRequest(BaseModel):
         current_hash = patch_request_dict["hash"]
         prev_hash = patch_request_dict["prev_hash"]
         patches = patch_request_dict["patches"]
-        return PatchRequest(hash=current_hash, prev_hash=prev_hash, patches=patches)
+        hot_reload = patch_request_dict.get("hot_reload", False)
+        return PatchRequest(
+            hash=current_hash,
+            prev_hash=prev_hash,
+            patches=patches,
+            hot_reload=hot_reload,
+        )

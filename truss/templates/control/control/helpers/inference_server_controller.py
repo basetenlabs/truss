@@ -85,7 +85,13 @@ class InferenceServerController:
             except (KeyError, ValueError) as exc:
                 raise UnsupportedPatch(str(exc)) from exc
 
-            self._process_controller.stop()
+            # When hot_reload is set, skip process stop/start — files are
+            # written in place and the caller signals the running inference
+            # server to pick up the changes.
+            hot_reload = patch_request.get("hot_reload", False)
+
+            if not hot_reload:
+                self._process_controller.stop()
             patches.sort(key=_patch_sort_key_fn)
             try:
                 patches_executed = 0
@@ -104,10 +110,12 @@ class InferenceServerController:
                 # Theoretically, a single patch application may leave
                 # side-effects, but that's not the case with currently
                 # supported patches.
-                self._process_controller.start(self._inf_env)
+                if not hot_reload:
+                    self._process_controller.start(self._inf_env)
                 raise PatchFailedRecoverable(str(exc)) from exc
 
-            self._process_controller.start(self._inf_env)
+            if not hot_reload:
+                self._process_controller.start(self._inf_env)
             self._current_running_hash = req_hash
 
     def truss_hash(self) -> Optional[str]:

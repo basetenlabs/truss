@@ -100,10 +100,16 @@ def _start_watch_mode(
     resolved_versions: list,
     console: "rich_console.Console",
     error_console: "rich_console.Console",
+    hot_reload: bool = False,
 ) -> None:
     if not os.path.isfile(target_directory):
         remote_provider.sync_truss_to_dev_version_with_model(
-            resolved_model, resolved_versions, target_directory, console, error_console
+            resolved_model,
+            resolved_versions,
+            target_directory,
+            console,
+            error_console,
+            hot_reload=hot_reload,
         )
     else:
         # These imports are delayed, to handle pydantic v1 envs gracefully.
@@ -643,6 +649,18 @@ def run_python(script, target_directory):
     ),
 )
 @click.option(
+    "--watch-hot-reload",
+    "watch_hot_reload",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Enable hot-reload for model code changes during watch mode. "
+        "Swaps model class in-process without restarting, preserving state. "
+        "Requires --watch."
+    ),
+)
+@click.option(
     "--no-cache",
     "no_cache",
     is_flag=True,
@@ -672,6 +690,7 @@ def push(
     provided_team_name: Optional[str] = None,
     labels: Optional[str] = None,
     watch_after_push: bool = False,
+    watch_hot_reload: bool = False,
     no_cache: bool = False,
 ) -> None:
     """
@@ -707,6 +726,8 @@ def push(
         publish = False
         wait = True
     else:
+        if watch_hot_reload:
+            raise click.UsageError("--watch-hot-reload requires --watch.")
         # Default is now published deployment
         publish = True
         console.print(
@@ -945,6 +966,7 @@ def push(
                 resolved_versions=versions,
                 console=console,
                 error_console=error_console,
+                hot_reload=watch_hot_reload,
             )
 
     elif tail and isinstance(service, BasetenService):
@@ -1012,6 +1034,16 @@ def model_logs(
     help="Keep the development model warm by preventing scale-to-zero while watching.",
 )
 @click.option(
+    "--hot-reload",
+    "hot_reload",
+    is_flag=True,
+    default=False,
+    help=(
+        "Enable hot-reload for model code changes. "
+        "Swaps model class in-process without restarting, preserving state."
+    ),
+)
+@click.option(
     "--model-name",
     type=str,
     required=False,
@@ -1024,6 +1056,7 @@ def watch(
     remote: str,
     provided_team_name: Optional[str] = None,
     no_sleep: bool = False,
+    hot_reload: bool = False,
     model_name: Optional[str] = None,
 ) -> None:
     """
@@ -1108,6 +1141,7 @@ def watch(
         resolved_versions=versions,
         console=console,
         error_console=error_console,
+        hot_reload=hot_reload,
     )
 
 

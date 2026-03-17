@@ -294,6 +294,62 @@ async def _apply_patches(client, patches: List[Patch]):
     return await client.post("/control/patch", json=patch_request.to_dict())
 
 
+@pytest.mark.anyio
+async def test_patch_hot_reload(app, client):
+    # Hot reload should write files, skip process stop/start,
+    # POST /hot-reload to the inference server, and update the hash.
+    mock_model_file_content = """
+class Model:
+    def predict(self, request):
+        return {'prediction': [2]}
+"""
+    patch_obj = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE, path="model.py", content=mock_model_file_content
+        ),
+    )
+
+    resp = await client.get("/control/truss_hash")
+    original_hash = resp.json()["result"]
+
+    patch_request = PatchRequest(
+        hash="dummy", prev_hash=original_hash, patches=[patch_obj], hot_reload=True
+    )
+
+    # Mock the proxy_client so we can verify the /hot-reload call
+    mock_response = httpx.Response(
+        200,
+        json={"msg": "Hot reload complete"},
+        request=httpx.Request("POST", "/hot-reload"),
+    )
+    app.state.proxy_client.post = AsyncMock(return_value=mock_response)
+
+    process_controller = app.state.inference_server_process_controller
+    with (
+        patch.object(process_controller, "stop") as mock_stop,
+        patch.object(process_controller, "start") as mock_start,
+    ):
+        resp = await client.post("/control/patch", json=patch_request.to_dict())
+        assert resp.status_code == 200
+        assert "error" not in resp.json()
+
+        # Verify the file was written
+        with (app.state.inference_server_home / "model" / "model.py").open() as f:
+            assert f.read() == mock_model_file_content
+
+        # Verify /hot-reload was called on the inference server
+        app.state.proxy_client.post.assert_called_once_with("/hot-reload")
+
+        # Verify the process was NOT stopped/started
+        mock_stop.assert_not_called()
+        mock_start.assert_not_called()
+
+    # Verify the hash was updated
+    resp = await client.get("/control/truss_hash")
+    assert resp.json()["result"] == "dummy"
+
+
 @contextmanager
 def _env_var(kvs: Dict[str, str]):
     orig_env = os.environ.copy()

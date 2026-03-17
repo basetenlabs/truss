@@ -226,6 +226,10 @@ async def patch(request: Request) -> dict[str, str]:
             patch_request
         ),
     )
+    if patch_request.get("hot_reload", False):
+        client: httpx.AsyncClient = request.app.state.proxy_client
+        resp = await client.post("/hot-reload")
+        resp.raise_for_status()
     request.app.state.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
