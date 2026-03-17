@@ -670,6 +670,30 @@ class TestNonInteractiveResolution:
         assert team_name == "Team B"
         assert team_id == "b"
 
+    def test_non_interactive_model_in_multiple_teams_raises_valueerror(self):
+        """Model exists in multiple teams, allow_interactive=False → ValueError."""
+        mock_remote, teams = self._setup_mock_remote(
+            {
+                "Team A": {"id": "a", "name": "Team A", "default": True},
+                "Team B": {"id": "b", "name": "Team B", "default": False},
+            },
+            models_response={
+                "models": [
+                    {"name": "my-model", "team": {"id": "a", "name": "Team A"}},
+                    {"name": "my-model", "team": {"id": "b", "name": "Team B"}},
+                ]
+            },
+        )
+
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            resolve_model_team_name(
+                remote_provider=mock_remote,
+                provided_team_name=None,
+                existing_model_name="my-model",
+                existing_teams=teams,
+                allow_interactive=False,
+            )
+
 
 class TestInquireTeamEdgeCases:
     """Test edge cases for inquire_team with team names containing '(default)'."""
