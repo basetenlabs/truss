@@ -773,6 +773,101 @@ def slurm_login(
     )
 
 
+@slurm.command(name="status")
+@common.common_options()
+def slurm_status():
+    """Check SLURM readiness on this node."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    ok = True
+
+    # 1. slurm.conf
+    slurm_conf = Path("/etc/slurm/slurm.conf")
+    if slurm_conf.exists():
+        console.print("[green]✓[/green] /etc/slurm/slurm.conf exists")
+    else:
+        console.print("[red]✗[/red] /etc/slurm/slurm.conf missing — setup not complete")
+        ok = False
+
+    # 2. munge
+    if shutil.which("munged"):
+        munge_running = (
+            subprocess.run(["pgrep", "-x", "munged"], capture_output=True).returncode
+            == 0
+        )
+        if munge_running:
+            console.print("[green]✓[/green] munge is running")
+        else:
+            console.print("[red]✗[/red] munge is not running")
+            ok = False
+    else:
+        console.print("[red]✗[/red] munge not installed")
+        ok = False
+
+    # 3. slurmctld reachable (squeue)
+    if shutil.which("squeue"):
+        result = subprocess.run(
+            ["squeue", "--noheader"], capture_output=True, timeout=5
+        )
+        if result.returncode == 0:
+            jobs = (
+                len(result.stdout.decode().strip().splitlines())
+                if result.stdout.strip()
+                else 0
+            )
+            console.print(
+                f"[green]✓[/green] slurmctld reachable ({jobs} job(s) in queue)"
+            )
+        else:
+            stderr = result.stderr.decode().strip()
+            console.print(f"[red]✗[/red] squeue failed: {stderr}")
+            ok = False
+    else:
+        console.print("[red]✗[/red] squeue not installed")
+        ok = False
+
+    # 4. sinfo (node status)
+    if shutil.which("sinfo"):
+        result = subprocess.run(
+            ["sinfo", "-N", "--noheader"], capture_output=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.decode().strip().splitlines()
+            console.print(f"[green]✓[/green] {len(lines)} node(s) registered:")
+            for line in lines:
+                console.print(f"    {line.strip()}")
+        elif result.returncode == 0:
+            console.print("[yellow]![/yellow] sinfo returned no nodes")
+        else:
+            stderr = result.stderr.decode().strip()
+            console.print(f"[red]✗[/red] sinfo failed: {stderr}")
+            ok = False
+
+    # 5. slurmd (on worker nodes)
+    slurmd_running = (
+        subprocess.run(["pgrep", "-x", "slurmd"], capture_output=True).returncode == 0
+    )
+    slurmctld_running = (
+        subprocess.run(["pgrep", "-x", "slurmctld"], capture_output=True).returncode
+        == 0
+    )
+    if slurmctld_running:
+        console.print("[green]✓[/green] slurmctld running (this is a login node)")
+    if slurmd_running:
+        console.print("[green]✓[/green] slurmd running (this is a worker node)")
+    if not slurmctld_running and not slurmd_running:
+        console.print("[red]✗[/red] neither slurmctld nor slurmd running")
+        ok = False
+
+    if ok:
+        console.print("\n[green]SLURM is ready.[/green]")
+    else:
+        console.print("\n[red]SLURM is not ready.[/red] Wait for setup to complete.")
+        raise SystemExit(1)
+
+
 @slurm.command(name="sbatch")
 @click.argument("script", type=click.Path(exists=True), required=False, default=None)
 @click.option(
