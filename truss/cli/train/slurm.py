@@ -15,14 +15,22 @@ DEFAULT_BASE_IMAGE = "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
 WORKSPACE_RUNTIME_CONFIG = Path("/workspace/runtime_config.json")
 
 
+def _read_login_config() -> dict:
+    """Read runtime_config.json from the login node workspace, or empty dict."""
+    try:
+        return json.loads(WORKSPACE_RUNTIME_CONFIG.read_text())
+    except (json.JSONDecodeError, KeyError, OSError):
+        return {}
+
+
 def detect_default_project() -> str:
     """Read project name from /workspace/runtime_config.json if on a login node."""
-    try:
-        return json.loads(WORKSPACE_RUNTIME_CONFIG.read_text()).get(
-            "project_name", "slurm-harness"
-        )
-    except (json.JSONDecodeError, KeyError, OSError):
-        return "slurm-harness"
+    return _read_login_config().get("project_name", "slurm-harness")
+
+
+def detect_login_image() -> Optional[str]:
+    """Read base_image from the login node's runtime_config, or None."""
+    return _read_login_config().get("base_image")
 
 
 def parse_gres(gres_str: str) -> int:

@@ -748,6 +748,36 @@ def slurm_login(
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
+    # Check for an existing active login node in this project
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    try:
+        proj = train_cli.fetch_project_by_name_or_id(remote_provider, project)
+        active_jobs = remote_provider.api.search_training_jobs(
+            statuses=["TRAINING_JOB_RUNNING", "TRAINING_JOB_DEPLOYING"],
+            project_id=proj["id"],
+        )
+        login_jobs = [j for j in active_jobs if j.get("name") == "slurm-login"]
+        if login_jobs:
+            job = login_jobs[0]
+            job_id = job["id"]
+            console.print(
+                f"Login node already running: [cyan]{job_id}[/cyan]", style="green"
+            )
+            console.print(
+                f"Monitor with: [cyan]truss train logs --job-id {job_id}[/cyan]"
+            )
+            console.print(
+                f"SSH access:   [cyan]truss train isession --job-id {job_id}[/cyan]"
+            )
+            console.print(
+                f"Submit jobs:  [cyan]truss train slurm sbatch <script.sh> --project {project}[/cyan]"
+            )
+            return
+    except Exception:
+        pass  # Project may not exist yet, proceed with creation
+
     console.print("Starting SLURM login node:")
     console.print(f"  Project:       {project}")
     console.print(f"  Compute:       {partition or 'CPU-only'}")
@@ -885,6 +915,7 @@ def slurm_sbatch(
     from truss.cli.train.slurm import (
         build_sbatch_runtime_config,
         detect_default_project,
+        detect_login_image,
         parse_gres,
         push_node,
     )
@@ -894,6 +925,10 @@ def slurm_sbatch(
 
     if project is None:
         project = detect_default_project()
+
+    # Default to the login node's image when running from a login node
+    if image is None:
+        image = detect_login_image()
 
     if wrap:
         job_script = f"#!/bin/bash\n{wrap}\n"
