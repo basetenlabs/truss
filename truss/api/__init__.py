@@ -149,7 +149,7 @@ def push(
                 "Multiple remotes found. Please pass the remote as an argument."
             )
 
-    remote_provider = RemoteFactory.create(remote=remote)
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
     tr = load(target_directory)
     model_name = model_name or tr.spec.config.model_name
@@ -158,9 +158,7 @@ def push(
             "No model name provided. Please specify a model name in config.yaml."
         )
 
-    team_id = None
-    if isinstance(remote_provider, BasetenRemote):
-        team_id = _resolve_team_id(remote_provider, team, remote, model_name)
+    team_id = _resolve_team_id(remote_provider, team, remote, model_name)
 
     service = remote_provider.push(
         tr,
@@ -178,6 +176,6 @@ def push(
         deploy_timeout_minutes=deploy_timeout_minutes,
         team_id=team_id,
         labels=labels,
-    )  # type: ignore
+    )
 
     return definitions.ModelDeployment(cast(BasetenService, service))
