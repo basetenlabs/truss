@@ -191,8 +191,13 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     SLURM_OUTPUT_FILE="/slurm-${SLURM_JOB_ID}.out"
     (
         set +e
-        while [ ! -f "$SLURM_OUTPUT_FILE" ]; do sleep 1; done
-        exec tail -f "$SLURM_OUTPUT_FILE"
+        TWAIT=0
+        while [ ! -f "$SLURM_OUTPUT_FILE" ]; do
+            sleep 1
+            TWAIT=$((TWAIT + 1))
+            if [ "$TWAIT" -ge 60 ]; then break; fi
+        done
+        [ -f "$SLURM_OUTPUT_FILE" ] && exec tail -f "$SLURM_OUTPUT_FILE"
     ) &
     TAIL_PID=$!
 

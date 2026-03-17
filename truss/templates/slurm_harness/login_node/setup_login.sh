@@ -158,11 +158,15 @@ start_slurmctld() {
 # Self-test: push a worker job from this login node before waiting for workers.
 # Reads config from runtime_config.json (already on disk from the push).
 if [ -f /workspace/runtime_config.json ]; then
-    SELF_TEST=$(python3 -c "import json; print(json.load(open('/workspace/runtime_config.json')).get('self_test', False))" 2>/dev/null || echo "False")
+    eval "$(python3 -c "
+import json
+c = json.load(open('/workspace/runtime_config.json'))
+print(f'SELF_TEST={c.get(\"self_test\", False)}')
+print(f'PROJECT={c.get(\"project_name\", \"slurm-harness\")}')
+print(f'PARTITION={c.get(\"partition\", \"H200\")}')
+print(f'SELF_TEST_WORKERS={c.get(\"node_count\", 1)}')
+" 2>/dev/null)" || SELF_TEST=False
     if [ "$SELF_TEST" = "True" ]; then
-        PROJECT=$(python3 -c "import json; print(json.load(open('/workspace/runtime_config.json')).get('project_name', 'slurm-harness'))")
-        PARTITION=$(python3 -c "import json; print(json.load(open('/workspace/runtime_config.json')).get('partition', 'H200'))")
-        SELF_TEST_WORKERS=$(python3 -c "import json; print(json.load(open('/workspace/runtime_config.json')).get('node_count', 1))")
         echo "SELF_TEST: Pushing a worker job from login node..."
         truss train slurm sbatch --wrap "echo SELF_TEST_OK && hostname && nvidia-smi -L && sleep 30 && echo SELF_TEST_DONE" \
             --project "$PROJECT" -p "$PARTITION" --gres "gpu:${GPUS_PER_NODE}" -N "${SELF_TEST_WORKERS}" 2>&1 \

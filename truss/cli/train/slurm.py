@@ -17,14 +17,12 @@ WORKSPACE_RUNTIME_CONFIG = Path("/workspace/runtime_config.json")
 
 def detect_default_project() -> str:
     """Read project name from /workspace/runtime_config.json if on a login node."""
-    if WORKSPACE_RUNTIME_CONFIG.exists():
-        try:
-            return json.loads(WORKSPACE_RUNTIME_CONFIG.read_text()).get(
-                "project_name", "slurm-harness"
-            )
-        except (json.JSONDecodeError, KeyError):
-            pass
-    return "slurm-harness"
+    try:
+        return json.loads(WORKSPACE_RUNTIME_CONFIG.read_text()).get(
+            "project_name", "slurm-harness"
+        )
+    except (json.JSONDecodeError, KeyError, OSError):
+        return "slurm-harness"
 
 
 def parse_gres(gres_str: str) -> int:

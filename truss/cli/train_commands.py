@@ -777,89 +777,68 @@ def slurm_login(
 @common.common_options()
 def slurm_status():
     """Check SLURM readiness on this node."""
-    import shutil
     import subprocess
     from pathlib import Path
 
-    ok = True
-
-    # 1. slurm.conf
-    slurm_conf = Path("/etc/slurm/slurm.conf")
-    if slurm_conf.exists():
-        console.print("[green]✓[/green] /etc/slurm/slurm.conf exists")
-    else:
-        console.print("[red]✗[/red] /etc/slurm/slurm.conf missing — setup not complete")
-        ok = False
-
-    # 2. munge
-    if shutil.which("munged"):
-        munge_running = (
-            subprocess.run(["pgrep", "-x", "munged"], capture_output=True).returncode
-            == 0
-        )
-        if munge_running:
-            console.print("[green]✓[/green] munge is running")
-        else:
-            console.print("[red]✗[/red] munge is not running")
-            ok = False
-    else:
-        console.print("[red]✗[/red] munge not installed")
-        ok = False
-
-    # 3. slurmctld reachable (squeue)
-    if shutil.which("squeue"):
-        result = subprocess.run(
-            ["squeue", "--noheader"], capture_output=True, timeout=5
-        )
-        if result.returncode == 0:
-            jobs = (
-                len(result.stdout.decode().strip().splitlines())
-                if result.stdout.strip()
-                else 0
+    def _check(cmd, timeout=5):
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            return (
+                r.returncode == 0,
+                r.stdout.decode().strip(),
+                r.stderr.decode().strip(),
             )
-            console.print(
-                f"[green]✓[/green] slurmctld reachable ({jobs} job(s) in queue)"
-            )
-        else:
-            stderr = result.stderr.decode().strip()
-            console.print(f"[red]✗[/red] squeue failed: {stderr}")
-            ok = False
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False, "", "not available"
+
+    def _pgrep(name):
+        ok, _, _ = _check(["pgrep", "-x", name])
+        return ok
+
+    checks = []
+
+    # slurm.conf
+    has_conf = Path("/etc/slurm/slurm.conf").exists()
+    checks.append((has_conf, "slurm.conf", "exists" if has_conf else "missing"))
+
+    # munge
+    munge_ok = _pgrep("munged")
+    checks.append((munge_ok, "munge", "running" if munge_ok else "not running"))
+
+    # slurmctld reachable
+    sq_ok, sq_out, sq_err = _check(["squeue", "--noheader"])
+    if sq_ok:
+        jobs = len(sq_out.splitlines()) if sq_out else 0
+        checks.append((True, "slurmctld", f"reachable ({jobs} job(s))"))
     else:
-        console.print("[red]✗[/red] squeue not installed")
-        ok = False
+        checks.append((False, "slurmctld", sq_err))
 
-    # 4. sinfo (node status)
-    if shutil.which("sinfo"):
-        result = subprocess.run(
-            ["sinfo", "-N", "--noheader"], capture_output=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            lines = result.stdout.decode().strip().splitlines()
-            console.print(f"[green]✓[/green] {len(lines)} node(s) registered:")
-            for line in lines:
-                console.print(f"    {line.strip()}")
-        elif result.returncode == 0:
-            console.print("[yellow]![/yellow] sinfo returned no nodes")
-        else:
-            stderr = result.stderr.decode().strip()
-            console.print(f"[red]✗[/red] sinfo failed: {stderr}")
-            ok = False
+    # node status
+    si_ok, si_out, si_err = _check(["sinfo", "-N", "--noheader"])
+    if si_ok and si_out:
+        lines = si_out.splitlines()
+        checks.append((True, "nodes", f"{len(lines)} registered"))
+        for line in lines:
+            console.print(f"    {line.strip()}")
+    elif si_ok:
+        checks.append((False, "nodes", "none registered"))
+    else:
+        checks.append((False, "sinfo", si_err))
 
-    # 5. slurmd (on worker nodes)
-    slurmd_running = (
-        subprocess.run(["pgrep", "-x", "slurmd"], capture_output=True).returncode == 0
-    )
-    slurmctld_running = (
-        subprocess.run(["pgrep", "-x", "slurmctld"], capture_output=True).returncode
-        == 0
-    )
-    if slurmctld_running:
-        console.print("[green]✓[/green] slurmctld running (this is a login node)")
-    if slurmd_running:
-        console.print("[green]✓[/green] slurmd running (this is a worker node)")
-    if not slurmctld_running and not slurmd_running:
-        console.print("[red]✗[/red] neither slurmctld nor slurmd running")
-        ok = False
+    # daemon role
+    is_login = _pgrep("slurmctld")
+    is_worker = _pgrep("slurmd")
+    if is_login:
+        checks.append((True, "role", "login node (slurmctld)"))
+    if is_worker:
+        checks.append((True, "role", "worker node (slurmd)"))
+    if not is_login and not is_worker:
+        checks.append((False, "role", "no SLURM daemons running"))
+
+    ok = all(passed for passed, _, _ in checks)
+    for passed, name, detail in checks:
+        icon = "[green]✓[/green]" if passed else "[red]✗[/red]"
+        console.print(f"{icon} {name}: {detail}")
 
     if ok:
         console.print("\n[green]SLURM is ready.[/green]")
