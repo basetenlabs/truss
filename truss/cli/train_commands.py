@@ -314,6 +314,7 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             border_style="blue",
         )
         has_expiry = any(code.get("expires_at") for code in isession)
+        has_working_dir = any(code.get("working_directory") for code in isession)
 
         table.add_column("Replica ID", style="cyan")
         table.add_column("Tunnel Name", style="yellow")
@@ -322,6 +323,8 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
         table.add_column("Generated At (Local)", style="dim")
         if has_expiry:
             table.add_column("Expires In", style="dim")
+        if has_working_dir:
+            table.add_column("Working Directory", style="green")
 
         for code in isession:
             row = [
@@ -333,9 +336,22 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             ]
             if has_expiry:
                 row.append(_format_time_until_expiry(code.get("expires_at", "")))
+            if has_working_dir:
+                row.append(code.get("working_directory", ""))
             table.add_row(*row)
 
         console.print(table)
+
+        # Show connect commands when working directory is available
+        if has_working_dir:
+            console.print()
+            console.print("Connect via CLI:", style="bold")
+            for code in isession:
+                tunnel = code.get("tunnel_name", "")
+                workdir = code.get("working_directory", "")
+                if tunnel and workdir:
+                    cmd = f"code --remote tunnel+{tunnel}{workdir}"
+                    console.print(f"  {code.get('replica_id', '')}: {cmd}")
     except Exception:
         # Silently skip if auth codes aren't available
         pass
