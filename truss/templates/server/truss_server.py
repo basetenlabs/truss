@@ -330,6 +330,12 @@ class BasetenEndpoints:
         else:
             return self._model.truss_schema.serialize()
 
+    # Sync def so FastAPI runs it in a threadpool, avoiding blocking the
+    # event loop during module re-import.
+    def hot_reload(self, request: Request) -> dict:
+        self._model.hot_reload()
+        return {"msg": "Hot reload complete"}
+
     @staticmethod
     def is_binary(request: Request):
         return (
@@ -448,6 +454,9 @@ class TrussServer:
                 FastAPIRoute(r"/ping", self._endpoints.invocations_ready),
                 FastAPIRoute(
                     r"/invocations", self._endpoints.invocations, methods=["POST"]
+                ),
+                FastAPIRoute(
+                    r"/hot-reload", self._endpoints.hot_reload, methods=["POST"]
                 ),
             ],
             exception_handlers={

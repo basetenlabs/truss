@@ -226,6 +226,13 @@ async def patch(request: Request) -> dict[str, str]:
             patch_request
         ),
     )
+    # If all patches have hot_reload set, apply_patch above skipped the
+    # process restart, so signal the inference server to reload
+    patches = patch_request.get("patches", [])
+    if patches and all(p.get("body", {}).get("hot_reload", False) for p in patches):
+        client: httpx.AsyncClient = request.app.state.proxy_client
+        resp = await client.post("/hot-reload")
+        resp.raise_for_status()
     request.app.state.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 

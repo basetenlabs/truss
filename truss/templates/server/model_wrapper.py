@@ -927,6 +927,45 @@ class ModelWrapper:
         assert descriptor.is_async, "websocket endpoints are enforced to be async."
         await self._model.websocket(ws)
 
+    def hot_reload(self):
+        """Reload user model module and swap __class__ on the live instance.
+
+        If any step fails (syntax error, missing class, etc.), the exception
+        bubbles up and the live model instance is left unchanged.
+        """
+        model_module_dir = Path(self._config["model_module_dir"]).resolve()
+
+        # Evict all user-code modules from sys.modules so that imports
+        # (e.g. helpers, utils) are re-read from disk.
+        to_evict = [
+            name
+            for name, mod in sys.modules.items()
+            if hasattr(mod, "__file__")
+            and mod.__file__
+            and Path(mod.__file__).resolve().is_relative_to(model_module_dir)
+        ]
+        for name in to_evict:
+            self._logger.debug(f"Hot reload: evicting module {name}")
+            del sys.modules[name]
+
+        # Re-execute the main model module from the updated file on disk,
+        # swap __class__, and rebuild descriptor. If anything fails, the live
+        # model instance is left unchanged (swap hasn't happened yet).
+        try:
+            model_file = model_module_dir / self.model_file_name
+            spec = importlib.util.spec_from_file_location(model_file.stem, model_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            new_class = getattr(module, self._config["model_class_name"])
+            self._model.__class__ = new_class
+            self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
+        except Exception:
+            self._logger.exception("Hot reload failed")
+            raise
+
+        self._logger.info("Hot reload complete.")
+
 
 async def _gather_generator(
     predict_result: Union[AsyncGenerator[bytes, None], Generator[bytes, None, None]],

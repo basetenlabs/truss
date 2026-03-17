@@ -40,9 +40,13 @@ class PatchBody:
 class ModelCodePatch(PatchBody):
     path: str  # Relative to model module directory
     content: Optional[str] = None
+    hot_reload: bool = False
 
     def to_dict(self):
-        return {"action": self.action.value, "path": self.path, "content": self.content}
+        d = {"action": self.action.value, "path": self.path, "content": self.content}
+        if self.hot_reload:
+            d["hot_reload"] = True
+        return d
 
     @staticmethod
     def from_dict(patch_dict: dict):
@@ -51,6 +55,7 @@ class ModelCodePatch(PatchBody):
             action=Action[action_str],
             path=patch_dict["path"],
             content=patch_dict["content"],
+            hot_reload=patch_dict.get("hot_reload", False),
         )
 
 
