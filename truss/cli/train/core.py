@@ -314,6 +314,10 @@ def display_training_job(
         ),
     )
 
+    # Add checkpoint sync state if present
+    if job.get("checkpoint_sync_state"):
+        table.add_row("Checkpoint Sync", job["checkpoint_sync_state"])
+
     # Add error message if present
     if job.get("error_message"):
         table.add_row("Error Message", Text(job["error_message"], style="red"))
