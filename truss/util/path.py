@@ -30,6 +30,7 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
             (dest / rel_root / d).mkdir(exist_ok=True)
         for filename in filenames:
             src_file = Path(dirpath) / filename
+            # for symlinks, .exists() checks whether the target file exists.
             if src_file.is_symlink() and not src_file.exists():
                 rel_file = rel_root / filename
                 print(
