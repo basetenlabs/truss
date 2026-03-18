@@ -53,13 +53,17 @@ training_compute = definitions.Compute(
     ),
 )
 
+_isession_kwargs = {}
+if not DOCKER_AUTH:
+    _isession_kwargs["interactive_session"] = definitions.InteractiveSession(
+        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP
+    )
+
 training_job = definitions.TrainingJob(
     image=definitions.Image(base_image=BASE_IMAGE, docker_auth=DOCKER_AUTH),
     compute=training_compute,
     runtime=training_runtime,
-    interactive_session=definitions.InteractiveSession(
-        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP
-    ),
+    **_isession_kwargs,
     name=runtime_config.get("job_name"),
 )
 
