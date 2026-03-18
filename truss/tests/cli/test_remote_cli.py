@@ -11,18 +11,18 @@ class TestInquireRemoteName:
         "truss.cli.remote_cli.RemoteFactory.get_available_config_names",
         return_value=["remote1", "remote2"],
     )
-    @patch("truss.cli.remote_cli.sys.stdin")
-    def test_multiple_remotes_non_tty_raises(self, mock_stdin, _mock_remotes):
-        mock_stdin.isatty.return_value = False
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=False)
+    def test_multiple_remotes_non_interactive_raises(
+        self, _mock_interactive, _mock_remotes
+    ):
         with pytest.raises(click.UsageError, match="--remote"):
             inquire_remote_name()
 
     @patch(
         "truss.cli.remote_cli.RemoteFactory.get_available_config_names", return_value=[]
     )
-    @patch("truss.cli.remote_cli.sys.stdin")
-    def test_no_remotes_non_tty_raises(self, mock_stdin, _mock_remotes):
-        mock_stdin.isatty.return_value = False
+    @patch("truss.cli.remote_cli.check_is_interactive", return_value=False)
+    def test_no_remotes_non_interactive_raises(self, _mock_interactive, _mock_remotes):
         with pytest.raises(click.UsageError, match="--remote"):
             inquire_remote_name()
 
