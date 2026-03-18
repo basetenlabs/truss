@@ -30,8 +30,15 @@ def build_docker_auth(
     if not auth_type:
         return None
 
-    # Extract registry from image (everything before the first /)
-    registry = base_image.split("/")[0] if "/" in base_image else ""
+    # Extract registry from image. Docker Hub images (user/repo:tag) don't have
+    # a registry prefix — the registry is implicitly docker.io. Images with a
+    # dot or colon in the first segment (e.g. gcr.io/..., nvcr.io/...,
+    # 123456.dkr.ecr...) are explicit registries.
+    first_segment = base_image.split("/")[0] if "/" in base_image else ""
+    if "." in first_segment or ":" in first_segment:
+        registry = first_segment
+    else:
+        registry = "docker.io"
 
     kwargs: dict = {"auth_method": auth_type, "registry": registry}
 
