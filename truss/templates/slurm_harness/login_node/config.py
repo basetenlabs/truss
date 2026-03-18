@@ -6,8 +6,12 @@ It stays alive to accept job submissions from worker nodes.
 """
 
 import json
+import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
+from shared.docker_auth import build_docker_auth
 from truss.base import truss_config
 from truss_train import definitions
 
@@ -16,8 +20,6 @@ runtime_config = json.loads(config_path.read_text()) if config_path.exists() els
 
 GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
 PARTITION = runtime_config.get("partition", None)
-
-from shared.docker_auth import build_docker_auth
 
 BASE_IMAGE = runtime_config.get(
     "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"

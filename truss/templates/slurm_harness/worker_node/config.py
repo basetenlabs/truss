@@ -6,8 +6,12 @@ Worker node 0 submits the sbatch job once all workers are ready.
 """
 
 import json
+import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
+from shared.docker_auth import build_docker_auth
 from truss.base import truss_config
 from truss_train import definitions
 
@@ -21,8 +25,6 @@ PARTITION = runtime_config.get("partition", "H200")
 SBATCH_SCRIPT = runtime_config.get("sbatch_script", "")
 
 accelerator_type = truss_config.Accelerator(PARTITION)
-
-from shared.docker_auth import build_docker_auth
 
 BASE_IMAGE = runtime_config.get(
     "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
