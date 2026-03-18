@@ -1,5 +1,7 @@
+import sys
 from typing import Optional
 
+import click
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from InquirerPy.validator import ValidationError, Validator
@@ -41,6 +43,10 @@ def inquire_remote_config() -> RemoteConfig:
 def inquire_remote_name() -> str:
     available_remotes = RemoteFactory.get_available_config_names()
     if len(available_remotes) > 1:
+        if not sys.stdin.isatty():
+            raise click.UsageError(
+                "Multiple remotes available. Please specify one with --remote."
+            )
         remote = inquirer.select(
             "🎮 Which remote do you want to connect to?",
             qmark="",
@@ -49,6 +55,11 @@ def inquire_remote_name() -> str:
         return remote
     elif len(available_remotes) == 1:
         return available_remotes[0]
+    if not sys.stdin.isatty():
+        raise click.UsageError(
+            "No remote configured. Please run interactively to set up a remote, "
+            "or specify one with --remote."
+        )
     remote_config = inquire_remote_config()
     RemoteFactory.update_remote_config(remote_config)
 
