@@ -22,8 +22,15 @@ SBATCH_SCRIPT = runtime_config.get("sbatch_script", "")
 
 accelerator_type = truss_config.Accelerator(PARTITION)
 
+from shared.docker_auth import build_docker_auth
+
 BASE_IMAGE = runtime_config.get(
     "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+)
+DOCKER_AUTH = build_docker_auth(
+    BASE_IMAGE,
+    runtime_config.get("docker_auth_method"),
+    runtime_config.get("docker_auth_secret"),
 )
 
 training_runtime = definitions.Runtime(
@@ -45,7 +52,7 @@ training_compute = definitions.Compute(
 )
 
 training_job = definitions.TrainingJob(
-    image=definitions.Image(base_image=BASE_IMAGE),
+    image=definitions.Image(base_image=BASE_IMAGE, docker_auth=DOCKER_AUTH),
     compute=training_compute,
     runtime=training_runtime,
     interactive_session=definitions.InteractiveSession(

@@ -33,6 +33,12 @@ def detect_login_image() -> Optional[str]:
     return _read_login_config().get("base_image")
 
 
+def detect_login_docker_auth() -> tuple[Optional[str], Optional[str]]:
+    """Read docker auth config from the login node's runtime_config."""
+    config = _read_login_config()
+    return config.get("docker_auth_method"), config.get("docker_auth_secret")
+
+
 def parse_gres(gres_str: str) -> int:
     """Parse --gres=gpu:N format and return GPU count."""
     if not gres_str:
@@ -52,6 +58,8 @@ def build_login_runtime_config(
     partition: Optional[str],
     self_test: bool,
     image: Optional[str] = None,
+    docker_auth_method: Optional[str] = None,
+    docker_auth_secret: Optional[str] = None,
 ) -> dict:
     """Build runtime_config dict for the login node."""
     config: dict = {
@@ -64,6 +72,9 @@ def build_login_runtime_config(
         config["partition"] = partition
     if image:
         config["base_image"] = image
+    if docker_auth_method and docker_auth_secret:
+        config["docker_auth_method"] = docker_auth_method
+        config["docker_auth_secret"] = docker_auth_secret
     return config
 
 
@@ -75,6 +86,8 @@ def build_sbatch_runtime_config(
     partition: str,
     sbatch_script: str,
     image: Optional[str] = None,
+    docker_auth_method: Optional[str] = None,
+    docker_auth_secret: Optional[str] = None,
 ) -> dict:
     """Build runtime_config dict for the worker node."""
     config: dict = {
@@ -87,6 +100,9 @@ def build_sbatch_runtime_config(
     }
     if image:
         config["base_image"] = image
+    if docker_auth_method and docker_auth_secret:
+        config["docker_auth_method"] = docker_auth_method
+        config["docker_auth_secret"] = docker_auth_secret
     return config
 
 

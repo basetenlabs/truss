@@ -732,6 +732,20 @@ def slurm():
     "--self-test", is_flag=True, help="Push a test worker from the login node"
 )
 @click.option("--image", type=str, default=None, help="Base Docker image")
+@click.option(
+    "--docker-auth-method",
+    type=click.Choice(
+        ["registry_secret", "gcp_service_account", "aws_iam"], case_sensitive=False
+    ),
+    default=None,
+    help="Docker auth method for private registries",
+)
+@click.option(
+    "--docker-auth-secret",
+    type=str,
+    default=None,
+    help="Baseten secret name for Docker registry auth",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_login(
@@ -740,6 +754,8 @@ def slurm_login(
     partition: Optional[str],
     self_test: bool,
     image: Optional[str],
+    docker_auth_method: Optional[str],
+    docker_auth_secret: Optional[str],
     remote: Optional[str],
 ):
     """Start a SLURM login/controller node on Baseten training."""
@@ -789,6 +805,8 @@ def slurm_login(
         partition=partition,
         self_test=self_test,
         image=image,
+        docker_auth_method=docker_auth_method,
+        docker_auth_secret=docker_auth_secret,
     )
 
     with console.status("Pushing login node...", spinner="dots"):
@@ -898,6 +916,20 @@ def slurm_status():
     "--job-name", "-J", type=str, default=None, help="Name for the worker job"
 )
 @click.option("--image", type=str, default=None, help="Base Docker image")
+@click.option(
+    "--docker-auth-method",
+    type=click.Choice(
+        ["registry_secret", "gcp_service_account", "aws_iam"], case_sensitive=False
+    ),
+    default=None,
+    help="Docker auth method for private registries",
+)
+@click.option(
+    "--docker-auth-secret",
+    type=str,
+    default=None,
+    help="Baseten secret name for Docker registry auth",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_sbatch(
@@ -909,12 +941,15 @@ def slurm_sbatch(
     project: Optional[str],
     job_name: Optional[str],
     image: Optional[str],
+    docker_auth_method: Optional[str],
+    docker_auth_secret: Optional[str],
     remote: Optional[str],
 ):
     """Submit a SLURM batch job via Baseten training infrastructure."""
     from truss.cli.train.slurm import (
         build_sbatch_runtime_config,
         detect_default_project,
+        detect_login_docker_auth,
         detect_login_image,
         parse_gres,
         push_node,
@@ -926,9 +961,14 @@ def slurm_sbatch(
     if project is None:
         project = detect_default_project()
 
-    # Default to the login node's image when running from a login node
+    # Default to the login node's image and auth when running from a login node
     if image is None:
         image = detect_login_image()
+    if docker_auth_method is None and docker_auth_secret is None:
+        login_method, login_secret = detect_login_docker_auth()
+        if login_method and login_secret:
+            docker_auth_method = login_method
+            docker_auth_secret = login_secret
 
     if wrap:
         job_script = f"#!/bin/bash\n{wrap}\n"
@@ -959,6 +999,8 @@ def slurm_sbatch(
         partition=partition,
         sbatch_script=job_script,
         image=image,
+        docker_auth_method=docker_auth_method,
+        docker_auth_secret=docker_auth_secret,
     )
 
     with console.status("Pushing worker job...", spinner="dots"):

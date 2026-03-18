@@ -17,8 +17,15 @@ runtime_config = json.loads(config_path.read_text()) if config_path.exists() els
 GPUS_PER_NODE = runtime_config.get("gpus_per_node", 8)
 PARTITION = runtime_config.get("partition", None)
 
+from shared.docker_auth import build_docker_auth
+
 BASE_IMAGE = runtime_config.get(
     "base_image", "pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime"
+)
+DOCKER_AUTH = build_docker_auth(
+    BASE_IMAGE,
+    runtime_config.get("docker_auth_method"),
+    runtime_config.get("docker_auth_secret"),
 )
 
 training_runtime = definitions.Runtime(
@@ -44,7 +51,7 @@ else:
     training_compute = definitions.Compute(cpu_count=4, memory="16Gi")
 
 training_job = definitions.TrainingJob(
-    image=definitions.Image(base_image=BASE_IMAGE),
+    image=definitions.Image(base_image=BASE_IMAGE, docker_auth=DOCKER_AUTH),
     compute=training_compute,
     runtime=training_runtime,
     interactive_session=definitions.InteractiveSession(
