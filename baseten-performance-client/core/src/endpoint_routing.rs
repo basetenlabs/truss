@@ -389,7 +389,10 @@ impl EndpointPool {
             .collect()
     }
 
-    pub(crate) fn select_endpoint(&self, excluded_indices: &[usize]) -> Result<EndpointSelection, ClientError> {
+    pub(crate) fn select_endpoint(
+        &self,
+        excluded_indices: &[usize],
+    ) -> Result<EndpointSelection, ClientError> {
         let candidate_tiers = [
             self.candidate_indices(excluded_indices, true),
             self.candidate_indices(&[], true),
