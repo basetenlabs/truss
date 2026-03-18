@@ -26,18 +26,38 @@ jobs:
           uv run ruff check .
           uv run ruff format . --check
 
+  determine-python-versions:
+    runs-on: ubuntu-22.04
+    outputs:
+      min_supported_python_version: ${{ steps.extract.outputs.min_supported_python_version }}
+      max_supported_python_version: ${{ steps.extract.outputs.max_supported_python_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies for version extraction
+        run: pip install tomlkit packaging
+      - name: Extract Python Version Range
+        id: extract
+        run: python .github/scripts/get-python-version-range.py
+
   test:
     timeout-minutes: 30
+    needs: determine-python-versions
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, windows-latest, macos-latest]
+        python_version: ["${{ needs.determine-python-versions.outputs.max_supported_python_version }}"]
+        include:
+          - os: ubuntu-22.04
+            python_version: "${{ needs.determine-python-versions.outputs.min_supported_python_version }}"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
+        with:
+          python-version: ${{ matrix.python_version }}
       - name: Create test directories (Linux)
         if: runner.os == 'Linux'
         run: |
