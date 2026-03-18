@@ -42,7 +42,7 @@ training_runtime = definitions.Runtime(
         "GPUS_PER_NODE": str(GPUS_PER_NODE),
         "SBATCH_SCRIPT": SBATCH_SCRIPT,
     },
-    cache_config=definitions.CacheConfig(enabled=True),
+    cache_config=definitions.CacheConfig(enabled=True, require_cache_affinity=False),
     checkpointing_config=definitions.CheckpointingConfig(enabled=True),
 )
 
