@@ -72,9 +72,10 @@ pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
     }
 }
 
-/// Get secret by name, checking environment variable first, then file system.
-/// This allows builds where /secrets does not exist to still work.
-pub fn get_secret(runtime_secret_name: &str) -> Option<String> {
+/// Get secret from environment variable based on runtime secret name.
+/// Looks for TRUSS_SECRET_{runtime_secret_name}.
+/// Returns None if the env var is not set or is empty.
+fn get_secret_from_env(runtime_secret_name: &str) -> Option<String> {
     let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, runtime_secret_name);
     if let Ok(value) = env::var(&env_var_name) {
         let trimmed = value.trim().to_string();
@@ -86,7 +87,13 @@ pub fn get_secret(runtime_secret_name: &str) -> Option<String> {
             return Some(trimmed);
         }
     }
-    get_secret_from_file(runtime_secret_name)
+    None
+}
+
+/// Get secret by name, checking environment variable first, then file system.
+/// This allows builds where /secrets does not exist to still work.
+pub fn get_secret(runtime_secret_name: &str) -> Option<String> {
+    get_secret_from_env(runtime_secret_name).or_else(|| get_secret_from_file(runtime_secret_name))
 }
 
 /// Get HuggingFace token from multiple sources
