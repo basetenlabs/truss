@@ -542,8 +542,8 @@ impl RequestProcessingPreference {
             max_retries,
             initial_backoff_ms,
             cancel_token: cancel_token.as_ref().map(|token| token.inner.clone()),
-            primary_api_key_override: primary_api_key_override,
-            extra_headers: extra_headers,
+            primary_api_key_override,
+            extra_headers,
         };
 
         // Apply defaults using the same method as Rust core
@@ -560,7 +560,7 @@ impl RequestProcessingPreference {
             total_timeout_s: complete.total_timeout_s,
             hedge_budget_pct: complete.hedge_budget_pct.unwrap_or(HEDGE_BUDGET_PERCENTAGE),
             retry_budget_pct: complete.retry_budget_pct.unwrap_or(RETRY_BUDGET_PERCENTAGE),
-            max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES) as u32,
+            max_retries: complete.max_retries.unwrap_or(MAX_HTTP_RETRIES),
             initial_backoff_ms: complete.initial_backoff_ms.unwrap_or(INITIAL_BACKOFF_MS),
             cancel_token,
             primary_api_key_override: complete.primary_api_key_override,
@@ -1089,7 +1089,7 @@ impl PerformanceClient {
         // Parse method parameter using core function
         let http_method =
             baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
-                .map_err(|e| PyValueError::new_err(e))?;
+                .map_err(PyValueError::new_err)?;
 
         let result_from_async_task = py.allow_threads(move || {
             rt.block_on(run_with_ctrl_c(async move {
@@ -1180,7 +1180,7 @@ impl PerformanceClient {
         // Parse method parameter using core function
         let http_method =
             baseten_performance_client_core::http::HttpMethod::from_optional_str(method.as_deref())
-                .map_err(|e| PyValueError::new_err(e))?;
+                .map_err(PyValueError::new_err)?;
 
         let future = async move {
             let (response_data_with_times_and_headers, total_time) = core_client
