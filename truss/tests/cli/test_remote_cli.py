@@ -18,8 +18,7 @@ class TestInquireRemoteName:
             inquire_remote_name()
 
     @patch(
-        "truss.cli.remote_cli.RemoteFactory.get_available_config_names",
-        return_value=[],
+        "truss.cli.remote_cli.RemoteFactory.get_available_config_names", return_value=[]
     )
     @patch("truss.cli.remote_cli.sys.stdin")
     def test_no_remotes_non_tty_raises(self, mock_stdin, _mock_remotes):
