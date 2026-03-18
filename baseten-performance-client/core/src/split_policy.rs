@@ -484,26 +484,26 @@ impl RequestProcessingConfig {
         &self,
         original_url: &str,
         attempted_endpoint_indices: &[usize],
-    ) -> (String, usize) {
+    ) -> Result<(String, usize), ClientError> {
         self.endpoint_pool
             .as_ref()
             .map(|pool| {
                 pool.select_attempt_url(&self.base_url, original_url, attempted_endpoint_indices)
             })
-            .unwrap_or_else(|| (original_url.to_string(), 0))
+            .unwrap_or_else(|| Ok((original_url.to_string(), 0)))
     }
 
     pub(crate) fn select_hedge_url(
         &self,
         original_url: &str,
         original_endpoint_index: usize,
-    ) -> String {
+    ) -> Result<String, ClientError> {
         self.endpoint_pool
             .as_ref()
             .map(|pool| {
                 pool.select_hedge_url(&self.base_url, original_url, original_endpoint_index)
             })
-            .unwrap_or_else(|| original_url.to_string())
+            .unwrap_or_else(|| Ok(original_url.to_string()))
     }
 }
 

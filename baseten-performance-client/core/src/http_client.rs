@@ -6,6 +6,7 @@ use crate::split_policy::RequestProcessingConfig;
 
 use rand::Rng;
 use reqwest::Client;
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tracing;
@@ -155,14 +156,13 @@ async fn send_request_with_retry(
     let mut retries_done = 0;
     let mut current_backoff = config.initial_backoff;
     let max_retries = config.max_retries;
-    let mut attempted_endpoint_indices: Vec<usize> = Vec::new();
+    let mut attempted_endpoint_indices: HashSet<usize> = HashSet::new();
 
     loop {
+        let indices_vec: Vec<usize> = attempted_endpoint_indices.iter().copied().collect();
         let (attempt_url, selected_endpoint_index) =
-            config.select_attempt_url(original_url, &attempted_endpoint_indices);
-        if !attempted_endpoint_indices.contains(&selected_endpoint_index) {
-            attempted_endpoint_indices.push(selected_endpoint_index);
-        }
+            config.select_attempt_url(original_url, &indices_vec)?;
+        attempted_endpoint_indices.insert(selected_endpoint_index);
 
         // Only hedge on the first request (retries_done <= 1)
         let should_hedge = retries_done <= 1
@@ -179,7 +179,7 @@ async fn send_request_with_retry(
 
         let response_result: Result<reqwest::Response, ClientError> = if should_hedge {
             let request_builder = build_request(&attempt_url);
-            let hedge_url = config.select_hedge_url(original_url, selected_endpoint_index);
+            let hedge_url = config.select_hedge_url(original_url, selected_endpoint_index)?;
             let hedge_builder = build_request(&hedge_url);
             send_request_with_hedging(request_builder, hedge_builder, config).await
         } else {

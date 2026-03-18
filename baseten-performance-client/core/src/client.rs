@@ -247,15 +247,29 @@ impl PerformanceClientCore {
         let client_wrapper = Arc::clone(&self.client_wrapper);
         let api_key = self.api_key.clone();
 
+        let base_interval = endpoint_pool.health_check_interval();
         let task = async move {
+            let mut current_interval = base_interval;
             loop {
                 let Some(endpoint_pool) = weak_pool.upgrade() else {
                     break;
                 };
 
                 let client = client_wrapper.get_client();
+                let start_time = std::time::Instant::now();
                 endpoint_pool.refresh_health(&client, &api_key).await;
-                tokio::time::sleep(endpoint_pool.health_check_interval()).await;
+
+                let response_time = start_time.elapsed();
+                if response_time > current_interval / 2 {
+                    current_interval = std::cmp::min(
+                        current_interval.saturating_mul(3) / 2,
+                        base_interval.saturating_mul(10),
+                    );
+                } else {
+                    current_interval = base_interval;
+                }
+
+                tokio::time::sleep(current_interval).await;
             }
         };
 
