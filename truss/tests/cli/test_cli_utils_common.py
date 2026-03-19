@@ -40,6 +40,16 @@ class TestCheckIsInteractive:
         with ctx:
             assert common.check_is_interactive() is True
 
+    @patch("truss.cli.utils.common.sys.stdin")
+    @patch("truss.cli.utils.common.sys.stdout")
+    def test_interactive_when_context_obj_is_none(self, mock_stdout, mock_stdin):
+        mock_stdin.isatty.return_value = True
+        mock_stdout.isatty.return_value = True
+
+        ctx = click.Context(click.Command("test"))
+        with ctx:
+            assert common.check_is_interactive() is True
+
 
 def test_normalize_iso_timestamp_handles_nanoseconds():
     normalized = common._normalize_iso_timestamp("2025-11-17 05:05:06.000000000 +0000")
