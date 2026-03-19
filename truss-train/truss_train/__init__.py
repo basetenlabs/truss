@@ -1,4 +1,9 @@
-from truss.base.truss_config import Accelerator, AcceleratorSpec, DockerAuthType, WeightsSource
+from truss.base.truss_config import (
+    Accelerator,
+    AcceleratorSpec,
+    DockerAuthType,
+    WeightsSource,
+)
 from truss_train.definitions import (
     AWSIAMDockerAuth,
     BasetenCheckpoint,
