@@ -83,7 +83,15 @@ def set_logging_level() -> None:
 def check_is_interactive() -> bool:
     """Detects if CLI is operated interactively by human, so we can ask things,
     that we would want to skip for automated subprocess/CI contexts."""
-    return sys.stdin.isatty() and sys.stdout.isatty()
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        ctx = click.get_current_context(silent=True)
+        if ctx and ctx.find_root().obj.get("non_interactive", False):
+            return False
+    except RuntimeError:
+        pass
+    return True
 
 
 def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str):
