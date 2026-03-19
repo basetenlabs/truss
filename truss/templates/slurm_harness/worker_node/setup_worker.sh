@@ -196,10 +196,11 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     fi
 
     # Stream SLURM job output to stdout so it appears in training logs.
-    # SLURM writes job output to slurm-<id>.out in the working directory.
+    # Query scontrol for the actual output path since it depends on WorkDir.
     # We use tail -f with set +e to prevent the parent's set -e from killing
     # the subshell on benign non-zero exits (e.g. while-loop termination).
-    SLURM_OUTPUT_FILE="/slurm-${SLURM_JOB_ID}.out"
+    SLURM_OUTPUT_FILE=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null | grep -oP 'StdOut=\K\S+' || echo "/slurm-${SLURM_JOB_ID}.out")
+    echo "SLURM output file: ${SLURM_OUTPUT_FILE}"
     (
         set +e
         TWAIT=0
