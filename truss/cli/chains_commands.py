@@ -193,7 +193,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to.",
+    help="Name of the remote in .trussrc to push to. Required when running non-interactively or when multiple remotes are configured.",
 )
 @click.option(
     "--experimental-watch-chainlet-names",
@@ -456,7 +456,7 @@ def push_chain(
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to.",
+    help="Name of the remote in .trussrc to push to. Required when running non-interactively or when multiple remotes are configured.",
 )
 @click.option(
     "--experimental-chainlet-names",

@@ -42,31 +42,30 @@ def inquire_remote_config() -> RemoteConfig:
 
 def inquire_remote_name() -> str:
     available_remotes = RemoteFactory.get_available_config_names()
-    if len(available_remotes) > 1:
+    if len(available_remotes) == 0:
+        if not check_is_interactive():
+            raise click.UsageError(
+                "No remote configured. Please run interactively to set up a remote, "
+                "or specify one with --remote."
+            )
+        remote_config = inquire_remote_config()
+        RemoteFactory.update_remote_config(remote_config)
+        console.print(
+            f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
+        )
+        return remote_config.name
+    elif len(available_remotes) == 1:
+        return available_remotes[0]
+    else:
         if not check_is_interactive():
             raise click.UsageError(
                 "Multiple remotes available. Please specify one with --remote."
             )
-        remote = inquirer.select(
+        return inquirer.select(
             "🎮 Which remote do you want to connect to?",
             qmark="",
             choices=available_remotes,
         ).execute()
-        return remote
-    elif len(available_remotes) == 1:
-        return available_remotes[0]
-    if not check_is_interactive():
-        raise click.UsageError(
-            "No remote configured. Please run interactively to set up a remote, "
-            "or specify one with --remote."
-        )
-    remote_config = inquire_remote_config()
-    RemoteFactory.update_remote_config(remote_config)
-
-    console.print(
-        f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
-    )
-    return remote_config.name
 
 
 def inquire_model_name() -> str:

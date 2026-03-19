@@ -141,7 +141,7 @@ def truss_cli(ctx) -> None:
     "--api-key",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to patch changes to",
+    help="Name of the remote in .trussrc to patch changes to. Required when running non-interactively or when multiple remotes are configured.",
 )
 @common.common_options()
 def login(api_key: Optional[str]):
@@ -203,7 +203,7 @@ def _create_oidc_table(oidc_info) -> rich.table.Table:
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to check whoami.",
+    help="Name of the remote in .trussrc to check whoami. Required when running non-interactively or when multiple remotes are configured.",
 )
 @click.option(
     "--show-oidc",
@@ -357,7 +357,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to. Required when running non-interactively or when multiple remotes are configured.",
 )
 @click.option(
     "-d",
@@ -501,7 +501,7 @@ def run_python(script, target_directory):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to. Required when running non-interactively or when multiple remotes are configured.",
 )
 @click.option(
     "--model-name",
@@ -954,7 +954,7 @@ def push(
 
 
 @truss_cli.command()
-@click.option("--remote", type=str, required=False)
+@click.option("--remote", type=str, required=False, help="Name of the remote in .trussrc. Required when running non-interactively or when multiple remotes are configured.")
 @click.option("--model-id", type=str, required=True)
 @click.option("--deployment-id", type=str, required=True)
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
@@ -993,7 +993,7 @@ def model_logs(
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to patch changes to",
+    help="Name of the remote in .trussrc to patch changes to. Required when running non-interactively or when multiple remotes are configured.",
 )
 @click.option(
     "--team",
