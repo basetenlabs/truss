@@ -5,16 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SLURM_HARNESS_DIR="${BT_PROJECT_CACHE_DIR}/slurm_harness"
 
 # Clean up all stale state from previous runs.
+rm -rf "$SLURM_HARNESS_DIR/jobs"
 rm -f "$SLURM_HARNESS_DIR"/controller_* \
       "$SLURM_HARNESS_DIR"/slurm.conf \
       "$SLURM_HARNESS_DIR"/munge.key \
-      "$SLURM_HARNESS_DIR"/munge_test_cred \
-      "$SLURM_HARNESS_DIR"/worker_*_ip \
-      "$SLURM_HARNESS_DIR"/worker_*_hostname \
-      "$SLURM_HARNESS_DIR"/worker_*_cpus \
-      "$SLURM_HARNESS_DIR"/worker_*_gpus \
-      "$SLURM_HARNESS_DIR"/worker_job_id \
-      "$SLURM_HARNESS_DIR"/worker_node_count
+      "$SLURM_HARNESS_DIR"/munge_test_cred
 
 # Install SLURM and munge
 source "${SCRIPT_DIR}/../shared/install_slurm.sh"
@@ -63,11 +58,9 @@ worker_hostname_for_rank() {
     fi
 }
 
-# Generate slurm.conf and update /etc/hosts for the given worker job ID.
-# Writes to /etc/slurm/slurm.conf and copies to shared cache.
-generate_slurm_conf() {
-    local worker_job_id="$1"
-
+# Write the base slurm.conf header (no nodes yet).
+# Node and partition lines are appended by add_job_nodes().
+write_slurm_conf_header() {
     cat > /etc/slurm/slurm.conf <<SLURMCONF
 ClusterName=baseten-slurm
 SlurmctldHost=${CONTROLLER_HOSTNAME}(${CONTROLLER_IP})
@@ -102,50 +95,75 @@ GresTypes=gpu
 
 PartitionName=DEFAULT Default=YES MaxTime=INFINITE State=UP
 SLURMCONF
+}
 
-    local partition_nodes=""
-    for i in $(seq 0 $((EXPECTED_WORKERS - 1))); do
-        local worker_ip
-        worker_ip=$(cat "$SLURM_HARNESS_DIR/worker_${i}_ip")
-        local worker_host
-        worker_host=$(worker_hostname_for_rank "$worker_job_id" "$i")
+# Append nodes from a single job to slurm.conf and update the partition line.
+# Uses ALL_PARTITION_NODES (global accumulator) to track every node across jobs.
+add_job_nodes() {
+    local job_id="$1"
+    local job_dir="$SLURM_HARNESS_DIR/jobs/$job_id"
+    local node_count
+    node_count=$(cat "$job_dir/node_count")
+
+    local new_nodes=""
+    for i in $(seq 0 $((node_count - 1))); do
+        local worker_ip worker_host worker_cpus worker_gpus
+        worker_ip=$(cat "$job_dir/worker_${i}_ip")
+        worker_host=$(worker_hostname_for_rank "$job_id" "$i")
 
         # Update /etc/hosts (remove stale entry first)
         sed -i "/ ${worker_host}$/d" /etc/hosts 2>/dev/null || true
         echo "${worker_ip} ${worker_host}" >> /etc/hosts
 
         # Read actual CPU count from worker's report, or default to 224 (H200)
-        local worker_cpus=224
-        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_cpus" ]; then
-            worker_cpus=$(cat "$SLURM_HARNESS_DIR/worker_${i}_cpus")
+        worker_cpus=224
+        if [ -f "$job_dir/worker_${i}_cpus" ]; then
+            worker_cpus=$(cat "$job_dir/worker_${i}_cpus")
         fi
         # Read actual GPU count from worker, or fall back to GPUS_PER_NODE
-        local worker_gpus="${GPUS_PER_NODE}"
-        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_gpus" ]; then
-            worker_gpus=$(cat "$SLURM_HARNESS_DIR/worker_${i}_gpus")
+        worker_gpus="${GPUS_PER_NODE}"
+        if [ -f "$job_dir/worker_${i}_gpus" ]; then
+            worker_gpus=$(cat "$job_dir/worker_${i}_gpus")
         fi
-        echo "NodeName=${worker_host} NodeAddr=${worker_ip} CPUs=${worker_cpus} RealMemory=100000 Gres=gpu:${worker_gpus} State=UNKNOWN" >> /etc/slurm/slurm.conf
 
-        if [ -z "$partition_nodes" ]; then
-            partition_nodes="$worker_host"
+        # Insert NodeName line before the PartitionName=gpu line (or append if
+        # this is the first job and no partition line exists yet).
+        if grep -q "^PartitionName=gpu " /etc/slurm/slurm.conf 2>/dev/null; then
+            sed -i "/^PartitionName=gpu /i NodeName=${worker_host} NodeAddr=${worker_ip} CPUs=${worker_cpus} RealMemory=100000 Gres=gpu:${worker_gpus} State=UNKNOWN" /etc/slurm/slurm.conf
         else
-            partition_nodes="${partition_nodes},${worker_host}"
+            echo "NodeName=${worker_host} NodeAddr=${worker_ip} CPUs=${worker_cpus} RealMemory=100000 Gres=gpu:${worker_gpus} State=UNKNOWN" >> /etc/slurm/slurm.conf
+        fi
+
+        if [ -z "$new_nodes" ]; then
+            new_nodes="$worker_host"
+        else
+            new_nodes="${new_nodes},${worker_host}"
         fi
     done
 
-    echo "PartitionName=gpu Nodes=${partition_nodes} Default=YES MaxTime=INFINITE State=UP" >> /etc/slurm/slurm.conf
+    # Update the global node accumulator and rewrite the partition line
+    if [ -z "$ALL_PARTITION_NODES" ]; then
+        ALL_PARTITION_NODES="$new_nodes"
+    else
+        ALL_PARTITION_NODES="${ALL_PARTITION_NODES},${new_nodes}"
+    fi
+
+    # Replace or append the partition line
+    if grep -q "^PartitionName=gpu " /etc/slurm/slurm.conf 2>/dev/null; then
+        sed -i "s|^PartitionName=gpu .*|PartitionName=gpu Nodes=${ALL_PARTITION_NODES} Default=YES MaxTime=INFINITE State=UP|" /etc/slurm/slurm.conf
+    else
+        echo "PartitionName=gpu Nodes=${ALL_PARTITION_NODES} Default=YES MaxTime=INFINITE State=UP" >> /etc/slurm/slurm.conf
+    fi
+
     cp /etc/slurm/slurm.conf "$SLURM_HARNESS_DIR/slurm.conf"
+    echo "Added ${node_count} node(s) from job ${job_id}. Total partition nodes: ${ALL_PARTITION_NODES}"
 }
 
-# Start (or restart) slurmctld. Clears stale state on restart.
+# Start slurmctld for the first time. Clears stale state from prior login runs.
+# Called ONCE — subsequent jobs use scontrol reconfigure instead.
 start_slurmctld() {
-    if [ -n "${SLURMCTLD_PID:-}" ]; then
-        echo "Stopping slurmctld (PID ${SLURMCTLD_PID})..."
-        kill "$SLURMCTLD_PID" 2>/dev/null || true
-        wait "$SLURMCTLD_PID" 2>/dev/null || true
-        rm -f /var/spool/slurmctld/node_state /var/spool/slurmctld/node_state.old
-        rm -f /var/spool/slurmctld/job_state /var/spool/slurmctld/job_state.old
-    fi
+    rm -f /var/spool/slurmctld/node_state /var/spool/slurmctld/node_state.old
+    rm -f /var/spool/slurmctld/job_state /var/spool/slurmctld/job_state.old
 
     slurmctld -D &
     SLURMCTLD_PID=$!
@@ -159,6 +177,18 @@ start_slurmctld() {
         cat /var/log/slurm/slurmctld.log || true
         return 1
     fi
+}
+
+# Check whether a job directory has all its workers registered.
+job_workers_ready() {
+    local job_dir="$1"
+    [ -f "$job_dir/node_count" ] || return 1
+    local node_count
+    node_count=$(cat "$job_dir/node_count")
+    for i in $(seq 0 $((node_count - 1))); do
+        [ -f "$job_dir/worker_${i}_ip" ] && [ -f "$job_dir/worker_${i}_gpus" ] || return 1
+    done
+    return 0
 }
 
 # Self-test: push a worker job from this login node before waiting for workers.
@@ -181,87 +211,101 @@ print(f'SELF_TEST_WORKERS={c.get(\"node_count\", 1)}')
     fi
 fi
 
-# Wait for workers to register. The worker count is discovered dynamically
-# from worker_node_count (written by workers), not from this node's config.
-echo "Waiting for worker_node_count and worker_job_id to appear..."
+# --- Wait for the first job to appear and register ---
+echo "Waiting for first job directory in ${SLURM_HARNESS_DIR}/jobs/..."
 MAX_WAIT=600
 WAITED=0
-while [ ! -f "$SLURM_HARNESS_DIR/worker_node_count" ] || [ ! -f "$SLURM_HARNESS_DIR/worker_job_id" ]; do
+FIRST_JOB_ID=""
+while true; do
+    for job_dir in "$SLURM_HARNESS_DIR/jobs"/*/; do
+        [ -d "$job_dir" ] || continue
+        FIRST_JOB_ID=$(basename "$job_dir")
+        break
+    done
+    [ -n "$FIRST_JOB_ID" ] && break
     sleep 5
     WAITED=$((WAITED + 5))
     if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-        echo "ERROR: Timed out waiting for worker metadata after ${MAX_WAIT}s"
+        echo "ERROR: Timed out waiting for first job after ${MAX_WAIT}s"
         exit 1
     fi
-    echo "Waiting for worker metadata... (${WAITED}s)"
+    echo "Waiting for job directory... (${WAITED}s)"
 done
 
-EXPECTED_WORKERS=$(cat "$SLURM_HARNESS_DIR/worker_node_count")
+FIRST_JOB_DIR="$SLURM_HARNESS_DIR/jobs/$FIRST_JOB_ID"
+echo "Found first job: ${FIRST_JOB_ID}"
+
+# Wait for node_count to appear (reuse the same MAX_WAIT/WAITED)
+while [ ! -f "$FIRST_JOB_DIR/node_count" ]; do
+    sleep 2
+    WAITED=$((WAITED + 2))
+    if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+        echo "ERROR: Timed out waiting for node_count in job ${FIRST_JOB_ID} after ${MAX_WAIT}s"
+        exit 1
+    fi
+done
+EXPECTED_WORKERS=$(cat "$FIRST_JOB_DIR/node_count")
 echo "Discovered worker count: ${EXPECTED_WORKERS}"
 
 echo "Waiting for ${EXPECTED_WORKERS} worker(s) to register..."
 while true; do
-    REGISTERED=0
-    for i in $(seq 0 $((EXPECTED_WORKERS - 1))); do
-        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_ip" ] && [ -f "$SLURM_HARNESS_DIR/worker_${i}_gpus" ]; then
-            REGISTERED=$((REGISTERED + 1))
-        fi
-    done
-    echo "Workers registered: ${REGISTERED}/${EXPECTED_WORKERS} (${WAITED}s elapsed)"
-    if [ "$REGISTERED" -ge "$EXPECTED_WORKERS" ]; then
+    if job_workers_ready "$FIRST_JOB_DIR"; then
         break
     fi
-    sleep 10
-    WAITED=$((WAITED + 10))
+    sleep 5
+    WAITED=$((WAITED + 5))
     if [ "$WAITED" -ge "$MAX_WAIT" ]; then
         echo "ERROR: Timed out waiting for workers after ${MAX_WAIT}s"
         exit 1
     fi
+    echo "Waiting for workers... (${WAITED}s elapsed)"
 done
 
-WORKER_JOB_ID=$(cat "$SLURM_HARNESS_DIR/worker_job_id")
-echo "Worker job ID: ${WORKER_JOB_ID}"
-
-generate_slurm_conf "$WORKER_JOB_ID"
+# Initial slurm.conf: header + first job's nodes
+ALL_PARTITION_NODES=""
+write_slurm_conf_header
+add_job_nodes "$FIRST_JOB_ID"
 start_slurmctld || exit 1
+
+PROCESSED_JOBS=" ${FIRST_JOB_ID} "
 
 echo "LOGIN_READY"
 
-# Watcher loop: detect new worker jobs and restart slurmctld.
-# SLURM does not allow node name changes via scontrol reconfigure —
-# we must kill and restart slurmctld entirely.
-echo "Starting worker watcher..."
+# --- Watcher loop: discover new job directories and add their nodes ---
+# Unlike the previous approach that restarted slurmctld (which killed in-flight
+# jobs), we append new NodeName entries to slurm.conf and run scontrol
+# reconfigure. This preserves running jobs on existing nodes.
+echo "Starting job watcher..."
 while true; do
-    if [ -f "$SLURM_HARNESS_DIR/worker_job_id" ]; then
-        CURRENT_JOB_ID=$(cat "$SLURM_HARNESS_DIR/worker_job_id")
-        if [ "$CURRENT_JOB_ID" != "$WORKER_JOB_ID" ]; then
-            echo "New worker job detected: ${CURRENT_JOB_ID} (was ${WORKER_JOB_ID})"
+    for job_dir in "$SLURM_HARNESS_DIR/jobs"/*/; do
+        [ -d "$job_dir" ] || continue
+        job_id=$(basename "$job_dir")
 
-            # Re-read worker count (may differ between jobs)
-            if [ -f "$SLURM_HARNESS_DIR/worker_node_count" ]; then
-                EXPECTED_WORKERS=$(cat "$SLURM_HARNESS_DIR/worker_node_count")
-            fi
+        # Skip already-processed jobs
+        case "$PROCESSED_JOBS" in
+            *" ${job_id} "*) continue ;;
+        esac
 
-            # Check if all worker IPs are available before reconfiguring.
-            ALL_READY=true
-            for i in $(seq 0 $((EXPECTED_WORKERS - 1))); do
-                if [ ! -f "$SLURM_HARNESS_DIR/worker_${i}_ip" ]; then
-                    ALL_READY=false
-                    break
-                fi
-            done
-
-            if [ "$ALL_READY" = true ]; then
-                # Only update WORKER_JOB_ID after successful reconfiguration
-                generate_slurm_conf "$CURRENT_JOB_ID"
-                if start_slurmctld; then
-                    WORKER_JOB_ID="$CURRENT_JOB_ID"
-                    echo "Reconfigured for job ${WORKER_JOB_ID}"
-                fi
-            else
-                echo "Not all workers ready yet, will retry..."
-            fi
+        # Check if all workers for this job are registered
+        if ! job_workers_ready "$job_dir"; then
+            continue
         fi
-    fi
+
+        echo "New job ${job_id}: adding workers..."
+        add_job_nodes "$job_id"
+
+        if scontrol reconfigure 2>/dev/null; then
+            echo "slurmctld reconfigured for job ${job_id}"
+        else
+            echo "WARNING: scontrol reconfigure failed, falling back to slurmctld restart..."
+            kill "$SLURMCTLD_PID" 2>/dev/null || true
+            wait "$SLURMCTLD_PID" 2>/dev/null || true
+            slurmctld -D &
+            SLURMCTLD_PID=$!
+            sleep 3
+        fi
+
+        PROCESSED_JOBS="${PROCESSED_JOBS}${job_id} "
+    done
     sleep 10
 done

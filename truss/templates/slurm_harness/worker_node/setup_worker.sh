@@ -7,33 +7,36 @@ SLURM_HARNESS_DIR="${BT_PROJECT_CACHE_DIR}/slurm_harness"
 # Install SLURM and munge
 source "${SCRIPT_DIR}/../shared/install_slurm.sh"
 
-# Register this worker's info in shared cache BEFORE waiting for controller.
-# The login node uses the job ID to compute our hostname via the Baseten naming
-# convention: baseten-training-job-<job-id>-multinode-0[-N]
+# Extract job ID from hostname BEFORE writing any files.
+# Baseten hostnames: baseten-training-job-<job_id>-multinode-0[-N]
 WORKER_IP=$(hostname -I | awk '{print $1}')
 WORKER_HOSTNAME=$(hostname -s)
-echo "$WORKER_IP" > "$SLURM_HARNESS_DIR/worker_${BT_NODE_RANK}_ip"
-echo "$WORKER_HOSTNAME" > "$SLURM_HARNESS_DIR/worker_${BT_NODE_RANK}_hostname"
-nproc > "$SLURM_HARNESS_DIR/worker_${BT_NODE_RANK}_cpus"
+WORKER_JOB_ID=$(echo "$WORKER_HOSTNAME" | sed 's/baseten-training-job-\(.*\)-multinode-.*/\1/')
+
+# Each job gets its own directory to prevent races between concurrent jobs.
+JOB_DIR="$SLURM_HARNESS_DIR/jobs/$WORKER_JOB_ID"
+mkdir -p "$JOB_DIR"
+
+# Register this worker's info in the job-scoped directory BEFORE waiting for
+# controller. The login node discovers new jobs by scanning jobs/.
+echo "$WORKER_IP" > "$JOB_DIR/worker_${BT_NODE_RANK}_ip"
+echo "$WORKER_HOSTNAME" > "$JOB_DIR/worker_${BT_NODE_RANK}_hostname"
+nproc > "$JOB_DIR/worker_${BT_NODE_RANK}_cpus"
 echo "Worker ${BT_NODE_RANK} CPU count: $(nproc)"
 
-# Write job ID so the login node can compute all worker hostnames
-# All nodes in this job share the same job ID, so any rank can write it
-echo "$WORKER_HOSTNAME" | sed 's/baseten-training-job-\(.*\)-multinode-.*/\1/' > "$SLURM_HARNESS_DIR/worker_job_id"
-
 # Write total node count so the login node knows how many workers to expect
-echo "$EXPECTED_WORKERS" > "$SLURM_HARNESS_DIR/worker_node_count"
+echo "$EXPECTED_WORKERS" > "$JOB_DIR/node_count"
 
-# Detect actual GPU devices and write count to shared cache
+# Detect actual GPU devices and write count
 ACTUAL_GPUS=0
 for dev in /dev/nvidia[0-9]*; do
     if [ -e "$dev" ]; then
         ACTUAL_GPUS=$((ACTUAL_GPUS + 1))
     fi
 done
-echo "$ACTUAL_GPUS" > "$SLURM_HARNESS_DIR/worker_${BT_NODE_RANK}_gpus"
+echo "$ACTUAL_GPUS" > "$JOB_DIR/worker_${BT_NODE_RANK}_gpus"
 
-echo "Worker ${BT_NODE_RANK} registered: hostname=${WORKER_HOSTNAME} ip=${WORKER_IP} gpus=${ACTUAL_GPUS}"
+echo "Worker ${BT_NODE_RANK} registered: job=${WORKER_JOB_ID} hostname=${WORKER_HOSTNAME} ip=${WORKER_IP} gpus=${ACTUAL_GPUS}"
 
 # Poll for controller IP (login node must be running)
 echo "Waiting for controller node..."
@@ -67,8 +70,8 @@ sleep 1
 service munge start || munged --force
 
 # Wait for slurm.conf that contains THIS worker's hostname.
-# The login node's watcher reconfigures slurmctld when it detects a new job ID,
-# so we poll until slurm.conf includes our real hostname.
+# The login node adds our nodes and runs scontrol reconfigure when it detects
+# our job directory, so we poll until slurm.conf includes our real hostname.
 echo "Waiting for slurm.conf containing ${WORKER_HOSTNAME}..."
 MAX_WAIT=300
 WAITED=0
@@ -93,9 +96,9 @@ cp "$SLURM_HARNESS_DIR/slurm.conf" /etc/slurm/slurm.conf
 EXPECTED_WORKERS="${EXPECTED_WORKERS:-1}"
 for i in $(seq 0 $((EXPECTED_WORKERS - 1))); do
     if [ "$i" != "${BT_NODE_RANK}" ]; then
-        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_ip" ] && [ -f "$SLURM_HARNESS_DIR/worker_${i}_hostname" ]; then
-            OTHER_IP=$(cat "$SLURM_HARNESS_DIR/worker_${i}_ip")
-            OTHER_HOSTNAME=$(cat "$SLURM_HARNESS_DIR/worker_${i}_hostname")
+        if [ -f "$JOB_DIR/worker_${i}_ip" ] && [ -f "$JOB_DIR/worker_${i}_hostname" ]; then
+            OTHER_IP=$(cat "$JOB_DIR/worker_${i}_ip")
+            OTHER_HOSTNAME=$(cat "$JOB_DIR/worker_${i}_hostname")
             echo "${OTHER_IP} ${OTHER_HOSTNAME}" >> /etc/hosts
         fi
     fi
@@ -170,11 +173,10 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     echo "$SBATCH_SCRIPT" > "$SBATCH_SCRIPT_PATH"
     chmod +x "$SBATCH_SCRIPT_PATH"
 
-    # Build explicit nodelist using real Baseten hostnames
-    WORKER_JOB_ID=$(cat "$SLURM_HARNESS_DIR/worker_job_id")
+    # Build explicit nodelist using real Baseten hostnames from job directory
     NODELIST=""
     for i in $(seq 0 $((EXPECTED_WORKERS - 1))); do
-        NODE_HOSTNAME=$(cat "$SLURM_HARNESS_DIR/worker_${i}_hostname")
+        NODE_HOSTNAME=$(cat "$JOB_DIR/worker_${i}_hostname")
         if [ -z "$NODELIST" ]; then
             NODELIST="$NODE_HOSTNAME"
         else
@@ -189,7 +191,7 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     if [ "$SBATCH_EXIT" -eq 0 ]; then
         SLURM_JOB_ID=$(echo "$SBATCH_OUTPUT" | grep -oP '\d+$' || echo "unknown")
         echo "SBATCH_RESULT:${SLURM_JOB_ID}"
-        echo "$SLURM_JOB_ID" > "$SLURM_HARNESS_DIR/slurm_job_id"
+        echo "$SLURM_JOB_ID" > "$JOB_DIR/slurm_job_id"
     else
         echo "SBATCH_ERROR:${SBATCH_OUTPUT}"
         exit 1
