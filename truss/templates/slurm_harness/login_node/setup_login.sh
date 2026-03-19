@@ -12,6 +12,7 @@ rm -f "$SLURM_HARNESS_DIR"/controller_* \
       "$SLURM_HARNESS_DIR"/worker_*_ip \
       "$SLURM_HARNESS_DIR"/worker_*_hostname \
       "$SLURM_HARNESS_DIR"/worker_*_cpus \
+      "$SLURM_HARNESS_DIR"/worker_*_gpus \
       "$SLURM_HARNESS_DIR"/worker_job_id \
       "$SLURM_HARNESS_DIR"/worker_node_count
 
@@ -118,7 +119,12 @@ SLURMCONF
         if [ -f "$SLURM_HARNESS_DIR/worker_${i}_cpus" ]; then
             worker_cpus=$(cat "$SLURM_HARNESS_DIR/worker_${i}_cpus")
         fi
-        echo "NodeName=${worker_host} NodeAddr=${worker_ip} CPUs=${worker_cpus} RealMemory=100000 Gres=gpu:${GPUS_PER_NODE} State=UNKNOWN" >> /etc/slurm/slurm.conf
+        # Read actual GPU count from worker, or fall back to GPUS_PER_NODE
+        local worker_gpus="${GPUS_PER_NODE}"
+        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_gpus" ]; then
+            worker_gpus=$(cat "$SLURM_HARNESS_DIR/worker_${i}_gpus")
+        fi
+        echo "NodeName=${worker_host} NodeAddr=${worker_ip} CPUs=${worker_cpus} RealMemory=100000 Gres=gpu:${worker_gpus} State=UNKNOWN" >> /etc/slurm/slurm.conf
 
         if [ -z "$partition_nodes" ]; then
             partition_nodes="$worker_host"
@@ -197,7 +203,7 @@ echo "Waiting for ${EXPECTED_WORKERS} worker(s) to register..."
 while true; do
     REGISTERED=0
     for i in $(seq 0 $((EXPECTED_WORKERS - 1))); do
-        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_ip" ]; then
+        if [ -f "$SLURM_HARNESS_DIR/worker_${i}_ip" ] && [ -f "$SLURM_HARNESS_DIR/worker_${i}_gpus" ]; then
             REGISTERED=$((REGISTERED + 1))
         fi
     done

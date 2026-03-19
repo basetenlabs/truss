@@ -96,16 +96,22 @@ done
 mkdir -p /var/spool/slurmd /var/log/slurm
 chmod 755 /var/spool/slurmd
 
-# Configure gres (GPU resources) for this node
-GPUS_PER_NODE="${GPUS_PER_NODE:-8}"
+# Configure gres (GPU resources) for this node by detecting actual devices
 mkdir -p /etc/slurm
 cat > /etc/slurm/gres.conf <<GRESCONF
-# GPU resource definitions for this worker
+# GPU resource definitions for this worker (auto-detected)
 GRESCONF
 
-for i in $(seq 0 $((GPUS_PER_NODE - 1))); do
-    echo "Name=gpu File=/dev/nvidia${i}" >> /etc/slurm/gres.conf
+for dev in /dev/nvidia[0-9]*; do
+    if [ -e "$dev" ]; then
+        echo "Name=gpu File=${dev}" >> /etc/slurm/gres.conf
+    fi
 done
+
+# Write actual GPU count so the login node can use it in slurm.conf
+ACTUAL_GPUS=$(grep -c "^Name=gpu" /etc/slurm/gres.conf 2>/dev/null || echo "0")
+echo "$ACTUAL_GPUS" > "$SLURM_HARNESS_DIR/worker_${BT_NODE_RANK}_gpus"
+echo "Worker ${BT_NODE_RANK} detected ${ACTUAL_GPUS} GPU(s)"
 
 # Start slurmd
 slurmd -D &
