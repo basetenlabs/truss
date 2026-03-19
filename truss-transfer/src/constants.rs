@@ -100,6 +100,9 @@ pub static TRUSS_TRANSFER_DOWNLOAD_DIR: Lazy<String> = Lazy::new(|| {
 /// Base path for secrets
 pub static SECRETS_BASE_PATH: &str = "/secrets";
 
+/// Prefix for environment variable-based secrets (used at build time)
+pub static SECRET_ENV_VAR_PREFIX: &str = "TRUSS_SECRET_";
+
 pub static SECRET_PATH_WHITELIST: &[&str] = &["/secrets", "/aws-secrets", "/app", "/tmp"];
 
 pub static RUNTIME_MODEL_CACHE_PATH: &str = "/app/model_cache";
