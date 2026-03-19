@@ -32,7 +32,8 @@ DOCKER_AUTH = build_docker_auth(
 
 training_runtime = definitions.Runtime(
     start_commands=[
-        "apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1",
+        "apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1 || true",
+        "command -v pip >/dev/null 2>&1 || python3 -m ensurepip --default-pip -q 2>/dev/null || (curl -sS https://bootstrap.pypa.io/get-pip.py | python3)",
         "pip install --quiet 'truss @ git+https://github.com/basetenlabs/truss.git@rcano/slurm-cli'",
         "bash login_node/setup_login.sh",
     ],
