@@ -30,6 +30,8 @@ def e2e_config(request):
         "docker_auth_secret": request.config.getoption("--docker-auth-secret"),
         "partition": request.config.getoption("--partition"),
         "remote": request.config.getoption("--remote"),
+        "script": request.config.getoption("--script"),
+        "nodes": request.config.getoption("--nodes"),
     }
 
 
@@ -127,21 +129,28 @@ class TestSlurmE2E:
 
         # --- Step 3: Deploy worker ---
         print("\n=== Step 3: Deploying worker ===")
-        worker_args = [
-            "train",
-            "slurm",
-            "sbatch",
-            "--wrap",
-            "echo SLURM_E2E_TEST_OK && hostname && nvidia-smi -L && sleep 10 && echo SLURM_E2E_TEST_DONE",
-            "--project",
-            project,
-            "--partition",
-            e2e_config["partition"],
-            "--nodes",
-            "1",
-            "--remote",
-            remote,
-        ]
+        worker_args = ["train", "slurm", "sbatch"]
+        if e2e_config["script"]:
+            worker_args.append(e2e_config["script"])
+        else:
+            worker_args.extend(
+                [
+                    "--wrap",
+                    "echo SLURM_E2E_TEST_OK && hostname && nvidia-smi -L && sleep 10 && echo SLURM_E2E_TEST_DONE",
+                ]
+            )
+        worker_args.extend(
+            [
+                "--project",
+                project,
+                "--partition",
+                e2e_config["partition"],
+                "--nodes",
+                e2e_config["nodes"],
+                "--remote",
+                remote,
+            ]
+        )
         if e2e_config["image"]:
             worker_args.extend(["--image", e2e_config["image"]])
         if e2e_config["docker_auth_method"]:
