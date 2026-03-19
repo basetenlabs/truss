@@ -232,8 +232,10 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     # Stop tailing
     kill "$TAIL_PID" 2>/dev/null || true
 
-    echo "Worker 0 exiting after job completion."
-    exit 0
+    # Propagate the SLURM job's exit code so Baseten marks failures correctly
+    JOB_EXIT_CODE=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null | grep -oP 'ExitCode=\K[0-9]+' || echo "0")
+    echo "Worker 0 exiting with SLURM job exit code: ${JOB_EXIT_CODE}"
+    exit "$JOB_EXIT_CODE"
 fi
 
 # Non-zero workers: wait for the SLURM job to finish executing on this node,
