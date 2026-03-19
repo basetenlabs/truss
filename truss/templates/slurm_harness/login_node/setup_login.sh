@@ -211,71 +211,21 @@ print(f'SELF_TEST_WORKERS={c.get(\"node_count\", 1)}')
     fi
 fi
 
-# --- Wait for the first job to appear and register ---
-echo "Waiting for first job directory in ${SLURM_HARNESS_DIR}/jobs/..."
-MAX_WAIT=600
-WAITED=0
-FIRST_JOB_ID=""
-while true; do
-    for job_dir in "$SLURM_HARNESS_DIR/jobs"/*/; do
-        [ -d "$job_dir" ] || continue
-        FIRST_JOB_ID=$(basename "$job_dir")
-        break
-    done
-    [ -n "$FIRST_JOB_ID" ] && break
-    sleep 5
-    WAITED=$((WAITED + 5))
-    if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-        echo "ERROR: Timed out waiting for first job after ${MAX_WAIT}s"
-        exit 1
-    fi
-    echo "Waiting for job directory... (${WAITED}s)"
-done
-
-FIRST_JOB_DIR="$SLURM_HARNESS_DIR/jobs/$FIRST_JOB_ID"
-echo "Found first job: ${FIRST_JOB_ID}"
-
-# Wait for node_count to appear (reuse the same MAX_WAIT/WAITED)
-while [ ! -f "$FIRST_JOB_DIR/node_count" ]; do
-    sleep 2
-    WAITED=$((WAITED + 2))
-    if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-        echo "ERROR: Timed out waiting for node_count in job ${FIRST_JOB_ID} after ${MAX_WAIT}s"
-        exit 1
-    fi
-done
-EXPECTED_WORKERS=$(cat "$FIRST_JOB_DIR/node_count")
-echo "Discovered worker count: ${EXPECTED_WORKERS}"
-
-echo "Waiting for ${EXPECTED_WORKERS} worker(s) to register..."
-while true; do
-    if job_workers_ready "$FIRST_JOB_DIR"; then
-        break
-    fi
-    sleep 5
-    WAITED=$((WAITED + 5))
-    if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-        echo "ERROR: Timed out waiting for workers after ${MAX_WAIT}s"
-        exit 1
-    fi
-    echo "Waiting for workers... (${WAITED}s elapsed)"
-done
-
-# Initial slurm.conf: header + first job's nodes
+# Start slurmctld immediately with an empty config so SLURM commands
+# (squeue, sinfo, etc.) work right away. Nodes are added as workers register.
 ALL_PARTITION_NODES=""
 write_slurm_conf_header
-add_job_nodes "$FIRST_JOB_ID"
 start_slurmctld || exit 1
 
-PROCESSED_JOBS=" ${FIRST_JOB_ID} "
+PROCESSED_JOBS=" "
 
 echo "LOGIN_READY"
+echo "slurmctld running. Waiting for worker jobs to register..."
 
-# --- Watcher loop: discover new job directories and add their nodes ---
-# Unlike the previous approach that restarted slurmctld (which killed in-flight
-# jobs), we append new NodeName entries to slurm.conf and run scontrol
-# reconfigure. This preserves running jobs on existing nodes.
-echo "Starting job watcher..."
+# --- Watcher loop: discover job directories and add their nodes ---
+# Each sbatch push creates a jobs/{job_id}/ directory. When all workers
+# for a job have registered, we append their nodes to slurm.conf and
+# run scontrol reconfigure. This preserves running jobs on existing nodes.
 while true; do
     for job_dir in "$SLURM_HARNESS_DIR/jobs"/*/; do
         [ -d "$job_dir" ] || continue
