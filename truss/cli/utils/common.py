@@ -87,7 +87,8 @@ def check_is_interactive() -> bool:
         return False
     try:
         ctx = click.get_current_context(silent=True)
-        if ctx and ctx.find_root().obj.get("non_interactive", False):
+        root_obj = ctx.find_root().obj if ctx else None
+        if root_obj and root_obj.get("non_interactive", False):
             return False
     except RuntimeError:
         pass
