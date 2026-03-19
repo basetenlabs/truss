@@ -21,15 +21,6 @@ import pytest
 from click.testing import CliRunner
 
 
-def pytest_addoption(parser):
-    parser.addoption("--project", default="slurm-e2e-test")
-    parser.addoption("--image", default=None)
-    parser.addoption("--docker-auth-method", default=None)
-    parser.addoption("--docker-auth-secret", default=None)
-    parser.addoption("--partition", default="H200")
-    parser.addoption("--remote", default="baseten")
-
-
 @pytest.fixture
 def e2e_config(request):
     return {
@@ -77,8 +68,8 @@ def _wait_for_login_ready(remote_provider, job_id, timeout=600):
         remote_provider, job_id, ["TRAINING_JOB_RUNNING"], timeout=timeout
     )
     # Give setup_login.sh time to install SLURM and reach the worker wait loop
-    print("  Login node running, waiting 60s for SLURM setup...")
-    time.sleep(60)
+    print("  Login node running, waiting 90s for SLURM setup...")
+    time.sleep(90)
     return job
 
 
@@ -185,7 +176,7 @@ class TestSlurmE2E:
         # --- Step 5: Verify login node detected the worker ---
         print("\n=== Step 5: Checking login node detected worker ===")
         # Wait for the login node to generate slurm.conf and start slurmctld
-        time.sleep(120)
+        time.sleep(180)
 
         # Check login logs for LOGIN_READY
         from truss.remote.baseten.core import get_training_job_logs_with_pagination
