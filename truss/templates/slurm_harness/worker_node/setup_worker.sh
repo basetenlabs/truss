@@ -183,7 +183,7 @@ if [ "${BT_NODE_RANK}" = "0" ]; then
     done
 
     echo "Submitting sbatch job on nodes: ${NODELIST} (${EXPECTED_WORKERS} nodes)..."
-    SBATCH_OUTPUT=$(sbatch --chdir=/workspace --nodes="${EXPECTED_WORKERS}" --nodelist="${NODELIST}" "$SBATCH_SCRIPT_PATH" 2>&1)
+    SBATCH_OUTPUT=$(sbatch --chdir="$(pwd)" --nodes="${EXPECTED_WORKERS}" --nodelist="${NODELIST}" "$SBATCH_SCRIPT_PATH" 2>&1)
     SBATCH_EXIT=$?
 
     if [ "$SBATCH_EXIT" -eq 0 ]; then
