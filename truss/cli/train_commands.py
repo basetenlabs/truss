@@ -720,7 +720,9 @@ def slurm():
 @click.option(
     "--project", type=str, default="slurm-harness", help="Training project name"
 )
-@click.option("--gpus-per-node", type=int, default=8, help="GPUs per worker node")
+@click.option(
+    "--gres", type=str, default="gpu:8", help="GPU resources per node (default: gpu:8)"
+)
 @click.option(
     "--partition",
     "-p",
@@ -750,7 +752,7 @@ def slurm():
 @common.common_options()
 def slurm_login(
     project: str,
-    gpus_per_node: int,
+    gres: str,
     partition: Optional[str],
     self_test: bool,
     image: Optional[str],
@@ -759,7 +761,9 @@ def slurm_login(
     remote: Optional[str],
 ):
     """Start a SLURM login/controller node on Baseten training."""
-    from truss.cli.train.slurm import build_login_runtime_config, push_node
+    from truss.cli.train.slurm import build_login_runtime_config, parse_gres, push_node
+
+    gpus_per_node = parse_gres(gres)
 
     if not remote:
         remote = remote_cli.inquire_remote_name()

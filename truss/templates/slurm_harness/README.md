@@ -93,7 +93,7 @@ truss train isession --job-id <login-job-id>
 | Flag | Default | Description |
 |---|---|---|
 | `--project` | `slurm-harness` | Project name (shared cache scope) |
-| `--gpus-per-node` | `8` | GPUs per worker |
+| `--gres` | `gpu:8` | GPU resources per node |
 | `--partition`, `-p` | none (CPU-only) | GPU type (e.g. H200, H100) |
 | `--self-test` | off | Push a test worker from inside the login node |
 | `--image` | `pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime` | Base Docker image |
