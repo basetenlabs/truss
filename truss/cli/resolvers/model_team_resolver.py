@@ -7,6 +7,7 @@ import click
 from truss.cli import remote_cli
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.remote_factory import RemoteFactory
 
 
 def _validate_provided_team(
@@ -15,7 +16,7 @@ def _validate_provided_team(
     """Validate provided team name exists and return team_id."""
     if provided_team_name not in existing_teams:
         available_teams_str = remote_cli.format_available_teams(existing_teams)
-        raise click.ClickException(
+        raise ValueError(
             f"Team '{provided_team_name}' does not exist. Available teams: {available_teams_str}"
         )
     return existing_teams[provided_team_name].id
@@ -115,20 +116,23 @@ def resolve_model_team_name(
     provided_team_name: Optional[str],
     existing_model_name: Optional[str] = None,
     existing_teams: Optional[dict[str, TeamType]] = None,
+    allow_interactive: bool = True,
+    remote_name: Optional[str] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     """Resolve team name and team_id from provided team name or by prompting the user.
     Returns a tuple of (team_name, team_id).
     This function handles 8 distinct scenarios organized into 3 high-level categories:
 
-    HIGH-LEVEL SCENARIO 1: --team PROVIDED
+    HIGH-LEVEL SCENARIO 1: --team PROVIDED (or configured in .trussrc via remote_name)
         SCENARIO 1: Valid team name, user has access
             → Returns (team_name, team_id) for that team (no prompt, no error)
         SCENARIO 2: Invalid team name (does not exist)
-            → Raises ClickException with error message listing available teams
+            → Raises ValueError with error message listing available teams
 
     HIGH-LEVEL SCENARIO 2: --team NOT PROVIDED, Model does not exist
         SCENARIO 3: User has multiple teams, no existing model
-            → Prompts user to select a team via inquire_team()
+            → Prompts user to select a team via inquire_team() (or raises ValueError
+              if allow_interactive=False)
         SCENARIO 6: User has exactly one team, no existing model
             → Returns (team_name, team_id) for the single team automatically (no prompt)
 
@@ -136,11 +140,22 @@ def resolve_model_team_name(
         SCENARIO 4: User has multiple teams, existing model in exactly one team
             → Auto-detects and returns (team_name, team_id) for that team (no prompt)
         SCENARIO 5: User has multiple teams, existing model exists in multiple teams
-            → Prompts user to select a team via inquire_team()
+            → Prompts user to select a team via inquire_team() (or raises ValueError
+              if allow_interactive=False)
         SCENARIO 7: User has exactly one team, existing model matches the team
             → Auto-detects and returns (team_name, team_id) for the single team (no prompt)
         SCENARIO 8: User has exactly one team, existing model exists in different team
             → Returns (team_name, team_id) for the single team automatically (no prompt, uses user's only team)
+
+    Args:
+        remote_provider: The Baseten remote provider.
+        provided_team_name: Optional team name provided by the user.
+        existing_model_name: Optional model name to check for existing models.
+        existing_teams: Optional pre-fetched teams dict. If None, will be fetched.
+        allow_interactive: If True (default), prompt the user when team is ambiguous.
+            If False, raise ValueError instead.
+        remote_name: Optional remote name to look up team from .trussrc config as
+            a fallback when provided_team_name is None.
     """
     if existing_teams is None:
         existing_teams = remote_provider.api.get_teams()
@@ -151,9 +166,14 @@ def resolve_model_team_name(
             return team_data.id if team_data else None
         return None
 
-    if provided_team_name is not None:
-        _validate_provided_team(provided_team_name, existing_teams)
-        return (provided_team_name, _get_team_id(provided_team_name))
+    # Fall back to .trussrc config if no team name was explicitly provided
+    effective_team_name = provided_team_name
+    if effective_team_name is None and remote_name is not None:
+        effective_team_name = RemoteFactory.get_remote_team(remote_name)
+
+    if effective_team_name is not None:
+        _validate_provided_team(effective_team_name, existing_teams)
+        return (effective_team_name, _get_team_id(effective_team_name))
 
     if existing_model_name is not None:
         matching_models = _get_matching_models(
@@ -169,6 +189,13 @@ def resolve_model_team_name(
     if len(existing_teams) == 1:
         single_team_name = list(existing_teams.keys())[0]
         return (single_team_name, _get_team_id(single_team_name))
+
+    if not allow_interactive:
+        available_teams_str = remote_cli.format_available_teams(existing_teams)
+        raise ValueError(
+            "Multiple teams available. Please specify a team name via the "
+            f"`team` parameter. Available teams: {available_teams_str}"
+        )
 
     selected_team_name = remote_cli.inquire_team(existing_teams=existing_teams)
     return (selected_team_name, _get_team_id(selected_team_name))
