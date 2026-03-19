@@ -50,6 +50,7 @@ class TestCheckIsInteractive:
         with ctx:
             assert common.check_is_interactive() is True
 
+
 def test_normalize_iso_timestamp_handles_nanoseconds():
     normalized = common._normalize_iso_timestamp("2025-11-17 05:05:06.000000000 +0000")
     assert normalized == "2025-11-17 05:05:06.000000+00:00"
