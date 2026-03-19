@@ -1,4 +1,4 @@
-from truss.base.truss_config import WeightsSource
+from truss.base.truss_config import WeightsSource, DockerAuthType
 from truss_train.definitions import (
     AWSIAMDockerAuth,
     BasetenCheckpoint,
@@ -50,4 +50,5 @@ __all__ = [
     "Image",
     "WeightsSource",
     "Workspace",
+    "DockerAuthType",
 ]
