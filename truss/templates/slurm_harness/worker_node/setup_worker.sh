@@ -24,7 +24,16 @@ echo "$WORKER_HOSTNAME" | sed 's/baseten-training-job-\(.*\)-multinode-.*/\1/' >
 # Write total node count so the login node knows how many workers to expect
 echo "$EXPECTED_WORKERS" > "$SLURM_HARNESS_DIR/worker_node_count"
 
-echo "Worker ${BT_NODE_RANK} registered: hostname=${WORKER_HOSTNAME} ip=${WORKER_IP}"
+# Detect actual GPU devices and write count to shared cache
+ACTUAL_GPUS=0
+for dev in /dev/nvidia[0-9]*; do
+    if [ -e "$dev" ]; then
+        ACTUAL_GPUS=$((ACTUAL_GPUS + 1))
+    fi
+done
+echo "$ACTUAL_GPUS" > "$SLURM_HARNESS_DIR/worker_${BT_NODE_RANK}_gpus"
+
+echo "Worker ${BT_NODE_RANK} registered: hostname=${WORKER_HOSTNAME} ip=${WORKER_IP} gpus=${ACTUAL_GPUS}"
 
 # Poll for controller IP (login node must be running)
 echo "Waiting for controller node..."
@@ -96,7 +105,7 @@ done
 mkdir -p /var/spool/slurmd /var/log/slurm
 chmod 755 /var/spool/slurmd
 
-# Configure gres (GPU resources) for this node by detecting actual devices
+# Configure gres (GPU resources) using the devices detected earlier
 mkdir -p /etc/slurm
 cat > /etc/slurm/gres.conf <<GRESCONF
 # GPU resource definitions for this worker (auto-detected)
@@ -107,11 +116,7 @@ for dev in /dev/nvidia[0-9]*; do
         echo "Name=gpu File=${dev}" >> /etc/slurm/gres.conf
     fi
 done
-
-# Write actual GPU count so the login node can use it in slurm.conf
-ACTUAL_GPUS=$(grep -c "^Name=gpu" /etc/slurm/gres.conf 2>/dev/null || echo "0")
-echo "$ACTUAL_GPUS" > "$SLURM_HARNESS_DIR/worker_${BT_NODE_RANK}_gpus"
-echo "Worker ${BT_NODE_RANK} detected ${ACTUAL_GPUS} GPU(s)"
+echo "gres.conf: $(cat /etc/slurm/gres.conf | grep -c '^Name=gpu') GPU(s) configured"
 
 # Start slurmd
 slurmd -D &
