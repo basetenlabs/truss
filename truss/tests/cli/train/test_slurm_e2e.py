@@ -186,7 +186,10 @@ class TestSlurmE2E:
         logs = get_training_job_logs_with_pagination(
             remote_provider.api, project_id, login_job_id
         )
-        log_text = "\n".join(logs)
+        log_text = "\n".join(
+            entry.get("message", str(entry)) if isinstance(entry, dict) else str(entry)
+            for entry in logs
+        )
 
         assert "Discovered worker count:" in log_text, (
             f"Login node never discovered workers. Last logs:\n{log_text[-2000:]}"
@@ -205,7 +208,10 @@ class TestSlurmE2E:
         worker_logs = get_training_job_logs_with_pagination(
             remote_provider.api, project_id, worker_job_id
         )
-        worker_log_text = "\n".join(worker_logs)
+        worker_log_text = "\n".join(
+            entry.get("message", str(entry)) if isinstance(entry, dict) else str(entry)
+            for entry in worker_logs
+        )
 
         if "SBATCH_RESULT:" in worker_log_text:
             print("  sbatch submitted successfully!")
