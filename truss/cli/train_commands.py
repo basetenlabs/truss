@@ -865,27 +865,23 @@ def slurm_status():
     else:
         checks.append((False, "slurmctld", sq_err))
 
-    # node status
+    # node status — only show active nodes (idle/mixed/alloc)
     si_ok, si_out, si_err = _check(["sinfo", "-N", "--noheader"])
     if si_ok and si_out:
-        lines = si_out.splitlines()
-        checks.append((True, "nodes", f"{len(lines)} registered"))
-        for line in lines:
-            console.print(f"    {line.strip()}")
+        all_lines = si_out.splitlines()
+        active_lines = [
+            l for l in all_lines if any(s in l for s in ["idle", "mix", "alloc"])
+        ]
+        if active_lines:
+            checks.append((True, "nodes", f"{len(active_lines)} active"))
+            for line in active_lines:
+                console.print(f"    {line.strip()}")
+        else:
+            checks.append((True, "nodes", "none active (waiting for workers)"))
     elif si_ok:
-        checks.append((False, "nodes", "none registered"))
+        checks.append((True, "nodes", "none registered"))
     else:
         checks.append((False, "sinfo", si_err))
-
-    # daemon role
-    is_login = _pgrep("slurmctld")
-    is_worker = _pgrep("slurmd")
-    if is_login:
-        checks.append((True, "role", "login node (slurmctld)"))
-    if is_worker:
-        checks.append((True, "role", "worker node (slurmd)"))
-    if not is_login and not is_worker:
-        checks.append((False, "role", "no SLURM daemons running"))
 
     ok = all(passed for passed, _, _ in checks)
     for passed, name, detail in checks:
