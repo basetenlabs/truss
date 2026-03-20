@@ -40,3 +40,9 @@ repos:
         language: system
         files: ^(pyproject\.toml|uv\.lock)$
         pass_filenames: false
+      - id: generate-truss-config-schema
+        name: check truss config schema is up to date
+        entry: uv run bin/generate_truss_config_schema.py --check
+        language: system
+        files: (truss/base/|truss/config\.schema\.json$)
+        pass_filenames: false

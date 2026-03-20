@@ -1,0 +1,2043 @@
+{
+  "$defs": {
+    "AcceleratorSpec": {
+      "additionalProperties": true,
+      "title": "AcceleratorSpec",
+      "type": "string"
+    },
+    "BaseImage": {
+      "additionalProperties": true,
+      "description": "Use base_image to deploy a custom Docker image.",
+      "properties": {
+        "image": {
+          "default": "",
+          "description": "The path to the Docker image.",
+          "examples": [
+            "vllm/vllm-openai:v0.7.3",
+            "nvcr.io/nvidia/nemo:23.03"
+          ],
+          "title": "Image",
+          "type": "string"
+        },
+        "python_executable_path": {
+          "default": "",
+          "description": "A path to the Python executable on the image.",
+          "examples": [
+            "/usr/bin/python"
+          ],
+          "title": "Python Executable Path",
+          "type": "string"
+        },
+        "docker_auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DockerAuthSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Authentication configuration for a private Docker registry."
+        }
+      },
+      "title": "BaseImage",
+      "type": "object"
+    },
+    "Build": {
+      "additionalProperties": true,
+      "description": "Build-time configuration, including secret access during Docker builds.",
+      "properties": {
+        "model_server": {
+          "$ref": "#/$defs/ModelServer",
+          "default": "TrussServer"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "secret_to_path_mapping": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Grants access to secrets during the build. Provide a mapping between a secret and a path on the image.",
+          "title": "Secret To Path Mapping",
+          "type": "object"
+        },
+        "no_cache": {
+          "default": false,
+          "title": "No Cache",
+          "type": "boolean"
+        }
+      },
+      "title": "Build",
+      "type": "object"
+    },
+    "CacheInternal": {
+      "items": {
+        "$ref": "#/$defs/ModelRepoCacheInternal"
+      },
+      "title": "CacheInternal",
+      "type": "array"
+    },
+    "CheckpointList": {
+      "additionalProperties": true,
+      "properties": {
+        "download_folder": {
+          "default": "/tmp/training_checkpoints",
+          "description": "The folder to download the checkpoints to.",
+          "examples": [
+            "/tmp/training_checkpoints"
+          ],
+          "title": "Download Folder",
+          "type": "string"
+        },
+        "artifact_references": {
+          "items": {
+            "$ref": "#/$defs/TrainingArtifactReference"
+          },
+          "title": "Artifact References",
+          "type": "array"
+        }
+      },
+      "title": "CheckpointList",
+      "type": "object"
+    },
+    "CheckpointRepository": {
+      "additionalProperties": true,
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/CheckpointSource"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "runtime_secret_name": {
+          "default": "hf_access_token",
+          "title": "Runtime Secret Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "repo"
+      ],
+      "title": "CheckpointRepository",
+      "type": "object"
+    },
+    "CheckpointSource": {
+      "enum": [
+        "HF",
+        "GCS",
+        "S3",
+        "AZURE",
+        "LOCAL",
+        "REMOTE_URL",
+        "BASETEN_TRAINING"
+      ],
+      "title": "CheckpointSource",
+      "type": "string"
+    },
+    "DockerAuthSettings": {
+      "additionalProperties": true,
+      "description": "Provides information about how to authenticate to the docker registry containing\nthe custom base image.",
+      "properties": {
+        "aws_oidc_role_arn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS IAM role ARN for OIDC authentication.",
+          "title": "Aws Oidc Role Arn"
+        },
+        "aws_oidc_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS region for OIDC authentication.",
+          "title": "Aws Oidc Region"
+        },
+        "gcp_oidc_service_account": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GCP service account name for OIDC authentication.",
+          "title": "Gcp Oidc Service Account"
+        },
+        "gcp_oidc_workload_id_provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GCP workload identity provider for OIDC authentication.",
+          "title": "Gcp Oidc Workload Id Provider"
+        },
+        "auth_method": {
+          "$ref": "#/$defs/DockerAuthType"
+        },
+        "registry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "",
+          "title": "Registry"
+        },
+        "secret_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Secret Name"
+        },
+        "aws_access_key_id_secret_name": {
+          "default": "aws_access_key_id",
+          "title": "Aws Access Key Id Secret Name",
+          "type": "string"
+        },
+        "aws_secret_access_key_secret_name": {
+          "default": "aws_secret_access_key",
+          "title": "Aws Secret Access Key Secret Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "auth_method"
+      ],
+      "title": "DockerAuthSettings",
+      "type": "object"
+    },
+    "DockerAuthType": {
+      "description": "This enum will express all the types of registry\nauthentication we support.",
+      "enum": [
+        "GCP_SERVICE_ACCOUNT_JSON",
+        "AWS_IAM",
+        "AWS_OIDC",
+        "GCP_OIDC",
+        "REGISTRY_SECRET"
+      ],
+      "title": "DockerAuthType",
+      "type": "string"
+    },
+    "DockerServer": {
+      "additionalProperties": true,
+      "description": "Deploy a custom Docker image that has its own HTTP server, without writing a Model class.",
+      "properties": {
+        "start_command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The command to start the server. Required when no_build is not true.",
+          "title": "Start Command"
+        },
+        "server_port": {
+          "description": "The port where the server runs. Port 8080 is reserved by Baseten's internal reverse proxy and cannot be used.",
+          "title": "Server Port",
+          "type": "integer"
+        },
+        "predict_endpoint": {
+          "description": "The endpoint for inference requests. This is mapped to Baseten's /predict route.",
+          "title": "Predict Endpoint",
+          "type": "string"
+        },
+        "readiness_endpoint": {
+          "description": "The endpoint for readiness probes. Determines when the container can accept traffic.",
+          "title": "Readiness Endpoint",
+          "type": "string"
+        },
+        "liveness_endpoint": {
+          "description": "The endpoint for liveness probes. Determines if the container needs to be restarted.",
+          "title": "Liveness Endpoint",
+          "type": "string"
+        },
+        "run_as_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Linux UID to run the server process as inside the container. Use this when your base image expects a specific non-root user (for example, NVIDIA NIM containers).",
+          "title": "Run As User Id"
+        },
+        "no_build": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
+          "title": "No Build"
+        }
+      },
+      "required": [
+        "server_port",
+        "predict_endpoint",
+        "readiness_endpoint",
+        "liveness_endpoint"
+      ],
+      "title": "DockerServer",
+      "type": "object"
+    },
+    "ExternalData": {
+      "description": "[Experimental] External data is data that is not contained in the Truss folder.\n\nTypically, this will be data stored remotely. This data is guaranteed to be made\navailable under the data directory of the truss.",
+      "items": {
+        "$ref": "#/$defs/ExternalDataItem"
+      },
+      "title": "ExternalData",
+      "type": "array"
+    },
+    "ExternalDataItem": {
+      "additionalProperties": true,
+      "description": "A piece of remote data, to be made available to the Truss at serving time.\n\nRemote data is downloaded and stored under Truss's data directory. Care should be taken\nto avoid conflicts. This will get precedence if there's overlap.",
+      "properties": {
+        "url": {
+          "description": "URL to download the data from. Currently only files are allowed.",
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "local_data_path": {
+          "description": "Path relative to the data directory where the remote file will be downloaded.",
+          "minLength": 1,
+          "title": "Local Data Path",
+          "type": "string"
+        },
+        "backend": {
+          "default": "http_public",
+          "description": "Download backend to use. Defaults to 'http_public'.",
+          "title": "Backend",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional name for the download. Path relative to data directory.",
+          "title": "Name"
+        }
+      },
+      "required": [
+        "url",
+        "local_data_path"
+      ],
+      "title": "ExternalDataItem",
+      "type": "object"
+    },
+    "GRPCOptions": {
+      "properties": {
+        "kind": {
+          "const": "grpc",
+          "default": "grpc",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "GRPCOptions",
+      "type": "object"
+    },
+    "HTTPOptions": {
+      "properties": {
+        "kind": {
+          "const": "http",
+          "default": "http",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "HTTPOptions",
+      "type": "object"
+    },
+    "HealthChecks": {
+      "additionalProperties": true,
+      "description": "Custom health check configuration for your deployments.",
+      "properties": {
+        "restart_check_delay_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The delay in seconds before starting restart checks. Defaults to platform-determined value when not set.",
+          "title": "Restart Check Delay Seconds"
+        },
+        "restart_threshold_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+          "title": "Restart Threshold Seconds"
+        },
+        "stop_traffic_threshold_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+          "title": "Stop Traffic Threshold Seconds"
+        },
+        "startup_threshold_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The time in seconds to wait for a model to start before marking it as unhealthy. Defaults to platform-determined value when not set.",
+          "title": "Startup Threshold Seconds"
+        }
+      },
+      "title": "HealthChecks",
+      "type": "object"
+    },
+    "ModelCache": {
+      "items": {
+        "$ref": "#/$defs/ModelRepo"
+      },
+      "title": "ModelCache",
+      "type": "array"
+    },
+    "ModelRepo": {
+      "additionalProperties": true,
+      "properties": {
+        "repo_id": {
+          "minLength": 1,
+          "title": "Repo Id",
+          "type": "string"
+        },
+        "revision": {
+          "default": "",
+          "title": "Revision",
+          "type": "string"
+        },
+        "allow_patterns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allow Patterns"
+        },
+        "ignore_patterns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ignore Patterns"
+        },
+        "volume_folder": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume Folder"
+        },
+        "use_volume": {
+          "title": "Use Volume",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/ModelRepoSourceKind",
+          "default": "hf"
+        },
+        "runtime_secret_name": {
+          "default": "hf_access_token",
+          "title": "Runtime Secret Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo_id",
+        "use_volume"
+      ],
+      "title": "ModelRepo",
+      "type": "object"
+    },
+    "ModelRepoCacheInternal": {
+      "additionalProperties": true,
+      "properties": {
+        "repo_id": {
+          "minLength": 1,
+          "title": "Repo Id",
+          "type": "string"
+        },
+        "revision": {
+          "default": "",
+          "title": "Revision",
+          "type": "string"
+        },
+        "allow_patterns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allow Patterns"
+        },
+        "ignore_patterns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ignore Patterns"
+        },
+        "volume_folder": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume Folder"
+        },
+        "use_volume": {
+          "default": false,
+          "title": "Use Volume",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/ModelRepoSourceKind",
+          "default": "hf"
+        },
+        "runtime_secret_name": {
+          "default": "hf_access_token",
+          "title": "Runtime Secret Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo_id"
+      ],
+      "title": "ModelRepoCacheInternal",
+      "type": "object"
+    },
+    "ModelRepoSourceKind": {
+      "description": "syned with `pub enum ResolutionType` in truss-transfer",
+      "enum": [
+        "hf",
+        "gcs",
+        "s3",
+        "azure"
+      ],
+      "title": "ModelRepoSourceKind",
+      "type": "string"
+    },
+    "ModelServer": {
+      "description": "To determine the image builder path for trusses built from alternative server backends.\nThis enum is also used to gate development deployments to BasetenRemote\nhttps://github.com/basetenlabs/truss/blob/7505c17a2ddd4a6fa626b9126772999dc8f3fa86/truss/remote/baseten/remote.py#L56-L57",
+      "enum": [
+        "TrussServer",
+        "TRT_LLM"
+      ],
+      "title": "ModelServer",
+      "type": "string"
+    },
+    "Resources": {
+      "additionalProperties": true,
+      "description": "Compute resources that your model needs, including CPU, memory, and GPU resources.",
+      "properties": {
+        "cpu": {
+          "default": "1",
+          "description": "CPU resources needed, expressed as either a raw number or millicpus. For example, 500m is half of a CPU core.",
+          "examples": [
+            "1",
+            "500m",
+            "4"
+          ],
+          "title": "Cpu",
+          "type": "string"
+        },
+        "memory": {
+          "default": "2Gi",
+          "description": "CPU RAM needed, expressed as a number with units. Units include Gi (Gibibytes), G (Gigabytes), Mi (Mebibytes), and M (Megabytes).",
+          "examples": [
+            "2Gi",
+            "512Mi"
+          ],
+          "title": "Memory",
+          "type": "string"
+        },
+        "accelerator": {
+          "$ref": "#/$defs/AcceleratorSpec",
+          "description": "The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+          "examples": [
+            "A100",
+            "T4:2",
+            "H100:8"
+          ]
+        },
+        "instance_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The full SKU name for the instance type. When specified, cpu, memory, and accelerator fields are ignored.",
+          "examples": [
+            "L4:4x16"
+          ],
+          "title": "Instance Type"
+        },
+        "node_count": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of nodes for multi-node deployments.",
+          "title": "Node Count"
+        }
+      },
+      "title": "Resources",
+      "type": "object"
+    },
+    "Runtime": {
+      "additionalProperties": true,
+      "description": "Runtime settings for your model instance.",
+      "properties": {
+        "predict_concurrency": {
+          "default": 1,
+          "description": "The number of concurrent requests that can run in your model's predict method. Increase this if your model supports parallelism.",
+          "title": "Predict Concurrency",
+          "type": "integer"
+        },
+        "streaming_read_timeout": {
+          "default": 60,
+          "description": "The timeout in seconds for streaming read operations.",
+          "title": "Streaming Read Timeout",
+          "type": "integer"
+        },
+        "enable_tracing_data": {
+          "default": false,
+          "description": "If true, enables trace data export with built-in OTEL instrumentation. May add performance overhead.",
+          "title": "Enable Tracing Data",
+          "type": "boolean"
+        },
+        "enable_debug_logs": {
+          "default": false,
+          "description": "If true, sets the Truss server log level to DEBUG instead of INFO.",
+          "title": "Enable Debug Logs",
+          "type": "boolean"
+        },
+        "transport": {
+          "description": "The transport protocol for your model. Supports http (default), websocket, and grpc.",
+          "discriminator": {
+            "mapping": {
+              "grpc": "#/$defs/GRPCOptions",
+              "http": "#/$defs/HTTPOptions",
+              "websocket": "#/$defs/WebsocketOptions"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/HTTPOptions"
+            },
+            {
+              "$ref": "#/$defs/WebsocketOptions"
+            },
+            {
+              "$ref": "#/$defs/GRPCOptions"
+            }
+          ],
+          "title": "Transport"
+        },
+        "is_websocket_endpoint": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DEPRECATED. Do not set manually. Automatically inferred from transport.kind == websocket.",
+          "title": "Is Websocket Endpoint"
+        },
+        "health_checks": {
+          "$ref": "#/$defs/HealthChecks"
+        },
+        "truss_server_version_override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "By default, truss servers are built from the same release as the CLI used to push. This field allows specifying a pinned/specific version instead.",
+          "title": "Truss Server Version Override"
+        }
+      },
+      "title": "Runtime",
+      "type": "object"
+    },
+    "TRTLLMConfiguration": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TRTLLMConfigurationV1"
+        },
+        {
+          "$ref": "#/$defs/TRTLLMConfigurationV2"
+        }
+      ],
+      "title": "TRTLLMConfiguration"
+    },
+    "TRTLLMConfigurationV1": {
+      "additionalProperties": true,
+      "properties": {
+        "build": {
+          "$ref": "#/$defs/TrussTRTLLMBuildConfiguration"
+        },
+        "inference_stack": {
+          "const": "v1",
+          "default": "v1",
+          "title": "Inference Stack",
+          "type": "string"
+        },
+        "runtime": {
+          "$ref": "#/$defs/TrussTRTLLMRuntimeConfiguration",
+          "default": {
+            "kv_cache_free_gpu_mem_fraction": 0.9,
+            "kv_cache_host_memory_bytes": null,
+            "enable_chunked_context": true,
+            "batch_scheduler_policy": "guaranteed_no_evict",
+            "request_default_max_tokens": null,
+            "served_model_name": null,
+            "total_token_limit": 500000,
+            "webserver_default_route": null
+          }
+        },
+        "version_overrides": {
+          "$ref": "#/$defs/VersionsOverrides",
+          "default": {
+            "engine_builder_version": null,
+            "briton_version": null,
+            "bei_version": null,
+            "bei_bert_version": null,
+            "v2_llm_version": null
+          }
+        }
+      },
+      "required": [
+        "build"
+      ],
+      "title": "TRTLLMConfigurationV1",
+      "type": "object"
+    },
+    "TRTLLMConfigurationV2": {
+      "additionalProperties": true,
+      "properties": {
+        "inference_stack": {
+          "const": "v2",
+          "default": "v2",
+          "title": "Inference Stack",
+          "type": "string"
+        },
+        "build": {
+          "$ref": "#/$defs/TrussTRTLLMBuildConfiguration"
+        },
+        "runtime": {
+          "$ref": "#/$defs/TRTLLMRuntimeConfigurationV2"
+        },
+        "version_overrides": {
+          "$ref": "#/$defs/VersionsOverrides",
+          "default": {
+            "engine_builder_version": null,
+            "briton_version": null,
+            "bei_version": null,
+            "bei_bert_version": null,
+            "v2_llm_version": null
+          }
+        }
+      },
+      "required": [
+        "build",
+        "runtime"
+      ],
+      "title": "TRTLLMConfigurationV2",
+      "type": "object"
+    },
+    "TRTLLMRuntimeConfigurationV2": {
+      "additionalProperties": true,
+      "properties": {
+        "max_seq_len": {
+          "anyOf": [
+            {
+              "maximum": 1048576,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Seq Len"
+        },
+        "max_batch_size": {
+          "default": 256,
+          "maximum": 2048,
+          "minimum": 1,
+          "title": "Max Batch Size",
+          "type": "integer"
+        },
+        "max_num_tokens": {
+          "default": 8192,
+          "exclusiveMinimum": 64,
+          "maximum": 131072,
+          "title": "Max Num Tokens",
+          "type": "integer"
+        },
+        "tensor_parallel_size": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Tensor Parallel Size",
+          "type": "integer"
+        },
+        "enable_chunked_prefill": {
+          "default": true,
+          "title": "Enable Chunked Prefill",
+          "type": "boolean"
+        },
+        "served_model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Served Model Name"
+        },
+        "patch_kwargs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Patch Kwargs",
+          "type": "object"
+        }
+      },
+      "title": "TRTLLMRuntimeConfigurationV2",
+      "type": "object"
+    },
+    "TrainingArtifactReference": {
+      "additionalProperties": true,
+      "properties": {
+        "training_job_id": {
+          "description": "The training job id that the artifact reference belongs to.",
+          "title": "Training Job Id",
+          "type": "string"
+        },
+        "paths": {
+          "description": "The paths of the files to download which can contain * or ?.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "training_job_id"
+      ],
+      "title": "TrainingArtifactReference",
+      "type": "object"
+    },
+    "TrussSpecDecMode": {
+      "enum": [
+        "DRAFT_TOKENS_EXTERNAL",
+        "LOOKAHEAD_DECODING"
+      ],
+      "title": "TrussSpecDecMode",
+      "type": "string"
+    },
+    "TrussSpeculatorConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "speculative_decoding_mode": {
+          "$ref": "#/$defs/TrussSpecDecMode",
+          "default": "DRAFT_TOKENS_EXTERNAL"
+        },
+        "num_draft_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Num Draft Tokens"
+        },
+        "checkpoint_repository": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointRepository"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "runtime": {
+          "$ref": "#/$defs/TrussTRTLLMRuntimeConfiguration",
+          "default": {
+            "kv_cache_free_gpu_mem_fraction": 0.9,
+            "kv_cache_host_memory_bytes": null,
+            "enable_chunked_context": true,
+            "batch_scheduler_policy": "guaranteed_no_evict",
+            "request_default_max_tokens": null,
+            "served_model_name": null,
+            "total_token_limit": 500000,
+            "webserver_default_route": null
+          }
+        },
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrussTRTLLMBuildConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "lookahead_windows_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookahead Windows Size"
+        },
+        "lookahead_ngram_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookahead Ngram Size"
+        },
+        "lookahead_verification_set_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookahead Verification Set Size"
+        },
+        "enable_b10_lookahead": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Enable B10 Lookahead"
+        }
+      },
+      "title": "TrussSpeculatorConfiguration",
+      "type": "object"
+    },
+    "TrussTRTLLMBatchSchedulerPolicy": {
+      "enum": [
+        "max_utilization",
+        "guaranteed_no_evict"
+      ],
+      "title": "TrussTRTLLMBatchSchedulerPolicy",
+      "type": "string"
+    },
+    "TrussTRTLLMBuildConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "base_model": {
+          "$ref": "#/$defs/TrussTRTLLMModel",
+          "default": "decoder"
+        },
+        "max_seq_len": {
+          "anyOf": [
+            {
+              "maximum": 1048576,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Seq Len"
+        },
+        "max_batch_size": {
+          "default": 256,
+          "maximum": 2048,
+          "minimum": 1,
+          "title": "Max Batch Size",
+          "type": "integer"
+        },
+        "max_num_tokens": {
+          "default": 8192,
+          "exclusiveMinimum": 64,
+          "maximum": 1048576,
+          "title": "Max Num Tokens",
+          "type": "integer"
+        },
+        "max_beam_width": {
+          "default": 1,
+          "maximum": 1,
+          "minimum": 1,
+          "title": "Max Beam Width",
+          "type": "integer"
+        },
+        "max_prompt_embedding_table_size": {
+          "default": 0,
+          "title": "Max Prompt Embedding Table Size",
+          "type": "integer"
+        },
+        "checkpoint_repository": {
+          "$ref": "#/$defs/CheckpointRepository"
+        },
+        "gather_all_token_logits": {
+          "default": false,
+          "title": "Gather All Token Logits",
+          "type": "boolean"
+        },
+        "strongly_typed": {
+          "default": false,
+          "title": "Strongly Typed",
+          "type": "boolean"
+        },
+        "quantization_type": {
+          "$ref": "#/$defs/TrussTRTLLMQuantizationType",
+          "default": "no_quant"
+        },
+        "quantization_config": {
+          "$ref": "#/$defs/TrussTRTQuantizationConfiguration",
+          "default": {
+            "calib_size": 1024,
+            "calib_dataset": "abisee/cnn_dailymail",
+            "calib_max_seq_length": 1536
+          }
+        },
+        "tensor_parallel_count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Tensor Parallel Count",
+          "type": "integer"
+        },
+        "pipeline_parallel_count": {
+          "default": 1,
+          "title": "Pipeline Parallel Count",
+          "type": "integer"
+        },
+        "moe_expert_parallel_option": {
+          "default": -1,
+          "title": "Moe Expert Parallel Option",
+          "type": "integer"
+        },
+        "sequence_parallel_count": {
+          "default": 1,
+          "title": "Sequence Parallel Count",
+          "type": "integer"
+        },
+        "plugin_configuration": {
+          "$ref": "#/$defs/TrussTRTLLMPluginConfiguration",
+          "default": {
+            "paged_kv_cache": true,
+            "use_paged_context_fmha": true,
+            "use_fp8_context_fmha": false
+          }
+        },
+        "num_builder_gpus": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Num Builder Gpus"
+        },
+        "speculator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrussSpeculatorConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "lora_adapters": {
+          "anyOf": [
+            {
+              "patternProperties": {
+                "^[a-zA-Z0-9_\\-\\.:]+$": {
+                  "$ref": "#/$defs/CheckpointRepository"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lora Adapters"
+        },
+        "lora_configuration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrussTRTLLMLoraConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "skip_build_result": {
+          "default": false,
+          "title": "Skip Build Result",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "checkpoint_repository"
+      ],
+      "title": "TrussTRTLLMBuildConfiguration",
+      "type": "object"
+    },
+    "TrussTRTLLMLoraConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "max_lora_rank": {
+          "default": 64,
+          "title": "Max Lora Rank",
+          "type": "integer"
+        },
+        "lora_target_modules": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Lora Target Modules",
+          "type": "array"
+        }
+      },
+      "title": "TrussTRTLLMLoraConfiguration",
+      "type": "object"
+    },
+    "TrussTRTLLMModel": {
+      "enum": [
+        "encoder",
+        "encoder_bert",
+        "decoder",
+        "palmyra",
+        "qwen",
+        "llama",
+        "mistral",
+        "deepseek",
+        "whisper"
+      ],
+      "title": "TrussTRTLLMModel",
+      "type": "string"
+    },
+    "TrussTRTLLMPluginConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "paged_kv_cache": {
+          "default": true,
+          "title": "Paged Kv Cache",
+          "type": "boolean"
+        },
+        "use_paged_context_fmha": {
+          "default": true,
+          "title": "Use Paged Context Fmha",
+          "type": "boolean"
+        },
+        "use_fp8_context_fmha": {
+          "default": false,
+          "title": "Use Fp8 Context Fmha",
+          "type": "boolean"
+        }
+      },
+      "title": "TrussTRTLLMPluginConfiguration",
+      "type": "object"
+    },
+    "TrussTRTLLMQuantizationType": {
+      "enum": [
+        "no_quant",
+        "weights_int8",
+        "weights_kv_int8",
+        "weights_int4",
+        "weights_int4_kv_int8",
+        "smooth_quant",
+        "fp8",
+        "fp8_kv",
+        "fp4",
+        "fp4_kv",
+        "fp4_mlp_only"
+      ],
+      "title": "TrussTRTLLMQuantizationType",
+      "type": "string"
+    },
+    "TrussTRTLLMRuntimeConfiguration": {
+      "additionalProperties": true,
+      "properties": {
+        "kv_cache_free_gpu_mem_fraction": {
+          "default": 0.9,
+          "title": "Kv Cache Free Gpu Mem Fraction",
+          "type": "number"
+        },
+        "kv_cache_host_memory_bytes": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kv Cache Host Memory Bytes"
+        },
+        "enable_chunked_context": {
+          "default": true,
+          "title": "Enable Chunked Context",
+          "type": "boolean"
+        },
+        "batch_scheduler_policy": {
+          "$ref": "#/$defs/TrussTRTLLMBatchSchedulerPolicy",
+          "default": "guaranteed_no_evict"
+        },
+        "request_default_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Default Max Tokens"
+        },
+        "served_model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Served Model Name"
+        },
+        "total_token_limit": {
+          "default": 500000,
+          "title": "Total Token Limit",
+          "type": "integer"
+        },
+        "webserver_default_route": {
+          "anyOf": [
+            {
+              "enum": [
+                "/v1/embeddings",
+                "/rerank",
+                "/predict"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Webserver Default Route"
+        }
+      },
+      "title": "TrussTRTLLMRuntimeConfiguration",
+      "type": "object"
+    },
+    "TrussTRTQuantizationConfiguration": {
+      "additionalProperties": true,
+      "description": "Configuration for quantization of TRT models\n\nArgs:\n    calib_size (int, optional): Size of calibration dataset. Defaults to 1024.\n        recommended to increase for production runs (e.g. 1536), or decrease e.g. to 256 for quick testing.\n    calib_dataset (str, optional): Hugginface dataset to use for calibration. Defaults to 'cnn_dailymail'.\n        uses split='train' and  quantized based on 'text' column.\n    calib_max_seq_length (int, optional): Maximum sequence length for calibration. Defaults to 2048.",
+      "properties": {
+        "calib_size": {
+          "default": 1024,
+          "title": "Calib Size",
+          "type": "integer"
+        },
+        "calib_dataset": {
+          "default": "abisee/cnn_dailymail",
+          "title": "Calib Dataset",
+          "type": "string"
+        },
+        "calib_max_seq_length": {
+          "default": 1536,
+          "title": "Calib Max Seq Length",
+          "type": "integer"
+        }
+      },
+      "title": "TrussTRTQuantizationConfiguration",
+      "type": "object"
+    },
+    "VersionsOverrides": {
+      "additionalProperties": true,
+      "properties": {
+        "engine_builder_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Builder Version"
+        },
+        "briton_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Briton Version"
+        },
+        "bei_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bei Version"
+        },
+        "bei_bert_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bei Bert Version"
+        },
+        "v2_llm_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "V2 Llm Version"
+        }
+      },
+      "title": "VersionsOverrides",
+      "type": "object"
+    },
+    "WebsocketOptions": {
+      "properties": {
+        "kind": {
+          "const": "websocket",
+          "default": "websocket",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ping_interval_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ping Interval Seconds"
+        },
+        "ping_timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ping Timeout Seconds"
+        }
+      },
+      "title": "WebsocketOptions",
+      "type": "object"
+    },
+    "Weights": {
+      "description": "List of weights sources for the new weights API.",
+      "items": {
+        "$ref": "#/$defs/WeightsSource"
+      },
+      "title": "Weights",
+      "type": "array"
+    },
+    "WeightsAuth": {
+      "additionalProperties": true,
+      "description": "Authentication configuration for a weights source.\n\nThis can be used to specify OIDC-based authentication for cloud storage sources,\nor a Baseten secret name for access key authentication.",
+      "properties": {
+        "aws_oidc_role_arn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS IAM role ARN for OIDC authentication.",
+          "title": "Aws Oidc Role Arn"
+        },
+        "aws_oidc_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS region for OIDC authentication.",
+          "title": "Aws Oidc Region"
+        },
+        "gcp_oidc_service_account": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GCP service account name for OIDC authentication.",
+          "title": "Gcp Oidc Service Account"
+        },
+        "gcp_oidc_workload_id_provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GCP workload identity provider for OIDC authentication.",
+          "title": "Gcp Oidc Workload Id Provider"
+        },
+        "auth_method": {
+          "$ref": "#/$defs/WeightsAuthMethod",
+          "description": "Authentication method for downloading weights from the source."
+        },
+        "auth_secret_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Baseten secret name containing credentials for accessing the source.",
+          "title": "Auth Secret Name"
+        }
+      },
+      "required": [
+        "auth_method"
+      ],
+      "title": "WeightsAuth",
+      "type": "object"
+    },
+    "WeightsAuthMethod": {
+      "description": "Authentication methods for weights sources.",
+      "enum": [
+        "CUSTOM_SECRET",
+        "AWS_OIDC",
+        "GCP_OIDC"
+      ],
+      "title": "WeightsAuthMethod",
+      "type": "string"
+    },
+    "WeightsSource": {
+      "additionalProperties": true,
+      "description": "Configuration for a weights source in the new weights API.\n\nUses a URI-based `source` field with a required scheme prefix:\n- hf:// -> HuggingFace (e.g., \"hf://meta-llama/Llama-2-7b\" or \"hf://meta-llama/Llama-2-7b@main\")\n- s3:// -> AWS S3 (e.g., \"s3://bucket/path\")\n- gs:// -> Google Cloud Storage (e.g., \"gs://bucket/path\")\n- azure:// -> Azure Blob Storage (e.g., \"azure://account/container/path\")\n- r2:// -> CloudFlare R2 Storage (e.g., \"r2://account_id.bucket/path\")\n- https:// -> Direct URL download (e.g., \"https://example.com/model.bin\")\n\nFor HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)\nusing the @{rev} suffix: \"hf://owner/repo@revision\"\n\nAuthentication can be specified either:\n- Using the `auth` section (required for OIDC):\n    auth:\n      auth_method: AWS_OIDC\n      aws_oidc_role_arn: <role_arn>\n      aws_oidc_region: <region>\n- Using `auth_secret_name` at the top level (or in the `auth` section)",
+      "properties": {
+        "source": {
+          "description": "URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, or https://. For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "mount_location": {
+          "description": "Absolute path where weights will be mounted at runtime.",
+          "minLength": 1,
+          "title": "Mount Location",
+          "type": "string"
+        },
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeightsAuth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Authentication configuration for accessing the weights source."
+        },
+        "auth_secret_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Baseten secret name containing credentials. Can also be specified in auth.auth_secret_name.",
+          "title": "Auth Secret Name"
+        },
+        "allow_patterns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "File patterns to include (e.g., ['*.safetensors']).",
+          "title": "Allow Patterns"
+        },
+        "ignore_patterns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "File patterns to exclude (e.g., ['*.md']).",
+          "title": "Ignore Patterns"
+        }
+      },
+      "required": [
+        "source",
+        "mount_location"
+      ],
+      "title": "WeightsSource",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "Configuration for a Truss model deployment.",
+  "properties": {
+    "model_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The name of your model. This is displayed in the model details page in the Baseten UI.",
+      "title": "Model Name"
+    },
+    "model_metadata": {
+      "additionalProperties": true,
+      "description": "A flexible field for additional metadata. The entire config file is available to your model at runtime.",
+      "properties": {
+        "example_model_input": {
+          "description": "Sample input that populates the Baseten playground.",
+          "examples": [
+            {
+              "prompt": "What is the meaning of life?"
+            }
+          ]
+        }
+      },
+      "title": "Model Metadata",
+      "type": "object"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "A description of your model.",
+      "title": "Description"
+    },
+    "examples_filename": {
+      "default": "examples.yaml",
+      "description": "Path to a file containing example model inputs.",
+      "title": "Examples Filename",
+      "type": "string"
+    },
+    "data_dir": {
+      "default": "data",
+      "description": "The folder for data files in your Truss.",
+      "title": "Data Dir",
+      "type": "string"
+    },
+    "external_data": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExternalData"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "External data to be downloaded and made available under the data directory at serving time."
+    },
+    "external_package_dirs": {
+      "description": "Use external_package_dirs to access custom packages located outside your Truss. This lets multiple Trusses share the same package.",
+      "items": {
+        "type": "string"
+      },
+      "title": "External Package Dirs",
+      "type": "array"
+    },
+    "python_version": {
+      "default": "py39",
+      "description": "The Python version to use.",
+      "examples": [
+        "py39",
+        "py310",
+        "py311",
+        "py312",
+        "py313"
+      ],
+      "title": "Python Version",
+      "type": "string"
+    },
+    "base_image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BaseImage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Use a custom Docker base image instead of the default Truss image."
+    },
+    "requirements_file": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Path to a dependency file. Supports requirements.txt, pyproject.toml, and uv.lock. Mutually exclusive with 'requirements'.",
+      "title": "Requirements File"
+    },
+    "requirements": {
+      "description": "A list of Python dependencies in pip requirements file format. Mutually exclusive with 'requirements_file'.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Requirements",
+      "type": "array"
+    },
+    "system_packages": {
+      "description": "System packages that you would typically install using apt on a Debian operating system.",
+      "examples": [
+        [
+          "ffmpeg",
+          "libsm6",
+          "libxext6"
+        ]
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "System Packages",
+      "type": "array"
+    },
+    "environment_variables": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs exposed to the environment that the model executes in. Do not store secret values here.",
+      "title": "Environment Variables",
+      "type": "object"
+    },
+    "secrets": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "Declare secrets your model needs at runtime, such as API keys or access tokens. Use null as a placeholder; store actual values in your organization settings.",
+      "title": "Secrets",
+      "type": "object"
+    },
+    "resources": {
+      "$ref": "#/$defs/Resources"
+    },
+    "runtime": {
+      "$ref": "#/$defs/Runtime"
+    },
+    "build": {
+      "$ref": "#/$defs/Build"
+    },
+    "build_commands": {
+      "description": "A list of shell commands to run during Docker build. These commands execute after system packages and Python requirements are installed.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Build Commands",
+      "type": "array"
+    },
+    "docker_server": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DockerServer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Deploy a custom Docker image that has its own HTTP server, without writing a Model class."
+    },
+    "model_cache": {
+      "$ref": "#/$defs/ModelCache",
+      "description": "Deprecated. Use 'weights' instead. Bundle model weights into your image at build time."
+    },
+    "weights": {
+      "$ref": "#/$defs/Weights",
+      "description": "Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching."
+    },
+    "trt_llm": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TRTLLMConfiguration"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "TensorRT-LLM configuration for optimized LLM inference."
+    },
+    "training_checkpoints": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CheckpointList"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Configuration for deploying from training checkpoints."
+    },
+    "input_type": {
+      "default": "Any",
+      "title": "Input Type",
+      "type": "string"
+    },
+    "model_framework": {
+      "default": "custom",
+      "title": "Model Framework",
+      "type": "string"
+    },
+    "model_type": {
+      "default": "Model",
+      "title": "Model Type",
+      "type": "string"
+    },
+    "model_module_dir": {
+      "default": "model",
+      "description": "The folder containing your model class.",
+      "title": "Model Module Dir",
+      "type": "string"
+    },
+    "model_class_filename": {
+      "default": "model.py",
+      "title": "Model Class Filename",
+      "type": "string"
+    },
+    "model_class_name": {
+      "default": "Model",
+      "description": "The name of the class that defines your Truss model. This class must implement at least a predict method.",
+      "title": "Model Class Name",
+      "type": "string"
+    },
+    "bundled_packages_dir": {
+      "default": "packages",
+      "description": "The folder for custom packages in your Truss.",
+      "title": "Bundled Packages Dir",
+      "type": "string"
+    },
+    "use_local_src": {
+      "default": false,
+      "title": "Use Local Src",
+      "type": "boolean"
+    },
+    "cache_internal": {
+      "$ref": "#/$defs/CacheInternal"
+    },
+    "live_reload": {
+      "default": false,
+      "description": "If true, changes to your model code are automatically reloaded without restarting the server.",
+      "title": "Live Reload",
+      "type": "boolean"
+    },
+    "apply_library_patches": {
+      "default": true,
+      "description": "Whether to apply library patches for improved compatibility.",
+      "title": "Apply Library Patches",
+      "type": "boolean"
+    },
+    "spec_version": {
+      "default": "2.0",
+      "title": "Spec Version",
+      "type": "string"
+    }
+  },
+  "title": "TrussConfig",
+  "type": "object"
+}
