@@ -82,3 +82,4 @@ jobs:
         with:
           use-verbose-mode: "yes"
           folder-path: "docs"
+          config-file: ".mlc_config.json"
