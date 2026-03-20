@@ -365,7 +365,7 @@ def _show_url(url: str) -> None:
         ("#888888", "\n\nPress left arrow to go back"),
     ]
     app: Application = Application(
-        layout=Layout(Window(FormattedTextControl(text))),  # type: ignore[arg-type]
+        layout=Layout(Window(FormattedTextControl(text), wrap_lines=True)),  # type: ignore[arg-type]
         key_bindings=kb,
         full_screen=True,
     )
