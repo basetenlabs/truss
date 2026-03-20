@@ -210,6 +210,14 @@ def test_trt_llm_lookahead_decoding(trtllm_config):
         # will lead to ValueError -> too many draft tokens are generated with 100 lookahead windows
 
 
+def test_trt_llm_config_v1_no_checkpoint_repo(trtllm_config):
+    config_data = copy.deepcopy(trtllm_config["trt_llm"])
+    del config_data["build"]["checkpoint_repository"]
+
+    with pytest.raises(pydantic.ValidationError, match="checkpoint_repository"):
+        TRTLLMConfigurationV1(**config_data)
+
+
 def test_trt_llm_config_v2_no_checkpoint_repo_with_skip_build(trtllm_config_v2):
     config_data = copy.deepcopy(trtllm_config_v2["trt_llm"])
     del config_data["build"]["checkpoint_repository"]

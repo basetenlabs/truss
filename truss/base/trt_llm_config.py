@@ -610,16 +610,12 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
     # If versions are not set, the baseten backend will insert current defaults.
     version_overrides: VersionsOverrides = VersionsOverrides()
 
-    @model_validator(mode="after")
-    def validate_checkpoint_repository_required(self):
+    def model_post_init(self, __context):
+        """Post-initialization validation and adjustments."""
         if self.build.checkpoint_repository is None:
             raise ValueError(
                 "trt_llm.build.checkpoint_repository is required for v1 inference stack."
             )
-        return self
-
-    def model_post_init(self, __context):
-        """Post-initialization validation and adjustments."""
         if (
             self.runtime.enable_chunked_context
             and (
