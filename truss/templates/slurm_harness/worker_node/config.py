@@ -53,13 +53,23 @@ training_compute = definitions.Compute(
     ),
 )
 
+_ISESSION_TRIGGERS = {
+    "on_startup": definitions.InteractiveSessionTrigger.ON_STARTUP,
+    "on_failure": definitions.InteractiveSessionTrigger.ON_FAILURE,
+    "on_demand": definitions.InteractiveSessionTrigger.ON_DEMAND,
+}
+_isession_kwargs = {}
+_isession_trigger = runtime_config.get("interactive_session")
+if _isession_trigger and _isession_trigger in _ISESSION_TRIGGERS:
+    _isession_kwargs["interactive_session"] = definitions.InteractiveSession(
+        trigger=_ISESSION_TRIGGERS[_isession_trigger]
+    )
+
 training_job = definitions.TrainingJob(
     image=definitions.Image(base_image=BASE_IMAGE, docker_auth=DOCKER_AUTH),
     compute=training_compute,
     runtime=training_runtime,
-    interactive_session=definitions.InteractiveSession(
-        trigger=definitions.InteractiveSessionTrigger.ON_STARTUP
-    ),
+    **_isession_kwargs,
     name=runtime_config.get("job_name"),
 )
 

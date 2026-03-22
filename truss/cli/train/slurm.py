@@ -60,6 +60,7 @@ def build_login_runtime_config(
     image: Optional[str] = None,
     docker_auth_method: Optional[str] = None,
     docker_auth_secret: Optional[str] = None,
+    interactive: Optional[str] = "on_startup",
 ) -> dict:
     """Build runtime_config dict for the login node."""
     config: dict = {
@@ -75,6 +76,8 @@ def build_login_runtime_config(
     if docker_auth_method and docker_auth_secret:
         config["docker_auth_method"] = docker_auth_method
         config["docker_auth_secret"] = docker_auth_secret
+    if interactive and interactive != "none":
+        config["interactive_session"] = interactive
     return config
 
 
@@ -88,6 +91,7 @@ def build_sbatch_runtime_config(
     image: Optional[str] = None,
     docker_auth_method: Optional[str] = None,
     docker_auth_secret: Optional[str] = None,
+    interactive: Optional[str] = None,
 ) -> dict:
     """Build runtime_config dict for the worker node."""
     config: dict = {
@@ -103,6 +107,8 @@ def build_sbatch_runtime_config(
     if docker_auth_method and docker_auth_secret:
         config["docker_auth_method"] = docker_auth_method
         config["docker_auth_secret"] = docker_auth_secret
+    if interactive and interactive != "none":
+        config["interactive_session"] = interactive
     return config
 
 

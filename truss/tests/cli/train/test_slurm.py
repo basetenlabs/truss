@@ -43,6 +43,7 @@ class TestBuildLoginRuntimeConfig:
             "gpus_per_node": 4,
             "partition": "H100",
             "self_test": True,
+            "interactive_session": "on_startup",
         }
 
 

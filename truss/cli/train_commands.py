@@ -748,6 +748,14 @@ def slurm():
     default=None,
     help="Baseten secret name for Docker registry auth",
 )
+@click.option(
+    "--interactive",
+    type=click.Choice(
+        ["on_startup", "on_failure", "on_demand", "none"], case_sensitive=False
+    ),
+    default="on_startup",
+    help="Interactive session trigger (default: on_startup)",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_login(
@@ -758,6 +766,7 @@ def slurm_login(
     image: Optional[str],
     docker_auth_method: Optional[str],
     docker_auth_secret: Optional[str],
+    interactive: str,
     remote: Optional[str],
 ):
     """Start a SLURM login/controller node on Baseten training."""
@@ -811,6 +820,7 @@ def slurm_login(
         image=image,
         docker_auth_method=docker_auth_method,
         docker_auth_secret=docker_auth_secret,
+        interactive=interactive,
     )
 
     with console.status("Pushing login node...", spinner="dots"):
@@ -930,6 +940,14 @@ def slurm_status():
     default=None,
     help="Baseten secret name for Docker registry auth",
 )
+@click.option(
+    "--interactive",
+    type=click.Choice(
+        ["on_startup", "on_failure", "on_demand", "none"], case_sensitive=False
+    ),
+    default="none",
+    help="Interactive session trigger (default: none — workers exit after job)",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_sbatch(
@@ -943,6 +961,7 @@ def slurm_sbatch(
     image: Optional[str],
     docker_auth_method: Optional[str],
     docker_auth_secret: Optional[str],
+    interactive: str,
     remote: Optional[str],
 ):
     """Submit a SLURM batch job via Baseten training infrastructure."""
@@ -1001,6 +1020,7 @@ def slurm_sbatch(
         image=image,
         docker_auth_method=docker_auth_method,
         docker_auth_secret=docker_auth_secret,
+        interactive=interactive,
     )
 
     with console.status("Pushing worker job...", spinner="dots"):
