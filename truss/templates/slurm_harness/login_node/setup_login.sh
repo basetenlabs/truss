@@ -93,6 +93,9 @@ WaitTime=0
 
 GresTypes=gpu
 
+# slurmctld requires at least one NodeName to start. Use the controller
+# itself as a placeholder node so SLURM commands work immediately.
+NodeName=${CONTROLLER_HOSTNAME} NodeAddr=${CONTROLLER_IP} CPUs=1 RealMemory=1000 State=UNKNOWN
 PartitionName=DEFAULT Default=YES MaxTime=INFINITE State=UP
 SLURMCONF
 }
