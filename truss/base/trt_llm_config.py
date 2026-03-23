@@ -274,7 +274,7 @@ class TrussTRTLLMBuildConfiguration(PydanticTrTBaseModel):
         1  # "max_beam_width greater than 1 is not currently supported"
     )
     max_prompt_embedding_table_size: int = 0
-    checkpoint_repository: CheckpointRepository
+    checkpoint_repository: Optional[CheckpointRepository] = None
     gather_all_token_logits: bool = False
     # if you want to ignore the dtype of the model you loaded.
     # recommend to not use unless you get a error during the build (model failing with compile error)
@@ -552,7 +552,7 @@ class TrussSpeculatorConfiguration(PydanticTrTBaseModel):
 
     @property
     def resolved_checkpoint_repository(self) -> CheckpointRepository:
-        if self.build:
+        if self.build and self.build.checkpoint_repository:
             return self.build.checkpoint_repository
         elif self.checkpoint_repository:
             return self.checkpoint_repository
@@ -612,6 +612,10 @@ class TRTLLMConfigurationV1(PydanticTrTBaseModel):
 
     def model_post_init(self, __context):
         """Post-initialization validation and adjustments."""
+        if self.build.checkpoint_repository is None:
+            raise ValueError(
+                "trt_llm.build.checkpoint_repository is required for v1 inference stack."
+            )
         if (
             self.runtime.enable_chunked_context
             and (
@@ -723,6 +727,15 @@ class TRTLLMConfigurationV2(PydanticTrTBaseModel):
     @model_validator(mode="after")
     def validate_inference_stack_v2(self: "TRTLLMConfigurationV2", context):
         """Validate that the build configuration is compatible with the v2 inference stack."""
+        if (
+            self.build.checkpoint_repository is None
+            and not self.build.skip_build_result
+        ):
+            raise ValueError(
+                "trt_llm.build.checkpoint_repository is required when "
+                "trt_llm.build.skip_build_result is not set for v2 inference stack."
+            )
+
         allowed_modify_fields = [
             "checkpoint_repository",
             "quantization_type",
