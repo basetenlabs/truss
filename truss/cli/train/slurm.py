@@ -39,6 +39,12 @@ def detect_login_docker_auth() -> tuple[Optional[str], Optional[str]]:
     return config.get("docker_auth_method"), config.get("docker_auth_secret")
 
 
+def detect_login_session_config() -> tuple[Optional[str], Optional[str]]:
+    """Read session/auth provider from the login node's runtime_config."""
+    config = _read_login_config()
+    return config.get("session_provider"), config.get("auth_provider")
+
+
 def parse_gres(gres_str: str) -> int:
     """Parse --gres=gpu:N format and return GPU count."""
     if not gres_str:
@@ -61,6 +67,8 @@ def build_login_runtime_config(
     docker_auth_method: Optional[str] = None,
     docker_auth_secret: Optional[str] = None,
     interactive: Optional[str] = "on_startup",
+    session_provider: Optional[str] = "vs_code",
+    auth_provider: Optional[str] = "microsoft",
 ) -> dict:
     """Build runtime_config dict for the login node."""
     config: dict = {
@@ -68,6 +76,8 @@ def build_login_runtime_config(
         "job_name": "slurm-login",
         "gpus_per_node": gpus_per_node,
         "self_test": self_test,
+        "session_provider": session_provider,
+        "auth_provider": auth_provider,
     }
     if partition:
         config["partition"] = partition
@@ -91,7 +101,9 @@ def build_sbatch_runtime_config(
     image: Optional[str] = None,
     docker_auth_method: Optional[str] = None,
     docker_auth_secret: Optional[str] = None,
-    interactive: Optional[str] = None,
+    interactive: Optional[str] = "on_demand",
+    session_provider: Optional[str] = None,
+    auth_provider: Optional[str] = None,
 ) -> dict:
     """Build runtime_config dict for the worker node."""
     config: dict = {
@@ -102,6 +114,10 @@ def build_sbatch_runtime_config(
         "partition": partition,
         "sbatch_script": sbatch_script,
     }
+    if session_provider:
+        config["session_provider"] = session_provider
+    if auth_provider:
+        config["auth_provider"] = auth_provider
     if image:
         config["base_image"] = image
     if docker_auth_method and docker_auth_secret:

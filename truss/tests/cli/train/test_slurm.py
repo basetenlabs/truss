@@ -44,6 +44,8 @@ class TestBuildLoginRuntimeConfig:
             "partition": "H100",
             "self_test": True,
             "interactive_session": "on_startup",
+            "session_provider": "vs_code",
+            "auth_provider": "microsoft",
         }
 
 
@@ -64,6 +66,7 @@ class TestBuildSbatchRuntimeConfig:
             "gpus_per_node": 8,
             "partition": "H200",
             "sbatch_script": "#!/bin/bash\necho hello\n",
+            "interactive_session": "on_demand",
         }
 
 

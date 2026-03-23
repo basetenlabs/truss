@@ -756,6 +756,18 @@ def slurm():
     default="on_startup",
     help="Interactive session trigger (default: on_startup)",
 )
+@click.option(
+    "--session-provider",
+    type=click.Choice(["vs_code", "cursor"], case_sensitive=False),
+    default="vs_code",
+    help="IDE for interactive sessions (default: vs_code)",
+)
+@click.option(
+    "--auth-provider",
+    type=click.Choice(["microsoft", "github"], case_sensitive=False),
+    default="microsoft",
+    help="Auth provider for interactive sessions (default: microsoft)",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_login(
@@ -767,6 +779,8 @@ def slurm_login(
     docker_auth_method: Optional[str],
     docker_auth_secret: Optional[str],
     interactive: str,
+    session_provider: str,
+    auth_provider: str,
     remote: Optional[str],
 ):
     """Start a SLURM login/controller node on Baseten training."""
@@ -821,6 +835,8 @@ def slurm_login(
         docker_auth_method=docker_auth_method,
         docker_auth_secret=docker_auth_secret,
         interactive=interactive,
+        session_provider=session_provider,
+        auth_provider=auth_provider,
     )
 
     with console.status("Pushing login node...", spinner="dots"):
@@ -945,8 +961,8 @@ def slurm_status():
     type=click.Choice(
         ["on_startup", "on_failure", "on_demand", "none"], case_sensitive=False
     ),
-    default="none",
-    help="Interactive session trigger (default: none — workers exit after job)",
+    default="on_demand",
+    help="Interactive session trigger (default: on_demand)",
 )
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
@@ -970,6 +986,7 @@ def slurm_sbatch(
         detect_default_project,
         detect_login_docker_auth,
         detect_login_image,
+        detect_login_session_config,
         parse_gres,
         push_node,
     )
@@ -980,7 +997,7 @@ def slurm_sbatch(
     if project is None:
         project = detect_default_project()
 
-    # Default to the login node's image and auth when running from a login node
+    # Default to the login node's image, auth, and session config
     if image is None:
         image = detect_login_image()
     if docker_auth_method is None and docker_auth_secret is None:
@@ -988,6 +1005,7 @@ def slurm_sbatch(
         if login_method and login_secret:
             docker_auth_method = login_method
             docker_auth_secret = login_secret
+    login_session_provider, login_auth_provider = detect_login_session_config()
 
     if wrap:
         job_script = f"#!/bin/bash\n{wrap}\n"
@@ -1021,6 +1039,8 @@ def slurm_sbatch(
         docker_auth_method=docker_auth_method,
         docker_auth_secret=docker_auth_secret,
         interactive=interactive,
+        session_provider=login_session_provider,
+        auth_provider=login_auth_provider,
     )
 
     with console.status("Pushing worker job...", spinner="dots"):

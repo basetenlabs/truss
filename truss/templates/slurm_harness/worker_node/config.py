@@ -58,11 +58,26 @@ _ISESSION_TRIGGERS = {
     "on_failure": definitions.InteractiveSessionTrigger.ON_FAILURE,
     "on_demand": definitions.InteractiveSessionTrigger.ON_DEMAND,
 }
+_ISESSION_PROVIDERS = {
+    "vs_code": definitions.InteractiveSessionProvider.VS_CODE,
+    "cursor": definitions.InteractiveSessionProvider.CURSOR,
+}
+_ISESSION_AUTH_PROVIDERS = {
+    "microsoft": definitions.InteractiveSessionAuthProvider.MICROSOFT,
+    "github": definitions.InteractiveSessionAuthProvider.GITHUB,
+}
+_isession_trigger = runtime_config.get("interactive_session", "on_demand")
 _isession_kwargs = {}
-_isession_trigger = runtime_config.get("interactive_session")
-if _isession_trigger and _isession_trigger in _ISESSION_TRIGGERS:
+if _isession_trigger in _ISESSION_TRIGGERS:
+    _session_args = {"trigger": _ISESSION_TRIGGERS[_isession_trigger]}
+    _sp = runtime_config.get("session_provider")
+    if _sp and _sp in _ISESSION_PROVIDERS:
+        _session_args["session_provider"] = _ISESSION_PROVIDERS[_sp]
+    _ap = runtime_config.get("auth_provider")
+    if _ap and _ap in _ISESSION_AUTH_PROVIDERS:
+        _session_args["auth_provider"] = _ISESSION_AUTH_PROVIDERS[_ap]
     _isession_kwargs["interactive_session"] = definitions.InteractiveSession(
-        trigger=_ISESSION_TRIGGERS[_isession_trigger]
+        **_session_args
     )
 
 training_job = definitions.TrainingJob(
