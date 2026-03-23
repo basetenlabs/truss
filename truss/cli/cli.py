@@ -650,7 +650,7 @@ def run_python(script, target_directory):
     help="Force a full rebuild without using cached layers.",
 )
 @click.option(
-    "--no-sleep",
+    "--watch-no-sleep",
     is_flag=True,
     required=False,
     default=False,
@@ -679,7 +679,7 @@ def push(
     labels: Optional[str] = None,
     watch_after_push: bool = False,
     no_cache: bool = False,
-    no_sleep: bool = False,
+    watch_no_sleep: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -694,9 +694,9 @@ def push(
             style="yellow",
         )
 
-    if no_sleep and not watch_after_push:
+    if watch_no_sleep and not watch_after_push:
         raise click.UsageError(
-            "Cannot use --no-sleep without --watch. --no-sleep prevents scale-to-zero during watch mode."
+            "Cannot use --watch-no-sleep without --watch. --watch-no-sleep prevents scale-to-zero during watch mode."
         )
 
     # Handle --watch flag: deploys as development and then watches
@@ -946,7 +946,7 @@ def push(
             resolved_model, versions = resolve_model_for_watch(
                 bt_remote, model_name, provided_team_name=team_name
             )
-            if no_sleep:
+            if watch_no_sleep:
                 model_hostname = resolved_model["hostname"]
                 api_key = bt_remote._auth_service.authenticate().value
                 common.start_keepalive(model_hostname, api_key)

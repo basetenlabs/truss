@@ -941,8 +941,8 @@ def test_push_watch_with_publish_fails():
     )
 
 
-def test_push_no_sleep_without_watch_fails():
-    """--no-sleep without --watch should fail."""
+def test_push_watch_no_sleep_without_watch_fails():
+    """--watch-no-sleep without --watch should fail."""
     mock_truss = Mock()
     mock_truss.spec.config.runtime.transport.kind = "http"
     mock_truss.spec.config.resources.instance_type = None
@@ -961,14 +961,15 @@ def test_push_no_sleep_without_watch_fails():
                 "remote1",
                 "--model-name",
                 "name",
-                "--no-sleep",
+                "--watch-no-sleep",
             ],
         )
 
     assert result.exit_code != 0
-    assert "Cannot use --no-sleep without --watch" in result.output or (
+    assert "Cannot use --watch-no-sleep without --watch" in result.output or (
         result.exception
-        and "Cannot use --no-sleep without --watch" in str(result.exception.__context__)
+        and "Cannot use --watch-no-sleep without --watch"
+        in str(result.exception.__context__)
     )
 
 
@@ -1019,7 +1020,7 @@ def test_push_watch_no_sleep_starts_keepalive(
                                 "--model-name",
                                 "model_name",
                                 "--watch",
-                                "--no-sleep",
+                                "--watch-no-sleep",
                             ],
                         )
 
