@@ -16,6 +16,7 @@ from typing import Iterator, Mapping, Optional
 
 import httpx
 import opentelemetry.trace.propagation.tracecontext as tracecontext
+import packaging.requirements
 import packaging.version
 import pytest
 import requests
@@ -2176,8 +2177,8 @@ def _load_constraints() -> dict[str, packaging.requirements.Requirement]:
     # Parse constraints.txt into a dict of normalized package name -> Requirement
     constraints = {}
     for line in _CONSTRAINTS_PATH.read_text().splitlines():
-        line = line.split("#")[0].strip()
-        if not line:
+        line = line.split(" #")[0].strip()
+        if not line or line.startswith("#"):
             continue
         try:
             req = packaging.requirements.Requirement(line)

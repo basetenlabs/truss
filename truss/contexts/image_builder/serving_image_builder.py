@@ -764,7 +764,9 @@ class ServingImageBuilder(ImageBuilder):
             # Remove base server requirements that the user also specifies
             # (via requirements list or requirements_file), so pip doesn't
             # see conflicting pins. constraints.txt still bounds the versions
-            # regardless of who specifies the package.
+            # regardless of who specifies the package. Note: -r includes in
+            # user requirements files are not expanded, so those packages
+            # won't be subtracted.
             user_requirements = spec.requirements + config.load_requirements_from_file(
                 truss_dir
             )
@@ -970,9 +972,9 @@ def _parse_requirement_package_name(req_line: str) -> Optional[str]:
     Returns None for comments, blank lines, flags (-i, -c, etc.), and
     anything else that isn't a valid PEP 508 dependency specifier.
     """
-    # Strip inline comments (pip ignores everything after #)
-    line = req_line.split("#")[0].strip()
-    if not line:
+    # Strip comments the way pip does: space + # for inline, or # at start
+    line = req_line.split(" #")[0].strip()
+    if not line or line.startswith("#"):
         return None
     try:
         return packaging.utils.canonicalize_name(
