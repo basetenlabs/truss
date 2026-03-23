@@ -86,6 +86,16 @@ truss train isession --job-id <login-job-id>
 # Follow the instructions to authenticate, then connect via VS Code/Cursor remote tunnels
 ```
 
+### 4. Cancel jobs
+
+```bash
+# From the login node (cancels the SLURM job, workers exit gracefully):
+scancel <slurm-job-id>
+
+# From your local machine (kills the Baseten training job/pod immediately):
+truss train stop --job-id <worker-job-id>
+```
+
 ## CLI Reference
 
 ### `truss train slurm login`
