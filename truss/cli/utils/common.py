@@ -307,6 +307,17 @@ def wait_for_development_model_ready(
                 sys.exit(1)
 
 
+def start_keepalive(model_hostname: str, api_key: str) -> threading.Event:
+    """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
+    console.print("💤 --no-sleep enabled: keeping development model warm")
+    stop_event = threading.Event()
+    keepalive_thread = threading.Thread(
+        target=keepalive_loop, args=(model_hostname, api_key, stop_event), daemon=True
+    )
+    keepalive_thread.start()
+    return stop_event
+
+
 def keepalive_loop(
     model_hostname: str, api_key: str, stop_event: threading.Event
 ) -> None:
