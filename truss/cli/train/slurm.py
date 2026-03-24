@@ -69,6 +69,9 @@ def build_login_runtime_config(
     interactive: Optional[str] = "on_startup",
     session_provider: Optional[str] = "vs_code",
     auth_provider: Optional[str] = "microsoft",
+    checkpointing: bool = True,
+    checkpoint_path: Optional[str] = None,
+    checkpoint_volume_size: Optional[int] = None,
 ) -> dict:
     """Build runtime_config dict for the login node."""
     config: dict = {
@@ -78,7 +81,12 @@ def build_login_runtime_config(
         "self_test": self_test,
         "session_provider": session_provider,
         "auth_provider": auth_provider,
+        "checkpointing": checkpointing,
     }
+    if checkpoint_path:
+        config["checkpoint_path"] = checkpoint_path
+    if checkpoint_volume_size:
+        config["checkpoint_volume_size"] = checkpoint_volume_size
     if partition:
         config["partition"] = partition
     if image:
@@ -104,6 +112,9 @@ def build_sbatch_runtime_config(
     interactive: Optional[str] = "on_demand",
     session_provider: Optional[str] = None,
     auth_provider: Optional[str] = None,
+    checkpointing: bool = True,
+    checkpoint_path: Optional[str] = None,
+    checkpoint_volume_size: Optional[int] = None,
 ) -> dict:
     """Build runtime_config dict for the worker node."""
     config: dict = {
@@ -113,7 +124,12 @@ def build_sbatch_runtime_config(
         "gpus_per_node": gpus_per_node,
         "partition": partition,
         "sbatch_script": sbatch_script,
+        "checkpointing": checkpointing,
     }
+    if checkpoint_path:
+        config["checkpoint_path"] = checkpoint_path
+    if checkpoint_volume_size:
+        config["checkpoint_volume_size"] = checkpoint_volume_size
     if session_provider:
         config["session_provider"] = session_provider
     if auth_provider:

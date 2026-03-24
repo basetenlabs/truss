@@ -43,7 +43,11 @@ training_runtime = definitions.Runtime(
         "SBATCH_SCRIPT": SBATCH_SCRIPT,
     },
     cache_config=definitions.CacheConfig(enabled=True),
-    checkpointing_config=definitions.CheckpointingConfig(enabled=True),
+    checkpointing_config=definitions.CheckpointingConfig(
+        enabled=runtime_config.get("checkpointing", True),
+        checkpoint_path=runtime_config.get("checkpoint_path"),
+        volume_size_gib=runtime_config.get("checkpoint_volume_size"),
+    ),
 )
 
 training_compute = definitions.Compute(

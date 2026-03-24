@@ -768,6 +768,18 @@ def slurm():
     default="microsoft",
     help="Auth provider for interactive sessions (default: microsoft)",
 )
+@click.option(
+    "--checkpointing/--no-checkpointing",
+    default=True,
+    help="Enable checkpointing (default: on)",
+)
+@click.option("--checkpoint-path", type=str, default=None, help="Checkpoint path")
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    default=None,
+    help="Checkpoint volume size (GiB)",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_login(
@@ -781,6 +793,9 @@ def slurm_login(
     interactive: str,
     session_provider: str,
     auth_provider: str,
+    checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
     remote: Optional[str],
 ):
     """Start a SLURM login/controller node on Baseten training."""
@@ -837,6 +852,9 @@ def slurm_login(
         interactive=interactive,
         session_provider=session_provider,
         auth_provider=auth_provider,
+        checkpointing=checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
     )
 
     with console.status("Pushing login node...", spinner="dots"):
@@ -964,6 +982,18 @@ def slurm_status():
     default="on_demand",
     help="Interactive session trigger (default: on_demand)",
 )
+@click.option(
+    "--checkpointing/--no-checkpointing",
+    default=True,
+    help="Enable checkpointing (default: on)",
+)
+@click.option("--checkpoint-path", type=str, default=None, help="Checkpoint path")
+@click.option(
+    "--checkpoint-volume-size",
+    type=int,
+    default=None,
+    help="Checkpoint volume size (GiB)",
+)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @common.common_options()
 def slurm_sbatch(
@@ -978,6 +1008,9 @@ def slurm_sbatch(
     docker_auth_method: Optional[str],
     docker_auth_secret: Optional[str],
     interactive: str,
+    checkpointing: bool,
+    checkpoint_path: Optional[str],
+    checkpoint_volume_size: Optional[int],
     remote: Optional[str],
 ):
     """Submit a SLURM batch job via Baseten training infrastructure."""
@@ -1041,6 +1074,9 @@ def slurm_sbatch(
         interactive=interactive,
         session_provider=login_session_provider,
         auth_provider=login_auth_provider,
+        checkpointing=checkpointing,
+        checkpoint_path=checkpoint_path,
+        checkpoint_volume_size=checkpoint_volume_size,
     )
 
     with console.status("Pushing worker job...", spinner="dots"):

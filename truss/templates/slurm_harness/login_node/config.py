@@ -42,6 +42,11 @@ training_runtime = definitions.Runtime(
         "BASETEN_API_KEY": definitions.SecretReference(name="baseten_api_key"),
     },
     cache_config=definitions.CacheConfig(enabled=True, require_cache_affinity=False),
+    checkpointing_config=definitions.CheckpointingConfig(
+        enabled=runtime_config.get("checkpointing", True),
+        checkpoint_path=runtime_config.get("checkpoint_path"),
+        volume_size_gib=runtime_config.get("checkpoint_volume_size"),
+    ),
 )
 
 if PARTITION:

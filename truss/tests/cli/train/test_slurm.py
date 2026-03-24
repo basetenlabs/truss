@@ -46,6 +46,7 @@ class TestBuildLoginRuntimeConfig:
             "interactive_session": "on_startup",
             "session_provider": "vs_code",
             "auth_provider": "microsoft",
+            "checkpointing": True,
         }
 
 
@@ -67,6 +68,7 @@ class TestBuildSbatchRuntimeConfig:
             "partition": "H200",
             "sbatch_script": "#!/bin/bash\necho hello\n",
             "interactive_session": "on_demand",
+            "checkpointing": True,
         }
 
 
