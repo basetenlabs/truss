@@ -140,6 +140,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table.add_column("Last Modified")
     table.add_column("Latest Job ID", style="bold yellow")
     table.add_column("Latest Job Status", style="bold yellow")
+    table.add_column("Checkpoint Sync", style="bold yellow")
     table.add_column("Status Page", style="bold yellow")
 
     # most recent projects at bottom of terminal
@@ -158,6 +159,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
             cli_common.format_localized_time(project["updated_at"]),
             latest_job_id,
             latest_job.get("current_status", ""),
+            latest_job.get("checkpoint_sync_status", ""),
             latest_job_link,
         )
 
@@ -313,6 +315,10 @@ def display_training_job(
             "link",
         ),
     )
+
+    # Add checkpoint sync status if present
+    if job.get("checkpoint_sync_status"):
+        table.add_row("Checkpoint Sync", job["checkpoint_sync_status"])
 
     # Add error message if present
     if job.get("error_message"):
