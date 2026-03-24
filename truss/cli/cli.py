@@ -2,7 +2,6 @@ import inspect
 import json
 import os
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
@@ -668,6 +667,13 @@ def run_python(script, target_directory):
     default=False,
     help="Force a full rebuild without using cached layers.",
 )
+@click.option(
+    "--watch-no-sleep",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Keep the development model warm by preventing scale-to-zero while watching. Requires --watch.",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -692,6 +698,7 @@ def push(
     watch_after_push: bool = False,
     watch_hot_reload: bool = False,
     no_cache: bool = False,
+    watch_no_sleep: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -704,6 +711,11 @@ def push(
         console.print(
             "[DEPRECATED] The --publish flag is deprecated. Published deployments are now the default.",
             style="yellow",
+        )
+
+    if watch_no_sleep and not watch_after_push:
+        raise click.UsageError(
+            "Cannot use --watch-no-sleep without --watch. --watch-no-sleep prevents scale-to-zero during watch mode."
         )
 
     # Handle --watch flag: deploys as development and then watches
@@ -955,6 +967,10 @@ def push(
             resolved_model, versions = resolve_model_for_watch(
                 bt_remote, model_name, provided_team_name=team_name
             )
+            if watch_no_sleep:
+                model_hostname = resolved_model["hostname"]
+                api_key = bt_remote._auth_service.authenticate().value
+                common.start_keepalive(model_hostname, api_key)
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
@@ -1116,15 +1132,8 @@ def watch(
         api_key=api_key,
     )
 
-    stop_event = threading.Event()
     if no_sleep:
-        console.print("💤 --no-sleep enabled: keeping development model warm")
-        keepalive_thread = threading.Thread(
-            target=common.keepalive_loop,
-            args=(model_hostname, api_key, stop_event),
-            daemon=True,
-        )
-        keepalive_thread.start()
+        common.start_keepalive(model_hostname, api_key)
 
     # Re-resolve the model to get the latest version and truss hash and latest push before watching
     resolved_model, versions = resolve_model_for_watch(
