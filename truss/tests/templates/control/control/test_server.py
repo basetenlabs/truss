@@ -352,6 +352,32 @@ class Model:
     resp = await client.get("/control/truss_hash")
     assert resp.json()["result"] == "dummy"
 
+    # Now simulate a hot reload that fails with a user code error (422 from
+    # inference server). The control server should return patch_failed_recoverable.
+    error_response = httpx.Response(
+        422,
+        json={"error": "SyntaxError: expected ':'"},
+        request=httpx.Request("POST", "/hot-reload"),
+    )
+    app.state.proxy_client.post = AsyncMock(return_value=error_response)
+
+    bad_patch_obj = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content="class Model:\n    def predict(self, request)\n",
+            hot_reload=True,
+        ),
+    )
+    bad_patch_request = PatchRequest(
+        hash="dummy2", prev_hash="dummy", patches=[bad_patch_obj]
+    )
+    resp = await client.post("/control/patch", json=bad_patch_request.to_dict())
+    assert resp.status_code == 200
+    assert resp.json()["error"]["type"] == "patch_failed_recoverable"
+    assert "SyntaxError" in resp.json()["error"]["msg"]
+
 
 @contextmanager
 def _env_var(kvs: Dict[str, str]):
