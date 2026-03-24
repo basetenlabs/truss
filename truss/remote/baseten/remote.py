@@ -49,6 +49,7 @@ from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import RemoteUser, TrussRemote
+from truss.templates.control.control.helpers.custom_types import PatchType
 from truss.truss_handle import build as truss_build
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
@@ -529,6 +530,7 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
         console: "rich_console.Console",
         error_console: "rich_console.Console",
+        hot_reload: bool = False,
     ) -> None:
         """Sync truss to dev version using pre-resolved model (no team re-prompting)."""
         dev_version = get_dev_version_from_versions(resolved_versions)
@@ -555,6 +557,7 @@ class BasetenRemote(TrussRemote):
                 resolved_versions,
                 console,
                 error_console,
+                hot_reload=hot_reload,
             ),
             console=console,
             error_console=error_console,
@@ -584,6 +587,7 @@ class BasetenRemote(TrussRemote):
                 resolved_versions,
                 console,
                 error_console,
+                hot_reload=hot_reload,
             )
 
     def _patch(
@@ -594,6 +598,7 @@ class BasetenRemote(TrussRemote):
         resolved_model: Optional[dict] = None,
         resolved_versions: Optional[List[dict]] = None,
         chainlets_only: bool = False,
+        hot_reload: bool = False,
     ) -> PatchResult:
         try:
             truss_handle = TrussHandle(watch_path)
@@ -675,6 +680,17 @@ class BasetenRemote(TrussRemote):
                 "Failed to calculate patch. Change type might not be supported.",
             )
 
+        # Only hot-reload when every patch is a model code change. Mixed patches
+        # (e.g. pip requirements + code) fall back to a normal cold restart.
+        # The flag is set on each ModelCodePatch body so it flows through the
+        # backend opaquely (patch_ops is stored/forwarded as raw JSON).
+        is_hot_reload = hot_reload and all(
+            p.type == PatchType.MODEL_CODE for p in patch_request.patch_ops
+        )
+        if is_hot_reload:
+            for p in patch_request.patch_ops:
+                p.body.hot_reload = True
+
         django_has_unapplied_patches = (
             not truss_watch_state.is_container_built_from_push
             and truss_watch_state.patches
@@ -700,9 +716,11 @@ class BasetenRemote(TrussRemote):
                 resp = self._api.sync_draft_truss(model_id)
             return resp
 
+        hot_reload_suffix = " (hot reload)" if is_hot_reload else ""
+
         try:
             if console:
-                with console.status("Applying patch..."):
+                with console.status(f"Applying patch{hot_reload_suffix}..."):
                     resp = do_patch()
             else:
                 resp = do_patch()
@@ -732,7 +750,8 @@ class BasetenRemote(TrussRemote):
             return PatchResult(
                 PatchStatus.SUCCESS,
                 resp.get(
-                    "success_message", f"Model {model_name} patched successfully."
+                    "success_message",
+                    f"Model {model_name} patched successfully{hot_reload_suffix}.",
                 ),
             )
 
@@ -767,6 +786,7 @@ class BasetenRemote(TrussRemote):
         resolved_versions: List[dict],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
+        hot_reload: bool = False,
     ) -> PatchResult:
         """Patch with pre-resolved model (no team re-prompting)."""
         result = self._patch(
@@ -775,6 +795,7 @@ class BasetenRemote(TrussRemote):
             console=console,
             resolved_model=resolved_model,
             resolved_versions=resolved_versions,
+            hot_reload=hot_reload,
         )
         if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
             console.print(result.message, style="green")
