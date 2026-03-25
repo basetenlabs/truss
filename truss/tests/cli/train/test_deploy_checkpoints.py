@@ -20,7 +20,7 @@ from truss_train.definitions import ModelWeightsFormat
 def mock_remote():
     mock = MagicMock()
     mock.api.search_training_jobs.return_value = [
-        {"training_project": {"id": "project123"}, "creator_email": "test@example.com"}
+        {"training_project": {"id": "project123"}}
     ]
     mock.api.list_training_job_checkpoints.return_value = {
         "checkpoints": [

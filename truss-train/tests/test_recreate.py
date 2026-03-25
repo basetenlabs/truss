@@ -30,7 +30,6 @@ class TestRecreateTrainingJob:
                     "id": "project_456",
                     "name": "aghilan-anime-project",
                 },
-                "creator_email": "test@example.com",
             }
         ]
 
@@ -71,7 +70,6 @@ class TestRecreateTrainingJob:
                     "id": "project_456",
                     "name": "aghilan-anime-project",
                 },
-                "creator_email": "test@example.com",
             }
         ]
 
@@ -118,7 +116,6 @@ class TestRecreateTrainingJob:
                     "id": "project_456",
                     "name": "aghilan-anime-project",
                 },
-                "creator_email": "test@example.com",
             }
         ]
 
