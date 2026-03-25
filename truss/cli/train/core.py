@@ -307,9 +307,9 @@ def display_training_job(
     table.add_row("Project ID", job["training_project"]["id"])
     table.add_row("Project Name", job["training_project"]["name"])
     table.add_row("Status", job["current_status"])
+    table.add_row("Instance Type", job["instance_type"]["name"])
     if job.get("creator_email"):
         table.add_row("Creator", job["creator_email"])
-    table.add_row("Instance Type", job["instance_type"]["name"])
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
     table.add_row(
