@@ -1151,51 +1151,15 @@ class TrussConfig(custom_types.ConfigModel):
         if concurrency == 1:
             return self
 
-        if self.docker_server is not None:
+        is_model_py_server = self.docker_server is None and self.trt_llm is None
+        if not is_model_py_server:
             warnings.warn(
-                f"`runtime.predict_concurrency` is set to {concurrency}, but has no "
-                "effect for docker_server trusses. Concurrency is managed by the "
-                "custom server process. This setting will be deprecated in a future release.",
+                f"`runtime.predict_concurrency` is set to {concurrency}, but only "
+                "has an effect for Trusses using a model.py predict server. "
+                "This setting will be deprecated in a future release.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-        elif self.trt_llm is not None:
-            stack = self.trt_llm.inference_stack
-            build_config = self.trt_llm.root.build
-            base_model = (
-                build_config.base_model
-                if hasattr(build_config, "base_model")
-                else None
-            )
-            is_encoder = base_model in (
-                trt_llm_config.TrussTRTLLMModel.ENCODER,
-                trt_llm_config.TrussTRTLLMModel.ENCODER_BERT,
-            )
-
-            if stack == trt_llm_config.InferenceStack.v2:
-                warnings.warn(
-                    f"`runtime.predict_concurrency` is set to {concurrency}, but has no "
-                    "effect for TRT-LLM v2 inference stack trusses. This setting will "
-                    "be deprecated in a future release.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            elif is_encoder:
-                warnings.warn(
-                    f"`runtime.predict_concurrency` is set to {concurrency}, but has no "
-                    "effect for TRT-LLM encoder trusses. Concurrency is managed by the "
-                    "embedding runtime. This setting will be deprecated in a future release.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            elif stack == trt_llm_config.InferenceStack.v1:
-                warnings.warn(
-                    f"`runtime.predict_concurrency` is set to {concurrency}, but this "
-                    "value is overridden for TRT-LLM v1 decoder trusses (forced to 512 "
-                    "at build time). This setting will be deprecated in a future release.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
 
         return self
 

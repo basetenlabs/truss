@@ -1809,7 +1809,7 @@ class TestPredictConcurrencyWarnings:
 
     def test_warns_docker_server(self):
         with pytest.warns(
-            DeprecationWarning, match="has no effect for docker_server trusses"
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
         ):
             TrussConfig(
                 docker_server=DockerServer(**DOCKER_SERVER_KWARGS),
@@ -1835,7 +1835,7 @@ class TestPredictConcurrencyWarnings:
         config_path.write_text(yaml_content)
         with pytest.warns(
             DeprecationWarning,
-            match="has no effect for TRT-LLM v2 inference stack trusses",
+            match="only has an effect for Trusses using a model.py",
         ):
             TrussConfig.from_yaml(config_path)
 
@@ -1856,7 +1856,7 @@ class TestPredictConcurrencyWarnings:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
         with pytest.warns(
-            DeprecationWarning, match="has no effect for TRT-LLM encoder trusses"
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
         ):
             TrussConfig.from_yaml(config_path)
 
@@ -1877,7 +1877,7 @@ class TestPredictConcurrencyWarnings:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
         with pytest.warns(
-            DeprecationWarning, match="has no effect for TRT-LLM encoder trusses"
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
         ):
             TrussConfig.from_yaml(config_path)
 
@@ -1899,6 +1899,6 @@ class TestPredictConcurrencyWarnings:
         config_path.write_text(yaml_content)
         with pytest.warns(
             DeprecationWarning,
-            match="value is overridden for TRT-LLM v1 decoder trusses",
+            match="only has an effect for Trusses using a model.py",
         ):
             TrussConfig.from_yaml(config_path)
