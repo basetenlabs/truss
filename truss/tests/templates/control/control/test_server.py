@@ -1,3 +1,4 @@
+import base64
 import os
 import platform
 import socket
@@ -17,6 +18,7 @@ from truss.templates.control.control.application import create_app  # noqa
 from truss.templates.control.control.helpers.custom_types import (  # noqa
     Action,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PatchType,
     PythonRequirementPatch,
@@ -377,6 +379,44 @@ class Model:
     assert resp.status_code == 200
     assert resp.json()["error"]["type"] == "patch_failed_recoverable"
     assert "SyntaxError" in resp.json()["error"]["msg"]
+
+
+@pytest.mark.anyio
+async def test_patch_binary_model_code(app, client):
+    binary_content = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01"
+    encoded = base64.b64encode(binary_content).decode("ascii")
+    patch_obj = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.ADD,
+            path="weights.bin",
+            content=None,
+            content_bytes=encoded,
+        ),
+    )
+    await _verify_apply_patch_success(client, patch_obj)
+    written = (app.state.inference_server_home / "model" / "weights.bin").read_bytes()
+    assert written == binary_content
+
+
+@pytest.mark.anyio
+async def test_patch_binary_package(app, client):
+    binary_content = b"\x00\x01\x02\xff\xfe\xfd"
+    encoded = base64.b64encode(binary_content).decode("ascii")
+    patch_obj = Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.ADD,
+            path="my_pkg/lib.so",
+            content=None,
+            content_bytes=encoded,
+        ),
+    )
+    await _verify_apply_patch_success(client, patch_obj)
+    written = (
+        app.state.inference_server_home / ".." / "packages" / "my_pkg" / "lib.so"
+    ).read_bytes()
+    assert written == binary_content
 
 
 @contextmanager

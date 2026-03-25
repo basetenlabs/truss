@@ -1,3 +1,4 @@
+import base64
 import errno
 import logging
 import os
@@ -21,13 +22,17 @@ def apply_code_patch(relative_dir: Path, patch: Patch, logger: logging.Logger):
         filepath.parent.mkdir(parents=True, exist_ok=True)
         action_log = "Adding" if action == Action.ADD else "Updating"
         logger.info(f"{action_log} file {filepath}")
-        with filepath.open("w") as file:
-            content = patch.content
-            if content is None:
-                raise ValueError(
-                    "Invalid patch: content of a file update patch should not be None."
-                )
-            file.write(content)
+        if patch.content_bytes is not None:
+            # Binary file — decode base64 and write as bytes
+            filepath.write_bytes(base64.b64decode(patch.content_bytes))
+        else:
+            with filepath.open("w") as file:
+                content = patch.content
+                if content is None:
+                    raise ValueError(
+                        "Invalid patch: content of a file update patch should not be None."
+                    )
+                file.write(content)
 
     elif action == Action.REMOVE:
         if not filepath.exists():

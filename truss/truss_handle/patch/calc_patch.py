@@ -1,3 +1,4 @@
+import base64
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -123,13 +124,23 @@ def calc_truss_patch(
             logger.info(
                 f"Created patch to {action.value.lower()} model code file: {path}"
             )
+            try:
+                content = full_path.read_text()
+                content_bytes = None
+            except UnicodeDecodeError:
+                # Binary file (e.g. .so, .png) — send as base64
+                content = None
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode(
+                    "ascii"
+                )
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
                         action=action,
                         path=_relative_to(path, model_module_path),
-                        content=full_path.read_text(),
+                        content=content,
+                        content_bytes=content_bytes,
                     ),
                 )
             )
@@ -151,13 +162,23 @@ def calc_truss_patch(
             if not full_path.is_file():
                 continue
             logger.info(f"Created patch to {action.value.lower()} package file: {path}")
+            try:
+                content = full_path.read_text()
+                content_bytes = None
+            except UnicodeDecodeError:
+                # Binary file (e.g. .so, .pyd) — send as base64
+                content = None
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode(
+                    "ascii"
+                )
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,
                     body=PackagePatch(
                         action=action,
                         path=_relative_to(path, bundled_packages_path),
-                        content=full_path.read_text(),
+                        content=content,
+                        content_bytes=content_bytes,
                     ),
                 )
             )
