@@ -13,17 +13,19 @@ import requests
 import rich
 from InquirerPy import inquirer
 from rich.text import Text
-from truss_train import loader
-from truss_train.definitions import DeployCheckpointsConfig
 
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
-from truss.cli.train.types import (DeployCheckpointArgs,
-                                   DeployCheckpointsConfigComplete,
-                                   DeploySuccessResult)
+from truss.cli.train.types import (
+    DeployCheckpointArgs,
+    DeployCheckpointsConfigComplete,
+    DeploySuccessResult,
+)
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
+from truss_train import loader
+from truss_train.definitions import DeployCheckpointsConfig
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -633,9 +635,12 @@ def view_cache_summary_by_project(
     output_format: Optional[str] = None,
 ):
     """View cache summary for a training project by ID or name."""
-    from truss.cli.train.cache import (OUTPUT_FORMAT_CLI_TABLE,
-                                       SORT_BY_FILEPATH, SORT_ORDER_ASC,
-                                       view_cache_summary)
+    from truss.cli.train.cache import (
+        OUTPUT_FORMAT_CLI_TABLE,
+        SORT_BY_FILEPATH,
+        SORT_ORDER_ASC,
+        view_cache_summary,
+    )
 
     # Use constants for defaults if not provided
     if sort_by is None:
