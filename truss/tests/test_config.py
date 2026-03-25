@@ -1792,7 +1792,9 @@ class TestPredictConcurrencyWarnings:
         """No warning when predict_concurrency is left at default (1)."""
         TrussConfig(docker_server=DockerServer(**DOCKER_SERVER_KWARGS))
         deprecation_warnings = [
-            w for w in recwarn if issubclass(w.category, DeprecationWarning)
+            w
+            for w in recwarn
+            if issubclass(w.category, DeprecationWarning)
             and "predict_concurrency" in str(w.message)
         ]
         assert len(deprecation_warnings) == 0
@@ -1801,7 +1803,9 @@ class TestPredictConcurrencyWarnings:
         """No warning for a standard custom model truss with predict_concurrency set."""
         config = TrussConfig(runtime=Runtime(predict_concurrency=4))
         deprecation_warnings = [
-            w for w in recwarn if issubclass(w.category, DeprecationWarning)
+            w
+            for w in recwarn
+            if issubclass(w.category, DeprecationWarning)
             and "predict_concurrency" in str(w.message)
         ]
         assert len(deprecation_warnings) == 0
@@ -1834,8 +1838,7 @@ class TestPredictConcurrencyWarnings:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
         with pytest.warns(
-            DeprecationWarning,
-            match="only has an effect for Trusses using a model.py",
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
         ):
             TrussConfig.from_yaml(config_path)
 
@@ -1898,7 +1901,6 @@ class TestPredictConcurrencyWarnings:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(yaml_content)
         with pytest.warns(
-            DeprecationWarning,
-            match="only has an effect for Trusses using a model.py",
+            DeprecationWarning, match="only has an effect for Trusses using a model.py"
         ):
             TrussConfig.from_yaml(config_path)
