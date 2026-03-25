@@ -13,19 +13,17 @@ import requests
 import rich
 from InquirerPy import inquirer
 from rich.text import Text
+from truss_train import loader
+from truss_train.definitions import DeployCheckpointsConfig
 
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
-from truss.cli.train.types import (
-    DeployCheckpointArgs,
-    DeployCheckpointsConfigComplete,
-    DeploySuccessResult,
-)
+from truss.cli.train.types import (DeployCheckpointArgs,
+                                   DeployCheckpointsConfigComplete,
+                                   DeploySuccessResult)
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
 from truss.remote.baseten.remote import BasetenRemote
-from truss_train import loader
-from truss_train.definitions import DeployCheckpointsConfig
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -60,10 +58,10 @@ def get_args_for_stop(
         job_id_to_stop = job["id"]
         # check if the user wants to stop the inferred running job
         if not job_id:
-            creator_email = job.get("creator_email")
-            creator_msg = f" (created by {creator_email})" if creator_email else ""
+            user_email = job.get("user", {}).get("email")
+            user_msg = f" (created by {user_email})" if user_email else ""
             confirm = inquirer.confirm(
-                message=f"Are you sure you want to stop training job {job_id_to_stop}{creator_msg}?",
+                message=f"Are you sure you want to stop training job {job_id_to_stop}{user_msg}?",
                 default=False,
             ).execute()
             if not confirm:
@@ -308,8 +306,8 @@ def display_training_job(
     table.add_row("Project Name", job["training_project"]["name"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
-    if job.get("creator_email"):
-        table.add_row("Creator", job["creator_email"])
+    if user_email := job.get("user", {}).get("email"):
+        table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
     table.add_row(
@@ -635,12 +633,9 @@ def view_cache_summary_by_project(
     output_format: Optional[str] = None,
 ):
     """View cache summary for a training project by ID or name."""
-    from truss.cli.train.cache import (
-        OUTPUT_FORMAT_CLI_TABLE,
-        SORT_BY_FILEPATH,
-        SORT_ORDER_ASC,
-        view_cache_summary,
-    )
+    from truss.cli.train.cache import (OUTPUT_FORMAT_CLI_TABLE,
+                                       SORT_BY_FILEPATH, SORT_ORDER_ASC,
+                                       view_cache_summary)
 
     # Use constants for defaults if not provided
     if sort_by is None:
