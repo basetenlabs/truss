@@ -20,7 +20,11 @@ def test_view_training_job_metrics(time_sleep, capfd):
 
     # Set up mock API responses for get_args_for_monitoring
     mock_api.search_training_jobs.return_value = [
-        {"id": "job123", "training_project": {"id": "proj456"}}
+        {
+            "id": "job123",
+            "training_project": {"id": "proj456"},
+            "creator_email": "test@example.com",
+        }
     ]
     mock_api.get_training_job.side_effect = [
         {

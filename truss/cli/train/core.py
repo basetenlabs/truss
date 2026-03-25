@@ -60,8 +60,10 @@ def get_args_for_stop(
         job_id_to_stop = job["id"]
         # check if the user wants to stop the inferred running job
         if not job_id:
+            creator_email = job.get("creator_email")
+            creator_msg = f" (created by {creator_email})" if creator_email else ""
             confirm = inquirer.confirm(
-                message=f"Are you sure you want to stop training job {job_id_to_stop}?",
+                message=f"Are you sure you want to stop training job {job_id_to_stop}{creator_msg}?",
                 default=False,
             ).execute()
             if not confirm:
@@ -305,6 +307,8 @@ def display_training_job(
     table.add_row("Project ID", job["training_project"]["id"])
     table.add_row("Project Name", job["training_project"]["name"])
     table.add_row("Status", job["current_status"])
+    if job.get("creator_email"):
+        table.add_row("Creator", job["creator_email"])
     table.add_row("Instance Type", job["instance_type"]["name"])
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
