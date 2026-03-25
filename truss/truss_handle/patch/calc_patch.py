@@ -130,9 +130,7 @@ def calc_truss_patch(
             except UnicodeDecodeError:
                 # Binary file (e.g. .so, .png) — send as base64
                 content = None
-                content_bytes = base64.b64encode(full_path.read_bytes()).decode(
-                    "ascii"
-                )
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode("ascii")
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
@@ -168,9 +166,7 @@ def calc_truss_patch(
             except UnicodeDecodeError:
                 # Binary file (e.g. .so, .pyd) — send as base64
                 content = None
-                content_bytes = base64.b64encode(full_path.read_bytes()).decode(
-                    "ascii"
-                )
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode("ascii")
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,

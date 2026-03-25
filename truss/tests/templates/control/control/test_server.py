@@ -388,10 +388,7 @@ async def test_patch_binary_model_code(app, client):
     patch_obj = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.ADD,
-            path="weights.bin",
-            content=None,
-            content_bytes=encoded,
+            action=Action.ADD, path="weights.bin", content=None, content_bytes=encoded
         ),
     )
     await _verify_apply_patch_success(client, patch_obj)
@@ -406,10 +403,7 @@ async def test_patch_binary_package(app, client):
     patch_obj = Patch(
         type=PatchType.PACKAGE,
         body=PackagePatch(
-            action=Action.ADD,
-            path="my_pkg/lib.so",
-            content=None,
-            content_bytes=encoded,
+            action=Action.ADD, path="my_pkg/lib.so", content=None, content_bytes=encoded
         ),
     )
     await _verify_apply_patch_success(client, patch_obj)
