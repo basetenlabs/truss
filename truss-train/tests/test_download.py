@@ -18,7 +18,6 @@ def mock_job_response():
         {
             "id": "test_job_123",
             "training_project": {"id": "project_456", "name": "test_project"},
-
         }
     ]
 
