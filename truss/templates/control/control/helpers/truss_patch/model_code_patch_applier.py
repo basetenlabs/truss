@@ -24,7 +24,7 @@ def apply_code_patch(relative_dir: Path, patch: Patch, logger: logging.Logger):
         logger.info(f"{action_log} file {filepath}")
         if patch.content_bytes is not None:
             # Binary file — decode base64 and write as bytes
-            filepath.write_bytes(base64.b64decode(patch.content_bytes))
+            filepath.write_bytes(base64.b64decode(patch.content_bytes, validate=True))
         else:
             with filepath.open("w") as file:
                 content = patch.content

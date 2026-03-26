@@ -125,7 +125,7 @@ def calc_truss_patch(
                 f"Created patch to {action.value.lower()} model code file: {path}"
             )
             try:
-                content = full_path.read_text()
+                content = full_path.read_text(encoding="utf-8")
                 content_bytes = None
             except UnicodeDecodeError:
                 # Binary file (e.g. .so, .png) — send as base64
@@ -161,7 +161,7 @@ def calc_truss_patch(
                 continue
             logger.info(f"Created patch to {action.value.lower()} package file: {path}")
             try:
-                content = full_path.read_text()
+                content = full_path.read_text(encoding="utf-8")
                 content_bytes = None
             except UnicodeDecodeError:
                 # Binary file (e.g. .so, .pyd) — send as base64
