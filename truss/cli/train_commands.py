@@ -844,9 +844,7 @@ def list_checkpoints(
         remote_provider, project_id, job_id
     )
 
-    ctx = click.get_current_context()
-    non_interactive = ctx.find_root().obj.get("non_interactive", False)
-    interactive = common.check_is_interactive() and not non_interactive
+    interactive = common.check_is_interactive()
 
     checkpoint_mod.view_checkpoint_list(
         remote_provider=remote_provider,

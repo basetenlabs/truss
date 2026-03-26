@@ -22,7 +22,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import ORJSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from fastapi.routing import APIWebSocketRoute as FastAPIWebSocketRoute
 from model_wrapper import ModelWrapper
@@ -330,6 +330,19 @@ class BasetenEndpoints:
         else:
             return self._model.truss_schema.serialize()
 
+    # Sync def so FastAPI runs it in a threadpool, avoiding blocking the
+    # event loop during module re-import.
+    def hot_reload(self, request: Request):
+        try:
+            self._model.hot_reload()
+        except Exception as exc:
+            # Return error summary only; full traceback is already logged
+            # by model_wrapper.hot_reload() in the container logs.
+            return JSONResponse(
+                status_code=422, content={"error": f"{type(exc).__name__}: {exc}"}
+            )
+        return {"msg": "Hot reload complete"}
+
     @staticmethod
     def is_binary(request: Request):
         return (
@@ -448,6 +461,9 @@ class TrussServer:
                 FastAPIRoute(r"/ping", self._endpoints.invocations_ready),
                 FastAPIRoute(
                     r"/invocations", self._endpoints.invocations, methods=["POST"]
+                ),
+                FastAPIRoute(
+                    r"/hot-reload", self._endpoints.hot_reload, methods=["POST"]
                 ),
             ],
             exception_handlers={
