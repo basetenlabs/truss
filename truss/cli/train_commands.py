@@ -342,16 +342,6 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
 
         console.print(table)
 
-        # Show connect commands when working directory is available
-        if has_working_dir:
-            console.print()
-            console.print("Connect via CLI:", style="bold")
-            for code in isession:
-                tunnel = code.get("tunnel_name", "")
-                workdir = code.get("working_directory", "")
-                if tunnel and workdir:
-                    cmd = f"code --remote tunnel+{tunnel}{workdir}"
-                    console.print(f"  {code.get('replica_id', '')}: {cmd}")
     except Exception:
         # Silently skip if auth codes aren't available
         pass
