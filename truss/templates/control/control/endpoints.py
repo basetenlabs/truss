@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional, Protocol
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
-from helpers.errors import ModelLoadFailed, ModelNotReady
+from helpers.errors import ModelLoadFailed, ModelNotReady, PatchFailedRecoverable
 from httpx_ws import AsyncWebSocketSession, WebSocketDisconnect, aconnect_ws
 from httpx_ws import _exceptions as httpx_ws_exceptions
 from starlette.requests import ClientDisconnect, Request
@@ -226,6 +226,18 @@ async def patch(request: Request) -> dict[str, str]:
             patch_request
         ),
     )
+    # If all patches have hot_reload set, apply_patch above skipped the
+    # process restart, so signal the inference server to reload
+    patches = patch_request.get("patches", [])
+    if patches and all(p.get("body", {}).get("hot_reload", False) for p in patches):
+        client: httpx.AsyncClient = request.app.state.proxy_client
+        resp = await client.post("/hot-reload")
+        if resp.status_code == 422:
+            # User code error (syntax, missing class, etc.) — model is
+            # still running with the old code.
+            error_msg = resp.json().get("error", "unknown error")
+            raise PatchFailedRecoverable(f"Hot reload failed: {error_msg}")
+        resp.raise_for_status()
     request.app.state.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
