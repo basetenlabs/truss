@@ -1,3 +1,4 @@
+import builtins
 import contextvars
 import logging
 import os
@@ -15,6 +16,9 @@ request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextV
 chain_request_id_context: contextvars.ContextVar[Optional[str]] = (
     contextvars.ContextVar("chain_request_id", default=None)
 )
+
+_original_print = builtins.print
+_print_logger = logging.getLogger("user_print")
 
 
 def _disable_json_logging() -> bool:
@@ -94,6 +98,24 @@ class _AccessFormatter(logging.Formatter):
             record.msg = new_message
             record.args = ()
         return super().format(record)
+
+
+def _print_with_request_context(*args: Any, **kwargs: Any) -> None:
+    """Override of builtins.print that routes through logging when a request is active.
+
+    This ensures print() statements in user model code get request_id context
+    attached, just like logger.info() calls do.
+    """
+    if request_id_context.get() is not None:
+        message = " ".join(str(a) for a in args)
+        _print_logger.info(message)
+    else:
+        _original_print(*args, **kwargs)
+
+
+def install_print_override() -> None:
+    """Replace builtins.print so user print() calls get request_id context."""
+    builtins.print = _print_with_request_context
 
 
 def make_log_config(log_level: str) -> Mapping[str, Any]:

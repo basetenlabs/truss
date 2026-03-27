@@ -366,6 +366,7 @@ class TrussServer:
     def __init__(self, http_port: int, config_or_path: Union[str, Path, dict]):
         # This is run before uvicorn is up. Need explicit logging config here.
         logging.config.dictConfig(log_config.make_log_config("INFO"))
+        log_config.install_print_override()
 
         if isinstance(config_or_path, (str, Path)):
             with open(config_or_path, encoding="utf-8") as config_file:

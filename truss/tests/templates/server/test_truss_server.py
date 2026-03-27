@@ -237,6 +237,69 @@ class Model:
         assert result["predict_count"] == 3
 
 
+def test_print_override_routes_through_logging_with_request_id(app_path):
+    """When a request is active, print() should route through logging with request_id."""
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        from shared.log_config import (
+            _original_print,
+            install_print_override,
+            request_id_context,
+        )
+
+        install_print_override()
+
+        try:
+            token = request_id_context.set("test-req-123")
+            with patch("shared.log_config._print_logger") as mock_logger:
+                print("hello from model")
+                mock_logger.info.assert_called_once_with("hello from model")
+            request_id_context.reset(token)
+        finally:
+            import builtins
+
+            builtins.print = _original_print
+
+
+def test_print_override_falls_through_without_request_id(app_path):
+    """When no request is active, print() should behave normally."""
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        from shared.log_config import _original_print, install_print_override
+
+        install_print_override()
+
+        try:
+            with patch("shared.log_config._original_print") as mock_print:
+                print("hello outside request")
+                mock_print.assert_called_once_with("hello outside request")
+        finally:
+            import builtins
+
+            builtins.print = _original_print
+
+
+def test_print_override_joins_multiple_args(app_path):
+    """print() with multiple args should join them with spaces, like normal print."""
+    with _clear_truss_server_modules(), _change_directory(app_path):
+        from shared.log_config import (
+            _original_print,
+            install_print_override,
+            request_id_context,
+        )
+
+        install_print_override()
+
+        try:
+            token = request_id_context.set("test-req-456")
+            with patch("shared.log_config._print_logger") as mock_logger:
+                print("count:", 42, "done")
+                mock_logger.info.assert_called_once_with("count: 42 done")
+            request_id_context.reset(token)
+        finally:
+            import builtins
+
+            builtins.print = _original_print
+
+
 def _is_port_available(port):
     try:
         # Try to bind to the given port
