@@ -936,26 +936,32 @@ class ModelWrapper:
         model_module_dir = Path(self._config["model_module_dir"]).resolve()
 
         # Evict all user-code modules from sys.modules so that imports
-        # (e.g. helpers, utils) are re-read from disk.
-        to_evict = [
-            name
-            for name, mod in sys.modules.items()
-            if hasattr(mod, "__file__")
-            and mod.__file__
-            and Path(mod.__file__).resolve().is_relative_to(model_module_dir)
-        ]
+        # (e.g. helpers, utils) are re-read from disk. We check both
+        # __file__ (regular modules) and __path__ (packages, including
+        # namespace packages with __file__=None) to avoid leaving orphaned
+        # entries whose stale _NamespacePath would raise KeyError.
+        to_evict = []
+        for name, mod in sys.modules.items():
+            mod_file = getattr(mod, "__file__", None)
+            if mod_file and Path(mod_file).resolve().is_relative_to(model_module_dir):
+                to_evict.append(name)
+                continue
+            for p in getattr(mod, "__path__", ()):
+                if Path(p).resolve().is_relative_to(model_module_dir):
+                    to_evict.append(name)
+                    break
         for name in to_evict:
             self._logger.debug(f"Hot reload: evicting module {name}")
             del sys.modules[name]
+        importlib.invalidate_caches()
 
-        # Re-execute the main model module from the updated file on disk,
-        # swap __class__, and rebuild descriptor. If anything fails, the live
-        # model instance is left unchanged (swap hasn't happened yet).
+        # Re-import the model module through normal import machinery so
+        # Python naturally rebuilds the package tree. If anything fails,
+        # the live model instance is left unchanged (swap hasn't happened).
         try:
-            model_file = model_module_dir / self.model_file_name
-            spec = importlib.util.spec_from_file_location(model_file.stem, model_file)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            model_module_name = self._config["model_module_dir"]
+            model_file_stem = Path(self.model_file_name).stem
+            module = importlib.import_module(f"{model_module_name}.{model_file_stem}")
 
             new_class = getattr(module, self._config["model_class_name"])
             self._model.__class__ = new_class
