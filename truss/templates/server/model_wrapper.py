@@ -941,7 +941,7 @@ class ModelWrapper:
         # namespace packages with __file__=None) to avoid leaving orphaned
         # entries whose stale _NamespacePath would raise KeyError.
         to_evict = []
-        for name, mod in sys.modules.items():
+        for name, mod in list(sys.modules.items()):
             mod_file = getattr(mod, "__file__", None)
             if mod_file and Path(mod_file).resolve().is_relative_to(model_module_dir):
                 to_evict.append(name)
@@ -952,7 +952,7 @@ class ModelWrapper:
                     break
         for name in to_evict:
             self._logger.debug(f"Hot reload: evicting module {name}")
-            del sys.modules[name]
+            sys.modules.pop(name, None)
         importlib.invalidate_caches()
 
         # Re-import the model module through normal import machinery so
