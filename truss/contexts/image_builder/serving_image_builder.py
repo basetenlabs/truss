@@ -972,8 +972,8 @@ def _parse_requirement_package_name(req_line: str) -> Optional[str]:
     Returns None for comments, blank lines, flags (-i, -c, etc.), and
     anything else that isn't a valid PEP 508 dependency specifier.
     """
-    # Strip comments the way pip does: space + # for inline, or # at start
-    line = req_line.split(" #")[0].strip()
+    # Strip inline comments (whitespace + #); preserve # in URLs/fragments
+    line = re.split(r"\s+#", req_line)[0].strip()
     if not line or line.startswith("#"):
         return None
     try:
