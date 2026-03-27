@@ -134,12 +134,7 @@ def _resolve_team_name(
 
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
 @click.option(
@@ -229,12 +224,7 @@ def push_training_job(
 @click.option(
     "--job-id", type=str, required=False, help="Job ID of Training Job to recreate"
 )
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after recreation.")
 @common.common_options()
 def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bool):
@@ -358,12 +348,7 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
 
 
 @train.command(name="logs")
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
@@ -414,12 +399,7 @@ def get_job_logs(
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def stop_job(
     project_id: Optional[str],
@@ -457,12 +437,7 @@ def stop_job(
 @click.option(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_training(
     project_id: Optional[str],
@@ -489,12 +464,7 @@ def view_training(
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def get_job_metrics(
     project_id: Optional[str],
@@ -535,12 +505,7 @@ def get_job_metrics(
     required=False,
     help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
 )
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
@@ -610,12 +575,7 @@ def _write_truss_config(
 
 @train.command(name="download")
 @click.option("--job-id", type=str, required=True, help="Job ID.")
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--target-directory",
     type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
@@ -663,12 +623,7 @@ def download_training_job(
 
 @train.command(name="get_checkpoint_urls")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) -> None:
     if not remote:
@@ -770,12 +725,7 @@ def cache():
 
 @cache.command(name="summarize")
 @click.argument("project", type=str, required=True)
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--sort",
     type=click.Choice(
@@ -826,12 +776,7 @@ def checkpoints():
 
 
 @checkpoints.command(name="list")
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
 @click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
@@ -939,12 +884,7 @@ def _maybe_resolve_project_id_from_id_or_name(
     required=False,
     help="Number of minutes before the interactive session times out.",
 )
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def update_session(
     job_id: str,
@@ -990,12 +930,7 @@ def update_session(
 
 @train.command(name="isession")
 @click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Remote to use.",
-)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--update-timeout",
     "timeout_minutes",

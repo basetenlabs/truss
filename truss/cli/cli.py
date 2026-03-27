@@ -988,10 +988,7 @@ def push(
 
 @truss_cli.command()
 @click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc.",
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
 )
 @click.option("--model-id", type=str, required=True)
 @click.option("--deployment-id", type=str, required=True)
