@@ -314,6 +314,7 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             border_style="blue",
         )
         has_expiry = any(code.get("expires_at") for code in isession)
+        has_working_dir = any(code.get("working_directory") for code in isession)
 
         table.add_column("Replica ID", style="cyan")
         table.add_column("Tunnel Name", style="yellow")
@@ -322,6 +323,8 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
         table.add_column("Generated At (Local)", style="dim")
         if has_expiry:
             table.add_column("Expires In", style="dim")
+        if has_working_dir:
+            table.add_column("Working Directory", style="green")
 
         for code in isession:
             row = [
@@ -333,9 +336,12 @@ def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: s
             ]
             if has_expiry:
                 row.append(_format_time_until_expiry(code.get("expires_at", "")))
+            if has_working_dir:
+                row.append(code.get("working_directory", ""))
             table.add_row(*row)
 
         console.print(table)
+
     except Exception:
         # Silently skip if auth codes aren't available
         pass
@@ -838,9 +844,7 @@ def list_checkpoints(
         remote_provider, project_id, job_id
     )
 
-    ctx = click.get_current_context()
-    non_interactive = ctx.find_root().obj.get("non_interactive", False)
-    interactive = common.check_is_interactive() and not non_interactive
+    interactive = common.check_is_interactive()
 
     checkpoint_mod.view_checkpoint_list(
         remote_provider=remote_provider,
