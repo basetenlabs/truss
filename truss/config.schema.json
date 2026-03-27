@@ -1174,7 +1174,15 @@
           "type": "integer"
         },
         "checkpoint_repository": {
-          "$ref": "#/$defs/CheckpointRepository"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointRepository"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "gather_all_token_logits": {
           "default": false,
@@ -1285,9 +1293,6 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "checkpoint_repository"
-      ],
       "title": "TrussTRTLLMBuildConfiguration",
       "type": "object"
     },
