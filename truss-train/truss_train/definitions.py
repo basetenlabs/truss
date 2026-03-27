@@ -204,6 +204,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
+    version: int = 1
     interactive_session: Optional[InteractiveSession] = None
     name: Optional[str] = None
     workspace: Optional[Workspace] = None
