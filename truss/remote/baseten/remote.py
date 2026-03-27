@@ -579,7 +579,7 @@ class BasetenRemote(TrussRemote):
             console.print(f"👀 Watching for changes to truss at '{watch_path}'...")
 
         for _ in watch(*watch_paths, watch_filter=watch_filter, raise_interrupt=False):
-            console.print("Changes detected, creating patch...")
+            logging.debug("Changes detected, creating patch...")
             self._patch_with_model(
                 watch_path,
                 truss_ignore_patterns,
@@ -797,8 +797,10 @@ class BasetenRemote(TrussRemote):
             resolved_versions=resolved_versions,
             hot_reload=hot_reload,
         )
-        if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
+        if result.status == PatchStatus.SUCCESS:
             console.print(result.message, style="green")
+        elif result.status == PatchStatus.SKIPPED:
+            logging.debug(result.message)
         else:
             error_console.print(result.message)
         return result
