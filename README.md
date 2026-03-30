@@ -3,6 +3,7 @@
 **The simplest way to serve AI/ML models in production**
 
 [![PyPI version](https://badge.fury.io/py/truss.svg)](https://badge.fury.io/py/truss)
+[![Python versions](https://img.shields.io/pypi/pyversions/truss.svg)](https://pypi.org/project/truss/)
 [![ci_status](https://github.com/basetenlabs/truss/actions/workflows/release.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/release.yml)
 
 Truss is the CLI for deploying and serving ML models on Baseten. Package your model's serving logic in Python, launch training jobs, and deploy to production—Truss handles containerization, dependency management, and GPU configuration.
