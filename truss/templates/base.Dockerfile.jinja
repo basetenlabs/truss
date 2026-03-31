@@ -63,6 +63,13 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
     "--index-strategy unsafe-best-match " +
     "--python " + python_exec_path
 %}
+{#
+NB: Customer base images may set UV_ env vars (UV_CONSTRAINT, UV_EXTRA_INDEX_URL, etc.)
+for their own dependency resolution (e.g. CUDA wheel indexes, ML version constraints).
+These must be stripped when running uv for Truss-internal venvs (docker_server, control server)
+to avoid conflicts with our pinned requirements.
+#}
+{%- set clean_uv_env = "env $(env | sed -n 's/^\\(UV_[^=]*\\)=.*/-u \\1/p')" %}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
