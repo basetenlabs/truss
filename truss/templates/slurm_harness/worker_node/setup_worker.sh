@@ -76,7 +76,9 @@ echo "Waiting for slurm.conf containing ${WORKER_HOSTNAME}..."
 MAX_WAIT=300
 WAITED=0
 while true; do
-    if [ -f "$SLURM_HARNESS_DIR/slurm.conf" ] && grep -q "$WORKER_HOSTNAME" "$SLURM_HARNESS_DIR/slurm.conf" 2>/dev/null; then
+    if [ -f "$SLURM_HARNESS_DIR/slurm.conf" ] \
+        && grep -q "$WORKER_HOSTNAME" "$SLURM_HARNESS_DIR/slurm.conf" 2>/dev/null \
+        && grep -q "$CONTROLLER_HOSTNAME" "$SLURM_HARNESS_DIR/slurm.conf" 2>/dev/null; then
         break
     fi
     sleep 5
