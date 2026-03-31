@@ -57,19 +57,19 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
 - Use the python executable currently on the path, will respect activated virtual envs.
 - `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
 #}
+{#
+NB: Customer base images may bake in UV_ env vars (UV_CONSTRAINT, UV_EXTRA_INDEX_URL, etc.)
+that conflict with our dependency resolution. We run all uv commands in a clean environment
+to avoid inheriting these.
+#}
+{%- set clean_uv_env = 'env -i PATH="$PATH" HOME="$HOME"' %}
 {%- set sys_pip_install_command =
+    clean_uv_env + " " +
     "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
     "uv pip install --system --break-system-packages " +
     "--index-strategy unsafe-best-match " +
     "--python " + python_exec_path
 %}
-{#
-NB: Customer base images may set UV_ env vars (UV_CONSTRAINT, UV_EXTRA_INDEX_URL, etc.)
-for their own dependency resolution (e.g. CUDA wheel indexes, ML version constraints).
-These must be stripped when running uv for Truss-internal venvs (docker_server, control server)
-to avoid conflicts with our pinned requirements.
-#}
-{%- set clean_uv_env = "env $(env | sed -n 's/^\\(UV_[^=]*\\)=.*/-u \\1/p')" %}
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
@@ -140,7 +140,7 @@ COPY --chown={{ default_owner }} ./{{ uv_lock_filename }} {{ uv_lock_filename }}
   NB(nikhil) By default, `uv sync --frozen` manages its own venv, but we need to install into the provided python
   env. To get around this, we leverage `uv export` to dump the requirements in a format that `uv pip install` can use
 #}
-RUN uv export --frozen --format requirements-txt > /tmp/uv_requirements.txt && \
+RUN {{ clean_uv_env }} uv export --frozen --format requirements-txt > /tmp/uv_requirements.txt && \
     {{ sys_pip_install_command }} -r /tmp/uv_requirements.txt --no-cache-dir && \
     rm -f /tmp/uv_requirements.txt
 
