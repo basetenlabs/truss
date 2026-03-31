@@ -141,22 +141,18 @@ add_job_nodes() {
         fi
     done
 
-    # Update the global node accumulator and rewrite the partition line
-    if [ -z "$ALL_PARTITION_NODES" ]; then
-        ALL_PARTITION_NODES="$new_nodes"
-    else
-        ALL_PARTITION_NODES="${ALL_PARTITION_NODES},${new_nodes}"
-    fi
+    # Rebuild the partition line from actual NodeName entries in slurm.conf
+    # (never accumulate separately — avoids stale references after restarts)
+    ALL_PARTITION_NODES=$(grep "^NodeName=" /etc/slurm/slurm.conf | grep -v "NodeName=${CONTROLLER_HOSTNAME}" | sed 's/^NodeName=\([^ ]*\).*/\1/' | paste -sd, -)
 
     # Replace or append the partition line
-    if grep -q "^PartitionName=gpu " /etc/slurm/slurm.conf 2>/dev/null; then
-        sed -i "s|^PartitionName=gpu .*|PartitionName=gpu Nodes=${ALL_PARTITION_NODES} Default=YES MaxTime=INFINITE State=UP|" /etc/slurm/slurm.conf
-    else
+    sed -i "/^PartitionName=gpu /d" /etc/slurm/slurm.conf
+    if [ -n "$ALL_PARTITION_NODES" ]; then
         echo "PartitionName=gpu Nodes=${ALL_PARTITION_NODES} Default=YES MaxTime=INFINITE State=UP" >> /etc/slurm/slurm.conf
     fi
 
     cp /etc/slurm/slurm.conf "$SLURM_HARNESS_DIR/slurm.conf"
-    echo "Added ${node_count} node(s) from job ${job_id}. Total partition nodes: ${ALL_PARTITION_NODES}"
+    echo "Added ${node_count} node(s) from job ${job_id}. Partition nodes: ${ALL_PARTITION_NODES}"
 }
 
 # Start slurmctld for the first time. Clears stale state from prior login runs.
