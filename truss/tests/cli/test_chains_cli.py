@@ -1,5 +1,6 @@
 """Tests for truss chains CLI commands."""
 
+import os
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
@@ -92,7 +93,10 @@ def test_chains_push_without_disable_chain_download_flag():
 
 def test_chains_push_help_includes_disable_chain_download():
     """Test that --disable-chain-download appears in the help output."""
-    runner = CliRunner()
+    # Use a wide terminal to prevent rich-click from truncating option names.
+    env = os.environ.copy()
+    env["COLUMNS"] = "200"
+    runner = CliRunner(env=env)
 
     result = runner.invoke(truss_cli, ["chains", "push", "--help"])
 

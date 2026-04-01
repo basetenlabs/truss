@@ -647,6 +647,35 @@ def test_from_yaml_empty():
         assert result.bundled_packages_dir == "packages"
 
 
+def test_from_yaml_no_config():
+    with tempfile.TemporaryDirectory() as temp_dir_path:
+        yaml_path = Path(temp_dir_path) / "config.yaml"
+
+        with pytest.raises(ValueError) as exc_info:
+            TrussConfig.from_yaml(yaml_path)
+
+        print(exc_info.value.args[0])
+        assert (
+            exc_info.value.args[0]
+            == f"Expected a truss configuration file at {yaml_path}"
+        )
+
+
+def test_from_yaml_wrong_extension():
+    with tempfile.TemporaryDirectory() as temp_dir_path:
+        nonexistent_path = Path(temp_dir_path) / "config.yaml"
+        existing_path = Path(temp_dir_path) / "config.yml"
+        existing_path.touch()
+
+        with pytest.raises(ValueError) as exc_info:
+            TrussConfig.from_yaml(nonexistent_path)
+
+        assert (
+            exc_info.value.args[0]
+            == "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+        )
+
+
 def test_from_yaml_duplicate_keys():
     yaml_content = """
 description: first description
@@ -754,6 +783,26 @@ def test_secret_to_path_mapping_correct_type(default_config):
 
         truss_config = TrussConfig.from_yaml(yaml_path)
         assert truss_config.build.secret_to_path_mapping == {"foo": "/bar"}
+
+
+def test_build_no_cache_rejected_from_config(default_config):
+    data = {"description": "this is a test", "build": {"no_cache": True}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        with pytest.raises(ValueError, match="no_cache cannot be specified in config"):
+            TrussConfig.from_yaml(yaml_path)
+
+
+def test_build_no_cache_defaults_to_false(default_config):
+    data = {"description": "this is a test", "build": {}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        truss_config = TrussConfig.from_yaml(yaml_path)
+        assert truss_config.build.no_cache is False
 
 
 @pytest.mark.parametrize(

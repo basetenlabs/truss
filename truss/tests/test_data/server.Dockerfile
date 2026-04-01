@@ -24,7 +24,7 @@ RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
 fi
 RUN command -v curl >/dev/null 2>&1 || (apt update && apt install -y curl)
 RUN if ! command -v uv >/dev/null 2>&1; then \
-    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.8.22/install.sh | sh && \
+    curl -LsSf --retry 5 --retry-delay 5 https://astral.sh/uv/0.10.0/install.sh | sh && \
     test -x ${HOME}/.local/bin/uv; \
 fi
 ENV PATH=${PATH}:${HOME}/.local/bin
@@ -36,8 +36,9 @@ RUN apt update && \
     && rm -rf /var/lib/apt/lists/*
 COPY --chown=root:root ./base_server_requirements.txt base_server_requirements.txt
 RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r base_server_requirements.txt --no-cache-dir
+COPY --chown=root:root ./constraints.txt constraints.txt
 COPY --chown=root:root ./requirements.txt requirements.txt
-RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt --no-cache-dir
+RUN UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} uv pip install --system --break-system-packages --index-strategy unsafe-best-match --python /usr/local/bin/python3 -r requirements.txt -c constraints.txt --no-cache-dir
 WORKDIR $APP_HOME
 COPY --chown=root:root ./data ${APP_HOME}/data
 COPY --chown=root:root ./server ${APP_HOME}

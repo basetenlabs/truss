@@ -1,3 +1,6 @@
+# Base server dependencies. If a user specifies any of these packages in their
+# own requirements, the user's version takes precedence. constraints.txt provides
+# version bounds that apply regardless of who specifies the package.
 -i https://pypi.org/simple
 
 aiocontextvars==0.2.2

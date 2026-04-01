@@ -1,9 +1,11 @@
 from typing import Optional
 
+import click
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from InquirerPy.validator import ValidationError, Validator
 
+from truss.cli.utils.common import check_is_interactive
 from truss.cli.utils.output import console
 from truss.remote.baseten.custom_types import TeamType
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
@@ -40,22 +42,30 @@ def inquire_remote_config() -> RemoteConfig:
 
 def inquire_remote_name() -> str:
     available_remotes = RemoteFactory.get_available_config_names()
-    if len(available_remotes) > 1:
-        remote = inquirer.select(
+    if len(available_remotes) == 0:
+        if not check_is_interactive():
+            raise click.UsageError(
+                "No remote configured. Please configure a remote first "
+                "(e.g. by running `truss login`)."
+            )
+        remote_config = inquire_remote_config()
+        RemoteFactory.update_remote_config(remote_config)
+        console.print(
+            f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
+        )
+        return remote_config.name
+    elif len(available_remotes) == 1:
+        return available_remotes[0]
+    else:
+        if not check_is_interactive():
+            raise click.UsageError(
+                "Multiple remotes available. Please specify one with --remote."
+            )
+        return inquirer.select(
             "🎮 Which remote do you want to connect to?",
             qmark="",
             choices=available_remotes,
         ).execute()
-        return remote
-    elif len(available_remotes) == 1:
-        return available_remotes[0]
-    remote_config = inquire_remote_config()
-    RemoteFactory.update_remote_config(remote_config)
-
-    console.print(
-        f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
-    )
-    return remote_config.name
 
 
 def inquire_model_name() -> str:

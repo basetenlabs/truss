@@ -2,7 +2,6 @@ import inspect
 import json
 import os
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
@@ -100,10 +99,16 @@ def _start_watch_mode(
     resolved_versions: list,
     console: "rich_console.Console",
     error_console: "rich_console.Console",
+    hot_reload: bool = False,
 ) -> None:
     if not os.path.isfile(target_directory):
         remote_provider.sync_truss_to_dev_version_with_model(
-            resolved_model, resolved_versions, target_directory, console, error_console
+            resolved_model,
+            resolved_versions,
+            target_directory,
+            console,
+            error_console,
+            hot_reload=hot_reload,
         )
     else:
         # These imports are delayed, to handle pydantic v1 envs gracefully.
@@ -137,12 +142,7 @@ def truss_cli(ctx) -> None:
 
 
 @truss_cli.command()
-@click.option(
-    "--api-key",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to patch changes to",
-)
+@click.option("--api-key", type=str, required=False, help="API key for authentication.")
 @common.common_options()
 def login(api_key: Optional[str]):
     from truss.api import login
@@ -232,7 +232,9 @@ def whoami(remote: Optional[str], show_oidc: bool):
         console.print()
         table = _create_oidc_table(oidc_info)
         console.print(table)
-        # TODO(danielleef): Reference docs here once they're ready
+        console.print(
+            f"Learn more: {common.format_link('https://docs.baseten.co/organization/oidc')}"
+        )
 
 
 @truss_cli.command()
@@ -355,7 +357,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
     "-d",
@@ -499,7 +501,7 @@ def run_python(script, target_directory):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
     "--model-name",
@@ -640,6 +642,33 @@ def run_python(script, target_directory):
         "to apply live patches. Cannot be used with --promote, --environment, or --tail."
     ),
 )
+@click.option(
+    "--watch-hot-reload",
+    "watch_hot_reload",
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Enable hot-reload for model code changes during watch mode. "
+        "Swaps model class in-process without restarting, preserving state. "
+        "Requires --watch."
+    ),
+)
+@click.option(
+    "--no-cache",
+    "no_cache",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Force a full rebuild without using cached layers.",
+)
+@click.option(
+    "--watch-no-sleep",
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Keep the development model warm by preventing scale-to-zero while watching. Requires --watch.",
+)
 @common.common_options()
 def push(
     target_directory: str,
@@ -662,6 +691,9 @@ def push(
     provided_team_name: Optional[str] = None,
     labels: Optional[str] = None,
     watch_after_push: bool = False,
+    watch_hot_reload: bool = False,
+    no_cache: bool = False,
+    watch_no_sleep: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -674,6 +706,11 @@ def push(
         console.print(
             "[DEPRECATED] The --publish flag is deprecated. Published deployments are now the default.",
             style="yellow",
+        )
+
+    if watch_no_sleep and not watch_after_push:
+        raise click.UsageError(
+            "Cannot use --watch-no-sleep without --watch. --watch-no-sleep prevents scale-to-zero during watch mode."
         )
 
     # Handle --watch flag: deploys as development and then watches
@@ -696,6 +733,8 @@ def push(
         publish = False
         wait = True
     else:
+        if watch_hot_reload:
+            raise click.UsageError("--watch-hot-reload requires --watch.")
         # Default is now published deployment
         publish = True
         console.print(
@@ -748,15 +787,12 @@ def push(
     team_id = None
     if isinstance(remote_provider, BasetenRemote):
         existing_teams = remote_provider.api.get_teams()
-        # Use config team as fallback if --team not provided
-        effective_team_name = provided_team_name or RemoteFactory.get_remote_team(
-            remote
-        )
         team_name, team_id = resolve_model_team_name(
             remote_provider=remote_provider,
-            provided_team_name=effective_team_name,
+            provided_team_name=provided_team_name,
             existing_model_name=model_name,
             existing_teams=existing_teams,
+            remote_name=remote,
         )
 
     if promote and environment:
@@ -786,6 +822,9 @@ def push(
     if trusted is not None:
         trusted_deprecation_notice = "[DEPRECATED] '--trusted' option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
+
+    if no_cache:
+        tr.spec.config.build.no_cache = True
 
     # Parse labels from CLI option
     labels_dict: Optional[dict] = None
@@ -923,6 +962,10 @@ def push(
             resolved_model, versions = resolve_model_for_watch(
                 bt_remote, model_name, provided_team_name=team_name
             )
+            if watch_no_sleep:
+                model_hostname = resolved_model["hostname"]
+                api_key = bt_remote._auth_service.authenticate().value
+                common.start_keepalive(model_hostname, api_key)
             _start_watch_mode(
                 target_directory=target_directory,
                 model_name=model_name,
@@ -931,6 +974,7 @@ def push(
                 resolved_versions=versions,
                 console=console,
                 error_console=error_console,
+                hot_reload=watch_hot_reload,
             )
 
     elif tail and isinstance(service, BasetenService):
@@ -943,7 +987,9 @@ def push(
 
 
 @truss_cli.command()
-@click.option("--remote", type=str, required=False)
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
 @click.option("--model-id", type=str, required=True)
 @click.option("--deployment-id", type=str, required=True)
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
@@ -982,7 +1028,7 @@ def model_logs(
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to patch changes to",
+    help="Name of the remote in .trussrc to patch changes to.",
 )
 @click.option(
     "--team",
@@ -998,6 +1044,16 @@ def model_logs(
     help="Keep the development model warm by preventing scale-to-zero while watching.",
 )
 @click.option(
+    "--hot-reload",
+    "hot_reload",
+    is_flag=True,
+    default=False,
+    help=(
+        "Enable hot-reload for model code changes. "
+        "Swaps model class in-process without restarting, preserving state."
+    ),
+)
+@click.option(
     "--model-name",
     type=str,
     required=False,
@@ -1010,6 +1066,7 @@ def watch(
     remote: str,
     provided_team_name: Optional[str] = None,
     no_sleep: bool = False,
+    hot_reload: bool = False,
     model_name: Optional[str] = None,
 ) -> None:
     """
@@ -1072,15 +1129,8 @@ def watch(
         api_key=api_key,
     )
 
-    stop_event = threading.Event()
     if no_sleep:
-        console.print("💤 --no-sleep enabled: keeping development model warm")
-        keepalive_thread = threading.Thread(
-            target=common.keepalive_loop,
-            args=(model_hostname, api_key, stop_event),
-            daemon=True,
-        )
-        keepalive_thread.start()
+        common.start_keepalive(model_hostname, api_key)
 
     # Re-resolve the model to get the latest version and truss hash and latest push before watching
     resolved_model, versions = resolve_model_for_watch(
@@ -1094,6 +1144,7 @@ def watch(
         resolved_versions=versions,
         console=console,
         error_console=error_console,
+        hot_reload=hot_reload,
     )
 
 

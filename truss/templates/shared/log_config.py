@@ -1,12 +1,20 @@
+import contextvars
 import logging
 import os
 import urllib.parse
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Optional
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json as json_logger
 
 LOCAL_DATE_FORMAT = "%H:%M:%S"
+
+request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "request_id", default=None
+)
+chain_request_id_context: contextvars.ContextVar[Optional[str]] = (
+    contextvars.ContextVar("chain_request_id", default=None)
+)
 
 
 def _disable_json_logging() -> bool:
@@ -38,7 +46,16 @@ class _MetricsFilter(logging.Filter):
         return "/metrics" not in record.getMessage()
 
 
-class _AccessJsonFormatter(jsonlogger.JsonFormatter):
+class _AccessJsonFormatter(json_logger.JsonFormatter):
+    def add_fields(
+        self, log_record: dict, record: logging.LogRecord, message_dict: dict
+    ) -> None:
+        super().add_fields(log_record, record, message_dict)
+        if request_id := request_id_context.get():
+            log_record["request_id"] = request_id
+        if chain_request_id := chain_request_id_context.get():
+            log_record["chain_request_id"] = chain_request_id
+
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
         # record.args = (addr, method, path, version, status).
@@ -53,6 +70,17 @@ class _AccessJsonFormatter(jsonlogger.JsonFormatter):
             record.msg = new_message
             record.args = ()  # Ensure Python doesn't reapply the old format string
         return super().format(record)
+
+
+class _DefaultJsonFormatter(json_logger.JsonFormatter):
+    def add_fields(
+        self, log_record: dict, record: logging.LogRecord, message_dict: dict
+    ) -> None:
+        super().add_fields(log_record, record, message_dict)
+        if request_id := request_id_context.get():
+            log_record["request_id"] = request_id
+        if chain_request_id := chain_request_id_context.get():
+            log_record["chain_request_id"] = chain_request_id
 
 
 class _AccessFormatter(logging.Formatter):
@@ -87,7 +115,7 @@ def make_log_config(log_level: str) -> Mapping[str, Any]:
         if _disable_json_logging()
         else {
             "default_formatter": {
-                "()": jsonlogger.JsonFormatter,
+                "()": _DefaultJsonFormatter,
                 "format": "%(asctime)s %(levelname)s %(message)s",
             },
             "access_formatter": {

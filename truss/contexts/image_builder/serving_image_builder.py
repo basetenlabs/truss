@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
+import packaging.requirements
+import packaging.utils
 import packaging.version
 import yaml
 from botocore import UNSIGNED
@@ -27,6 +29,7 @@ from truss.base.constants import (
     BEI_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
+    CONSTRAINTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
     DEFAULT_NON_ROOT_USER_ID,
     DOCKER_SERVER_TEMPLATES_DIR,
@@ -758,14 +761,21 @@ class ServingImageBuilder(ImageBuilder):
             # only install user-provided python requirements
             user_provided_python_requirements = spec.requirements_txt
         else:
-            # If the user has provided python requirements,
-            # append the truss server requirements, so that any conflicts
-            # are detected and cause a build failure. If there are no
-            # requirements provided, we just pass an empty string,
-            # as there's no need to install anything.
-            # TODO (BT-10217): above reasoning leads to inconsistencies. To get consistent
-            #  images tentatively add server requirements always. This whole point needs
-            #  more thought and potentially a re-design.
+            # Remove base server requirements that the user also specifies
+            # (via requirements list or requirements_file), so pip doesn't
+            # see conflicting pins. constraints.txt still bounds the versions
+            # regardless of who specifies the package. Note: -r includes in
+            # user requirements files are not expanded, so those packages
+            # won't be subtracted.
+            user_requirements = spec.requirements + config.load_requirements_from_file(
+                truss_dir
+            )
+            base_server_requirements = _subtract_user_requirements(
+                base_server_requirements, user_requirements
+            )
+            # Concatenate base server requirements with user requirements
+            # provided directly in config.yaml's "requirements" list.
+            # requirements_file is handled separately in the Dockerfile.
             user_provided_python_requirements = (
                 base_server_requirements + spec.requirements_txt
                 if spec.requirements
@@ -779,6 +789,13 @@ class ServingImageBuilder(ImageBuilder):
             user_provided_python_requirements
         )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
+
+        # Copy constraints file to bound versions for user-overridden packages.
+        self._copy_into_build_dir(
+            SERVER_CODE_DIR / CONSTRAINTS_TXT_FILENAME,
+            build_dir,
+            CONSTRAINTS_TXT_FILENAME,
+        )
 
         self._render_dockerfile(
             build_dir,
@@ -947,3 +964,43 @@ class ServingImageBuilder(ImageBuilder):
         ).strip()
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
+
+
+def _parse_requirement_package_name(req_line: str) -> Optional[str]:
+    """Extract normalized package name from a requirements line.
+
+    Returns None for comments, blank lines, flags (-i, -c, etc.), and
+    anything else that isn't a valid PEP 508 dependency specifier.
+    """
+    # Strip inline comments (whitespace + #); preserve # in URLs/fragments
+    line = re.split(r"\s+#", req_line)[0].strip()
+    if not line or line.startswith("#"):
+        return None
+    try:
+        return packaging.utils.canonicalize_name(
+            packaging.requirements.Requirement(line).name
+        )
+    except Exception:
+        return None
+
+
+def _subtract_user_requirements(
+    base_requirements: str, user_requirements: List[str]
+) -> str:
+    """Remove lines from base_requirements whose package name appears in user_requirements."""
+    user_package_names = set()
+    for req in user_requirements:
+        name = _parse_requirement_package_name(req)
+        if name:
+            user_package_names.add(name)
+
+    if not user_package_names:
+        return base_requirements
+
+    filtered_lines = []
+    for line in base_requirements.splitlines():
+        name = _parse_requirement_package_name(line)
+        if name and name in user_package_names:
+            continue
+        filtered_lines.append(line)
+    return "\n".join(filtered_lines) + "\n"
