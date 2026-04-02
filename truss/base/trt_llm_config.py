@@ -218,7 +218,7 @@ class TrussTRTLLMRuntimeConfiguration(PydanticTrTBaseModel):
     total_token_limit: int = 500000
     # only for embedding models (e.g. encoder models and encoder_bert models)
     webserver_default_route: Optional[
-        Literal["/v1/embeddings", "/rerank", "/predict"]
+        Literal["/v1/embeddings", "/rerank", "/predict", "/predict_tokens"]
     ] = None
 
 
@@ -596,7 +596,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # INTERNAL
     bei_image: str
     beibert_image: str = (
-        "baseten/bei_bert:1.8.6"  # once wired up in core-product, this can be removed
+        "baseten/bei_bert:1.8.7"  # once wired up in core-product, this can be removed
     )
     briton_image: str
     v2_llm_image: str
