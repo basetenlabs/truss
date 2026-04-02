@@ -61,6 +61,7 @@ from truss.base.trt_llm_config import (
 )
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
+    K8S_RESERVED_ENVIRONMENT_VARIABLES,
     DockerServer,
     RequirementsFileType,
     TrussConfig,
@@ -103,10 +104,6 @@ CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
-
-# PORT: knative reserved
-# HOSTNAME: set to the pod name by k8s
-K8S_RESERVED_ENVIRONMENT_VARIABLES = set(["PORT", "HOSTNAME"])
 
 
 class RemoteCache(ABC):
