@@ -206,3 +206,13 @@ client = OpenAI(
 ```
 
 Your model ID is the string after `/models/` in the logs URL from `uvx truss push`. You can also find it in your [Baseten dashboard](https://app.baseten.co/models/).
+
+# IDE support
+
+Truss ships a [JSON schema](truss/config.schema.json) for `config.yaml`. Projects created with `truss init` include a schema reference automatically, giving you autocompletion, hover docs, and validation in any editor that supports the [YAML language server](https://github.com/redhat-developer/yaml-language-server) (VS Code, JetBrains, Neovim, and others).
+
+To add schema support to an existing `config.yaml`, add this comment as the first line:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/basetenlabs/truss/main/truss/config.schema.json
+```

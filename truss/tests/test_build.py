@@ -11,6 +11,13 @@ def test_truss_init(tmp_path):
     assert spec.config_path.exists()
 
 
+def test_truss_init_config_has_schema_reference(tmp_path):
+    init_directory(tmp_path)
+    config_content = (tmp_path / "config.yaml").read_text()
+    assert config_content.startswith("# yaml-language-server: $schema=")
+    assert "config.schema.json" in config_content
+
+
 def test_truss_init_with_python_dx(tmp_path):
     init_directory(tmp_path, model_name="Test Model Name", python_config=True)
 
