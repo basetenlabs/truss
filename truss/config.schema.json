@@ -1436,7 +1436,8 @@
               "enum": [
                 "/v1/embeddings",
                 "/rerank",
-                "/predict"
+                "/predict",
+                "/predict_tokens"
               ],
               "type": "string"
             },
