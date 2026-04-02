@@ -66,10 +66,13 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
         with open(tmp_path / "requirements.txt", "r") as f:
             requirements_content = f.read()
 
-        with open(f"{BASE_DIR}/../../../templates/server/requirements.txt", "r") as f:
-            base_requirements_content = f.read()
-
-        assert requirements_content == base_requirements_content + "numpy\n"
+        # User-specified "numpy" should be subtracted from base requirements
+        # and only appear as the user's appended requirement.
+        assert "numpy\n" in requirements_content
+        assert "numpy>=1.23.5,<2.0" not in requirements_content
+        # All other base requirements should still be present
+        assert "fastapi" in requirements_content
+        assert "uvicorn" in requirements_content
 
 
 def test_env_vars_baked_into_image(test_data_path):

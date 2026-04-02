@@ -142,12 +142,7 @@ def truss_cli(ctx) -> None:
 
 
 @truss_cli.command()
-@click.option(
-    "--api-key",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to patch changes to",
-)
+@click.option("--api-key", type=str, required=False, help="API key for authentication.")
 @common.common_options()
 def login(api_key: Optional[str]):
     from truss.api import login
@@ -362,7 +357,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
     "-d",
@@ -506,7 +501,7 @@ def run_python(script, target_directory):
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to push to",
+    help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
     "--model-name",
@@ -992,7 +987,9 @@ def push(
 
 
 @truss_cli.command()
-@click.option("--remote", type=str, required=False)
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
 @click.option("--model-id", type=str, required=True)
 @click.option("--deployment-id", type=str, required=True)
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
@@ -1031,7 +1028,7 @@ def model_logs(
     "--remote",
     type=str,
     required=False,
-    help="Name of the remote in .trussrc to patch changes to",
+    help="Name of the remote in .trussrc to patch changes to.",
 )
 @click.option(
     "--team",
