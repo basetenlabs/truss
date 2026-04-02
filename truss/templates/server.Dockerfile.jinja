@@ -84,11 +84,11 @@ COPY --chown={{ default_owner }} ./truss ${APP_HOME}/truss
 
 COPY --chown={{ default_owner }} ./config.yaml ${APP_HOME}/config.yaml
 {%- if requires_live_reload %}
-RUN uv python install {{ control_python_version }}
-RUN uv venv /control/.env --python {{ control_python_version }}
+RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
+RUN {{ clean_uv_env }} uv venv /control/.env --python {{ control_python_version }}
 
 COPY --chown={{ default_owner }} ./control /control
-RUN uv pip install -r /control/requirements.txt --python /control/.env/bin/python --no-cache-dir
+RUN {{ clean_uv_env }} uv pip install -r /control/requirements.txt --python /control/.env/bin/python --no-cache-dir
 {%- endif %} {#- endif requires_live_reload #}
 
 {%- if model_dir_exists %}
@@ -120,9 +120,9 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
 COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
 
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
-RUN uv python install {{ control_python_version }}
-RUN uv venv /docker_server/.venv --python {{ control_python_version }}
-RUN uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt --no-cache-dir
+RUN {{ clean_uv_env }} uv python install {{ control_python_version }}
+RUN {{ clean_uv_env }} uv venv /docker_server/.venv --python {{ control_python_version }}
+RUN {{ clean_uv_env }} uv pip install --python /docker_server/.venv/bin/python -r /app/docker_server_requirements.txt --no-cache-dir
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_server_url = "http://localhost:8080" %}
