@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import http
 import logging
 import logging.config
@@ -102,30 +103,28 @@ def create_app(base_config: dict):
         oversee_inference_server,
     )
 
-    async def start_background_inference_startup():
+    @contextlib.asynccontextmanager
+    async def lifespan(app):
         asyncio.create_task(
             async_inference_server_startup_flow(
                 app_state.inference_server_controller, app_logger
             )
         )
+        try:
+            yield
+        finally:
+            # FastApi handles the term signal to start the shutdown flow. Here we
+            # make sure that the inference server is stopped when control server
+            # shuts down. Inference server has logic to wait until all requests are
+            # finished before exiting. By waiting on that, we inherit the same
+            # behavior for control server.
+            app.state.logger.info("Term signal received, shutting down.")
+            app.state.inference_server_process_controller.terminate_with_wait()
 
-    app = FastAPI(
-        title="Truss Live Reload Server",
-        on_startup=[start_background_inference_startup],
-    )
+    app = FastAPI(title="Truss Live Reload Server", lifespan=lifespan)
     app.state = app_state
     app.include_router(control_app)
     app.add_middleware(SanitizedExceptionMiddleware)
-
-    @app.on_event("shutdown")
-    def on_shutdown():
-        # FastApi handles the term signal to start the shutdown flow. Here we
-        # make sure that the inference server is stopped when control server
-        # shuts down. Inference server has logic to wait until all requests are
-        # finished before exiting. By waiting on that, we inherit the same
-        # behavior for control server.
-        app.state.logger.info("Term signal received, shutting down.")
-        app.state.inference_server_process_controller.terminate_with_wait()
 
     return app
 
