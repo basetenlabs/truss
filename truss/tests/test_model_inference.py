@@ -2220,6 +2220,26 @@ def test_server_deps_oldest_floors():
             assert actual == expected, f"{name}: expected {expected}, got {actual}"
 
 
+@pytest.mark.integration
+def test_server_deps_newest_ceilings():
+    # Use every constraint spec as a requirement so pip resolves the newest
+    # allowed version of each package, then verify the server boots.
+    constraints = _load_constraints()
+    newest_reqs = [str(req) for req in constraints.values()]
+    config = "requirements:\n" + "\n".join(f"  - {r}" for r in newest_reqs)
+    with ensure_kill_all(), _temp_truss(_VERSION_CHECK_MODEL, config) as tr:
+        container, urls = tr.docker_run_for_test()
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        versions = response.json()
+        for name in versions:
+            if name in constraints:
+                installed = packaging.version.parse(versions[name])
+                assert installed in constraints[name].specifier, (
+                    f"{name}: {installed} is outside {constraints[name].specifier}"
+                )
+
+
 # Model that exercises numpy version-specific APIs and msgpack serialization.
 _NUMPY_COMPAT_MODEL = """
     import numpy as np
