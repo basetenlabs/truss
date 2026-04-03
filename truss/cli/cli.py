@@ -126,7 +126,7 @@ def _start_watch_mode(
 ### Top-level & utility commands. ######################################################
 
 
-@click.group(name="truss", invoke_without_command=True)  # type: ignore
+@click.group(name="truss", invoke_without_command=True, context_settings=dict(help_option_names=["-h", "--help"]))  # type: ignore
 @click.pass_context
 @click.version_option(truss.__version__)
 @common.common_options(add_middleware=False)
