@@ -15,7 +15,7 @@ class SplitTextOutput(pydantic.BaseModel):
 class SplitTextFailOnce(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
-            pip_requirements_file=chains.make_abs_path_here("../requirements.txt"),
+            requirements_file=chains.make_abs_path_here("../requirements.txt"),
             pip_requirements=["numpy"],
         )
     )

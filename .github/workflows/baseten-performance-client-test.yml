@@ -67,3 +67,15 @@ jobs:
         run: |
           cd .. # outside the python bindings
           cargo test --release
+
+      - name: Test reverse proxy
+        run: |
+          cd .. # outside the python bindings
+          # Build reverse proxy
+          cargo build --release --package baseten-performance-reverse-proxy
+
+          # Run unit tests
+          cargo test --package baseten-performance-reverse-proxy
+
+          # Run integration tests
+          cargo test --package baseten-performance-reverse-proxy --test integration_test

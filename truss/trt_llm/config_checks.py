@@ -42,7 +42,10 @@ model_metadata:
         trt_llm_config = tr.spec.config.trt_llm.root
         if trt_llm_config.inference_stack == "v2":
             return ("", False)
-        if trt_llm_config.build.base_model == TrussTRTLLMModel.ENCODER:
+        if trt_llm_config.build.base_model in [
+            TrussTRTLLMModel.ENCODER,
+            TrussTRTLLMModel.ENCODER_BERT,
+        ]:
             return ("", False)
         # only briton requires openai-compatible tag, all others don't care about the openai tag
         current_tags = tr.spec.config.model_metadata.get("tags", [])

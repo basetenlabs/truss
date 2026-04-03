@@ -1,7 +1,4 @@
-from typing import List, Set
-
-
-def system_packages_set(packages: List[str]) -> Set[str]:
+def system_packages_set(packages: list[str]) -> set[str]:
     pkgs = []
     for sys_pkg_line in packages:
         pkgs.extend(sys_pkg_line.strip().split())

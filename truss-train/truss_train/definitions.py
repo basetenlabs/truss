@@ -1,16 +1,14 @@
 import enum
 from abc import ABC
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import pydantic
-from pydantic import field_validator, model_validator
+from pydantic import ValidationError, model_validator
 
-from truss.base import custom_types, truss_config
+from truss.base import constants, custom_types, truss_config
 
 DEFAULT_LORA_RANK = 16
-
-# Allowed LoRA rank values for vLLM
-ALLOWED_LORA_RANKS = {8, 16, 32, 64, 128, 256, 320, 512}
+DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES = 8 * 60
 
 
 class ModelWeightsFormat(str, enum.Enum):
@@ -56,15 +54,82 @@ class Compute(custom_types.SafeModelNoExtra):
         )
 
 
+class _CheckpointBase(custom_types.SafeModelNoExtra):
+    typ: str
+
+
+class _BasetenLatestCheckpoint(_CheckpointBase):
+    job_id: Optional[str] = None
+    project_name: Optional[str] = None
+    typ: Literal["baseten_latest_checkpoint"] = "baseten_latest_checkpoint"
+
+
+class _BasetenNamedCheckpoint(_CheckpointBase):
+    checkpoint_name: str
+    job_id: str
+    typ: Literal["baseten_named_checkpoint"] = "baseten_named_checkpoint"
+
+
+class BasetenCheckpoint:
+    @staticmethod
+    def from_latest_checkpoint(
+        project_name: Optional[str] = None, job_id: Optional[str] = None
+    ) -> _BasetenLatestCheckpoint:
+        if not job_id and not project_name:
+            raise ValidationError("job_id or project_name is required")
+        return _BasetenLatestCheckpoint(project_name=project_name, job_id=job_id)
+
+    @classmethod
+    def from_named_checkpoint(
+        cls, checkpoint_name: str, job_id: str
+    ) -> _BasetenNamedCheckpoint:
+        return _BasetenNamedCheckpoint(checkpoint_name=checkpoint_name, job_id=job_id)
+
+
+class LoadCheckpointConfig(custom_types.SafeModelNoExtra):
+    enabled: bool = False
+    checkpoints: List[Union[_BasetenLatestCheckpoint, _BasetenNamedCheckpoint]] = [
+        _BasetenLatestCheckpoint()
+    ]
+    download_folder: str = constants.DEFAULT_TRAINING_CHECKPOINT_FOLDER
+
+
 class CheckpointingConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     checkpoint_path: Optional[str] = None
+    volume_size_gib: Optional[int] = None
 
 
 class CacheConfig(custom_types.SafeModelNoExtra):
     enabled: bool = False
     enable_legacy_hf_mount: bool = False
     require_cache_affinity: bool = True
+    mount_base_path: str = "/root/.cache"
+
+
+class InteractiveSessionTrigger(str, enum.Enum):
+    ON_STARTUP = "on_startup"
+    ON_FAILURE = "on_failure"
+    ON_DEMAND = "on_demand"
+
+
+class InteractiveSessionProvider(str, enum.Enum):
+    VS_CODE = "vs_code"
+    CURSOR = "cursor"
+
+
+class InteractiveSessionAuthProvider(str, enum.Enum):
+    GITHUB = "github"
+    MICROSOFT = "microsoft"
+
+
+class InteractiveSession(custom_types.SafeModelNoExtra):
+    trigger: InteractiveSessionTrigger = InteractiveSessionTrigger.ON_DEMAND
+    timeout_minutes: int = DEFAULT_INTERACTIVE_SESSION_TIMEOUT_MINUTES
+    session_provider: InteractiveSessionProvider = InteractiveSessionProvider.VS_CODE
+    auth_provider: InteractiveSessionAuthProvider = (
+        InteractiveSessionAuthProvider.MICROSOFT
+    )
 
 
 class Runtime(custom_types.SafeModelNoExtra):
@@ -72,6 +137,7 @@ class Runtime(custom_types.SafeModelNoExtra):
     environment_variables: Dict[str, Union[str, SecretReference]] = {}
     enable_cache: Optional[bool] = None
     checkpointing_config: CheckpointingConfig = CheckpointingConfig()
+    load_checkpoint_config: Optional[LoadCheckpointConfig] = None
     cache_config: Optional[CacheConfig] = None
 
     @model_validator(mode="before")
@@ -84,7 +150,7 @@ class Runtime(custom_types.SafeModelNoExtra):
             raise ValueError(
                 "Cannot set both 'enable_cache' and 'cache_config'. "
                 "'enable_cache' is deprecated. Prefer migrating to 'cache_config' with "
-                "`enabled=True` and `enable_legacy_hf_cache=True`."
+                "`enabled=True` and `enable_legacy_hf_mount=True`."
             )
 
         # Migrate enable_cache to cache_config if enable_cache is True
@@ -109,6 +175,10 @@ class GCPServiceAccountJSONDockerAuth(custom_types.SafeModelNoExtra):
     service_account_json_secret_ref: SecretReference
 
 
+class RegistrySecretDockerAuth(custom_types.SafeModelNoExtra):
+    secret_ref: SecretReference
+
+
 class DockerAuth(custom_types.SafeModelNoExtra):
     auth_method: truss_config.DockerAuthType
     registry: str
@@ -116,6 +186,7 @@ class DockerAuth(custom_types.SafeModelNoExtra):
     gcp_service_account_json_docker_auth: Optional[GCPServiceAccountJSONDockerAuth] = (
         None
     )
+    registry_secret_docker_auth: Optional[RegistrySecretDockerAuth] = None
 
 
 class Image(custom_types.SafeModelNoExtra):
@@ -123,11 +194,33 @@ class Image(custom_types.SafeModelNoExtra):
     docker_auth: Optional[DockerAuth] = None
 
 
+class Workspace(custom_types.SafeModelNoExtra):
+    workspace_root: Optional[str] = None
+    external_dirs: List[str] = []
+    exclude_dirs: List[str] = []
+
+
 class TrainingJob(custom_types.SafeModelNoExtra):
     image: Image
     compute: Compute = Compute()
     runtime: Runtime = Runtime()
+    interactive_session: Optional[InteractiveSession] = None
     name: Optional[str] = None
+    workspace: Optional[Workspace] = None
+    weights: List[truss_config.WeightsSource] = []
+    """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
+
+    @model_validator(mode="after")
+    def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
+        """Training jobs only support CUSTOM_SECRET with auth_secret_name for weights; OIDC is not supported."""
+        for w in self.weights:
+            if w.auth is not None:
+                if w.auth.auth_method != truss_config.WeightsAuthMethod.CUSTOM_SECRET:
+                    raise ValueError(
+                        f"weight {w.source}: only auth_method CUSTOM_SECRET with auth_secret_name is supported for training jobs. "
+                        "OIDC (AWS_OIDC, GCP_OIDC) is not supported."
+                    )
+        return self
 
     def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
@@ -140,16 +233,18 @@ class TrainingProject(custom_types.SafeModelNoExtra):
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
     job: TrainingJob = pydantic.Field(exclude=True)
+    team_name: Optional[str] = None
 
 
 class Checkpoint(custom_types.ConfigModel, ABC):
     training_job_id: str
-    paths: List[str]
+    checkpoint_name: str
     model_weight_format: ModelWeightsFormat
 
     def to_truss_config(self) -> truss_config.TrainingArtifactReference:
         return truss_config.TrainingArtifactReference(
-            training_job_id=self.training_job_id, paths=self.paths
+            training_job_id=self.training_job_id,
+            paths=[f"rank-0/{self.checkpoint_name}/"],
         )
 
 
@@ -157,15 +252,6 @@ class LoRADetails(custom_types.ConfigModel):
     """Configuration details specific to LoRA (Low-Rank Adaptation) models."""
 
     rank: int = DEFAULT_LORA_RANK
-
-    @field_validator("rank")
-    @classmethod
-    def validate_lora_rank(cls, v):
-        if v not in ALLOWED_LORA_RANKS:
-            raise ValueError(
-                f"lora_rank ({v}) must be one of {sorted(ALLOWED_LORA_RANKS)}. Got {v}.model_weight_format = checkpoints[0].model_weight_format"
-            )
-        return v
 
 
 class FullCheckpoint(Checkpoint):
@@ -203,6 +289,5 @@ class DeployCheckpointsRuntime(custom_types.SafeModelNoExtra):
 class DeployCheckpointsConfig(custom_types.SafeModelNoExtra):
     checkpoint_details: Optional[CheckpointList] = None
     model_name: Optional[str] = None
-    deployment_name: Optional[str] = None
     runtime: Optional[DeployCheckpointsRuntime] = None
     compute: Optional[Compute] = None

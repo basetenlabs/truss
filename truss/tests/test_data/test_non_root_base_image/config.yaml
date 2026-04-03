@@ -1,0 +1,13 @@
+base_image:
+  image: baseten/truss-integration-tests:non-root-base-image-v1
+external_package_dirs: []
+model_metadata: {}
+model_name: Non Root Base Image
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+system_packages: []

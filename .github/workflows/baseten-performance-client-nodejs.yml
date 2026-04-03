@@ -1,26 +1,41 @@
 name: baseten-performance-client-nodejs
+
 defaults:
   run:
     working-directory: baseten-performance-client/node_bindings
+
 env:
   DEBUG: napi:*
   DISABLE_V8_COMPILE_CACHE: 1
   APP_NAME: performance-client
   MACOSX_DEPLOYMENT_TARGET: '10.13'
+
 permissions:
   contents: write
   id-token: write
-'on':
+
+on:
   push:
-    branches:
-      - main
-    tags-ignore:
-      - '**'
+    branches: [main]
+    tags-ignore: ['**']
     paths:
       - "baseten-performance-client/**"
       - ".github/workflows/**"
   pull_request: null
-  workflow_dispatch: null
+  workflow_dispatch:
+    inputs:
+      publish_type:
+        description: "Publish type (release, next, none)"
+        required: false
+        default: "none"
+        type: choice
+        options: ["release", "next", "none"]
+      auth_mode:
+        description: "Auth mode (oidc recommended; token fallback uses secrets.NPM_TOKEN)"
+        required: false
+        default: "oidc"
+        type: choice
+        options: ["oidc", "token"]
 jobs:
   build:
     strategy:
@@ -138,25 +153,28 @@ jobs:
           cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
           architecture: x86
       - name: Build in docker
-        uses: addnab/docker-run-action@v3
         if: ${{ matrix.settings.docker }}
-        with:
-          image: ${{ matrix.settings.docker }}
-          options: '--user 0:0 -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index -v ${{ github.workspace }}:/build -w /build/baseten-performance-client/node_bindings'
-          run: |
-            if command -v apk &> /dev/null; then
-              # Alpine-based image
-              apk add --no-cache perl openssl-dev build-base
-            elif command -v apt-get &> /dev/null; then
-              # Debian-based image
-              apt-get update && apt-get install -y perl libssl-dev libatomic-ops-dev
-            elif command -v yum &> /dev/null; then
+        run: |
+          docker run --rm --user 0:0 \
+            -v ${{ github.workspace }}/.cargo-cache/git/db:/usr/local/cargo/git/db \
+            -v ${{ github.workspace }}/.cargo/registry/cache:/usr/local/cargo/registry/cache \
+            -v ${{ github.workspace }}/.cargo/registry/index:/usr/local/cargo/registry/index \
+            -v ${{ github.workspace }}:/build \
+            -w /build/baseten-performance-client/node_bindings \
+            ${{ matrix.settings.docker }} \
+            bash -c '
+              if command -v apk &> /dev/null; then
+                apk add --no-cache perl openssl-dev build-base
+              elif command -v apt-get &> /dev/null; then
+                apt-get update && apt-get install -y perl libssl-dev libatomic-ops-dev
+              elif command -v yum &> /dev/null; then
                 yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
-            else
-              echo "Unsupported package manager. Please install perl and openssl-dev manually."
-              exit 1
-            fi
-            ${{ matrix.settings.build }}
+              else
+                echo "Unsupported package manager. Please install perl and openssl-dev manually."
+                exit 1
+              fi
+              ${{ matrix.settings.build }}
+            '
       - name: Build
         run: ${{ matrix.settings.build }}
         if: ${{ !matrix.settings.docker }}
@@ -367,15 +385,11 @@ jobs:
           platforms: arm64
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
       - name: Setup and run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: node:${{ matrix.node }}-slim
-          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/'
-          run: |
-            set -e
-            cp baseten_performance_client/node_bindings/*.node .
-            yarn test
-            ls -la
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/build -w /build/ \
+            node:${{ matrix.node }}-slim \
+            bash -c 'set -e && cp baseten_performance_client/node_bindings/*.node . && yarn test && ls -la'
   test-linux-aarch64-musl-binding:
     if: false # TODO: we don't compile for this yet
     name: Test bindings on aarch64-unknown-linux-musl - node@${{ matrix.node }}
@@ -403,14 +417,11 @@ jobs:
           platforms: arm64
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
       - name: Setup and run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: node:lts-alpine
-          options: '--platform linux/arm64 -v ${{ github.workspace }}:/build -w /build/'
-          run: |
-            set -e
-            cp baseten_performance_client/node_bindings/*.node .
-            yarn test
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/build -w /build/ \
+            node:lts-alpine \
+            sh -c 'set -e && cp baseten_performance_client/node_bindings/*.node . && yarn test'
   test-linux-arm-gnueabihf-binding:
     if: false # relative path issue.
     name: Test bindings on armv7-unknown-linux-gnueabihf - node@${{ matrix.node }}
@@ -443,17 +454,11 @@ jobs:
           platforms: arm
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
       - name: Setup and run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: node:${{ matrix.node }}-bullseye-slim
-          options: '--platform linux/arm/v7 -v ${{ github.workspace }}:/build -w /build/'
-          run: |
-            set -e
-            # cannot stat baseten_performance_client/node_bindings/*.node: No such file or directory
-            # --
-            cp baseten_performance_client/node_bindings/*.node .
-            yarn test
-            ls -la
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v ${{ github.workspace }}:/build -w /build/ \
+            node:${{ matrix.node }}-bullseye-slim \
+            bash -c 'set -e && cp baseten_performance_client/node_bindings/*.node . && yarn test && ls -la'
   universal-macOS:
     if: true # we currently do not compile this
     name: Build universal macOS binary
@@ -503,50 +508,91 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    # only run on tag or workflow_dispatch
-    # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    # Publish from manual dispatch OR tags (if you enable tag publishing later)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+    permissions:
+      contents: read
+      id-token: write
     needs:
-      # - build-freebsd
       - test-macOS-windows-binding
       - test-linux-x64-gnu-binding
       - test-linux-x64-musl-binding
-      # - test-linux-aarch64-gnu-binding
-      # - test-linux-aarch64-musl-binding
-      # - test-linux-arm-gnueabihf-binding
       - universal-macOS
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          registry-url: "https://registry.npmjs.org"
           cache: yarn
           cache-dependency-path: baseten-performance-client/node_bindings/yarn.lock
+
+      # Trusted publishing requires npm CLI 11.5.1+ (per npm docs)
+      - name: Upgrade npm (required for OIDC trusted publishing)
+        run: npm i -g npm@^11.5.1
+
       - name: Install dependencies
         run: yarn install
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: baseten-performance-client/node_bindings/artifacts
+
       - name: Move artifacts
-        run: yarn artifacts
+        run: |
+          # Skip prepublish script which doesn't support OIDC trusted publishing
+          npm config set ignore-scripts true
+          yarn artifacts
+          npm config set ignore-scripts false
+
       - name: List packages
         run: ls -R ./npm
         shell: bash
-      - name: Publish
+
+      # ---------- Option A: OIDC Trusted Publishing (recommended) ----------
+      - name: Publish (OIDC)
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.auth_mode == 'oidc' }}
         run: |
-          # npm config set provenance true
-          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
-          if git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+$";
-          then
-            npm publish --access public
-          elif git log -1 --pretty=%B | grep "^[0-9]\+\.[0-9]\+\.[0-9]\+";
-          then
-            npm publish --tag next --access public
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PUBLISH_TYPE="${{ github.event.inputs.publish_type }}"
           else
-            echo "Not a release, skipping publish"
+            PUBLISH_TYPE="release"
           fi
-          echo "publishing release anyways with --next for debugging. "
-          npm publish --access public || echo "publishing failed."
+
+          case "$PUBLISH_TYPE" in
+            release) TAG="latest" ;;
+            next) TAG="next" ;;
+            *) echo "Not a release, skipping publish"; exit 0 ;;
+          esac
+
+          # publish per-platform packages first
+          for dir in npm/*; do
+            (cd "$dir" && npm publish --ignore-scripts --provenance --tag "$TAG" --access public)
+          done
+
+          # then publish the root package
+          npm publish --ignore-scripts --provenance --tag "$TAG" --access public
+
+      # ---------- Option B: Token fallback (uses secrets.NPM_TOKEN) ----------
+      - name: Publish (token)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.auth_mode == 'token' }}
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          PUBLISH_TYPE="${{ github.event.inputs.publish_type }}"
+
+          case "$PUBLISH_TYPE" in
+            release) TAG="latest" ;;
+            next) TAG="next" ;;
+            *) echo "Not a release, skipping publish"; exit 0 ;;
+          esac
+
+          for dir in npm/*; do
+            (cd "$dir" && npm publish --ignore-scripts --tag "$TAG" --access public)
+          done
+
+          npm publish --ignore-scripts --tag "$TAG" --access public

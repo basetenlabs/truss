@@ -4,15 +4,20 @@ use anyhow::{Context, Result};
 use log::{info, warn};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
+use tokio::sync::mpsc;
 
 use crate::constants::*;
+use crate::metrics::MetricEvent;
 use crate::types::BasetenPointerManifest;
 
 /// Heuristic: Check if b10cache is faster than downloading by reading the first 128MB of a file in the cache.
 /// If the read speed is greater than e.g. 114MB/s, it returns true.
 /// If no file in the cache is larger than 128MB, it returns true.
 /// Otherwise, it returns false.
-pub async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Result<bool> {
+pub async fn is_b10cache_fast_heuristic(
+    manifest: &BasetenPointerManifest,
+    metrics_sender: mpsc::UnboundedSender<MetricEvent>,
+) -> Result<bool> {
     let desired_speed: f64 = *TRUSS_TRANSFER_B10FS_DESIRED_SPEED_MBPS;
 
     for bptr in &manifest.pointers {
@@ -37,6 +42,10 @@ pub async fn is_b10cache_fast_heuristic(manifest: &BasetenPointerManifest) -> Re
                         "b10cache: Read speed of {:.2} MB/s, desired: {:.2} MB/s",
                         speed, desired_speed
                     );
+
+                    // Record b10fs read speed
+                    let _ = metrics_sender.send(MetricEvent::B10fsReadSpeed(speed));
+
                     if speed > desired_speed {
                         return Ok(true); // Use b10cache
                     } else {

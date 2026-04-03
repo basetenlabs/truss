@@ -36,6 +36,7 @@ from truss.util import log_utils, user_config
 from truss.util import path as truss_path
 from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import code_gen
+from truss_chains.deployment.chain_gatherer import gather_chain
 
 if TYPE_CHECKING:
     from rich import console as rich_console
@@ -72,6 +73,38 @@ def _get_chain_root(entrypoint: Type[private_types.ABCChainlet]) -> pathlib.Path
         "be included as dependencies in the remote deployments and are importable)."
     )
     return chain_root
+
+
+def _collect_external_package_dirs(
+    chainlet_descriptors: Iterable[private_types.ChainletAPIDescriptor],
+) -> list[pathlib.Path]:
+    """Collect unique external_package_dirs from all chainlets.
+
+    Args:
+        chainlet_descriptors: Iterable of chainlet descriptors to collect from.
+
+    Returns:
+        List of unique absolute paths to external package directories.
+    """
+    seen: set[pathlib.Path] = set()
+    result: list[pathlib.Path] = []
+    for desc in chainlet_descriptors:
+        ext_dirs = desc.chainlet_cls.remote_config.docker_image.external_package_dirs
+        if not ext_dirs:
+            continue
+        for ext_dir in ext_dirs:
+            abs_path = pathlib.Path(ext_dir.abs_path)
+            if abs_path in seen:
+                continue
+            seen.add(abs_path)
+            result.append(abs_path)
+            if abs_path.name != "packages":
+                logging.warning(
+                    f'"{abs_path.name}" is a non-standard directory name for '
+                    f"external_package_dirs and may not work after a chain download. "
+                    f'Consider naming it "packages" instead.'
+                )
+    return result
 
 
 class ChainService(abc.ABC):
@@ -138,7 +171,12 @@ class ChainService(abc.ABC):
 
 def _generate_chainlet_artifacts(
     options: private_types.PushOptions, entrypoint: Type[private_types.ABCChainlet]
-) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact], bool]:
+) -> tuple[
+    b10_types.ChainletArtifact,
+    list[b10_types.ChainletArtifact],
+    bool,
+    Optional[private_types.ChainletAPIDescriptor],
+]:
     chain_root = _get_chain_root(entrypoint)
     entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
     dependency_artifacts: list[b10_types.ChainletArtifact] = []
@@ -192,7 +230,19 @@ def _generate_chainlet_artifacts(
 
     assert entrypoint_artifact is not None
 
-    return entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets
+    # Find the entrypoint descriptor
+    entrypoint_descriptor = None
+    for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
+        if chainlet_descriptor.chainlet_cls == entrypoint:
+            entrypoint_descriptor = chainlet_descriptor
+            break
+
+    return (
+        entrypoint_artifact,
+        dependency_artifacts,
+        has_engine_builder_chainlets,
+        entrypoint_descriptor,
+    )
 
 
 @framework.raise_validation_errors_before
@@ -201,19 +251,26 @@ def push(
     options: private_types.PushOptions,
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
-    entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets = (
-        _generate_chainlet_artifacts(options, entrypoint)
-    )
+    (
+        entrypoint_artifact,
+        dependency_artifacts,
+        has_engine_builder_chainlets,
+        entrypoint_descriptor,
+    ) = _generate_chainlet_artifacts(options, entrypoint)
     if options.only_generate_trusses:
         return None
     if isinstance(options, private_types.PushOptionsBaseten):
         if has_engine_builder_chainlets and not options.publish:
             raise public_types.ChainsDeploymentError(
                 "This chain contains engine builder chainlets. Development models are "
-                "not supportd, push with `--publish`."
+                "not supportd, push as a published deployment."
             )
         return _create_baseten_chain(
-            options, entrypoint_artifact, dependency_artifacts, progress_bar
+            options,
+            entrypoint_artifact,
+            dependency_artifacts,
+            progress_bar,
+            entrypoint_descriptor,
         )
     elif isinstance(options, private_types.PushOptionsLocalDocker):
         if has_engine_builder_chainlets:
@@ -279,7 +336,7 @@ def _push_service_docker(
     options: private_types.PushOptionsLocalDocker,
 ) -> str:
     th = truss_handle.TrussHandle(truss_dir)
-    th.add_secret(public_types._BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
+    th.add_secret(public_types.CHAIN_API_KEY_SECRET_NAME, options.baseten_chain_api_key)
     container = th.docker_run(
         local_port=None,
         detach=True,
@@ -369,16 +426,19 @@ def _create_docker_chain(
 class BasetenChainService(ChainService):
     _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
     _remote: b10_remote.BasetenRemote
+    _entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor]
 
     def __init__(
         self,
         name: str,
         chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
         remote: b10_remote.BasetenRemote,
+        entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
     ) -> None:
         super().__init__(name)
         self._chain_deployment_handle = chain_deployment_handle
         self._remote = remote
+        self._entrypoint_descriptor = entrypoint_descriptor
 
     @property
     def run_remote_url(self) -> str:
@@ -392,6 +452,13 @@ class BasetenChainService(ChainService):
             entity_version_id=handle.chain_deployment_id,
             is_draft=handle.is_draft,
         )
+
+    @property
+    def is_websocket(self) -> bool:
+        """Check if the entrypoint uses websockets."""
+        if self._entrypoint_descriptor is None:
+            return False
+        return self._entrypoint_descriptor.endpoint.is_websocket
 
     def run_remote(self, json_data: Dict) -> Any:
         """Invokes the entrypoint with JSON data.
@@ -462,15 +529,19 @@ def _create_baseten_chain(
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
     progress_bar: Optional[Type["progress.Progress"]],
+    entrypoint_descriptor: Optional[private_types.ChainletAPIDescriptor] = None,
 ):
     logging.info(
         f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
         f"(publish={baseten_options.publish}, environment={baseten_options.environment})."
     )
-    remote_provider = cast(
-        b10_remote.BasetenRemote,
-        remote_factory.RemoteFactory.create(remote=baseten_options.remote),
-    )
+    if baseten_options.remote_provider is not None:
+        remote_provider = baseten_options.remote_provider
+    else:
+        remote_provider = cast(
+            b10_remote.BasetenRemote,
+            remote_factory.RemoteFactory.create(remote=baseten_options.remote),
+        )
 
     if user_config.settings.include_git_info or baseten_options.include_git_info:
         truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
@@ -479,34 +550,39 @@ def _create_baseten_chain(
     else:
         truss_user_env = b10_types.TrussUserEnv.collect()
 
-    _create_chains_secret_if_missing(remote_provider)
+    # Get chain root for raw chain artifact upload
+    chain_root = None
+    if entrypoint_descriptor is not None:
+        chain_root = _get_chain_root(entrypoint_descriptor.chainlet_cls)
+
+        # Gather external packages from all chainlets into the chain archive.
+        # This ensures that when users download the chain, all external
+        # dependencies are included in the artifact.
+        all_external_dirs = _collect_external_package_dirs(
+            _get_ordered_dependencies([entrypoint_descriptor.chainlet_cls])
+        )
+        if all_external_dirs:
+            chain_root = gather_chain(chain_root, all_external_dirs)
 
     chain_deployment_handle = remote_provider.push_chain_atomic(
         baseten_options.chain_name,
         entrypoint_artifact,
         dependency_artifacts,
         truss_user_env,
+        chain_root=chain_root,
         publish=baseten_options.publish,
         environment=baseten_options.environment,
         progress_bar=progress_bar,
+        disable_chain_download=baseten_options.disable_chain_download,
+        deployment_name=baseten_options.deployment_name,
+        team_id=baseten_options.team_id,
     )
     return BasetenChainService(
-        baseten_options.chain_name, chain_deployment_handle, remote_provider
+        baseten_options.chain_name,
+        chain_deployment_handle,
+        remote_provider,
+        entrypoint_descriptor,
     )
-
-
-def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) -> None:
-    secrets_info = remote_provider.api.get_all_secrets()
-    secret_names = {sec["name"] for sec in secrets_info["secrets"]}
-    if public_types._BASETEN_API_SECRET_NAME not in secret_names:
-        logging.info(
-            "It seems you are using chains for the first time, since there "
-            f"is no `{public_types._BASETEN_API_SECRET_NAME}` secret on baseten. "
-            "Creating secret automatically."
-        )
-        remote_provider.api.upsert_secret(
-            public_types._BASETEN_API_SECRET_NAME, remote_provider.api.auth_token.value
-        )
 
 
 # Watch / Live Patching ################################################################
@@ -580,10 +656,10 @@ class _ModelWatcher:
         dev_version = b10_core.get_dev_version(self._remote_provider.api, model_name)
         if not dev_version:
             raise b10_errors.RemoteError(
-                "No development model found. Run `truss push` then try again."
+                "No development model found. Run `truss push --watch` then try again."
             )
 
-    def _patch(self) -> None:
+    def _patch(self) -> Optional[b10_remote.PatchResult]:
         exception_raised = None
         with (
             log_utils.LogInterceptor() as log_interceptor,
@@ -605,10 +681,15 @@ class _ModelWatcher:
         _handle_intercepted_logs(logs, self._console)
         if exception_raised:
             _handle_import_error(exception_raised, self._console, self._error_console)
+        return None
 
     def watch(self) -> None:
-        # Perform one initial patch at startup.
-        self._patch()
+        self._console.print("🚰 Attempting to sync truss with remote")
+        b10_remote.retry_patch(
+            patch_fn=self._patch,
+            console=self._console,
+            error_console=self._error_console,
+        )
         self._console.print("👀 Watching for new changes.", style="blue")
 
         # TODO(nikhil): Improve detection of directory structure, since right now
@@ -643,7 +724,10 @@ class _Watcher:
         error_console: "rich_console.Console",
         show_stack_trace: bool,
         included_chainlets: Optional[list[str]],
+        provided_team_name: Optional[str] = None,
     ) -> None:
+        from truss.cli.resolvers.chain_team_resolver import resolve_chain_for_watch
+
         self._source = source
         self._entrypoint = entrypoint
         self._console = console
@@ -674,13 +758,10 @@ class _Watcher:
         else:
             self._included_chainlets = chainlet_names
 
-        chain_id = b10_core.get_chain_id_by_name(
-            self._remote_provider.api, self._deployed_chain_name
+        resolved_chain = resolve_chain_for_watch(
+            self._remote_provider, self._deployed_chain_name, provided_team_name
         )
-        if not chain_id:
-            raise public_types.ChainsDeploymentError(
-                f"Chain `{self._deployed_chain_name}` was not found."
-            )
+        chain_id = resolved_chain["id"]
         self._status_page_url = b10_service.URLConfig.status_page_url(
             self._remote_provider.remote_url, b10_service.URLConfig.CHAIN, chain_id
         )
@@ -867,6 +948,7 @@ def watch(
     error_console: "rich_console.Console",
     show_stack_trace: bool,
     included_chainlets: Optional[list[str]],
+    provided_team_name: Optional[str] = None,
 ) -> None:
     console.print(
         (
@@ -884,6 +966,7 @@ def watch(
         error_console,
         show_stack_trace,
         included_chainlets,
+        provided_team_name,
     )
     patcher.watch()
 

@@ -1,4 +1,4 @@
-from typing import List, NamedTuple
+from typing import NamedTuple
 
 from pydantic import BaseModel
 from torch import Tensor
@@ -22,5 +22,5 @@ class Segment(BaseModel):
 
 
 class WhisperResult(BaseModel):
-    segments: List[Segment]
+    segments: list[Segment]
     language_code: str

@@ -1,3 +1,5 @@
+import os
+
 from truss.truss_handle.patch.dir_signature import directory_content_signature
 
 
@@ -12,7 +14,12 @@ def test_directory_content_signature(tmp_path):
 
     content_sign = directory_content_signature(root)
 
-    assert content_sign.keys() == {"dir", "dir/file3", "file1", "file2"}
+    assert content_sign.keys() == {
+        "dir",
+        os.path.join("dir", "file3"),
+        "file1",
+        "file2",
+    }
 
 
 def test_directory_content_signature_ignore_patterns(tmp_path):

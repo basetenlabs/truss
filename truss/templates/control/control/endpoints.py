@@ -1,10 +1,11 @@
 import asyncio
 import logging
-from typing import Any, Callable, Dict, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 import httpx
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
+from helpers.errors import ModelLoadFailed, ModelNotReady, PatchFailedRecoverable
 from httpx_ws import AsyncWebSocketSession, WebSocketDisconnect, aconnect_ws
 from httpx_ws import _exceptions as httpx_ws_exceptions
 from starlette.requests import ClientDisconnect, Request
@@ -12,11 +13,6 @@ from starlette.responses import Response
 from starlette.websockets import WebSocketDisconnect as StartletteWebSocketDisconnect
 from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
 from wsproto.events import BytesMessage, TextMessage
-
-from truss.templates.control.control.helpers.errors import (
-    ModelLoadFailed,
-    ModelNotReady,
-)
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 BASE_RETRY_EXCEPTIONS = (
@@ -119,13 +115,12 @@ async def proxy_http(request: Request):
 def inference_retries(
     retry_condition: Callable[[RetryCallState], bool] = BASE_RETRY_EXCEPTIONS,
 ):
-    for attempt in Retrying(
+    yield from Retrying(
         retry=retry_condition,
         stop=_custom_stop_strategy,
         wait=wait_fixed(1),
         reraise=True,
-    ):
-        yield attempt
+    )
 
 
 async def _safe_close_ws(
@@ -221,7 +216,7 @@ control_app.add_route("/metrics/", proxy_http, ["GET"])
 
 
 @control_app.post("/control/patch")
-async def patch(request: Request) -> Dict[str, str]:
+async def patch(request: Request) -> dict[str, str]:
     request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
     loop = asyncio.get_event_loop()
@@ -231,25 +226,37 @@ async def patch(request: Request) -> Dict[str, str]:
             patch_request
         ),
     )
+    # If all patches have hot_reload set, apply_patch above skipped the
+    # process restart, so signal the inference server to reload
+    patches = patch_request.get("patches", [])
+    if patches and all(p.get("body", {}).get("hot_reload", False) for p in patches):
+        client: httpx.AsyncClient = request.app.state.proxy_client
+        resp = await client.post("/hot-reload")
+        if resp.status_code == 422:
+            # User code error (syntax, missing class, etc.) — model is
+            # still running with the old code.
+            error_msg = resp.json().get("error", "unknown error")
+            raise PatchFailedRecoverable(f"Hot reload failed: {error_msg}")
+        resp.raise_for_status()
     request.app.state.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
 
 @control_app.get("/control/truss_hash")
-async def truss_hash(request: Request) -> Dict[str, Any]:
+async def truss_hash(request: Request) -> dict[str, Any]:
     t_hash = request.app.state.inference_server_controller.truss_hash()
     return {"result": t_hash}
 
 
 @control_app.post("/control/restart_inference_server")
-async def restart_inference_server(request: Request) -> Dict[str, str]:
+async def restart_inference_server(request: Request) -> dict[str, str]:
     request.app.state.inference_server_controller.restart()
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.get("/control/has_partially_applied_patch")
-async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
+async def has_partially_applied_patch(request: Request) -> dict[str, Any]:
     app_has_partially_applied_patch = (
         request.app.state.inference_server_controller.has_partially_applied_patch()
     )
@@ -257,7 +264,7 @@ async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
 
 
 @control_app.post("/control/stop_inference_server")
-async def stop_inference_server(request: Request) -> Dict[str, str]:
+async def stop_inference_server(request: Request) -> dict[str, str]:
     request.app.state.inference_server_controller.stop()
     return {"msg": "Inference server stopped successfully"}
 

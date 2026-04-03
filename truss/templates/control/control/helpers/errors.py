@@ -2,7 +2,7 @@ class Error(Exception):
     """Base Truss Error"""
 
     def __init__(self, message: str):
-        super(Error, self).__init__(message)
+        super().__init__(message)
         self.message = message
         self.type = type
 

@@ -1,7 +1,7 @@
 import multiprocessing
 import os
 import sys
-from typing import List
+from typing import Optional
 
 import psutil
 
@@ -55,14 +55,17 @@ def cpu_count():
     return count
 
 
-def all_processes_dead(procs: List[multiprocessing.Process]) -> bool:
+def all_processes_dead(procs: list[multiprocessing.Process]) -> bool:
     for proc in procs:
         if proc.is_alive():
             return False
     return True
 
 
-def kill_child_processes(parent_pid: int):
+def kill_child_processes(
+    parent_pid: int,
+    timeout_seconds: Optional[float] = CHILD_PROCESS_WAIT_TIMEOUT_SECONDS,
+):
     try:
         parent = psutil.Process(parent_pid)
     except psutil.NoSuchProcess:
@@ -70,8 +73,6 @@ def kill_child_processes(parent_pid: int):
     children = parent.children(recursive=True)
     for process in children:
         process.terminate()
-    gone, alive = psutil.wait_procs(
-        children, timeout=CHILD_PROCESS_WAIT_TIMEOUT_SECONDS
-    )
+    gone, alive = psutil.wait_procs(children, timeout=timeout_seconds)
     for process in alive:
         process.kill()

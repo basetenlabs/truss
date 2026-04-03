@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import configparser
 import json
 import logging
 import os
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
+import packaging.requirements
+import packaging.utils
 import packaging.version
 import yaml
 from botocore import UNSIGNED
@@ -24,14 +27,17 @@ from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
     BEI_REQUIRED_MAX_NUM_TOKENS,
-    BEI_TRTLLM_BASE_IMAGE,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     CHAINS_CODE_DIR,
+    CONSTRAINTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
+    DEFAULT_NON_ROOT_USER_ID,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_CACHE_PATH,
     MODEL_DOCKERFILE_NAME,
+    NO_BUILD_DOCKERFILE_TEMPLATE_NAME,
+    PYPROJECT_TOML_FILENAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -41,9 +47,7 @@ from truss.base.constants import (
     SUPPORTED_PYTHON_VERSIONS,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
-    TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     TRUSS_BASE_IMAGE_NAME,
     TRUSS_CODE_DIR,
@@ -57,8 +61,9 @@ from truss.base.trt_llm_config import (
 )
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
-    BaseImage,
+    K8S_RESERVED_ENVIRONMENT_VARIABLES,
     DockerServer,
+    RequirementsFileType,
     TrussConfig,
 )
 from truss.base.truss_spec import TrussSpec
@@ -93,16 +98,12 @@ USER_TRUSS_IGNORE_FILE = ".truss_ignore"
 GCS_CREDENTIALS = "service_account.json"
 S3_CREDENTIALS = "s3_credentials.json"
 
-HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
+HF_ACCESS_TOKEN_FILE_NAME = "hf_access_token"
 
 CLOUD_BUCKET_CACHE = MODEL_CACHE_PATH
 
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
-
-# PORT: knative reserved
-# HOSTNAME: set to the pod name by k8s
-K8S_RESERVED_ENVIRONMENT_VARIABLES = set(["PORT", "HOSTNAME"])
 
 
 class RemoteCache(ABC):
@@ -373,22 +374,62 @@ def generate_docker_server_nginx_config(build_dir, config):
         liveness_endpoint=config.docker_server.liveness_endpoint,
         server_port=config.docker_server.server_port,
         client_max_body_size=TRUSSLESS_MAX_PAYLOAD_SIZE,
+        transport_kind=config.runtime.transport.kind,
     )
     nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
 
 
 def generate_docker_server_supervisord_config(build_dir, config):
-    supervisord_template = read_template_from_fs(
-        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
-    )
+    """Generate supervisord.conf for docker_server deployments.
+
+    Uses configparser to properly handle multiline commands - configparser
+    automatically formats continuation lines with leading whitespace, which
+    supervisord's INI parser correctly interprets as multiline values.
+    """
     assert config.docker_server.start_command is not None, (
         "docker_server.start_command is required to use custom server"
     )
-    start_command = config.docker_server.start_command
-    supervisord_contents = supervisord_template.render(start_command=start_command)
+
+    cfg = configparser.ConfigParser()
+
+    cfg["supervisord"] = {
+        "pidfile": "/tmp/supervisord.pid",  # PID file in /tmp to be writable by non-root user
+        "nodaemon": "true",  # Run in foreground (required for containers)
+        "logfile": "/dev/null",  # Disable file logging
+        "logfile_maxbytes": "0",  # No size limit (logging disabled)
+    }
+
+    cfg["program:model-server"] = {
+        "command": config.docker_server.start_command,  # Command to start the model server
+        "startsecs": "30",  # Wait 30s before assuming server is running
+        "startretries": "0",  # Don't retry if server fails to start
+        "autostart": "true",  # Start automatically with supervisord
+        "autorestart": "false",  # Don't restart on exit
+        "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
+        "stdout_logfile_maxbytes": "0",  # No size limit on stdout
+        "redirect_stderr": "true",  # Combine stderr into stdout
+    }
+
+    cfg["program:nginx"] = {
+        "command": 'nginx -g "daemon off;"',  # Run nginx in foreground
+        "startsecs": "0",  # Assume nginx starts immediately
+        "autostart": "true",  # Start automatically with supervisord
+        "autorestart": "true",  # Always restart nginx on exit
+        "stdout_logfile": "/dev/fd/1",  # Log stdout to container stdout
+        "stdout_logfile_maxbytes": "0",  # No size limit on stdout
+        "redirect_stderr": "true",  # Combine stderr into stdout
+    }
+
+    cfg["eventlistener:quit_on_failure"] = {
+        "events": "PROCESS_STATE_FATAL,PROCESS_STATE_EXITED",  # Listen for fatal process events
+        # Stop supervisord (SIGTERM to PID 1) on fatal event
+        "command": """sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'""",
+    }
+
     supervisord_filepath = build_dir / "supervisord.conf"
-    supervisord_filepath.write_text(supervisord_contents)
+    with open(supervisord_filepath, "w") as f:
+        cfg.write(f)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -484,16 +525,53 @@ class ServingImageBuilder(ImageBuilder):
         )
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `BEI_TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        if not (
-            config.base_image and config.base_image.image.startswith("baseten/bei")
-        ):
-            config.base_image = BaseImage(
-                image=BEI_TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
-            )
+    def prepare_trtllm_bert_encoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
+        config = self._spec.config
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT
+        ), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER_BERT tensorrt-llm model"
+        )
+        assert isinstance(config.trt_llm.root, TRTLLMConfigurationV1), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for inference_stack v1 tensorrt-llm model"
+        )
+        trt_llm_config: TRTLLMConfigurationV1 = config.trt_llm.root
+        # limit to 1024 as server can go OOM at unlimited batch sizes
+        runtime_max_batch_size = min(trt_llm_config.build.max_batch_size, 1024)
+        # make sure the user gets good performance, enforcing max_num_tokens here
+        runtime_max_batch_tokens = max(trt_llm_config.build.max_num_tokens, 1024)
+        port = 7997
+        start_command = " ".join(
+            [
+                "truss-transfer-cli /tmp/bei-model && text-embeddings-router --model-id /tmp/bei-model",
+                f"--port {port}",
+                # assert the max_batch_size is within trt-engine limits
+                f"--max-batch-requests {runtime_max_batch_size}",
+                # assert the max_num_tokens is within trt-engine limits
+                f"--max-batch-tokens {runtime_max_batch_tokens}",
+                # how many sentences can be in a single json payload.
+                # limited default to improve/enforce request based autoscaling.
+                f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
+                # how many concurrent requests can be handled by the server until 429 is returned.
+                # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
+                # 2048 is a safe max value for the server
+                f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
+                "--auto-truncate",
+            ]
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command=f"/bin/sh -c '{start_command}'",
+            server_port=port,
+            # mount the following predict endpoint location
+            predict_endpoint=trt_llm_config.runtime.webserver_default_route
+            or "/v1/embeddings",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
@@ -501,7 +579,8 @@ class ServingImageBuilder(ImageBuilder):
         assert (
             config.trt_llm
             and config.trt_llm.build
-            and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+            and config.trt_llm.build.base_model
+            not in [TrussTRTLLMModel.ENCODER, TrussTRTLLMModel.ENCODER_BERT]
         ), (
             "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
         )
@@ -527,17 +606,6 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
-        # Flex builds fill in the latest image during `docker_build_setup` on the
-        # baseten backend. So only the image is not set, we use the constant
-        # `TRTLLM_BASE_IMAGE` bundled in this context builder. If everyone uses flex
-        # builds, we can remove the constant and setting the image here.
-        if not (
-            config.base_image
-            and config.base_image.image.startswith("baseten/briton-server:")
-        ):
-            config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
-            )
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
@@ -574,10 +642,16 @@ class ServingImageBuilder(ImageBuilder):
                 if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
                     # Run the specific encoder build
                     self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
+                elif config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER_BERT:
+                    # Run the specific encoder_bert build
+                    self.prepare_trtllm_bert_encoder_build_dir(build_dir=build_dir)
                 else:
                     self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
-        if config.docker_server is not None:
+        if (
+            config.docker_server is not None
+            and config.docker_server.no_build is not True
+        ):
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
                 build_dir,
@@ -587,6 +661,14 @@ class ServingImageBuilder(ImageBuilder):
             generate_docker_server_nginx_config(build_dir, config)
 
             generate_docker_server_supervisord_config(build_dir, config)
+
+            # Copy event listener script
+            event_listener_script = (
+                TEMPLATES_DIR / "docker_server" / "event_listener.py"
+            )
+            self._copy_into_build_dir(
+                event_listener_script, build_dir, "event_listener.py"
+            )
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
@@ -676,29 +758,41 @@ class ServingImageBuilder(ImageBuilder):
             # only install user-provided python requirements
             user_provided_python_requirements = spec.requirements_txt
         else:
-            # If the user has provided python requirements,
-            # append the truss server requirements, so that any conflicts
-            # are detected and cause a build failure. If there are no
-            # requirements provided, we just pass an empty string,
-            # as there's no need to install anything.
-            # TODO (BT-10217): above reasoning leads to inconsistencies. To get consistent
-            #  images tentatively add server requirements always. This whole point needs
-            #  more thought and potentially a re-design.
+            # Remove base server requirements that the user also specifies
+            # (via requirements list or requirements_file), so pip doesn't
+            # see conflicting pins. constraints.txt still bounds the versions
+            # regardless of who specifies the package. Note: -r includes in
+            # user requirements files are not expanded, so those packages
+            # won't be subtracted.
+            user_requirements = spec.requirements + config.load_requirements_from_file(
+                truss_dir
+            )
+            base_server_requirements = _subtract_user_requirements(
+                base_server_requirements, user_requirements
+            )
+            # Concatenate base server requirements with user requirements
+            # provided directly in config.yaml's "requirements" list.
+            # requirements_file is handled separately in the Dockerfile.
             user_provided_python_requirements = (
                 base_server_requirements + spec.requirements_txt
                 if spec.requirements
                 else base_server_requirements
             )
-        if spec.requirements_file is not None:
-            self._copy_into_build_dir(
-                truss_dir / spec.requirements_file,
-                build_dir,
-                USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
-            )
+
+        if spec.requirements_file:
+            self._copy_requirements_files(truss_dir, spec, build_dir)
+
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
             user_provided_python_requirements
         )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
+
+        # Copy constraints file to bound versions for user-overridden packages.
+        self._copy_into_build_dir(
+            SERVER_CODE_DIR / CONSTRAINTS_TXT_FILENAME,
+            build_dir,
+            CONSTRAINTS_TXT_FILENAME,
+        )
 
         self._render_dockerfile(
             build_dir,
@@ -710,6 +804,32 @@ class ServingImageBuilder(ImageBuilder):
             self._spec.build_commands,
         )
         self._setup_build_hash_directory(build_dir)
+
+    def _copy_requirements_files(
+        self, truss_dir: Path, spec: TrussSpec, build_dir: Path
+    ) -> None:
+        # NB(nikhil): Typically checked by caller, but required for type constraining here.
+        if not spec.requirements_file:
+            return None
+
+        req_file_type = spec.requirements_file_type
+        # For pip, use the legacy build dir name; otherwise preserve the filename.
+        build_filename = Path(spec.requirements_file).name
+        if req_file_type == RequirementsFileType.PIP:
+            build_filename = USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
+
+        self._copy_into_build_dir(
+            truss_dir / spec.requirements_file, build_dir, build_filename
+        )
+
+        # NB(nikhil): uv.lock requires a sibling pyproject.toml
+        if req_file_type == RequirementsFileType.UV_LOCK:
+            pyproject_path = (
+                truss_dir / spec.requirements_file
+            ).parent / PYPROJECT_TOML_FILENAME
+            self._copy_into_build_dir(
+                pyproject_path, build_dir, PYPROJECT_TOML_FILENAME
+            )
 
     def _setup_build_hash_directory(self, build_dir: Path) -> None:
         build_hash_path = build_dir / "build_hash"
@@ -750,12 +870,21 @@ class ServingImageBuilder(ImageBuilder):
         build_commands: List[str],
     ):
         config = self._spec.config
+
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        dockerfile_template = read_template_from_fs(
-            TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
-        )
+
+        # Note: no-build deployment template doesn't use most of the template variables,
+        # because it tries to run the base image as-is to the extent possible.
+        if config.docker_server and config.docker_server.no_build:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, NO_BUILD_DOCKERFILE_TEMPLATE_NAME
+            )
+        else:
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
+            )
         python_version = truss_config.to_dotted_python_version(config.python_version)
         if config.base_image:
             base_image_name_and_tag = config.base_image.image
@@ -772,10 +901,6 @@ class ServingImageBuilder(ImageBuilder):
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
-        should_install_user_requirements_file = file_is_not_empty(
-            build_dir / USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
-        )
-
         min_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[0])
         max_py_version = packaging.version.parse(SUPPORTED_PYTHON_VERSIONS[-1])
 
@@ -784,10 +909,14 @@ class ServingImageBuilder(ImageBuilder):
             config
         )
 
-        non_root_user = os.getenv("BT_USE_NON_ROOT_USER", False)
-        enable_model_container_admin_commands = os.getenv(
-            "BT_ENABLE_MODEL_CONTAINER_ADMIN_CMDS"
-        )
+        docker_server = config.docker_server
+        if docker_server and docker_server.run_as_user_id:
+            run_as_user_id = docker_server.run_as_user_id
+        elif os.getenv("BT_USE_NON_ROOT_USER", False):
+            run_as_user_id = DEFAULT_NON_ROOT_USER_ID
+        else:
+            run_as_user_id = 0
+
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -798,7 +927,7 @@ class ServingImageBuilder(ImageBuilder):
             supported_python_major_version_in_custom_base_image=min_py_version.major,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
-            should_install_user_requirements_file=should_install_user_requirements_file,
+            requirements_file_type=config.requirements_file_type.value,
             config=config,
             python_version=python_version,
             control_python_version=SUPPORTED_PYTHON_VERSIONS[-1],  # Use highest.
@@ -815,14 +944,15 @@ class ServingImageBuilder(ImageBuilder):
             credentials_to_cache=get_credentials_to_cache(data_dir),
             model_cache_v1=config.model_cache.is_v1,
             model_cache_v2=config.model_cache.is_v2,
+            copy_truss_transfer_cli=config.model_cache.is_v2
+            or config.trt_llm is not None,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
             build_commands=build_commands,
             use_local_src=config.use_local_src,
             passthrough_environment_variables=passthrough_environment_variables,
-            non_root_user=non_root_user,
-            enable_model_container_admin_commands=enable_model_container_admin_commands,
+            run_as_user_id=run_as_user_id,
             **FILENAME_CONSTANTS_MAP,
         )
         # Consolidate repeated empty lines to single empty lines.
@@ -831,3 +961,43 @@ class ServingImageBuilder(ImageBuilder):
         ).strip()
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
+
+
+def _parse_requirement_package_name(req_line: str) -> Optional[str]:
+    """Extract normalized package name from a requirements line.
+
+    Returns None for comments, blank lines, flags (-i, -c, etc.), and
+    anything else that isn't a valid PEP 508 dependency specifier.
+    """
+    # Strip inline comments (whitespace + #); preserve # in URLs/fragments
+    line = re.split(r"\s+#", req_line)[0].strip()
+    if not line or line.startswith("#"):
+        return None
+    try:
+        return packaging.utils.canonicalize_name(
+            packaging.requirements.Requirement(line).name
+        )
+    except Exception:
+        return None
+
+
+def _subtract_user_requirements(
+    base_requirements: str, user_requirements: List[str]
+) -> str:
+    """Remove lines from base_requirements whose package name appears in user_requirements."""
+    user_package_names = set()
+    for req in user_requirements:
+        name = _parse_requirement_package_name(req)
+        if name:
+            user_package_names.add(name)
+
+    if not user_package_names:
+        return base_requirements
+
+    filtered_lines = []
+    for line in base_requirements.splitlines():
+        name = _parse_requirement_package_name(line)
+        if name and name in user_package_names:
+            continue
+        filtered_lines.append(line)
+    return "\n".join(filtered_lines) + "\n"

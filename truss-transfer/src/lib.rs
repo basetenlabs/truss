@@ -5,12 +5,15 @@
 // Module declarations
 mod bindings;
 mod cache;
+mod cloud_range_download;
 mod constants;
 mod core;
 mod create;
 mod download;
 mod download_core;
 mod hf_transfer;
+mod metrics;
+mod multimodal_processor;
 mod secrets;
 mod speed_checks;
 mod types;
@@ -65,6 +68,7 @@ mod tests {
                 future_timestamp,
             )),
             uid: "123".into(),
+            last_modified_time: None,
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
@@ -92,6 +96,7 @@ mod tests {
                 past_timestamp,
             )),
             uid: "123".into(),
+            last_modified_time: None,
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
             hash: "abcdef".into(),
@@ -117,6 +122,7 @@ mod tests {
             )),
             uid: "123".into(),
             file_name: "file.txt".into(),
+            last_modified_time: None,
             hashtype: "sha256".into(),
             hash: "abc/def".into(), // Invalid hash with slash
             size: 1024,
@@ -143,6 +149,7 @@ mod tests {
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "abcdef".into(),
             size: 1024,
             runtime_secret_name: "hf_access_token".into(),
@@ -171,6 +178,7 @@ mod tests {
                 file_name: "file1.txt".into(),
                 hashtype: "sha256".into(),
                 hash: "hash1".into(),
+                last_modified_time: None,
                 size: 1024,
                 runtime_secret_name: "hf_access_token".into(),
             }],
@@ -187,6 +195,7 @@ mod tests {
                 file_name: "file2.txt".into(),
                 hashtype: "sha256".into(),
                 hash: "hash2".into(),
+                last_modified_time: None,
                 size: 2048,
                 runtime_secret_name: "hf_access_token".into(),
             }],
@@ -221,6 +230,7 @@ mod tests {
             uid: "123".into(),
             file_name: "file.txt".into(),
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "samehash".into(),
             size: 1024,
             runtime_secret_name: "hf_access_token".into(),
@@ -254,6 +264,7 @@ mod tests {
             )),
             uid: "123".into(),
             file_name: "file.txt".into(),
+            last_modified_time: None,
             hashtype: "sha256".into(),
             hash: "hash1".into(),
             size: 1024,
@@ -268,6 +279,7 @@ mod tests {
             uid: "456".into(),
             file_name: "file.txt".into(), // Same name
             hashtype: "sha256".into(),
+            last_modified_time: None,
             hash: "hash2".into(), // Different hash
             size: 2048,
             runtime_secret_name: "hf_access_token".into(),
@@ -312,6 +324,7 @@ mod tests {
                     uid: "123".into(),
                     file_name: "file1.txt".into(),
                     hashtype: "sha256".into(),
+                    last_modified_time: None,
                     hash: "hash1".into(),
                     size: 1024,
                     runtime_secret_name: "hf_access_token".into(),
@@ -325,6 +338,7 @@ mod tests {
                     file_name: "file2.txt".into(),
                     hashtype: "sha256".into(),
                     hash: "hash2".into(),
+                    last_modified_time: None,
                     size: 2048,
                     runtime_secret_name: "hf_access_token".into(),
                 },
@@ -345,7 +359,7 @@ mod tests {
         assert_eq!(*CACHE_DIR, "/cache/org/artifacts/truss_transfer_managed_v1");
         assert_eq!(*TRUSS_TRANSFER_NUM_WORKERS, 6);
         assert_eq!(*TRUSS_TRANSFER_B10FS_CLEANUP_HOURS, 4 * 24);
-        assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 400.0);
+        assert_eq!(TRUSS_TRANSFER_B10FS_DOWNLOAD_SPEED_MBPS, 600.0);
         assert_eq!(TRUSS_TRANSFER_B10FS_MIN_REQUIRED_AVAILABLE_SPACE_GB, 100);
         assert_eq!(B10FS_BENCHMARK_SIZE, 128 * 1024 * 1024);
 

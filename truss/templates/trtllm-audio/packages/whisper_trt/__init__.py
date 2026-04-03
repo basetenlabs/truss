@@ -26,7 +26,7 @@ SEGMENTS_PATTERN = re.compile(r"<\|([\d.]+)\|>([^<]+)<\|([\d.]+)\|>")
 LANG_CODE_PATTERN = re.compile(r"<\|([a-z]{2})\|>")
 
 
-class WhisperModel(object):
+class WhisperModel:
     def __init__(
         self,
         engine_dir,

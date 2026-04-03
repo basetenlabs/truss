@@ -59,6 +59,10 @@ impl CloudMetadataProvider for GcsProvider {
             .unwrap_or_else(|| format!("gcs-{}", rand::random::<u64>()))
     }
 
+    fn last_modified_time(&self, meta: &object_store::ObjectMeta) -> chrono::DateTime<chrono::Utc> {
+        meta.last_modified
+    }
+
     fn generate_uid(&self, _bucket: &str, _object_path: &str, hash: &str) -> String {
         format!("gcs-{hash}")
     }

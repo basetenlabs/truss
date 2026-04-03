@@ -8,6 +8,10 @@ from httpx_ws import AsyncWebSocketSession
 from httpx_ws import _exceptions as httpx_ws_exceptions
 from wsproto.events import BytesMessage, TextMessage
 
+from truss.tests.templates.control.control.conftest import setup_control_imports
+
+setup_control_imports()
+
 from truss.templates.control.control.endpoints import proxy_ws
 
 

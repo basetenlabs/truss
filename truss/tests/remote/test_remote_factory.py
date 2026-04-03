@@ -25,6 +25,22 @@ SAMPLE_TRUSSRC_NO_PARAMS = """
 remote_provider=test_remote
 """
 
+SAMPLE_TRUSSRC_WITH_TEAM = """
+[test_team]
+remote_provider=test_remote
+api_key=test_key
+remote_url=http://test.com
+team=my-team-name
+"""
+
+SAMPLE_TRUSSRC_WITH_TEAM_SPACES = """
+[test_team_spaces]
+remote_provider=test_remote
+api_key=test_key
+remote_url=http://test.com
+team=my team with spaces
+"""
+
 SAMPLE_TRUSSRC_EXTRA_PARAM = """
 [test_extra]
 remote_provider=test_remote
@@ -144,3 +160,43 @@ def test_create_no_remote_param(mock_exists, mock_open):
 def test_create_missing_required_param(mock_exists, mock_open):
     with pytest.raises(ValueError, match="Missing required parameter"):
         RemoteFactory.create("test")
+
+
+@mock.patch(
+    "builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC_WITH_TEAM
+)
+@mock.patch("pathlib.Path.exists", return_value=True)
+def test_get_remote_team_returns_team_when_configured(mock_exists, mock_open):
+    team = RemoteFactory.get_remote_team("test_team")
+    assert team == "my-team-name"
+
+
+@mock.patch("builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC)
+@mock.patch("pathlib.Path.exists", return_value=True)
+def test_get_remote_team_returns_none_when_not_configured(mock_exists, mock_open):
+    team = RemoteFactory.get_remote_team("test")
+    assert team is None
+
+
+@mock.patch("pathlib.Path.exists", return_value=False)
+def test_get_remote_team_returns_none_when_file_not_found(mock_exists):
+    team = RemoteFactory.get_remote_team("nonexistent")
+    assert team is None
+
+
+@mock.patch("builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC)
+@mock.patch("pathlib.Path.exists", return_value=True)
+def test_get_remote_team_returns_none_when_remote_not_found(mock_exists, mock_open):
+    team = RemoteFactory.get_remote_team("nonexistent_remote")
+    assert team is None
+
+
+@mock.patch(
+    "builtins.open",
+    new_callable=mock.mock_open,
+    read_data=SAMPLE_TRUSSRC_WITH_TEAM_SPACES,
+)
+@mock.patch("pathlib.Path.exists", return_value=True)
+def test_get_remote_team_returns_team_with_spaces(mock_exists, mock_open):
+    team = RemoteFactory.get_remote_team("test_team_spaces")
+    assert team == "my team with spaces"

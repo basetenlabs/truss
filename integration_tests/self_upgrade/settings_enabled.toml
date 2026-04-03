@@ -1,0 +1,3 @@
+[preferences]
+check_for_updates = true
+include_git_info = false

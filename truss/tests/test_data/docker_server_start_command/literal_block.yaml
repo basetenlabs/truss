@@ -1,0 +1,7 @@
+docker_server:
+  start_command: |
+    sh -c "export VAR=value"
+  server_port: 8000
+  predict_endpoint: /v1/chat/completions
+  readiness_endpoint: /health
+  liveness_endpoint: /health

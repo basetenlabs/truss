@@ -1,0 +1,14 @@
+base_image:
+  image: baseten/truss-integration-tests:sys-managed-python-v1
+  python_executable_path: /usr/bin/python3
+external_package_dirs: []
+model_metadata: {}
+model_name: Sys Managed Python Base Image
+requirements:
+- requests==2.32.5
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+system_packages: []

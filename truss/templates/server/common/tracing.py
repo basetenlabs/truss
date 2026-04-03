@@ -4,7 +4,8 @@ import logging
 import os
 import pathlib
 import time
-from typing import Iterator, List, Optional, Sequence
+from collections.abc import Iterator, Sequence
+from typing import Optional
 
 import opentelemetry.exporter.otlp.proto.http.trace_exporter as oltp_exporter
 import opentelemetry.sdk.resources as resources
@@ -66,7 +67,7 @@ def get_truss_tracer(secrets: secrets_resolver.Secrets, config) -> trace.Tracer:
     if _truss_tracer:
         return _truss_tracer
 
-    span_processors: List[sdk_trace.SpanProcessor] = []
+    span_processors: list[sdk_trace.SpanProcessor] = []
     if otlp_endpoint := os.getenv(OTEL_EXPORTER_OTLP_ENDPOINT):
         if enable_tracing_data:
             logger.info(f"Exporting trace data to {OTEL_EXPORTER_OTLP_ENDPOINT}.")

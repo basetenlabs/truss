@@ -26,7 +26,6 @@ brew install asdf
 
 # Install `asdf` managed python and uv
 asdf plugin add uv
-asdf plugin add uv
 asdf install
 
 # Install uv dependencies
@@ -50,6 +49,6 @@ uv run git commit
 
 ## Documentation
 
-To learn about Truss see the [official documentation](https://truss.baseten.co).
+To learn about Truss see the [official documentation](https://docs.baseten.co/truss/overview).
 
 Contributions to documentation are very welcome! Simply edit the appropriate markdown files in the `docs/` folder and make a pull request. For larger changes, tutorials, or any questions please contact [team@trussml.com](mailto:team@trussml.com).

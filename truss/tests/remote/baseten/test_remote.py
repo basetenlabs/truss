@@ -1,3 +1,6 @@
+from unittest import mock
+from unittest.mock import MagicMock, patch
+
 import pydantic
 import pytest
 import requests_mock
@@ -11,16 +14,18 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
-from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
 from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
 
-
-@pytest.fixture
-def remote():
-    return BasetenRemote(_TEST_REMOTE_URL, "api_key")
+TRUSS_RC_CONTENT = """
+[baseten]
+remote_provider = baseten
+api_key = test_key
+remote_url = http://test.com
+""".strip()
 
 
 def assert_request_matches_expected_query(request, expected_query) -> None:
@@ -60,19 +65,35 @@ def test_get_service_by_model_name(remote):
         {"id": "2", "is_draft": False, "is_primary": True},
         {"id": "3", "is_draft": True, "is_primary": False},
     ]
-    model_response = {
+
+    # Mock responses for the new team disambiguation flow
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
+            "models": [
+                {
+                    "name": "model_name",
+                    "id": "model_id",
+                    "hostname": "hostname",
+                    "team": {"id": "team1", "name": "Team Alpha"},
+                    "versions": versions,
+                }
+            ]
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": teams_response},
+                {"json": models_response},
+                {"json": teams_response},
+                {"json": models_response},
+            ],
+        )
 
         # Check that the production version is returned when published is True.
         service = remote.get_service(
@@ -91,19 +112,35 @@ def test_get_service_by_model_name(remote):
 
 def test_get_service_by_model_name_no_dev_version(remote):
     versions = [{"id": "1", "is_draft": False, "is_primary": True}]
-    model_response = {
+
+    # Mock responses for the new team disambiguation flow
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
+            "models": [
+                {
+                    "name": "model_name",
+                    "id": "model_id",
+                    "hostname": "hostname",
+                    "team": {"id": "team1", "name": "Team Alpha"},
+                    "versions": versions,
+                }
+            ]
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": teams_response},
+                {"json": models_response},
+                {"json": teams_response},
+                {"json": models_response},
+            ],
+        )
 
         # Check that the production version is returned when published is True.
         service = remote.get_service(
@@ -122,19 +159,35 @@ def test_get_service_by_model_name_no_dev_version(remote):
 
 def test_get_service_by_model_name_no_prod_version(remote):
     versions = [{"id": "1", "is_draft": True, "is_primary": False}]
-    model_response = {
+
+    # Mock responses for the new team disambiguation flow
+    teams_response = {
+        "data": {"teams": [{"id": "team1", "name": "Team Alpha", "default": False}]}
+    }
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "hostname": "hostname",
-                "versions": versions,
-            }
+            "models": [
+                {
+                    "name": "model_name",
+                    "id": "model_id",
+                    "hostname": "hostname",
+                    "team": {"id": "team1", "name": "Team Alpha"},
+                    "versions": versions,
+                }
+            ]
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": teams_response},
+                {"json": models_response},
+                {"json": teams_response},
+                {"json": models_response},
+            ],
+        )
 
         # Since no production version exists, calling get_service with
         # published=True should raise an error.
@@ -269,30 +322,42 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
             )
 
 
-def test_create_chain_with_no_publish(remote):
-    with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            [
-                {"json": {"data": {"chains": []}}},
-                {
-                    "json": {
-                        "data": {
-                            "deploy_chain_atomic": {
-                                "chain_deployment": {
-                                    "id": "new-chain-deployment-id",
-                                    "chain": {
-                                        "id": "new-chain-id",
-                                        "hostname": "hostname",
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-            ],
+@pytest.mark.parametrize("deploy_timeout_minutes", [9, 1441])
+def test_push_raised_value_error_when_deploy_timeout_minutes_is_invalid(
+    deploy_timeout_minutes, custom_model_truss_dir_with_pre_and_post, remote
+):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+    with pytest.raises(
+        ValueError,
+        match="deploy-timeout-minutes must be between 10 minutes and 1440 minutes \(24 hours\)",
+    ):
+        remote.push(
+            th,
+            "model_name",
+            th.truss_dir,
+            publish=True,
+            promote=False,
+            preserve_previous_prod_deployment=False,
+            deployment_name="dep_name",
+            deploy_timeout_minutes=deploy_timeout_minutes,
         )
 
+
+def test_create_chain_with_no_publish(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with (
+        mock.patch.object(remote.api, "get_chains", return_value=[]) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="draft_chain",
@@ -310,64 +375,62 @@ def test_create_chain_with_no_publish(remote):
             environment=None,
         )
 
-        get_chains_graphql_request = m.request_history[0]
-        create_chain_graphql_request = m.request_history[1]
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "draft_chain"
+        assert call_kwargs.get("is_draft") is True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
 
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
-        )
-
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
-
-        # Note that if publish=False and promote=True, we set publish to True and create
-        # a non-draft deployment
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_name: "draft_chain"
-                    is_draft: true
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
 def test_create_chain_no_existing_chain(remote):
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
+
+    with (
+        mock.patch.object(remote.api, "get_chains", return_value=[]) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
+        deployment_handle = create_chain_atomic(
+            api=remote.api,
+            chain_name="new_chain",
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                ),
+            ),
+            dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
+            is_draft=False,
+            environment=None,
+        )
+
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
+
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_name"] == "new_chain"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_with_deployment_name(remote):
     with requests_mock.Mocker() as m:
         m.post(
             _TEST_REMOTE_GRAPHQL_PATH,
@@ -391,7 +454,8 @@ def test_create_chain_no_existing_chain(remote):
             ],
         )
 
-        deployment_handle = create_chain_atomic(
+        deployment_name = "chain-deployment"
+        create_chain_atomic(
             api=remote.api,
             chain_name="new_chain",
             entrypoint=ChainletDataAtomic(
@@ -406,94 +470,35 @@ def test_create_chain_no_existing_chain(remote):
             truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=False,
             environment=None,
+            deployment_name=deployment_name,
         )
 
-        get_chains_graphql_request = m.request_history[0]
         create_chain_graphql_request = m.request_history[1]
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
-
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
+        assert (
+            'deployment_name: "chain-deployment"'
+            in create_chain_graphql_request.json()["query"]
         )
-
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
-
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_name: "new_chain"
-                    is_draft: false
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
-
-        assert deployment_handle.chain_id == "new-chain-id"
-        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
 def test_create_chain_with_existing_chain_promote_to_environment_publish_false(remote):
-    with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            [
-                {
-                    "json": {
-                        "data": {
-                            "chains": [{"id": "old-chain-id", "name": "old_chain"}]
-                        }
-                    }
-                },
-                {
-                    "json": {
-                        "data": {
-                            "deploy_chain_atomic": {
-                                "chain_deployment": {
-                                    "id": "new-chain-deployment-id",
-                                    "chain": {
-                                        "id": "new-chain-id",
-                                        "hostname": "hostname",
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-            ],
-        )
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
 
+    with (
+        mock.patch.object(
+            remote.api,
+            "get_chains",
+            return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+        ) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",
@@ -511,95 +516,37 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false(r
             environment="production",
         )
 
-        get_chains_graphql_request = m.request_history[0]
-        create_chain_graphql_request = m.request_history[1]
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
-
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
-        )
-
-        # Note that if publish=False and environment!=None, we set publish to True and create
-        # a non-draft deployment
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
-
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_id: "old-chain-id"
-                    environment: "production"
-                    is_draft: false
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_id"] == "old-chain-id"
+        assert call_kwargs["environment"] == "production"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
 
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
 def test_create_chain_existing_chain_publish_true_no_promotion(remote):
-    with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            [
-                {
-                    "json": {
-                        "data": {
-                            "chains": [{"id": "old-chain-id", "name": "old_chain"}]
-                        }
-                    }
-                },
-                {
-                    "json": {
-                        "data": {
-                            "deploy_chain_atomic": {
-                                "chain_deployment": {
-                                    "id": "new-chain-deployment-id",
-                                    "chain": {
-                                        "id": "new-chain-id",
-                                        "hostname": "hostname",
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-            ],
-        )
+    mock_deploy_response = {
+        "chain_deployment": {
+            "id": "new-chain-deployment-id",
+            "chain": {"id": "new-chain-id", "hostname": "hostname"},
+        }
+    }
 
+    with (
+        mock.patch.object(
+            remote.api,
+            "get_chains",
+            return_value=[{"id": "old-chain-id", "name": "old_chain"}],
+        ) as mock_get_chains,
+        mock.patch.object(
+            remote.api, "deploy_chain_atomic", return_value=mock_deploy_response
+        ) as mock_deploy,
+    ):
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",
@@ -617,57 +564,13 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
             environment=None,
         )
 
-        get_chains_graphql_request = m.request_history[0]
-        create_chain_graphql_request = m.request_history[1]
+        mock_get_chains.assert_called_once()
+        mock_deploy.assert_called_once()
 
-        expected_get_chains_query = """
-            {
-                chains {
-                    id
-                    name
-                }
-            }
-        """.strip()
-
-        assert_request_matches_expected_query(
-            get_chains_graphql_request, expected_get_chains_query
-        )
-
-        chainlets_string = """
-            {
-                name: "chainlet-1",
-                oracle: {
-                    model_name: "model-1",
-                    s3_key: "s3-key-1",
-                    encoded_config_str: "encoded-config-str-1",
-                    semver_bump: "MINOR"
-                }
-            }
-        """.strip()
-
-        expected_create_chain_mutation = f"""
-            mutation ($trussUserEnv: String) {{
-                deploy_chain_atomic(
-                    chain_id: "old-chain-id"
-                    is_draft: false
-                    entrypoint: {chainlets_string}
-                    dependencies: []
-                    truss_user_env: $trussUserEnv
-                ) {{
-                    chain_deployment {{
-                        id
-                        chain {{
-                            id
-                            hostname
-                        }}
-                    }}
-                }}
-            }}
-        """.strip()
-
-        assert_request_matches_expected_query(
-            create_chain_graphql_request, expected_create_chain_mutation
-        )
+        call_kwargs = mock_deploy.call_args.kwargs
+        assert call_kwargs["chain_id"] == "old-chain-id"
+        assert call_kwargs.get("is_draft") is not True
+        assert call_kwargs.get("deploy_timeout_minutes") is None
 
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
@@ -677,17 +580,32 @@ def test_create_chain_existing_chain_publish_true_no_promotion(remote):
 def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
     publish, custom_model_truss_dir_with_pre_and_post, remote
 ):
-    model_response = {
+    models_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "primary_version": {"id": "version_id"},
-            }
+            "models": [
+                {
+                    "id": "model_id",
+                    "name": "model_name",
+                    "team": {"id": "team_id", "name": "Team Name"},
+                    "versions": [],
+                }
+            ]
         }
     }
+    validation_response = {
+        "data": {"truss_validation": {"success": True, "details": "{}"}}
+    }
+
+    def response_callback(request, context):
+        query = request.json().get("query", "")
+        if "models(" in query:
+            return models_response
+        elif "truss_validation" in query:
+            return validation_response
+        return {"data": {}}
+
     with requests_mock.Mocker() as m:
-        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=response_callback)
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
         with pytest.raises(
@@ -726,3 +644,367 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
             match="Extra fields not allowed: \[extra_field, who_am_i\]",
         ):
             remote.push(th, "model_name", th.truss_dir)
+
+
+def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+):
+    remote.push(
+        mock_truss_handle,
+        "model_name",
+        mock_truss_handle.truss_dir,
+        publish=True,
+        deploy_timeout_minutes=450,
+    )
+
+    mock_create_truss_service.assert_called_once()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs["deploy_timeout_minutes"] == 450
+
+
+def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+):
+    remote.push(
+        mock_truss_handle, "model_name", mock_truss_handle.truss_dir, publish=True
+    )
+
+    mock_create_truss_service.assert_called_once()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs.get("deploy_timeout_minutes") is None
+
+
+def test_push_integration_deploy_timeout_minutes_propagated(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+    mock_truss_handle,
+):
+    remote.push(
+        mock_truss_handle,
+        "model_name",
+        mock_truss_handle.truss_dir,
+        publish=True,
+        environment="staging",
+        deploy_timeout_minutes=750,
+    )
+
+    mock_create_truss_service.assert_called_once()
+    _, kwargs = mock_create_truss_service.call_args
+    assert kwargs["deploy_timeout_minutes"] == 750
+    assert kwargs["environment"] == "staging"
+
+
+def test_api_push_integration_deploy_timeout_minutes_propagated(
+    custom_model_truss_dir_with_pre_and_post,
+    mock_remote_factory,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+
+    push(
+        str(mock_truss_handle.truss_dir),
+        remote="baseten",
+        model_name="test_model",
+        deploy_timeout_minutes=1200,
+    )
+
+    # Verify the remote.push was called with deploy_timeout_minutes
+    mock_remote_factory.push.assert_called_once()
+    _, push_kwargs = mock_remote_factory.push.call_args
+    assert push_kwargs.get("deploy_timeout_minutes") == 1200
+
+
+def test_api_push_integration_labels_propagated(
+    custom_model_truss_dir_with_pre_and_post,
+    mock_remote_factory,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+
+    labels = {"team": "ml", "run_id": 123, "flags": {"fast": True}}
+    push(
+        str(mock_truss_handle.truss_dir),
+        remote="baseten",
+        model_name="test_model",
+        labels=labels,
+    )
+
+    mock_remote_factory.push.assert_called_once()
+    _, push_kwargs = mock_remote_factory.push.call_args
+    assert push_kwargs.get("labels") == labels
+
+
+def _make_baseten_remote_mock(teams, models=None):
+    """Helper to create a mock BasetenRemote with teams and optional models."""
+    from truss.remote.baseten.remote import BasetenRemote
+
+    mock_remote = MagicMock(spec=BasetenRemote)
+    mock_service = MagicMock()
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_remote.push.return_value = mock_service
+    mock_remote.api.get_teams.return_value = teams
+    mock_remote.api.models.return_value = {"models": models or []}
+    return mock_remote
+
+
+def test_api_push_team_resolved_and_passed(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "my-team": TeamType(id="team_123", name="my-team", default=True),
+            "other-team": TeamType(id="team_456", name="other-team", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir),
+            remote="baseten",
+            model_name="test_model",
+            team="my-team",
+        )
+
+    mock_remote.api.get_teams.assert_called_once()
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_123"
+
+
+def test_api_push_invalid_team_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={"my-team": TeamType(id="team_123", name="my-team", default=True)}
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Team 'nonexistent' does not exist"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="test_model",
+                team="nonexistent",
+            )
+
+
+def test_api_push_single_team_auto_resolved(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={"only-team": TeamType(id="team_789", name="only-team", default=True)}
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_789"
+
+
+def test_api_push_multiple_teams_no_team_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="new_model",
+            )
+
+
+def test_api_push_existing_model_auto_resolves_team(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        },
+        models=[{"name": "test_model", "team": {"id": "team_b", "name": "team-b"}}],
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_b"
+
+
+@patch(
+    "truss.cli.resolvers.model_team_resolver.RemoteFactory.get_remote_team",
+    return_value="team-b",
+)
+def test_api_push_falls_back_to_trussrc_team(
+    mock_get_remote_team,
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        }
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        push(
+            str(mock_truss_handle.truss_dir), remote="baseten", model_name="test_model"
+        )
+
+    mock_get_remote_team.assert_called_once_with("baseten")
+    mock_remote.push.assert_called_once()
+    _, push_kwargs = mock_remote.push.call_args
+    assert push_kwargs.get("team_id") == "team_b"
+
+
+def test_api_push_model_in_multiple_teams_raises_error(
+    custom_model_truss_dir_with_pre_and_post,
+    temp_trussrc_dir,
+    mock_available_config_names,
+    mock_truss_handle,
+):
+    from truss.api import push
+    from truss.remote.baseten.custom_types import TeamType
+
+    mock_remote = _make_baseten_remote_mock(
+        teams={
+            "team-a": TeamType(id="team_a", name="team-a", default=True),
+            "team-b": TeamType(id="team_b", name="team-b", default=False),
+        },
+        models=[
+            {"name": "test_model", "team": {"id": "team_a", "name": "team-a"}},
+            {"name": "test_model", "team": {"id": "team_b", "name": "team-b"}},
+        ],
+    )
+
+    with patch("truss.api.RemoteFactory.create", return_value=mock_remote):
+        with pytest.raises(ValueError, match="Multiple teams available"):
+            push(
+                str(mock_truss_handle.truss_dir),
+                remote="baseten",
+                model_name="test_model",
+            )
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_succeeds_first_try(mock_sleep):
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(return_value=PatchResult(PatchStatus.SUCCESS, "ok"))
+
+    retry_patch(patch_fn, console, error_console)
+
+    patch_fn.assert_called_once()
+    mock_sleep.assert_not_called()
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_succeeds_after_failures(mock_sleep):
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(
+        side_effect=[
+            PatchResult(PatchStatus.FAILED, "server down"),
+            PatchResult(PatchStatus.FAILED, "server down"),
+            PatchResult(PatchStatus.SUCCESS, "ok"),
+        ]
+    )
+
+    retry_patch(patch_fn, console, error_console, max_retries=5, retry_delay_seconds=1)
+
+    assert patch_fn.call_count == 3
+    assert mock_sleep.call_count == 2
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_exhausts_retries(mock_sleep):
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(return_value=PatchResult(PatchStatus.FAILED, "server down"))
+
+    with pytest.raises(SystemExit):
+        retry_patch(
+            patch_fn, console, error_console, max_retries=3, retry_delay_seconds=1
+        )
+
+    assert patch_fn.call_count == 3
+
+
+@patch("truss.remote.baseten.remote.time.sleep")
+def test_retry_patch_handles_none_result(mock_sleep):
+    """Test file path case where _patch() returns None on exception."""
+    console = MagicMock()
+    error_console = MagicMock()
+    patch_fn = MagicMock(side_effect=[None, PatchResult(PatchStatus.SUCCESS, "ok")])
+
+    retry_patch(patch_fn, console, error_console, max_retries=5, retry_delay_seconds=1)
+
+    assert patch_fn.call_count == 2

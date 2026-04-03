@@ -120,9 +120,12 @@ class DockerURLs:
 
 
 class TrussHandle:
-    def __init__(self, truss_dir: Path, validate: bool = True) -> None:
+    def __init__(
+        self, truss_dir: Path, validate: bool = True, config_path: Optional[Path] = None
+    ) -> None:
         self._truss_dir = truss_dir
-        self._spec = TrussSpec(self._truss_dir)
+        self._config_path = config_path
+        self._spec = TrussSpec(self._truss_dir, config_path=config_path)
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
         if validate:
             self.validate()
@@ -939,7 +942,9 @@ class TrussHandle:
     def _update_config(self, **fields_to_update):
         config = self._spec.config.model_copy(update=fields_to_update)
         config.write_to_yaml_file(self._spec.config_path)
-        self._spec = TrussSpec(self._truss_dir)  # Reload.
+        self._spec = TrussSpec(
+            self._truss_dir, config_path=self._config_path
+        )  # Reload.
 
     def _try_patch(self) -> Optional["Container"]:
         if not self.is_control_truss:
@@ -1017,7 +1022,7 @@ class TrussHandle:
             for path in self._spec.external_package_dirs_paths:
                 if not path.exists():
                     raise RuntimeError(
-                        f"Truss referes to external package at "
+                        f"Truss refers to external package at "
                         f"{path.resolve()} but that path does not exist."
                     )
 

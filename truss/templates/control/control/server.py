@@ -72,9 +72,9 @@ class ControlServer:
             # httptools installed, which does not work with our requests & version
             # of uvicorn.
             http="h11",
+            loop="uvloop",
             **extra_kwargs,
         )
-        cfg.setup_event_loop()
 
         server = uvicorn.Server(cfg)
         asyncio.run(server.serve())

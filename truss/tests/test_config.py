@@ -20,14 +20,20 @@ from truss.base.truss_config import (
     CheckpointList,
     DockerAuthSettings,
     DockerAuthType,
+    DockerServer,
     HTTPOptions,
     ModelCache,
     ModelRepo,
+    ModelRepoCacheInternal,
     Resources,
     Runtime,
     TransportKind,
     TrussConfig,
     WebsocketOptions,
+    Weights,
+    WeightsAuth,
+    WeightsAuthMethod,
+    WeightsSource,
     _map_to_supported_python_version,
 )
 from truss.truss_handle.truss_handle import TrussHandle
@@ -110,6 +116,57 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
 
 
 @pytest.mark.parametrize(
+    "input_dict, expect_resources, output_dict",
+    [
+        (
+            {"instance_type": "L4:8x32"},
+            Resources(instance_type="L4:8x32"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "L4:8x32",
+            },
+        ),
+        (
+            {"instance_type": "H100:8x80"},
+            Resources(instance_type="H100:8x80"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "H100:8x80",
+            },
+        ),
+        (
+            {"instance_type": "CPU:4x16"},
+            Resources(instance_type="CPU:4x16"),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "instance_type": "CPU:4x16",
+            },
+        ),
+    ],
+)
+def test_parse_resources_with_instance_type(input_dict, expect_resources, output_dict):
+    parsed_result = Resources.model_validate(input_dict)
+    assert parsed_result == expect_resources
+    assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_instance_type_not_serialized_when_none():
+    """Test that instance_type is omitted from serialization when not set."""
+    resources = Resources()
+    result = resources.to_dict(verbose=True)
+    assert "instance_type" not in result
+
+
+@pytest.mark.parametrize(
     "cpu_spec, expected_valid",
     [
         (None, False),
@@ -166,6 +223,7 @@ def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
         ("H200", AcceleratorSpec(accelerator=Accelerator.H200, count=1)),
         ("H100_40GB", AcceleratorSpec(accelerator=Accelerator.H100_40GB, count=1)),
         ("B200", AcceleratorSpec(accelerator=Accelerator.B200, count=1)),
+        ("L40S", AcceleratorSpec(accelerator=Accelerator.L40S, count=1)),
     ],
 )
 def test_acc_spec_from_str(input_str, expected_acc):
@@ -217,6 +275,10 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "registry": "some-docker-registry",
                     "aws_access_key_id_secret_name": "aws_access_key_id",
                     "aws_secret_access_key_secret_name": ("aws_secret_access_key"),
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
                 },
             },
         ),
@@ -246,6 +308,86 @@ def test_acc_spec_from_str(input_str, expected_acc):
                     "secret_name": None,
                     "aws_access_key_id_secret_name": "aws_access_key_id",
                     "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
+                },
+            },
+        ),
+        # AWS OIDC authentication
+        (
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_OIDC",
+                    "aws_oidc_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_oidc_region": "us-west-2",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                },
+            },
+            BaseImage(
+                image="123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                python_executable_path="/usr/bin/python3",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.AWS_OIDC,
+                    aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                    aws_oidc_region="us-west-2",
+                    registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+                ),
+            ),
+            {
+                "image": "123456789.dkr.ecr.us-west-2.amazonaws.com/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "AWS_OIDC",
+                    "registry": "123456789.dkr.ecr.us-west-2.amazonaws.com",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": "arn:aws:iam::123456789:role/my-role",
+                    "aws_oidc_region": "us-west-2",
+                    "gcp_oidc_service_account": None,
+                    "gcp_oidc_workload_id_provider": None,
+                },
+            },
+        ),
+        # GCP OIDC authentication
+        (
+            {
+                "image": "us-west2-docker.pkg.dev/my-project/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "GCP_OIDC",
+                    "gcp_oidc_service_account": "my-service-account@my-project.iam.gserviceaccount.com",
+                    "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                    "registry": "us-west2-docker.pkg.dev",
+                },
+            },
+            BaseImage(
+                image="us-west2-docker.pkg.dev/my-project/my-image",
+                python_executable_path="/usr/bin/python3",
+                docker_auth=DockerAuthSettings(
+                    auth_method=DockerAuthType.GCP_OIDC,
+                    gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+                    gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                    registry="us-west2-docker.pkg.dev",
+                ),
+            ),
+            {
+                "image": "us-west2-docker.pkg.dev/my-project/my-image",
+                "python_executable_path": "/usr/bin/python3",
+                "docker_auth": {
+                    "auth_method": "GCP_OIDC",
+                    "registry": "us-west2-docker.pkg.dev",
+                    "secret_name": None,
+                    "aws_access_key_id_secret_name": "aws_access_key_id",
+                    "aws_secret_access_key_secret_name": "aws_secret_access_key",
+                    "aws_oidc_role_arn": None,
+                    "aws_oidc_region": None,
+                    "gcp_oidc_service_account": "my-service-account@my-project.iam.gserviceaccount.com",
+                    "gcp_oidc_workload_id_provider": "projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
                 },
             },
         ),
@@ -255,6 +397,70 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
     parsed_result = BaseImage.model_validate(input_dict)
     assert parsed_result == expect_base_image
     assert parsed_result.to_dict(verbose=True) == output_dict
+
+
+def test_docker_auth_aws_oidc_missing_role_arn():
+    with pytest.raises(ValueError, match="aws_oidc_role_arn must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_region="us-west-2",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_aws_oidc_missing_region():
+    with pytest.raises(ValueError, match="aws_oidc_region must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_gcp_oidc_missing_service_account():
+    with pytest.raises(ValueError, match="gcp_oidc_service_account must be provided"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            registry="us-west2-docker.pkg.dev",
+        )
+
+
+def test_docker_auth_gcp_oidc_missing_workload_id_provider():
+    with pytest.raises(
+        ValueError, match="gcp_oidc_workload_id_provider must be provided"
+    ):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            registry="us-west2-docker.pkg.dev",
+        )
+
+
+def test_docker_auth_aws_oidc_with_gcp_params_error():
+    """AWS OIDC docker auth cannot have GCP parameters."""
+    with pytest.raises(
+        ValueError, match="gcp_oidc_service_account cannot be specified"
+    ):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.AWS_OIDC,
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            aws_oidc_region="us-west-2",
+            gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            registry="123456789.dkr.ecr.us-west-2.amazonaws.com",
+        )
+
+
+def test_docker_auth_gcp_oidc_with_aws_params_error():
+    """GCP OIDC docker auth cannot have AWS parameters."""
+    with pytest.raises(ValueError, match="aws_oidc_role_arn cannot be specified"):
+        DockerAuthSettings(
+            auth_method=DockerAuthType.GCP_OIDC,
+            gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            registry="us-west2-docker.pkg.dev",
+        )
 
 
 def test_default_config_not_crowded_end_to_end():
@@ -292,7 +498,10 @@ def test_cache_internal_with_models(default_config):
     config = TrussConfig(
         python_version="py39",
         cache_internal=CacheInternal(
-            [ModelRepo(repo_id="test/model"), ModelRepo(repo_id="test/model2")]
+            [
+                ModelRepoCacheInternal(repo_id="test/model"),
+                ModelRepoCacheInternal(repo_id="test/model2"),
+            ]
         ),
     )
     new_config = default_config
@@ -305,21 +514,24 @@ def test_cache_internal_with_models(default_config):
 
 def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
-        python_version="py39", model_cache=ModelCache([ModelRepo(repo_id="test/model")])
+        python_version="py39",
+        model_cache=ModelCache([ModelRepo(repo_id="test/model", use_volume=False)]),
     )
 
     new_config = default_config
-    new_config["model_cache"] = [{"repo_id": "test/model"}]
+    new_config["model_cache"] = [{"repo_id": "test/model", "use_volume": False}]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == ""
 
 
 def test_huggingface_cache_single_model_non_default_revision_v1():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=ModelCache([ModelRepo(repo_id="test/model", revision="not-main")]),
+        model_cache=ModelCache(
+            [ModelRepo(repo_id="test/model", revision="not-main", use_volume=False)]
+        ),
     )
 
     assert config.to_dict(verbose=False)["model_cache"][0].get("revision") == "not-main"
@@ -330,16 +542,16 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
         python_version="py39",
         model_cache=ModelCache(
             [
-                ModelRepo(repo_id="test/model1", revision="main"),
-                ModelRepo(repo_id="test/model2"),
+                ModelRepo(repo_id="test/model1", revision="main", use_volume=False),
+                ModelRepo(repo_id="test/model2", use_volume=False),
             ]
         ),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1", "revision": "main"},
-        {"repo_id": "test/model2"},
+        {"repo_id": "test/model1", "revision": "main", "use_volume": False},
+        {"repo_id": "test/model2", "use_volume": False},
     ]
 
     assert new_config == config.to_dict(verbose=False)
@@ -347,7 +559,7 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
         "model_cache"
     ]
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
-    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == ""
 
 
 def test_huggingface_cache_multiple_models_mixed_revision(default_config):
@@ -355,20 +567,22 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
         python_version="py39",
         model_cache=ModelCache(
             [
-                ModelRepo(repo_id="test/model1"),
-                ModelRepo(repo_id="test/model2", revision="not-main2"),
+                ModelRepo(repo_id="test/model1", use_volume=False),
+                ModelRepo(
+                    repo_id="test/model2", revision="not-main2", use_volume=False
+                ),
             ]
         ),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
-        {"repo_id": "test/model1"},
-        {"repo_id": "test/model2", "revision": "not-main2"},
+        {"repo_id": "test/model1", "use_volume": False},
+        {"repo_id": "test/model2", "revision": "not-main2", "use_volume": False},
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == ""
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
 
 
@@ -433,6 +647,83 @@ def test_from_yaml_empty():
         assert result.bundled_packages_dir == "packages"
 
 
+def test_from_yaml_no_config():
+    with tempfile.TemporaryDirectory() as temp_dir_path:
+        yaml_path = Path(temp_dir_path) / "config.yaml"
+
+        with pytest.raises(ValueError) as exc_info:
+            TrussConfig.from_yaml(yaml_path)
+
+        print(exc_info.value.args[0])
+        assert (
+            exc_info.value.args[0]
+            == f"Expected a truss configuration file at {yaml_path}"
+        )
+
+
+def test_from_yaml_wrong_extension():
+    with tempfile.TemporaryDirectory() as temp_dir_path:
+        nonexistent_path = Path(temp_dir_path) / "config.yaml"
+        existing_path = Path(temp_dir_path) / "config.yml"
+        existing_path.touch()
+
+        with pytest.raises(ValueError) as exc_info:
+            TrussConfig.from_yaml(nonexistent_path)
+
+        assert (
+            exc_info.value.args[0]
+            == "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+        )
+
+
+def test_from_yaml_duplicate_keys():
+    yaml_content = """
+description: first description
+model_name: test-model
+description: second description
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `description`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.description == "second description"
+
+
+def test_from_yaml_duplicate_nested_keys():
+    yaml_content = """
+resources:
+  cpu: "1"
+  memory: "2Gi"
+  cpu: "2"
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    with pytest.warns(UserWarning, match="Detected duplicate key `cpu`"):
+        config = TrussConfig.from_yaml(yaml_path)
+    assert config.resources.cpu == "2"
+
+
+def test_from_yaml_same_key_at_different_nesting_levels():
+    yaml_content = """
+model_name: test-model
+resources:
+  cpu: "1"
+  memory: "2Gi"
+build:
+  model_name: build-model-name
+"""
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        f.write(yaml_content)
+        yaml_path = Path(f.name)
+
+    config = TrussConfig.from_yaml(yaml_path)
+    assert config.model_name == "test-model"
+
+
 def test_from_yaml_secrets_as_list():
     data = {"description": "this is a test", "secrets": ["foo", "bar"]}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
@@ -481,6 +772,32 @@ def test_from_yaml_environment_variables():
         }
 
 
+def test_from_yaml_reserved_environment_variables_warns(caplog):
+    data = {"environment_variables": {"PORT": "8080", "MY_VAR": "hello"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        yaml.safe_dump(data, f)
+        path = Path(f.name)
+
+    with caplog.at_level("WARNING"):
+        config = TrussConfig.from_yaml(path)
+
+    assert "PORT" in caplog.text
+    assert "Warning: the following environment variables" in caplog.text
+    assert config.environment_variables == {"PORT": "8080", "MY_VAR": "hello"}
+
+
+def test_from_yaml_no_reserved_environment_variables_no_warning(caplog):
+    data = {"environment_variables": {"MY_VAR": "hello"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        yaml.safe_dump(data, f)
+        path = Path(f.name)
+
+    with caplog.at_level("WARNING"):
+        TrussConfig.from_yaml(path)
+
+    assert "Warning: the following environment variables" not in caplog.text
+
+
 def test_secret_to_path_mapping_correct_type(default_config):
     data = {
         "description": "this is a test",
@@ -492,6 +809,26 @@ def test_secret_to_path_mapping_correct_type(default_config):
 
         truss_config = TrussConfig.from_yaml(yaml_path)
         assert truss_config.build.secret_to_path_mapping == {"foo": "/bar"}
+
+
+def test_build_no_cache_rejected_from_config(default_config):
+    data = {"description": "this is a test", "build": {"no_cache": True}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        with pytest.raises(ValueError, match="no_cache cannot be specified in config"):
+            TrussConfig.from_yaml(yaml_path)
+
+
+def test_build_no_cache_defaults_to_false(default_config):
+    data = {"description": "this is a test", "build": {}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        truss_config = TrussConfig.from_yaml(yaml_path)
+        assert truss_config.build.no_cache is False
 
 
 @pytest.mark.parametrize(
@@ -615,10 +952,6 @@ def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
         TrussTRTLLMQuantizationType.FP8_KV.value
     )
     TrussConfig.model_validate(trtllm_config)
-
-    del trtllm_config["trt_llm"]["build"]["quantization_type"]
-    with pytest.raises(ValueError):
-        TrussConfig.model_validate(trtllm_config)
 
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
@@ -894,13 +1227,12 @@ def test_validate_extra_fields(tmp_path):
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
-        ("py38", "py38"),
         ("py39", "py39"),
         ("py310", "py310"),
         ("py311", "py311"),
         ("py312", "py312"),
         ("py313", "py313"),
-        ("py314", "py313"),
+        ("py314", "py314"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):
@@ -911,13 +1243,13 @@ def test_map_to_supported_python_version(python_version, expected_python_version
 def test_not_supported_python_minor_versions():
     with pytest.raises(
         ValueError,
-        match="Mapping python version 3.6 to 3.8, "
+        match="Mapping python version 3.6 to 3.9, "
         "the lowest version that Truss currently supports.",
     ):
         _map_to_supported_python_version("py36")
     with pytest.raises(
         ValueError,
-        match="Mapping python version 3.7 to 3.8, "
+        match="Mapping python version 3.7 to 3.9, "
         "the lowest version that Truss currently supports.",
     ):
         _map_to_supported_python_version("py37")
@@ -943,9 +1275,530 @@ def test_clear_runtime_fields():
             download_folder="/tmp", checkpoints=[], artifact_references=[]
         ),
         environment_variables={"FOO": "BAR"},
+        weights=Weights(
+            [
+                WeightsSource(
+                    source="hf://meta-llama/Llama-3.1-8B@main",
+                    mount_location="/app/weights",
+                )
+            ]
+        ),
     )
 
     config.clear_runtime_fields()
     assert config.python_version == "py39"
     assert config.training_checkpoints is None
     assert config.environment_variables == {}
+    assert config.weights == Weights([])
+
+
+def test_docker_server_start_command_single_line_valid():
+    """Single-line start_command should be valid."""
+    docker_server = DockerServer(
+        start_command='sh -c "vllm serve model --port 8000"',
+        server_port=8000,
+        predict_endpoint="/v1/chat/completions",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+    )
+    assert docker_server.start_command == 'sh -c "vllm serve model --port 8000"'
+
+
+def test_docker_server_start_command_with_newline_valid():
+    """start_command containing newlines should be valid (handled by configparser)."""
+    multiline_command = "sh -c '\necho hello\n'"
+    docker_server = DockerServer(
+        start_command=multiline_command,
+        server_port=8000,
+        predict_endpoint="/v1/chat/completions",
+        readiness_endpoint="/health",
+        liveness_endpoint="/health",
+    )
+    assert docker_server.start_command == multiline_command
+
+
+@pytest.mark.parametrize("yaml_file", ["literal_block.yaml", "folded_block.yaml"])
+def test_docker_server_start_command_yaml_with_newlines_valid(
+    test_data_path, yaml_file
+):
+    """YAML syntaxes that preserve/add newlines (| and >) are now valid."""
+    config_path = test_data_path / "docker_server_start_command" / yaml_file
+
+    config = TrussConfig.from_yaml(config_path)
+    # These YAML syntaxes preserve newlines, which is now supported
+    assert "\n" in config.docker_server.start_command
+
+
+@pytest.mark.parametrize(
+    "yaml_file, expected_command",
+    [
+        ("folded_chomped.yaml", "sh -c /app/server"),
+        ("plain_multiline.yaml", "sh -c /app/server"),
+        ("backslash_continuation.yaml", "sh -c \\ /app/minimal-server"),
+    ],
+)
+def test_docker_server_start_command_yaml_folding(
+    test_data_path, yaml_file, expected_command
+):
+    """YAML syntaxes like >- and plain multiline fold newlines to spaces."""
+    config_path = test_data_path / "docker_server_start_command" / yaml_file
+
+    config = TrussConfig.from_yaml(config_path)
+    assert "\n" not in config.docker_server.start_command
+    assert config.docker_server.start_command == expected_command
+
+
+@pytest.mark.parametrize(
+    "run_as_user_id,expected,raises",
+    [
+        pytest.param(1000, 1000, does_not_raise(), id="valid_nonzero"),
+        pytest.param(None, None, does_not_raise(), id="default_none"),
+        pytest.param(
+            0,
+            None,
+            pytest.raises(pydantic.ValidationError, match="run_as_user_id cannot be 0"),
+            id="zero_rejected",
+        ),
+    ],
+)
+def test_docker_server_run_as_user_id(run_as_user_id, expected, raises):
+    with raises:
+        docker_server = DockerServer(
+            start_command="python main.py",
+            server_port=8000,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+            run_as_user_id=run_as_user_id,
+        )
+        assert docker_server.run_as_user_id == expected
+
+
+# =============================================================================
+# Weights Configuration Tests
+# =============================================================================
+
+
+class TestWeightsSource:
+    """Tests for the new WeightsSource model."""
+
+    def test_huggingface_source_basic(self):
+        """HuggingFace source with revision in URI should work."""
+        source = WeightsSource(
+            source="hf://meta-llama/Llama-2-7b@main", mount_location="/models/llama"
+        )
+        assert source.source == "hf://meta-llama/Llama-2-7b@main"
+        assert source.mount_location == "/models/llama"
+        assert source.is_huggingface is True
+        assert source.auth_secret_name is None
+
+    def test_huggingface_source_with_patterns(self):
+        """HuggingFace source with allow/ignore patterns."""
+        source = WeightsSource(
+            source="hf://meta-llama/Llama-2-7b@main",
+            mount_location="/models/llama",
+            allow_patterns=["*.safetensors", "config.json"],
+            ignore_patterns=["*.md"],
+        )
+        assert source.allow_patterns == ["*.safetensors", "config.json"]
+        assert source.ignore_patterns == ["*.md"]
+
+    def test_s3_source_basic(self):
+        """S3 source should work."""
+        source = WeightsSource(
+            source="s3://my-bucket/models/llama",
+            mount_location="/models/llama",
+            auth_secret_name="aws_credentials",
+        )
+        assert source.source == "s3://my-bucket/models/llama"
+        assert source.is_huggingface is False
+
+    def test_gcs_source_basic(self):
+        """GCS source should work without revision."""
+        source = WeightsSource(
+            source="gs://my-bucket/models/llama",
+            mount_location="/models/llama",
+            auth_secret_name="gcp_service_account",
+        )
+        assert source.source == "gs://my-bucket/models/llama"
+        assert source.is_huggingface is False
+
+    def test_azure_source_basic(self):
+        """Azure source should work without revision."""
+        source = WeightsSource(
+            source="azure://myaccount/container/llama",
+            mount_location="/models/llama",
+            auth_secret_name="azure_credentials",
+        )
+        assert source.source == "azure://myaccount/container/llama"
+        assert source.is_huggingface is False
+
+    def test_r2_source_basic(self):
+        """R2 source should work without revision."""
+        source = WeightsSource(
+            source="r2://account_id.bucket/models/llama",
+            mount_location="/models/llama",
+            auth_secret_name="r2_credentials",
+        )
+        assert source.source == "r2://account_id.bucket/models/llama"
+        assert source.is_huggingface is False
+
+    def test_https_source_basic(self):
+        """HTTPS source should work for direct URL downloads."""
+        source = WeightsSource(
+            source="https://example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+        )
+        assert source.source == "https://example.com/models/weights.bin"
+        assert source.is_huggingface is False
+
+    def test_https_source_with_auth(self):
+        """HTTPS source with auth secret should work."""
+        source = WeightsSource(
+            source="https://private.example.com/models/weights.bin",
+            mount_location="/models/weights.bin",
+            auth_secret_name="http_auth_token",
+        )
+        assert source.source == "https://private.example.com/models/weights.bin"
+        assert source.auth_secret_name == "http_auth_token"
+
+    def test_https_source_invalid_format(self):
+        """HTTPS source with invalid format should fail."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid HTTPS URL format"):
+            WeightsSource(
+                source="https:///path/only",  # Missing hostname
+                mount_location="/models/weights.bin",
+            )
+
+    def test_mount_location_must_be_absolute(self):
+        """mount_location must be an absolute path."""
+        with pytest.raises(pydantic.ValidationError, match="must be an absolute path"):
+            WeightsSource(
+                source="hf://meta-llama/Llama-2-7b@main",
+                mount_location="models/llama",  # Relative path - should fail
+            )
+
+    def test_cloud_storage_rejects_at_symbol(self):
+        """Cloud storage sources should reject @ revision syntax."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
+        ):
+            WeightsSource(
+                source="s3://my-bucket/models/llama@main",
+                mount_location="/models/llama",
+            )
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
+        ):
+            WeightsSource(
+                source="gs://my-bucket/models/llama@main",
+                mount_location="/models/llama",
+            )
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
+        ):
+            WeightsSource(
+                source="azure://myaccount/container/path@main",
+                mount_location="/models/llama",
+            )
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="@ revision syntax is only valid for HuggingFace",
+        ):
+            WeightsSource(
+                source="r2://account_id.bucket/path@main",
+                mount_location="/models/llama",
+            )
+
+    def test_source_cannot_be_empty(self):
+        """source must have at least 1 character."""
+        with pytest.raises(pydantic.ValidationError):
+            WeightsSource(source="", mount_location="/models/llama")
+
+    def test_hf_source_without_revision(self):
+        """HuggingFace source should work without revision in URI."""
+        source = WeightsSource(
+            source="hf://meta-llama/Llama-2-7b", mount_location="/models/llama"
+        )
+        assert source.is_huggingface is True
+        assert source.source == "hf://meta-llama/Llama-2-7b"
+
+    def test_source_missing_scheme(self):
+        """Source without URI scheme should error."""
+        with pytest.raises(pydantic.ValidationError, match="missing a URI scheme"):
+            WeightsSource(
+                source="meta-llama/Llama-2-7b", mount_location="/models/llama"
+            )
+
+    def test_unsupported_uri_scheme(self):
+        """Unsupported URI schemes should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="Unsupported source scheme 'ftp://'"
+        ):
+            WeightsSource(
+                source="ftp://server/models/llama", mount_location="/models/llama"
+            )
+
+    def test_invalid_s3_uri_format(self):
+        """S3 URI without bucket should error."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid S3 URI format"):
+            WeightsSource(source="s3://", mount_location="/models/llama")
+
+    def test_invalid_gs_uri_format(self):
+        """GCS URI without bucket should error."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid GS URI format"):
+            WeightsSource(source="gs://", mount_location="/models/llama")
+
+    def test_invalid_azure_uri_format(self):
+        """Azure URI without account should error."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid AZURE URI format"):
+            WeightsSource(source="azure://", mount_location="/models/llama")
+
+    def test_invalid_r2_uri_format(self):
+        """R2 URI without bucket should error."""
+        with pytest.raises(pydantic.ValidationError, match="Invalid R2 URI format"):
+            WeightsSource(source="r2://", mount_location="/models/llama")
+
+    def test_invalid_hf_uri_format(self):
+        """HuggingFace URI without repo should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="Invalid HuggingFace URI format"
+        ):
+            WeightsSource(source="hf://", mount_location="/models/llama")
+
+    def test_aws_oidc_missing_role_arn(self):
+        """AWS OIDC without role ARN should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_role_arn must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC, aws_oidc_region="us-west-2"
+            )
+
+    def test_aws_oidc_missing_region(self):
+        """AWS OIDC without region should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_region must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
+
+    def test_gcp_oidc_missing_service_account(self):
+        """GCP OIDC without service account should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="gcp_oidc_service_account must be provided"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_workload_id_provider="projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+            )
+
+    def test_gcp_oidc_missing_workload_id_provider(self):
+        """GCP OIDC without workload identity provider should error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="gcp_oidc_workload_id_provider must be provided",
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_service_account="my-service-account@my-project.iam.gserviceaccount.com",
+            )
+
+    def test_auth_secret_name_conflict_error(self):
+        """auth_secret_name cannot be specified in both locations."""
+        with pytest.raises(pydantic.ValidationError, match="cannot be specified both"):
+            WeightsSource(
+                source="s3://my-bucket/models/weights",
+                mount_location="/models/weights",
+                auth_secret_name="my-secret-top",
+                auth=WeightsAuth(
+                    auth_method=WeightsAuthMethod.CUSTOM_SECRET,
+                    auth_secret_name="my-secret-nested",
+                ),
+            )
+
+    def test_custom_secret_requires_auth_secret_name(self):
+        """CUSTOM_SECRET auth_method requires auth_secret_name."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_secret_name must be provided when auth_method is CUSTOM_SECRET",
+        ):
+            WeightsAuth(auth_method=WeightsAuthMethod.CUSTOM_SECRET)
+
+    def test_auth_secret_name_requires_custom_secret_method(self):
+        """auth_secret_name requires CUSTOM_SECRET auth_method."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="auth_secret_name cannot be specified when auth_method is AWS_OIDC",
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                auth_secret_name="my-secret",
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+            )
+
+    def test_custom_secret_with_auth_secret_name_valid(self):
+        """CUSTOM_SECRET with auth_secret_name should be valid."""
+        auth = WeightsAuth(
+            auth_method=WeightsAuthMethod.CUSTOM_SECRET, auth_secret_name="my-secret"
+        )
+        assert auth.auth_method == WeightsAuthMethod.CUSTOM_SECRET
+        assert auth.auth_secret_name == "my-secret"
+
+    def test_aws_oidc_with_gcp_params_error(self):
+        """AWS OIDC cannot have GCP parameters."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="gcp_oidc_service_account cannot be specified",
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.AWS_OIDC,
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+                aws_oidc_region="us-west-2",
+                gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+            )
+
+    def test_gcp_oidc_with_aws_params_error(self):
+        """GCP OIDC cannot have AWS parameters."""
+        with pytest.raises(
+            pydantic.ValidationError, match="aws_oidc_role_arn cannot be specified"
+        ):
+            WeightsAuth(
+                auth_method=WeightsAuthMethod.GCP_OIDC,
+                gcp_oidc_service_account="my-service-account@project.iam.gserviceaccount.com",
+                gcp_oidc_workload_id_provider="projects/123/locations/global/workloadIdentityPools/my-pool/providers/my-provider",
+                aws_oidc_role_arn="arn:aws:iam::123456789:role/my-role",
+            )
+
+
+class TestWeights:
+    """Tests for the Weights model (list of WeightsSource)."""
+
+    def test_empty_weights(self):
+        """Empty weights list should work."""
+        weights = Weights([])
+        assert weights.sources == []
+
+    def test_single_hf_source(self):
+        """Single HuggingFace source."""
+        weights = Weights(
+            [
+                WeightsSource(
+                    source="hf://meta-llama/Llama-2-7b@main",
+                    mount_location="/models/llama",
+                )
+            ]
+        )
+        assert len(weights.sources) == 1
+        assert weights.sources[0].is_huggingface is True
+
+    def test_multi_source_weights(self):
+        """Multiple sources from different providers."""
+        weights = Weights(
+            [
+                WeightsSource(
+                    source="hf://meta-llama/Llama-2-7b@main",
+                    mount_location="/models/base",
+                ),
+                WeightsSource(
+                    source="s3://my-bucket/adapters/lora",
+                    mount_location="/models/adapter",
+                    auth_secret_name="aws_credentials",
+                ),
+            ]
+        )
+        assert len(weights.sources) == 2
+        assert weights.sources[0].is_huggingface is True
+        assert weights.sources[1].is_huggingface is False
+
+    def test_duplicate_mount_location_error(self):
+        """Duplicate mount_location should error."""
+        with pytest.raises(
+            pydantic.ValidationError, match="Duplicate mount_location '/models/llama'"
+        ):
+            Weights(
+                [
+                    WeightsSource(
+                        source="hf://meta-llama/Llama-2-7b@main",
+                        mount_location="/models/llama",
+                    ),
+                    WeightsSource(
+                        source="s3://my-bucket/adapters/lora",
+                        mount_location="/models/llama",  # Duplicate - should fail
+                        auth_secret_name="aws_credentials",
+                    ),
+                ]
+            )
+
+
+class TestTrussConfigWeights:
+    """Tests for weights field in TrussConfig."""
+
+    def test_empty_weights_config(self, default_config):
+        """Empty weights should work."""
+        config = TrussConfig(python_version="py39")
+        assert config.weights.sources == []
+
+    def test_weights_from_yaml(self, tmp_path):
+        """Weights should be parsed from YAML."""
+        yaml_content = """
+        weights:
+          - source: "hf://meta-llama/Llama-2-7b@main"
+            mount_location: "/models/llama"
+          - source: "s3://my-bucket/models/adapter"
+            mount_location: "/models/adapter"
+            auth_secret_name: "aws_credentials"
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        config = TrussConfig.from_yaml(config_path)
+        assert len(config.weights.sources) == 2
+        assert config.weights.sources[0].source == "hf://meta-llama/Llama-2-7b@main"
+        assert config.weights.sources[1].source == "s3://my-bucket/models/adapter"
+
+    def test_cannot_use_both_model_cache_and_weights(self, tmp_path):
+        """Should error if both model_cache and weights are specified."""
+        yaml_content = """
+        model_cache:
+          - repo_id: "test/model"
+            use_volume: false
+        weights:
+          - source: "hf://meta-llama/Llama-2-7b@main"
+            mount_location: "/models/llama"
+        """
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml_content)
+
+        with pytest.raises(ValueError, match="only one of `model_cache` and `weights`"):
+            TrussConfig.from_yaml(config_path)
+
+    def test_weights_serialization_roundtrip(self, tmp_path):
+        """Weights should serialize and deserialize correctly."""
+        config = TrussConfig(
+            python_version="py39",
+            weights=Weights(
+                [
+                    WeightsSource(
+                        source="hf://meta-llama/Llama-2-7b@main",
+                        mount_location="/models/llama",
+                        allow_patterns=["*.safetensors"],
+                    )
+                ]
+            ),
+        )
+
+        out_path = tmp_path / "out.yaml"
+        config.write_to_yaml_file(out_path, verbose=True)
+
+        config_new = TrussConfig.from_yaml(out_path)
+        assert len(config_new.weights.sources) == 1
+        assert config_new.weights.sources[0].source == "hf://meta-llama/Llama-2-7b@main"
+        assert config_new.weights.sources[0].mount_location == "/models/llama"
+        assert config_new.weights.sources[0].allow_patterns == ["*.safetensors"]

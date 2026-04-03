@@ -1,7 +1,10 @@
 import os
+import sys
 import tempfile
 import time
 from pathlib import Path
+
+import pytest
 
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
@@ -156,6 +159,108 @@ def test_copy_tree_path_with_truss_ignore(custom_model_truss_dir_with_truss_igno
         assert (dest_dir / "random_folder_2").exists()
 
 
+def test_collect_files_skips_ignored_dirs(tmp_path):
+    (tmp_path / "keep" / "sub").mkdir(parents=True)
+    (tmp_path / "skip_me" / "deep" / "nested").mkdir(parents=True)
+    (tmp_path / "also_skip").mkdir()
+
+    (tmp_path / "root.txt").write_text("r")
+    (tmp_path / "keep" / "a.txt").write_text("a")
+    (tmp_path / "keep" / "sub" / "b.txt").write_text("b")
+    (tmp_path / "skip_me" / "c.txt").write_text("c")
+    (tmp_path / "skip_me" / "deep" / "d.txt").write_text("d")
+    (tmp_path / "skip_me" / "deep" / "nested" / "e.txt").write_text("e")
+    (tmp_path / "also_skip" / "f.txt").write_text("f")
+
+    result = path.collect_files(tmp_path, ["skip_me/", "also_skip/"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == [
+        os.path.join("keep", "a.txt"),
+        os.path.join("keep", "sub", "b.txt"),
+        "root.txt",
+    ]
+
+
+def test_collect_files_skips_by_wildcard(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("code")
+    (tmp_path / "src" / "app.pyc").write_text("bytecode")
+    (tmp_path / "notes.txt").write_text("note")
+
+    result = path.collect_files(tmp_path, ["*.pyc"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == ["notes.txt", os.path.join("src", "app.py")]
+
+
+def test_collect_files_no_patterns_returns_all(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "b.txt").write_text("b")
+    (tmp_path / "c.txt").write_text("c")
+
+    result_none = path.collect_files(tmp_path, None)
+    result_empty = path.collect_files(tmp_path, [])
+    rel_none = sorted(str(p.relative_to(tmp_path)) for p in result_none)
+    rel_empty = sorted(str(p.relative_to(tmp_path)) for p in result_empty)
+
+    assert rel_none == [os.path.join("a", "b.txt"), "c.txt"]
+    assert rel_empty == [os.path.join("a", "b.txt"), "c.txt"]
+
+
+def test_collect_files_nested_ignore_pattern(tmp_path):
+    (tmp_path / "data" / "cache").mkdir(parents=True)
+    (tmp_path / "data" / "important.csv").write_text("1,2,3")
+    (tmp_path / "data" / "cache" / "tmp.bin").write_text("bin")
+    (tmp_path / "readme.md").write_text("hi")
+
+    result = path.collect_files(tmp_path, ["data/cache/"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == [os.path.join("data", "important.csv"), "readme.md"]
+
+
+def test_collect_files_trailing_slash_pattern_prunes_dirs(tmp_path):
+    """Patterns with trailing slash (e.g. 'data/') should prune the directory
+    during walk, not just filter individual files inside it."""
+    (tmp_path / "data" / "subdir").mkdir(parents=True)
+    (tmp_path / "test" / "subdir").mkdir(parents=True)
+    (tmp_path / "keep").mkdir()
+
+    (tmp_path / "data" / "big_file.bin").write_text("big")
+    (tmp_path / "data" / "subdir" / "nested.txt").write_text("nested")
+    (tmp_path / "test" / "test_foo.py").write_text("test")
+    (tmp_path / "test" / "subdir" / "deep.py").write_text("deep")
+    (tmp_path / "keep" / "important.py").write_text("keep")
+    (tmp_path / "root.txt").write_text("root")
+
+    result = path.collect_files(tmp_path, ["data/", "test/"])
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == [os.path.join("keep", "important.py"), "root.txt"]
+
+    walked_dirs = []
+    for dirpath, _dirs, _filenames in path.walk_filtered(tmp_path, ["data/", "test/"]):
+        walked_dirs.append(Path(dirpath).relative_to(tmp_path))
+    walked_dir_names = {str(d) for d in walked_dirs}
+    assert "data" not in walked_dir_names, "data/ should be pruned, not walked into"
+    assert "test" not in walked_dir_names, "test/ should be pruned, not walked into"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Symlinks require elevated privileges on Windows"
+)
+def test_collect_files_ignores_symlinks(tmp_path):
+    (tmp_path / "real_dir").mkdir()
+    (tmp_path / "real_dir" / "file.txt").write_text("real")
+    (tmp_path / "link_dir").symlink_to(tmp_path / "real_dir")
+
+    result = path.collect_files(tmp_path)
+    rel_paths = sorted(str(p.relative_to(tmp_path)) for p in result)
+
+    assert rel_paths == [os.path.join("real_dir", "file.txt")]
+
+
 def test_get_ignored_relative_paths():
     ignore_patterns = [".mypy_cache/", "venv/", "*.tmp", ".git", "data/*"]
 
@@ -194,8 +299,8 @@ def test_get_ignored_relative_paths_from_root(custom_model_truss_dir_with_hidden
     )
     assert unignored_relative_path_strs == {
         "model",
-        "model/model.py",
-        "model/__init__.py",
+        os.path.join("model", "model.py"),
+        os.path.join("model", "__init__.py"),
         "data",
         "config.yaml",
         "packages",
@@ -207,11 +312,11 @@ def test_get_ignored_relative_paths_from_root(custom_model_truss_dir_with_hidden
     )
     ignored_relative_paths_strs = {
         "__pycache__",
-        "__pycache__/test.cpython-311.pyc",
+        os.path.join("__pycache__", "test.cpython-311.pyc"),
         ".DS_Store",
         ".git",
-        ".git/.test_file",
-        "data/test_file",
+        os.path.join(".git", ".test_file"),
+        os.path.join("data", "test_file"),
     }
     assert (
         all_relative_path_strs

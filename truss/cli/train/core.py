@@ -16,25 +16,16 @@ from rich.text import Text
 
 from truss.cli.train import common, deploy_checkpoints
 from truss.cli.train.metrics_watcher import MetricsWatcher
-from truss.cli.train.types import PrepareCheckpointArgs, PrepareCheckpointResult
+from truss.cli.train.types import (
+    DeployCheckpointArgs,
+    DeployCheckpointsConfigComplete,
+    DeploySuccessResult,
+)
 from truss.cli.utils import common as cli_common
 from truss.cli.utils.output import console
-from truss.remote.baseten.custom_types import (
-    FileSummary,
-    FileSummaryWithTotalSize,
-    GetCacheSummaryResponseV1,
-)
 from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
-
-SORT_BY_FILEPATH = "filepath"
-SORT_BY_SIZE = "size"
-SORT_BY_MODIFIED = "modified"
-SORT_BY_TYPE = "type"
-SORT_BY_PERMISSIONS = "permissions"
-SORT_ORDER_ASC = "asc"
-SORT_ORDER_DESC = "desc"
 
 ACTIVE_JOB_STATUSES = [
     "TRAINING_JOB_RUNNING",
@@ -69,8 +60,10 @@ def get_args_for_stop(
         job_id_to_stop = job["id"]
         # check if the user wants to stop the inferred running job
         if not job_id:
+            user_email = job.get("user", {}).get("email")
+            user_msg = f" (created by {user_email})" if user_email else ""
             confirm = inquirer.confirm(
-                message=f"Are you sure you want to stop training job {job_id_to_stop}?",
+                message=f"Are you sure you want to stop training job {job_id_to_stop}{user_msg}?",
                 default=False,
             ).execute()
             if not confirm:
@@ -149,6 +142,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table.add_column("Last Modified")
     table.add_column("Latest Job ID", style="bold yellow")
     table.add_column("Latest Job Status", style="bold yellow")
+    table.add_column("Checkpoint Sync", style="bold yellow")
     table.add_column("Status Page", style="bold yellow")
 
     # most recent projects at bottom of terminal
@@ -156,7 +150,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
         latest_job = project.get("latest_job") or {}
         if latest_job_id := latest_job.get("id", ""):
             latest_job_link = cli_common.format_link(
-                status_page_url(remote_url, latest_job_id), "link"
+                status_page_url(remote_url, project["id"], latest_job_id), "link"
             )
         else:
             latest_job_link = ""
@@ -167,6 +161,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
             cli_common.format_localized_time(project["updated_at"]),
             latest_job_id,
             latest_job.get("current_status", ""),
+            latest_job.get("checkpoint_sync_status", ""),
             latest_job_link,
         )
 
@@ -242,35 +237,43 @@ def view_training_job_metrics(
     metrics_display.watch()
 
 
-def prepare_checkpoint_deploy(
-    remote_provider: BasetenRemote, args: PrepareCheckpointArgs
-) -> PrepareCheckpointResult:
+def create_model_version_from_inference_template(
+    remote_provider: BasetenRemote, args: DeployCheckpointArgs
+) -> DeploySuccessResult:
     if not args.deploy_config_path:
-        return deploy_checkpoints.prepare_checkpoint_deploy(
-            remote_provider, DeployCheckpointsConfig(), args.project_id, args.job_id
+        return deploy_checkpoints.create_model_version_from_inference_template(
+            remote_provider,
+            DeployCheckpointsConfig(),
+            args.project_id,
+            args.job_id,
+            args.dry_run,
         )
-    #### User provided a checkpoint deploy config file
+    # User provided a checkpoint deploy config file
     with loader.import_deploy_checkpoints_config(
         Path(args.deploy_config_path)
     ) as checkpoint_deploy:
-        return deploy_checkpoints.prepare_checkpoint_deploy(
-            remote_provider, checkpoint_deploy, args.project_id, args.job_id
+        return deploy_checkpoints.create_model_version_from_inference_template(
+            remote_provider,
+            checkpoint_deploy,
+            args.project_id,
+            args.job_id,
+            args.dry_run,
         )
 
 
 def _get_checkpoint_names(
-    prepare_checkpoint_result: PrepareCheckpointResult,
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ) -> list[str]:
     return [
-        checkpoint.paths[0].strip("/").split("/")[-1]
-        for checkpoint in prepare_checkpoint_result.checkpoint_deploy_config.checkpoint_details.checkpoints
+        checkpoint.checkpoint_name
+        for checkpoint in checkpoint_deploy_config.checkpoint_details.checkpoints
     ]
 
 
 def print_deploy_checkpoints_success_message(
-    prepare_checkpoint_result: PrepareCheckpointResult,
+    checkpoint_deploy_config: DeployCheckpointsConfigComplete,
 ):
-    checkpoint_names = _get_checkpoint_names(prepare_checkpoint_result)
+    checkpoint_names = _get_checkpoint_names(checkpoint_deploy_config)
     console.print(
         Text("\nTo run the model"),
         Text("ensure your `model` parameter is set to one of"),
@@ -279,7 +282,9 @@ def print_deploy_checkpoints_success_message(
             style="magenta",
         ),
         Text("in your request. An example request body might look like this:"),
-        Text(f"\n{{'model': {checkpoint_names[0]}, 'messages': [...]}}", style="green"),
+        Text(
+            f'\n{{"model": "{checkpoint_names[0]}", "messages": [...]}}', style="green"
+        ),
     )
 
 
@@ -297,17 +302,27 @@ def display_training_job(
     table.add_column("Value")
 
     # Basic job details
+    table.add_row("Job Name", job["name"])
+    table.add_row("Job ID", job["id"])
     table.add_row("Project ID", job["training_project"]["id"])
     table.add_row("Project Name", job["training_project"]["name"])
-    table.add_row("Job ID", job["id"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
+    if user_email := job.get("user", {}).get("email"):
+        table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
     table.add_row(
-        "Status Page",
-        cli_common.format_link(status_page_url(remote_url, job["id"]), "link"),
+        "Job Page",
+        cli_common.format_link(
+            status_page_url(remote_url, job["training_project"]["id"], job["id"]),
+            "link",
+        ),
     )
+
+    # Add checkpoint sync status if present
+    if job.get("checkpoint_sync_status"):
+        table.add_row("Checkpoint Sync", job["checkpoint_sync_status"])
 
     # Add error message if present
     if job.get("error_message"):
@@ -417,8 +432,8 @@ def download_checkpoint_artifacts(
     return urls_file
 
 
-def status_page_url(remote_url: str, training_job_id: str) -> str:
-    return f"{remote_url}/training/jobs/{training_job_id}"
+def status_page_url(remote_url: str, project_id: str, training_job_id: str) -> str:
+    return f"{remote_url}/training/{project_id}/logs/{training_job_id}"
 
 
 def _get_all_train_init_example_options(
@@ -458,6 +473,7 @@ def _get_all_train_init_example_options(
 def _get_train_init_example_info(
     repo_id: str = "ml-cookbook",
     examples_subdir: str = "examples",
+    training_subdir: str = "training",
     example_name: Optional[str] = None,
     token: Optional[str] = None,
 ) -> list[Dict[str, str]]:
@@ -471,6 +487,7 @@ def _get_train_init_example_info(
 
     url = f"https://api.github.com/repos/basetenlabs/{repo_id}/contents/{examples_subdir}/{example_name}"
 
+    console.print(f"Attempting to retrieve example info from: {url}")
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -478,6 +495,8 @@ def _get_train_init_example_info(
         items = response.json()
         if not isinstance(items, list):
             items = [items]
+        # return only training subdirectory info for example
+        items = [item for item in items if item["name"] == training_subdir]
         return items
 
     except requests.exceptions.HTTPError as e:
@@ -608,139 +627,28 @@ def fetch_project_by_name_or_id(
         raise click.ClickException(f"Error fetching project: {str(e)}")
 
 
-def create_file_summary_with_directory_sizes(
-    files: list[FileSummary],
-) -> list[FileSummaryWithTotalSize]:
-    directory_sizes = calculate_directory_sizes(files)
-    return [
-        FileSummaryWithTotalSize(
-            file_summary=file_info,
-            total_size=directory_sizes.get(file_info.path, file_info.size_bytes),
-        )
-        for file_info in files
-    ]
-
-
-def calculate_directory_sizes(
-    files: list[FileSummary], max_depth: int = 100
-) -> dict[str, int]:
-    directory_sizes = {}
-
-    for file_info in files:
-        if file_info.file_type == "directory":
-            directory_sizes[file_info.path] = 0
-
-    for file_info in files:
-        current_path = file_info.path
-        for i in range(max_depth):
-            if current_path is None:
-                break
-            if current_path in directory_sizes:
-                directory_sizes[current_path] += file_info.size_bytes
-            # Move to parent directory
-            parent = os.path.dirname(current_path)
-            if parent == current_path:  # Reached root
-                break
-            current_path = parent
-
-    return directory_sizes
-
-
-def view_cache_summary(
-    remote_provider: BasetenRemote,
-    project_id: str,
-    sort_by: str = SORT_BY_FILEPATH,
-    order: str = SORT_ORDER_ASC,
-):
-    """View cache summary for a training project."""
-    try:
-        raw_cache_data = remote_provider.api.get_cache_summary(project_id)
-
-        if not raw_cache_data:
-            console.print("No cache summary found for this project.", style="yellow")
-            return
-
-        cache_data = GetCacheSummaryResponseV1.model_validate(raw_cache_data)
-
-        table = rich.table.Table(title=f"Cache summary for project: {project_id}")
-        table.add_column("File Path", style="cyan")
-        table.add_column("Size", style="green")
-        table.add_column("Modified", style="yellow")
-        table.add_column("Type")
-        table.add_column("Permissions", style="magenta")
-
-        files = cache_data.file_summaries
-        if not files:
-            console.print("No files found in cache.", style="yellow")
-            return
-
-        files_with_total_sizes = create_file_summary_with_directory_sizes(files)
-
-        reverse = order == SORT_ORDER_DESC
-        sort_key = _get_sort_key(sort_by)
-        files_with_total_sizes.sort(key=sort_key, reverse=reverse)
-
-        total_size = sum(
-            file_info.file_summary.size_bytes for file_info in files_with_total_sizes
-        )
-        total_size_str = common.format_bytes_to_human_readable(total_size)
-
-        console.print(
-            f"📅 Cache captured at: {cache_data.timestamp}", style="bold blue"
-        )
-        console.print(f"📁 Project ID: {cache_data.project_id}", style="bold blue")
-        console.print()
-        console.print(
-            f"📊 Total files: {len(files_with_total_sizes)}", style="bold green"
-        )
-        console.print(f"💾 Total size: {total_size_str}", style="bold green")
-        console.print()
-
-        for file_info in files_with_total_sizes:
-            total_size = file_info.total_size
-
-            size_str = cli_common.format_bytes_to_human_readable(int(total_size))
-
-            modified_str = cli_common.format_localized_time(
-                file_info.file_summary.modified
-            )
-
-            table.add_row(
-                file_info.file_summary.path,
-                size_str,
-                modified_str,
-                file_info.file_summary.file_type or "Unknown",
-                file_info.file_summary.permissions or "Unknown",
-            )
-
-        console.print(table)
-
-    except Exception as e:
-        console.print(f"Error fetching cache summary: {str(e)}", style="red")
-        raise
-
-
-def _get_sort_key(sort_by: str) -> Callable[[FileSummaryWithTotalSize], Any]:
-    if sort_by == SORT_BY_FILEPATH:
-        return lambda x: x.file_summary.path
-    elif sort_by == SORT_BY_SIZE:
-        return lambda x: x.total_size
-    elif sort_by == SORT_BY_MODIFIED:
-        return lambda x: x.file_summary.modified
-    elif sort_by == SORT_BY_TYPE:
-        return lambda x: x.file_summary.file_type or ""
-    elif sort_by == SORT_BY_PERMISSIONS:
-        return lambda x: x.file_summary.permissions or ""
-    else:
-        raise ValueError(f"Invalid --sort argument: {sort_by}")
-
-
 def view_cache_summary_by_project(
     remote_provider: BasetenRemote,
     project_identifier: str,
-    sort_by: str = SORT_BY_FILEPATH,
-    order: str = SORT_ORDER_ASC,
+    sort_by: Optional[str] = None,
+    order: Optional[str] = None,
+    output_format: Optional[str] = None,
 ):
     """View cache summary for a training project by ID or name."""
+    from truss.cli.train.cache import (
+        OUTPUT_FORMAT_CLI_TABLE,
+        SORT_BY_FILEPATH,
+        SORT_ORDER_ASC,
+        view_cache_summary,
+    )
+
+    # Use constants for defaults if not provided
+    if sort_by is None:
+        sort_by = SORT_BY_FILEPATH
+    if order is None:
+        order = SORT_ORDER_ASC
+    if output_format is None:
+        output_format = OUTPUT_FORMAT_CLI_TABLE
+
     project = fetch_project_by_name_or_id(remote_provider, project_identifier)
-    view_cache_summary(remote_provider, project["id"], sort_by, order)
+    view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)

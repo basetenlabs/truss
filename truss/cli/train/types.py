@@ -1,18 +1,20 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
+from pydantic import BaseModel
+
+from truss.base import truss_config
 from truss_train.definitions import (
     CheckpointList,
     Compute,
     DeployCheckpointsConfig,
     DeployCheckpointsRuntime,
-    ModelWeightsFormat,
 )
 
 
 @dataclass
-class PrepareCheckpointArgs:
+class DeployCheckpointArgs:
+    dry_run: bool
     project_id: Optional[str]
     job_id: Optional[str]
     deploy_config_path: Optional[str]
@@ -26,13 +28,20 @@ class DeployCheckpointsConfigComplete(DeployCheckpointsConfig):
 
     checkpoint_details: CheckpointList
     model_name: str
-    deployment_name: str
     runtime: DeployCheckpointsRuntime
     compute: Compute
-    model_weight_format: ModelWeightsFormat
 
 
-@dataclass
-class PrepareCheckpointResult:
-    truss_directory: Path
-    checkpoint_deploy_config: DeployCheckpointsConfigComplete
+class DeploySuccessModelVersion(BaseModel):
+    # allow extra fields to be forwards compatible with server
+    class Config:
+        extra = "allow"
+
+    name: str
+    id: str
+
+
+class DeploySuccessResult(BaseModel):
+    deploy_config: DeployCheckpointsConfigComplete
+    truss_config: Optional[truss_config.TrussConfig]
+    model_version: Optional[DeploySuccessModelVersion]

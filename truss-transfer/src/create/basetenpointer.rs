@@ -72,7 +72,7 @@ mod tests {
             },
             ModelRepo {
                 repo_id: "gs://test-bucket/model-path".to_string(),
-                revision: "main".to_string(), // Ignored for GCS
+                revision: "".to_string(), // Not needed for GCS
                 allow_patterns: Some(vec!["*.safetensors".to_string()]),
                 ignore_patterns: Some(vec!["*.md".to_string()]),
                 kind: ResolutionType::Gcs,
@@ -249,7 +249,7 @@ mod tests {
         // Test Azure support with a mock repository
         let model_repos = vec![ModelRepo {
             repo_id: "azure://testaccount/testcontainer/model.bin".to_string(),
-            revision: "main".to_string(),
+            revision: "".to_string(), // Not needed for Azure
             runtime_secret_name: "azure-storage".to_string(),
             volume_folder: "test_azure_model".to_string(),
             kind: ResolutionType::Azure,
@@ -265,9 +265,8 @@ mod tests {
                 serde_json::to_string(&manifest_json).unwrap()
             }
             Err(e) => {
-                // if Failed to read Azure credentials from not existing file: azure-storage in error.
                 if e.to_string().contains(
-                    "Failed to read Azure credentials from not existing file: azure-storage",
+                    "Azure credential 'azure-storage' not found in environment variable or file",
                 ) {
                     println!("Azure test failed (expected without credentials): {e}");
                     // This is expected since we don't have real Azure credentials

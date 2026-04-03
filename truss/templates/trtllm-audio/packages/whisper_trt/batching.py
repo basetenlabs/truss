@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from whisper_trt import WhisperModel
@@ -13,25 +13,25 @@ from whisper_trt.custom_types import DEFAULT_NUM_BEAMS, BatchWhisperItem
 FIXED_TEXT_PRFIX = "<|startoftranscript|><|en|><|transcribe|><|0.00|>"
 
 
-class WhisperBatchProcessor(AsyncBatcher[List[BatchWhisperItem], List[str]]):
+class WhisperBatchProcessor(AsyncBatcher[list[BatchWhisperItem], list[str]]):
     def __init__(self, model, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.model: "WhisperModel" = model
 
-    def concat_and_pad_mels(self, tensors: List[Tensor]):
+    def concat_and_pad_mels(self, tensors: list[Tensor]):
         """Concatenates mel spectrograms to the maximum batch size using the last mel spectrogram as padding."""
         while len(tensors) < self.max_batch_size:
             tensors.append(tensors[-1])
         res = torch.cat(tensors, dim=0).type(torch.float16)
         return res
 
-    def concat_and_pad_prompts(self, prompts: List[List]) -> Tensor:
+    def concat_and_pad_prompts(self, prompts: list[list]) -> Tensor:
         """Concatenates prompts to the maximum batch size using the last prompt as padding."""
         while len(prompts) < self.max_batch_size:
             prompts.append(prompts[-1])
         return Tensor(prompts)
 
-    def process_batch(self, batch: List[BatchWhisperItem]) -> List[float]:
+    def process_batch(self, batch: list[BatchWhisperItem]) -> list[float]:
         logging.warning(f"Processing batch of size {len(batch)}")
 
         # Need to pad the batch up to the maximum batch size

@@ -6,6 +6,7 @@ import pathlib
 import re
 import sys
 import warnings
+from functools import cached_property
 from typing import (
     Annotated,
     Any,
@@ -25,7 +26,18 @@ from pydantic import json_schema
 from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
-from truss.util.requirements import parse_requirement_string, raise_insufficent_revision
+
+# PORT: knative reserved
+# HOSTNAME: set to the pod name by k8s
+K8S_RESERVED_ENVIRONMENT_VARIABLES = {"PORT", "HOSTNAME"}
+
+from truss.base.constants import PYPROJECT_TOML_FILENAME, UV_LOCK_FILENAME
+from truss.util.requirements import (
+    parse_requirement_string,
+    parse_requirements_from_pyproject,
+    raise_insufficent_revision,
+)
+from truss.util.yaml_utils import safe_load_yaml_with_no_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +52,13 @@ DEFAULT_AWS_SECRET_ACCESS_KEY_SECRET_NAME = "aws_secret_access_key"
 
 DEFAULT_TRAINING_CHECKPOINT_FOLDER = "/tmp/training_checkpoints"
 
+WEIGHTS_AUTH_SECRET_NAME_PARAM = "auth_secret_name"
+DOCKER_AUTH_SECRET_NAME_PARAM = "secret_name"
+AWS_OIDC_ROLE_ARN_PARAM = "aws_oidc_role_arn"
+AWS_OIDC_REGION_PARAM = "aws_oidc_region"
+GCP_OIDC_SERVICE_ACCOUNT_PARAM = "gcp_oidc_service_account"
+GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM = "gcp_oidc_workload_id_provider"
+
 
 def _is_numeric(number_like: str) -> bool:
     try:
@@ -47,6 +66,16 @@ def _is_numeric(number_like: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+class RequirementsFileType(str, enum.Enum):
+    NOT_PROVIDED = "not_provided"
+    PIP = "pip"
+    PYPROJECT = "pyproject"
+
+    # NB(nikhil): `uv.lock` requires the sibling `pyproject.toml`, so we need to make some assumptions about
+    # the location of that file.
+    UV_LOCK = "uv_lock"
 
 
 class Accelerator(str, enum.Enum):
@@ -61,6 +90,7 @@ class Accelerator(str, enum.Enum):
     H200 = "H200"
     H100_40GB = "H100_40GB"
     B200 = "B200"
+    L40S = "L40S"
 
 
 class AcceleratorSpec(custom_types.ConfigModel):
@@ -114,17 +144,13 @@ class AcceleratorSpec(custom_types.ConfigModel):
         return self.accelerator.value
 
     @classmethod
-    def model_json_schema(  # type: ignore[override]
+    def __get_pydantic_json_schema__(
         cls,
         core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
         schema = handler(core_schema)
-        schema.update(
-            type="string",
-            examples=["A100", "T4:2", "H100:8"],
-            description="Accelerator specification in 'TYPE' or 'TYPE:count' format.",
-        )
+        schema.update(type="string")
         schema.pop("properties", None)
         schema.pop("required", None)
         return schema
@@ -141,18 +167,25 @@ class ModelRepoSourceKind(str, enum.Enum):
 
 class ModelRepo(custom_types.ConfigModel):
     repo_id: Annotated[str, pydantic.StringConstraints(min_length=1)]
-    revision: Optional[Annotated[str, pydantic.StringConstraints(min_length=1)]] = None
+    revision: str = ""
     allow_patterns: Optional[list[str]] = None
     ignore_patterns: Optional[list[str]] = None
     volume_folder: Optional[
         Annotated[str, pydantic.StringConstraints(min_length=1)]
     ] = None
-    use_volume: bool = False
+    use_volume: bool
     kind: ModelRepoSourceKind = ModelRepoSourceKind.HF
     runtime_secret_name: str = "hf_access_token"
 
+    @pydantic.field_validator("revision")
+    @classmethod
+    def _validate_revision(cls, v: str) -> str:
+        if len(v) == 1:
+            raise ValueError("revision must be empty or at least 2 characters")
+        return v
+
     @property
-    def runtime_path(self) -> pathlib.Path:
+    def runtime_path(self) -> pathlib.PurePosixPath:
         assert self.volume_folder is not None
         return constants.MODEL_CACHE_PATH / self.volume_folder
 
@@ -161,11 +194,14 @@ class ModelRepo(custom_types.ConfigModel):
         use_volume = v.get("use_volume", False)
         if not use_volume:
             return v
-        if v.get("kind") == ModelRepoSourceKind.HF.value and v.get("revision") is None:
+        revision = v.get("revision") or ""
+        kind = v.get("kind")
+        is_hf = kind is None or kind == ModelRepoSourceKind.HF.value
+        if is_hf and not revision:
             logger.warning(
                 "the key `revision: str` is required for use_volume=True huggingface repos."
             )
-            raise_insufficent_revision(v.get("repo_id"), v.get("revision"))
+            raise_insufficent_revision(v.get("repo_id"), revision)
         if v.get("volume_folder") is None or len(v["volume_folder"]) == 0:
             raise ValueError(
                 "the key `volume_folder: str` is required for `use_volume=True` repos."
@@ -202,13 +238,330 @@ class ModelCache(pydantic.RootModel[list[ModelRepo]]):
             )
 
 
-class CacheInternal(ModelCache): ...
+class ModelRepoCacheInternal(ModelRepo):
+    use_volume: bool = False  # override
+
+
+class CacheInternal(pydantic.RootModel[list[ModelRepoCacheInternal]]):
+    @property
+    def models(self) -> list[ModelRepoCacheInternal]:
+        return self.root
+
+
+class WeightsAuthMethod(str, enum.Enum):
+    """Authentication methods for weights sources."""
+
+    CUSTOM_SECRET = "CUSTOM_SECRET"
+    AWS_OIDC = "AWS_OIDC"
+    GCP_OIDC = "GCP_OIDC"
+
+
+class AuthFieldsMixin(custom_types.ConfigModel):
+    """Mixin for common authentication fields used across different auth configurations."""
+
+    aws_oidc_role_arn: Optional[str] = pydantic.Field(
+        default=None, description="AWS IAM role ARN for OIDC authentication."
+    )
+    aws_oidc_region: Optional[str] = pydantic.Field(
+        default=None, description="AWS region for OIDC authentication."
+    )
+    gcp_oidc_service_account: Optional[str] = pydantic.Field(
+        default=None, description="GCP service account name for OIDC authentication."
+    )
+    gcp_oidc_workload_id_provider: Optional[str] = pydantic.Field(
+        default=None,
+        description="GCP workload identity provider for OIDC authentication.",
+    )
+
+    def _require_fields(self, auth_method: str, *fields: str) -> None:
+        """Validate that all specified fields have non-empty values.
+
+        Args:
+            auth_method: The authentication method being validated (for error messages)
+            fields: Field names to check for presence
+
+        Raises:
+            ValueError: If any required fields are missing or empty
+        """
+        missing = [f for f in fields if getattr(self, f) in (None, "")]
+        if missing:
+            raise ValueError(
+                f"{', '.join(missing)} must be provided when auth_method is {auth_method}"
+            )
+
+    def _forbid_fields(self, auth_method: str, *fields: str) -> None:
+        """Validate that all specified fields are empty or None.
+
+        Args:
+            auth_method: The authentication method being validated (for error messages)
+            fields: Field names to check for absence
+
+        Raises:
+            ValueError: If any forbidden fields are present
+        """
+        present = [f for f in fields if getattr(self, f) not in (None, "")]
+        if present:
+            raise ValueError(
+                f"{', '.join(present)} cannot be specified when auth_method is {auth_method}"
+            )
+
+    def _validate_fields(
+        self, auth_method: str, required: list[str], forbidden: list[str]
+    ) -> None:
+        """Validate that required fields are present and forbidden fields are absent.
+
+        Args:
+            auth_method: The authentication method being validated (for error messages)
+            required: List of field names that must have values
+            forbidden: List of field names that must be empty/None
+        """
+        self._require_fields(auth_method, *required)
+        self._forbid_fields(auth_method, *forbidden)
+
+
+class WeightsAuth(AuthFieldsMixin):
+    """Authentication configuration for a weights source.
+
+    This can be used to specify OIDC-based authentication for cloud storage sources,
+    or a Baseten secret name for access key authentication.
+    """
+
+    auth_method: Annotated[
+        WeightsAuthMethod,
+        pydantic.Field(
+            ...,
+            description="Authentication method for downloading weights from the source.",
+        ),
+    ]
+    auth_secret_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="Baseten secret name containing credentials for accessing the source.",
+    )
+
+    @pydantic.field_validator("auth_method", mode="before")
+    @classmethod
+    def _normalize_auth_method(cls, v: Optional[str]) -> Optional[str]:
+        return v.upper() if isinstance(v, str) else v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_auth_fields(self) -> "WeightsAuth":
+        if self.auth_method == WeightsAuthMethod.CUSTOM_SECRET:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[WEIGHTS_AUTH_SECRET_NAME_PARAM],
+                forbidden=[
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+        elif self.auth_method == WeightsAuthMethod.AWS_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+        elif self.auth_method == WeightsAuthMethod.GCP_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+                forbidden=[
+                    WEIGHTS_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                ],
+            )
+
+        return self
+
+
+# URI prefixes for cloud storage sources
+_CLOUD_STORAGE_PREFIXES = frozenset({"s3://", "gs://", "azure://", "r2://"})
+# HuggingFace prefix
+_HF_PREFIX = "hf://"
+# HTTPS prefix for direct URL downloads
+_HTTPS_PREFIX = "https://"
+# All supported URI schemes (cloud storage + HuggingFace + HTTPS)
+_SUPPORTED_SCHEMES = _CLOUD_STORAGE_PREFIXES | {_HF_PREFIX, _HTTPS_PREFIX}
+
+
+class WeightsSource(custom_types.ConfigModel):
+    """Configuration for a weights source in the new weights API.
+
+    Uses a URI-based `source` field with a required scheme prefix:
+    - hf:// -> HuggingFace (e.g., "hf://meta-llama/Llama-2-7b" or "hf://meta-llama/Llama-2-7b@main")
+    - s3:// -> AWS S3 (e.g., "s3://bucket/path")
+    - gs:// -> Google Cloud Storage (e.g., "gs://bucket/path")
+    - azure:// -> Azure Blob Storage (e.g., "azure://account/container/path")
+    - r2:// -> CloudFlare R2 Storage (e.g., "r2://account_id.bucket/path")
+    - https:// -> Direct URL download (e.g., "https://example.com/model.bin")
+
+    For HuggingFace sources, you can specify a revision (branch, tag, or commit SHA)
+    using the @{rev} suffix: "hf://owner/repo@revision"
+
+    Authentication can be specified either:
+    - Using the `auth` section (required for OIDC):
+        auth:
+          auth_method: AWS_OIDC
+          aws_oidc_role_arn: <role_arn>
+          aws_oidc_region: <region>
+    - Using `auth_secret_name` at the top level (or in the `auth` section)
+    """
+
+    source: Annotated[str, pydantic.StringConstraints(min_length=1)] = pydantic.Field(
+        ...,
+        description="URI with scheme prefix. Use hf://, s3://, gs://, azure://, r2://, or https://. "
+        "For HuggingFace, use @revision suffix (e.g., hf://owner/repo@main).",
+    )
+    mount_location: Annotated[str, pydantic.StringConstraints(min_length=1)] = (
+        pydantic.Field(
+            ..., description="Absolute path where weights will be mounted at runtime."
+        )
+    )
+    auth: Optional[WeightsAuth] = pydantic.Field(
+        default=None,
+        description="Authentication configuration for accessing the weights source.",
+    )
+    auth_secret_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="Baseten secret name containing credentials. Can also be specified in auth.auth_secret_name.",
+    )
+    allow_patterns: Optional[list[str]] = pydantic.Field(
+        default=None, description="File patterns to include (e.g., ['*.safetensors'])."
+    )
+    ignore_patterns: Optional[list[str]] = pydantic.Field(
+        default=None, description="File patterns to exclude (e.g., ['*.md'])."
+    )
+
+    @property
+    def is_huggingface(self) -> bool:
+        """Check if this source is a HuggingFace repository."""
+        return self.source.startswith(_HF_PREFIX)
+
+    @pydantic.field_validator("source")
+    @classmethod
+    def _validate_source(cls, v: str) -> str:
+        supported_schemes_str = ", ".join(sorted(_SUPPORTED_SCHEMES))
+
+        # URI scheme prefix is required
+        if "://" not in v:
+            raise ValueError(
+                f"Source '{v}' is missing a URI scheme. "
+                f"Supported schemes: {supported_schemes_str}"
+            )
+
+        scheme = v.split("://")[0] + "://"
+
+        # Check for unsupported URI schemes
+        if scheme not in _SUPPORTED_SCHEMES:
+            raise ValueError(
+                f"Unsupported source scheme '{scheme}'. "
+                f"Supported schemes: {supported_schemes_str}"
+            )
+
+        # Validate URI format for cloud storage
+        if scheme in _CLOUD_STORAGE_PREFIXES:
+            path_part = v[len(scheme) :]
+            if not path_part or path_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid {scheme[:-3].upper()} URI format: '{v}'. "
+                    f"Expected format: {scheme}bucket/path"
+                )
+            # Reject @ revision syntax for cloud storage (HF-only feature)
+            if "@" in path_part:
+                raise ValueError(
+                    f"The @ revision syntax is only valid for HuggingFace sources (hf://). "
+                    f"Source '{v}' uses {scheme[:-3].upper()} which does not support revisions."
+                )
+
+        # Validate https:// format
+        if scheme == _HTTPS_PREFIX:
+            url_part = v[len(_HTTPS_PREFIX) :]
+            if not url_part or url_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid HTTPS URL format: '{v}'. "
+                    f"Expected format: https://hostname/path"
+                )
+
+        # Validate hf:// format
+        if scheme == _HF_PREFIX:
+            repo_part = v[len(_HF_PREFIX) :]
+            if not repo_part or repo_part.startswith("/"):
+                raise ValueError(
+                    f"Invalid HuggingFace URI format: '{v}'. "
+                    f"Expected format: hf://owner/repo"
+                )
+
+        return v
+
+    @pydantic.field_validator("mount_location")
+    @classmethod
+    def _validate_mount_location(cls, v: str) -> str:
+        if not v.startswith("/"):
+            raise ValueError(
+                f"mount_location must be an absolute path (start with /), got: {v}"
+            )
+        return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_auth_secret_name(self) -> "WeightsSource":
+        """Validate that auth_secret_name is not specified in conflicting locations."""
+        if self.auth_secret_name and (self.auth and self.auth.auth_secret_name):
+            raise ValueError(
+                "auth_secret_name cannot be specified both at the top level and in auth section. "
+                "Please use only one location."
+            )
+        return self
+
+
+class Weights(pydantic.RootModel[list[WeightsSource]]):
+    """List of weights sources for the new weights API."""
+
+    @property
+    def sources(self) -> list[WeightsSource]:
+        return self.root
+
+    @pydantic.model_validator(mode="after")
+    def _validate_unique_mount_locations(self) -> "Weights":
+        """Ensure all mount_location values are unique."""
+        mount_locations: list[str] = []
+        for source in self.root:
+            if source.mount_location in mount_locations:
+                raise ValueError(
+                    f"Duplicate mount_location '{source.mount_location}' - "
+                    f"each weights source must have a unique mount path."
+                )
+            mount_locations.append(source.mount_location)
+        return self
 
 
 class HealthChecks(custom_types.ConfigModel):
-    restart_check_delay_seconds: Optional[int] = None
-    restart_threshold_seconds: Optional[int] = None
-    stop_traffic_threshold_seconds: Optional[int] = None
+    """Custom health check configuration for your deployments."""
+
+    restart_check_delay_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The delay in seconds before starting restart checks. Defaults to platform-determined value when not set.",
+    )
+    restart_threshold_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+    )
+    stop_traffic_threshold_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+    )
+    startup_threshold_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The time in seconds to wait for a model to start before marking it as unhealthy. Defaults to platform-determined value when not set.",
+    )
 
 
 class TransportKind(str, enum.Enum):
@@ -238,16 +591,35 @@ Transport = Annotated[
 
 
 class Runtime(custom_types.ConfigModel):
-    predict_concurrency: int = 1
-    streaming_read_timeout: int = 60
-    enable_tracing_data: bool = False
-    enable_debug_logs: bool = False
-    transport: Transport = HTTPOptions()
+    """Runtime settings for your model instance."""
+
+    predict_concurrency: int = pydantic.Field(
+        default=1,
+        description="The number of concurrent requests that can run in your model's predict method. Increase this if your model supports parallelism.",
+    )
+    streaming_read_timeout: int = pydantic.Field(
+        default=60, description="The timeout in seconds for streaming read operations."
+    )
+    enable_tracing_data: bool = pydantic.Field(
+        default=False,
+        description="If true, enables trace data export with built-in OTEL instrumentation. May add performance overhead.",
+    )
+    enable_debug_logs: bool = pydantic.Field(
+        default=False,
+        description="If true, sets the Truss server log level to DEBUG instead of INFO.",
+    )
+    transport: Transport = pydantic.Field(
+        default_factory=HTTPOptions,
+        description="The transport protocol for your model. Supports http (default), websocket, and grpc.",
+    )
     is_websocket_endpoint: Optional[bool] = pydantic.Field(
         None,
-        description="DEPRECATED. Do not set manually. Automatically inferred from `transport.kind == websocket`.",
+        description="DEPRECATED. Do not set manually. Automatically inferred from transport.kind == websocket.",
     )
-    health_checks: HealthChecks = pydantic.Field(default_factory=HealthChecks)
+    health_checks: HealthChecks = pydantic.Field(
+        default_factory=HealthChecks,
+        description="Custom health check configuration for your deployments.",
+    )
     truss_server_version_override: Optional[str] = pydantic.Field(
         None,
         description="By default, truss servers are built from the same release as the "
@@ -328,9 +700,15 @@ class ModelServer(str, enum.Enum):
 
 
 class Build(custom_types.ConfigModel):
+    """Build-time configuration, including secret access during Docker builds."""
+
     model_server: ModelServer = ModelServer.TrussServer
     arguments: dict[str, Any] = pydantic.Field(default_factory=dict)
-    secret_to_path_mapping: Mapping[str, str] = pydantic.Field(default_factory=dict)
+    secret_to_path_mapping: Mapping[str, str] = pydantic.Field(
+        default_factory=dict,
+        description="Grants access to secrets during the build. Provide a mapping between a secret and a path on the image.",
+    )
+    no_cache: bool = False
 
     _SECRET_NAME_REGEX: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
     _MAX_SECRET_NAME_LENGTH: ClassVar[int] = 253
@@ -366,10 +744,33 @@ class Build(custom_types.ConfigModel):
 
 
 class Resources(custom_types.ConfigModel):
-    cpu: str = DEFAULT_CPU
-    memory: str = DEFAULT_MEMORY
-    accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
-    node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
+    """Compute resources that your model needs, including CPU, memory, and GPU resources."""
+
+    cpu: str = pydantic.Field(
+        default=DEFAULT_CPU,
+        description="CPU resources needed, expressed as either a raw number or millicpus. For example, 500m is half of a CPU core.",
+        examples=["1", "500m", "4"],
+    )
+    memory: str = pydantic.Field(
+        default=DEFAULT_MEMORY,
+        description="CPU RAM needed, expressed as a number with units. Units include Gi (Gibibytes), G (Gigabytes), Mi (Mebibytes), and M (Megabytes).",
+        examples=["2Gi", "512Mi"],
+    )
+    accelerator: AcceleratorSpec = pydantic.Field(
+        default_factory=AcceleratorSpec,
+        description="The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+        examples=["A100", "T4:2", "H100:8"],
+    )
+    instance_type: Optional[str] = pydantic.Field(
+        default=None,
+        description="The full SKU name for the instance type. When specified, cpu, memory, and accelerator fields are ignored.",
+        examples=["L4:4x16"],
+    )
+    node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = (
+        pydantic.Field(
+            default=None, description="Number of nodes for multi-node deployments."
+        )
+    )
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
     _MEMORY_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*([a-zA-Z]+)?$")
@@ -442,10 +843,12 @@ class Resources(custom_types.ConfigModel):
         handler: core_schema.SerializerFunctionWrapHandler,
         info: core_schema.SerializationInfo,
     ) -> dict:
-        """Custom omission of `node_count` if at default."""
+        """Custom omission of `node_count` and `instance_type` if at default."""
         result = handler(self)
         if not self.node_count:
             result.pop("node_count", None)
+        if not self.instance_type:
+            result.pop("instance_type", None)
         return result
 
 
@@ -493,9 +896,12 @@ class DockerAuthType(str, enum.Enum):
 
     GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
     AWS_IAM = "AWS_IAM"
+    AWS_OIDC = "AWS_OIDC"
+    GCP_OIDC = "GCP_OIDC"
+    REGISTRY_SECRET = "REGISTRY_SECRET"
 
 
-class DockerAuthSettings(custom_types.ConfigModel):
+class DockerAuthSettings(AuthFieldsMixin):
     """Provides information about how to authenticate to the docker registry containing
     the custom base image."""
 
@@ -515,21 +921,62 @@ class DockerAuthSettings(custom_types.ConfigModel):
         return v.upper() if isinstance(v, str) else v
 
     @pydantic.model_validator(mode="after")
-    def validate_secret_name(self) -> "DockerAuthSettings":
-        if (
-            self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON
-            and self.secret_name is None
-        ):
-            raise ValueError(
-                "secret_name must be provided when auth_method is GCP_SERVICE_ACCOUNT_JSON"
+    def validate_auth_fields(self) -> "DockerAuthSettings":
+        if self.auth_method == DockerAuthType.GCP_SERVICE_ACCOUNT_JSON:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[DOCKER_AUTH_SECRET_NAME_PARAM],
+                forbidden=[
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
             )
+        elif self.auth_method == DockerAuthType.AWS_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[AWS_OIDC_ROLE_ARN_PARAM, AWS_OIDC_REGION_PARAM],
+                forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+            )
+        elif self.auth_method == DockerAuthType.GCP_OIDC:
+            self._validate_fields(
+                self.auth_method.value,
+                required=[
+                    GCP_OIDC_SERVICE_ACCOUNT_PARAM,
+                    GCP_OIDC_WORKLOAD_ID_PROVIDER_PARAM,
+                ],
+                forbidden=[
+                    DOCKER_AUTH_SECRET_NAME_PARAM,
+                    AWS_OIDC_ROLE_ARN_PARAM,
+                    AWS_OIDC_REGION_PARAM,
+                ],
+            )
+
         return self
 
 
 class BaseImage(custom_types.ConfigModel):
-    image: str = ""
-    python_executable_path: str = ""
-    docker_auth: Optional[DockerAuthSettings] = None
+    """Use base_image to deploy a custom Docker image."""
+
+    image: str = pydantic.Field(
+        default="",
+        description="The path to the Docker image.",
+        examples=["vllm/vllm-openai:v0.7.3", "nvcr.io/nvidia/nemo:23.03"],
+    )
+    python_executable_path: str = pydantic.Field(
+        default="",
+        description="A path to the Python executable on the image.",
+        examples=["/usr/bin/python"],
+    )
+    docker_auth: Optional[DockerAuthSettings] = pydantic.Field(
+        default=None,
+        description="Authentication configuration for a private Docker registry.",
+    )
 
     @pydantic.field_validator("python_executable_path")
     def _validate_path(cls, v: str) -> str:
@@ -541,11 +988,45 @@ class BaseImage(custom_types.ConfigModel):
 
 
 class DockerServer(custom_types.ConfigModel):
-    start_command: str
-    server_port: int
-    predict_endpoint: str
-    readiness_endpoint: str
-    liveness_endpoint: str
+    """Deploy a custom Docker image that has its own HTTP server, without writing a Model class."""
+
+    start_command: Optional[str] = pydantic.Field(
+        default=None,
+        description="The command to start the server. Required when no_build is not true.",
+    )
+    server_port: int = pydantic.Field(
+        description="The port where the server runs. Port 8080 is reserved by Baseten's internal reverse proxy and cannot be used."
+    )
+    predict_endpoint: str = pydantic.Field(
+        description="The endpoint for inference requests. This is mapped to Baseten's /predict route."
+    )
+    readiness_endpoint: str = pydantic.Field(
+        description="The endpoint for readiness probes. Determines when the container can accept traffic."
+    )
+    liveness_endpoint: str = pydantic.Field(
+        description="The endpoint for liveness probes. Determines if the container needs to be restarted."
+    )
+    run_as_user_id: Optional[int] = pydantic.Field(
+        default=None,
+        description="The Linux UID to run the server process as inside the container. Use this when your base image expects a specific non-root user (for example, NVIDIA NIM containers).",
+    )
+    no_build: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
+    )
+
+    @pydantic.field_validator("run_as_user_id")
+    @classmethod
+    def _validate_run_as_user_id(cls, v: Optional[int]) -> Optional[int]:
+        if v == 0 or v == constants.DEFAULT_NON_ROOT_USER_ID:
+            raise ValueError(f"run_as_user_id cannot be {v}. Use a different user ID.")
+        return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_start_command(self) -> "DockerServer":
+        if not self.no_build and self.start_command is None:
+            raise ValueError("start_command is required when no_build is not true")
+        return self
 
 
 class TrainingArtifactReference(custom_types.ConfigModel):
@@ -579,48 +1060,143 @@ def to_dotted_python_version(truss_python_version: str) -> str:
 
 
 class TrussConfig(custom_types.ConfigModel):
-    model_name: Optional[str] = None
-    model_metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
-    description: Optional[str] = None
-    examples_filename: str = "examples.yaml"
+    """Configuration for a Truss model deployment."""
 
-    data_dir: str = DEFAULT_DATA_DIRECTORY
-    external_data: Optional[ExternalData] = None
-    external_package_dirs: list[str] = pydantic.Field(default_factory=list)
+    model_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="The name of your model. This is displayed in the model details page in the Baseten UI.",
+    )
+    model_metadata: dict[str, Any] = pydantic.Field(
+        default_factory=dict,
+        description="A flexible field for additional metadata. The entire config file is available to your model at runtime.",
+        json_schema_extra={
+            "properties": {
+                "example_model_input": {
+                    "description": "Sample input that populates the Baseten playground.",
+                    "examples": [{"prompt": "What is the meaning of life?"}],
+                }
+            }
+        },
+    )
+    description: Optional[str] = pydantic.Field(
+        default=None, description="A description of your model."
+    )
+    examples_filename: str = pydantic.Field(
+        default="examples.yaml",
+        description="Path to a file containing example model inputs.",
+    )
 
-    python_version: str = "py39"
-    base_image: Optional[BaseImage] = None
-    requirements_file: Optional[str] = None
-    requirements: list[str] = pydantic.Field(default_factory=list)
-    system_packages: list[str] = pydantic.Field(default_factory=list)
-    environment_variables: dict[str, str] = pydantic.Field(default_factory=dict)
-    secrets: MutableMapping[str, Optional[str]] = pydantic.Field(default_factory=dict)
+    data_dir: str = pydantic.Field(
+        default=DEFAULT_DATA_DIRECTORY,
+        description="The folder for data files in your Truss.",
+    )
+    external_data: Optional[ExternalData] = pydantic.Field(
+        default=None,
+        description="External data to be downloaded and made available under the data directory at serving time.",
+    )
+    external_package_dirs: list[str] = pydantic.Field(
+        default_factory=list,
+        description="Use external_package_dirs to access custom packages located outside your Truss. This lets multiple Trusses share the same package.",
+    )
 
-    resources: Resources = pydantic.Field(default_factory=Resources)
-    runtime: Runtime = pydantic.Field(default_factory=Runtime)
-    build: Build = pydantic.Field(default_factory=Build)
-    build_commands: list[str] = pydantic.Field(default_factory=list)
-    docker_server: Optional[DockerServer] = None
-    model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
-    trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
+    python_version: str = pydantic.Field(
+        default="py39",
+        description="The Python version to use.",
+        examples=["py39", "py310", "py311", "py312", "py313"],
+    )
+    base_image: Optional[BaseImage] = pydantic.Field(
+        default=None,
+        description="Use a custom Docker base image instead of the default Truss image.",
+    )
+    requirements_file: Optional[str] = pydantic.Field(
+        default=None,
+        description="Path to a dependency file. Supports requirements.txt, pyproject.toml, and uv.lock. Mutually exclusive with 'requirements'.",
+    )
+    requirements: list[str] = pydantic.Field(
+        default_factory=list,
+        description="A list of Python dependencies in pip requirements file format. Mutually exclusive with 'requirements_file'.",
+    )
+    system_packages: list[str] = pydantic.Field(
+        default_factory=list,
+        description="System packages that you would typically install using apt on a Debian operating system.",
+        examples=[["ffmpeg", "libsm6", "libxext6"]],
+    )
+    environment_variables: dict[str, str] = pydantic.Field(
+        default_factory=dict,
+        description="Key-value pairs exposed to the environment that the model executes in. Do not store secret values here.",
+    )
+    secrets: MutableMapping[str, Optional[str]] = pydantic.Field(
+        default_factory=dict,
+        description="Declare secrets your model needs at runtime, such as API keys or access tokens. Use null as a placeholder; store actual values in your organization settings.",
+    )
+
+    resources: Resources = pydantic.Field(
+        default_factory=Resources,
+        description="Compute resources that your model needs, including CPU, memory, and GPU resources.",
+    )
+    runtime: Runtime = pydantic.Field(
+        default_factory=Runtime, description="Runtime settings for your model instance."
+    )
+    build: Build = pydantic.Field(
+        default_factory=Build,
+        description="Build-time configuration, including secret access during Docker builds.",
+    )
+    build_commands: list[str] = pydantic.Field(
+        default_factory=list,
+        description="A list of shell commands to run during Docker build. These commands execute after system packages and Python requirements are installed.",
+    )
+    docker_server: Optional[DockerServer] = pydantic.Field(
+        default=None,
+        description="Deploy a custom Docker image that has its own HTTP server, without writing a Model class.",
+    )
+    model_cache: ModelCache = pydantic.Field(
+        default_factory=lambda: ModelCache([]),
+        description="Deprecated. Use 'weights' instead. Bundle model weights into your image at build time.",
+    )
+    weights: Weights = pydantic.Field(
+        default_factory=lambda: Weights([]),
+        description="Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching.",
+    )
+    trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = pydantic.Field(
+        default=None,
+        description="TensorRT-LLM configuration for optimized LLM inference.",
+    )
 
     # deploying from checkpoint
-    training_checkpoints: Optional[CheckpointList] = None
+    training_checkpoints: Optional[CheckpointList] = pydantic.Field(
+        default=None,
+        description="Configuration for deploying from training checkpoints.",
+    )
 
     # Internal / Legacy.
     input_type: str = "Any"
     model_framework: str = "custom"
     model_type: str = "Model"
-    model_module_dir: str = DEFAULT_MODEL_MODULE_DIR
+    model_module_dir: str = pydantic.Field(
+        default=DEFAULT_MODEL_MODULE_DIR,
+        description="The folder containing your model class.",
+    )
     model_class_filename: str = "model.py"
-    model_class_name: str = "Model"
-    bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
+    model_class_name: str = pydantic.Field(
+        default="Model",
+        description="The name of the class that defines your Truss model. This class must implement at least a predict method.",
+    )
+    bundled_packages_dir: str = pydantic.Field(
+        default=DEFAULT_BUNDLED_PACKAGES_DIR,
+        description="The folder for custom packages in your Truss.",
+    )
     use_local_src: bool = False
     cache_internal: CacheInternal = pydantic.Field(
         default_factory=lambda: CacheInternal([])
     )
-    live_reload: bool = False
-    apply_library_patches: bool = True
+    live_reload: bool = pydantic.Field(
+        default=False,
+        description="If true, changes to your model code are automatically reloaded without restarting the server.",
+    )
+    apply_library_patches: bool = pydantic.Field(
+        default=True,
+        description="Whether to apply library patches for improved compatibility.",
+    )
     spec_version: str = "2.0"
 
     class Config:
@@ -649,18 +1225,43 @@ class TrussConfig(custom_types.ConfigModel):
             )
         if "hf_cache" in data and "model_cache" not in data:
             data["model_cache"] = data.pop("hf_cache") or []
+        env_vars = data.get("environment_variables", {})
+        conflicts = K8S_RESERVED_ENVIRONMENT_VARIABLES & env_vars.keys()
+        if conflicts:
+            logger.warning(
+                "Warning: the following environment variables are reserved by the "
+                "platform and will be overwritten at runtime: %s",
+                ", ".join(sorted(conflicts)),
+            )
         data["environment_variables"] = {
             k: str(v).lower() if isinstance(v, bool) else str(v)
-            for k, v in data.get("environment_variables", {}).items()
+            for k, v in env_vars.items()
         }
         return cls.model_validate(data)
 
     @classmethod
     def from_yaml(cls, path: pathlib.Path) -> "TrussConfig":
         if not os.path.isfile(path):
-            raise ValueError(f"Expected a truss configuration file at {path}")
+            # It's common for users to create a .yml instead of a .yaml,
+            # so check for that and provide a helpful error message if we find one.
+            resolved_path = path.resolve()
+            stem = resolved_path.stem
+            alternative_path = resolved_path.parent / f"{stem}.yml"
+            if os.path.isfile(alternative_path):
+                raise ValueError(
+                    "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+                )
+            else:
+                raise ValueError(f"Expected a truss configuration file at {path}")
+
         with path.open() as f:
-            raw_data = yaml.safe_load(f) or {}
+            raw_data = safe_load_yaml_with_no_duplicates(f) or {}
+        # TODO(deepakn): Remove this once we have a way to pass no_cache through the context.
+        build_section = raw_data.get("build")
+        if isinstance(build_section, dict) and build_section.get("no_cache") is True:
+            raise ValueError(
+                "no_cache cannot be specified in config.yaml. Use the --no-cache CLI flag instead."
+            )
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
@@ -670,23 +1271,44 @@ class TrussConfig(custom_types.ConfigModel):
     def clone(self) -> "TrussConfig":
         return self.from_dict(self.to_dict())
 
+    @cached_property
+    def requirements_file_type(self) -> RequirementsFileType:
+        return self._detect_requirements_file_type()
+
     def load_requirements_from_file(self, truss_dir: pathlib.Path) -> list[str]:
-        if self.requirements_file:
-            requirements_path = truss_dir / self.requirements_file
-            try:
-                requirements = []
-                with open(requirements_path) as f:
-                    for line in f.readlines():
-                        parsed_line = parse_requirement_string(line)
-                        if parsed_line:
-                            requirements.append(parsed_line)
-                return requirements
-            except Exception as e:
-                logger.exception(
-                    f"failed to read requirements file: {self.requirements_file}"
-                )
-                raise e
-        return []
+        file_type = self.requirements_file_type
+        if file_type == RequirementsFileType.NOT_PROVIDED:
+            return []
+
+        try:
+            if file_type == RequirementsFileType.PIP:
+                return self._load_pip_requirements(truss_dir)
+
+            # NB(nikhil): For patching, we resolve from `pyproject.toml` for (1) easier parsing (2) smaller file footprint.
+            # If the user specified `uv.lock` as the source of truth, we'll bypass it for the patch process.
+            pyproject_path = self._resolve_pyproject_path(truss_dir)
+            return parse_requirements_from_pyproject(pyproject_path)
+        except Exception as e:
+            logger.exception(
+                f"failed to read requirements file: {self.requirements_file}"
+            )
+            raise e
+
+    def _load_pip_requirements(self, truss_dir: pathlib.Path) -> list[str]:
+        requirements_path = truss_dir / self.requirements_file  # type: ignore[operator]
+        requirements = []
+        with open(requirements_path) as f:
+            for line in f.readlines():
+                parsed_line = parse_requirement_string(line)
+                if parsed_line:
+                    requirements.append(parsed_line)
+        return requirements
+
+    def _resolve_pyproject_path(self, truss_dir: pathlib.Path) -> pathlib.Path:
+        if self.requirements_file_type == RequirementsFileType.PYPROJECT:
+            return truss_dir / self.requirements_file  # type: ignore[operator]
+
+        return (truss_dir / self.requirements_file).parent / PYPROJECT_TOML_FILENAME  # type: ignore[operator]
 
     @staticmethod
     def load_requirements_file_from_filepath(yaml_path: pathlib.Path) -> list[str]:
@@ -705,6 +1327,10 @@ class TrussConfig(custom_types.ConfigModel):
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
+            )
+        if self.model_cache.models and self.weights.sources:
+            raise ValueError(
+                "Please ensure that only one of `model_cache` and `weights` is specified"
             )
         return self
 
@@ -732,6 +1358,18 @@ class TrussConfig(custom_types.ConfigModel):
     def clear_runtime_fields(self) -> None:
         self.training_checkpoints = None
         self.environment_variables = {}
+        self.weights = Weights([])
+
+    def _detect_requirements_file_type(self) -> RequirementsFileType:
+        if not self.requirements_file:
+            return RequirementsFileType.NOT_PROVIDED
+
+        basename = pathlib.Path(self.requirements_file).name
+        if basename == UV_LOCK_FILENAME:
+            return RequirementsFileType.UV_LOCK
+        elif basename == PYPROJECT_TOML_FILENAME:
+            return RequirementsFileType.PYPROJECT
+        return RequirementsFileType.PIP
 
 
 def _map_to_supported_python_version(python_version: str) -> str:

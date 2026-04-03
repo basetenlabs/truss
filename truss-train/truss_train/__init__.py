@@ -1,5 +1,7 @@
+from truss.base.truss_config import WeightsSource
 from truss_train.definitions import (
     AWSIAMDockerAuth,
+    BasetenCheckpoint,
     CacheConfig,
     CheckpointingConfig,
     CheckpointList,
@@ -10,16 +12,21 @@ from truss_train.definitions import (
     FullCheckpoint,
     GCPServiceAccountJSONDockerAuth,
     Image,
+    LoadCheckpointConfig,
     LoRACheckpoint,
     LoRADetails,
     ModelWeightsFormat,
+    RegistrySecretDockerAuth,
     Runtime,
     SecretReference,
     TrainingJob,
     TrainingProject,
+    Workspace,
 )
+from truss_train.public_api import push
 
 __all__ = [
+    "push",
     "Compute",
     "Runtime",
     "SecretReference",
@@ -36,6 +43,11 @@ __all__ = [
     "CacheConfig",
     "AWSIAMDockerAuth",
     "GCPServiceAccountJSONDockerAuth",
+    "RegistrySecretDockerAuth",
+    "LoadCheckpointConfig",
+    "BasetenCheckpoint",
     "DockerAuth",
     "Image",
+    "WeightsSource",
+    "Workspace",
 ]

@@ -1,0 +1,14 @@
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: Test Build Commands
+python_version: py39
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+build_commands:
+  - sed -i 's/TEST_FIRST_VALUE/TEST_SECOND_VALUE/g' /packages/constants/constants.py

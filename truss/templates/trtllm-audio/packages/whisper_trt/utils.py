@@ -237,7 +237,7 @@ def remove_tensor_padding(input_tensor, input_tensor_lengths=None, pad_value=0):
 
 def read_config(component, engine_dir):
     config_path = engine_dir / component / "config.json"
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = json.load(f)
     model_config = OrderedDict()
     model_config.update(config["pretrained_config"])

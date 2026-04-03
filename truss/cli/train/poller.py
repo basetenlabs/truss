@@ -10,8 +10,8 @@ POLL_INTERVAL_SEC = 2
 # NB(nikhil): When a job ends, we poll for this many seconds after to capture
 # any trailing logs that contain information about errors.
 JOB_TERMINATION_GRACE_PERIOD_SEC = 10
-JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_DEPLOYING"]
-JOB_RUNNING_STATES = ["TRAINING_JOB_RUNNING"]
+JOB_STARTING_STATES = ["TRAINING_JOB_CREATED", "TRAINING_JOB_QUEUED"]
+JOB_LOGGING_STATES = ["TRAINING_JOB_DEPLOYING", "TRAINING_JOB_RUNNING"]
 STATES_WITH_ERROR_MESSAGES = ["TRAINING_JOB_DEPLOY_FAILED"]
 
 
@@ -37,7 +37,7 @@ class TrainingPollerMixin:
 
     def before_polling(self) -> None:
         self._update_from_current_status()
-        status_str = "Waiting for job to run, currently {current_status}..."
+        status_str = "Waiting for job to deploy, currently {current_status}..."
         with console.status(
             status_str.format(current_status=self._current_status.status),
             spinner="dots",
@@ -55,14 +55,14 @@ class TrainingPollerMixin:
 
     def _maybe_update_poll_stop_time(self) -> None:
         if (
-            self._current_status.status not in JOB_RUNNING_STATES
+            self._current_status.status not in JOB_LOGGING_STATES
             and self._poll_stop_time is None
         ):
             self._poll_stop_time = int(time.time()) + JOB_TERMINATION_GRACE_PERIOD_SEC
 
     def should_poll_again(self) -> bool:
         return bool(
-            self._current_status.status in JOB_RUNNING_STATES
+            self._current_status.status in JOB_LOGGING_STATES
             or self._do_cleanup_polling()
         )
 

@@ -108,7 +108,7 @@ class RepositoryFile(ABC):
 
 class HuggingFaceFile(RepositoryFile):
     def download_to_cache(self):
-        secret_path = Path("/etc/secrets/hf-access-token")
+        secret_path = Path("/etc/secrets/hf_access_token")
         secret = secret_path.read_text().strip() if secret_path.exists() else None
         try:
             hf_hub_download(

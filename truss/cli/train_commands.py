@@ -1,19 +1,29 @@
+import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
 
+import rich.table
 import rich_click as click
 
 import truss.cli.train.core as train_cli
 from truss.base.constants import TRAINING_TEMPLATE_DIR
 from truss.cli import remote_cli
-from truss.cli.cli import push, truss_cli
+from truss.cli.cli import truss_cli
 from truss.cli.logs import utils as cli_log_utils
 from truss.cli.logs.training_log_watcher import TrainingLogWatcher
+from truss.cli.resolvers.training_project_team_resolver import (
+    resolve_training_project_team_name,
+)
+from truss.cli.train import checkpoint_viewer as checkpoint_mod
 from truss.cli.train import common as train_common
 from truss.cli.train import core
-from truss.cli.train.core import (
+from truss.cli.train.cache import (
+    OUTPUT_FORMAT_CLI_TABLE,
+    OUTPUT_FORMAT_CSV,
+    OUTPUT_FORMAT_JSON,
     SORT_BY_FILEPATH,
     SORT_BY_MODIFIED,
     SORT_BY_PERMISSIONS,
@@ -22,9 +32,11 @@ from truss.cli.train.core import (
     SORT_ORDER_ASC,
     SORT_ORDER_DESC,
 )
+from truss.cli.train.types import DeploySuccessResult
 from truss.cli.utils import common
 from truss.cli.utils.output import console, error_console
 from truss.remote.baseten.core import get_training_job_logs_with_pagination
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 from truss.util.path import copy_tree_path
@@ -41,14 +53,15 @@ truss_cli.add_command(train)
 
 def _print_training_job_success_message(
     job_id: str,
+    project_id: str,
     project_name: str,
-    job_object: TrainingJob,
+    job_object: Optional[TrainingJob],
     remote_provider: BasetenRemote,
 ) -> None:
     """Print success message and helpful commands for a training job."""
     console.print("✨ Training job successfully created!", style="green")
-    should_print_cache_summary = (
-        job_object.runtime.enable_cache
+    should_print_cache_summary = job_object and (
+        getattr(job_object.runtime, "enable_cache", None)
         or job_object.runtime.cache_config
         and job_object.runtime.cache_config.enabled
     )
@@ -64,7 +77,7 @@ def _print_training_job_success_message(
         f"🔍 View metrics for your job via "
         f"[cyan]'truss train metrics --job-id {job_id}'[/cyan]\n"
         f"{cache_summary_snippet}"
-        f"🌐 Status page: {common.format_link(core.status_page_url(remote_provider.remote_url, job_id))}"
+        f"🌐 View job in the UI: {common.format_link(core.status_page_url(remote_provider.remote_url, project_id, job_id))}"
     )
 
 
@@ -80,8 +93,13 @@ def _handle_post_create_logic(
             style="green",
         )
     else:
+        # recreate currently doesn't pass back a job object.
         _print_training_job_success_message(
-            job_id, project_name, job_resp["job_object"], remote_provider
+            job_id,
+            project_id,
+            project_name,
+            job_resp.get("job_object"),
+            remote_provider,
         )
 
     if tail:
@@ -100,28 +118,101 @@ def _prepare_click_context(f: click.Command, params: dict) -> click.Context:
     return ctx
 
 
+def _resolve_team_name(
+    remote_provider: BasetenRemote,
+    provided_team_name: Optional[str],
+    existing_project_name: Optional[str] = None,
+    existing_teams: Optional[dict[str, TeamType]] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    return resolve_training_project_team_name(
+        remote_provider=remote_provider,
+        provided_team_name=provided_team_name,
+        existing_project_name=existing_project_name,
+        existing_teams=existing_teams,
+    )
+
+
 @train.command(name="push")
 @click.argument("config", type=Path, required=True)
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after push.")
 @click.option("--job-name", type=str, required=False, help="Name of the training job.")
+@click.option(
+    "--team",
+    "provided_team_name",
+    type=str,
+    required=False,
+    help="Team name for the training project",
+)
+@click.option(
+    "--interactive",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="Interactive session trigger mode",
+)
+@click.option(
+    "--interactive-timeout-minutes",
+    type=int,
+    required=False,
+    help="Interactive session timeout in minutes",
+)
+@click.option(
+    "--accelerator",
+    type=str,
+    required=False,
+    help="Accelerator type and count (e.g., H200:8)",
+)
+@click.option("--node-count", type=int, required=False, help="Number of compute nodes")
+@click.option("--entrypoint", type=str, required=False, help="Entrypoint command.")
 @common.common_options()
 def push_training_job(
-    config: Path, remote: Optional[str], tail: bool, job_name: Optional[str]
+    config: Path,
+    remote: Optional[str],
+    tail: bool,
+    job_name: Optional[str],
+    provided_team_name: Optional[str],
+    interactive: Optional[str],
+    interactive_timeout_minutes: Optional[int],
+    accelerator: Optional[str],
+    node_count: Optional[int],
+    entrypoint: Optional[str],
 ):
     """Run a training job"""
-    from truss_train import deployment
+    from truss_train import deployment, loader
 
     if not remote:
         remote = remote_cli.inquire_remote_name()
 
-    with console.status("Creating training job...", spinner="dots"):
-        remote_provider: BasetenRemote = cast(
-            BasetenRemote, RemoteFactory.create(remote=remote)
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    existing_teams = remote_provider.api.get_teams()
+    # Use config team as fallback if --team not provided
+    effective_team_name = provided_team_name or RemoteFactory.get_remote_team(remote)
+
+    with loader.import_training_project(config) as training_project:
+        team_name, team_id = _resolve_team_name(
+            remote_provider,
+            effective_team_name,
+            existing_project_name=training_project.name,
+            existing_teams=existing_teams,
         )
-        job_resp = deployment.create_training_job_from_file(
-            remote_provider, config, job_name
-        )
+
+        with console.status("Creating training job...", spinner="dots"):
+            job_resp = deployment.create_training_job(
+                remote_provider,
+                config,
+                training_project,
+                job_name_from_cli=job_name,
+                team_name=team_name,
+                team_id=team_id,
+                interactive_trigger=interactive,
+                interactive_timeout_minutes=interactive_timeout_minutes,
+                accelerator=accelerator,
+                node_count=node_count,
+                entrypoint=entrypoint,
+            )
 
     # Note: This post create logic needs to happen outside the context
     # of the above context manager, as only one console session can be active
@@ -133,7 +224,7 @@ def push_training_job(
 @click.option(
     "--job-id", type=str, required=False, help="Job ID of Training Job to recreate"
 )
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--tail", is_flag=True, help="Tail for status + logs after recreation.")
 @common.common_options()
 def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bool):
@@ -153,14 +244,122 @@ def recreate_training_job(job_id: Optional[str], remote: Optional[str], tail: bo
     _handle_post_create_logic(job_resp, remote_provider, tail)
 
 
+def _format_local_time(utc_timestamp: str) -> str:
+    """Convert UTC ISO timestamp to local time string."""
+    if not utc_timestamp:
+        return ""
+    try:
+        utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+        local_dt = utc_dt.astimezone()
+        return local_dt.strftime("%H:%M:%S %Z")
+    except (ValueError, TypeError):
+        return utc_timestamp
+
+
+def _format_time_until_expiry(utc_timestamp: str) -> str:
+    """Format time until expiration in human-readable format (e.g., '2h 30m')."""
+    if not utc_timestamp:
+        return ""
+    try:
+        utc_dt = datetime.fromisoformat(utc_timestamp.replace("Z", "+00:00"))
+        now = datetime.now(utc_dt.tzinfo)
+        time_diff = utc_dt - now
+
+        # If already expired
+        if time_diff.total_seconds() <= 0:
+            return "Expired"
+
+        # Calculate hours and minutes
+        total_seconds = int(time_diff.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        elif minutes > 0:
+            return f"{minutes}m"
+        else:
+            return "< 1m"
+    except (ValueError, TypeError):
+        return utc_timestamp
+
+
+def _display_isession(remote_provider: BasetenRemote, project_id: str, job_id: str):
+    """Display auth codes table for a training job if available."""
+    try:
+        response = remote_provider.api.get_training_job_isession(
+            project_id=project_id, job_id=job_id
+        )
+        isession = response.get("auth_codes", [])
+
+        if not isession:
+            return
+
+        def replica_sort_key(code: dict) -> int:
+            replica_id = code.get("replica_id", "")
+            if "r" in replica_id:
+                try:
+                    return int(replica_id.rsplit("r", 1)[-1])
+                except ValueError:
+                    return 0
+            return 0
+
+        isession.sort(key=replica_sort_key)
+
+        table = rich.table.Table(
+            show_header=True,
+            header_style="bold magenta",
+            title=f"Interactive Sessions for Job: {job_id}",
+            box=rich.table.box.ROUNDED,
+            border_style="blue",
+        )
+        has_expiry = any(code.get("expires_at") for code in isession)
+        has_working_dir = any(code.get("working_directory") for code in isession)
+
+        table.add_column("Replica ID", style="cyan")
+        table.add_column("Tunnel Name", style="yellow")
+        table.add_column("Auth Code", style="green bold")
+        table.add_column("Auth URL", style="blue")
+        table.add_column("Generated At (Local)", style="dim")
+        if has_expiry:
+            table.add_column("Expires In", style="dim")
+        if has_working_dir:
+            table.add_column("Working Directory", style="green")
+
+        for code in isession:
+            row = [
+                code.get("replica_id", ""),
+                code.get("tunnel_name", ""),
+                code.get("auth_code", ""),
+                code.get("auth_url", ""),
+                _format_local_time(code.get("generated_at", "")),
+            ]
+            if has_expiry:
+                row.append(_format_time_until_expiry(code.get("expires_at", "")))
+            if has_working_dir:
+                row.append(code.get("working_directory", ""))
+            table.add_row(*row)
+
+        console.print(table)
+
+    except Exception:
+        # Silently skip if auth codes aren't available
+        pass
+
+
 @train.command(name="logs")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--tail", is_flag=True, help="Tail for ongoing logs.")
 @common.common_options()
 def get_job_logs(
-    remote: Optional[str], project_id: Optional[str], job_id: Optional[str], tail: bool
+    remote: Optional[str],
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    tail: bool,
 ):
     """Fetch logs for a training job"""
 
@@ -170,17 +369,26 @@ def get_job_logs(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+
     project_id, job_id = train_common.get_most_recent_job(
         remote_provider, project_id, job_id
     )
 
+    # Display auth codes once at the top for both modes
+    _display_isession(remote_provider, project_id, job_id)
+
     if not tail:
+        # Non-tail mode: Display all logs
         logs = get_training_job_logs_with_pagination(
             remote_provider.api, project_id, job_id
         )
         for log in cli_log_utils.parse_logs(logs):
             cli_log_utils.output_log(log)
     else:
+        # Tail mode: Stream logs continuously
         log_watcher = TrainingLogWatcher(remote_provider.api, project_id, job_id)
         for log in log_watcher.watch():
             cli_log_utils.output_log(log)
@@ -188,12 +396,17 @@ def get_job_logs(
 
 @train.command(name="stop")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option("--all", is_flag=True, help="Stop all running jobs.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def stop_job(
-    project_id: Optional[str], job_id: Optional[str], all: bool, remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    all: bool,
+    remote: Optional[str],
 ):
     """Stop a training job"""
 
@@ -202,6 +415,9 @@ def stop_job(
 
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
     )
     if all:
         train_cli.stop_all_jobs(remote_provider, project_id)
@@ -217,13 +433,17 @@ def stop_job(
 @click.option(
     "--project-id", type=str, required=False, help="View training jobs for a project."
 )
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option(
     "--job-id", type=str, required=False, help="View a specific training job."
 )
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def view_training(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    remote: Optional[str],
 ):
     """List all training jobs for a project"""
 
@@ -233,16 +453,24 @@ def view_training(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+
     train_cli.view_training_details(remote_provider, project_id, job_id)
 
 
 @train.command(name="metrics")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def get_job_metrics(
-    project_id: Optional[str], job_id: Optional[str], remote: Optional[str]
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    remote: Optional[str],
 ):
     """Get metrics for a training job"""
 
@@ -252,11 +480,15 @@ def get_job_metrics(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
     train_cli.view_training_job_metrics(remote_provider, project_id, job_id)
 
 
 @train.command(name="deploy_checkpoints")
 @click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
 @click.option(
     "--config",
@@ -267,14 +499,22 @@ def get_job_metrics(
 @click.option(
     "--dry-run", is_flag=True, help="Generate a truss config without deploying"
 )
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option(
+    "--truss-config-output-dir",
+    type=str,
+    required=False,
+    help="Path to output the truss config to. If not provided, will output to truss_configs/<model_version_name>_<model_version_id> or truss_configs/dry_run_<timestamp> if dry run.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def deploy_checkpoints(
     project_id: Optional[str],
+    project: Optional[str],
     job_id: Optional[str],
     config: Optional[str],
     remote: Optional[str],
     dry_run: bool,
+    truss_config_output_dir: Optional[str],
 ):
     """
     Deploy a LoRA checkpoint via vLLM.
@@ -286,31 +526,56 @@ def deploy_checkpoints(
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    prepare_checkpoint_result = train_cli.prepare_checkpoint_deploy(
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+    result = train_cli.create_model_version_from_inference_template(
         remote_provider,
-        train_cli.PrepareCheckpointArgs(
-            project_id=project_id, job_id=job_id, deploy_config_path=config
+        train_cli.DeployCheckpointArgs(
+            project_id=project_id,
+            job_id=job_id,
+            deploy_config_path=config,
+            dry_run=dry_run,
         ),
     )
 
-    params = {
-        "target_directory": prepare_checkpoint_result.truss_directory,
-        "remote": remote,
-        "model_name": prepare_checkpoint_result.checkpoint_deploy_config.model_name,
-        "publish": True,
-        "deployment_name": prepare_checkpoint_result.checkpoint_deploy_config.deployment_name,
-    }
-    ctx = _prepare_click_context(push, params)
     if dry_run:
-        console.print("--dry-run flag provided, not deploying", style="yellow")
-    else:
-        push.invoke(ctx)
-    train_cli.print_deploy_checkpoints_success_message(prepare_checkpoint_result)
+        console.print("did not deploy because --dry-run flag provided", style="yellow")
+
+    _write_truss_config(result, truss_config_output_dir, dry_run)
+
+    if not dry_run:
+        train_cli.print_deploy_checkpoints_success_message(result.deploy_config)
+
+
+def _write_truss_config(
+    result: DeploySuccessResult, truss_config_output_dir: Optional[str], dry_run: bool
+) -> None:
+    if not result.truss_config:
+        return
+    # format: 20251006_123456
+    datestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_name = (
+        f"{result.model_version.name}_{result.model_version.id}"
+        if result.model_version
+        else f"dry_run_{datestamp}"
+    )
+    output_dir_str = truss_config_output_dir or f"truss_configs/{folder_name}"
+    output_dir = Path(output_dir_str)
+    output_path = output_dir / "config.yaml"
+    os.makedirs(output_dir, exist_ok=True)
+    console.print(f"Writing truss config to {output_path}", style="yellow")
+    console.print(f"👀 Run `cat {output_path}` to view the truss config", style="green")
+    if dry_run:
+        console.print(
+            f"🚀 Run `cd {output_dir} && truss push` to deploy the truss", style="green"
+        )
+    result.truss_config.write_to_yaml_file(output_path)
 
 
 @train.command(name="download")
 @click.option("--job-id", type=str, required=True, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--target-directory",
     type=click.Path(file_okay=False, dir_okay=True, writable=True, resolve_path=True),
@@ -358,7 +623,7 @@ def download_training_job(
 
 @train.command(name="get_checkpoint_urls")
 @click.option("--job-id", type=str, required=False, help="Job ID.")
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @common.common_options()
 def download_checkpoint_artifacts(job_id: Optional[str], remote: Optional[str]) -> None:
     if not remote:
@@ -460,7 +725,7 @@ def cache():
 
 @cache.command(name="summarize")
 @click.argument("project", type=str, required=True)
-@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
 @click.option(
     "--sort",
     type=click.Choice(
@@ -481,8 +746,17 @@ def cache():
     default=SORT_ORDER_ASC,
     help="Sort order: ascending or descending.",
 )
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice([OUTPUT_FORMAT_CLI_TABLE, OUTPUT_FORMAT_CSV, OUTPUT_FORMAT_JSON]),
+    default=OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
 @common.common_options()
-def view_cache_summary(project: str, remote: Optional[str], sort: str, order: str):
+def view_cache_summary(
+    project: str, remote: Optional[str], sort: str, order: str, output_format: str
+):
     """View cache summary for a training project"""
     if not remote:
         remote = remote_cli.inquire_remote_name()
@@ -491,4 +765,320 @@ def view_cache_summary(project: str, remote: Optional[str], sort: str, order: st
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    train_cli.view_cache_summary_by_project(remote_provider, project, sort, order)
+    train_cli.view_cache_summary_by_project(
+        remote_provider, project, sort, order, output_format
+    )
+
+
+@train.group(name="checkpoints")
+def checkpoints():
+    """Checkpoint-related subcommands for truss train"""
+
+
+@checkpoints.command(name="list")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option("--project-id", type=str, required=False, help="Project ID.")
+@click.option("--project", type=str, required=False, help="Project name or project id.")
+@click.option("--job-id", type=str, required=False, help="Job ID.")
+@click.option(
+    "--checkpoint-name",
+    type=str,
+    required=False,
+    help="Jump directly into a specific checkpoint's files.",
+)
+@click.option(
+    "--sort",
+    type=click.Choice(
+        [
+            checkpoint_mod.SORT_BY_CHECKPOINT_ID,
+            checkpoint_mod.SORT_BY_SIZE,
+            checkpoint_mod.SORT_BY_CREATED,
+            checkpoint_mod.SORT_BY_TYPE,
+        ]
+    ),
+    default=checkpoint_mod.SORT_BY_CREATED,
+    help="Sort checkpoints by checkpoint-id, size, created date, or type.",
+)
+@click.option(
+    "--order",
+    type=click.Choice([checkpoint_mod.SORT_ORDER_ASC, checkpoint_mod.SORT_ORDER_DESC]),
+    default=checkpoint_mod.SORT_ORDER_ASC,
+    help="Sort order: ascending or descending.",
+)
+@click.option(
+    "-o",
+    "--output-format",
+    type=click.Choice(
+        [
+            checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+            checkpoint_mod.OUTPUT_FORMAT_CSV,
+            checkpoint_mod.OUTPUT_FORMAT_JSON,
+        ]
+    ),
+    default=checkpoint_mod.OUTPUT_FORMAT_CLI_TABLE,
+    help="Output format: cli-table (default), csv, or json.",
+)
+@common.common_options()
+def list_checkpoints(
+    remote: Optional[str],
+    project_id: Optional[str],
+    project: Optional[str],
+    job_id: Optional[str],
+    checkpoint_name: Optional[str],
+    sort: str,
+    order: str,
+    output_format: str,
+):
+    """List checkpoints for a training job"""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    project_id = _maybe_resolve_project_id_from_id_or_name(
+        remote_provider, project_id=project_id, project=project
+    )
+    project_id, job_id = train_common.get_most_recent_job(
+        remote_provider, project_id, job_id
+    )
+
+    interactive = common.check_is_interactive()
+
+    checkpoint_mod.view_checkpoint_list(
+        remote_provider=remote_provider,
+        project_id=project_id,
+        job_id=job_id,
+        sort_by=sort,
+        order=order,
+        output_format=output_format,
+        interactive=interactive,
+        checkpoint_name=checkpoint_name,
+    )
+
+
+def _maybe_resolve_project_id_from_id_or_name(
+    remote_provider: BasetenRemote, project_id: Optional[str], project: Optional[str]
+) -> Optional[str]:
+    """resolve the project_id or project. `project` can be name or id"""
+    if project and project_id:
+        console.print("Both `project-id` and `project` provided. Using `project`.")
+    project_str = project or project_id
+    if not project_str:
+        return None
+    return train_cli.fetch_project_by_name_or_id(remote_provider, project_str)["id"]
+
+
+@train.command(name="update_session")
+@click.argument("job_id", type=str, required=True)
+@click.option(
+    "--trigger",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="When to create the interactive session: 'on_startup' creates on job start, 'on_failure' creates on job failure, 'on_demand' allows manual session creation.",
+)
+@click.option(
+    "--timeout-minutes",
+    type=int,
+    required=False,
+    help="Number of minutes before the interactive session times out.",
+)
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@common.common_options()
+def update_session(
+    job_id: str,
+    trigger: Optional[str],
+    timeout_minutes: Optional[int],
+    remote: Optional[str],
+):
+    """Update interactive session configuration for a training job."""
+
+    if trigger is None and timeout_minutes is None:
+        error_console.print(
+            "At least one of --trigger or --timeout-minutes must be provided."
+        )
+        sys.exit(1)
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        remote_provider.api.update_interactive_session(
+            project_id=project_id,
+            job_id=job_id,
+            trigger=trigger,
+            timeout_minutes=timeout_minutes,
+        )
+        console.print("Interactive session configuration updated.", style="green")
+    except Exception as e:
+        error_console.print(f"Failed to update interactive session: {str(e)}")
+        sys.exit(1)
+
+
+@train.command(name="isession")
+@click.option("--job-id", type=str, required=True, help="Job ID of the training job.")
+@click.option("--remote", type=str, required=False, help="Remote to use.")
+@click.option(
+    "--update-timeout",
+    "timeout_minutes",
+    type=int,
+    required=False,
+    help="Minutes to extend the session timeout by",
+)
+@click.option(
+    "--update-trigger",
+    "trigger",
+    type=click.Choice(["on_startup", "on_failure", "on_demand"], case_sensitive=False),
+    required=False,
+    help="Change the session trigger (cannot be changed on on_startup sessions)",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"], case_sensitive=False),
+    default="table",
+    help="Output format (default: table)",
+)
+@common.common_options()
+def get_isession(
+    job_id: str,
+    remote: Optional[str],
+    timeout_minutes: Optional[int],
+    trigger: Optional[str],
+    output_format: str,
+):
+    """Get auth codes for a training job's interactive session."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    # Resolve project_id from job_id
+    jobs = remote_provider.api.search_training_jobs(job_id=job_id)
+    if not jobs:
+        error_console.print(f"No training job found with ID: {job_id}")
+        sys.exit(1)
+
+    project_id = jobs[0]["training_project"]["id"]
+
+    try:
+        response = remote_provider.api.get_training_job_isession(
+            project_id=project_id, job_id=job_id
+        )
+
+        isession = response.get("auth_codes", [])
+
+        if not isession:
+            console.print("No auth codes found for this job.", style="yellow")
+            return
+
+        # Validate trigger change: on_startup sessions cannot have their trigger changed
+        if trigger is not None:
+            current_triggers = {s.get("trigger") for s in isession if s.get("trigger")}
+            if "on_startup" in current_triggers:
+                error_console.print(
+                    "Cannot change trigger on on_startup sessions. "
+                    "Use --timeout-minutes to extend the session instead."
+                )
+                sys.exit(1)
+
+        # PATCH sessions if any update flags were provided
+        patch_messages: list[str] = []
+        if trigger is not None or timeout_minutes is not None:
+            patch_messages = _patch_sessions(
+                remote_provider,
+                project_id,
+                job_id,
+                isession,
+                timeout_minutes=timeout_minutes,
+                trigger=trigger,
+                quiet=output_format == "json",
+            )
+            # Refresh after patching
+            response = remote_provider.api.get_training_job_isession(
+                project_id=project_id, job_id=job_id
+            )
+
+        if output_format == "json":
+            output = response
+            if patch_messages:
+                output["update_messages"] = patch_messages
+            print(json.dumps(output, indent=2))
+        else:
+            _display_isession(remote_provider, project_id, job_id)
+    except Exception as e:
+        error_console.print(f"Failed to get auth codes: {str(e)}")
+        sys.exit(1)
+
+
+def _patch_sessions(
+    remote_provider: BasetenRemote,
+    project_id: str,
+    job_id: str,
+    isession: list,
+    timeout_minutes: Optional[int] = None,
+    trigger: Optional[str] = None,
+    quiet: bool = False,
+) -> list[str]:
+    """PATCH each session with the given timeout_minutes and/or trigger.
+
+    Returns a list of backend response messages. When *quiet* is True,
+    messages are collected but not printed (useful for JSON output).
+    """
+    updated_count = 0
+    messages: list[str] = []
+    for session in isession:
+        session_id = session.get("session_id")
+        replica_id = session.get("replica_id", "")
+
+        if not session_id:
+            if not quiet:
+                console.print(
+                    f"[yellow]Warning: No session_id found for replica {replica_id}, skipping[/yellow]"
+                )
+            continue
+
+        try:
+            resp = remote_provider.api.patch_interactive_session(
+                project_id=project_id,
+                job_id=job_id,
+                session_id=session_id,
+                timeout_minutes=timeout_minutes,
+                trigger=trigger,
+            )
+            updated_count += 1
+            msg = resp.get("message")
+            if msg:
+                messages.append(msg)
+                if not quiet:
+                    console.print(f"  [green]Replica {replica_id}[/green]: {msg}")
+        except Exception as e:
+            error_console.print(
+                f"Failed to update session {session_id} (replica {replica_id}): {str(e)}"
+            )
+
+    if updated_count > 0:
+        if not quiet:
+            console.print(
+                f"\n[green]✓ Successfully updated {updated_count} session(s)[/green]"
+            )
+    else:
+        error_console.print("Failed to update any sessions.")
+        sys.exit(1)
+
+    return messages

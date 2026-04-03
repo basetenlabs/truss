@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 from packaging import requirements  # type: ignore
@@ -12,7 +12,7 @@ def is_url_based_requirement(req: str) -> bool:
     return bool(URL_PATTERN.match(req.strip()))
 
 
-def get_egg_tag(req: str) -> Optional[List[str]]:
+def get_egg_tag(req: str) -> Optional[list[str]]:
     if is_url_based_requirement(req):
         parsed_url = urlparse(req)
         fragments = parse_qs(parsed_url.fragment)
@@ -20,7 +20,7 @@ def get_egg_tag(req: str) -> Optional[List[str]]:
     return None
 
 
-def reqs_by_name(reqs: List[str]) -> Dict[str, str]:
+def reqs_by_name(reqs: list[str]) -> dict[str, str]:
     return {identify_requirement_name(req): req for req in reqs if req.strip()}
 
 
@@ -51,7 +51,7 @@ class RequirementMeta:
     requirement: str
     name: str
     is_url_based_requirement: bool
-    egg_tag: Optional[List[str]]
+    egg_tag: Optional[list[str]]
 
     def __hash__(self):
         return hash(self.name)

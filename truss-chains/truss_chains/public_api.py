@@ -151,6 +151,7 @@ def push(
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
     include_git_info: bool = False,
+    disable_chain_download: bool = False,
 ) -> deployment_client.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
@@ -172,6 +173,7 @@ def push(
         include_git_info: Whether to attach git versioning info (sha, branch, tag) to
           deployments made from within a git repo. If set to True in `.trussrc`, it
           will always be attached.
+        disable_chain_download: Disable downloading of pushed chain source code from the UI.
 
     Returns:
         A chain service handle to the deployed chain.
@@ -186,6 +188,7 @@ def push(
         environment=environment,
         include_git_info=include_git_info,
         working_dir=pathlib.Path(inspect.getfile(entrypoint)).parent,
+        disable_chain_download=disable_chain_download,
     )
     service = deployment_client.push(entrypoint, options, progress_bar=progress_bar)
     assert isinstance(

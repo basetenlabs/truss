@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "d665b7f3a12a6b763c45af10708c4e67",
         "size": 7712,
+        "last_modified_time": "2025-07-08T22:32:50.563Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -29,6 +31,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "3ff6b653d22a2676f3a03bd7b5d7ff88",
         "size": 9085657,
+        "last_modified_time": "2025-07-08T22:32:49.816Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -42,6 +45,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "ff9bb51206c5b33aa9385a1a371294b6",
         "size": 296,
+        "last_modified_time": "2025-07-08T22:32:49.091Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -55,6 +59,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "35abb0d23c1471c8d5374d6cd861b112",
         "size": 41742,
+        "last_modified_time": "2025-07-08T22:32:50.138Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -68,6 +73,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "ed571b74f968dd1a6791128e3d484a0b",
         "size": 189,
+        "last_modified_time": "2025-07-08T22:32:49.972Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -81,6 +87,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "1729addd533ca7a6e956e3f077f4a4e9",
         "size": 6021,
+        "last_modified_time": "2025-07-08T22:32:48.769Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -94,6 +101,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "4eb556c0849743773f374eefd719b008",
         "size": 877,
+        "last_modified_time": "2025-07-08T22:32:49.264Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -107,6 +115,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "dc8ebd5b3ad223ab5b3c64d47975f23a",
         "size": 54528,
+        "last_modified_time": "2025-07-08T22:32:48.947Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -120,6 +129,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "a859f8a89685747ffd4171b870540c41",
         "size": 1519,
+        "last_modified_time": "2025-07-08T22:32:50.414Z",
         "runtime_secret_name": "gcs-account",
     },
     {
@@ -133,6 +143,7 @@ MANIFEST_EXPECTED = [
         "hashtype": "md5",
         "hash": "4f83b78475e5582a014664915eb222d7",
         "size": 2471645608,
+        "last_modified_time": "2025-07-08T22:32:48.551Z",
         "runtime_secret_name": "gcs-account",
     },
 ]
@@ -142,6 +153,7 @@ def sort_manifest(manifest):
     return sorted(manifest, key=lambda x: x["uid"])
 
 
+@pytest.mark.skip(reason="Skipping GCS download test in CI")
 def test_dolly():
     # fix the below models
     models = [
@@ -179,6 +191,7 @@ def test_dolly():
         "hash",
         "size",
         "runtime_secret_name",
+        "last_modified_time",
     ]
     resolution_fields = ["resolution_type", "path", "bucket_name"]
 
@@ -201,3 +214,31 @@ def test_dolly():
             )
 
     print("✓ BasetenPointer structure validation passed")
+    return result
+
+
+@pytest.mark.skip(reason="Skipping GCS download test in CI")
+def test_dolly_with_download():
+    manifest = test_dolly()
+    Path("/static-bptr").mkdir(parents=True, exist_ok=True)
+    with open("/static-bptr/static-bptr-manifest.json", "w") as f:
+        f.write(manifest)
+    shutil.rmtree("/app/model_cache/julien_dummy", ignore_errors=True)
+
+    print("✓ BasetenPointer manifest written to /static-bptr/static-bptr-manifest.json")
+    truss_transfer.lazy_data_resolve("")
+    print("✓ Data download via BasetenPointer successful")
+    # check that all files are downloaded
+
+    for pointer in MANIFEST_EXPECTED:
+        file_path = Path(pointer["file_name"])
+        assert file_path.exists(), f"File {file_path} does not exist after download"
+        actual_size = file_path.stat().st_size
+        expected_size = pointer["size"]
+        assert actual_size == expected_size, (
+            f"File {file_path} size mismatch: expected {expected_size}, got {actual_size}"
+        )
+
+
+if __name__ == "__main__":
+    test_dolly_with_download()

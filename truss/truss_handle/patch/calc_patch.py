@@ -1,3 +1,4 @@
+import base64
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -18,7 +19,6 @@ from truss.templates.control.control.helpers.custom_types import (
     Patch,
     PatchType,
     PythonRequirementPatch,
-    SystemPackagePatch,
 )
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
     RequirementMeta,
@@ -124,13 +124,21 @@ def calc_truss_patch(
             logger.info(
                 f"Created patch to {action.value.lower()} model code file: {path}"
             )
+            try:
+                content = full_path.read_text(encoding="utf-8")
+                content_bytes = None
+            except UnicodeDecodeError:
+                # Binary file (e.g. .so, .png) — send as base64
+                content = None
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode("ascii")
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
                         action=action,
                         path=_relative_to(path, model_module_path),
-                        content=full_path.read_text(),
+                        content=content,
+                        content_bytes=content_bytes,
                     ),
                 )
             )
@@ -152,13 +160,21 @@ def calc_truss_patch(
             if not full_path.is_file():
                 continue
             logger.info(f"Created patch to {action.value.lower()} package file: {path}")
+            try:
+                content = full_path.read_text(encoding="utf-8")
+                content_bytes = None
+            except UnicodeDecodeError:
+                # Binary file (e.g. .so, .pyd) — send as base64
+                content = None
+                content_bytes = base64.b64encode(full_path.read_bytes()).decode("ascii")
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,
                     body=PackagePatch(
                         action=action,
                         path=_relative_to(path, bundled_packages_path),
-                        content=full_path.read_text(),
+                        content=content,
+                        content_bytes=content_bytes,
                     ),
                 )
             )
@@ -173,9 +189,9 @@ def _changed_path_is_requirements_file(changed_path: str, new_config: TrussConfi
     _changed_path_is_requirements_file determines if `changed_path` is the same path
     as the requirements file on a new configuration.
     """
-    return new_config.requirements_file and Path(changed_path) == Path(
-        new_config.requirements_file
-    )
+    if not new_config.requirements_file:
+        return False
+    return Path(changed_path) == Path(new_config.requirements_file)
 
 
 def _calc_changed_paths(
@@ -232,9 +248,7 @@ def _calc_config_patches(
     prev_config: TrussConfig,
     new_config: TrussConfig,
 ) -> List[Patch]:
-    """Calculate patch based on changes to config.
-
-    Returns None if patch cannot be calculated. Empty list means no relevant
+    """Calculate patch based on changes to config. Empty list means no relevant
     differences found.
     """
     try:
@@ -423,22 +437,18 @@ def _calc_python_requirements_patches(
 def _calc_system_packages_patches(
     prev_config: TrussConfig, new_config: TrussConfig
 ) -> List[Patch]:
-    """Calculate patch based on changes to system packates.
+    """Calculate patch based on changes to system packages.
 
-    Empty list means no relevant differences found.
+    System package patches are no longer supported, so this function
+    raises an exception if any system package changes are detected.
     """
-    patches = []
     prev_pkgs = system_packages_set(prev_config.system_packages)
     new_pkgs = system_packages_set(new_config.system_packages)
-    removed_pkgs = prev_pkgs.difference(new_pkgs)
-    for removed_pkg in removed_pkgs:
-        patches.append(_mk_system_package_patch(Action.REMOVE, removed_pkg))
 
-    added_pkgs = new_pkgs.difference(prev_pkgs)
-    for added_pkg in added_pkgs:
-        patches.append(_mk_system_package_patch(Action.ADD, added_pkg))
+    if prev_pkgs != new_pkgs:
+        raise ValueError("System package changes detected - full rebuild required")
 
-    return patches
+    return []
 
 
 def _mk_config_patch(action: Action, config: dict) -> Patch:
@@ -471,15 +481,8 @@ def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
     )
 
 
-def _mk_system_package_patch(action: Action, package: str) -> Patch:
-    return Patch(
-        type=PatchType.SYSTEM_PACKAGE,
-        body=SystemPackagePatch(action=action, package=package),
-    )
-
-
 def _relative_to(path: str, relative_to_path: str):
-    return str(Path(path).relative_to(relative_to_path))
+    return Path(path).relative_to(relative_to_path).as_posix()
 
 
 def _strictly_under(path: str, parent_paths: List[str]) -> bool:

@@ -1,18 +1,50 @@
-use log::{debug, warn};
+use log::{debug, info, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::constants::{HF_TOKEN, SECRETS_BASE_PATH};
+use crate::constants::{HF_TOKEN, SECRETS_BASE_PATH, SECRET_ENV_VAR_PREFIX, SECRET_PATH_WHITELIST};
 
 static WARNED_SECRETS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+/// Check if the full secret path is allowed based on whitelist prefixes
+fn is_secret_path_allowed(path_read: PathBuf) -> bool {
+    // Canonicalize the path to resolve any ".." or "." components
+    // This prevents path traversal attacks
+    let canonical_path = match path_read.canonicalize() {
+        Ok(path) => path,
+        Err(_) => {
+            // If canonicalization fails (e.g., file doesn't exist yet),
+            // fall back to manually resolving the path
+            match std::fs::canonicalize(path_read.parent().unwrap_or_else(|| Path::new("/"))) {
+                Ok(parent) => parent.join(path_read.file_name().unwrap_or_default()),
+                Err(_) => return false, // If we can't resolve the path, deny access
+            }
+        }
+    };
+
+    let path_str = canonical_path.to_string_lossy();
+    SECRET_PATH_WHITELIST
+        .iter()
+        .any(|prefix| path_str.starts_with(prefix))
+}
 
 /// Get secret from file system based on runtime secret name
 /// Returns None if the secret file doesn't exist or can't be read
 pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
     let secret_path = Path::new(SECRETS_BASE_PATH).join(runtime_secret_name);
+
+    if !is_secret_path_allowed(secret_path.clone()) {
+        warn!(
+            "Secret path '{}' does not match any allowed prefix in whitelist",
+            secret_path.display()
+        );
+        return None;
+    }
+
     debug!("Attempting to read secret from {:?}", secret_path);
 
     match fs::read_to_string(&secret_path) {
@@ -40,11 +72,28 @@ pub fn get_secret_from_file(runtime_secret_name: &str) -> Option<String> {
     }
 }
 
-pub fn get_secret_path(runtime_secret_name: &str) -> String {
-    Path::new(SECRETS_BASE_PATH)
-        .join(runtime_secret_name)
-        .display()
-        .to_string()
+/// Get secret from environment variable based on runtime secret name.
+/// Looks for TRUSS_SECRET_{runtime_secret_name}.
+/// Returns None if the env var is not set or is empty.
+fn get_secret_from_env(runtime_secret_name: &str) -> Option<String> {
+    let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, runtime_secret_name);
+    if let Ok(value) = env::var(&env_var_name) {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            info!(
+                "Secret '{}' resolved from environment variable '{}'",
+                runtime_secret_name, env_var_name
+            );
+            return Some(trimmed);
+        }
+    }
+    None
+}
+
+/// Get secret by name, checking environment variable first, then file system.
+/// This allows builds where /secrets does not exist to still work.
+pub fn get_secret(runtime_secret_name: &str) -> Option<String> {
+    get_secret_from_env(runtime_secret_name).or_else(|| get_secret_from_file(runtime_secret_name))
 }
 
 /// Get HuggingFace token from multiple sources
@@ -56,5 +105,76 @@ pub fn get_hf_secret_from_file(hf_token_name: &str) -> Option<String> {
         Some(token)
     } else {
         (*HF_TOKEN).clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_get_secret_returns_env_var_value() {
+        let secret_name = "test_get_secret_basic";
+        let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+
+        unsafe { env::set_var(&env_var_name, "my-secret-value") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&env_var_name) };
+
+        assert_eq!(result, Some("my-secret-value".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_trims_whitespace() {
+        let secret_name = "test_get_secret_trim";
+        let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+
+        unsafe { env::set_var(&env_var_name, "  my-secret  \n") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&env_var_name) };
+
+        assert_eq!(result, Some("my-secret".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_empty_env_var_falls_through() {
+        let secret_name = "test_get_secret_empty";
+        let env_var_name = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+
+        unsafe { env::set_var(&env_var_name, "") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&env_var_name) };
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_no_env_var_no_file_returns_none() {
+        assert_eq!(get_secret("nonexistent_secret_xyz_42"), None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_secret_uses_correct_prefix() {
+        let secret_name = "test_prefix_check";
+        let correct_env_var = format!("{}{}", SECRET_ENV_VAR_PREFIX, secret_name);
+        let wrong_env_var = secret_name.to_string();
+
+        // Only set the unprefixed var — should NOT be found
+        unsafe { env::set_var(&wrong_env_var, "wrong-value") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&wrong_env_var) };
+        assert_eq!(result, None);
+
+        // Set the prefixed var — should be found
+        unsafe { env::set_var(&correct_env_var, "correct-value") };
+        let result = get_secret(secret_name);
+        unsafe { env::remove_var(&correct_env_var) };
+        assert_eq!(result, Some("correct-value".to_string()));
     }
 }

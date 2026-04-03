@@ -21,12 +21,16 @@ import pydantic
 
 from truss.base import custom_types
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.remote.baseten.remote import BasetenRemote
+from truss.remote.remote_factory import RemoteFactory
 from truss_chains import public_types, utils
 
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
+REQUEST_ID_HEADER_KEY = "x-baseten-request-id"
+CHAIN_REQUEST_ID_HEADER_KEY = "x-baseten-chain-request-id"
 RUN_REMOTE_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
 HEALTH_CHECK_METHOD_NAME = "is_healthy"
@@ -265,6 +269,10 @@ class PushOptionsBaseten(PushOptions):
     environment: Optional[str]
     include_git_info: bool
     working_dir: pathlib.Path
+    disable_chain_download: bool = False
+    deployment_name: Optional[str] = None
+    team_id: Optional[str] = None
+    remote_provider: Optional[BasetenRemote] = None
 
     @classmethod
     def create(
@@ -277,11 +285,19 @@ class PushOptionsBaseten(PushOptions):
         include_git_info: bool,
         working_dir: pathlib.Path,
         environment: Optional[str] = None,
+        disable_chain_download: bool = False,
+        deployment_name: Optional[str] = None,
+        team_id: Optional[str] = None,
+        remote_provider: Optional[BasetenRemote] = None,
     ) -> "PushOptionsBaseten":
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
         if environment:
             publish = True
+
+        if remote_provider is None and remote and not only_generate_trusses:
+            remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
         return PushOptionsBaseten(
             remote=remote,
             chain_name=chain_name,
@@ -290,6 +306,10 @@ class PushOptionsBaseten(PushOptions):
             environment=environment,
             include_git_info=include_git_info,
             working_dir=working_dir,
+            disable_chain_download=disable_chain_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
+            remote_provider=remote_provider,
         )
 
 

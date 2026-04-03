@@ -1,5 +1,6 @@
 import json
 import pathlib
+import shutil
 
 import truss_transfer
 
@@ -213,6 +214,7 @@ def test_direct_download():
             kind="hf",
         )
     ]
+    shutil.rmtree("/tmp/data", ignore_errors=True)
 
     truss_transfer.lazy_data_resolve("", models, "/tmp/data")
     assert pathlib.Path("/tmp/data/julien_dummy/config.json").exists()

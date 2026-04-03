@@ -1,10 +1,10 @@
 from unittest.mock import Mock, patch
 
-from truss.cli.train.core import (
+from truss.cli.train.cache import (
     calculate_directory_sizes,
     create_file_summary_with_directory_sizes,
-    view_training_job_metrics,
 )
+from truss.cli.train.core import view_training_job_metrics
 from truss.remote.baseten.custom_types import FileSummary
 
 

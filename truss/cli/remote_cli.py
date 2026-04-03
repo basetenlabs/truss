@@ -1,7 +1,13 @@
+from typing import Optional
+
+import click
 from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
 from InquirerPy.validator import ValidationError, Validator
 
+from truss.cli.utils.common import check_is_interactive
 from truss.cli.utils.output import console
+from truss.remote.baseten.custom_types import TeamType
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
@@ -36,23 +42,66 @@ def inquire_remote_config() -> RemoteConfig:
 
 def inquire_remote_name() -> str:
     available_remotes = RemoteFactory.get_available_config_names()
-    if len(available_remotes) > 1:
-        remote = inquirer.select(
+    if len(available_remotes) == 0:
+        if not check_is_interactive():
+            raise click.UsageError(
+                "No remote configured. Please configure a remote first "
+                "(e.g. by running `truss login`)."
+            )
+        remote_config = inquire_remote_config()
+        RemoteFactory.update_remote_config(remote_config)
+        console.print(
+            f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
+        )
+        return remote_config.name
+    elif len(available_remotes) == 1:
+        return available_remotes[0]
+    else:
+        if not check_is_interactive():
+            raise click.UsageError(
+                "Multiple remotes available. Please specify one with --remote."
+            )
+        return inquirer.select(
             "🎮 Which remote do you want to connect to?",
             qmark="",
             choices=available_remotes,
         ).execute()
-        return remote
-    elif len(available_remotes) == 1:
-        return available_remotes[0]
-    remote_config = inquire_remote_config()
-    RemoteFactory.update_remote_config(remote_config)
-
-    console.print(
-        f"💾 Remote config `{remote_config.name}` saved to `{USER_TRUSSRC_PATH}`."
-    )
-    return remote_config.name
 
 
 def inquire_model_name() -> str:
     return inquirer.text("📦 Name this model:", qmark="").execute()
+
+
+def get_team_id_from_name(teams: dict[str, TeamType], team_name: str) -> Optional[str]:
+    team = teams.get(team_name)
+    return team.id if team else None
+
+
+def format_available_teams(teams: dict[str, TeamType]) -> str:
+    team_names = list(teams.keys())
+    return ", ".join(team_names) if team_names else "none"
+
+
+def inquire_team(
+    existing_teams: Optional[dict[str, TeamType]] = None,
+    prompt: str = "👥 Which team do you want to push to?",
+) -> Optional[str]:
+    if existing_teams is not None:
+        # Sort with default team first, then alphanumerically (case-insensitive)
+        sorted_teams = sorted(
+            existing_teams.items(),
+            key=lambda item: (not item[1].default, item[0].lower()),
+        )
+
+        # Create Choice objects: value is the actual team name, name is for display
+        # This avoids issues with team names that contain "(default)"
+        choices = [
+            Choice(value=name, name=f"{name} (default)" if team.default else name)
+            for name, team in sorted_teams
+        ]
+
+        # execute() returns the Choice.value (actual team name), not Choice.name
+        return inquirer.select(prompt, qmark="", choices=choices).execute()
+
+    # If no existing teams, return None (don't propagate team param)
+    return None

@@ -60,6 +60,7 @@ def _truss_is_git_branch() -> bool:
 class Preferences(pydantic.BaseModel):
     include_git_info: bool = False
     auto_upgrade_command_template: Optional[str] = None
+    check_for_updates: bool = True
 
 
 class FeatureFlags(pydantic.BaseModel):
@@ -77,6 +78,24 @@ def _strip_none(d: dict[str, Any]) -> dict[str, Any]:
         for k, v in d.items()
         if v is not None
     }
+
+
+def _has_defaulted_fields(model: pydantic.BaseModel) -> bool:
+    """
+    Check if any field in the model (or nested models) used its default value
+    rather than being explicitly provided. This is used to detect when an existing
+    settings file is missing newly-added fields, so we can write out the updated
+    defaults without requiring explicit checks for each new field we add.
+    """
+    dumped = model.model_dump()
+    if len(model.model_fields_set) < len(dumped):
+        return True
+    for field_name in model.model_fields_set:
+        value = getattr(model, field_name)
+        if isinstance(value, pydantic.BaseModel):
+            if _has_defaulted_fields(value):
+                return True
+    return False
 
 
 def _update_toml_document(doc, data: dict[str, Any]) -> None:
@@ -113,7 +132,7 @@ class _SettingsWrapper:
         if cls.path().exists():
             toml_doc = tomlkit.parse(cls.path().read_text(encoding="utf-8"))
             settings = AppSettings(**toml_doc.unwrap())
-            write = False
+            write = _has_defaulted_fields(settings)
         else:
             settings = AppSettings()
             truss_rc = load_config()
@@ -152,6 +171,10 @@ class _SettingsWrapper:
     def auto_upgrade_command_template(self, cmd: Optional[str]) -> None:
         self._settings.preferences.auto_upgrade_command_template = cmd
         self._write()
+
+    @property
+    def check_for_updates(self) -> bool:
+        return self._settings.preferences.check_for_updates
 
 
 class VersionInfo(pydantic.BaseModel):
@@ -265,10 +288,6 @@ class _StateWrapper:
             reason = f"🐌 The current version '{local_version}' is outdated."
             upgrade_recommended = True
 
-        if local_version.is_devrelease or local_version.is_prerelease:
-            reason = "Local version is for dev - upgrades are not applied."
-            upgrade_recommended = False
-
         if local_version in self._state.version_info.yanked_versions:
             reason = f"🧨 The current version '{local_version}' is yanked ."
             upgrade_recommended = True
@@ -282,6 +301,16 @@ class _StateWrapper:
             reason=reason,
             latest_version=str(latest_version),
         )
+
+    def should_notify_upgrade(self, current_version: str) -> Optional[UpdateInfo]:
+        if not self._should_check_for_updates():
+            return None
+
+        update_info = self.should_upgrade(current_version)
+        if not update_info.upgrade_recommended:
+            return None
+
+        return update_info
 
 
 state = _StateWrapper.read_or_create()
