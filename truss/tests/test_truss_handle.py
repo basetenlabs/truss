@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 from python_on_whales.exceptions import DockerException
-from tenacity import RetryError
 
 from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.base.custom_types import Example
@@ -25,7 +24,12 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     kill_all_with_retries,
 )
 from truss.truss_handle.patch.custom_types import PatchRequest
-from truss.truss_handle.truss_handle import DockerURLs, TrussHandle, wait_for_truss
+from truss.truss_handle.truss_handle import (
+    DockerURLs,
+    TrussHandle,
+    get_docker_urls,
+    wait_for_truss,
+)
 from truss.util.docker import Docker, DockerStates
 
 
@@ -690,14 +694,26 @@ class Model:
         model_code_file_path = custom_model_control / "model" / "model.py"
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(bad_model_code)
-        with pytest.raises(RetryError) as exc_info:
-            th.docker_predict([1], tag=tag, local_port=None)
-        resp = exc_info.value.last_attempt.result()
-        assert resp.status_code == 503
-        assert (
-            "Model load failed" in resp.text
-            or "It appears your model has stopped running" in resp.text
-        )
+        # Hash changed, so old container should not be found.
+        assert not th.get_serving_docker_containers_from_labels()
+        # Don't use docker_predict here because _wait_for_predict retries
+        # on 503 for 20s and then raises RetryError, but we want to inspect
+        # the 503 response text directly.
+        container = th.docker_run(tag=tag, local_port=None, wait_for_server_ready=False)
+        urls = get_docker_urls(container)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            resp = requests.post(urls.predict_url, json=[1])
+            if resp.status_code == 503 and (
+                "Model load failed" in resp.text
+                or "It appears your model has stopped running" in resp.text
+            ):
+                break
+            time.sleep(1)
+        else:
+            pytest.fail(
+                f"expected 503 with model load failure, got {resp.status_code}: {resp.text}"
+            )
 
         # Should be able to fix code after
         good_model_code = """
