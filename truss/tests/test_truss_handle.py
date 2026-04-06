@@ -703,7 +703,11 @@ class Model:
         urls = get_docker_urls(container)
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
-            resp = requests.post(urls.predict_url, json=[1])
+            try:
+                resp = requests.post(urls.predict_url, json=[1])
+            except requests.exceptions.ConnectionError:
+                time.sleep(1)
+                continue
             if resp.status_code == 503 and (
                 "Model load failed" in resp.text
                 or "It appears your model has stopped running" in resp.text
