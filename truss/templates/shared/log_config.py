@@ -12,8 +12,8 @@ LOCAL_DATE_FORMAT = "%H:%M:%S"
 request_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "request_id", default=None
 )
-chain_request_id_context: contextvars.ContextVar[Optional[str]] = (
-    contextvars.ContextVar("chain_request_id", default=None)
+trace_id_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "trace_id", default=None
 )
 
 
@@ -53,8 +53,8 @@ class _AccessJsonFormatter(json_logger.JsonFormatter):
         super().add_fields(log_record, record, message_dict)
         if request_id := request_id_context.get():
             log_record["request_id"] = request_id
-        if chain_request_id := chain_request_id_context.get():
-            log_record["chain_request_id"] = chain_request_id
+        if trace_id := trace_id_context.get():
+            log_record["trace_id"] = trace_id
 
     def format(self, record: logging.LogRecord) -> str:
         # Uvicorn sets record.msg = '%s - "%s %s HTTP/%s" %d' and
@@ -79,8 +79,8 @@ class _DefaultJsonFormatter(json_logger.JsonFormatter):
         super().add_fields(log_record, record, message_dict)
         if request_id := request_id_context.get():
             log_record["request_id"] = request_id
-        if chain_request_id := chain_request_id_context.get():
-            log_record["chain_request_id"] = chain_request_id
+        if trace_id := trace_id_context.get():
+            log_record["trace_id"] = trace_id
 
 
 class _AccessFormatter(logging.Formatter):

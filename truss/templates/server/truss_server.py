@@ -40,7 +40,7 @@ from prometheus_client import (
 )
 from pydantic import BaseModel
 from shared import log_config, serialization
-from shared.log_config import chain_request_id_context, request_id_context
+from shared.log_config import request_id_context, trace_id_context
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
@@ -180,10 +180,8 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         request_id = request.headers.get("x-baseten-request-id")
-        chain_request_id = request.headers.get("x-baseten-chain-request-id")
         # Set request_id in context so it's included in all log records
         request_id_context.set(request_id)
-        chain_request_id_context.set(chain_request_id)
 
         logging.debug(
             f"[DEBUG] Request received - {request.method} /{method.__name__} "
@@ -196,6 +194,10 @@ class BasetenEndpoints:
         with self._tracer.start_as_current_span(
             f"{method.__name__}-endpoint", context=trace_ctx
         ) as span:
+            # Extract the OTel trace_id from the span for structured logging.
+            span_ctx = span.get_span_context()
+            if span_ctx and span_ctx.trace_id:
+                trace_id_context.set(format(span_ctx.trace_id, "032x"))
             inputs: Optional["InputType"]
             if self._model.skip_input_parsing:
                 inputs = None
@@ -263,14 +265,15 @@ class BasetenEndpoints:
         self.check_healthy()
         # Set request_id in context so it's included in all log records
         request_id = ws.headers.get("x-baseten-request-id")
-        chain_request_id = ws.headers.get("x-baseten-chain-request-id")
         request_id_context.set(request_id)
-        chain_request_id_context.set(chain_request_id)
 
         trace_ctx = otel_propagate.extract(ws.headers) or None
         # We don't go through the typical execute_request path, since we don't need
         # to parse request body or attempt to serialize results.
-        with self._tracer.start_as_current_span("websocket", context=trace_ctx):
+        with self._tracer.start_as_current_span("websocket", context=trace_ctx) as span:
+            span_ctx = span.get_span_context()
+            if span_ctx and span_ctx.trace_id:
+                trace_id_context.set(format(span_ctx.trace_id, "032x"))
             if not self._model.model_descriptor.websocket:
                 msg = "WebSocket is not implemented on this deployment."
                 logging.error(msg)
