@@ -1100,9 +1100,9 @@ class TrussConfig(custom_types.ConfigModel):
     )
 
     python_version: str = pydantic.Field(
-        default="py39",
+        default="py313",
         description="The Python version to use.",
-        examples=["py39", "py310", "py311", "py312", "py313"],
+        examples=["py313", "py312", "py311", "py310", "py39"],
     )
     base_image: Optional[BaseImage] = pydantic.Field(
         default=None,
@@ -1320,6 +1320,13 @@ class TrussConfig(custom_types.ConfigModel):
         valid = {f"py{x.replace('.', '')}" for x in constants.SUPPORTED_PYTHON_VERSIONS}
         if v not in valid:
             raise ValueError(f"Please ensure that `python_version` is one of {valid}")
+        if v == "py39":
+            warnings.warn(
+                "Python 3.9 is deprecated and will be removed in a future release. "
+                "Please upgrade to a newer Python version.",
+                FutureWarning,
+                stacklevel=2,
+            )
         return v
 
     @pydantic.model_validator(mode="after")
