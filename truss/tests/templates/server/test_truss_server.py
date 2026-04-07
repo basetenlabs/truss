@@ -213,6 +213,7 @@ class Model:
             resp = await endpoints.predict(
                 model_name="model", request=mock_request, body_raw=b"{}"
             )
+            assert resp.status_code == 200, f"predict failed: {resp.body}"
             return json.loads(resp.body)
 
         result = await predict()
@@ -256,6 +257,7 @@ class Model:
             resp = await endpoints.predict(
                 model_name="model", request=mock_request, body_raw=b"{}"
             )
+            assert resp.status_code == 200, f"predict failed: {resp.body}"
             return json.loads(resp.body)
 
         result = await predict()

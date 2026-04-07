@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 import logging.config
@@ -405,12 +406,17 @@ class TrussServer:
                 return
 
     def create_application(self):
+        @contextlib.asynccontextmanager
+        async def lifespan(app):
+            self.on_startup()
+            yield
+
         app = FastAPI(
             title="Baseten Inference Server",
             docs_url=None,
             redoc_url=None,
             default_response_class=ORJSONResponse,
-            on_startup=[self.on_startup],
+            lifespan=lifespan,
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", lambda: True),

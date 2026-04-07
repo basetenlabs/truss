@@ -772,6 +772,32 @@ def test_from_yaml_environment_variables():
         }
 
 
+def test_from_yaml_reserved_environment_variables_warns(caplog):
+    data = {"environment_variables": {"PORT": "8080", "MY_VAR": "hello"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        yaml.safe_dump(data, f)
+        path = Path(f.name)
+
+    with caplog.at_level("WARNING"):
+        config = TrussConfig.from_yaml(path)
+
+    assert "PORT" in caplog.text
+    assert "Warning: the following environment variables" in caplog.text
+    assert config.environment_variables == {"PORT": "8080", "MY_VAR": "hello"}
+
+
+def test_from_yaml_no_reserved_environment_variables_no_warning(caplog):
+    data = {"environment_variables": {"MY_VAR": "hello"}}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
+        yaml.safe_dump(data, f)
+        path = Path(f.name)
+
+    with caplog.at_level("WARNING"):
+        TrussConfig.from_yaml(path)
+
+    assert "Warning: the following environment variables" not in caplog.text
+
+
 def test_secret_to_path_mapping_correct_type(default_config):
     data = {
         "description": "this is a test",

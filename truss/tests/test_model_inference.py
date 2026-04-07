@@ -2221,19 +2221,131 @@ def test_server_deps_oldest_floors():
 
 
 @pytest.mark.integration
-def test_server_deps_unpinned_numpy():
-    # Specify numpy without a version and verify constraints cap it below 2.0.
+def test_server_deps_newest_ceilings():
+    # Use every constraint spec as a requirement so pip resolves the newest
+    # allowed version of each package, then verify the server boots.
     constraints = _load_constraints()
-    config = "requirements:\n  - numpy"
+    newest_reqs = [str(req) for req in constraints.values()]
+    config = "requirements:\n" + "\n".join(f"  - {r}" for r in newest_reqs)
     with ensure_kill_all(), _temp_truss(_VERSION_CHECK_MODEL, config) as tr:
         container, urls = tr.docker_run_for_test()
         response = requests.post(urls.predict_url, json={})
         assert response.status_code == 200
         versions = response.json()
-        installed = packaging.version.parse(versions["numpy"])
-        assert installed in constraints["numpy"].specifier, (
-            f"numpy {installed} not in {constraints['numpy'].specifier}"
+        for name in versions:
+            if name in constraints:
+                installed = packaging.version.parse(versions[name])
+                assert installed in constraints[name].specifier, (
+                    f"{name}: {installed} is outside {constraints[name].specifier}"
+                )
+
+
+# Model that exercises numpy version-specific APIs and msgpack serialization.
+_NUMPY_COMPAT_MODEL = """
+    import numpy as np
+    class Model:
+        def predict(self, data):
+            mode = data.get("mode", "version")
+            if mode == "version":
+                return {
+                    "numpy_version": np.version.version,
+                    "numpy_major": int(np.version.version.split(".")[0]),
+                }
+            elif mode == "array":
+                return {"array": np.array([1.0, 2.0, 3.0], dtype=np.float64)}
+            elif mode == "product":
+                return {"result": float(np.product(np.array([1.0, 2.0, 3.0])))}
+            elif mode == "trapezoid":
+                return {"result": float(np.trapezoid(np.array([1.0, 2.0, 3.0])))}
+"""
+
+
+@pytest.mark.integration
+def test_numpy1x_compat():
+    # No user numpy requirement  - gets numpy <2.0 from base requirements.txt.
+    # Exercises JSON and msgpack predict paths, and numpy 1.x-only APIs.
+    config = ""
+    with ensure_kill_all(), _temp_truss(_NUMPY_COMPAT_MODEL, config) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        # Confirm numpy 1.x is installed.
+        response = requests.post(urls.predict_url, json={"mode": "version"})
+        assert response.status_code == 200
+        assert response.json()["numpy_major"] == 1
+
+        # np.product exists in 1.x.
+        response = requests.post(urls.predict_url, json={"mode": "product"})
+        assert response.status_code == 200
+        assert response.json()["result"] == 6.0
+
+        # np.trapezoid does not exist in 1.x.
+        response = requests.post(urls.predict_url, json={"mode": "trapezoid"})
+        assert response.status_code == 500
+        _assert_logs_contain_error(container.logs(), "trapezoid")
+
+        # Msgpack round-trip with a numpy array.
+        from truss.templates.shared.serialization import (
+            truss_msgpack_deserialize,
+            truss_msgpack_serialize,
         )
+
+        byte_input = truss_msgpack_serialize({"mode": "array"})
+        response = requests.post(
+            urls.predict_url,
+            data=byte_input,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        assert response.status_code == 200
+        result = truss_msgpack_deserialize(response.content)
+        import numpy as np
+
+        assert isinstance(result["array"], np.ndarray)
+        np.testing.assert_array_equal(result["array"], [1.0, 2.0, 3.0])
+
+
+@pytest.mark.integration
+def test_numpy2x_compat():
+    # User explicitly requests numpy>=2.0. The base image has numpy 1.x
+    # pre-installed, so an explicit lower bound is needed to trigger an upgrade.
+    # The widened constraint (<3.0) allows this.
+    config = "requirements:\n  - numpy>=2.0"
+    with ensure_kill_all(), _temp_truss(_NUMPY_COMPAT_MODEL, config) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        # Confirm numpy 2.x is installed.
+        response = requests.post(urls.predict_url, json={"mode": "version"})
+        assert response.status_code == 200
+        assert response.json()["numpy_major"] == 2
+
+        # np.product was removed in 2.0.
+        response = requests.post(urls.predict_url, json={"mode": "product"})
+        assert response.status_code == 500
+        _assert_logs_contain_error(container.logs(), "product")
+
+        # np.trapezoid was added in 2.0.
+        response = requests.post(urls.predict_url, json={"mode": "trapezoid"})
+        assert response.status_code == 200
+        assert response.json()["result"] == 4.0
+
+        # Msgpack round-trip with a numpy array  - the critical test for
+        # msgpack-numpy 0.4.8 compatibility with numpy 2.x.
+        from truss.templates.shared.serialization import (
+            truss_msgpack_deserialize,
+            truss_msgpack_serialize,
+        )
+
+        byte_input = truss_msgpack_serialize({"mode": "array"})
+        response = requests.post(
+            urls.predict_url,
+            data=byte_input,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        assert response.status_code == 200
+        result = truss_msgpack_deserialize(response.content)
+        import numpy as np
+
+        assert isinstance(result["array"], np.ndarray)
+        np.testing.assert_array_equal(result["array"], [1.0, 2.0, 3.0])
 
 
 @pytest.mark.integration

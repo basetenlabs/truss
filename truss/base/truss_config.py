@@ -26,6 +26,11 @@ from pydantic import json_schema
 from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
+
+# PORT: knative reserved
+# HOSTNAME: set to the pod name by k8s
+K8S_RESERVED_ENVIRONMENT_VARIABLES = {"PORT", "HOSTNAME"}
+
 from truss.base.constants import PYPROJECT_TOML_FILENAME, UV_LOCK_FILENAME
 from truss.util.requirements import (
     parse_requirement_string,
@@ -1220,9 +1225,17 @@ class TrussConfig(custom_types.ConfigModel):
             )
         if "hf_cache" in data and "model_cache" not in data:
             data["model_cache"] = data.pop("hf_cache") or []
+        env_vars = data.get("environment_variables", {})
+        conflicts = K8S_RESERVED_ENVIRONMENT_VARIABLES & env_vars.keys()
+        if conflicts:
+            logger.warning(
+                "Warning: the following environment variables are reserved by the "
+                "platform and will be overwritten at runtime: %s",
+                ", ".join(sorted(conflicts)),
+            )
         data["environment_variables"] = {
             k: str(v).lower() if isinstance(v, bool) else str(v)
-            for k, v in data.get("environment_variables", {}).items()
+            for k, v in env_vars.items()
         }
         return cls.model_validate(data)
 
