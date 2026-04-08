@@ -903,6 +903,15 @@ class BasetenApi:
         )
         return resp_json
 
+    def sign_ssh_certificate(
+        self, project_id: str, job_id: str, public_key: str, replica_id: str
+    ) -> dict:
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/ssh/sign",
+            body={"public_key": public_key, "replica_id": replica_id},
+        )
+        return resp_json
+
     def _prepare_time_range_query(
         self,
         start_epoch_millis: Optional[int] = None,
