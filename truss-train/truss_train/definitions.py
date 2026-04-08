@@ -116,6 +116,7 @@ class InteractiveSessionTrigger(str, enum.Enum):
 class InteractiveSessionProvider(str, enum.Enum):
     VS_CODE = "vs_code"
     CURSOR = "cursor"
+    SSH = "ssh"
 
 
 class InteractiveSessionAuthProvider(str, enum.Enum):

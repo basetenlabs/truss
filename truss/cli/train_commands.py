@@ -1082,3 +1082,49 @@ def _patch_sessions(
         sys.exit(1)
 
     return messages
+
+
+@train.group(name="ssh")
+def ssh():
+    """SSH access to training jobs."""
+
+
+@ssh.command(name="setup")
+@click.option(
+    "--python",
+    "python_path",
+    type=str,
+    required=False,
+    help="Path to Python 3.10+ interpreter for the ProxyCommand. Auto-detected if omitted.",
+)
+@common.common_options()
+def ssh_setup(python_path: Optional[str]):
+    """One-time setup: configure SSH access for Baseten training jobs.
+
+    Generates an SSH keypair, installs a ProxyCommand script, and adds a
+    wildcard Host entry to ~/.ssh/config. After running this once, connect
+    to any running training job with:
+
+        ssh <job-id>-<replica>.<remote>.ssh.baseten.co
+
+    Example: ssh 5wo5n3y-0.dev.ssh.baseten.co
+    """
+    from truss.cli.train.ssh import (
+        ensure_ssh_keypair,
+        install_proxy_command_script,
+        setup_ssh_config,
+    )
+
+    key_path = ensure_ssh_keypair()
+    console.print(f"SSH keypair: {key_path}", style="dim")
+
+    proxy_script = install_proxy_command_script()
+    console.print(f"Proxy script: {proxy_script}", style="dim")
+
+    setup_ssh_config(key_path=key_path, python_override=python_path)
+    console.print("SSH config updated: ~/.ssh/config", style="dim")
+
+    console.print(
+        "\n[green]SSH access configured.[/green] Connect to any running training job with:\n\n"
+        "  ssh [bold]training-job-<job-id>-<node>.ssh.baseten.co[/bold]"
+    )
