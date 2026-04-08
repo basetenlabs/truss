@@ -209,6 +209,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     workspace: Optional[Workspace] = None
     weights: List[truss_config.WeightsSource] = []
     """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""
+    enable_baseten_workdir: bool = False
 
     @model_validator(mode="after")
     def _validate_weights_auth_only_custom_secret(self) -> "TrainingJob":
