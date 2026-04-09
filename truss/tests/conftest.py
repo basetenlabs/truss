@@ -732,7 +732,7 @@ def _modify_yaml(yaml_path: Path):
 @pytest.fixture
 def default_config() -> Dict[str, Any]:
     return {
-        "python_version": "py39",
+        "python_version": "py313",
         "resources": {
             "accelerator": None,
             "cpu": "1",

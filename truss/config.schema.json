@@ -1836,14 +1836,14 @@
       "type": "array"
     },
     "python_version": {
-      "default": "py39",
+      "default": "py313",
       "description": "The Python version to use.",
       "examples": [
-        "py39",
-        "py310",
-        "py311",
+        "py313",
         "py312",
-        "py313"
+        "py311",
+        "py310",
+        "py39"
       ],
       "title": "Python Version",
       "type": "string"

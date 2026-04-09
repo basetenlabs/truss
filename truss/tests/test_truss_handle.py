@@ -424,7 +424,7 @@ def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.parametrize(
-    "python_version, expected_python_version", [("3.9", "py39"), ("py39", "py39")]
+    "python_version, expected_python_version", [("3.13", "py313"), ("py313", "py313")]
 )
 def test_update_python_version(
     python_version, expected_python_version, custom_model_truss_dir_with_pre_and_post
