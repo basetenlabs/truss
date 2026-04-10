@@ -11,8 +11,14 @@ class Model:
     def completions(self, input: Dict) -> str:
         return "completions"
 
+    def embeddings(self, input: Dict) -> str:
+        return "embeddings"
+
     def predict(self, input: Dict) -> str:
         return "predict"
 
     def messages(self, input: Dict) -> str:
         return "messages"
+
+    def responses(self, input: Dict) -> str:
+        return "responses"

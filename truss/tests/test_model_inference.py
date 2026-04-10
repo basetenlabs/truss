@@ -1793,6 +1793,9 @@ def test_custom_openai_endpoints():
         def load(self):
             self._predict_count = 0
             self._completions_count = 0
+            self._embeddings_count = 0
+            self._messages_count = 0
+            self._responses_count = 0
 
         async def predict(self, inputs) -> int:
             self._predict_count += inputs["increment"]
@@ -1801,6 +1804,18 @@ def test_custom_openai_endpoints():
         async def completions(self, inputs) -> int:
             self._completions_count += inputs["increment"]
             return self._completions_count
+
+        async def embeddings(self, inputs) -> int:
+            self._embeddings_count += inputs["increment"]
+            return self._embeddings_count
+
+        async def messages(self, inputs) -> int:
+            self._messages_count += inputs["increment"]
+            return self._messages_count
+
+        async def responses(self, inputs) -> int:
+            self._responses_count += inputs["increment"]
+            return self._responses_count
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
@@ -1813,7 +1828,19 @@ def test_custom_openai_endpoints():
         assert response.status_code == 200
         assert response.json() == 2
 
-        response = requests.post(urls.chat_completions_url, json={"increment": 3})
+        response = requests.post(urls.embeddings_url, json={"increment": 3})
+        assert response.status_code == 200
+        assert response.json() == 3
+
+        response = requests.post(urls.messages_url, json={"increment": 4})
+        assert response.status_code == 200
+        assert response.json() == 4
+
+        response = requests.post(urls.responses_url, json={"increment": 5})
+        assert response.status_code == 200
+        assert response.json() == 5
+
+        response = requests.post(urls.chat_completions_url, json={"increment": 6})
         assert response.status_code == 404
 
 
