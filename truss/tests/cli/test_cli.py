@@ -8,6 +8,7 @@ from click.testing import CliRunner
 from truss.cli.cli import truss_cli
 from truss.cli.utils import common
 from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
+from truss.remote.baseten.service import BasetenService
 from truss.remote.truss_remote import RemoteUser
 
 
@@ -877,35 +878,58 @@ def test_push_watch_with_environment_fails():
     )
 
 
-def test_push_watch_with_tail_fails():
-    """Test that --watch with --tail fails."""
-    mock_truss = Mock()
-    mock_truss.spec.config.runtime.transport.kind = "http"
-    mock_truss.spec.config.resources.instance_type = None
-    mock_truss.spec.config.build = None
-    mock_truss.spec.config.trt_llm = None
-
+def test_push_watch_with_tail_starts_background_tail(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --watch with --tail starts tail in background."""
     runner = CliRunner()
 
-    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                "test_truss",
-                "--remote",
-                "remote1",
-                "--model-name",
-                "name",
-                "--watch",
-                "--tail",
-            ],
-        )
+    mock_service = MagicMock(spec=BasetenService)
+    mock_service.is_draft = True
+    mock_service.logs_url = "https://example.com/logs"
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_service.poll_deployment_status.return_value = iter(["LOADING_MODEL"])
+    remote.push = Mock(return_value=mock_service)
 
-    assert result.exit_code == 2
-    assert "Cannot use --watch with --tail" in result.output or (
-        result.exception
-        and "Cannot use --watch with --tail" in str(result.exception.__context__)
+    mock_resolve = Mock(
+        return_value=(
+            {
+                "id": "model_id",
+                "name": "model_name",
+                "hostname": "https://model.api.baseten.co",
+            },
+            [{"id": "version_id", "is_draft": True}],
+        )
+    )
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            with patch("truss.cli.cli.resolve_model_for_watch", mock_resolve):
+                with patch("truss.cli.cli._start_watch_mode"):
+                    with patch("truss.cli.cli._start_tail") as mock_start_tail:
+                        result = runner.invoke(
+                            truss_cli,
+                            [
+                                "push",
+                                str(custom_model_truss_dir_with_pre_and_post),
+                                "--remote",
+                                "baseten",
+                                "--model-name",
+                                "model_name",
+                                "--watch",
+                                "--tail",
+                            ],
+                        )
+
+    assert result.exit_code == 0, result.output
+    mock_start_tail.assert_called_once_with(
+        remote, "model_id", "version_id", in_background=True
     )
 
 
@@ -1031,35 +1055,45 @@ def test_push_watch_no_sleep_starts_keepalive(
     mock_start_watch.assert_called_once()
 
 
-def test_push_wait_with_tail_fails():
-    """Test that --wait with --tail fails."""
-    mock_truss = Mock()
-    mock_truss.spec.config.runtime.transport.kind = "http"
-    mock_truss.spec.config.resources.instance_type = None
-    mock_truss.spec.config.build = None
-    mock_truss.spec.config.trt_llm = None
-
+def test_push_wait_with_tail_starts_background_tail(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --wait with --tail starts tail in background."""
     runner = CliRunner()
 
-    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                "test_truss",
-                "--remote",
-                "remote1",
-                "--model-name",
-                "name",
-                "--wait",
-                "--tail",
-            ],
-        )
+    mock_service = MagicMock(spec=BasetenService)
+    mock_service.is_draft = False
+    mock_service.logs_url = "https://example.com/logs"
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_service.poll_deployment_status.return_value = iter(["ACTIVE"])
+    remote.push = Mock(return_value=mock_service)
 
-    assert result.exit_code == 2
-    assert "Cannot use --wait with --tail" in result.output or (
-        result.exception
-        and "Cannot use --wait with --tail" in str(result.exception.__context__)
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            with patch("truss.cli.cli._start_tail") as mock_start_tail:
+                result = runner.invoke(
+                    truss_cli,
+                    [
+                        "push",
+                        str(custom_model_truss_dir_with_pre_and_post),
+                        "--remote",
+                        "baseten",
+                        "--model-name",
+                        "model_name",
+                        "--wait",
+                        "--tail",
+                    ],
+                )
+
+    assert result.exit_code == 0, result.output
+    mock_start_tail.assert_called_once_with(
+        remote, "model_id", "version_id", in_background=True
     )
 
 
