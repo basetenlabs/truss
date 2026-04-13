@@ -4,7 +4,7 @@ from truss.cli.train.cache import (
     calculate_directory_sizes,
     create_file_summary_with_directory_sizes,
 )
-from truss.cli.train.core import view_training_job_metrics
+from truss.cli.train.core import display_training_capacity, view_training_job_metrics
 from truss.remote.baseten.custom_types import FileSummary
 
 
@@ -442,3 +442,31 @@ def test_calculate_directory_sizes_max_depth():
     assert result_depth_2["/root/level1"] == 100  # file1.txt only
     assert result_depth_2["/root/level1/level2"] == 200  # file2.txt only
     assert result_depth_2["/root/level1/level2/level3"] == 300  # file3.txt only
+
+
+def test_display_training_capacity(capsys):
+    """Table is printed with GPU type, baseline, limit, and usage for each entry."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = [
+        {"gpu_type": "H100", "baseline": 16, "limit": 64, "usage_count": 32},
+        {"gpu_type": "A10G", "baseline": 0, "limit": 8, "usage_count": 0},
+    ]
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    display_training_capacity(mock_remote)
+
+    lines = capsys.readouterr().out.splitlines()
+    h100_cells = [
+        c.strip()
+        for c in next(line for line in lines if "H100" in line).split("│")
+        if c.strip()
+    ]
+    a10g_cells = [
+        c.strip()
+        for c in next(line for line in lines if "A10G" in line).split("│")
+        if c.strip()
+    ]
+
+    assert h100_cells == ["H100", "16", "64", "32"]
+    assert a10g_cells == ["A10G", "0", "8", "0"]

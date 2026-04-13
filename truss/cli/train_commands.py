@@ -1082,3 +1082,16 @@ def _patch_sessions(
         sys.exit(1)
 
     return messages
+
+
+@train.command(name="capacity")
+@common.common_options()
+@click.option("--remote", type=str, required=False, help="Name of the remote to use")
+def capacity(remote: Optional[str]):
+    """Show GPU capacity limits and current usage for the organization."""
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    train_cli.display_training_capacity(remote_provider)

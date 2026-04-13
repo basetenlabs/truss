@@ -652,3 +652,30 @@ def view_cache_summary_by_project(
 
     project = fetch_project_by_name_or_id(remote_provider, project_identifier)
     view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
+
+
+def display_training_capacity(remote_provider: BasetenRemote) -> None:
+    """Fetch and display GPU capacity limits and usage for the organization."""
+    gpu_capacities = remote_provider.api.get_training_capacity()
+
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Training GPU Capacity",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("GPU Type", style="cyan")
+    table.add_column("Baseline", justify="right")
+    table.add_column("Limit", justify="right")
+    table.add_column("Usage", justify="right")
+
+    for item in gpu_capacities:
+        table.add_row(
+            item.get("gpu_type", ""),
+            str(item.get("baseline", 0)),
+            str(item.get("limit", 0)),
+            str(item.get("usage_count", 0)),
+        )
+
+    console.print(table)

@@ -857,6 +857,10 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def get_training_capacity(self) -> list[dict]:
+        resp_json = self._rest_api_client.get("v1/training/capacity")
+        return resp_json.get("gpu_capacities", [])
+
     def list_training_job_checkpoints(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoints"
