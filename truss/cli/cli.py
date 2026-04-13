@@ -668,13 +668,15 @@ def run_python(script, target_directory):
 )
 @click.option(
     "--watch-no-sleep",
-    is_flag=True,
+    type=bool,
     required=False,
-    default=False,
+    default=True,
     help="Keep the development model warm by preventing scale-to-zero while watching. Requires --watch.",
 )
 @common.common_options()
+@click.pass_context
 def push(
+    ctx: click.Context,
     target_directory: str,
     config: Optional[str],
     remote: str,
@@ -697,7 +699,7 @@ def push(
     watch_after_push: bool = False,
     watch_hot_reload: bool = False,
     no_cache: bool = False,
-    watch_no_sleep: bool = False,
+    watch_no_sleep: bool = True,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -710,11 +712,6 @@ def push(
         console.print(
             "[DEPRECATED] The --publish flag is deprecated. Published deployments are now the default.",
             style="yellow",
-        )
-
-    if watch_no_sleep and not watch_after_push:
-        raise click.UsageError(
-            "Cannot use --watch-no-sleep without --watch. --watch-no-sleep prevents scale-to-zero during watch mode."
         )
 
     # Handle --watch flag: deploys as development and then watches
@@ -739,6 +736,11 @@ def push(
     else:
         if watch_hot_reload:
             raise click.UsageError("--watch-hot-reload requires --watch.")
+        if (
+            ctx.get_parameter_source("watch_no_sleep")
+            != click.core.ParameterSource.DEFAULT  # type: ignore[attr-defined]
+        ):
+            raise click.UsageError("--watch-no-sleep requires --watch.")
         # Default is now published deployment
         publish = True
         console.print(
@@ -1043,8 +1045,8 @@ def model_logs(
 )
 @click.option(
     "--no-sleep",
-    is_flag=True,
-    default=False,
+    type=bool,
+    default=True,
     help="Keep the development model warm by preventing scale-to-zero while watching.",
 )
 @click.option(
@@ -1069,7 +1071,7 @@ def watch(
     config: Optional[str],
     remote: str,
     provided_team_name: Optional[str] = None,
-    no_sleep: bool = False,
+    no_sleep: bool = True,
     hot_reload: bool = False,
     model_name: Optional[str] = None,
 ) -> None:
