@@ -10,15 +10,18 @@ from types import TracebackType
 
 from trainers.queue_client import AsyncQueueClient, QueueClient
 from trainers.models import (
+    AdamParams,
     Datum,
     ForwardBackwardDetails,
     ForwardBackwardOp,
+    ModelInput,
     Operation,
     OperationStatus,
     OptimStepDetails,
     OptimStepOp,
     SampleDetails,
     SampleInput,
+    SamplingParams,
     SampleOp,
     SaveStateDetails,
     SaveStateOp,
@@ -234,6 +237,8 @@ class TrainingClient:
         if self._owns_client:
             self._client.close()
 
+    # -- Training operations (implemented) --
+
     def forward_backward(
         self,
         batch: list[Datum],
@@ -244,8 +249,9 @@ class TrainingClient:
         self._client.enqueue_ops([op])
         return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
 
-    def optim_step(self) -> OperationFuture:
+    def optim_step(self, adam_params: AdamParams | None = None) -> OperationFuture:
         op = _make_optim_step_op()
+        # TODO: pass adam_params through to the worker
         self._client.enqueue_ops([op])
         return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
 
@@ -263,6 +269,41 @@ class TrainingClient:
         op = _make_save_state_op(checkpoint_dir)
         self._client.enqueue_ops([op])
         return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
+
+    # -- Stubbed: training operations (not yet implemented) --
+
+    def forward(
+        self,
+        batch: list[Datum],
+        loss_fn: str = "cross_entropy",
+        loss_fn_config: dict | None = None,
+    ) -> OperationFuture:
+        """Forward pass without gradient computation."""
+        raise NotImplementedError("forward() is not yet implemented")
+
+    def forward_backward_custom(
+        self,
+        batch: list[Datum],
+        loss_fn: str,
+    ) -> OperationFuture:
+        """Forward-backward with a custom PyTorch loss function."""
+        raise NotImplementedError("forward_backward_custom() is not yet implemented")
+
+    def save_weights_for_sampler(
+        self,
+        name: str,
+        ttl_seconds: int | None = None,
+    ) -> OperationFuture:
+        """Save current weights for use by a SamplingClient."""
+        raise NotImplementedError("save_weights_for_sampler() is not yet implemented")
+
+    def load_state(self, path: str) -> OperationFuture:
+        """Load model weights from a checkpoint path."""
+        raise NotImplementedError("load_state() is not yet implemented")
+
+    def load_state_with_optimizer(self, path: str) -> OperationFuture:
+        """Load model weights and optimizer state from a checkpoint path."""
+        raise NotImplementedError("load_state_with_optimizer() is not yet implemented")
 
 
 class AsyncTrainingClient:

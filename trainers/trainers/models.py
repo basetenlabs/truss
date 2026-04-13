@@ -27,6 +27,18 @@ class TensorData(BaseModel):
             level = level[0] if level else []
         return cls(data=flat, dtype=dtype, shape=shape)
 
+    @classmethod
+    def from_torch(cls, tensor) -> Self:
+        """Create from a PyTorch tensor. Imports torch lazily."""
+        import torch
+        if not isinstance(tensor, torch.Tensor):
+            raise TypeError(f"Expected torch.Tensor, got {type(tensor)}")
+        return cls(
+            data=tensor.detach().cpu().flatten().tolist(),
+            dtype=str(tensor.dtype).replace("torch.", ""),
+            shape=list(tensor.shape),
+        )
+
 
 class EncodedTextChunk(BaseModel):
     type: Literal["encoded_text"] = "encoded_text"
@@ -131,6 +143,32 @@ class Message(BaseModel):
     content: str
 
 
+# ── Optimizer parameters ─────────────────────────────────────────
+
+
+class AdamParams(BaseModel):
+    """Adam optimizer parameters, passed per optim_step for LR scheduling."""
+    learning_rate: float = 1e-4
+    beta1: float = 0.9
+    beta2: float = 0.95
+    eps: float = 1e-12
+    weight_decay: float = 0.0
+    grad_clip_norm: float = 0.0  # 0 = disabled
+
+
+# ── Sampling parameters ──────────────────────────────────────────
+
+
+class SamplingParams(BaseModel):
+    """Parameters for text generation sampling."""
+    max_tokens: int | None = None
+    seed: int | None = None
+    stop: str | list[str] | list[int] | None = None
+    temperature: float = 1.0
+    top_k: int = -1  # -1 = no limit
+    top_p: float = 1.0
+
+
 # ── Sample types ──────────────────────────────────────────────────
 
 
@@ -148,6 +186,45 @@ class SampleOutput(BaseModel):
 
 class SampleResult(BaseModel):
     outputs: list[SampleOutput] = Field(default_factory=list)
+
+
+class SampledSequence(BaseModel):
+    """A single generated sequence with optional logprobs."""
+    tokens: list[int] = Field(default_factory=list)
+    text: str = ""
+    logprobs: list[float] | None = None
+
+
+class SampleResponse(BaseModel):
+    """Typed response from sampling."""
+    sequences: list[SampledSequence] = Field(default_factory=list)
+    prompt_logprobs: list[float | None] | None = None
+
+
+# ── Typed result models ──────────────────────────────────────────
+
+
+class ForwardBackwardOutput(BaseModel):
+    """Typed result from forward_backward."""
+    loss_fn_output_type: str = ""
+    loss_fn_outputs: list[dict] = Field(default_factory=list)
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class OptimStepResponse(BaseModel):
+    """Typed result from optim_step."""
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class SaveWeightsResponse(BaseModel):
+    """Typed result from save_state / save_weights_for_sampler."""
+    path: str = ""
+    mode: str = ""
+
+
+class LoadWeightsResponse(BaseModel):
+    """Typed result from load_state."""
+    mode: str = ""
 
 
 # ── Detail payloads per operation type ───────────────────────────
