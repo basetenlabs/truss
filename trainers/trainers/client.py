@@ -84,7 +84,7 @@ def create_training_client(
     """
     suffix = uuid.uuid4().hex[:7]
     project_name = f"trainer-{base_model.replace('/', '-')}-{suffix}"
-    client_id = suffix
+    client_id = "default"  # matches TRE's configured CLIENT_ID
     print(f"Project: {project_name} (client_id: {client_id})")
 
     if training_gpus is None:

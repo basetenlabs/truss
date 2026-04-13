@@ -202,6 +202,8 @@ class TrainingClient:
         self,
         base_url: str,
         *,
+        api_key: str | None = None,
+        client_id: str | None = None,
         client: QueueClient | None = None,
         poll_interval: float = 0.5,
         timeout: float | None = None,
@@ -211,7 +213,7 @@ class TrainingClient:
             self._client = client
             self._owns_client = False
         else:
-            self._client = QueueClient(base_url)
+            self._client = QueueClient(base_url, api_key=api_key, client_id=client_id)
             self._owns_client = True
         self._timeout = timeout
         self._poller = _Poller(self._client, poll_interval=poll_interval)

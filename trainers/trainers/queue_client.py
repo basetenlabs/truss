@@ -30,8 +30,9 @@ def _baseten_auth_headers(base_url: str, api_key: str | None = None) -> dict[str
 class QueueClient:
     """Synchronous client for the queue server."""
 
-    def __init__(self, base_url: str, client: httpx.Client | None = None, api_key: str | None = None) -> None:
+    def __init__(self, base_url: str, client: httpx.Client | None = None, api_key: str | None = None, client_id: str | None = None) -> None:
         self._base_url = base_url.rstrip("/")
+        self._client_id = client_id
         auth_headers = _baseten_auth_headers(self._base_url, api_key)
         if client is not None:
             self._client = client
@@ -63,15 +64,21 @@ class QueueClient:
 
     def enqueue_ops(self, ops: list[Operation]) -> list[str]:
         request = EnqueueRequest(ops=ops)
+        body = request.model_dump(mode="json")
+        # Tag ops with client_id so they're routed to the right consumer.
+        if self._client_id:
+            for op in body["ops"]:
+                op["client_id"] = self._client_id
         resp = self._client.post(
             f"{self._base_url}/enqueue_ops",
-            json=request.model_dump(mode="json"),
+            json=body,
         )
         resp.raise_for_status()
         return EnqueueResponse.model_validate(resp.json()).op_ids
 
     def peek_op(self) -> Operation | None:
-        resp = self._client.post(f"{self._base_url}/peek_op")
+        body = {"client_id": self._client_id} if self._client_id else None
+        resp = self._client.post(f"{self._base_url}/peek_op", json=body)
         if resp.status_code == 204:
             return None
         resp.raise_for_status()
@@ -81,7 +88,8 @@ class QueueClient:
         return _OperationAdapter.validate_python(data)
 
     def pop_op(self) -> Operation | None:
-        resp = self._client.post(f"{self._base_url}/pop_op")
+        body = {"client_id": self._client_id} if self._client_id else None
+        resp = self._client.post(f"{self._base_url}/pop_op", json=body)
         if resp.status_code == 204:
             return None
         resp.raise_for_status()
