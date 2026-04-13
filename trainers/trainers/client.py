@@ -1,8 +1,7 @@
-"""Deploy a training worker and return a TrainingClient connected to TRM."""
+"""Deploy a training worker and return a TrainingClient connected directly to it."""
 
 from __future__ import annotations
 
-import configparser
 import json
 import uuid
 from pathlib import Path
@@ -11,7 +10,6 @@ from typing import Optional
 import httpx
 
 from trainers.training_client import TrainingClient
-from trainers.queue_client import QueueClient
 from truss.base import truss_config
 from truss_train import definitions
 from truss_train.public_api import push
@@ -20,72 +18,48 @@ from truss_train.public_api import push
 _DEFAULT_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "thinker-container" / "thinker"
 
 
-def _get_baseten_api_key(remote: str) -> str:
-    config = configparser.ConfigParser()
-    config.read(Path.home() / ".trussrc")
-    return config[remote]["api_key"]
-
-
-def _register_backend(
-    trm_url: str,
-    api_key: str,
-    backend_id: str,
-    client_id: str,
-    backend_type: str,
-    base_url: str,
-) -> None:
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Api-Key {api_key}"
-    resp = httpx.post(
-        f"{trm_url}/register_backend",
-        json={
-            "id": backend_id,
-            "client_id": client_id,
-            "backend_type": backend_type,
-            "base_url": base_url,
-        },
-        headers=headers,
-        timeout=30,
-    )
-    resp.raise_for_status()
-
-
 def create_training_client(
     base_model: str,
-    trm_url: str,
-    trm_api_key: str = "",
+    worker_url: str,
     *,
-    namespace: str,
+    api_key: str | None = None,
     gpu_count: int = 1,
     accelerator: str = "H100",
     training_gpus: Optional[list[int]] = None,
     inference_gpus: Optional[list[int]] = None,
     max_seq_len: int = 4096,
     worker_port: int = 8001,
+    namespace: str = "default",
     remote: str = "baseten",
     workspace_root: Optional[Path] = None,
+    deploy: bool = True,
+    timeout: float = 600.0,
 ) -> TrainingClient:
-    """Deploy a training worker and return a TrainingClient connected to TRM.
+    """Deploy a training worker and return a TrainingClient connected to it.
 
     Args:
         base_model: HuggingFace model ID (e.g. "Qwen/Qwen3-8B").
-        trm_url: URL of the training-request-manager service.
-        trm_api_key: API key for TRM authentication.
-        namespace: K8s namespace where the training job runs (e.g. "org-{org_id}").
+        worker_url: URL of the dp_worker to connect to. If deploy=True, this
+            is computed automatically from the job ID and namespace.
+        api_key: API key for authentication.
         gpu_count: Total number of GPUs to request.
         accelerator: GPU type (H100, H200, B200).
         training_gpus: GPU indices for training. Defaults to [0].
         inference_gpus: GPU indices for inference. Defaults to [0].
         max_seq_len: Maximum sequence length for training.
         worker_port: Port the dp_worker will listen on.
+        namespace: K8s namespace where the training job runs.
         remote: Baseten remote name from .trussrc.
-        workspace_root: Path to thinker workspace root. Auto-detected if None.
+        workspace_root: Path to thinker workspace root.
+        deploy: If True, deploy a training job. If False, just connect to worker_url.
+        timeout: HTTP timeout for training operations.
     """
+    if not deploy:
+        return TrainingClient(worker_url, api_key=api_key, timeout=timeout)
+
     suffix = uuid.uuid4().hex[:7]
     project_name = f"trainer-{base_model.replace('/', '-')}-{suffix}"
-    client_id = "default"  # matches TRE's configured CLIENT_ID
-    print(f"Project: {project_name} (client_id: {client_id})")
+    print(f"Project: {project_name}")
 
     if training_gpus is None:
         training_gpus = [0]
@@ -164,29 +138,13 @@ def create_training_client(
     finally:
         rl_config_path.unlink(missing_ok=True)
 
-    # Register with the deterministic StatefulSet pod DNS.
-    # Training pods are: baseten-training-job-{job_id}-multinode-0
-    # in the given namespace.
+    # Build the deterministic pod DNS for the worker.
     worker_host = (
         f"baseten-training-job-{job_id}-multinode-0"
         f".baseten-training-job-{job_id}-multinode"
         f".{namespace}.svc.cluster.local"
     )
-    _register_backend(
-        trm_url=trm_url,
-        api_key=trm_api_key,
-        backend_id=job_id,
-        client_id=client_id,
-        backend_type="training",
-        base_url=f"http://{worker_host}:{worker_port}",
-    )
-    print(f"Registered training backend {job_id} at {worker_host}:{worker_port}")
+    resolved_url = f"http://{worker_host}:{worker_port}"
+    print(f"Worker URL: {resolved_url}")
 
-    if trm_api_key:
-        http_client = httpx.Client(
-            headers={"Authorization": f"Api-Key {trm_api_key}"},
-            timeout=30,
-        )
-        queue_client = QueueClient(trm_url, client=http_client)
-        return TrainingClient(trm_url, client=queue_client)
-    return TrainingClient(trm_url)
+    return TrainingClient(resolved_url, api_key=api_key, timeout=timeout)

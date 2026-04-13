@@ -1,5 +1,5 @@
 from trainers.client import create_training_client
-from trainers.training_client import AsyncTrainingClient, OperationFailedError, OperationFuture, TrainingClient
+from trainers.training_client import TrainingClient
 from trainers.sampling_client import SamplingClient
 from trainers.service_client import ServiceClient
 from trainers.models import (
@@ -23,11 +23,7 @@ __all__ = [
     "create_training_client",
     "ServiceClient",
     "TrainingClient",
-    "AsyncTrainingClient",
     "SamplingClient",
-    # Futures / errors
-    "OperationFuture",
-    "OperationFailedError",
     # Types
     "AdamParams",
     "Datum",

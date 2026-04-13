@@ -1,225 +1,68 @@
-"""High-level producer clients for the training queue system."""
+"""TrainingClient — direct HTTP client for a dp_worker backend with futures for pipelining."""
 
 from __future__ import annotations
 
-import asyncio
-import threading
-import uuid
-from datetime import datetime, timezone
+import concurrent.futures
 from types import TracebackType
+from typing import Callable, Generic, TypeVar
 
-from trainers.queue_client import AsyncQueueClient, QueueClient
+import httpx
+
 from trainers.models import (
     AdamParams,
     Datum,
     ForwardBackwardDetails,
-    ForwardBackwardOp,
+    ForwardBackwardOutput,
+    LoadWeightsResponse,
     ModelInput,
-    Operation,
-    OperationStatus,
-    OptimStepDetails,
-    OptimStepOp,
-    SampleDetails,
+    OptimStepResponse,
     SampleInput,
+    SampleResponse,
     SamplingParams,
-    SampleOp,
-    SaveStateDetails,
-    SaveStateOp,
-    SaveWeightsAndGetSamplingClientOp,
+    SaveWeightsResponse,
 )
 
-
-class OperationFailedError(Exception):
-    """Raised when a tracked operation reaches the ``"failed"`` state."""
-
-    def __init__(self, operation_id: str, result: dict | None) -> None:
-        self.operation_id = operation_id
-        self.result = result
-        super().__init__(f"Operation {operation_id} failed: {result}")
+T = TypeVar("T")
 
 
-class OperationFuture:
-    """Handle returned by producer clients to track an enqueued operation."""
+class OperationFuture(Generic[T]):
+    """Wraps a concurrent.futures.Future with typed result access."""
 
-    def __init__(self, operation_id: str, poller: _Poller, default_timeout: float | None = None) -> None:
-        self._operation_id = operation_id
-        self._poller = poller
-        self._default_timeout = default_timeout
-        self._status: OperationStatus | None = None
-        self._polled_event = threading.Event()
-        self._done_event = threading.Event()
-        self._registered = False
+    def __init__(self, future: concurrent.futures.Future[T]) -> None:
+        self._future = future
 
-    @property
-    def operation_id(self) -> str:
-        return self._operation_id
+    def result(self, timeout: float | None = None) -> T:
+        return self._future.result(timeout=timeout)
 
-    def _ensure_registered(self) -> None:
-        if not self._registered:
-            self._registered = True
-            self._poller.register(self)
-
-    def is_done(self) -> bool:
-        self._ensure_registered()
-        self._polled_event.wait()
-        return self._done_event.is_set()
-
-    def status(self) -> OperationStatus | None:
-        return self._status
-
-    def result(self, timeout: float | None = None) -> dict | None:
-        self._ensure_registered()
-        effective_timeout = timeout if timeout is not None else self._default_timeout
-        if not self._done_event.wait(timeout=effective_timeout):
-            raise TimeoutError(f"Operation {self._operation_id} did not complete within {effective_timeout}s")
-        if self._status is not None and self._status.status == "failed":
-            raise OperationFailedError(self._operation_id, self._status.result)
-        return self._status.result if self._status is not None else None
+    def done(self) -> bool:
+        return self._future.done()
 
     def __await__(self):
+        import asyncio
         return asyncio.to_thread(self.result).__await__()
 
 
-class _Poller:
-    """Background daemon thread that batches ``get_op_statuses`` calls."""
-
-    def __init__(self, queue_client: QueueClient, poll_interval: float = 0.5) -> None:
-        self._queue_client = queue_client
-        self._poll_interval = poll_interval
-        self._futures: dict[str, OperationFuture] = {}
-        self._lock = threading.Lock()
-        self._has_work = threading.Event()
-        self._stop_event = threading.Event()
-        self._thread: threading.Thread | None = None
-
-    def register(self, future: OperationFuture) -> None:
-        with self._lock:
-            self._futures[future.operation_id] = future
-            self._has_work.set()
-        self._ensure_started()
-
-    def _ensure_started(self) -> None:
-        if self._thread is None or not self._thread.is_alive():
-            self._thread = threading.Thread(target=self._run, daemon=True)
-            self._thread.start()
-
-    def _run(self) -> None:
-        while not self._stop_event.is_set():
-            self._has_work.wait(timeout=self._poll_interval)
-            if self._stop_event.is_set():
-                break
-
-            with self._lock:
-                tracked = dict(self._futures)
-
-            if not tracked:
-                self._has_work.clear()
-                continue
-
-            op_ids = list(tracked.keys())
-            try:
-                statuses = self._queue_client.get_op_statuses(op_ids)
-            except Exception:
-                self._stop_event.wait(timeout=self._poll_interval)
-                continue
-
-            status_map = {s.operation_id: s for s in statuses}
-            done_ids: list[str] = []
-            for op_id, future in tracked.items():
-                st = status_map.get(op_id)
-                if st is None:
-                    continue
-                future._status = st
-                future._polled_event.set()
-                if st.status in ("completed", "failed"):
-                    future._done_event.set()
-                    done_ids.append(op_id)
-
-            if done_ids:
-                with self._lock:
-                    for op_id in done_ids:
-                        self._futures.pop(op_id, None)
-                    if not self._futures:
-                        self._has_work.clear()
-
-            self._stop_event.wait(timeout=self._poll_interval)
-
-    def stop(self) -> None:
-        self._stop_event.set()
-        self._has_work.set()
-        if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=5)
-
-
-def _make_forward_backward_op(
-    batch: list[Datum],
-    loss_fn: str,
-    loss_fn_config: dict | None,
-) -> ForwardBackwardOp:
-    return ForwardBackwardOp(
-        operation_id=str(uuid.uuid4()),
-        created_at=datetime.now(timezone.utc),
-        forward_backward_details=ForwardBackwardDetails(
-            batch=batch,
-            loss_fn=loss_fn,
-            loss_fn_config=loss_fn_config,
-        ),
-    )
-
-
-def _make_optim_step_op() -> OptimStepOp:
-    return OptimStepOp(
-        operation_id=str(uuid.uuid4()),
-        created_at=datetime.now(timezone.utc),
-        optim_step_details=OptimStepDetails(),
-    )
-
-
-def _make_to_inference_op() -> SaveWeightsAndGetSamplingClientOp:
-    return SaveWeightsAndGetSamplingClientOp(
-        operation_id=str(uuid.uuid4()),
-        created_at=datetime.now(timezone.utc),
-    )
-
-
-def _make_sample_op(inputs: list[SampleInput]) -> SampleOp:
-    return SampleOp(
-        operation_id=str(uuid.uuid4()),
-        created_at=datetime.now(timezone.utc),
-        sample_details=SampleDetails(inputs=inputs),
-    )
-
-
-def _make_save_state_op(checkpoint_dir: str) -> SaveStateOp:
-    return SaveStateOp(
-        operation_id=str(uuid.uuid4()),
-        created_at=datetime.now(timezone.utc),
-        save_state_details=SaveStateDetails(checkpoint_dir=checkpoint_dir),
-    )
-
-
 class TrainingClient:
-    """Synchronous high-level client for enqueuing training operations."""
+    """Client that talks directly to a dp_worker instance.
+
+    All training operations return OperationFuture[T] for pipelining —
+    multiple operations can be dispatched before waiting for results.
+    """
 
     def __init__(
         self,
         base_url: str,
         *,
         api_key: str | None = None,
-        client_id: str | None = None,
-        client: QueueClient | None = None,
-        poll_interval: float = 0.5,
-        timeout: float | None = None,
+        timeout: float = 600.0,
+        max_workers: int = 4,
     ) -> None:
-        self._base_url = base_url
-        if client is not None:
-            self._client = client
-            self._owns_client = False
-        else:
-            self._client = QueueClient(base_url, api_key=api_key, client_id=client_id)
-            self._owns_client = True
-        self._timeout = timeout
-        self._poller = _Poller(self._client, poll_interval=poll_interval)
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Api-Key {api_key}"
+        self._base_url = base_url.rstrip("/")
+        self._client = httpx.Client(headers=headers, timeout=timeout)
+        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
 
     def __enter__(self) -> TrainingClient:
         return self
@@ -233,9 +76,16 @@ class TrainingClient:
         self.close()
 
     def close(self) -> None:
-        self._poller.stop()
-        if self._owns_client:
-            self._client.close()
+        self._pool.shutdown(wait=False)
+        self._client.close()
+
+    def _post(self, path: str, json: dict | None = None) -> httpx.Response:
+        resp = self._client.post(f"{self._base_url}{path}", json=json)
+        resp.raise_for_status()
+        return resp
+
+    def _submit(self, fn: Callable[[], T]) -> OperationFuture[T]:
+        return OperationFuture(self._pool.submit(fn))
 
     # -- Training operations (implemented) --
 
@@ -244,40 +94,65 @@ class TrainingClient:
         batch: list[Datum],
         loss_fn: str = "cross_entropy",
         loss_fn_config: dict | None = None,
-    ) -> OperationFuture:
-        op = _make_forward_backward_op(batch, loss_fn, loss_fn_config)
-        self._client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
+    ) -> OperationFuture[ForwardBackwardOutput]:
+        details = ForwardBackwardDetails(
+            batch=batch, loss_fn=loss_fn, loss_fn_config=loss_fn_config,
+        )
+        body = details.model_dump(mode="json")
 
-    def optim_step(self, adam_params: AdamParams | None = None) -> OperationFuture:
-        op = _make_optim_step_op()
-        # TODO: pass adam_params through to the worker
-        self._client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
+        def _call() -> ForwardBackwardOutput:
+            resp = self._post("/forward_backward", json=body)
+            return ForwardBackwardOutput.model_validate(resp.json())
 
-    def to_inference(self) -> OperationFuture:
-        op = _make_to_inference_op()
-        self._client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
+        return self._submit(_call)
 
-    def sample(self, inputs: list[SampleInput]) -> OperationFuture:
-        op = _make_sample_op(inputs)
-        self._client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
+    def optim_step(self, adam_params: AdamParams | None = None) -> OperationFuture[OptimStepResponse]:
+        body = adam_params.model_dump(mode="json") if adam_params else {}
 
-    def save_state(self, checkpoint_dir: str) -> OperationFuture:
-        op = _make_save_state_op(checkpoint_dir)
-        self._client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
+        def _call() -> OptimStepResponse:
+            resp = self._post("/optim_step", json=body)
+            return OptimStepResponse.model_validate(resp.json())
 
-    # -- Stubbed: training operations (not yet implemented) --
+        return self._submit(_call)
+
+    def to_inference(self) -> OperationFuture[SaveWeightsResponse]:
+        def _call() -> SaveWeightsResponse:
+            resp = self._post("/to_inference")
+            return SaveWeightsResponse.model_validate(resp.json())
+
+        return self._submit(_call)
+
+    def sample(self, inputs: list[SampleInput]) -> OperationFuture[SampleResponse]:
+        from trainers.models import SampleDetails
+        body = SampleDetails(inputs=inputs).model_dump(mode="json")
+
+        def _call() -> SampleResponse:
+            resp = self._post("/sample", json=body)
+            return SampleResponse.model_validate(resp.json())
+
+        return self._submit(_call)
+
+    def save_state(self, checkpoint_dir: str) -> OperationFuture[SaveWeightsResponse]:
+        body = {"checkpoint_dir": checkpoint_dir}
+
+        def _call() -> SaveWeightsResponse:
+            resp = self._post("/save_state", json=body)
+            return SaveWeightsResponse.model_validate(resp.json())
+
+        return self._submit(_call)
+
+    def health(self) -> None:
+        resp = self._client.get(f"{self._base_url}/health")
+        resp.raise_for_status()
+
+    # -- Stubbed: not yet implemented --
 
     def forward(
         self,
         batch: list[Datum],
         loss_fn: str = "cross_entropy",
         loss_fn_config: dict | None = None,
-    ) -> OperationFuture:
+    ) -> OperationFuture[ForwardBackwardOutput]:
         """Forward pass without gradient computation."""
         raise NotImplementedError("forward() is not yet implemented")
 
@@ -285,7 +160,7 @@ class TrainingClient:
         self,
         batch: list[Datum],
         loss_fn: str,
-    ) -> OperationFuture:
+    ) -> OperationFuture[ForwardBackwardOutput]:
         """Forward-backward with a custom PyTorch loss function."""
         raise NotImplementedError("forward_backward_custom() is not yet implemented")
 
@@ -293,84 +168,14 @@ class TrainingClient:
         self,
         name: str,
         ttl_seconds: int | None = None,
-    ) -> OperationFuture:
+    ) -> OperationFuture[SaveWeightsResponse]:
         """Save current weights for use by a SamplingClient."""
         raise NotImplementedError("save_weights_for_sampler() is not yet implemented")
 
-    def load_state(self, path: str) -> OperationFuture:
+    def load_state(self, path: str) -> OperationFuture[LoadWeightsResponse]:
         """Load model weights from a checkpoint path."""
         raise NotImplementedError("load_state() is not yet implemented")
 
-    def load_state_with_optimizer(self, path: str) -> OperationFuture:
+    def load_state_with_optimizer(self, path: str) -> OperationFuture[LoadWeightsResponse]:
         """Load model weights and optimizer state from a checkpoint path."""
         raise NotImplementedError("load_state_with_optimizer() is not yet implemented")
-
-
-class AsyncTrainingClient:
-    """Asynchronous high-level client for enqueuing training operations."""
-
-    def __init__(
-        self,
-        base_url: str,
-        *,
-        client: AsyncQueueClient | None = None,
-        poll_interval: float = 0.5,
-        timeout: float | None = None,
-    ) -> None:
-        self._base_url = base_url
-        if client is not None:
-            self._async_client = client
-            self._owns_async_client = False
-        else:
-            self._async_client = AsyncQueueClient(base_url)
-            self._owns_async_client = True
-        self._timeout = timeout
-        self._sync_client = QueueClient(base_url)
-        self._poller = _Poller(self._sync_client, poll_interval=poll_interval)
-
-    async def __aenter__(self) -> AsyncTrainingClient:
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        await self.close()
-
-    async def close(self) -> None:
-        self._poller.stop()
-        self._sync_client.close()
-        if self._owns_async_client:
-            await self._async_client.close()
-
-    async def forward_backward(
-        self,
-        batch: list[Datum],
-        loss_fn: str = "cross_entropy",
-        loss_fn_config: dict | None = None,
-    ) -> OperationFuture:
-        op = _make_forward_backward_op(batch, loss_fn, loss_fn_config)
-        await self._async_client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
-
-    async def optim_step(self) -> OperationFuture:
-        op = _make_optim_step_op()
-        await self._async_client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
-
-    async def to_inference(self) -> OperationFuture:
-        op = _make_to_inference_op()
-        await self._async_client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
-
-    async def sample(self, inputs: list[SampleInput]) -> OperationFuture:
-        op = _make_sample_op(inputs)
-        await self._async_client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
-
-    async def save_state(self, checkpoint_dir: str) -> OperationFuture:
-        op = _make_save_state_op(checkpoint_dir)
-        await self._async_client.enqueue_ops([op])
-        return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)

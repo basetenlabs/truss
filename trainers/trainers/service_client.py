@@ -23,15 +23,13 @@ class ServiceClient:
         *,
         rank: int = 16,
         seed: int | None = None,
-        poll_interval: float = 0.5,
-        timeout: float | None = None,
+        timeout: float = 600.0,
     ) -> TrainingClient:
         """Create a LoRA training client."""
         # TODO: pass base_model, rank, seed to the backend to initialize
         return TrainingClient(
             self._base_url,
             api_key=self._api_key,
-            poll_interval=poll_interval,
             timeout=timeout,
         )
 
