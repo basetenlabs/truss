@@ -15,14 +15,7 @@ import threading
 
 import pytest
 
-from trainers import TrainingClient, AdamParams
-from trainers.models import (
-    Datum,
-    Message,
-    ModelInput,
-    SampleInput,
-    TensorData,
-)
+from trainers import TrainingClient, AdamParams, ModelInput, SamplingParams, Datum, TensorData
 
 
 class MockWorkerHandler(BaseHTTPRequestHandler):
@@ -136,13 +129,11 @@ def test_to_inference(client):
 
 
 def test_sample(client):
-    result = client.sample([
-        SampleInput(
-            messages=[Message(role="user", content="What is 2+2?")],
-            max_tokens=32,
-            temperature=0.0,
-        ),
-    ]).result(timeout=5.0)
+    result = client.sample(
+        prompt=ModelInput.from_ints([1, 2, 3]),
+        num_samples=1,
+        sampling_params=SamplingParams(max_tokens=32, temperature=0.0),
+    ).result(timeout=5.0)
     assert len(result.sequences) == 1
     assert result.sequences[0].stop_reason == "stop"
 
@@ -200,10 +191,8 @@ def test_training_loop(client):
     assert result.type == "save_weights"
 
     # Sample.
-    result = client.sample([
-        SampleInput(
-            messages=[Message(role="user", content="What is 2+2?")],
-            max_tokens=32,
-        ),
-    ]).result(timeout=5.0)
+    result = client.sample(
+        prompt=ModelInput.from_ints([1, 2, 3]),
+        sampling_params=SamplingParams(max_tokens=32),
+    ).result(timeout=5.0)
     assert len(result.sequences) == 1

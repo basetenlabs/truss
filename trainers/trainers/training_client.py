@@ -11,13 +11,13 @@ import httpx
 from trainers.models import (
     AdamParams,
     Datum,
-    ForwardBackwardDetails,
     ForwardBackwardOutput,
     LoadWeightsResponse,
+    ModelInput,
     OptimStepResponse,
-    SampleDetails,
-    SampleInput,
+    SampledSequence,
     SampleResponse,
+    SamplingParams,
     SaveWeightsResponse,
 )
 
@@ -94,10 +94,11 @@ class TrainingClient:
         loss_fn: str = "cross_entropy",
         loss_fn_config: dict | None = None,
     ) -> OperationFuture[ForwardBackwardOutput]:
-        details = ForwardBackwardDetails(
-            batch=batch, loss_fn=loss_fn, loss_fn_config=loss_fn_config,
-        )
-        body = details.model_dump(mode="json")
+        body = {
+            "batch": [d.model_dump(mode="json") for d in batch],
+            "loss_fn": loss_fn,
+            "loss_fn_config": loss_fn_config,
+        }
 
         def _call() -> ForwardBackwardOutput:
             resp = self._post("/forward_backward", json=body)
@@ -121,8 +122,17 @@ class TrainingClient:
 
         return self._submit(_call)
 
-    def sample(self, inputs: list[SampleInput]) -> OperationFuture[SampleResponse]:
-        body = SampleDetails(inputs=inputs).model_dump(mode="json")
+    def sample(
+        self,
+        prompt: ModelInput,
+        num_samples: int = 1,
+        sampling_params: SamplingParams | None = None,
+    ) -> OperationFuture[SampleResponse]:
+        body = {
+            "prompt": prompt.model_dump(mode="json"),
+            "num_samples": num_samples,
+            "sampling_params": (sampling_params or SamplingParams()).model_dump(mode="json"),
+        }
 
         def _call() -> SampleResponse:
             resp = self._post("/sample", json=body)
