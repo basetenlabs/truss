@@ -56,6 +56,7 @@ def create_training_client(
     trm_url: str,
     trm_api_key: str = "",
     *,
+    namespace: str,
     gpu_count: int = 1,
     accelerator: str = "H100",
     training_gpus: Optional[list[int]] = None,
@@ -71,6 +72,7 @@ def create_training_client(
         base_model: HuggingFace model ID (e.g. "Qwen/Qwen3-8B").
         trm_url: URL of the training-request-manager service.
         trm_api_key: API key for TRM authentication.
+        namespace: K8s namespace where the training job runs (e.g. "org-{org_id}").
         gpu_count: Total number of GPUs to request.
         accelerator: GPU type (H100, H200, B200).
         training_gpus: GPU indices for training. Defaults to [0].
@@ -162,15 +164,23 @@ def create_training_client(
     finally:
         rl_config_path.unlink(missing_ok=True)
 
+    # Register with the deterministic StatefulSet pod DNS.
+    # Training pods are: baseten-training-job-{job_id}-multinode-0
+    # in the given namespace.
+    worker_host = (
+        f"baseten-training-job-{job_id}-multinode-0"
+        f".baseten-training-job-{job_id}-multinode"
+        f".{namespace}.svc.cluster.local"
+    )
     _register_backend(
         trm_url=trm_url,
         api_key=trm_api_key,
-        backend_id=client_id,
+        backend_id=job_id,
         client_id=client_id,
         backend_type="training",
-        base_url=f"http://dp-worker-0:{worker_port}",
+        base_url=f"http://{worker_host}:{worker_port}",
     )
-    print(f"Registered training backend {client_id} with TRM")
+    print(f"Registered training backend {job_id} at {worker_host}:{worker_port}")
 
     if trm_api_key:
         http_client = httpx.Client(
