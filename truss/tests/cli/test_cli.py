@@ -267,12 +267,14 @@ def test_watch_sends_wake_request():
         # Need to patch requests_lib in common.py now since wake is called from there
         with patch("truss.cli.utils.common.requests_lib") as mock_requests:
             mock_requests.post.return_value = Mock(status_code=202)
-            mock_requests.get.return_value = Mock(status_code=200)
             mock_requests.RequestException = requests.RequestException
-            with patch.object(remote_provider, "sync_truss_to_dev_version_with_model"):
-                _result = runner.invoke(
-                    truss_cli, ["watch", "/tmp/fake", "--remote", "baseten"]
-                )
+            with patch("truss.cli.utils.common.start_keepalive"):
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    _result = runner.invoke(
+                        truss_cli, ["watch", "/tmp/fake", "--remote", "baseten"]
+                    )
 
     mock_requests.post.assert_called_once_with(
         "https://model-abc123.api.baseten.co/development/wake",
@@ -1088,7 +1090,11 @@ def test_push_watch_enters_watch_mode_on_deploying_status(
 
     mock_resolve = Mock(
         return_value=(
-            {"id": "model_id", "name": "model_name"},
+            {
+                "id": "model_id",
+                "name": "model_name",
+                "hostname": "https://model.api.baseten.co",
+            },
             [{"id": "version_id", "is_draft": True}],
         )
     )
@@ -1099,18 +1105,19 @@ def test_push_watch_enters_watch_mode_on_deploying_status(
         with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
             with patch("truss.cli.cli.resolve_model_for_watch", mock_resolve):
                 with patch("truss.cli.cli._start_watch_mode", mock_start_watch):
-                    result = runner.invoke(
-                        truss_cli,
-                        [
-                            "push",
-                            str(custom_model_truss_dir_with_pre_and_post),
-                            "--remote",
-                            "baseten",
-                            "--model-name",
-                            "model_name",
-                            "--watch",
-                        ],
-                    )
+                    with patch("truss.cli.cli.common.start_keepalive"):
+                        result = runner.invoke(
+                            truss_cli,
+                            [
+                                "push",
+                                str(custom_model_truss_dir_with_pre_and_post),
+                                "--remote",
+                                "baseten",
+                                "--model-name",
+                                "model_name",
+                                "--watch",
+                            ],
+                        )
 
     assert result.exit_code == 0
     mock_start_watch.assert_called_once()
@@ -1206,20 +1213,21 @@ def test_watch_model_name_flag_overrides_config(
             with patch("truss.cli.utils.common.requests_lib") as mock_requests:
                 mock_requests.post.return_value = Mock(status_code=202)
                 mock_requests.RequestException = __import__("requests").RequestException
-                with patch.object(
-                    remote_provider, "sync_truss_to_dev_version_with_model"
-                ):
-                    runner.invoke(
-                        truss_cli,
-                        [
-                            "watch",
-                            "/tmp/fake",
-                            "--remote",
-                            "baseten",
-                            "--model-name",
-                            "flag-name",
-                        ],
-                    )
+                with patch("truss.cli.utils.common.start_keepalive"):
+                    with patch.object(
+                        remote_provider, "sync_truss_to_dev_version_with_model"
+                    ):
+                        runner.invoke(
+                            truss_cli,
+                            [
+                                "watch",
+                                "/tmp/fake",
+                                "--remote",
+                                "baseten",
+                                "--model-name",
+                                "flag-name",
+                            ],
+                        )
 
     # The flag value should be used, not the config value
     first_call_args = mock_resolve.call_args_list[0]
