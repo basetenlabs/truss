@@ -33,14 +33,16 @@ from pathlib import Path
 # Sent to the signing API so the server can reject outdated clients.
 CLIENT_VERSION = "{{CLIENT_VERSION}}"
 
-BASETEN_SSH_DIR = Path.home() / ".ssh" / "baseten"
-TRUSSRC_PATH = Path.home() / ".trussrc"
+BASETEN_SSH_DIR = Path(
+    os.environ.get("BASETEN_SSH_DIR", Path.home() / ".ssh" / "baseten")
+)
+TRUSSRC_PATH = Path(os.environ.get("USER_TRUSSRC_PATH", Path.home() / ".trussrc"))
 JWT_CACHE_DIR = BASETEN_SSH_DIR / ".jwt-cache"
 
 HOSTNAME_SUFFIX = ".ssh.baseten.co"
 HOSTNAME_PREFIX = "training-job-"
 
-BASETEN_REST_API_URL = "https://api.baseten.co"
+BASETEN_REST_API_URL = os.environ.get("BASETEN_BASE_URL", "https://api.baseten.co")
 
 STATUS_OK = 0x00
 
@@ -313,9 +315,13 @@ def connect_proxy(proxy_address, jwt_token):
     host, port_str = proxy_address.rsplit(":", 1)
     port = int(port_str)
 
-    ctx = ssl.create_default_context()
     raw_sock = socket.create_connection((host, port), timeout=10)
-    tls_sock = ctx.wrap_socket(raw_sock, server_hostname=host)
+
+    if os.environ.get("BASETEN_SSH_PROXY_INSECURE", "").lower() in ("1", "true"):
+        tls_sock = raw_sock
+    else:
+        ctx = ssl.create_default_context()
+        tls_sock = ctx.wrap_socket(raw_sock, server_hostname=host)
 
     # Send length-prefixed JWT
     jwt_bytes = jwt_token.encode()

@@ -9,8 +9,12 @@ from typing import Optional
 
 import truss
 
-BASETEN_SSH_DIR = Path.home() / ".ssh" / "baseten"
-SSH_CONFIG_PATH = Path.home() / ".ssh" / "config"
+BASETEN_SSH_DIR = Path(
+    os.environ.get("BASETEN_SSH_DIR", Path.home() / ".ssh" / "baseten")
+)
+SSH_CONFIG_PATH = Path(
+    os.environ.get("BASETEN_SSH_CONFIG_PATH", Path.home() / ".ssh" / "config")
+)
 
 MARKER_START = "# --- baseten-ssh ---"
 MARKER_END = "# --- end baseten-ssh ---"
