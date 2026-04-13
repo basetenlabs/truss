@@ -14,11 +14,10 @@ from trainers.models import (
     ForwardBackwardDetails,
     ForwardBackwardOutput,
     LoadWeightsResponse,
-    ModelInput,
     OptimStepResponse,
+    SampleDetails,
     SampleInput,
     SampleResponse,
-    SamplingParams,
     SaveWeightsResponse,
 )
 
@@ -123,7 +122,6 @@ class TrainingClient:
         return self._submit(_call)
 
     def sample(self, inputs: list[SampleInput]) -> OperationFuture[SampleResponse]:
-        from trainers.models import SampleDetails
         body = SampleDetails(inputs=inputs).model_dump(mode="json")
 
         def _call() -> SampleResponse:

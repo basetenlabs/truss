@@ -51,17 +51,19 @@ class MockWorkerHandler(BaseHTTPRequestHandler):
             },
             "/to_inference": {
                 "path": "",
-                "mode": "inference",
+                "type": "save_weights",
             },
             "/sample": {
                 "sequences": [
-                    {"tokens": [1, 2, 3], "text": "four", "logprobs": None},
+                    {"tokens": [1, 2, 3], "stop_reason": "stop", "logprobs": None},
                 ],
+                "type": "sample",
                 "prompt_logprobs": None,
+                "topk_prompt_logprobs": None,
             },
             "/save_state": {
                 "path": "/checkpoints/step-1",
-                "mode": "training",
+                "type": "save_weights",
             },
         }
 
@@ -107,7 +109,7 @@ def test_forward_backward(client):
     batch = [
         Datum(
             model_input=ModelInput.from_ints(list(range(10))),
-            loss_fn_inputs={"reward": TensorData.from_list([1.0])},
+            loss_fn_inputs={"reward": TensorData(data=[1.0], dtype="float32", shape=[1])},
         ),
     ]
     future = client.forward_backward(batch=batch, loss_fn="cross_entropy")
@@ -130,7 +132,7 @@ def test_optim_step_with_adam_params(client):
 
 def test_to_inference(client):
     result = client.to_inference().result(timeout=5.0)
-    assert result.mode == "inference"
+    assert result.type == "save_weights"
 
 
 def test_sample(client):
@@ -142,7 +144,7 @@ def test_sample(client):
         ),
     ]).result(timeout=5.0)
     assert len(result.sequences) == 1
-    assert result.sequences[0].text == "four"
+    assert result.sequences[0].stop_reason == "stop"
 
 
 def test_save_state(client):
@@ -155,7 +157,7 @@ def test_pipelining(client):
     batch = [
         Datum(
             model_input=ModelInput.from_ints(list(range(8))),
-            loss_fn_inputs={"reward": TensorData.from_list([1.0])},
+            loss_fn_inputs={"reward": TensorData(data=[1.0], dtype="float32", shape=[1])},
         ),
     ]
 
@@ -176,11 +178,11 @@ def test_training_loop(client):
     batch = [
         Datum(
             model_input=ModelInput.from_ints(list(range(10))),
-            loss_fn_inputs={"reward": TensorData.from_list([1.0])},
+            loss_fn_inputs={"reward": TensorData(data=[1.0], dtype="float32", shape=[1])},
         ),
         Datum(
             model_input=ModelInput.from_ints(list(range(10, 20))),
-            loss_fn_inputs={"reward": TensorData.from_list([0.5])},
+            loss_fn_inputs={"reward": TensorData(data=[0.5], dtype="float32", shape=[1])},
         ),
     ]
 
@@ -195,7 +197,7 @@ def test_training_loop(client):
 
     # Switch to inference.
     result = client.to_inference().result(timeout=5.0)
-    assert result.mode == "inference"
+    assert result.type == "save_weights"
 
     # Sample.
     result = client.sample([
