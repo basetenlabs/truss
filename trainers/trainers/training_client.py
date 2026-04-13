@@ -1,4 +1,4 @@
-"""High-level producer clients for the queue system."""
+"""High-level producer clients for the training queue system."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import uuid
 from datetime import datetime, timezone
 from types import TracebackType
 
-from thinker_client.queue_client import AsyncQueueClient, QueueClient
-from thinker_client.models import (
+from trainers.queue_client import AsyncQueueClient, QueueClient
+from trainers.models import (
     Datum,
     ForwardBackwardDetails,
     ForwardBackwardOp,
@@ -117,7 +117,6 @@ class _Poller:
             try:
                 statuses = self._queue_client.get_op_statuses(op_ids)
             except Exception:
-                # Network error — retry on next cycle.
                 self._stop_event.wait(timeout=self._poll_interval)
                 continue
 
@@ -144,7 +143,7 @@ class _Poller:
 
     def stop(self) -> None:
         self._stop_event.set()
-        self._has_work.set()  # wake thread so it can exit
+        self._has_work.set()
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=5)
 
@@ -196,8 +195,8 @@ def _make_save_state_op(checkpoint_dir: str) -> SaveStateOp:
     )
 
 
-class ThinkerClient:
-    """Synchronous high-level client for enqueuing operations."""
+class TrainingClient:
+    """Synchronous high-level client for enqueuing training operations."""
 
     def __init__(
         self,
@@ -217,7 +216,7 @@ class ThinkerClient:
         self._timeout = timeout
         self._poller = _Poller(self._client, poll_interval=poll_interval)
 
-    def __enter__(self) -> ThinkerClient:
+    def __enter__(self) -> TrainingClient:
         return self
 
     def __exit__(
@@ -264,8 +263,8 @@ class ThinkerClient:
         return OperationFuture(op.operation_id, self._poller, default_timeout=self._timeout)
 
 
-class AsyncThinkerClient:
-    """Asynchronous high-level client for enqueuing operations."""
+class AsyncTrainingClient:
+    """Asynchronous high-level client for enqueuing training operations."""
 
     def __init__(
         self,
@@ -283,11 +282,10 @@ class AsyncThinkerClient:
             self._async_client = AsyncQueueClient(base_url)
             self._owns_async_client = True
         self._timeout = timeout
-        # Poller uses a sync QueueClient for its background thread.
         self._sync_client = QueueClient(base_url)
         self._poller = _Poller(self._sync_client, poll_interval=poll_interval)
 
-    async def __aenter__(self) -> AsyncThinkerClient:
+    async def __aenter__(self) -> AsyncTrainingClient:
         return self
 
     async def __aexit__(

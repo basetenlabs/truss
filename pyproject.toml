@@ -117,6 +117,7 @@ include = [
     "truss/",
     "truss-chains/truss_chains/",
     "truss-train/truss_train/",
+    "trainers/trainers/",
     "*.txt",
     "*.Dockerfile",
     "*.md"
@@ -126,12 +127,14 @@ include = [
 only-include = [
     "truss/",
     "truss-chains/truss_chains/",
-    "truss-train/truss_train/"
+    "truss-train/truss_train/",
+    "trainers/trainers/"
 ]
 
 [tool.hatch.build.targets.wheel.sources]
 "truss-chains/truss_chains" = "truss_chains"
 "truss-train/truss_train" = "truss_train"
+"trainers/trainers" = "trainers"
 
 [build-system]
 requires = ["hatchling"]
@@ -150,10 +153,10 @@ markers = [
 # specify basetemp because the default `/private/var/...` interferes with truss_ignore, which also has a var/ pattern
 addopts = "--ignore=smoketests --ignore=baseten-performance-client --ignore=integration_tests --basetemp=/tmp/pytest-temp"
 # NB(nikhil): Ensures our relative imports work for tests, given non-traditional directory structure.
-pythonpath = [".", "truss-chains", "truss-train"]
+pythonpath = [".", "truss-chains", "truss-train", "trainers"]
 
 [tool.ruff]
-src = [".", "truss-chains", "truss-train"]
+src = [".", "truss-chains", "truss-train", "trainers"]
 target-version = "py39"
 line-length = 88
 lint.extend-select = [

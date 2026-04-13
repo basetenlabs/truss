@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from thinker_client.queue_client import QueueClient
+from trainers.queue_client import QueueClient
 
 
 BASE_URL = os.environ.get("TRM_BASE_URL", "https://trm.demo.api.baseten.co")

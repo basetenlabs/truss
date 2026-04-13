@@ -9,7 +9,7 @@ from typing import Annotated, Literal, Self, Union
 from pydantic import BaseModel, Discriminator, Field, Tag
 
 
-# ── Tensor / model-input primitives (mirror tinker SDK types) ────────
+# ── Tensor / model-input primitives ────────────────────────────────
 
 
 class TensorData(BaseModel):
@@ -100,7 +100,7 @@ class Datum(BaseModel):
     loss_fn_inputs: dict[str, TensorData] = Field(default_factory=dict)
 
 
-# ── Result types (mirror tinker SDK responses) ───────────────────────
+# ── Result types ───────────────────────────────────────────────────
 
 LossFnOutput = dict[str, TensorData]
 
@@ -123,7 +123,7 @@ class SaveStateResult(BaseModel):
     mode: str = ""
 
 
-# ── Chat / training primitives ───────────────────────────────────────
+# ── Chat / training primitives ───────────────────────────────────
 
 
 class Message(BaseModel):
@@ -131,7 +131,7 @@ class Message(BaseModel):
     content: str
 
 
-# ── Sample types (mirror dp_worker sample endpoint) ──────────────────
+# ── Sample types ──────────────────────────────────────────────────
 
 
 class SampleInput(BaseModel):
@@ -150,7 +150,7 @@ class SampleResult(BaseModel):
     outputs: list[SampleOutput] = Field(default_factory=list)
 
 
-# ── Detail payloads per operation type ───────────────────────────────
+# ── Detail payloads per operation type ───────────────────────────
 
 
 class ForwardBackwardDetails(BaseModel):
@@ -175,7 +175,7 @@ class SaveStateDetails(BaseModel):
     checkpoint_dir: str
 
 
-# ── Operation variants ───────────────────────────────────────────────
+# ── Operation variants ───────────────────────────────────────────
 
 
 class _OperationBase(BaseModel):
@@ -222,7 +222,7 @@ Operation = Annotated[
 ]
 
 
-# ── Status updates sent back to the queue ────────────────────────────
+# ── Status updates sent back to the queue ────────────────────────
 
 
 class OperationStatus(BaseModel):
@@ -231,7 +231,7 @@ class OperationStatus(BaseModel):
     result: dict | None = None
 
 
-# ── Queue server request/response models ─────────────────────────────
+# ── Queue server request/response models ─────────────────────────
 
 
 class EnqueueRequest(BaseModel):

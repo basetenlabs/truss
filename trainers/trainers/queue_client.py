@@ -8,7 +8,7 @@ from types import TracebackType
 import httpx
 from pydantic import TypeAdapter
 
-from thinker_client.models import (
+from trainers.models import (
     EnqueueRequest,
     EnqueueResponse,
     GetOpStatusesRequest,
@@ -42,8 +42,6 @@ class QueueClient:
             self._client = httpx.Client(headers=auth_headers)
             self._owns_client = True
 
-    # -- context manager --------------------------------------------------
-
     def __enter__(self) -> QueueClient:
         return self
 
@@ -58,8 +56,6 @@ class QueueClient:
     def close(self) -> None:
         if self._owns_client:
             self._client.close()
-
-    # -- endpoints --------------------------------------------------------
 
     def health(self) -> None:
         resp = self._client.get(f"{self._base_url}/health")
@@ -127,8 +123,6 @@ class AsyncQueueClient:
             self._client = httpx.AsyncClient(headers=auth_headers)
             self._owns_client = True
 
-    # -- context manager --------------------------------------------------
-
     async def __aenter__(self) -> AsyncQueueClient:
         return self
 
@@ -143,8 +137,6 @@ class AsyncQueueClient:
     async def close(self) -> None:
         if self._owns_client:
             await self._client.aclose()
-
-    # -- endpoints --------------------------------------------------------
 
     async def health(self) -> None:
         resp = await self._client.get(f"{self._base_url}/health")
