@@ -90,12 +90,12 @@ class TrainingClient:
 
     def forward_backward(
         self,
-        batch: list[Datum],
+        data: list[Datum],
         loss_fn: str = "cross_entropy",
         loss_fn_config: dict | None = None,
     ) -> OperationFuture[ForwardBackwardOutput]:
         body = {
-            "batch": [d.model_dump(mode="json") for d in batch],
+            "data": [d.model_dump(mode="json") for d in data],
             "loss_fn": loss_fn,
             "loss_fn_config": loss_fn_config,
         }
@@ -107,7 +107,7 @@ class TrainingClient:
         return self._submit(_call)
 
     def optim_step(self, adam_params: AdamParams | None = None) -> OperationFuture[OptimStepResponse]:
-        body = adam_params.model_dump(mode="json") if adam_params else {}
+        body = {"adam_params": (adam_params or AdamParams()).model_dump(mode="json")}
 
         def _call() -> OptimStepResponse:
             resp = self._post("/optim_step", json=body)
@@ -115,9 +115,15 @@ class TrainingClient:
 
         return self._submit(_call)
 
-    def to_inference(self) -> OperationFuture[SaveWeightsResponse]:
+    def save_weights_and_get_sampling_client(
+        self,
+        name: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> OperationFuture[SaveWeightsResponse]:
+        body = {"path": name, "ttl_seconds": ttl_seconds}
+
         def _call() -> SaveWeightsResponse:
-            resp = self._post("/to_inference")
+            resp = self._post("/to_inference", json=body)
             return SaveWeightsResponse.model_validate(resp.json())
 
         return self._submit(_call)
@@ -140,8 +146,8 @@ class TrainingClient:
 
         return self._submit(_call)
 
-    def save_state(self, checkpoint_dir: str) -> OperationFuture[SaveWeightsResponse]:
-        body = {"checkpoint_dir": checkpoint_dir}
+    def save_state(self, name: str, ttl_seconds: int | None = None) -> OperationFuture[SaveWeightsResponse]:
+        body = {"path": name, "ttl_seconds": ttl_seconds}
 
         def _call() -> SaveWeightsResponse:
             resp = self._post("/save_state", json=body)
@@ -157,7 +163,7 @@ class TrainingClient:
 
     def forward(
         self,
-        batch: list[Datum],
+        data: list[Datum],
         loss_fn: str = "cross_entropy",
         loss_fn_config: dict | None = None,
     ) -> OperationFuture[ForwardBackwardOutput]:
@@ -166,7 +172,7 @@ class TrainingClient:
 
     def forward_backward_custom(
         self,
-        batch: list[Datum],
+        data: list[Datum],
         loss_fn: str,
     ) -> OperationFuture[ForwardBackwardOutput]:
         """Forward-backward with a custom PyTorch loss function."""

@@ -55,7 +55,7 @@ class MockWorkerHandler(BaseHTTPRequestHandler):
                 "topk_prompt_logprobs": None,
             },
             "/save_state": {
-                "path": "/checkpoints/step-1",
+                "path": "step-1",
                 "type": "save_weights",
             },
         }
@@ -105,7 +105,7 @@ def test_forward_backward(client):
             loss_fn_inputs={"reward": TensorData(data=[1.0], dtype="float32", shape=[1])},
         ),
     ]
-    future = client.forward_backward(batch=batch, loss_fn="cross_entropy")
+    future = client.forward_backward(data=batch, loss_fn="cross_entropy")
     result = future.result(timeout=5.0)
     assert result.metrics["loss"] == pytest.approx(0.42)
     assert result.loss_fn_output_type == "scalar"
@@ -123,8 +123,8 @@ def test_optim_step_with_adam_params(client):
     assert result.metrics is not None
 
 
-def test_to_inference(client):
-    result = client.to_inference().result(timeout=5.0)
+def test_save_weights_and_get_sampling_client(client):
+    result = client.save_weights_and_get_sampling_client().result(timeout=5.0)
     assert result.type == "save_weights"
 
 
@@ -139,8 +139,8 @@ def test_sample(client):
 
 
 def test_save_state(client):
-    result = client.save_state("/checkpoints/step-1").result(timeout=5.0)
-    assert result.path == "/checkpoints/step-1"
+    result = client.save_state("step-1").result(timeout=5.0)
+    assert result.path == "step-1"
 
 
 def test_pipelining(client):
@@ -154,7 +154,7 @@ def test_pipelining(client):
 
     # Dispatch 3 forward_backward ops without waiting.
     futures = [
-        client.forward_backward(batch=batch)
+        client.forward_backward(data=batch)
         for _ in range(3)
     ]
 
@@ -179,7 +179,7 @@ def test_training_loop(client):
 
     # Gradient accumulation.
     for _ in range(2):
-        result = client.forward_backward(batch=batch).result(timeout=5.0)
+        result = client.forward_backward(data=batch).result(timeout=5.0)
         assert "loss" in result.metrics
 
     # Optimizer step.
@@ -187,7 +187,7 @@ def test_training_loop(client):
     assert "step" in result.metrics
 
     # Switch to inference.
-    result = client.to_inference().result(timeout=5.0)
+    result = client.save_weights_and_get_sampling_client().result(timeout=5.0)
     assert result.type == "save_weights"
 
     # Sample.
