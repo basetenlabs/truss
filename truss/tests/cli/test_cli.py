@@ -431,6 +431,34 @@ def test_watch_without_no_sleep_does_not_start_thread():
     mock_start_keepalive.assert_not_called()
 
 
+def test_watch_with_tail_starts_background_tail():
+    """Test that watch --tail starts tail in background."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    runner = CliRunner()
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
+            mock_requests.post.return_value = Mock(status_code=202)
+            mock_requests.RequestException = requests.RequestException
+            with patch("truss.cli.cli._start_tail") as mock_start_tail:
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    result = runner.invoke(
+                        truss_cli,
+                        ["watch", "/tmp/fake", "--remote", "baseten", "--tail"],
+                    )
+
+    assert result.exit_code == 0, result.output
+    mock_start_tail.assert_called_once_with(
+        remote_provider, "model_id", "dev_version_id", in_background=True
+    )
+
+
 def test_keepalive_loop_continues_before_max_duration():
     """Keepalive loop should keep running before 24 hours."""
     stop_event = threading.Event()

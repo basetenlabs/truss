@@ -98,8 +98,14 @@ def _start_tail(
     log_watcher = ModelDeploymentLogWatcher(remote.api, model_id, version_id)
 
     def _tail_logs():
-        for log in log_watcher.watch(show_spinner=not in_background):
-            cli_log_utils.output_log(log)
+        try:
+            for log in log_watcher.watch(show_spinner=not in_background):
+                cli_log_utils.output_log(log)
+        except Exception as exc:
+            error_console.print(
+                f"[red]Log tailing stopped due to an error:[/red] {exc}"
+            )
+            raise
 
     if in_background:
         thread = threading.Thread(target=_tail_logs, daemon=True)
