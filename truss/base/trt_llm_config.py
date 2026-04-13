@@ -595,9 +595,7 @@ class ImageVersions(PydanticTrTBaseModel):
     # backend defaults and `ImageVersionsOverrides` from the pushed config.
     # INTERNAL
     bei_image: str
-    beibert_image: str = (
-        "baseten/bei_bert:1.8.7"  # once wired up in core-product, this can be removed
-    )
+    beibert_image: str = "baseten/bei_bert:1.8.7.patch1"  # once wired up in core-product, this can be removed
     briton_image: str
     v2_llm_image: str
 
