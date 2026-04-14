@@ -25,10 +25,24 @@ from trainers_server.shared.models import LoadStateDetails, SaveStateDetails
 # Helpers
 # ---------------------------------------------------------------------------
 
+class _FakeModel(nn.Linear):
+    """Minimal fake model that mimics a HuggingFace model's save/load API."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(4, 4)
+        self.save_pretrained = MagicMock()
+
+    @classmethod
+    def from_pretrained(cls, path, **kwargs):
+        m = cls()
+        m.save_pretrained = MagicMock()
+        return m
+
+
 def _make_controller(step: int = 5, last_loss: float = 0.25) -> RLController:
     """Build a minimal RLController, bypassing heavy __init__.
 
-    Uses a tiny nn.Linear so save/load can operate on real tensors without
+    Uses a tiny _FakeModel so save/load can operate on real tensors without
     needing a GPU or a real HuggingFace model.
     """
     ctrl = object.__new__(RLController)
@@ -41,7 +55,7 @@ def _make_controller(step: int = 5, last_loss: float = 0.25) -> RLController:
     ctrl.vllm_client = None
     ctrl._communicator_ready = False
 
-    ctrl.model = nn.Linear(4, 4)
+    ctrl.model = _FakeModel()
     ctrl.model.train()
     ctrl.model.save_pretrained = MagicMock()
 
@@ -118,11 +132,7 @@ class TestLoadState:
         ctrl.step = 99
 
         new_ctrl = _make_controller(step=99)
-        with patch(
-            "trainers_server.dp_worker.api.controller.get_model_processor",
-            return_value=(nn.Linear(4, 4), MagicMock()),
-        ):
-            result = new_ctrl.load_state(LoadStateDetails(path=str(tmp_path)))
+        result = new_ctrl.load_state(LoadStateDetails(path=str(tmp_path)))
 
         assert result.mode == "training"
         # step is preserved from the controller (load_state doesn't restore step)
@@ -141,11 +151,7 @@ class TestLoadState:
 
         monkeypatch.setenv("BT_LOAD_CHECKPOINT_DIR", str(tmp_path))
         new_ctrl = _make_controller()
-        with patch(
-            "trainers_server.dp_worker.api.controller.get_model_processor",
-            return_value=(nn.Linear(4, 4), MagicMock()),
-        ):
-            result = new_ctrl.load_state(LoadStateDetails())  # no path
+        result = new_ctrl.load_state(LoadStateDetails())  # no path
 
         assert result.mode == "training"
 
@@ -169,11 +175,7 @@ class TestLoadStateWithOptimizer:
         self._save_checkpoint(tmp_path, ctrl)
 
         new_ctrl = _make_controller(step=0, last_loss=None)
-        with patch(
-            "trainers_server.dp_worker.api.controller.get_model_processor",
-            return_value=(nn.Linear(4, 4), MagicMock()),
-        ):
-            result = new_ctrl.load_state_with_optimizer(LoadStateDetails(path=str(tmp_path)))
+        result = new_ctrl.load_state_with_optimizer(LoadStateDetails(path=str(tmp_path)))
 
         assert result.step == 11
         assert new_ctrl.step == 11
@@ -188,12 +190,8 @@ class TestLoadStateWithOptimizer:
         (tmp_path / "dummy_weight.bin").touch()  # make dir non-empty
 
         new_ctrl = _make_controller(step=0)
-        with patch(
-            "trainers_server.dp_worker.api.controller.get_model_processor",
-            return_value=(nn.Linear(4, 4), MagicMock()),
-        ):
-            # Should not raise even without trainer_state.pt
-            result = new_ctrl.load_state_with_optimizer(LoadStateDetails(path=str(tmp_path)))
+        # Should not raise even without trainer_state.pt
+        result = new_ctrl.load_state_with_optimizer(LoadStateDetails(path=str(tmp_path)))
 
         assert result.mode == "training"
         assert new_ctrl.step == 0  # unchanged — no trainer_state.pt to restore from
@@ -217,13 +215,7 @@ class TestCheckpointRoundtrip:
         original.save_state(str(ckpt1))
 
         restored = _make_controller(step=0)
-        replacement_model = nn.Linear(4, 4)
-        replacement_model.save_pretrained = MagicMock()
-        with patch(
-            "trainers_server.dp_worker.api.controller.get_model_processor",
-            return_value=(replacement_model, MagicMock()),
-        ):
-            restored.load_state_with_optimizer(LoadStateDetails(path=str(ckpt1)))
+        restored.load_state_with_optimizer(LoadStateDetails(path=str(ckpt1)))
 
         assert restored.step == 42
         assert restored.last_loss == pytest.approx(0.123)

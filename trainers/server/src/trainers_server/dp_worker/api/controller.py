@@ -138,20 +138,33 @@ class RLController:
         load_checkpoint_dir = os.environ.get("BT_LOAD_CHECKPOINT_DIR")
 
         if model is None or processor is None:
-            model_source = load_checkpoint_dir if load_checkpoint_dir else config.model_id
             logger.info(
                 "Loading model and processor from %s (dtype=bfloat16, training_device=%s) ...",
-                model_source,
+                config.model_id,
                 training_device,
             )
             t0 = time.perf_counter()
             model, processor = get_model_processor(
-                model_source,
+                config.model_id,
                 torch_dtype=_parse_torch_dtype("bfloat16"),
                 device_map={"": training_device},
                 use_hf=True,
             )
             logger.info("Model and processor loaded in %.1fs", time.perf_counter() - t0)
+
+            if load_checkpoint_dir:
+                logger.info("Overwriting weights from checkpoint %s ...", load_checkpoint_dir)
+                t0 = time.perf_counter()
+                model_cls = type(model)
+                del model
+                torch.cuda.empty_cache()
+                model = model_cls.from_pretrained(
+                    load_checkpoint_dir,
+                    torch_dtype=torch.bfloat16,
+                    device_map={"": training_device},
+                )
+                logger.info("Checkpoint weights loaded in %.1fs", time.perf_counter() - t0)
+
         self.model = model
         self.processor = processor
 
@@ -583,6 +596,7 @@ class RLController:
             t0 = time.perf_counter()
             logger.info("load_state: loading model weights from %s ...", ckpt_dir)
             model_cls = type(self.model)
+            del self.optimizer
             del self.model
             torch.cuda.empty_cache()
             self.model = model_cls.from_pretrained(
@@ -604,6 +618,7 @@ class RLController:
             t0 = time.perf_counter()
             logger.info("load_state_with_optimizer: loading from %s ...", ckpt_dir)
             model_cls = type(self.model)
+            del self.optimizer
             del self.model
             torch.cuda.empty_cache()
             self.model = model_cls.from_pretrained(
