@@ -446,43 +446,41 @@ class RLController:
                 len(prompt_tokens), details.num_samples, effective_max_tokens,
             )
 
-            # Call vLLM's OpenAI-compatible /v1/completions with raw token IDs.
-            vllm_url = f"http://127.0.0.1:{self._rollout_port}/v1/completions"
-            body = {
-                "model": self.config.model_id,
-                "prompt": prompt_tokens,
-                "n": details.num_samples,
-                "max_tokens": effective_max_tokens,
-                "temperature": params.temperature,
-                "top_p": params.top_p,
-                "logprobs": 1,
-            }
-            if params.top_k > 0:
-                body["top_k"] = params.top_k
-            if params.seed is not None:
-                body["seed"] = params.seed
-            if params.stop is not None:
-                body["stop"] = params.stop
+            tokenizer = getattr(self.processor, "tokenizer", self.processor)
 
-            resp = requests.post(vllm_url, json=body, timeout=300)
-            resp.raise_for_status()
-            data = resp.json()
+            # Decode tokens to text, send through ms-swift rollout, re-tokenize output.
+            prompt_text = tokenizer.decode(prompt_tokens, skip_special_tokens=False)
 
+            if self.vllm_client is None:
+                raise RuntimeError("VLLMClient is not initialized.")
+
+            self.template.set_mode("vllm")
             sequences: List[SampledSequence] = []
-            for choice in data.get("choices", []):
-                token_ids = choice.get("token_ids", [])
-                # vLLM returns logprobs per token in choice.logprobs.token_logprobs
-                lp = choice.get("logprobs")
-                token_logprobs = lp.get("token_logprobs", []) if lp else []
-                # If vLLM didn't return token_ids, tokenize the text
-                if not token_ids and choice.get("text"):
-                    tokenizer = getattr(self.processor, "tokenizer", self.processor)
-                    token_ids = tokenizer.encode(choice["text"], add_special_tokens=False)
-                stop_reason = choice.get("finish_reason", "length")
+
+            for _ in range(details.num_samples):
+                rollout_request = RolloutInferRequest(
+                    messages=[{"role": "user", "content": prompt_text}],
+                )
+                request_config = RequestConfig(
+                    max_tokens=effective_max_tokens,
+                    temperature=params.temperature,
+                    top_p=params.top_p,
+                )
+                rollout_outputs = self.vllm_client.infer(
+                    [rollout_request],
+                    request_config=request_config,
+                    use_tqdm=False,
+                )
+                if not rollout_outputs:
+                    raise RuntimeError("No outputs returned from rollout server.")
+                output = rollout_outputs[0]
+                response = output.response if hasattr(output, "response") else output
+                generated_text = response.choices[0].message.content
+                generated_tokens = tokenizer.encode(generated_text, add_special_tokens=False)
                 sequences.append(SampledSequence(
-                    tokens=token_ids,
-                    logprobs=token_logprobs if token_logprobs else None,
-                    stop_reason=stop_reason,
+                    tokens=generated_tokens,
+                    logprobs=None,  # TODO: extract logprobs from vLLM response
+                    stop_reason=response.choices[0].finish_reason or "length",
                 ))
 
             logger.info("sample: done in %.2fs — %d sequence(s)", time.perf_counter() - t0, len(sequences))
