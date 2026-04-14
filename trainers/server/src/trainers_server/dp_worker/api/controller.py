@@ -18,7 +18,6 @@ from torch.optim import AdamW
 from swift.arguments import RolloutArguments
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import RolloutInferRequest
-from swift.model.model_meta import get_matched_model_meta
 from swift.model.register import get_model_processor
 from swift.pipelines.infer.rollout import rollout_main
 from swift.rlhf_trainers.utils import FlattenedTensorBucket
@@ -135,10 +134,6 @@ class RLController:
         if not self.config.inference.gpus:
             raise ValueError("inference.gpus must contain at least one GPU id.")
 
-        model_meta = get_matched_model_meta(config.model_id)
-        self._swift_model_type: Optional[str] = model_meta.model_type if model_meta else None
-        logger.info("Resolved swift model_type=%s for model_id=%s", self._swift_model_type, config.model_id)
-
         training_device = self._training_device()
         load_checkpoint_dir = os.environ.get("BT_LOAD_CHECKPOINT_DIR")
 
@@ -155,7 +150,6 @@ class RLController:
                 torch_dtype=_parse_torch_dtype("bfloat16"),
                 device_map={"": training_device},
                 use_hf=True,
-                task_type="causal_lm",
             )
             logger.info("Model and processor loaded in %.1fs", time.perf_counter() - t0)
         self.model = model
@@ -588,17 +582,12 @@ class RLController:
         with self._lock:
             t0 = time.perf_counter()
             logger.info("load_state: loading model weights from %s ...", ckpt_dir)
-            model, processor = get_model_processor(
+            self.model = type(self.model).from_pretrained(
                 str(ckpt_dir),
-                torch_dtype=_parse_torch_dtype("bfloat16"),
+                torch_dtype=torch.bfloat16,
                 device_map={"": self._training_device()},
-                use_hf=True,
-                task_type="causal_lm",
-                model_type=self._swift_model_type,
             )
-            self.model = model
             self.model.train()
-            self.processor = processor
             self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
             self.optimizer.zero_grad(set_to_none=True)
             self.mode = "training"
@@ -611,17 +600,12 @@ class RLController:
         with self._lock:
             t0 = time.perf_counter()
             logger.info("load_state_with_optimizer: loading from %s ...", ckpt_dir)
-            model, processor = get_model_processor(
+            self.model = type(self.model).from_pretrained(
                 str(ckpt_dir),
-                torch_dtype=_parse_torch_dtype("bfloat16"),
+                torch_dtype=torch.bfloat16,
                 device_map={"": self._training_device()},
-                use_hf=True,
-                task_type="causal_lm",
-                model_type=self._swift_model_type,
             )
-            self.model = model
             self.model.train()
-            self.processor = processor
             self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
             self.optimizer.zero_grad(set_to_none=True)
 
