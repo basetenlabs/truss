@@ -29,6 +29,7 @@ from trainers_server.shared.models import (
     ForwardBackwardDetails,
     ForwardBackwardResult,
     Message,
+    OptimStepDetails,
     OptimStepResult,
     SampleDetails,
     SampleOutput,
