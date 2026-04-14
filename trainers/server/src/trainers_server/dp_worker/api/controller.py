@@ -292,10 +292,6 @@ class RLController:
         self.mode = "training"
 
     @staticmethod
-    def _messages_to_dict(messages: Sequence[Message]) -> List[Dict[str, str]]:
-        return [m.model_dump() if hasattr(m, "model_dump") else {"role": m.role, "content": m.content} for m in messages]
-
-    @staticmethod
     def _extract_reward(datum: Datum) -> float:
         reward_tensor = datum.loss_fn_inputs.get("reward")
         if reward_tensor is None:
