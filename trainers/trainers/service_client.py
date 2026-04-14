@@ -57,6 +57,7 @@ class ServiceClient:
         return TrainingClient(
             self._base_url,
             api_key=self._api_key,
+            base_model=base_model,
             timeout=timeout,
         )
 

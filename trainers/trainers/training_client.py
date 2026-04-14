@@ -6,8 +6,9 @@ import concurrent.futures
 from types import TracebackType
 from typing import Callable, Generic, TypeVar
 
-import httpx
+from functools import lru_cache
 
+import httpx
 from pydantic import BaseModel, Field
 
 from trainers.models import (
@@ -53,6 +54,13 @@ class OperationFuture(Generic[T]):
         return asyncio.to_thread(self.result).__await__()
 
 
+@lru_cache(maxsize=32)
+def _load_tokenizer(model_name: str):
+    """Load and cache a HuggingFace tokenizer."""
+    from transformers import AutoTokenizer
+    return AutoTokenizer.from_pretrained(model_name)
+
+
 class TrainingClient:
     """Client that talks directly to a dp_worker instance.
 
@@ -65,9 +73,11 @@ class TrainingClient:
         base_url: str,
         *,
         api_key: str | None = None,
+        base_model: str | None = None,
         timeout: float = 600.0,
         max_workers: int = 4,
     ) -> None:
+        self._base_model = base_model
         headers = {}
         if api_key:
             headers["Authorization"] = f"Api-Key {api_key}"
@@ -170,6 +180,23 @@ class TrainingClient:
     def health(self) -> None:
         resp = self._client.get(f"{self._base_url}/health")
         resp.raise_for_status()
+
+    def get_tokenizer(self):
+        """Get the tokenizer for the current model.
+
+        Returns a HuggingFace PreTrainedTokenizer. Cached after first load.
+
+        Example:
+            tokenizer = training_client.get_tokenizer()
+            tokens = tokenizer.encode("Hello world")
+            text = tokenizer.decode(tokens)
+        """
+        if self._base_model is None:
+            raise ValueError(
+                "base_model was not set. Use ServiceClient.create_lora_training_client() "
+                "or pass base_model= to TrainingClient."
+            )
+        return _load_tokenizer(self._base_model)
 
     # -- Stubbed: not yet implemented --
 
