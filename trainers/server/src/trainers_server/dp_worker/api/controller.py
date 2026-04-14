@@ -28,6 +28,8 @@ from trainers_server.shared.models import (
     Datum,
     ForwardBackwardDetails,
     ForwardBackwardResult,
+    LoadStateDetails,
+    LoadStateResult,
     OptimStepDetails,
     OptimStepResult,
     SampleDetails,
@@ -133,15 +135,18 @@ class RLController:
             raise ValueError("inference.gpus must contain at least one GPU id.")
 
         training_device = self._training_device()
+        load_checkpoint_dir = os.environ.get("BT_LOAD_CHECKPOINT_DIR")
+
         if model is None or processor is None:
+            model_source = load_checkpoint_dir if load_checkpoint_dir else config.model_id
             logger.info(
-                "Loading model and processor for %s (dtype=bfloat16, training_device=%s) ...",
-                config.model_id,
+                "Loading model and processor from %s (dtype=bfloat16, training_device=%s) ...",
+                model_source,
                 training_device,
             )
             t0 = time.perf_counter()
             model, processor = get_model_processor(
-                config.model_id,
+                model_source,
                 torch_dtype=_parse_torch_dtype("bfloat16"),
                 device_map={"": training_device},
                 use_hf=True,
@@ -163,6 +168,18 @@ class RLController:
         logger.info("Initializing AdamW optimizer (params set per optim_step via AdamParams) ...")
         self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
         self.optimizer.zero_grad(set_to_none=True)
+
+        if load_checkpoint_dir:
+            trainer_state_path = Path(load_checkpoint_dir) / "trainer_state.pt"
+            if trainer_state_path.exists():
+                logger.info("Restoring trainer state from %s ...", trainer_state_path)
+                trainer_state = torch.load(trainer_state_path, map_location="cpu", weights_only=False)
+                self.step = trainer_state.get("step", 0)
+                self.last_loss = trainer_state.get("last_loss")
+                self.optimizer.load_state_dict(trainer_state["optimizer"])
+                logger.info("Trainer state restored — step=%d", self.step)
+            else:
+                logger.info("No trainer_state.pt found in %s, starting from step 0.", load_checkpoint_dir)
 
         logger.info("Launching rollout server on inference GPUs=%s ...", config.inference.gpus)
         self._launch_rollout_server()
@@ -519,12 +536,17 @@ class RLController:
             logger.info("sample: done in %.2fs — %d sequence(s)", time.perf_counter() - t0, len(sequences))
             return SampleResult(sequences=sequences)
 
-    def save_state(self, path: str) -> SaveStateResult:
+    def save_state(self, path: Optional[str] = None) -> SaveStateResult:
+        resolved_path = path or os.environ.get("BT_CHECKPOINT_DIR")
+        if not resolved_path:
+            raise ValueError(
+                "save_state requires a path. Pass path= or set the BT_CHECKPOINT_DIR env var."
+            )
         with self._lock:
             self._ensure_training_mode("save_state")
             t0 = time.perf_counter()
-            logger.info("save_state: saving to %s ...", path)
-            ckpt_dir = Path(path)
+            logger.info("save_state: saving to %s ...", resolved_path)
+            ckpt_dir = Path(resolved_path)
             ckpt_dir.mkdir(parents=True, exist_ok=True)
 
             logger.info("save_state: saving model ...")
@@ -543,6 +565,70 @@ class RLController:
             torch.save(trainer_state, ckpt_dir / "trainer_state.pt")
             logger.info("save_state: done in %.2fs", time.perf_counter() - t0)
             return SaveStateResult(mode=self.mode)
+
+    def _resolve_load_path(self, path: Optional[str], caller: str) -> Path:
+        resolved = path or os.environ.get("BT_LOAD_CHECKPOINT_DIR")
+        if not resolved:
+            raise ValueError(
+                f"{caller} requires a path. Pass path= or set the BT_LOAD_CHECKPOINT_DIR env var."
+            )
+        ckpt_dir = Path(resolved)
+        if not ckpt_dir.exists():
+            raise ValueError(f"{caller}: checkpoint directory not found: {ckpt_dir}")
+        return ckpt_dir
+
+    def load_state(self, details: LoadStateDetails) -> LoadStateResult:
+        ckpt_dir = self._resolve_load_path(details.path, "load_state")
+        with self._lock:
+            t0 = time.perf_counter()
+            logger.info("load_state: loading model weights from %s ...", ckpt_dir)
+            self.model.train()
+            model, processor = get_model_processor(
+                str(ckpt_dir),
+                torch_dtype=_parse_torch_dtype("bfloat16"),
+                device_map={"": self._training_device()},
+                use_hf=True,
+            )
+            self.model = model
+            self.processor = processor
+            self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
+            self.optimizer.zero_grad(set_to_none=True)
+            self.mode = "training"
+            self._communicator_ready = False
+            logger.info("load_state: done in %.2fs — weights loaded, optimizer reset", time.perf_counter() - t0)
+            return LoadStateResult(mode=self.mode, step=self.step)
+
+    def load_state_with_optimizer(self, details: LoadStateDetails) -> LoadStateResult:
+        ckpt_dir = self._resolve_load_path(details.path, "load_state_with_optimizer")
+        with self._lock:
+            t0 = time.perf_counter()
+            logger.info("load_state_with_optimizer: loading from %s ...", ckpt_dir)
+            self.model.train()
+            model, processor = get_model_processor(
+                str(ckpt_dir),
+                torch_dtype=_parse_torch_dtype("bfloat16"),
+                device_map={"": self._training_device()},
+                use_hf=True,
+            )
+            self.model = model
+            self.processor = processor
+            self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
+            self.optimizer.zero_grad(set_to_none=True)
+
+            trainer_state_path = ckpt_dir / "trainer_state.pt"
+            if trainer_state_path.exists():
+                trainer_state = torch.load(trainer_state_path, map_location="cpu", weights_only=False)
+                self.step = trainer_state.get("step", 0)
+                self.last_loss = trainer_state.get("last_loss")
+                self.optimizer.load_state_dict(trainer_state["optimizer"])
+                logger.info("load_state_with_optimizer: restored step=%d", self.step)
+            else:
+                logger.warning("load_state_with_optimizer: no trainer_state.pt found, optimizer state not restored")
+
+            self.mode = "training"
+            self._communicator_ready = False
+            logger.info("load_state_with_optimizer: done in %.2fs", time.perf_counter() - t0)
+            return LoadStateResult(mode=self.mode, step=self.step)
 
     def close(self) -> None:
         with self._lock:

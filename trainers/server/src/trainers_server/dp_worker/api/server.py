@@ -6,6 +6,8 @@ from fastapi.responses import Response
 from trainers_server.shared.models import (
     ForwardBackwardDetails,
     ForwardBackwardResult,
+    LoadStateDetails,
+    LoadStateResult,
     OptimStepDetails,
     OptimStepResult,
     SampleDetails,
@@ -64,8 +66,16 @@ def create_app(config: Optional[RLControllerConfig] = None, *, controller: Optio
         return _run_or_raise(controller.sample, details)
 
     @app.post("/save_state", response_model=SaveStateResult)
-    async def save_state(details: SaveStateDetails) -> SaveStateResult:
+    async def save_state(details: SaveStateDetails = SaveStateDetails()) -> SaveStateResult:
         return _run_or_raise(controller.save_state, details.path)
+
+    @app.post("/load_state", response_model=LoadStateResult)
+    async def load_state(details: LoadStateDetails = LoadStateDetails()) -> LoadStateResult:
+        return _run_or_raise(controller.load_state, details)
+
+    @app.post("/load_state_with_optimizer", response_model=LoadStateResult)
+    async def load_state_with_optimizer(details: LoadStateDetails = LoadStateDetails()) -> LoadStateResult:
+        return _run_or_raise(controller.load_state_with_optimizer, details)
 
     @app.get("/status", response_model=StatusResult)
     async def get_status() -> StatusResult:

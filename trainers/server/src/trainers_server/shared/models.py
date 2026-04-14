@@ -178,7 +178,7 @@ class ForwardBackwardDetails(BaseModel):
 
 
 class OptimStepDetails(BaseModel):
-    adam_params: AdamParams
+    adam_params: AdamParams = Field(default_factory=AdamParams)
 
 
 class SampleDetails(BaseModel):
@@ -193,8 +193,17 @@ class SaveWeightsAndGetSamplingClientDetails(BaseModel):
 
 
 class SaveStateDetails(BaseModel):
-    path: str
+    path: str | None = None
     ttl_seconds: int | None = None
+
+
+class LoadStateDetails(BaseModel):
+    path: str | None = None
+
+
+class LoadStateResult(BaseModel):
+    mode: str = ""
+    step: int = 0
 
 
 # ── Operation variants ───────────────────────────────────────────────
