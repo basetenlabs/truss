@@ -160,8 +160,8 @@ class RLController:
         self.template = template
         self.template.set_mode("train")
 
-        logger.info("Initializing AdamW optimizer (lr=5e-6, weight_decay=0.0) ...")
-        self.optimizer = AdamW(self.model.parameters(), lr=5e-6, weight_decay=0.0)
+        logger.info("Initializing AdamW optimizer (params set per optim_step via AdamParams) ...")
+        self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
         self.optimizer.zero_grad(set_to_none=True)
 
         logger.info("Launching rollout server on inference GPUs=%s ...", config.inference.gpus)

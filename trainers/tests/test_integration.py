@@ -109,7 +109,7 @@ def test_forward_backward(client):
 
 
 def test_optim_step(client):
-    result = client.optim_step().result(timeout=5.0)
+    result = client.optim_step(AdamParams()).result(timeout=5.0)
     assert result.metrics["step"] == 1.0
     assert result.metrics["lr"] == pytest.approx(5e-6)
 

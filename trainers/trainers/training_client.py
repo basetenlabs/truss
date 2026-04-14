@@ -118,8 +118,8 @@ class TrainingClient:
 
         return self._submit(_call)
 
-    def optim_step(self, adam_params: AdamParams | None = None) -> OperationFuture[OptimStepResponse]:
-        body = {"adam_params": (adam_params or AdamParams()).model_dump(mode="json")}
+    def optim_step(self, adam_params: AdamParams) -> OperationFuture[OptimStepResponse]:
+        body = {"adam_params": adam_params.model_dump(mode="json")}
 
         def _call() -> OptimStepResponse:
             resp = self._post("/optim_step", json=body)

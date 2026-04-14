@@ -1,123 +1,155 @@
 # Trainers SDK vs Tinker SDK Comparison
 
-Comparison of the **trainers SDK** (`trainers/`) and the **tinker SDK** (`tinker` package used by tinker-cookbook).
+Comparison of the **trainers SDK** (`trainers/`) and the **tinker SDK** (`tinker` package v0.13.1, used by tinker-cookbook).
 
 ---
 
-## 1. Architecture: Queue vs Direct
+## 1. Architecture — Now Aligned
 
-**Trainers SDK** uses a **queue-based architecture** — a single `TrainingClient` enqueues operations to a Training Request Manager (TRM), then polls for completion:
+Both SDKs now use the same **3-client pattern**:
 
-```python
-# trainers: everything goes through one client + queue
-client = TrainingClient(SERVER_URL, api_key=API_KEY, timeout=30.0, poll_interval=0.5)
-future = client.forward_backward(batch, loss_fn="cross_entropy")
-result = future.result()  # polls TRM until completed/failed
-```
+| Role | Tinker | Trainers |
+|------|--------|----------|
+| Factory/entry point | `tinker.ServiceClient` | `trainers.ServiceClient` |
+| Training operations | `tinker.TrainingClient` | `trainers.TrainingClient` |
+| Inference/generation | `tinker.SamplingClient` | `trainers.SamplingClient` |
 
-**Tinker SDK** uses a **3-client direct architecture** — `ServiceClient` creates separate `TrainingClient` and `SamplingClient` that talk directly to the backend:
+The trainers SDK re-exports all core data types directly from `tinker.types` (`models.py`), so `Datum`, `ModelInput`, `AdamParams`, `ForwardBackwardOutput`, `OptimStepResponse`, `SamplingParams`, `TensorData`, etc. are the **same Pydantic models** in both SDKs.
 
-```python
-# tinker: separate clients for different concerns
-service_client = tinker.ServiceClient(base_url=...)
-training_client = service_client.create_lora_training_client(base_model="...", rank=32)
-sampling_client = service_client.create_sampling_client(model_path=path)
-```
-
-## 2. `optim_step` — No params vs Required `AdamParams`
-
-This is one of the biggest API differences:
+**Key structural difference**: the trainers `TrainingClient` talks to the dp_worker via direct HTTP (`httpx.Client` + `ThreadPoolExecutor`), while tinker's `TrainingClient` uses an `InternalClientHolder` with an async event loop, connection pool, telemetry, and ordered request dispatch.
 
 ```python
-# trainers: no optimizer configuration at all
-future = client.optim_step()
+# trainers: direct HTTP to dp_worker
+client = TrainingClient("http://worker:8001", timeout=600.0)
+future = client.forward_backward(data=batch)    # httpx POST, result via thread pool
+result = future.result()                         # ForwardBackwardOutput
 ```
 
 ```python
-# tinker: explicit Adam optimizer params every call (allows LR scheduling)
-adam_params = tinker.AdamParams(learning_rate=4e-5, beta1=0.9, beta2=0.95, eps=1e-8)
-optim_step_future = training_client.optim_step(adam_params)
+# tinker: managed async client with connection pooling
+service_client = tinker.ServiceClient()
+training_client = service_client.create_lora_training_client(base_model="Qwen/Qwen3-8B")
+future = training_client.forward_backward(data, "cross_entropy")  # async dispatch
+result = future.result()                                           # ForwardBackwardOutput
 ```
 
-The trainers SDK has no way to configure learning rate, betas, or do LR scheduling. The tinker SDK passes `AdamParams` on every call, enabling per-step LR schedules (e.g. the linear decay in `sl_loop.py`).
+## 2. API Surface — Implemented vs Stubbed
 
-## 3. Sampling — Chat messages vs Tokenized ModelInput
+The trainers `TrainingClient` defines the full tinker-compatible method set, but only a subset is implemented. The rest raise `NotImplementedError`:
 
-**Trainers** uses a **chat-message interface** for sampling:
+| Method | Tinker | Trainers |
+|--------|--------|----------|
+| `forward_backward(data, loss_fn, loss_fn_config)` | Implemented | **Implemented** |
+| `optim_step(adam_params)` | Required `AdamParams` | **Implemented** (optional, defaults to `AdamParams()`) |
+| `save_weights_and_get_sampling_client(name, ttl)` | Implemented | **Implemented** (POST `/to_inference`) |
+| `sample(prompt, num_samples, sampling_params)` | On `SamplingClient` | **Implemented** (on `TrainingClient` directly) |
+| `save_state(name, ttl_seconds)` | Implemented | **Implemented** |
+| `forward(data, loss_fn)` | Implemented | Stubbed |
+| `forward_backward_custom(data, loss_fn)` | Implemented | Stubbed |
+| `save_weights_for_sampler(name, ttl)` | Implemented | Stubbed |
+| `load_state(path)` | Implemented | Stubbed |
+| `load_state_with_optimizer(path)` | Implemented | Stubbed |
+
+Similarly, `ServiceClient` and `SamplingClient` are partially stubbed:
+
+| Method | Tinker | Trainers |
+|--------|--------|----------|
+| `ServiceClient.create_training_client()` | Implemented (`create_lora_training_client`) | **Implemented** (TODO: pass model/rank to backend) |
+| `ServiceClient.create_sampling_client()` | Implemented | **Implemented** (returns stub client) |
+| `ServiceClient.create_training_client_from_state()` | Implemented | Stubbed |
+| `ServiceClient.create_training_client_from_state_with_optimizer()` | Implemented | Stubbed |
+| `ServiceClient.get_server_capabilities()` | Implemented | Stubbed |
+| `SamplingClient.sample()` | Implemented | Stubbed |
+| `SamplingClient.compute_logprobs()` | Implemented | Stubbed |
+| `SamplingClient.get_tokenizer()` | Implemented | Stubbed |
+
+## 3. Sampling — Same Interface, Different Location
+
+Both SDKs now use token-level sampling with `ModelInput` + `SamplingParams`:
 
 ```python
-# trainers: chat-style SampleInput with messages
-client.to_inference()  # mode switch first
-client.sample([
-    SampleInput(
-        messages=[Message(role="user", content="What is 2+2?")],
-        max_tokens=32, temperature=0.0,
-    )
-])
+# trainers: sample() lives on TrainingClient directly
+result = client.sample(
+    prompt=ModelInput.from_ints([1, 2, 3]),
+    num_samples=1,
+    sampling_params=SamplingParams(max_tokens=32, temperature=0.0),
+).result()
+# result.sequences[0].tokens, result.sequences[0].logprobs
 ```
 
-**Tinker** uses a **token-level interface** with a separate `SamplingClient`:
-
 ```python
-# tinker: tokenized prompt + SamplingParams + separate client
-sampling_path = training_client.save_weights_for_sampler(name="001", ttl_seconds=...).result().path
+# tinker: sample() lives on a separate SamplingClient
+sampling_path = training_client.save_weights_for_sampler("001", ttl_seconds=604800).result().path
 sampling_client = service_client.create_sampling_client(model_path=sampling_path)
-future = sampling_client.sample(
-    prompt=model_input,              # ModelInput (tokenized)
-    num_samples=config.group_size,   # generate N completions at once
+result = sampling_client.sample(
+    prompt=model_input,
+    num_samples=16,
     sampling_params=tinker.SamplingParams(max_tokens=256, stop=renderer.get_stop_sequences()),
-)
-result = future.result()
-for seq in result.sequences:         # typed: .tokens, .logprobs per sequence
-    ...
+).result()
+# result.sequences[0].tokens, result.sequences[0].logprobs
 ```
 
-Key differences here:
-- **Trainers** requires a `to_inference()` mode switch on the same client; **Tinker** creates a separate `SamplingClient` from saved weights (no mode switch)
-- **Trainers** takes `messages` (string-level); **Tinker** takes `ModelInput` (token-level), giving control over tokenization/rendering
-- **Tinker** supports `num_samples` for group sampling (essential for GRPO), returning per-sequence `tokens` and `logprobs`; **Trainers** has no equivalent
+The interface is nearly identical. The difference is that tinker requires creating a `SamplingClient` from saved weights (decoupled from training), while trainers exposes `sample()` directly on the `TrainingClient`.
 
-## 4. Return Types — Raw dicts vs Typed models
+Note: trainers defines its own `SampleResult`/`SampledSequence` in `training_client.py` rather than using tinker's `SampleResponse` — the fields are the same but they're separate types.
 
-**Trainers** `OperationFuture.result()` returns `dict | None`:
+## 4. Return Types — Both Typed
+
+Both SDKs now return typed Pydantic models via generic futures:
+
 ```python
-result = future.result(timeout=15.0)
-assert result["metrics"]["loss"]       # raw dict access
-assert result["outputs"][0]["generated_text"]
+# trainers: OperationFuture[T]
+fwd_bwd: OperationFuture[ForwardBackwardOutput] = client.forward_backward(data=batch)
+optim:   OperationFuture[OptimStepResponse]      = client.optim_step(AdamParams(learning_rate=4e-5))
+sample:  OperationFuture[SampleResult]            = client.sample(prompt=..., sampling_params=...)
+
+result = fwd_bwd.result()
+result.metrics["loss"]                   # typed dict access
+result.loss_fn_outputs                   # list[LossFnOutput]
 ```
 
-**Tinker** `APIFuture[T].result()` returns typed objects:
 ```python
-fwd_bwd_result = fwd_bwd_future.result()      # ForwardBackwardOutput
-optim_result = optim_step_future.result()      # OptimStepResponse
-sample_result = future.result()                 # SampleResponse
-
-# typed access:
-fwd_bwd_result.loss_fn_outputs[i]["logprobs"]  # TensorData
-optim_result.metrics                            # dict[str, float]
-sample_result.sequences[i].tokens               # list[int]
-sample_result.sequences[i].logprobs             # list[float]
+# tinker: APIFuture[T] (with async support, retry, telemetry)
+fwd_bwd: APIFuture[ForwardBackwardOutput] = training_client.forward_backward(data, "cross_entropy")
+optim:   APIFuture[OptimStepResponse]      = training_client.optim_step(adam_params)
 ```
 
-## 5. Features present in Tinker but missing in Trainers
+Trainers uses `concurrent.futures.Future` under the hood via a `ThreadPoolExecutor`. Tinker uses a custom `_APIFuture` backed by an asyncio event loop with ordered dispatch, combined futures for chunked requests, telemetry hooks, and queue state logging.
 
-| Feature | Tinker | Trainers |
-|---------|--------|----------|
-| `forward()` (no gradients) | Yes | No |
-| `forward_backward_custom()` (custom PyTorch loss) | Yes | No |
-| `save_weights_for_sampler()` | Yes (tinker:// paths) | No (uses `to_inference()`) |
-| `load_state()` / `load_state_with_optimizer()` | Yes | No |
-| Resume from checkpoint | `create_training_client_from_state_with_optimizer()` | No |
-| Auto-chunking large batches | Yes (MAX_CHUNK_LEN=1024) | No |
-| Retry/backpressure handling | Built-in `RetryHandler` | No |
-| `compute_logprobs()` | Yes (on SamplingClient) | No |
-| `get_tokenizer()` / `get_info()` | Yes | No |
-| Multimodal (ImageChunk) | Supported in types | Supported in types |
-| Picklable SamplingClient (multi-process) | Yes | No |
-| `TensorData.from_torch()` | Yes | No (only `from_list()`) |
+## 5. Pipelining
+
+Both SDKs support dispatching multiple operations before collecting results. Trainers achieves this via thread pool submission:
+
+```python
+# trainers: dispatch 3 forward_backward ops then collect
+futures = [client.forward_backward(data=batch) for _ in range(3)]
+results = [f.result(timeout=5.0) for f in futures]
+```
+
+Tinker achieves this via its async request queue with ordered `_take_turn` guarantees — requests are dispatched in order even when pipelined.
+
+## 6. Remaining Gaps
+
+Features fully implemented in tinker but not yet in trainers:
+
+| Feature | Status in Trainers |
+|---------|--------------------|
+| Auto-chunking large batches (1024 datums / 5MB) | Not implemented |
+| Retry/backpressure handling | Not implemented |
+| Request ordering guarantees (`_take_turn`) | Not implemented |
+| Telemetry / observability | Not implemented |
+| Async variants (`forward_backward_async`, etc.) | Not implemented |
+| `forward()` (forward-only, no gradients) | Stubbed |
+| `forward_backward_custom()` (PyTorch custom loss) | Stubbed |
+| `save_weights_for_sampler()` / separate `SamplingClient` flow | Stubbed |
+| `load_state()` / `load_state_with_optimizer()` | Stubbed |
+| Checkpoint resume via `ServiceClient` | Stubbed |
+| `get_tokenizer()` / `get_info()` on TrainingClient | Not present |
+| `compute_logprobs()` on SamplingClient | Stubbed |
+| Picklable SamplingClient (multi-process) | Stubbed (`__getstate__` exists but methods don't work) |
 
 ## Summary
 
-The **trainers SDK** is a thin queue-based wrapper where a single client enqueues operations and polls for results. It's simpler but lower-featured — no optimizer config, chat-level sampling only, untyped results.
+The trainers SDK has converged significantly toward the tinker SDK's API design. It now shares the same 3-client pattern (`ServiceClient` / `TrainingClient` / `SamplingClient`), the same data types (re-exported from `tinker.types`), the same method signatures (`forward_backward`, `optim_step` with `AdamParams`, token-level `sample`), and typed return values via generic futures.
 
-The **tinker SDK** is a full-featured client with separated concerns (training vs sampling), token-level control, typed responses, optimizer params per step, checkpoint resume, auto-chunking, retries, and multi-process support. The `test_training_loop` in trainers covers the same *lifecycle* (fwd_bwd -> optim -> inference -> sample) but with a much thinner API surface.
+The core training loop (`forward_backward` -> `optim_step` -> `save_weights_and_get_sampling_client` -> `sample` -> `save_state`) is fully functional with direct HTTP calls to the dp_worker. The remaining work is implementing the stubbed methods (checkpoint load/resume, forward-only, custom loss, separate `SamplingClient` flow) and adding the infrastructure features (auto-chunking, retries, request ordering, telemetry, async) that tinker's production client provides.
