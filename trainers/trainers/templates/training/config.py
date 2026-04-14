@@ -14,7 +14,7 @@ runtime = definitions.Runtime(
         "apt-get update && apt-get install -y python3-dev curl",
         "curl -LsSf https://astral.sh/uv/install.sh | sh",
         ". $HOME/.local/bin/env && uv sync --extra worker",
-        ".venv/bin/python -m thinker.dp_worker.main --config $RL_CONFIG_PATH --port {WORKER_PORT}",
+        ".venv/bin/python -m trainers_server.dp_worker.main --config $RL_CONFIG_PATH --port {WORKER_PORT}",
     ],
     environment_variables={
         "RL_CONFIG_PATH": "rl_config.json",

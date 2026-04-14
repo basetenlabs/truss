@@ -1,0 +1,37 @@
+# Caches
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+
+# Environments
+.venv/
+venv/
+
+# Git/IDE
+.git/
+.github/
+.cursor/
+.idea/
+
+# Not needed for training
+tests/
+docs/
+asset/
+.dev_scripts/
+examples/
+scripts/
+
+# Large binary files
+*.bin
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+
+# Dev config
+.pre-commit-config.yaml
+Makefile
+MANIFEST.in
+setup.cfg

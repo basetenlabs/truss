@@ -15,7 +15,7 @@ from truss_train import definitions
 from truss_train.public_api import push
 
 
-_DEFAULT_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "thinker-container" / "thinker"
+_DEFAULT_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent / "server"
 
 
 def create_training_client(
@@ -111,7 +111,7 @@ def create_training_client(
                     "apt-get update && apt-get install -y python3-dev curl",
                     "curl -LsSf https://astral.sh/uv/install.sh | sh",
                     ". $HOME/.local/bin/env && uv sync --extra worker",
-                    f".venv/bin/python -m thinker.dp_worker.main --config $RL_CONFIG_PATH --port {worker_port}",
+                    f".venv/bin/python -m trainers_server.dp_worker.main --config $RL_CONFIG_PATH --port {worker_port}",
                 ],
                 environment_variables={
                     "RL_CONFIG_PATH": "rl_config.json",
