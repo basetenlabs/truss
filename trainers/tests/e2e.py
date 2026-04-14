@@ -3,14 +3,16 @@
 
 Usage:
     python e2e.py --namespace org-xxx --test smoke
+    python e2e.py --namespace org-xxx --test checkpointing
     python e2e.py --namespace org-xxx --test math_rl
     python e2e.py --namespace org-xxx --test multiturn_rl
     python e2e.py --namespace org-xxx --test math_rl --job-id q86dgg3  # skip deploy
 
 Tests:
-    smoke        — health, forward_backward, optim_step, save_weights, sample
-    math_rl      — GRPO on arithmetic problems (single-turn RL)
-    multiturn_rl — number guessing game (multi-turn RL)
+    smoke         — health, forward_backward, optim_step, save_weights, sample
+    checkpointing — save_state, load_state_with_optimizer, load_state, resume training
+    math_rl       — GRPO on arithmetic problems (single-turn RL)
+    multiturn_rl  — number guessing game (multi-turn RL)
 """
 
 import argparse
@@ -296,8 +298,74 @@ for step in range(STEPS):
 print("=== Multi-turn RL acceptance test PASSED ===")
 '''
 
+CHECKPOINTING_SCRIPT = r'''
+import sys, time, httpx
+TIMEOUT = 300.0
+base_url = sys.argv[1]
+client = httpx.Client(timeout=TIMEOUT)
+
+print("[0] Waiting for worker...")
+for attempt in range(60):
+    try:
+        if client.get(f"{base_url}/health").status_code == 200: break
+    except (httpx.ConnectError, httpx.ConnectTimeout): pass
+    print(f"  waiting ({attempt + 1}/60)..."); time.sleep(5)
+else:
+    print("  FAILED: worker not healthy after 5 min"); sys.exit(1)
+print("  Worker ready\n")
+
+CKPT_PATH = "/tmp/ckpt-e2e"
+adam = {"learning_rate": 5e-6, "beta1": 0.9, "beta2": 0.95, "eps": 1e-12, "weight_decay": 0.0, "grad_clip_norm": 0.0}
+data = [{"model_input": {"chunks": [{"type": "encoded_text", "tokens": list(range(10))}]},
+         "loss_fn_inputs": {"reward": {"data": [1.0], "dtype": "float32", "shape": [1]}}}]
+
+print("[1/6] forward_backward + optim_step (reach step 1)")
+resp = client.post(f"{base_url}/forward_backward", json={"data": data, "loss_fn": "cross_entropy"})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+loss_before = resp.json()["metrics"]["loss"]
+resp = client.post(f"{base_url}/optim_step", json={"adam_params": adam})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+step_before_save = int(resp.json()["metrics"]["step"])
+print(f"  loss={loss_before:.4f}, step={step_before_save}")
+
+print("[2/6] save_state")
+resp = client.post(f"{base_url}/save_state", json={"path": CKPT_PATH})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+print(f"  mode={resp.json().get('mode', '?')} — checkpoint written to {CKPT_PATH}")
+
+print("[3/6] forward_backward + optim_step (advance past checkpoint)")
+resp = client.post(f"{base_url}/forward_backward", json={"data": data, "loss_fn": "cross_entropy"})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+resp = client.post(f"{base_url}/optim_step", json={"adam_params": adam})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+step_after_extra = int(resp.json()["metrics"]["step"])
+assert step_after_extra > step_before_save, f"Expected step to advance beyond {step_before_save}, got {step_after_extra}"
+print(f"  step={step_after_extra} (advanced past checkpoint)")
+
+print("[4/6] load_state_with_optimizer — restore weights + optimizer + step")
+resp = client.post(f"{base_url}/load_state_with_optimizer", json={"path": CKPT_PATH})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+restored_step = resp.json()["step"]
+assert restored_step == step_before_save, \
+    f"Expected step restored to {step_before_save}, got {restored_step}"
+print(f"  step={restored_step} (correctly restored to checkpoint)")
+
+print("[5/6] load_state — weights only, optimizer reset")
+resp = client.post(f"{base_url}/load_state", json={"path": CKPT_PATH})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+print(f"  mode={resp.json().get('mode', '?')}")
+
+print("[6/6] forward_backward still works after load")
+resp = client.post(f"{base_url}/forward_backward", json={"data": data, "loss_fn": "cross_entropy"})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+print(f"  loss={resp.json()['metrics']['loss']:.4f}")
+
+print("\nAll checks passed!")
+'''
+
 TESTS = {
     "smoke": {"script": SMOKE_SCRIPT, "image": "python:3.12-slim", "pip": "httpx"},
+    "checkpointing": {"script": CHECKPOINTING_SCRIPT, "image": "python:3.12-slim", "pip": "httpx"},
     "math_rl": {"script": MATH_RL_SCRIPT, "image": "python:3.12-slim", "pip": "httpx transformers"},
     "multiturn_rl": {"script": MULTITURN_RL_SCRIPT, "image": "python:3.12-slim", "pip": "httpx transformers"},
 }
