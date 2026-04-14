@@ -582,7 +582,10 @@ class RLController:
         with self._lock:
             t0 = time.perf_counter()
             logger.info("load_state: loading model weights from %s ...", ckpt_dir)
-            self.model = type(self.model).from_pretrained(
+            model_cls = type(self.model)
+            del self.model
+            torch.cuda.empty_cache()
+            self.model = model_cls.from_pretrained(
                 str(ckpt_dir),
                 torch_dtype=torch.bfloat16,
                 device_map={"": self._training_device()},
@@ -600,7 +603,10 @@ class RLController:
         with self._lock:
             t0 = time.perf_counter()
             logger.info("load_state_with_optimizer: loading from %s ...", ckpt_dir)
-            self.model = type(self.model).from_pretrained(
+            model_cls = type(self.model)
+            del self.model
+            torch.cuda.empty_cache()
+            self.model = model_cls.from_pretrained(
                 str(ckpt_dir),
                 torch_dtype=torch.bfloat16,
                 device_map={"": self._training_device()},
