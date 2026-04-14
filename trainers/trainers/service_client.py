@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from trainers.sampling_client import SamplingClient
 from trainers.training_client import TrainingClient
 
@@ -9,24 +11,49 @@ from trainers.training_client import TrainingClient
 class ServiceClient:
     """Factory for creating TrainingClient and SamplingClient instances.
 
-    Analogous to tinker.ServiceClient — creates clients connected to a
-    training backend.
+    Usage:
+        service_client = trainers.ServiceClient()
+        training_client = service_client.create_lora_training_client(
+            base_model="Qwen/Qwen3-8B", rank=32,
+        )
+        sampling_client = service_client.create_sampling_client()
+
+    Configuration is read from environment variables:
+        TRAINERS_BASE_URL — worker base URL (required)
+        TRAINERS_API_KEY  — API key for authentication (optional)
+
+    Or pass base_url/api_key directly to __init__.
     """
 
-    def __init__(self, base_url: str, *, api_key: str | None = None) -> None:
-        self._base_url = base_url
-        self._api_key = api_key
+    def __init__(
+        self,
+        base_url: str | None = None,
+        *,
+        api_key: str | None = None,
+    ) -> None:
+        self._base_url = base_url or os.environ.get("TRAINERS_BASE_URL", "")
+        self._api_key = api_key or os.environ.get("TRAINERS_API_KEY")
+        if not self._base_url:
+            raise ValueError(
+                "base_url is required. Pass it directly or set TRAINERS_BASE_URL."
+            )
 
-    def create_training_client(
+    def create_lora_training_client(
         self,
         base_model: str,
-        *,
-        rank: int = 16,
+        rank: int = 32,
         seed: int | None = None,
         timeout: float = 600.0,
     ) -> TrainingClient:
-        """Create a LoRA training client."""
-        # TODO: pass base_model, rank, seed to the backend to initialize
+        """Create a LoRA training client.
+
+        Args:
+            base_model: HuggingFace model ID (e.g. "Qwen/Qwen3-8B").
+            rank: LoRA rank.
+            seed: Random seed for reproducibility.
+            timeout: HTTP timeout for training operations.
+        """
+        # TODO: send base_model, rank, seed to the worker to initialize LoRA
         return TrainingClient(
             self._base_url,
             api_key=self._api_key,
@@ -56,7 +83,12 @@ class ServiceClient:
         base_model: str | None = None,
         model_path: str | None = None,
     ) -> SamplingClient:
-        """Create a sampling client for text generation."""
+        """Create a sampling client for text generation.
+
+        Args:
+            base_model: HuggingFace model ID for base model sampling.
+            model_path: Path to saved weights for fine-tuned sampling.
+        """
         return SamplingClient(self._base_url, api_key=self._api_key)
 
     def get_server_capabilities(self) -> dict:

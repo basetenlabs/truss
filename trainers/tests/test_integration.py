@@ -15,7 +15,7 @@ import threading
 
 import pytest
 
-from trainers import TrainingClient, AdamParams, ModelInput, SamplingParams, Datum, TensorData
+from trainers import ServiceClient, TrainingClient, AdamParams, ModelInput, SamplingParams, Datum, TensorData
 
 
 class MockWorkerHandler(BaseHTTPRequestHandler):
@@ -83,7 +83,8 @@ def mock_worker():
 
 @pytest.fixture
 def client(mock_worker):
-    c = TrainingClient(mock_worker, timeout=10.0)
+    service = ServiceClient(base_url=mock_worker)
+    c = service.create_lora_training_client(base_model="test-model", timeout=10.0)
     yield c
     c.close()
 
