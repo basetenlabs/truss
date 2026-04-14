@@ -5,7 +5,6 @@ build_commands:
 model_metadata: {}
 model_name: null
 model_type: custom
-python_version: py39
 requirements: []
 resources:
   accelerator: null

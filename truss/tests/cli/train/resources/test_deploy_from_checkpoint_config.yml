@@ -36,7 +36,6 @@ model_metadata: {}
 model_module_dir: model
 model_name: gemma-3-27b-it-vLLM-LORA
 model_type: Model
-python_version: py39
 requirements: []
 requirements_file: null
 resources:

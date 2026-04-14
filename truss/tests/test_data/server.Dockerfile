@@ -1,6 +1,6 @@
-ARG PYVERSION=py39
+ARG PYVERSION=py313
 ARG HOME
-FROM baseten/truss-server-base:3.9-v0.4.3 AS truss_server
+FROM baseten/truss-server-base:3.13-v0.4.3 AS truss_server
 ENV PYTHON_EXECUTABLE="/usr/local/bin/python3"
 USER root
 ENV HOME=${HOME:-/root}
