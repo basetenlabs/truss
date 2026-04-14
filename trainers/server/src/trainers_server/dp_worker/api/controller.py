@@ -150,6 +150,7 @@ class RLController:
                 torch_dtype=_parse_torch_dtype("bfloat16"),
                 device_map={"": training_device},
                 use_hf=True,
+                task_type="causal_lm",
             )
             logger.info("Model and processor loaded in %.1fs", time.perf_counter() - t0)
         self.model = model
@@ -588,6 +589,7 @@ class RLController:
                 torch_dtype=_parse_torch_dtype("bfloat16"),
                 device_map={"": self._training_device()},
                 use_hf=True,
+                task_type="causal_lm",
             )
             self.model = model
             self.processor = processor
@@ -609,6 +611,7 @@ class RLController:
                 torch_dtype=_parse_torch_dtype("bfloat16"),
                 device_map={"": self._training_device()},
                 use_hf=True,
+                task_type="causal_lm",
             )
             self.model = model
             self.processor = processor
