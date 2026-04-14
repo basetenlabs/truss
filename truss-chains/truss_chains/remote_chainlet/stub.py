@@ -293,6 +293,7 @@ class StubBase(BasetenSession, abc.ABC):
     ) -> Mapping[str, Any]:
         kwargs: Dict[str, Any] = {}
         headers = {}
+        headers[private_types.CHAIN_CALL_HEADER_KEY] = "1"
         if trace_parent := utils.get_trace_parent():
             headers[private_types.OTEL_TRACE_PARENT_HEADER_KEY] = trace_parent
         if request_id := utils.get_request_id():
