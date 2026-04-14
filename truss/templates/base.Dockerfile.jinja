@@ -120,6 +120,14 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ sys
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
     {%- endif %}
+    {%- if should_install_openssh_server %}
+COPY --chown={{ default_owner }} ./baseten-ssh-server.sh /usr/local/bin/baseten-ssh-server.sh
+RUN apt-get update && apt-get install --yes --no-install-recommends openssh-server \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod +x /usr/local/bin/baseten-ssh-server.sh \
+    && sed -i 's/^app:!/app:*/' /etc/shadow
+    {%- endif %}
 {% endblock %}
 
 
