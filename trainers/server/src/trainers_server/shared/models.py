@@ -188,9 +188,8 @@ class OptimStepDetails(BaseModel):
 
 
 class SampleDetails(BaseModel):
-    prompt: ModelInput
-    num_samples: int = 1
-    sampling_params: SamplingParams = Field(default_factory=SamplingParams)
+    # TODO: migrate to token-level API (prompt + num_samples + sampling_params)
+    inputs: list[SampleInput] = Field(min_length=1)
 
 
 class SaveWeightsAndGetSamplingClientDetails(BaseModel):
