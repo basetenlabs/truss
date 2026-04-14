@@ -365,6 +365,15 @@ class RLController:
                 ignore_index=-100,
             ).view(shift_labels.shape)
 
+            # Compute per-token logprobs (log_softmax, then gather target tokens).
+            with torch.no_grad():
+                log_probs = F.log_softmax(shift_logits, dim=-1)
+                # Gather logprobs for the actual target tokens.
+                # Replace -100 with 0 for gather (masked positions).
+                gather_labels = shift_labels.clone()
+                gather_labels[gather_labels == -100] = 0
+                token_logprobs = log_probs.gather(-1, gather_labels.unsqueeze(-1)).squeeze(-1)
+
             valid_mask = shift_labels.ne(-100)
             token_loss = token_loss * valid_mask
             valid_counts = valid_mask.sum(dim=-1).clamp(min=1)
@@ -377,11 +386,22 @@ class RLController:
             loss.backward()
             self.last_loss = float(loss.detach().cpu())
 
+            # Build per-sample logprobs output (masked positions excluded).
+            loss_fn_outputs = []
+            for i in range(token_logprobs.shape[0]):
+                mask_i = valid_mask[i]
+                lp = token_logprobs[i][mask_i].detach().cpu().tolist()
+                loss_fn_outputs.append({"logprobs": {
+                    "data": lp,
+                    "dtype": "float32",
+                    "shape": [len(lp)],
+                }})
+
             logger.info("forward_backward: done in %.2fs — loss=%.4f, num_samples=%d",
                         time.perf_counter() - t0, self.last_loss, len(details.data))
             return ForwardBackwardResult(
-                loss_fn_output_type="scalar",
-                loss_fn_outputs=[],
+                loss_fn_output_type="per_token_logprobs",
+                loss_fn_outputs=loss_fn_outputs,
                 metrics={"loss": self.last_loss},
             )
 
@@ -399,6 +419,13 @@ class RLController:
                 pg["eps"] = params.eps
                 pg["weight_decay"] = params.weight_decay
 
+            # Compute gradient norm before clipping.
+            grad_norm_sq = 0.0
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    grad_norm_sq += float(p.grad.detach().float().pow(2).sum().item())
+            grad_norm = grad_norm_sq ** 0.5
+
             if params.grad_clip_norm > 0:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), params.grad_clip_norm)
 
@@ -406,8 +433,14 @@ class RLController:
             self.optimizer.zero_grad(set_to_none=True)
             self.step += 1
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
-            logger.info("optim_step: done in %.2fs — step=%d, lr=%.2e", time.perf_counter() - t0, self.step, learning_rate)
-            return OptimStepResult(metrics={"step": float(self.step), "learning_rate": learning_rate, "lr": learning_rate})
+            logger.info("optim_step: done in %.2fs — step=%d, lr=%.2e, grad_norm=%.4f",
+                        time.perf_counter() - t0, self.step, learning_rate, grad_norm)
+            return OptimStepResult(metrics={
+                "step": float(self.step),
+                "learning_rate": learning_rate,
+                "lr": learning_rate,
+                "grad_norm": grad_norm,
+            })
 
     def to_inference(self) -> ToInferenceResult:
         with self._lock:
