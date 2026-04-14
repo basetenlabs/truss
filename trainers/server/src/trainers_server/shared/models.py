@@ -131,23 +131,17 @@ class Message(BaseModel):
     content: str
 
 
-# ── Sample types (mirror dp_worker sample endpoint) ──────────────────
+# ── Sample types (token-in, token-out) ────────────────────────────────
 
 
-class SampleInput(BaseModel):
-    messages: list[Message]
-    max_tokens: int = 128
-    temperature: float = 0.0
-    top_p: float = 1.0
-
-
-class SampleOutput(BaseModel):
-    generated_text: str
-    messages: list[Message]
+class SampledSequence(BaseModel):
+    tokens: list[int] = Field(default_factory=list)
+    logprobs: list[float] | None = None
+    stop_reason: str = "length"  # "length" | "stop"
 
 
 class SampleResult(BaseModel):
-    outputs: list[SampleOutput] = Field(default_factory=list)
+    sequences: list[SampledSequence] = Field(default_factory=list)
 
 
 # ── Optimizer parameters ─────────────────────────────────────────────
@@ -188,8 +182,9 @@ class OptimStepDetails(BaseModel):
 
 
 class SampleDetails(BaseModel):
-    # TODO: migrate to token-level API (prompt + num_samples + sampling_params)
-    inputs: list[SampleInput] = Field(min_length=1)
+    prompt: ModelInput
+    num_samples: int = 1
+    sampling_params: SamplingParams = Field(default_factory=SamplingParams)
 
 
 class SaveWeightsAndGetSamplingClientDetails(BaseModel):

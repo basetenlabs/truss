@@ -92,15 +92,20 @@ resp = client.post(f"{base_url}/to_inference")
 assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
 print(f"  mode={resp.json().get('mode', '?')}")
 
-# 6. sample
-print("[6/6] sample")
+# 6. sample (token-in, token-out)
+print("[6/6] sample (token-level)")
 resp = client.post(f"{base_url}/sample", json={
-    "inputs": [{"messages": [{"role": "user", "content": "What is 2+2? One word."}], "max_tokens": 64, "temperature": 0.0, "top_p": 1.0}],
+    "prompt": {"chunks": [{"type": "encoded_text", "tokens": list(range(10))}]},
+    "num_samples": 1,
+    "sampling_params": {"max_tokens": 32, "temperature": 0.0, "top_p": 1.0},
 })
 assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
-outputs = resp.json().get("outputs", [])
-if outputs:
-    print(f"  generated: {outputs[0].get('generated_text', '')[:200]}")
+result = resp.json()
+sequences = result.get("sequences", [])
+if sequences:
+    print(f"  tokens: {sequences[0].get('tokens', [])[:20]}...")
+    print(f"  logprobs: {len(sequences[0].get('logprobs', []) or [])} values")
+    print(f"  stop_reason: {sequences[0].get('stop_reason', '?')}")
 
 print("\nAll checks passed!")
 '''

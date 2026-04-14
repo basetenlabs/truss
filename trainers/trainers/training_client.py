@@ -8,6 +8,8 @@ from typing import Callable, Generic, TypeVar
 
 import httpx
 
+from pydantic import BaseModel, Field
+
 from trainers.models import (
     AdamParams,
     Datum,
@@ -15,11 +17,21 @@ from trainers.models import (
     LoadWeightsResponse,
     ModelInput,
     OptimStepResponse,
-    SampledSequence,
-    SampleResponse,
     SamplingParams,
     SaveWeightsResponse,
 )
+
+
+class SampledSequence(BaseModel):
+    """A single generated sequence with token IDs and optional logprobs."""
+    tokens: list[int] = Field(default_factory=list)
+    logprobs: list[float] | None = None
+    stop_reason: str = "length"
+
+
+class SampleResult(BaseModel):
+    """Token-level sampling result."""
+    sequences: list[SampledSequence] = Field(default_factory=list)
 
 T = TypeVar("T")
 
@@ -133,16 +145,16 @@ class TrainingClient:
         prompt: ModelInput,
         num_samples: int = 1,
         sampling_params: SamplingParams | None = None,
-    ) -> OperationFuture[SampleResponse]:
+    ) -> OperationFuture[SampleResult]:
         body = {
             "prompt": prompt.model_dump(mode="json"),
             "num_samples": num_samples,
             "sampling_params": (sampling_params or SamplingParams()).model_dump(mode="json"),
         }
 
-        def _call() -> SampleResponse:
+        def _call() -> SampleResult:
             resp = self._post("/sample", json=body)
-            return SampleResponse.model_validate(resp.json())
+            return SampleResult.model_validate(resp.json())
 
         return self._submit(_call)
 

@@ -28,11 +28,10 @@ from trainers_server.shared.models import (
     Datum,
     ForwardBackwardDetails,
     ForwardBackwardResult,
-    Message,
     OptimStepDetails,
     OptimStepResult,
     SampleDetails,
-    SampleOutput,
+    SampledSequence,
     SampleResult,
     SaveStateResult,
     ToInferenceResult,
@@ -436,63 +435,62 @@ class RLController:
             return self.get_status()
 
     def sample(self, details: SampleDetails) -> SampleResult:
-        if not details.inputs:
-            raise ValueError("`inputs` must contain at least one request.")
         with self._lock:
             if self.mode != "inference":
                 raise RuntimeError("sample is only allowed in inference mode.")
             t0 = time.perf_counter()
-            logger.info("sample: generating for %d request(s) (max_tokens=%d) ...",
-                        len(details.inputs), details.inputs[0].max_tokens)
-            self.template.set_mode("vllm")
-            if self.vllm_client is None:
-                raise RuntimeError("VLLMClient is not initialized.")
+            prompt_tokens = details.prompt.to_ints()
+            params = details.sampling_params
+            max_tokens = params.max_tokens or 128
+            remaining_budget = self._rollout_max_model_len - len(prompt_tokens)
+            effective_max_tokens = max(1, min(max_tokens, remaining_budget))
 
-            outputs: List[SampleOutput] = []
-            for i, req in enumerate(details.inputs):
-                messages_dict = self._messages_to_dict(req.messages)
-                encoded = self.template.encode({"messages": messages_dict})
-                input_ids = encoded.get("input_ids") or []
-                remaining_budget = self._rollout_max_model_len - len(input_ids)
-                effective_max_tokens = max(1, min(req.max_tokens, remaining_budget))
-                if effective_max_tokens < req.max_tokens:
-                    logger.warning(
-                        "sample: request %d/%d prompt consumes %d tokens (rollout_max_model_len=%d); reducing max_tokens from %d to %d",
-                        i + 1,
-                        len(details.inputs),
-                        len(input_ids),
-                        self._rollout_max_model_len,
-                        req.max_tokens,
-                        effective_max_tokens,
-                    )
+            logger.info(
+                "sample: %d prompt tokens, num_samples=%d, max_tokens=%d ...",
+                len(prompt_tokens), details.num_samples, effective_max_tokens,
+            )
 
-                rollout_request = RolloutInferRequest(messages=messages_dict)
-                request_config = RequestConfig(
-                    max_tokens=effective_max_tokens,
-                    temperature=req.temperature,
-                    top_p=req.top_p,
-                )
-                logger.info(
-                    "sample: request %d/%d — dispatching to rollout server (max_tokens=%d) ...",
-                    i + 1,
-                    len(details.inputs),
-                    effective_max_tokens,
-                )
-                rollout_outputs = self.vllm_client.infer(
-                    [rollout_request],
-                    request_config=request_config,
-                    use_tqdm=False,
-                )
-                if not rollout_outputs:
-                    raise RuntimeError("No outputs returned from rollout server.")
-                output = rollout_outputs[0]
-                response = output.response if hasattr(output, "response") else output
-                generated_text = response.choices[0].message.content
-                result_messages = list(req.messages) + [Message(role="assistant", content=generated_text)]
-                outputs.append(SampleOutput(generated_text=generated_text, messages=result_messages))
-                logger.info("sample: request %d/%d — generated %d chars", i + 1, len(details.inputs), len(generated_text))
-            logger.info("sample: done in %.2fs — %d result(s)", time.perf_counter() - t0, len(outputs))
-            return SampleResult(outputs=outputs)
+            # Call vLLM's OpenAI-compatible /v1/completions with raw token IDs.
+            vllm_url = f"http://127.0.0.1:{self._rollout_port}/v1/completions"
+            body = {
+                "model": self.config.model_id,
+                "prompt": prompt_tokens,
+                "n": details.num_samples,
+                "max_tokens": effective_max_tokens,
+                "temperature": params.temperature,
+                "top_p": params.top_p,
+                "logprobs": 1,
+            }
+            if params.top_k > 0:
+                body["top_k"] = params.top_k
+            if params.seed is not None:
+                body["seed"] = params.seed
+            if params.stop is not None:
+                body["stop"] = params.stop
+
+            resp = requests.post(vllm_url, json=body, timeout=300)
+            resp.raise_for_status()
+            data = resp.json()
+
+            sequences: List[SampledSequence] = []
+            for choice in data.get("choices", []):
+                token_ids = choice.get("token_ids", [])
+                # vLLM returns logprobs per token in choice.logprobs.token_logprobs
+                lp = choice.get("logprobs")
+                token_logprobs = lp.get("token_logprobs", []) if lp else []
+                # If vLLM didn't return token_ids, tokenize the text
+                if not token_ids and choice.get("text"):
+                    tokenizer = getattr(self.processor, "tokenizer", self.processor)
+                    token_ids = tokenizer.encode(choice["text"], add_special_tokens=False)
+                stop_reason = choice.get("finish_reason", "length")
+                sequences.append(SampledSequence(
+                    tokens=token_ids,
+                    logprobs=token_logprobs if token_logprobs else None,
+                    stop_reason=stop_reason,
+                ))
+
+            logger.info("sample: done in %.2fs — %d sequence(s)", time.perf_counter() - t0, len(sequences))
+            return SampleResult(sequences=sequences)
 
     def save_state(self, path: str) -> SaveStateResult:
         with self._lock:

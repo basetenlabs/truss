@@ -1,5 +1,5 @@
 from trainers.client import create_training_client
-from trainers.training_client import TrainingClient, OperationFuture
+from trainers.training_client import TrainingClient, OperationFuture, SampledSequence, SampleResult
 from trainers.sampling_client import SamplingClient
 from trainers.service_client import ServiceClient
 from trainers.models import (

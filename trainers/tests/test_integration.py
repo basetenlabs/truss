@@ -48,11 +48,8 @@ class MockWorkerHandler(BaseHTTPRequestHandler):
             },
             "/sample": {
                 "sequences": [
-                    {"tokens": [1, 2, 3], "stop_reason": "stop", "logprobs": None},
+                    {"tokens": [1, 2, 3], "stop_reason": "stop", "logprobs": [-0.1, -0.2, -0.3]},
                 ],
-                "type": "sample",
-                "prompt_logprobs": None,
-                "topk_prompt_logprobs": None,
             },
             "/save_state": {
                 "path": "step-1",
@@ -135,6 +132,8 @@ def test_sample(client):
         sampling_params=SamplingParams(max_tokens=32, temperature=0.0),
     ).result(timeout=5.0)
     assert len(result.sequences) == 1
+    assert result.sequences[0].tokens == [1, 2, 3]
+    assert result.sequences[0].logprobs == [-0.1, -0.2, -0.3]
     assert result.sequences[0].stop_reason == "stop"
 
 
