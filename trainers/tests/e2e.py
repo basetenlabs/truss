@@ -328,8 +328,9 @@ def deploy_job(namespace, model, accelerator, gpu_count, remote, workspace_root)
 
 def run_test_pod(namespace, worker_url, job_id, test_name, model):
     test_config = TESTS[test_name]
-    pod_name = f"e2e-{test_name}-{job_id}"
-    cm_name = f"e2e-script-{test_name}-{job_id}"
+    safe_name = test_name.replace("_", "-")
+    pod_name = f"e2e-{safe_name}-{job_id}"
+    cm_name = f"e2e-script-{safe_name}-{job_id}"
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(test_config["script"])
