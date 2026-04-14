@@ -178,8 +178,14 @@ def run_verify_pod(namespace, worker_url, job_id):
     print(f"Creating pod {pod_name}...")
     kubectl("apply", "-f", pod_path)
 
-    print(f"Streaming logs (waiting for pod to start)...\n")
-    time.sleep(3)
+    print(f"Waiting for verify pod to start...")
+    for _ in range(30):
+        r = kubectl("get", "pod", pod_name, "-n", namespace,
+                     "-o", "jsonpath={.status.phase}", capture=True)
+        if r.stdout.strip() in ("Running", "Succeeded", "Failed"):
+            break
+        time.sleep(2)
+    print("Streaming logs...\n")
 
     result = kubectl("logs", "-n", namespace, pod_name, "-f", capture=True)
     print(result.stdout)
