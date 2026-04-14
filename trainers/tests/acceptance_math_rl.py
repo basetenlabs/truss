@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "trainers"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "truss-train"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from trainers import TrainingClient, AdamParams, Datum, ModelInput, TensorData, SamplingParams
+from trainers import ServiceClient, AdamParams, Datum, ModelInput, TensorData, SamplingParams
 
 
 def make_arithmetic_problem(tokenizer, rng):
@@ -74,7 +74,8 @@ def main():
     print(f"Loading tokenizer for {args.model}...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
-    client = TrainingClient(args.worker_url, timeout=300.0)
+    service = ServiceClient(base_url=args.worker_url)
+    client = service.create_lora_training_client(base_model=args.model, timeout=300.0)
     rng = random.Random(42)
 
     print(f"\n=== Math RL (GRPO) — {args.steps} steps, {args.group_size} samples/problem ===\n")
