@@ -17,6 +17,7 @@ _HEAVY_MODULES = [
     "swift.rlhf_trainers.vllm_client",
     "swift.template",
     "swift.template.register",
+    "swift.tuners",
     "vllm",
 ]
 

@@ -1,20 +1,18 @@
+import atexit
 import inspect
 import logging
 import multiprocessing
 import os
-import socket
 import signal
+import socket
 import time
-import atexit
 from pathlib import Path
 from threading import RLock
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import requests
 import torch
 import torch.nn.functional as F
-from torch.optim import AdamW
-
 from swift.arguments import RolloutArguments
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import RolloutInferRequest
@@ -23,6 +21,8 @@ from swift.pipelines.infer.rollout import rollout_main
 from swift.rlhf_trainers.utils import FlattenedTensorBucket
 from swift.rlhf_trainers.vllm_client import VLLMClient
 from swift.template.register import get_template
+from swift.tuners import LoRAConfig, Swift
+from torch.optim import AdamW
 
 from trainers_server.shared.models import (
     Datum,
@@ -39,10 +39,7 @@ from trainers_server.shared.models import (
     ToInferenceResult,
 )
 
-from .models import (
-    RLControllerConfig,
-    StatusResult,
-)
+from .models import RLControllerConfig, StatusResult
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +77,9 @@ def _rollout_server_entry(config_data: Dict, rollout_port: int) -> None:
         logger.warning("Failed to set parent-death signal for rollout process.")
 
     config = RLControllerConfig(**config_data)
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gpu_id) for gpu_id in config.inference.gpus)
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+        str(gpu_id) for gpu_id in config.inference.gpus
+    )
     rollout_max_model_len = max(config.training.max_length, 4096)
 
     args = RolloutArguments(
@@ -107,12 +106,7 @@ class RLController:
     """Controller that exposes discrete RL training/inference transitions."""
 
     def __init__(
-        self,
-        config: RLControllerConfig,
-        *,
-        model=None,
-        processor=None,
-        template=None,
+        self, config: RLControllerConfig, *, model=None, processor=None, template=None
     ) -> None:
         init_t0 = time.perf_counter()
         logger.info("RLController.__init__ starting for model=%s", config.model_id)
@@ -152,8 +146,27 @@ class RLController:
             )
             logger.info("Model and processor loaded in %.1fs", time.perf_counter() - t0)
 
-            if load_checkpoint_dir:
-                logger.info("Overwriting weights from checkpoint %s ...", load_checkpoint_dir)
+            if config.lora_rank > 0:
+                t0 = time.perf_counter()
+                if load_checkpoint_dir:
+                    logger.info(
+                        "Loading LoRA adapters (rank=%d) from checkpoint %s ...",
+                        config.lora_rank,
+                        load_checkpoint_dir,
+                    )
+                    model = Swift.from_pretrained(
+                        model, model_id=load_checkpoint_dir, is_trainable=True
+                    )
+                else:
+                    logger.info(
+                        "Applying fresh LoRA adapters (rank=%d) ...", config.lora_rank
+                    )
+                    model = Swift.prepare_model(model, LoRAConfig(r=config.lora_rank))
+                logger.info("LoRA adapters ready in %.1fs", time.perf_counter() - t0)
+            elif load_checkpoint_dir:
+                logger.info(
+                    "Overwriting weights from checkpoint %s ...", load_checkpoint_dir
+                )
                 t0 = time.perf_counter()
                 model_cls = type(model)
                 del model
@@ -163,13 +176,17 @@ class RLController:
                     torch_dtype=torch.bfloat16,
                     device_map={"": training_device},
                 )
-                logger.info("Checkpoint weights loaded in %.1fs", time.perf_counter() - t0)
+                logger.info(
+                    "Checkpoint weights loaded in %.1fs", time.perf_counter() - t0
+                )
 
         self.model = model
         self.processor = processor
 
         if template is None:
-            logger.info("Building template (max_length=%d) ...", config.training.max_length)
+            logger.info(
+                "Building template (max_length=%d) ...", config.training.max_length
+            )
             template = get_template(
                 processor,
                 max_length=config.training.max_length,
@@ -178,28 +195,47 @@ class RLController:
         self.template = template
         self.template.set_mode("train")
 
-        logger.info("Initializing AdamW optimizer (params set per optim_step via AdamParams) ...")
-        self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
+        logger.info(
+            "Initializing AdamW optimizer (params set per optim_step via AdamParams) ..."
+        )
+        trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+        self.optimizer = AdamW(trainable_params, lr=0.0, weight_decay=0.0)
         self.optimizer.zero_grad(set_to_none=True)
 
         if load_checkpoint_dir:
             trainer_state_path = Path(load_checkpoint_dir) / "trainer_state.pt"
             if trainer_state_path.exists():
                 logger.info("Restoring trainer state from %s ...", trainer_state_path)
-                trainer_state = torch.load(trainer_state_path, map_location="cpu", weights_only=False)
+                trainer_state = torch.load(
+                    trainer_state_path, map_location="cpu", weights_only=False
+                )
                 self.step = trainer_state.get("step", 0)
                 self.last_loss = trainer_state.get("last_loss")
                 self.optimizer.load_state_dict(trainer_state["optimizer"])
                 logger.info("Trainer state restored — step=%d", self.step)
             else:
-                logger.info("No trainer_state.pt found in %s, starting from step 0.", load_checkpoint_dir)
+                logger.info(
+                    "No trainer_state.pt found in %s, starting from step 0.",
+                    load_checkpoint_dir,
+                )
 
-        logger.info("Launching rollout server on inference GPUs=%s ...", config.inference.gpus)
+        logger.info(
+            "Launching rollout server on inference GPUs=%s ...", config.inference.gpus
+        )
         self._launch_rollout_server()
-        logger.info("Connecting VLLMClient to rollout server at 127.0.0.1:%d ...", self._rollout_port)
+        logger.info(
+            "Connecting VLLMClient to rollout server at 127.0.0.1:%d ...",
+            self._rollout_port,
+        )
         self._init_vllm_client()
-        logger.info("Skipping initial weight sync at startup (rollout loads model weights directly).")
-        logger.info("RLController.__init__ complete in %.1fs — mode=%s", time.perf_counter() - init_t0, self.mode)
+        logger.info(
+            "Skipping initial weight sync at startup (rollout loads model weights directly)."
+        )
+        logger.info(
+            "RLController.__init__ complete in %.1fs — mode=%s",
+            time.perf_counter() - init_t0,
+            self.mode,
+        )
 
     def _training_device(self) -> str:
         return f"cuda:{self.config.training.gpus[0]}"
@@ -207,7 +243,9 @@ class RLController:
     def _launch_rollout_server(self) -> None:
         mp_ctx = multiprocessing.get_context("spawn")
         config_data = self.config.model_dump()
-        process = mp_ctx.Process(target=_rollout_server_entry, args=(config_data, self._rollout_port))
+        process = mp_ctx.Process(
+            target=_rollout_server_entry, args=(config_data, self._rollout_port)
+        )
         process.start()
         self._rollout_process = process
 
@@ -225,7 +263,10 @@ class RLController:
 
         while time.time() < deadline:
             attempt += 1
-            if self._rollout_process is not None and not self._rollout_process.is_alive():
+            if (
+                self._rollout_process is not None
+                and not self._rollout_process.is_alive()
+            ):
                 exit_code = self._rollout_process.exitcode
                 raise RuntimeError(
                     f"Rollout server process exited during startup (exit_code={exit_code})."
@@ -239,11 +280,12 @@ class RLController:
             try:
                 health_url = f"http://127.0.0.1:{self._rollout_port}/health/"
                 health_response = requests.get(
-                    health_url,
-                    timeout=float(_ROLLOUT_RETRY_INTERVAL_SECONDS),
+                    health_url, timeout=float(_ROLLOUT_RETRY_INTERVAL_SECONDS)
                 )
                 if health_response.status_code != 200:
-                    raise RuntimeError(f"Health endpoint returned status={health_response.status_code}")
+                    raise RuntimeError(
+                        f"Health endpoint returned status={health_response.status_code}"
+                    )
 
                 client = VLLMClient(
                     hosts=["127.0.0.1"],
@@ -270,17 +312,24 @@ class RLController:
         if self._communicator_ready:
             return
         training_device = self._training_device()
-        logger.info("Initializing rollout communicator on training device %s ...", training_device)
+        logger.info(
+            "Initializing rollout communicator on training device %s ...",
+            training_device,
+        )
         try:
             self.vllm_client.init_communicator(device=training_device)
         except Exception as exc:
-            raise RuntimeError(f"Failed to initialize rollout communicator: {exc}") from exc
+            raise RuntimeError(
+                f"Failed to initialize rollout communicator: {exc}"
+            ) from exc
         self._communicator_ready = True
 
     def _iter_weight_buckets(self) -> List[List[Tuple[str, torch.Tensor]]]:
         bucket_size_mb = int(os.environ.get("SWIFT_UPDATE_WEIGHTS_BUCKET_SIZE", "512"))
         max_bucket_bytes = bucket_size_mb * 1024 * 1024
-        named_params = [(name, param.detach()) for name, param in self.model.named_parameters()]
+        named_params = [
+            (name, param.detach()) for name, param in self.model.named_parameters()
+        ]
 
         buckets: List[List[Tuple[str, torch.Tensor]]] = []
         current_bucket: List[Tuple[str, torch.Tensor]] = []
@@ -304,10 +353,14 @@ class RLController:
             raise RuntimeError("Weight sync communicator is not initialized.")
 
         buckets = self._iter_weight_buckets()
-        logger.info("Syncing %d parameter bucket(s) to rollout server ...", len(buckets))
+        logger.info(
+            "Syncing %d parameter bucket(s) to rollout server ...", len(buckets)
+        )
         for i, bucket in enumerate(buckets):
             flat_bucket = FlattenedTensorBucket(named_tensors=bucket)
-            self.vllm_client.update_flattened_params(flat_bucket.get_metadata(), flat_bucket.get_flattened_tensor())
+            self.vllm_client.update_flattened_params(
+                flat_bucket.get_metadata(), flat_bucket.get_flattened_tensor()
+            )
             logger.info("Weight bucket %d/%d synced", i + 1, len(buckets))
         self.vllm_client.reset_prefix_cache()
 
@@ -336,15 +389,22 @@ class RLController:
         except (TypeError, ValueError) as exc:
             raise ValueError("loss_fn_inputs.reward must be numeric.") from exc
 
-    def forward_backward(self, details: ForwardBackwardDetails) -> ForwardBackwardResult:
+    def forward_backward(
+        self, details: ForwardBackwardDetails
+    ) -> ForwardBackwardResult:
         if not details.data:
             raise ValueError("`data` must contain at least one request.")
         with self._lock:
             self._ensure_training_mode("forward_backward")
             if details.loss_fn != "cross_entropy":
-                raise ValueError(f"Unsupported loss_fn: {details.loss_fn}. Only 'cross_entropy' is supported.")
+                raise ValueError(
+                    f"Unsupported loss_fn: {details.loss_fn}. Only 'cross_entropy' is supported."
+                )
             t0 = time.perf_counter()
-            logger.info("forward_backward: preparing %d pre-tokenized sample(s) ...", len(details.data))
+            logger.info(
+                "forward_backward: preparing %d pre-tokenized sample(s) ...",
+                len(details.data),
+            )
             self.model.train()
 
             batch_tokens: List[List[int]] = []
@@ -352,7 +412,9 @@ class RLController:
             for datum in details.data:
                 tokens = datum.model_input.to_ints()
                 if len(tokens) < 2:
-                    raise ValueError("Each datum.model_input must contain at least 2 tokens.")
+                    raise ValueError(
+                        "Each datum.model_input must contain at least 2 tokens."
+                    )
                 batch_tokens.append(tokens)
                 reward_values.append(self._extract_reward(datum))
 
@@ -373,12 +435,20 @@ class RLController:
 
             device = self._model_device()
             inputs = {
-                "input_ids": torch.tensor(input_ids_rows, dtype=torch.long, device=device),
-                "attention_mask": torch.tensor(attention_rows, dtype=torch.long, device=device),
+                "input_ids": torch.tensor(
+                    input_ids_rows, dtype=torch.long, device=device
+                ),
+                "attention_mask": torch.tensor(
+                    attention_rows, dtype=torch.long, device=device
+                ),
             }
             labels = torch.tensor(label_rows, dtype=torch.long, device=device)
-            model_forward_params = set(inspect.signature(self.model.forward).parameters.keys())
-            model_inputs = {k: v for k, v in inputs.items() if k in model_forward_params}
+            model_forward_params = set(
+                inspect.signature(self.model.forward).parameters.keys()
+            )
+            model_inputs = {
+                k: v for k, v in inputs.items() if k in model_forward_params
+            }
 
             logger.info("forward_backward: running forward pass ...")
             outputs = self.model(**model_inputs)
@@ -402,14 +472,20 @@ class RLController:
                 # Replace -100 with 0 for gather (masked positions).
                 gather_labels = shift_labels.clone()
                 gather_labels[gather_labels == -100] = 0
-                token_logprobs = log_probs.gather(-1, gather_labels.unsqueeze(-1)).squeeze(-1)
+                token_logprobs = log_probs.gather(
+                    -1, gather_labels.unsqueeze(-1)
+                ).squeeze(-1)
 
             valid_mask = shift_labels.ne(-100)
             token_loss = token_loss * valid_mask
             valid_counts = valid_mask.sum(dim=-1).clamp(min=1)
             per_sample_loss = token_loss.sum(dim=-1) / valid_counts
 
-            rewards = torch.tensor(reward_values, dtype=per_sample_loss.dtype, device=per_sample_loss.device)
+            rewards = torch.tensor(
+                reward_values,
+                dtype=per_sample_loss.dtype,
+                device=per_sample_loss.device,
+            )
             loss = (per_sample_loss * rewards).mean()
 
             logger.info("forward_backward: running backward pass ...")
@@ -421,14 +497,16 @@ class RLController:
             for i in range(token_logprobs.shape[0]):
                 mask_i = valid_mask[i]
                 lp = token_logprobs[i][mask_i].detach().cpu().tolist()
-                loss_fn_outputs.append({"logprobs": {
-                    "data": lp,
-                    "dtype": "float32",
-                    "shape": [len(lp)],
-                }})
+                loss_fn_outputs.append(
+                    {"logprobs": {"data": lp, "dtype": "float32", "shape": [len(lp)]}}
+                )
 
-            logger.info("forward_backward: done in %.2fs — loss=%.4f, num_samples=%d",
-                        time.perf_counter() - t0, self.last_loss, len(details.data))
+            logger.info(
+                "forward_backward: done in %.2fs — loss=%.4f, num_samples=%d",
+                time.perf_counter() - t0,
+                self.last_loss,
+                len(details.data),
+            )
             return ForwardBackwardResult(
                 loss_fn_output_type="per_token_logprobs",
                 loss_fn_outputs=loss_fn_outputs,
@@ -439,7 +517,9 @@ class RLController:
         with self._lock:
             self._ensure_training_mode("optim_step")
             t0 = time.perf_counter()
-            logger.info("optim_step: stepping optimizer (current step=%d) ...", self.step)
+            logger.info(
+                "optim_step: stepping optimizer (current step=%d) ...", self.step
+            )
 
             # Apply adam_params if provided.
             params = details.adam_params
@@ -454,23 +534,32 @@ class RLController:
             for p in self.model.parameters():
                 if p.grad is not None:
                     grad_norm_sq += float(p.grad.detach().float().pow(2).sum().item())
-            grad_norm = grad_norm_sq ** 0.5
+            grad_norm = grad_norm_sq**0.5
 
             if params.grad_clip_norm > 0:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), params.grad_clip_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), params.grad_clip_norm
+                )
 
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=True)
             self.step += 1
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
-            logger.info("optim_step: done in %.2fs — step=%d, lr=%.2e, grad_norm=%.4f",
-                        time.perf_counter() - t0, self.step, learning_rate, grad_norm)
-            return OptimStepResult(metrics={
-                "step": float(self.step),
-                "learning_rate": learning_rate,
-                "lr": learning_rate,
-                "grad_norm": grad_norm,
-            })
+            logger.info(
+                "optim_step: done in %.2fs — step=%d, lr=%.2e, grad_norm=%.4f",
+                time.perf_counter() - t0,
+                self.step,
+                learning_rate,
+                grad_norm,
+            )
+            return OptimStepResult(
+                metrics={
+                    "step": float(self.step),
+                    "learning_rate": learning_rate,
+                    "lr": learning_rate,
+                    "grad_norm": grad_norm,
+                }
+            )
 
     def to_inference(self) -> ToInferenceResult:
         with self._lock:
@@ -481,7 +570,11 @@ class RLController:
             self._ensure_communicator_ready()
             self._sync_weights_to_rollout()
             self.mode = "inference"
-            logger.info("to_inference: done in %.2fs — mode=%s", time.perf_counter() - t0, self.mode)
+            logger.info(
+                "to_inference: done in %.2fs — mode=%s",
+                time.perf_counter() - t0,
+                self.mode,
+            )
             return ToInferenceResult(mode=self.mode)
 
     def to_training(self) -> StatusResult:
@@ -490,7 +583,11 @@ class RLController:
             logger.info("to_training: switching from inference to training mode ...")
             self.model.train()
             self.mode = "training"
-            logger.info("to_training: done in %.2fs — mode=%s", time.perf_counter() - t0, self.mode)
+            logger.info(
+                "to_training: done in %.2fs — mode=%s",
+                time.perf_counter() - t0,
+                self.mode,
+            )
             return self.get_status()
 
     def sample(self, details: SampleDetails) -> SampleResult:
@@ -506,7 +603,9 @@ class RLController:
 
             logger.info(
                 "sample: %d prompt tokens, num_samples=%d, max_tokens=%d ...",
-                len(prompt_tokens), details.num_samples, effective_max_tokens,
+                len(prompt_tokens),
+                details.num_samples,
+                effective_max_tokens,
             )
 
             tokenizer = getattr(self.processor, "tokenizer", self.processor)
@@ -522,7 +621,7 @@ class RLController:
 
             for _ in range(details.num_samples):
                 rollout_request = RolloutInferRequest(
-                    messages=[{"role": "user", "content": prompt_text}],
+                    messages=[{"role": "user", "content": prompt_text}]
                 )
                 request_config = RequestConfig(
                     max_tokens=effective_max_tokens,
@@ -530,23 +629,29 @@ class RLController:
                     top_p=params.top_p,
                 )
                 rollout_outputs = self.vllm_client.infer(
-                    [rollout_request],
-                    request_config=request_config,
-                    use_tqdm=False,
+                    [rollout_request], request_config=request_config, use_tqdm=False
                 )
                 if not rollout_outputs:
                     raise RuntimeError("No outputs returned from rollout server.")
                 output = rollout_outputs[0]
                 response = output.response if hasattr(output, "response") else output
                 generated_text = response.choices[0].message.content
-                generated_tokens = tokenizer.encode(generated_text, add_special_tokens=False)
-                sequences.append(SampledSequence(
-                    tokens=generated_tokens,
-                    logprobs=None,  # TODO: extract logprobs from vLLM response
-                    stop_reason=response.choices[0].finish_reason or "length",
-                ))
+                generated_tokens = tokenizer.encode(
+                    generated_text, add_special_tokens=False
+                )
+                sequences.append(
+                    SampledSequence(
+                        tokens=generated_tokens,
+                        logprobs=None,  # TODO: extract logprobs from vLLM response
+                        stop_reason=response.choices[0].finish_reason or "length",
+                    )
+                )
 
-            logger.info("sample: done in %.2fs — %d sequence(s)", time.perf_counter() - t0, len(sequences))
+            logger.info(
+                "sample: done in %.2fs — %d sequence(s)",
+                time.perf_counter() - t0,
+                len(sequences),
+            )
             return SampleResult(sequences=sequences)
 
     def save_state(self, path: Optional[str] = None) -> SaveStateResult:
@@ -599,17 +704,32 @@ class RLController:
             del self.optimizer
             del self.model
             torch.cuda.empty_cache()
-            self.model = model_cls.from_pretrained(
-                str(ckpt_dir),
-                torch_dtype=torch.bfloat16,
-                device_map={"": self._training_device()},
-            )
+            if self.config.lora_rank > 0:
+                base_model, _ = get_model_processor(
+                    self.config.model_id,
+                    torch_dtype=_parse_torch_dtype("bfloat16"),
+                    device_map={"": self._training_device()},
+                    use_hf=True,
+                )
+                self.model = Swift.from_pretrained(
+                    base_model, model_id=str(ckpt_dir), is_trainable=True
+                )
+            else:
+                self.model = model_cls.from_pretrained(
+                    str(ckpt_dir),
+                    torch_dtype=torch.bfloat16,
+                    device_map={"": self._training_device()},
+                )
             self.model.train()
-            self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
+            trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+            self.optimizer = AdamW(trainable_params, lr=0.0, weight_decay=0.0)
             self.optimizer.zero_grad(set_to_none=True)
             self.mode = "training"
             self._communicator_ready = False
-            logger.info("load_state: done in %.2fs — weights loaded, optimizer reset", time.perf_counter() - t0)
+            logger.info(
+                "load_state: done in %.2fs — weights loaded, optimizer reset",
+                time.perf_counter() - t0,
+            )
             return LoadStateResult(mode=self.mode, step=self.step)
 
     def load_state_with_optimizer(self, details: LoadStateDetails) -> LoadStateResult:
@@ -621,28 +741,46 @@ class RLController:
             del self.optimizer
             del self.model
             torch.cuda.empty_cache()
-            self.model = model_cls.from_pretrained(
-                str(ckpt_dir),
-                torch_dtype=torch.bfloat16,
-                device_map={"": self._training_device()},
-            )
+            if self.config.lora_rank > 0:
+                base_model, _ = get_model_processor(
+                    self.config.model_id,
+                    torch_dtype=_parse_torch_dtype("bfloat16"),
+                    device_map={"": self._training_device()},
+                    use_hf=True,
+                )
+                self.model = Swift.from_pretrained(
+                    base_model, model_id=str(ckpt_dir), is_trainable=True
+                )
+            else:
+                self.model = model_cls.from_pretrained(
+                    str(ckpt_dir),
+                    torch_dtype=torch.bfloat16,
+                    device_map={"": self._training_device()},
+                )
             self.model.train()
-            self.optimizer = AdamW(self.model.parameters(), lr=0.0, weight_decay=0.0)
+            trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+            self.optimizer = AdamW(trainable_params, lr=0.0, weight_decay=0.0)
             self.optimizer.zero_grad(set_to_none=True)
 
             trainer_state_path = ckpt_dir / "trainer_state.pt"
             if trainer_state_path.exists():
-                trainer_state = torch.load(trainer_state_path, map_location="cpu", weights_only=False)
+                trainer_state = torch.load(
+                    trainer_state_path, map_location="cpu", weights_only=False
+                )
                 self.step = trainer_state.get("step", 0)
                 self.last_loss = trainer_state.get("last_loss")
                 self.optimizer.load_state_dict(trainer_state["optimizer"])
                 logger.info("load_state_with_optimizer: restored step=%d", self.step)
             else:
-                logger.warning("load_state_with_optimizer: no trainer_state.pt found, optimizer state not restored")
+                logger.warning(
+                    "load_state_with_optimizer: no trainer_state.pt found, optimizer state not restored"
+                )
 
             self.mode = "training"
             self._communicator_ready = False
-            logger.info("load_state_with_optimizer: done in %.2fs", time.perf_counter() - t0)
+            logger.info(
+                "load_state_with_optimizer: done in %.2fs", time.perf_counter() - t0
+            )
             return LoadStateResult(mode=self.mode, step=self.step)
 
     def close(self) -> None:
@@ -717,8 +855,10 @@ class RLController:
                 if param.grad is None:
                     continue
                 has_grad = True
-                grad_norm_sq += float(torch.sum(param.grad.detach().float() ** 2).item())
-            grad_norm = grad_norm_sq ** 0.5 if has_grad else None
+                grad_norm_sq += float(
+                    torch.sum(param.grad.detach().float() ** 2).item()
+                )
+            grad_norm = grad_norm_sq**0.5 if has_grad else None
             return StatusResult(
                 mode=self.mode,
                 step=self.step,

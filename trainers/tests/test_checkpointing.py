@@ -6,24 +6,21 @@ Controller tests use a minimal fake model (nn.Linear) and bypass the heavy __ini
 FastAPI endpoint tests verify routing via TestClient with a mock controller.
 """
 
-import os
 import threading
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
 import torch.nn as nn
 from fastapi.testclient import TestClient
-
 from trainers_server.dp_worker.api.controller import RLController
 from trainers_server.dp_worker.api.server import create_app
-from trainers_server.shared.models import LoadStateDetails, SaveStateDetails
-
+from trainers_server.shared.models import LoadStateDetails
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers — FFT (full fine-tuning, lora_rank=0)
 # ---------------------------------------------------------------------------
+
 
 class _FakeModel(nn.Linear):
     """Minimal fake model that mimics a HuggingFace model's save/load API."""
@@ -40,7 +37,7 @@ class _FakeModel(nn.Linear):
 
 
 def _make_controller(step: int = 5, last_loss: float = 0.25) -> RLController:
-    """Build a minimal RLController, bypassing heavy __init__.
+    """Build a minimal RLController for FFT (lora_rank=0), bypassing heavy __init__.
 
     Uses a tiny _FakeModel so save/load can operate on real tensors without
     needing a GPU or a real HuggingFace model.
@@ -67,8 +64,65 @@ def _make_controller(step: int = 5, last_loss: float = 0.25) -> RLController:
 
     ctrl.config = MagicMock()
     ctrl.config.model_id = "test-model"
+    ctrl.config.lora_rank = 0
     ctrl.config.training.gpus = [0]
-    ctrl.config.model_dump.return_value = {"model_id": "test-model"}
+    ctrl.config.model_dump.return_value = {"model_id": "test-model", "lora_rank": 0}
+
+    return ctrl
+
+
+# ---------------------------------------------------------------------------
+# Helpers — LoRA (lora_rank > 0)
+# ---------------------------------------------------------------------------
+
+
+class _FakeLoRAModel(nn.Module):
+    """Minimal fake LoRA model: some frozen base params, some trainable adapter params."""
+
+    def __init__(self):
+        super().__init__()
+        # Frozen base model weights
+        self.base_weight = nn.Parameter(torch.randn(4, 4), requires_grad=False)
+        # Trainable LoRA adapter weights
+        self.lora_a = nn.Parameter(torch.randn(4, 2), requires_grad=True)
+        self.lora_b = nn.Parameter(torch.randn(2, 4), requires_grad=True)
+        self.save_pretrained = MagicMock()
+
+    def train(self, mode=True):
+        return self
+
+
+def _make_lora_controller(
+    step: int = 5, last_loss: float = 0.25, lora_rank: int = 16
+) -> RLController:
+    """Build a minimal RLController for LoRA (lora_rank > 0), bypassing heavy __init__."""
+    ctrl = object.__new__(RLController)
+    ctrl._lock = threading.RLock()
+    ctrl.mode = "training"
+    ctrl.step = step
+    ctrl.last_loss = last_loss
+    ctrl._closed = False
+    ctrl._rollout_process = None
+    ctrl.vllm_client = None
+    ctrl._communicator_ready = False
+
+    ctrl.model = _FakeLoRAModel()
+    ctrl.processor = MagicMock()
+    ctrl.processor.save_pretrained = MagicMock()
+
+    # Optimizer over trainable params only (mirrors production behavior)
+    trainable = [p for p in ctrl.model.parameters() if p.requires_grad]
+    ctrl.optimizer = torch.optim.AdamW(trainable, lr=1e-3)
+    ctrl.optimizer.zero_grad(set_to_none=True)
+
+    ctrl.config = MagicMock()
+    ctrl.config.model_id = "test-lora-model"
+    ctrl.config.lora_rank = lora_rank
+    ctrl.config.training.gpus = [0]
+    ctrl.config.model_dump.return_value = {
+        "model_id": "test-lora-model",
+        "lora_rank": lora_rank,
+    }
 
     return ctrl
 
@@ -76,6 +130,7 @@ def _make_controller(step: int = 5, last_loss: float = 0.25) -> RLController:
 # ---------------------------------------------------------------------------
 # save_state
 # ---------------------------------------------------------------------------
+
 
 class TestSaveState:
     def test_saves_model_and_trainer_state(self, tmp_path):
@@ -86,7 +141,9 @@ class TestSaveState:
         ctrl.processor.save_pretrained.assert_called_once_with(str(tmp_path))
 
         # trainer_state.pt written with correct values
-        state = torch.load(tmp_path / "trainer_state.pt", map_location="cpu", weights_only=False)
+        state = torch.load(
+            tmp_path / "trainer_state.pt", map_location="cpu", weights_only=False
+        )
         assert state["step"] == 7
         assert state["last_loss"] == pytest.approx(0.11)
         assert "optimizer" in state
@@ -101,7 +158,9 @@ class TestSaveState:
         monkeypatch.setenv("BT_CHECKPOINT_DIR", str(tmp_path))
         ctrl = _make_controller(step=3)
         ctrl.save_state()  # no path argument
-        state = torch.load(tmp_path / "trainer_state.pt", map_location="cpu", weights_only=False)
+        state = torch.load(
+            tmp_path / "trainer_state.pt", map_location="cpu", weights_only=False
+        )
         assert state["step"] == 3
 
     def test_raises_when_no_path_and_no_env_var(self, monkeypatch):
@@ -119,6 +178,7 @@ class TestSaveState:
 # ---------------------------------------------------------------------------
 # load_state
 # ---------------------------------------------------------------------------
+
 
 class TestLoadState:
     def _save_checkpoint(self, tmp_path, ctrl):
@@ -166,6 +226,7 @@ class TestLoadState:
 # load_state_with_optimizer
 # ---------------------------------------------------------------------------
 
+
 class TestLoadStateWithOptimizer:
     def _save_checkpoint(self, tmp_path, ctrl):
         ctrl.save_state(str(tmp_path))
@@ -175,7 +236,9 @@ class TestLoadStateWithOptimizer:
         self._save_checkpoint(tmp_path, ctrl)
 
         new_ctrl = _make_controller(step=0, last_loss=None)
-        result = new_ctrl.load_state_with_optimizer(LoadStateDetails(path=str(tmp_path)))
+        result = new_ctrl.load_state_with_optimizer(
+            LoadStateDetails(path=str(tmp_path))
+        )
 
         assert result.step == 11
         assert new_ctrl.step == 11
@@ -185,13 +248,14 @@ class TestLoadStateWithOptimizer:
 
     def test_succeeds_without_trainer_state_pt(self, tmp_path):
         """If no trainer_state.pt exists, loads weights but doesn't restore step."""
-        ctrl = _make_controller(step=5)
         # Only save model weights, not the full checkpoint
         (tmp_path / "dummy_weight.bin").touch()  # make dir non-empty
 
         new_ctrl = _make_controller(step=0)
         # Should not raise even without trainer_state.pt
-        result = new_ctrl.load_state_with_optimizer(LoadStateDetails(path=str(tmp_path)))
+        result = new_ctrl.load_state_with_optimizer(
+            LoadStateDetails(path=str(tmp_path))
+        )
 
         assert result.mode == "training"
         assert new_ctrl.step == 0  # unchanged — no trainer_state.pt to restore from
@@ -199,12 +263,15 @@ class TestLoadStateWithOptimizer:
     def test_raises_when_path_missing(self, tmp_path):
         ctrl = _make_controller()
         with pytest.raises(ValueError, match="not found"):
-            ctrl.load_state_with_optimizer(LoadStateDetails(path=str(tmp_path / "missing")))
+            ctrl.load_state_with_optimizer(
+                LoadStateDetails(path=str(tmp_path / "missing"))
+            )
 
 
 # ---------------------------------------------------------------------------
 # Roundtrip: save → load_state_with_optimizer → save again
 # ---------------------------------------------------------------------------
+
 
 class TestCheckpointRoundtrip:
     def test_roundtrip_preserves_step_and_loss(self, tmp_path):
@@ -222,13 +289,157 @@ class TestCheckpointRoundtrip:
 
         # Save again from the restored state
         restored.save_state(str(ckpt2))
-        state2 = torch.load(ckpt2 / "trainer_state.pt", map_location="cpu", weights_only=False)
+        state2 = torch.load(
+            ckpt2 / "trainer_state.pt", map_location="cpu", weights_only=False
+        )
         assert state2["step"] == 42
+
+
+# ---------------------------------------------------------------------------
+# LoRA: save_state
+# ---------------------------------------------------------------------------
+
+
+class TestLoRASaveState:
+    def test_saves_adapter_weights_and_trainer_state(self, tmp_path):
+        ctrl = _make_lora_controller(step=3, last_loss=0.55)
+        ctrl.save_state(str(tmp_path))
+
+        # model.save_pretrained called — for a SwiftModel this writes adapter weights only
+        ctrl.model.save_pretrained.assert_called_once_with(str(tmp_path))
+        ctrl.processor.save_pretrained.assert_called_once_with(str(tmp_path))
+
+        state = torch.load(
+            tmp_path / "trainer_state.pt", map_location="cpu", weights_only=False
+        )
+        assert state["step"] == 3
+        assert state["last_loss"] == pytest.approx(0.55)
+        assert "optimizer" in state
+
+    def test_optimizer_covers_trainable_params_only(self):
+        ctrl = _make_lora_controller(lora_rank=16)
+        trainable = [p for p in ctrl.model.parameters() if p.requires_grad]
+        optimizer_params = [
+            p for pg in ctrl.optimizer.param_groups for p in pg["params"]
+        ]
+        assert len(optimizer_params) == len(trainable)
+        # base_weight is frozen, lora_a and lora_b are trainable
+        assert len(optimizer_params) == 2
+
+
+# ---------------------------------------------------------------------------
+# LoRA: load_state
+# ---------------------------------------------------------------------------
+
+
+class TestLoRALoadState:
+    def test_reloads_base_and_applies_adapter_from_checkpoint(self, tmp_path):
+        # Write a real trainer_state.pt so _resolve_load_path passes
+        ctrl = _make_lora_controller(step=7)
+        ctrl.save_state(str(tmp_path))
+
+        fake_base = _FakeLoRAModel()
+        fake_lora = _FakeLoRAModel()
+
+        with (
+            patch(
+                "trainers_server.dp_worker.api.controller.get_model_processor"
+            ) as mock_gmp,
+            patch("trainers_server.dp_worker.api.controller.Swift") as mock_swift,
+        ):
+            mock_gmp.return_value = (fake_base, MagicMock())
+            mock_swift.from_pretrained.return_value = fake_lora
+
+            result = ctrl.load_state(LoadStateDetails(path=str(tmp_path)))
+
+        # Base model reloaded from model_id (not from local path)
+        mock_gmp.assert_called_once()
+        call_args = mock_gmp.call_args
+        assert call_args[0][0] == "test-lora-model"
+
+        # Adapter loaded from checkpoint path
+        mock_swift.from_pretrained.assert_called_once_with(
+            fake_base, model_id=str(tmp_path), is_trainable=True
+        )
+
+        assert result.mode == "training"
+        assert not ctrl._communicator_ready
+
+    def test_step_not_restored_by_load_state(self, tmp_path):
+        """load_state resets optimizer but does not restore step."""
+        ctrl = _make_lora_controller(step=42)
+        ctrl.save_state(str(tmp_path))
+
+        fake_lora = _FakeLoRAModel()
+        with (
+            patch(
+                "trainers_server.dp_worker.api.controller.get_model_processor"
+            ) as mock_gmp,
+            patch("trainers_server.dp_worker.api.controller.Swift") as mock_swift,
+        ):
+            mock_gmp.return_value = (fake_lora, MagicMock())
+            mock_swift.from_pretrained.return_value = fake_lora
+            result = ctrl.load_state(LoadStateDetails(path=str(tmp_path)))
+
+        # step preserved as-is — load_state doesn't restore it
+        assert result.step == 42
+
+
+# ---------------------------------------------------------------------------
+# LoRA: load_state_with_optimizer
+# ---------------------------------------------------------------------------
+
+
+class TestLoRALoadStateWithOptimizer:
+    def test_restores_step_and_optimizer_from_checkpoint(self, tmp_path):
+        ctrl = _make_lora_controller(step=11, last_loss=0.77)
+        ctrl.save_state(str(tmp_path))
+
+        new_ctrl = _make_lora_controller(step=0, last_loss=None)
+        fake_lora = _FakeLoRAModel()
+
+        with (
+            patch(
+                "trainers_server.dp_worker.api.controller.get_model_processor"
+            ) as mock_gmp,
+            patch("trainers_server.dp_worker.api.controller.Swift") as mock_swift,
+        ):
+            mock_gmp.return_value = (fake_lora, MagicMock())
+            mock_swift.from_pretrained.return_value = fake_lora
+            result = new_ctrl.load_state_with_optimizer(
+                LoadStateDetails(path=str(tmp_path))
+            )
+
+        assert result.step == 11
+        assert new_ctrl.step == 11
+        assert new_ctrl.last_loss == pytest.approx(0.77)
+        assert result.mode == "training"
+
+    def test_succeeds_without_trainer_state_pt(self, tmp_path):
+        """If no trainer_state.pt, loads adapters but doesn't restore step."""
+        ctrl = _make_lora_controller(step=0)
+        fake_lora = _FakeLoRAModel()
+
+        with (
+            patch(
+                "trainers_server.dp_worker.api.controller.get_model_processor"
+            ) as mock_gmp,
+            patch("trainers_server.dp_worker.api.controller.Swift") as mock_swift,
+        ):
+            mock_gmp.return_value = (fake_lora, MagicMock())
+            mock_swift.from_pretrained.return_value = fake_lora
+            result = ctrl.load_state_with_optimizer(
+                LoadStateDetails(path=str(tmp_path))
+            )
+
+        assert result.mode == "training"
+        assert ctrl.step == 0  # unchanged
 
 
 # ---------------------------------------------------------------------------
 # FastAPI endpoint tests (routing + response shape)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def api_client():
@@ -236,9 +447,12 @@ def api_client():
     ctrl = MagicMock(spec=RLController)
 
     from trainers_server.shared.models import LoadStateResult, SaveStateResult
+
     ctrl.save_state.return_value = SaveStateResult(mode="training")
     ctrl.load_state.return_value = LoadStateResult(mode="training", step=7)
-    ctrl.load_state_with_optimizer.return_value = LoadStateResult(mode="training", step=7)
+    ctrl.load_state_with_optimizer.return_value = LoadStateResult(
+        mode="training", step=7
+    )
 
     app = create_app(controller=ctrl)
     return TestClient(app), ctrl
@@ -270,6 +484,7 @@ class TestEndpoints:
         resp = client.post("/load_state", json={"path": "/ckpt/step-1"})
         assert resp.status_code == 200
         from trainers_server.shared.models import LoadStateDetails
+
         ctrl.load_state.assert_called_once_with(LoadStateDetails(path="/ckpt/step-1"))
 
     def test_load_state_with_optimizer_no_body(self, api_client):
@@ -285,7 +500,10 @@ class TestEndpoints:
         resp = client.post("/load_state_with_optimizer", json={"path": "/ckpt/step-2"})
         assert resp.status_code == 200
         from trainers_server.shared.models import LoadStateDetails
-        ctrl.load_state_with_optimizer.assert_called_once_with(LoadStateDetails(path="/ckpt/step-2"))
+
+        ctrl.load_state_with_optimizer.assert_called_once_with(
+            LoadStateDetails(path="/ckpt/step-2")
+        )
 
     def test_save_state_value_error_returns_400(self, api_client):
         client, ctrl = api_client
