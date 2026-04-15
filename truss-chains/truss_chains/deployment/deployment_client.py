@@ -326,6 +326,9 @@ class DockerChainletService(b10_service.TrussService):
     def predict_url(self) -> str:
         return f"{self._service_url}/v1/models/model:predict"
 
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[dict]:
+        raise NotImplementedError()
+
     def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         raise NotImplementedError()
 
