@@ -670,6 +670,10 @@ def display_training_capacity(remote_provider: BasetenRemote) -> None:
     table.add_column("Limit", justify="right")
     table.add_column("Usage", justify="right")
 
+    if not gpu_capacities:
+        console.print("No Training GPU capacity limits.")
+        return
+
     for item in gpu_capacities:
         table.add_row(
             item.get("gpu_type", ""),

@@ -465,3 +465,15 @@ def test_display_training_capacity(capsys):
 
     assert rows["H100"] == ["H100", "16", "64", "32"]
     assert rows["A10G"] == ["A10G", "0", "8", "0"]
+
+
+def test_display_training_capacity_empty(capsys):
+    """Empty state message is printed when there are no GPU capacities."""
+    mock_api = Mock()
+    mock_api.get_training_capacity.return_value = []
+    mock_remote = Mock()
+    mock_remote.api = mock_api
+
+    display_training_capacity(mock_remote)
+
+    assert "No Training GPU capacity limits." in capsys.readouterr().out
