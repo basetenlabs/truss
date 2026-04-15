@@ -2,6 +2,7 @@ import inspect
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
@@ -26,7 +27,7 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_team_name,
 )
 from truss.cli.utils import common, self_upgrade
-from truss.cli.utils.output import console, error_console
+from truss.cli.utils.output import console, error_console, json_command
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -89,6 +90,28 @@ def _get_truss_from_directory(
 
     truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
     return load(truss_dir, config_path=config_path)
+
+
+def _start_tail(
+    remote: BasetenRemote, model_id: str, version_id: str, in_background: bool
+) -> None:
+    log_watcher = ModelDeploymentLogWatcher(remote.api, model_id, version_id)
+
+    def _tail_logs():
+        try:
+            for log in log_watcher.watch(show_spinner=not in_background):
+                cli_log_utils.output_log(log)
+        except Exception as exc:
+            error_console.print(
+                f"[red]Log tailing stopped due to an error:[/red] {exc}"
+            )
+            raise
+
+    if in_background:
+        thread = threading.Thread(target=_tail_logs, daemon=True)
+        thread.start()
+    else:
+        _tail_logs()
 
 
 def _start_watch_mode(
@@ -643,7 +666,7 @@ def run_python(script, target_directory):
     help=(
         "Deploy as a development model and watch for changes. "
         "Waits for deployment to complete, then starts watching for code changes "
-        "to apply live patches. Cannot be used with --promote, --environment, or --tail."
+        "to apply live patches. Cannot be used with --promote or --environment."
     ),
 )
 @click.option(
@@ -673,8 +696,19 @@ def run_python(script, target_directory):
     default=True,
     help="Keep the development model warm by preventing scale-to-zero while watching. Requires --watch.",
 )
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help=(
+        "Output format. 'json' emits structured JSON to stdout and "
+        "all other output (progress, logs) to stderr."
+    ),
+)
 @common.common_options()
 @click.pass_context
+@json_command
 def push(
     ctx: click.Context,
     target_directory: str,
@@ -700,6 +734,7 @@ def push(
     watch_hot_reload: bool = False,
     no_cache: bool = False,
     watch_no_sleep: bool = True,
+    output_format: str = "text",
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -728,8 +763,6 @@ def push(
             raise click.UsageError(
                 "Cannot use --watch with --environment. Watch mode runs a development deployment."
             )
-        if tail:
-            raise click.UsageError("Cannot use --watch with --tail.")
         # Development deployment for watch mode
         publish = False
         wait = True
@@ -746,11 +779,6 @@ def push(
         console.print(
             "Deploying as a published deployment. Use --watch for a development deployment.",
             style="green",
-        )
-
-    if wait and tail:
-        raise click.UsageError(
-            "Cannot use --wait with --tail. Use --tail by itself to wait for deployment and tail logs."
         )
 
     tr = _get_truss_from_directory(target_directory=target_directory, config=config)
@@ -777,6 +805,8 @@ def push(
         include_git_info = user_config.settings.include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
+    if output_format == "json" and isinstance(remote_provider, BasetenRemote):
+        remote_provider.api.suppress_error_print = True
 
     # model_name from CLI flag (explicit), or fall back to config
     cli_model_name = model_name  # what the user inputted for `--model-name`
@@ -895,7 +925,7 @@ def push(
         labels=labels_dict,
     )
 
-    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+    console.print(f"✨ Model {model_name} was successfully pushed ✨")
 
     if service.is_draft:
         draft_model_text = """
@@ -909,7 +939,7 @@ def push(
 |---------------------------------------------------------------------------------------|
 """
 
-        click.echo(draft_model_text)
+        console.print(draft_model_text)
 
     if environment:
         promotion_text = (
@@ -921,16 +951,29 @@ def push(
     console.print(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
+
+    if tail and isinstance(service, BasetenService):
+        # When combined with --wait/--watch, tail runs in background so the
+        # wait polling loop below can proceed on the main thread.
+        _start_tail(
+            cast(BasetenRemote, remote_provider),
+            service.model_id,
+            service.model_version_id,
+            in_background=wait,
+        )
+
+    last_deployment = None
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
-            for deployment_status in service.poll_deployment_status():
+            for deployment in service.poll_deployment():
+                last_deployment = deployment
+                deployment_status = deployment["status"]
                 if (
                     timeout_seconds is not None
                     and time.time() - start_time > timeout_seconds
                 ):
-                    console.print("Deployment timed out.", style="red")
-                    sys.exit(1)
+                    raise TimeoutError("Deployment timed out.")
 
                 status.update(
                     f"[bold green]Deploying...Current Status: {deployment_status}"
@@ -951,11 +994,11 @@ def push(
                     break
 
                 if deployment_status not in DEPLOYING_STATUSES:
-                    console.print(
-                        f"Deployment failed with status {deployment_status}.",
-                        style="red",
+                    exc = RuntimeError(
+                        f"Deployment failed with status {deployment_status}."
                     )
-                    sys.exit(1)
+                    setattr(exc, "json_data", {"deployment": deployment})
+                    raise exc
 
         # If --watch was used, start watching after deploy success
         if watch_after_push:
@@ -983,13 +1026,17 @@ def push(
                 hot_reload=watch_hot_reload,
             )
 
-    elif tail and isinstance(service, BasetenService):
-        bt_remote = cast(BasetenRemote, remote_provider)
-        log_watcher = ModelDeploymentLogWatcher(
-            bt_remote.api, service.model_id, service.model_version_id
-        )
-        for log in log_watcher.watch():
-            cli_log_utils.output_log(log)
+    if output_format == "json" and isinstance(service, BasetenService):
+        result: dict = {
+            "model_id": service.model_id,
+            "model_version_id": service.model_version_id,
+            "predict_url": service.predict_url,
+            "logs_url": service.logs_url,
+            "is_draft": service.is_draft,
+        }
+        if last_deployment is not None:
+            result["deployment"] = last_deployment
+        print(json.dumps(result, indent=2), file=sys.stdout)
 
 
 @truss_cli.command()
@@ -1065,6 +1112,7 @@ def model_logs(
     required=False,
     help="Temporarily override the name of the model",
 )
+@click.option("--tail", is_flag=True, help="Tail logs while watching.")
 @common.common_options()
 def watch(
     target_directory: str,
@@ -1074,6 +1122,7 @@ def watch(
     no_sleep: bool = True,
     hot_reload: bool = False,
     model_name: Optional[str] = None,
+    tail: bool = False,
 ) -> None:
     """
     Seamless remote development with truss
@@ -1137,6 +1186,9 @@ def watch(
 
     if no_sleep:
         common.start_keepalive(model_hostname, api_key)
+
+    if tail:
+        _start_tail(remote_provider, model_id, dev_version_id, in_background=True)
 
     # Re-resolve the model to get the latest version and truss hash and latest push before watching
     resolved_model, versions = resolve_model_for_watch(

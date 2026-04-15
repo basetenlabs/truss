@@ -1,3 +1,4 @@
+import json
 import threading
 from unittest.mock import MagicMock, Mock, patch
 
@@ -8,6 +9,7 @@ from click.testing import CliRunner
 from truss.cli.cli import truss_cli
 from truss.cli.utils import common
 from truss.remote.baseten.custom_types import OidcInfo, OidcTeamInfo
+from truss.remote.baseten.service import BasetenService
 from truss.remote.truss_remote import RemoteUser
 
 
@@ -437,6 +439,34 @@ def test_watch_without_no_sleep_does_not_start_thread():
     mock_start_keepalive.assert_not_called()
 
 
+def test_watch_with_tail_starts_background_tail():
+    """Test that watch --tail starts tail in background."""
+    resolved_model, versions, dev_version, mock_tr, remote_provider = (
+        _make_watch_mocks()
+    )
+    runner = CliRunner()
+
+    with _patch_watch_common(
+        remote_provider, mock_tr, resolved_model, versions, dev_version
+    ):
+        with patch("truss.cli.utils.common.requests_lib") as mock_requests:
+            mock_requests.post.return_value = Mock(status_code=202)
+            mock_requests.RequestException = requests.RequestException
+            with patch("truss.cli.cli._start_tail") as mock_start_tail:
+                with patch.object(
+                    remote_provider, "sync_truss_to_dev_version_with_model"
+                ):
+                    result = runner.invoke(
+                        truss_cli,
+                        ["watch", "/tmp/fake", "--remote", "baseten", "--tail"],
+                    )
+
+    assert result.exit_code == 0, result.output
+    mock_start_tail.assert_called_once_with(
+        remote_provider, "model_id", "dev_version_id", in_background=True
+    )
+
+
 def test_keepalive_loop_continues_before_max_duration():
     """Keepalive loop should keep running before 24 hours."""
     stop_event = threading.Event()
@@ -793,7 +823,7 @@ def test_push_watch_creates_development_deployment(
     mock_service = MagicMock()
     mock_service.is_draft = True
     mock_service.logs_url = "https://example.com/logs"
-    mock_service.poll_deployment_status.return_value = iter(["MODEL_READY"])
+    mock_service.poll_deployment.return_value = iter([{"status": "MODEL_READY"}])
     remote.push = Mock(return_value=mock_service)
 
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
@@ -884,35 +914,58 @@ def test_push_watch_with_environment_fails():
     )
 
 
-def test_push_watch_with_tail_fails():
-    """Test that --watch with --tail fails."""
-    mock_truss = Mock()
-    mock_truss.spec.config.runtime.transport.kind = "http"
-    mock_truss.spec.config.resources.instance_type = None
-    mock_truss.spec.config.build = None
-    mock_truss.spec.config.trt_llm = None
-
+def test_push_watch_with_tail_starts_background_tail(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --watch with --tail starts tail in background."""
     runner = CliRunner()
 
-    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                "test_truss",
-                "--remote",
-                "remote1",
-                "--model-name",
-                "name",
-                "--watch",
-                "--tail",
-            ],
-        )
+    mock_service = MagicMock(spec=BasetenService)
+    mock_service.is_draft = True
+    mock_service.logs_url = "https://example.com/logs"
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_service.poll_deployment.return_value = iter([{"status": "LOADING_MODEL"}])
+    remote.push = Mock(return_value=mock_service)
 
-    assert result.exit_code == 2
-    assert "Cannot use --watch with --tail" in result.output or (
-        result.exception
-        and "Cannot use --watch with --tail" in str(result.exception.__context__)
+    mock_resolve = Mock(
+        return_value=(
+            {
+                "id": "model_id",
+                "name": "model_name",
+                "hostname": "https://model.api.baseten.co",
+            },
+            [{"id": "version_id", "is_draft": True}],
+        )
+    )
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            with patch("truss.cli.cli.resolve_model_for_watch", mock_resolve):
+                with patch("truss.cli.cli._start_watch_mode"):
+                    with patch("truss.cli.cli._start_tail") as mock_start_tail:
+                        result = runner.invoke(
+                            truss_cli,
+                            [
+                                "push",
+                                str(custom_model_truss_dir_with_pre_and_post),
+                                "--remote",
+                                "baseten",
+                                "--model-name",
+                                "model_name",
+                                "--watch",
+                                "--tail",
+                            ],
+                        )
+
+    assert result.exit_code == 0, result.output
+    mock_start_tail.assert_called_once_with(
+        remote, "model_id", "version_id", in_background=True
     )
 
 
@@ -992,7 +1045,7 @@ def test_push_watch_no_sleep_starts_keepalive(
     mock_service = MagicMock()
     mock_service.is_draft = True
     mock_service.logs_url = "https://example.com/logs"
-    mock_service.poll_deployment_status.return_value = iter(["LOADING_MODEL"])
+    mock_service.poll_deployment.return_value = iter([{"status": "LOADING_MODEL"}])
     remote.push = Mock(return_value=mock_service)
 
     mock_resolve = Mock(
@@ -1036,35 +1089,45 @@ def test_push_watch_no_sleep_starts_keepalive(
     mock_start_watch.assert_called_once()
 
 
-def test_push_wait_with_tail_fails():
-    """Test that --wait with --tail fails."""
-    mock_truss = Mock()
-    mock_truss.spec.config.runtime.transport.kind = "http"
-    mock_truss.spec.config.resources.instance_type = None
-    mock_truss.spec.config.build = None
-    mock_truss.spec.config.trt_llm = None
-
+def test_push_wait_with_tail_starts_background_tail(
+    custom_model_truss_dir_with_pre_and_post,
+    remote,
+    mock_baseten_requests,
+    mock_upload_truss,
+    mock_create_truss_service,
+):
+    """Test that --wait with --tail starts tail in background."""
     runner = CliRunner()
 
-    with patch("truss.cli.cli._get_truss_from_directory", return_value=mock_truss):
-        result = runner.invoke(
-            truss_cli,
-            [
-                "push",
-                "test_truss",
-                "--remote",
-                "remote1",
-                "--model-name",
-                "name",
-                "--wait",
-                "--tail",
-            ],
-        )
+    mock_service = MagicMock(spec=BasetenService)
+    mock_service.is_draft = False
+    mock_service.logs_url = "https://example.com/logs"
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_service.poll_deployment.return_value = iter([{"status": "ACTIVE"}])
+    remote.push = Mock(return_value=mock_service)
 
-    assert result.exit_code == 2
-    assert "Cannot use --wait with --tail" in result.output or (
-        result.exception
-        and "Cannot use --wait with --tail" in str(result.exception.__context__)
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            with patch("truss.cli.cli._start_tail") as mock_start_tail:
+                result = runner.invoke(
+                    truss_cli,
+                    [
+                        "push",
+                        str(custom_model_truss_dir_with_pre_and_post),
+                        "--remote",
+                        "baseten",
+                        "--model-name",
+                        "model_name",
+                        "--wait",
+                        "--tail",
+                    ],
+                )
+
+    assert result.exit_code == 0, result.output
+    mock_start_tail.assert_called_once_with(
+        remote, "model_id", "version_id", in_background=True
     )
 
 
@@ -1083,8 +1146,8 @@ def test_push_watch_enters_watch_mode_on_deploying_status(
     mock_service.is_draft = True
     mock_service.logs_url = "https://example.com/logs"
     # Simulate: BUILDING -> LOADING_MODEL — never reaches ACTIVE
-    mock_service.poll_deployment_status.return_value = iter(
-        ["BUILDING", "LOADING_MODEL"]
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": "BUILDING"}, {"status": "LOADING_MODEL"}]
     )
     remote.push = Mock(return_value=mock_service)
 
@@ -1136,8 +1199,8 @@ def test_push_watch_still_exits_on_deploy_failed(
     mock_service = MagicMock()
     mock_service.is_draft = True
     mock_service.logs_url = "https://example.com/logs"
-    mock_service.poll_deployment_status.return_value = iter(
-        ["BUILDING", "DEPLOY_FAILED"]
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": "BUILDING"}, {"status": "DEPLOY_FAILED"}]
     )
     remote.push = Mock(return_value=mock_service)
 
@@ -1232,3 +1295,91 @@ def test_watch_model_name_flag_overrides_config(
     # The flag value should be used, not the config value
     first_call_args = mock_resolve.call_args_list[0]
     assert first_call_args[0][1] == "flag-name"
+
+
+def _make_mock_service(**overrides):
+    mock_service = MagicMock(spec=BasetenService)
+    mock_service.is_draft = False
+    mock_service.model_id = "model_id"
+    mock_service.model_version_id = "version_id"
+    mock_service.predict_url = (
+        "https://model.api.baseten.co/deployment/version_id/predict"
+    )
+    mock_service.logs_url = "https://app.baseten.co/models/model_id/logs/version_id"
+    for k, v in overrides.items():
+        setattr(mock_service, k, v)
+    return mock_service
+
+
+def _invoke_push_json(runner, truss_dir, remote, extra_args=None):
+    args = [
+        "push",
+        str(truss_dir),
+        "--remote",
+        "baseten",
+        "--model-name",
+        "model_name",
+        "--output",
+        "json",
+    ]
+    if extra_args:
+        args.extend(extra_args)
+
+    with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
+        remote.api.get_teams = Mock(return_value={})
+        with patch("truss.cli.cli.resolve_model_team_name", return_value=(None, None)):
+            return runner.invoke(truss_cli, args)
+
+
+def test_push_json_output_success(custom_model_truss_dir_with_pre_and_post, remote):
+    runner = CliRunner()
+    remote.push = Mock(return_value=_make_mock_service())
+    result = _invoke_push_json(runner, custom_model_truss_dir_with_pre_and_post, remote)
+
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["model_id"] == "model_id"
+    assert data["model_version_id"] == "version_id"
+    assert "predict_url" in data
+    assert "logs_url" in data
+    assert data["is_draft"] is False
+    assert "deployment" not in data
+
+
+def test_push_json_output_wait_success(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    deployment_response = {"status": "ACTIVE", "id": "deploy_id", "replicas": 1}
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter([deployment_response])
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["model_id"] == "model_id"
+    assert data["deployment"] == deployment_response
+
+
+def test_push_json_output_wait_deploy_failed(
+    custom_model_truss_dir_with_pre_and_post, remote
+):
+    runner = CliRunner()
+    failed_deployment = {"status": "DEPLOY_FAILED", "id": "deploy_id", "error": "OOM"}
+    mock_service = _make_mock_service()
+    mock_service.poll_deployment.return_value = iter(
+        [{"status": "BUILDING"}, failed_deployment]
+    )
+    remote.push = Mock(return_value=mock_service)
+    result = _invoke_push_json(
+        runner, custom_model_truss_dir_with_pre_and_post, remote, ["--wait"]
+    )
+
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert "error" in data
+    assert "DEPLOY_FAILED" in data["error"]["message"]
+    assert data["error"]["deployment"] == failed_deployment
