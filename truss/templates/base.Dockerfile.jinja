@@ -126,6 +126,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends openssh-serv
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* \
     && chmod +x /usr/local/bin/baseten-ssh-server.sh \
+    && mkdir -p /run/sshd \
     && sed -i 's/^app:!/app:*/' /etc/shadow
     {%- endif %}
 {% endblock %}

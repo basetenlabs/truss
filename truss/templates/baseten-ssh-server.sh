@@ -58,8 +58,6 @@ start_ssh_server() {
         ssh-keygen -t rsa -b 4096 -f "$ssh_dir/bt_ssh_host_rsa_key" -N "" -q
     fi
 
-    mkdir -p /run/sshd
-
     echo "$subject" > "$ssh_dir/bt_authorized_principals"
 
     local sftp_server=""

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SSH helper for Baseten workloads (training jobs and inference models).
 
-This script is installed to ~/.ssh/baseten/proxy-command.py by `truss ssh setup`.
+This script is installed to ~/.ssh/baseten/proxy-command.py by `truss train ssh setup`.
 It is fully self-contained (only Python stdlib imports, no truss dependency).
 
 It has two modes, both invoked by SSH automatically:
