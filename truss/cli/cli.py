@@ -27,7 +27,7 @@ from truss.cli.resolvers.model_team_resolver import (
     resolve_model_team_name,
 )
 from truss.cli.utils import common, self_upgrade
-from truss.cli.utils.output import console, error_console
+from truss.cli.utils.output import console, error_console, json_command
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -696,7 +696,18 @@ def run_python(script, target_directory):
     default=False,
     help="Keep the development model warm by preventing scale-to-zero while watching. Requires --watch.",
 )
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help=(
+        "Output format. 'json' emits structured JSON to stdout and "
+        "all other output (progress, logs) to stderr."
+    ),
+)
 @common.common_options()
+@json_command
 def push(
     target_directory: str,
     config: Optional[str],
@@ -721,6 +732,7 @@ def push(
     watch_hot_reload: bool = False,
     no_cache: bool = False,
     watch_no_sleep: bool = False,
+    output_format: str = "text",
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -791,6 +803,8 @@ def push(
         include_git_info = user_config.settings.include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
+    if output_format == "json" and isinstance(remote_provider, BasetenRemote):
+        remote_provider.api.suppress_error_print = True
 
     # model_name from CLI flag (explicit), or fall back to config
     cli_model_name = model_name  # what the user inputted for `--model-name`
@@ -909,7 +923,7 @@ def push(
         labels=labels_dict,
     )
 
-    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+    console.print(f"✨ Model {model_name} was successfully pushed ✨")
 
     if service.is_draft:
         draft_model_text = """
@@ -923,7 +937,7 @@ def push(
 |---------------------------------------------------------------------------------------|
 """
 
-        click.echo(draft_model_text)
+        console.print(draft_model_text)
 
     if environment:
         promotion_text = (
@@ -946,16 +960,18 @@ def push(
             in_background=wait,
         )
 
+    last_deployment = None
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
-            for deployment_status in service.poll_deployment_status():
+            for deployment in service.poll_deployment():
+                last_deployment = deployment
+                deployment_status = deployment["status"]
                 if (
                     timeout_seconds is not None
                     and time.time() - start_time > timeout_seconds
                 ):
-                    console.print("Deployment timed out.", style="red")
-                    sys.exit(1)
+                    raise TimeoutError("Deployment timed out.")
 
                 status.update(
                     f"[bold green]Deploying...Current Status: {deployment_status}"
@@ -976,11 +992,11 @@ def push(
                     break
 
                 if deployment_status not in DEPLOYING_STATUSES:
-                    console.print(
-                        f"Deployment failed with status {deployment_status}.",
-                        style="red",
+                    exc = RuntimeError(
+                        f"Deployment failed with status {deployment_status}."
                     )
-                    sys.exit(1)
+                    setattr(exc, "json_data", {"deployment": deployment})
+                    raise exc
 
         # If --watch was used, start watching after deploy success
         if watch_after_push:
@@ -1007,6 +1023,18 @@ def push(
                 error_console=error_console,
                 hot_reload=watch_hot_reload,
             )
+
+    if output_format == "json" and isinstance(service, BasetenService):
+        result: dict = {
+            "model_id": service.model_id,
+            "model_version_id": service.model_version_id,
+            "predict_url": service.predict_url,
+            "logs_url": service.logs_url,
+            "is_draft": service.is_draft,
+        }
+        if last_deployment is not None:
+            result["deployment"] = last_deployment
+        print(json.dumps(result, indent=2), file=sys.stdout)
 
 
 @truss_cli.command()
