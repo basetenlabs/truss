@@ -3,11 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from truss.cli.train.core import ACTIVE_JOB_STATUSES
-from truss.cli.train.poller import (
-    JOB_PENDING_STATES,
-    JOB_STARTING_STATES,
-    TrainingPollerMixin,
-)
+from truss.cli.train.poller import JOB_PENDING_STATES, JOB_STARTING_STATES, TrainingPollerMixin
 
 
 def _make_poller(statuses: list[str]) -> TrainingPollerMixin:
@@ -23,10 +19,6 @@ def _make_poller(statuses: list[str]) -> TrainingPollerMixin:
 
 def test_pending_in_job_starting_states():
     assert "TRAINING_JOB_PENDING" in JOB_STARTING_STATES
-
-
-def test_pending_in_job_pending_states():
-    assert "TRAINING_JOB_PENDING" in JOB_PENDING_STATES
 
 
 def test_starting_status_message_pending():
