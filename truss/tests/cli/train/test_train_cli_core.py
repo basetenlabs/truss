@@ -457,16 +457,11 @@ def test_display_training_capacity(capsys):
     display_training_capacity(mock_remote)
 
     lines = capsys.readouterr().out.splitlines()
-    h100_cells = [
-        c.strip()
-        for c in next(line for line in lines if "H100" in line).split("│")
-        if c.strip()
-    ]
-    a10g_cells = [
-        c.strip()
-        for c in next(line for line in lines if "A10G" in line).split("│")
-        if c.strip()
-    ]
+    rows = {
+        cells[0]: cells
+        for line in lines
+        if (cells := [c.strip() for c in line.split("│") if c.strip()])
+    }
 
-    assert h100_cells == ["H100", "16", "64", "32"]
-    assert a10g_cells == ["A10G", "0", "8", "0"]
+    assert rows["H100"] == ["H100", "16", "64", "32"]
+    assert rows["A10G"] == ["A10G", "0", "8", "0"]
