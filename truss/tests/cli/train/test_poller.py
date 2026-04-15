@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from truss.cli.train.core import ACTIVE_JOB_STATUSES
-from truss.cli.train.poller import JOB_PENDING_STATES, JOB_STARTING_STATES, TrainingPollerMixin
+from truss.cli.train.poller import JOB_STARTING_STATES, TrainingPollerMixin
 
 
 def _make_poller(statuses: list[str]) -> TrainingPollerMixin:
