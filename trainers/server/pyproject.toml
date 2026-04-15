@@ -6,7 +6,7 @@ build-backend = "uv_build"
 name = "trainers-server"
 version = "0.1.0"
 description = "Training worker server for the trainers SDK"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi",
     "pydantic>=2",
@@ -23,8 +23,11 @@ worker = [
 ]
 
 [tool.uv]
+# megatron-bridge's override-dependencies are not propagated by uv (uv issue #13069);
+# forward the transformers pin here so the whole dep tree stays within its range.
 override-dependencies = [
     "vllm>=0.12.0; sys_platform == 'linux'",
+    "transformers>=5.0.0,<=5.3.0",
 ]
 
 [tool.uv.sources]
