@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import concurrent.futures
+from functools import lru_cache
 from types import TracebackType
 from typing import Callable, Generic, TypeVar
-
-from functools import lru_cache
 
 import httpx
 from pydantic import BaseModel, Field
@@ -25,6 +24,7 @@ from trainers.models import (
 
 class SampledSequence(BaseModel):
     """A single generated sequence with token IDs and optional logprobs."""
+
     tokens: list[int] = Field(default_factory=list)
     logprobs: list[float] | None = None
     stop_reason: str = "length"
@@ -32,7 +32,9 @@ class SampledSequence(BaseModel):
 
 class SampleResult(BaseModel):
     """Token-level sampling result."""
+
     sequences: list[SampledSequence] = Field(default_factory=list)
+
 
 T = TypeVar("T")
 
@@ -51,6 +53,7 @@ class OperationFuture(Generic[T]):
 
     def __await__(self):
         import asyncio
+
         return asyncio.to_thread(self.result).__await__()
 
 
@@ -58,6 +61,7 @@ class OperationFuture(Generic[T]):
 def _load_tokenizer(model_name: str):
     """Load and cache a HuggingFace tokenizer."""
     from transformers import AutoTokenizer
+
     return AutoTokenizer.from_pretrained(model_name)
 
 
@@ -138,9 +142,7 @@ class TrainingClient:
         return self._submit(_call)
 
     def save_weights_and_get_sampling_client(
-        self,
-        name: str | None = None,
-        ttl_seconds: int | None = None,
+        self, name: str | None = None, ttl_seconds: int | None = None
     ) -> OperationFuture[SaveWeightsResponse]:
         body = {"path": name, "ttl_seconds": ttl_seconds}
 
@@ -159,7 +161,9 @@ class TrainingClient:
         body = {
             "prompt": prompt.model_dump(mode="json"),
             "num_samples": num_samples,
-            "sampling_params": (sampling_params or SamplingParams()).model_dump(mode="json"),
+            "sampling_params": (sampling_params or SamplingParams()).model_dump(
+                mode="json"
+            ),
         }
 
         def _call() -> SampleResult:
@@ -168,7 +172,9 @@ class TrainingClient:
 
         return self._submit(_call)
 
-    def save_state(self, name: str, ttl_seconds: int | None = None) -> OperationFuture[SaveWeightsResponse]:
+    def save_state(
+        self, name: str, ttl_seconds: int | None = None
+    ) -> OperationFuture[SaveWeightsResponse]:
         body = {"path": name, "ttl_seconds": ttl_seconds}
 
         def _call() -> SaveWeightsResponse:
@@ -210,25 +216,35 @@ class TrainingClient:
         raise NotImplementedError("forward() is not yet implemented")
 
     def forward_backward_custom(
-        self,
-        data: list[Datum],
-        loss_fn: str,
+        self, data: list[Datum], loss_fn: str
     ) -> OperationFuture[ForwardBackwardOutput]:
         """Forward-backward with a custom PyTorch loss function."""
         raise NotImplementedError("forward_backward_custom() is not yet implemented")
 
     def save_weights_for_sampler(
-        self,
-        name: str,
-        ttl_seconds: int | None = None,
+        self, name: str, ttl_seconds: int | None = None
     ) -> OperationFuture[SaveWeightsResponse]:
         """Save current weights for use by a SamplingClient."""
         raise NotImplementedError("save_weights_for_sampler() is not yet implemented")
 
     def load_state(self, path: str) -> OperationFuture[LoadWeightsResponse]:
-        """Load model weights from a checkpoint path."""
-        raise NotImplementedError("load_state() is not yet implemented")
+        """Load model weights from a checkpoint path (optimizer resets)."""
+        body = {"path": path}
 
-    def load_state_with_optimizer(self, path: str) -> OperationFuture[LoadWeightsResponse]:
+        def _call() -> LoadWeightsResponse:
+            resp = self._post("/load_state", json=body)
+            return LoadWeightsResponse.model_validate(resp.json())
+
+        return self._submit(_call)
+
+    def load_state_with_optimizer(
+        self, path: str
+    ) -> OperationFuture[LoadWeightsResponse]:
         """Load model weights and optimizer state from a checkpoint path."""
-        raise NotImplementedError("load_state_with_optimizer() is not yet implemented")
+        body = {"path": path}
+
+        def _call() -> LoadWeightsResponse:
+            resp = self._post("/load_state_with_optimizer", json=body)
+            return LoadWeightsResponse.model_validate(resp.json())
+
+        return self._submit(_call)

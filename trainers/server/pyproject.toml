@@ -45,4 +45,5 @@ explicit = true
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    "tinker>=0.13.1,<0.14",
 ]

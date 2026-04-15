@@ -26,10 +26,7 @@ class ServiceClient:
     """
 
     def __init__(
-        self,
-        base_url: str | None = None,
-        *,
-        api_key: str | None = None,
+        self, base_url: str | None = None, *, api_key: str | None = None
     ) -> None:
         self._base_url = base_url or os.environ.get("TRAINERS_BASE_URL", "")
         self._api_key = api_key or os.environ.get("TRAINERS_API_KEY")
@@ -62,27 +59,41 @@ class ServiceClient:
         )
 
     def create_training_client_from_state(
-        self,
-        path: str,
+        self, path: str, *, base_url: str | None = None, timeout: float = 600.0
     ) -> TrainingClient:
-        """Resume training from a saved checkpoint (weights only)."""
-        raise NotImplementedError(
-            "create_training_client_from_state() is not yet implemented"
-        )
+        """Return a TrainingClient for a trainer pod started from a checkpoint.
+
+        The checkpoint is loaded at pod startup via BT_LOAD_CHECKPOINT_DIR (set
+        by the plumbing layer). The path argument is accepted for API compatibility
+        but is not used by the SDK — the pod has already loaded the checkpoint
+        before this method is called.
+
+        Args:
+            path: Checkpoint path (used by the plumbing layer to configure the pod).
+            base_url: URL of the running trainer pod. Defaults to self._base_url.
+            timeout: HTTP timeout for training operations.
+        """
+        url = base_url or self._base_url
+        return TrainingClient(url, api_key=self._api_key, timeout=timeout)
 
     def create_training_client_from_state_with_optimizer(
-        self,
-        path: str,
+        self, path: str, *, base_url: str | None = None, timeout: float = 600.0
     ) -> TrainingClient:
-        """Resume training from a saved checkpoint (weights + optimizer state)."""
-        raise NotImplementedError(
-            "create_training_client_from_state_with_optimizer() is not yet implemented"
-        )
+        """Return a TrainingClient for a trainer pod started from a checkpoint.
+
+        Like create_training_client_from_state but the pod also restores optimizer
+        state (trainer_state.pt), so training resumes from the exact same step.
+
+        Args:
+            path: Checkpoint path (used by the plumbing layer to configure the pod).
+            base_url: URL of the running trainer pod. Defaults to self._base_url.
+            timeout: HTTP timeout for training operations.
+        """
+        url = base_url or self._base_url
+        return TrainingClient(url, api_key=self._api_key, timeout=timeout)
 
     def create_sampling_client(
-        self,
-        base_model: str | None = None,
-        model_path: str | None = None,
+        self, base_model: str | None = None, model_path: str | None = None
     ) -> SamplingClient:
         """Create a sampling client for text generation.
 
@@ -94,6 +105,4 @@ class ServiceClient:
 
     def get_server_capabilities(self) -> dict:
         """Query the backend for supported features."""
-        raise NotImplementedError(
-            "get_server_capabilities() is not yet implemented"
-        )
+        raise NotImplementedError("get_server_capabilities() is not yet implemented")
