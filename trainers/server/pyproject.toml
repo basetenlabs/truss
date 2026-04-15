@@ -31,6 +31,9 @@ override-dependencies = [
 ]
 no-build-isolation-package = ["transformer-engine"]
 
+[tool.uv.extra-build-dependencies]
+transformer-engine = ["setuptools", "wheel", "pybind11", "torch"]
+
 [tool.uv.sources]
 megatron-bridge = { path = "vendor/megatron-bridge" }
 torch = [
