@@ -23,16 +23,9 @@ worker = [
 ]
 
 [tool.uv]
-# transformer-engine must match the commit pinned by megatron-bridge; override-dependencies
-# from path-deps are ignored by uv, so we forward it here explicitly.
 override-dependencies = [
     "vllm>=0.12.0; sys_platform == 'linux'",
-    "transformer-engine @ git+https://github.com/NVIDIA/TransformerEngine.git@71bbefbf153418f943640df0f7373625dc93fa46",
 ]
-no-build-isolation-package = ["transformer-engine"]
-
-[tool.uv.extra-build-dependencies]
-transformer-engine = ["setuptools", "wheel", "pybind11", "torch"]
 
 [tool.uv.sources]
 megatron-bridge = { path = "vendor/megatron-bridge" }
