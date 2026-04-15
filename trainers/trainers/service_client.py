@@ -90,7 +90,7 @@ class ServiceClient:
             base_model: HuggingFace model ID for base model sampling.
             model_path: Path to saved weights for fine-tuned sampling.
         """
-        return SamplingClient(self._base_url, api_key=self._api_key)
+        return SamplingClient(self._base_url, api_key=self._api_key, base_model=base_model)
 
     def get_server_capabilities(self) -> dict:
         """Query the backend for supported features."""
