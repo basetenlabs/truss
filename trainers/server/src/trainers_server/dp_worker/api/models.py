@@ -2,6 +2,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+
 class StatusResult(BaseModel):
     mode: Literal["training", "inference"]
     step: int
@@ -27,5 +28,6 @@ class TrainingServerConfig(BaseModel):
 
 class RLControllerConfig(BaseModel):
     model_id: str = "Qwen/Qwen3-0.6B"
+    lora_rank: int = 0  # 0 = full fine-tuning, >0 = LoRA
     inference: InferenceServerConfig = Field(default_factory=InferenceServerConfig)
     training: TrainingServerConfig = Field(default_factory=TrainingServerConfig)
