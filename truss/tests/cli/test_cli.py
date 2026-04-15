@@ -922,7 +922,7 @@ def test_push_watch_with_tail_starts_background_tail(
     mock_service.logs_url = "https://example.com/logs"
     mock_service.model_id = "model_id"
     mock_service.model_version_id = "version_id"
-    mock_service.poll_deployment_status.return_value = iter(["LOADING_MODEL"])
+    mock_service.poll_deployment.return_value = iter([{"status": "LOADING_MODEL"}])
     remote.push = Mock(return_value=mock_service)
 
     mock_resolve = Mock(
@@ -1099,7 +1099,7 @@ def test_push_wait_with_tail_starts_background_tail(
     mock_service.logs_url = "https://example.com/logs"
     mock_service.model_id = "model_id"
     mock_service.model_version_id = "version_id"
-    mock_service.poll_deployment_status.return_value = iter(["ACTIVE"])
+    mock_service.poll_deployment.return_value = iter([{"status": "ACTIVE"}])
     remote.push = Mock(return_value=mock_service)
 
     with patch("truss.cli.cli.RemoteFactory.create", return_value=remote):
