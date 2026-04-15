@@ -87,7 +87,13 @@ def _handle_post_create_logic(
     project_id, job_id = job_resp["training_project"]["id"], job_resp["id"]
     project_name = job_resp["training_project"]["name"]
 
-    if job_resp.get("current_status", None) == "TRAINING_JOB_QUEUED":
+    if job_resp.get("current_status") == "TRAINING_JOB_PENDING":
+        console.print(
+            f"🟡 Training job is pending — waiting for GPU capacity. "
+            f"Check status: 'truss train view --job-id={job_id}'.",
+            style="yellow",
+        )
+    elif job_resp.get("current_status") == "TRAINING_JOB_QUEUED":
         console.print(
             f"🟢 Training job is queued. You can check the status of your job by running 'truss train view --job-id={job_id}'.",
             style="green",
