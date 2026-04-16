@@ -3,6 +3,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from truss.base.truss_config import (
+    AdditionalAutoscalingConfig,
+    AutoscalingMetric,
+    AutoscalingSettings,
+)
 from truss.remote.baseten.core import (
     ModelVersionHandle,
     create_llm_service,
@@ -217,7 +222,6 @@ def test_push_llm_full_flow(custom_model_truss_dir_with_pre_and_post, remote):
         result = remote.push_llm(
             th,
             "my-llm-model",
-            metadata={"key": "val"},
         )
 
         assert isinstance(result, BasetenService)
@@ -230,7 +234,6 @@ def test_push_llm_full_flow(custom_model_truss_dir_with_pre_and_post, remote):
         assert kwargs["model_name"] == "my-llm-model"
         assert kwargs["llm_config"]["checkpoint_name"] == "unsloth/Llama-3.2-3B-Instruct"
         assert kwargs["model_id"] is None
-        assert kwargs["metadata"] == {"key": "val"}
 
 
 def test_push_llm_existing_model(custom_model_truss_dir_with_pre_and_post, remote):
@@ -292,8 +295,12 @@ def test_push_llm_with_autoscaling(custom_model_truss_dir_with_pre_and_post, rem
         )
 
         _, kwargs = mock_create.call_args
-        assert kwargs["autoscaling_settings"] == {"min_replica": 1, "max_replica": 5}
-        assert kwargs["additional_autoscaling_config"]["metrics"][0]["target"] == 50000
+        assert kwargs["autoscaling_settings"] == AutoscalingSettings(
+            min_replica=1, max_replica=5
+        )
+        assert kwargs["additional_autoscaling_config"] == AdditionalAutoscalingConfig(
+            metrics=[AutoscalingMetric(name="in_flight_tokens", target=50000)]
+        )
 
 
 def test_push_llm_extracts_resources_from_config(

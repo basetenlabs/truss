@@ -543,6 +543,52 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
         return self
 
 
+class AutoscalingSettings(pydantic.BaseModel):
+    """Autoscaling settings for a deployment.
+    All fields are optional; only provided fields are applied.
+    """
+
+    min_replica: Optional[int] = pydantic.Field(
+        default=None, description="Minimum number of replicas.", examples=[0]
+    )
+    max_replica: Optional[int] = pydantic.Field(
+        default=None, description="Maximum number of replicas.", examples=[7]
+    )
+    autoscaling_window: Optional[int] = pydantic.Field(
+        default=None,
+        description="Timeframe in seconds of traffic considered for autoscaling decisions.",
+        examples=[600],
+    )
+    scale_down_delay: Optional[int] = pydantic.Field(
+        default=None,
+        description="Waiting period in seconds before scaling down any active replica.",
+        examples=[120],
+    )
+    concurrency_target: Optional[int] = pydantic.Field(
+        default=None,
+        description="Number of requests per replica before scaling up.",
+        examples=[2],
+    )
+    target_utilization_percentage: Optional[int] = pydantic.Field(
+        default=None,
+        description="Target utilization percentage for scaling up/down.",
+        examples=[70],
+    )
+
+
+class AutoscalingMetric(pydantic.BaseModel):
+    name: str
+    target: float
+
+
+class AdditionalAutoscalingConfig(pydantic.BaseModel):
+    """Additional autoscaling configuration for in-flight token metrics."""
+
+    metrics: list[AutoscalingMetric] = pydantic.Field(
+        ..., description="List of metric targets for autoscaling."
+    )
+
+
 class HealthChecks(custom_types.ConfigModel):
     """Custom health check configuration for your deployments."""
 
@@ -1162,17 +1208,29 @@ class TrussConfig(custom_types.ConfigModel):
         description="TensorRT-LLM configuration for optimized LLM inference.",
     )
 
-    llm_config: Optional[dict[str, Any]] = None
-    llm_version: str = "1.0"
-    autoscaling_settings: Optional[dict[str, Any]] = None
-    additional_autoscaling_config: Optional[dict[str, Any]] = None
-
-
     # deploying from checkpoint
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
         default=None,
         description="Configuration for deploying from training checkpoints.",
     )
+
+    llm_config: Optional[dict[str, Any]] = pydantic.Field(
+        default=None,
+        description="Configuration options for LLM deployments.",
+    )
+    llm_version: str = pydantic.Field(
+        default="",
+        description="The version of the LLM deployment stack.",
+    )
+    autoscaling_settings: Optional[AutoscalingSettings] = pydantic.Field(
+        default=None,
+        description="Autoscaling settings for a deployment.",
+    )
+    additional_autoscaling_config: Optional[AdditionalAutoscalingConfig] = pydantic.Field(
+        default=None,
+        description="Additional autoscaling configuration",
+    )
+
 
     # Internal / Legacy.
     input_type: str = "Any"
