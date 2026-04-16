@@ -27,8 +27,9 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
 
+QUEUED_JOB_STATUSES = ["TRAINING_JOB_PENDING"]
+
 ACTIVE_JOB_STATUSES = [
-    "TRAINING_JOB_PENDING",
     "TRAINING_JOB_RUNNING",
     "TRAINING_JOB_CREATED",
     "TRAINING_JOB_DEPLOYING",
@@ -198,6 +199,13 @@ def view_training_details(
     else:
         projects = remote_provider.api.list_training_projects()
         display_training_projects(projects, remote_provider.remote_url)
+        queued_jobs = remote_provider.api.search_training_jobs(
+            statuses=QUEUED_JOB_STATUSES
+        )
+        if queued_jobs:
+            display_training_jobs(
+                queued_jobs, remote_provider.remote_url, title="Queued Training Jobs"
+            )
         active_jobs = remote_provider.api.search_training_jobs(
             statuses=ACTIVE_JOB_STATUSES
         )
@@ -205,7 +213,7 @@ def view_training_details(
             display_training_jobs(
                 active_jobs, remote_provider.remote_url, title="Active Training Jobs"
             )
-        else:
+        if not queued_jobs and not active_jobs:
             console.print("No active training jobs.", style="yellow")
 
 
