@@ -1,0 +1,55 @@
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[project]
+name = "trainers-server"
+version = "0.1.0"
+description = "Training worker server for the trainers SDK"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "pydantic>=2",
+    "httpx",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+worker = [
+    "megatron-bridge",
+    "torch",
+    "transformers",
+    "vllm>=0.9",
+]
+dev = [
+    "pytest",
+    "httpx",  # required by FastAPI TestClient (starlette >= 0.20)
+]
+
+[tool.uv]
+override-dependencies = [
+    "vllm>=0.12.0; sys_platform == 'linux'",
+]
+
+[tool.uv.sources]
+megatron-bridge = { path = "vendor/megatron-bridge" }
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+triton = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[tool.pytest.ini_options]
+# Allow importing trainers_server without installing the package.
+pythonpath = ["src", "tests"]
+# tests/conftest.py is in trainers/server/tests/, tell pytest where to find it.
+testpaths = ["tests"]
+markers = [
+    "gpu: marks tests that require CUDA GPUs",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

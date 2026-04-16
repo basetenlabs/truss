@@ -7,3 +7,6 @@
 [submodule "trainers/server/vendor/megatron-bridge"]
 	path = trainers/server/vendor/megatron-bridge
 	url = https://github.com/NVIDIA-NeMo/Megatron-Bridge.git
+[submodule "trainers-megatron-bridge/server/vendor/megatron-bridge"]
+	path = trainers-megatron-bridge/server/vendor/megatron-bridge
+	url = https://github.com/NVIDIA-NeMo/Megatron-Bridge.git
