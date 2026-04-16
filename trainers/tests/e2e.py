@@ -28,12 +28,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 # ── Test scripts (embedded, run inside cluster pods) ──────────────
 
 SMOKE_SCRIPT = r'''
-import json, sys, time, httpx
+import sys, time, httpx
 TIMEOUT = 300.0
 base_url = sys.argv[1]
 client = httpx.Client(timeout=TIMEOUT)
+adam = {"learning_rate": 5e-6, "beta1": 0.9, "beta2": 0.95, "eps": 1e-12,
+        "weight_decay": 0.0, "grad_clip_norm": 0.0}
 
-print("[1/6] Health check")
+# ── [1/7] Health ────────────────────────────────────────────────────
+print("[1/7] Health check")
 for attempt in range(60):
     try:
         if client.get(f"{base_url}/health").status_code == 200:
@@ -43,47 +46,102 @@ for attempt in range(60):
 else:
     print("  FAILED: worker not healthy after 5 min"); sys.exit(1)
 
-print("[2/6] forward_backward")
+# ── [2/7] cross_entropy sanity ──────────────────────────────────────
+print("[2/7] forward_backward (cross_entropy)")
 resp = client.post(f"{base_url}/forward_backward", json={
     "data": [
-        {"model_input": {"chunks": [{"type": "encoded_text", "tokens": list(range(10))}]},
-         "loss_fn_inputs": {"reward": {"data": [1.0], "dtype": "float32", "shape": [1]}}},
-        {"model_input": {"chunks": [{"type": "encoded_text", "tokens": list(range(10, 20))}]},
-         "loss_fn_inputs": {"reward": {"data": [0.5], "dtype": "float32", "shape": [1]}}},
-    ], "loss_fn": "cross_entropy",
-})
-assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
-print(f"  loss={resp.json().get('metrics', {}).get('loss', '?')}")
-
-print("[3/6] forward_backward (grad accum)")
-resp = client.post(f"{base_url}/forward_backward", json={
-    "data": [{"model_input": {"chunks": [{"type": "encoded_text", "tokens": list(range(20, 30))}]},
-              "loss_fn_inputs": {"reward": {"data": [1.0], "dtype": "float32", "shape": [1]}}}],
+        {"model_input": {"chunks": [{"type": "encoded_text", "tokens": list(range(1, 12))}]},
+         "loss_fn_inputs": {}},
+        {"model_input": {"chunks": [{"type": "encoded_text", "tokens": list(range(5, 16))}]},
+         "loss_fn_inputs": {}},
+    ],
     "loss_fn": "cross_entropy",
 })
 assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
-print(f"  loss={resp.json().get('metrics', {}).get('loss', '?')}")
+r = resp.json()
+assert "loss" in r.get("metrics", {}), f"missing loss in metrics: {r}"
+assert r.get("loss_fn_outputs") and "loss" in r["loss_fn_outputs"][0], \
+    f"expected loss_fn_outputs[0]['loss'], got: {r.get('loss_fn_outputs')}"
+print(f"  loss={r['metrics']['loss']:.4f}")
 
-print("[4/6] optim_step")
-resp = client.post(f"{base_url}/optim_step", json={
-    "adam_params": {"learning_rate": 5e-6, "beta1": 0.9, "beta2": 0.95, "eps": 1e-12, "weight_decay": 0.0, "grad_clip_norm": 0.0}
-})
+# ── [3/7] optim_step ────────────────────────────────────────────────
+print("[3/7] optim_step")
+resp = client.post(f"{base_url}/optim_step", json={"adam_params": adam})
 assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
-print(f"  step={resp.json().get('metrics', {}).get('step', '?')}")
+assert resp.json()["metrics"]["step"] == 1, f"expected step=1, got: {resp.json()}"
+print(f"  step={resp.json()['metrics']['step']}")
 
-print("[5/6] save_weights_and_get_sampling_client")
+# ── [4/7] to_inference ──────────────────────────────────────────────
+print("[4/7] to_inference")
 resp = client.post(f"{base_url}/to_inference")
 assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
-print(f"  mode={resp.json().get('mode', '?')}")
+assert resp.json()["mode"] == "inference", f"expected mode=inference: {resp.json()}"
+print("  mode=inference")
 
-print("[6/6] sample (token-level)")
+# ── [5/7] sample — verify logprobs returned ──────────────────────────
+print("[5/7] sample (verify logprobs)")
+prompt_tokens = list(range(1, 9))  # 8 tokens as prompt
 resp = client.post(f"{base_url}/sample", json={
-    "prompt": {"chunks": [{"type": "encoded_text", "tokens": list(range(10))}]},
-    "num_samples": 1, "sampling_params": {"max_tokens": 32, "temperature": 0.0, "top_p": 1.0},
+    "prompt": {"chunks": [{"type": "encoded_text", "tokens": prompt_tokens}]},
+    "num_samples": 1,
+    "sampling_params": {"max_tokens": 16, "temperature": 1.0, "top_p": 1.0},
 })
 assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
-seqs = resp.json().get("sequences", [])
-if seqs: print(f"  tokens: {seqs[0].get('tokens', [])[:20]}...")
+seqs = resp.json()["sequences"]
+assert seqs, "no sequences returned"
+seq = seqs[0]
+gen_tokens = seq["tokens"]
+gen_logprobs = seq["logprobs"]
+assert gen_logprobs is not None, "logprobs not returned from sample — vLLM logprobs not wired up"
+assert len(gen_logprobs) == len(gen_tokens), \
+    f"logprob/token length mismatch: {len(gen_logprobs)} vs {len(gen_tokens)}"
+assert all(lp <= 0.0 for lp in gen_logprobs), \
+    f"logprobs must be <= 0 (log probabilities), got: {gen_logprobs}"
+print(f"  gen_tokens={gen_tokens[:8]}")
+print(f"  gen_logprobs={[f'{lp:.3f}' for lp in gen_logprobs[:8]]}")
+
+# ── [6/7] importance_sampling forward_backward ───────────────────────
+# Construct the datum exactly as the training loop does:
+#   model_input  = prompt_tokens + gen_tokens[:-1]
+#   target_tokens = [0]*ob_len + gen_tokens          (0 = no loss at prompt positions)
+#   logprobs      = [0.0]*ob_len + gen_logprobs      (old-policy logprobs)
+#   advantages    = [0.0]*ob_len + [adv]*comp_len
+print("[6/7] forward_backward (importance_sampling)")
+ob_len = len(prompt_tokens) - 1   # prompt positions with no loss
+model_input_tokens = prompt_tokens + gen_tokens[:-1]
+target_tokens = [0] * ob_len + gen_tokens
+padded_logprobs = [0.0] * ob_len + gen_logprobs
+padded_advantages = [0.0] * ob_len + [0.5] * len(gen_tokens)
+T = len(target_tokens)
+
+resp = client.post(f"{base_url}/forward_backward", json={
+    "data": [{
+        "model_input": {"chunks": [{"type": "encoded_text", "tokens": model_input_tokens}]},
+        "loss_fn_inputs": {
+            "target_tokens": {"data": target_tokens, "dtype": "int64",   "shape": [T]},
+            "logprobs":      {"data": padded_logprobs, "dtype": "float32", "shape": [T]},
+            "advantages":    {"data": padded_advantages, "dtype": "float32", "shape": [T]},
+        },
+    }],
+    "loss_fn": "importance_sampling",
+})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+r = resp.json()
+assert r.get("loss_fn_output_type") == "importance_sampling", \
+    f"expected loss_fn_output_type=importance_sampling: {r}"
+assert "loss" in r.get("metrics", {}), f"missing loss in metrics: {r}"
+assert r.get("loss_fn_outputs") and "loss" in r["loss_fn_outputs"][0], \
+    f"expected loss_fn_outputs[0]['loss'], got: {r.get('loss_fn_outputs')}"
+print(f"  loss={r['metrics']['loss']:.4f}")
+print(f"  per_sample_loss={r['loss_fn_outputs'][0]['loss']['data']}")
+
+# ── [7/7] optim_step ────────────────────────────────────────────────
+print("[7/7] optim_step")
+resp = client.post(f"{base_url}/optim_step", json={"adam_params": adam})
+assert resp.status_code == 200, f"FAILED: {resp.status_code} {resp.text}"
+assert resp.json()["metrics"]["step"] == 2, f"expected step=2, got: {resp.json()}"
+print(f"  step={resp.json()['metrics']['step']}")
+
 print("\nAll checks passed!")
 '''
 
