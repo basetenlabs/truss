@@ -20,7 +20,7 @@ class ServiceClient:
 
     Configuration is read from environment variables:
         TRAINERS_BASE_URL — worker base URL (required)
-        TRAINERS_API_KEY  — API key for authentication (optional)
+        BASETEN_API_KEY   — API key for authentication (optional)
 
     Or pass base_url/api_key directly to __init__.
     """
@@ -32,7 +32,7 @@ class ServiceClient:
         api_key: str | None = None,
     ) -> None:
         self._base_url = base_url or os.environ.get("TRAINERS_BASE_URL", "")
-        self._api_key = api_key or os.environ.get("TRAINERS_API_KEY")
+        self._api_key = api_key or os.environ.get("BASETEN_API_KEY")
         if not self._base_url:
             raise ValueError(
                 "base_url is required. Pass it directly or set TRAINERS_BASE_URL."
