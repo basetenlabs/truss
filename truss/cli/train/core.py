@@ -28,6 +28,7 @@ from truss_train import loader
 from truss_train.definitions import DeployCheckpointsConfig
 
 ACTIVE_JOB_STATUSES = [
+    "TRAINING_JOB_PENDING",
     "TRAINING_JOB_RUNNING",
     "TRAINING_JOB_CREATED",
     "TRAINING_JOB_DEPLOYING",
@@ -60,8 +61,10 @@ def get_args_for_stop(
         job_id_to_stop = job["id"]
         # check if the user wants to stop the inferred running job
         if not job_id:
+            user_email = job.get("user", {}).get("email")
+            user_msg = f" (created by {user_email})" if user_email else ""
             confirm = inquirer.confirm(
-                message=f"Are you sure you want to stop training job {job_id_to_stop}?",
+                message=f"Are you sure you want to stop training job {job_id_to_stop}{user_msg}?",
                 default=False,
             ).execute()
             if not confirm:
@@ -140,6 +143,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
     table.add_column("Last Modified")
     table.add_column("Latest Job ID", style="bold yellow")
     table.add_column("Latest Job Status", style="bold yellow")
+    table.add_column("Checkpoint Sync", style="bold yellow")
     table.add_column("Status Page", style="bold yellow")
 
     # most recent projects at bottom of terminal
@@ -158,6 +162,7 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
             cli_common.format_localized_time(project["updated_at"]),
             latest_job_id,
             latest_job.get("current_status", ""),
+            latest_job.get("checkpoint_sync_status", ""),
             latest_job_link,
         )
 
@@ -304,6 +309,8 @@ def display_training_job(
     table.add_row("Project Name", job["training_project"]["name"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
+    if user_email := job.get("user", {}).get("email"):
+        table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
     table.add_row("Last Modified", cli_common.format_localized_time(job["updated_at"]))
     table.add_row(
@@ -313,6 +320,10 @@ def display_training_job(
             "link",
         ),
     )
+
+    # Add checkpoint sync status if present
+    if job.get("checkpoint_sync_status"):
+        table.add_row("Checkpoint Sync", job["checkpoint_sync_status"])
 
     # Add error message if present
     if job.get("error_message"):

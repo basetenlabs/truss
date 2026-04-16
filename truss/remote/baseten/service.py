@@ -166,15 +166,17 @@ class BasetenService(TrussService):
     def _fetch_deployment(self) -> Any:
         return self._api.get_deployment(self.model_id, self.model_version_id)
 
-    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
-        """
-        Wait for the service to be deployed.
-        """
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[Dict[str, Any]]:
+        """Poll for deployment, yielding the full deployment dict."""
         while True:
             time.sleep(sleep_secs)
             try:
-                deployment = self._fetch_deployment()
-                yield deployment["status"]
+                yield self._fetch_deployment()
             except requests.exceptions.RequestException:
                 logger.warning("Network error, unable to reach Baseten. Retrying...")
                 continue
+
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
+        """Poll for deployment status, yielding only the status string."""
+        for deployment in self.poll_deployment(sleep_secs):
+            yield deployment["status"]

@@ -196,10 +196,17 @@ class DockerImage(custom_types.SafeModelNonSerializable):
           a Baseten default image for a supported python version (e.g.
           ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
           provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
-        pip_requirements_file: Path to a file containing pip requirements. The file
-          content is naively concatenated with ``pip_requirements``.
-        pip_requirements: A list of pip requirements to install.  The items are
-          naively concatenated with the content of the ``pip_requirements_file``.
+        pip_requirements_file: **Deprecated.** Use ``requirements_file`` instead.
+          Path to a file containing pip requirements. The file content is naively
+          concatenated with ``pip_requirements``.
+        pip_requirements: A list of pip requirements to install. Only supported
+          with pip-style requirements files. Cannot be used with ``pyproject.toml``
+          or ``uv.lock`` requirements files.
+        requirements_file: Path to a requirements file. Supports ``requirements.txt``
+          (pip format), ``pyproject.toml``, and ``uv.lock``. The file type is
+          auto-detected from the filename. For pip-style files, the content is
+          concatenated with ``pip_requirements``. For ``pyproject.toml`` and
+          ``uv.lock``, the file is copied as-is into the build context.
         apt_requirements: A list of apt requirements to install.
         data_dir: Data from this directory is copied into the docker image and
           accessible to the remote chainlet at runtime.
@@ -214,9 +221,12 @@ class DockerImage(custom_types.SafeModelNonSerializable):
     """
 
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
-    pip_requirements_file: Optional[AbsPath] = None
+    pip_requirements_file: Optional[AbsPath] = pydantic.Field(
+        default=None, deprecated="Use `requirements_file` instead."
+    )
     pip_requirements: list[str] = pydantic.Field(default_factory=list)
     apt_requirements: list[str] = pydantic.Field(default_factory=list)
+    requirements_file: Optional[AbsPath] = None
     data_dir: Optional[AbsPath] = None
     external_package_dirs: Optional[list[AbsPath]] = None
     truss_server_version_override: Optional[str] = pydantic.Field(
@@ -237,6 +247,19 @@ class DockerImage(custom_types.SafeModelNonSerializable):
                     "`DockerImage.base_image` as string is deprecated. Specify as "
                     f"`BasetenImage` or `CustomImage` (see docs: {doc_link})."
                 )
+
+        if values.get("pip_requirements_file"):
+            if values.get("requirements_file"):
+                raise ChainsUsageError(
+                    "Cannot specify both `pip_requirements_file` and "
+                    "`requirements_file`. Use `requirements_file` only — "
+                    "`pip_requirements_file` is deprecated."
+                )
+            logging.warning(
+                "`DockerImage.pip_requirements_file` is deprecated, use "
+                "`requirements_file` instead."
+            )
+            values["requirements_file"] = values["pip_requirements_file"]
         return values
 
 

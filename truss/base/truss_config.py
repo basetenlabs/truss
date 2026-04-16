@@ -26,6 +26,11 @@ from pydantic import json_schema
 from pydantic_core import core_schema
 
 from truss.base import constants, custom_types, trt_llm_config
+
+# PORT: knative reserved
+# HOSTNAME: set to the pod name by k8s
+K8S_RESERVED_ENVIRONMENT_VARIABLES = {"PORT", "HOSTNAME"}
+
 from truss.base.constants import PYPROJECT_TOML_FILENAME, UV_LOCK_FILENAME
 from truss.util.requirements import (
     parse_requirement_string,
@@ -139,17 +144,13 @@ class AcceleratorSpec(custom_types.ConfigModel):
         return self.accelerator.value
 
     @classmethod
-    def model_json_schema(  # type: ignore[override]
+    def __get_pydantic_json_schema__(
         cls,
         core_schema: pydantic_core.CoreSchema,
         handler: pydantic.GetJsonSchemaHandler,
     ) -> json_schema.JsonSchemaValue:
         schema = handler(core_schema)
-        schema.update(
-            type="string",
-            examples=["A100", "T4:2", "H100:8"],
-            description="Accelerator specification in 'TYPE' or 'TYPE:count' format.",
-        )
+        schema.update(type="string")
         schema.pop("properties", None)
         schema.pop("required", None)
         return schema
@@ -184,7 +185,7 @@ class ModelRepo(custom_types.ConfigModel):
         return v
 
     @property
-    def runtime_path(self) -> pathlib.Path:
+    def runtime_path(self) -> pathlib.PurePosixPath:
         assert self.volume_folder is not None
         return constants.MODEL_CACHE_PATH / self.volume_folder
 
@@ -543,9 +544,24 @@ class Weights(pydantic.RootModel[list[WeightsSource]]):
 
 
 class HealthChecks(custom_types.ConfigModel):
-    restart_check_delay_seconds: Optional[int] = None
-    restart_threshold_seconds: Optional[int] = None
-    stop_traffic_threshold_seconds: Optional[int] = None
+    """Custom health check configuration for your deployments."""
+
+    restart_check_delay_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The delay in seconds before starting restart checks. Defaults to platform-determined value when not set.",
+    )
+    restart_threshold_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The time in seconds after which an unhealthy instance is restarted. Defaults to platform-determined value when not set.",
+    )
+    stop_traffic_threshold_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The time in seconds after which traffic is stopped to an unhealthy instance. Defaults to platform-determined value when not set.",
+    )
+    startup_threshold_seconds: Optional[int] = pydantic.Field(
+        default=None,
+        description="The time in seconds to wait for a model to start before marking it as unhealthy. Defaults to platform-determined value when not set.",
+    )
 
 
 class TransportKind(str, enum.Enum):
@@ -575,16 +591,35 @@ Transport = Annotated[
 
 
 class Runtime(custom_types.ConfigModel):
-    predict_concurrency: int = 1
-    streaming_read_timeout: int = 60
-    enable_tracing_data: bool = False
-    enable_debug_logs: bool = False
-    transport: Transport = HTTPOptions()
+    """Runtime settings for your model instance."""
+
+    predict_concurrency: int = pydantic.Field(
+        default=1,
+        description="The number of concurrent requests that can run in your model's predict method. Increase this if your model supports parallelism.",
+    )
+    streaming_read_timeout: int = pydantic.Field(
+        default=60, description="The timeout in seconds for streaming read operations."
+    )
+    enable_tracing_data: bool = pydantic.Field(
+        default=False,
+        description="If true, enables trace data export with built-in OTEL instrumentation. May add performance overhead.",
+    )
+    enable_debug_logs: bool = pydantic.Field(
+        default=False,
+        description="If true, sets the Truss server log level to DEBUG instead of INFO.",
+    )
+    transport: Transport = pydantic.Field(
+        default_factory=HTTPOptions,
+        description="The transport protocol for your model. Supports http (default), websocket, and grpc.",
+    )
     is_websocket_endpoint: Optional[bool] = pydantic.Field(
         None,
-        description="DEPRECATED. Do not set manually. Automatically inferred from `transport.kind == websocket`.",
+        description="DEPRECATED. Do not set manually. Automatically inferred from transport.kind == websocket.",
     )
-    health_checks: HealthChecks = pydantic.Field(default_factory=HealthChecks)
+    health_checks: HealthChecks = pydantic.Field(
+        default_factory=HealthChecks,
+        description="Custom health check configuration for your deployments.",
+    )
     truss_server_version_override: Optional[str] = pydantic.Field(
         None,
         description="By default, truss servers are built from the same release as the "
@@ -665,9 +700,15 @@ class ModelServer(str, enum.Enum):
 
 
 class Build(custom_types.ConfigModel):
+    """Build-time configuration, including secret access during Docker builds."""
+
     model_server: ModelServer = ModelServer.TrussServer
     arguments: dict[str, Any] = pydantic.Field(default_factory=dict)
-    secret_to_path_mapping: Mapping[str, str] = pydantic.Field(default_factory=dict)
+    secret_to_path_mapping: Mapping[str, str] = pydantic.Field(
+        default_factory=dict,
+        description="Grants access to secrets during the build. Provide a mapping between a secret and a path on the image.",
+    )
+    no_cache: bool = False
 
     _SECRET_NAME_REGEX: ClassVar[re.Pattern] = re.compile(r"^[-._a-zA-Z0-9]+$")
     _MAX_SECRET_NAME_LENGTH: ClassVar[int] = 253
@@ -703,17 +744,33 @@ class Build(custom_types.ConfigModel):
 
 
 class Resources(custom_types.ConfigModel):
-    cpu: str = DEFAULT_CPU
-    memory: str = DEFAULT_MEMORY
-    accelerator: AcceleratorSpec = pydantic.Field(default_factory=AcceleratorSpec)
+    """Compute resources that your model needs, including CPU, memory, and GPU resources."""
+
+    cpu: str = pydantic.Field(
+        default=DEFAULT_CPU,
+        description="CPU resources needed, expressed as either a raw number or millicpus. For example, 500m is half of a CPU core.",
+        examples=["1", "500m", "4"],
+    )
+    memory: str = pydantic.Field(
+        default=DEFAULT_MEMORY,
+        description="CPU RAM needed, expressed as a number with units. Units include Gi (Gibibytes), G (Gigabytes), Mi (Mebibytes), and M (Megabytes).",
+        examples=["2Gi", "512Mi"],
+    )
+    accelerator: AcceleratorSpec = pydantic.Field(
+        default_factory=AcceleratorSpec,
+        description="The GPU type for your instance. To request multiple GPUs, use the ':' operator (e.g. L4:4).",
+        examples=["A100", "T4:2", "H100:8"],
+    )
     instance_type: Optional[str] = pydantic.Field(
         default=None,
-        description=(
-            "Full SKU name for the instance type (e.g., 'L4:8x32'). "
-            "When specified, cpu, memory, and accelerator fields are ignored."
-        ),
+        description="The full SKU name for the instance type. When specified, cpu, memory, and accelerator fields are ignored.",
+        examples=["L4:4x16"],
     )
-    node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = None
+    node_count: Optional[Annotated[int, pydantic.Field(ge=1, strict=True)]] = (
+        pydantic.Field(
+            default=None, description="Number of nodes for multi-node deployments."
+        )
+    )
 
     _MILLI_CPU_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*m$")
     _MEMORY_REGEX: ClassVar[re.Pattern] = re.compile(r"^[0-9.]*([a-zA-Z]+)?$")
@@ -841,6 +898,7 @@ class DockerAuthType(str, enum.Enum):
     AWS_IAM = "AWS_IAM"
     AWS_OIDC = "AWS_OIDC"
     GCP_OIDC = "GCP_OIDC"
+    REGISTRY_SECRET = "REGISTRY_SECRET"
 
 
 class DockerAuthSettings(AuthFieldsMixin):
@@ -903,9 +961,22 @@ class DockerAuthSettings(AuthFieldsMixin):
 
 
 class BaseImage(custom_types.ConfigModel):
-    image: str = ""
-    python_executable_path: str = ""
-    docker_auth: Optional[DockerAuthSettings] = None
+    """Use base_image to deploy a custom Docker image."""
+
+    image: str = pydantic.Field(
+        default="",
+        description="The path to the Docker image.",
+        examples=["vllm/vllm-openai:v0.7.3", "nvcr.io/nvidia/nemo:23.03"],
+    )
+    python_executable_path: str = pydantic.Field(
+        default="",
+        description="A path to the Python executable on the image.",
+        examples=["/usr/bin/python"],
+    )
+    docker_auth: Optional[DockerAuthSettings] = pydantic.Field(
+        default=None,
+        description="Authentication configuration for a private Docker registry.",
+    )
 
     @pydantic.field_validator("python_executable_path")
     def _validate_path(cls, v: str) -> str:
@@ -917,13 +988,32 @@ class BaseImage(custom_types.ConfigModel):
 
 
 class DockerServer(custom_types.ConfigModel):
-    start_command: Optional[str] = None
-    server_port: int
-    predict_endpoint: str
-    readiness_endpoint: str
-    liveness_endpoint: str
-    run_as_user_id: Optional[int] = None
-    no_build: Optional[bool] = None
+    """Deploy a custom Docker image that has its own HTTP server, without writing a Model class."""
+
+    start_command: Optional[str] = pydantic.Field(
+        default=None,
+        description="The command to start the server. Required when no_build is not true.",
+    )
+    server_port: int = pydantic.Field(
+        description="The port where the server runs. Port 8080 is reserved by Baseten's internal reverse proxy and cannot be used."
+    )
+    predict_endpoint: str = pydantic.Field(
+        description="The endpoint for inference requests. This is mapped to Baseten's /predict route."
+    )
+    readiness_endpoint: str = pydantic.Field(
+        description="The endpoint for readiness probes. Determines when the container can accept traffic."
+    )
+    liveness_endpoint: str = pydantic.Field(
+        description="The endpoint for liveness probes. Determines if the container needs to be restarted."
+    )
+    run_as_user_id: Optional[int] = pydantic.Field(
+        default=None,
+        description="The Linux UID to run the server process as inside the container. Use this when your base image expects a specific non-root user (for example, NVIDIA NIM containers).",
+    )
+    no_build: Optional[bool] = pydantic.Field(
+        default=None,
+        description="Skip the build step and deploy the base image as-is. Baseten copies the image to its container registry without running docker build or modifying the image in any way.",
+    )
 
     @pydantic.field_validator("run_as_user_id")
     @classmethod
@@ -970,53 +1060,149 @@ def to_dotted_python_version(truss_python_version: str) -> str:
 
 
 class TrussConfig(custom_types.ConfigModel):
-    model_name: Optional[str] = None
-    model_metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
-    description: Optional[str] = None
-    examples_filename: str = "examples.yaml"
+    """Configuration for a Truss model deployment."""
 
-    data_dir: str = DEFAULT_DATA_DIRECTORY
-    external_data: Optional[ExternalData] = None
-    external_package_dirs: list[str] = pydantic.Field(default_factory=list)
+    model_name: Optional[str] = pydantic.Field(
+        default=None,
+        description="The name of your model. This is displayed in the model details page in the Baseten UI.",
+    )
+    model_metadata: dict[str, Any] = pydantic.Field(
+        default_factory=dict,
+        description="A flexible field for additional metadata. The entire config file is available to your model at runtime.",
+        json_schema_extra={
+            "properties": {
+                "example_model_input": {
+                    "description": "Sample input that populates the Baseten playground.",
+                    "examples": [{"prompt": "What is the meaning of life?"}],
+                }
+            }
+        },
+    )
+    description: Optional[str] = pydantic.Field(
+        default=None, description="A description of your model."
+    )
+    examples_filename: str = pydantic.Field(
+        default="examples.yaml",
+        description="Path to a file containing example model inputs.",
+    )
 
-    python_version: str = "py39"
-    base_image: Optional[BaseImage] = None
-    requirements_file: Optional[str] = None
-    requirements: list[str] = pydantic.Field(default_factory=list)
-    system_packages: list[str] = pydantic.Field(default_factory=list)
-    environment_variables: dict[str, str] = pydantic.Field(default_factory=dict)
-    secrets: MutableMapping[str, Optional[str]] = pydantic.Field(default_factory=dict)
+    data_dir: str = pydantic.Field(
+        default=DEFAULT_DATA_DIRECTORY,
+        description="The folder for data files in your Truss.",
+    )
+    external_data: Optional[ExternalData] = pydantic.Field(
+        default=None,
+        description="External data to be downloaded and made available under the data directory at serving time.",
+    )
+    external_package_dirs: list[str] = pydantic.Field(
+        default_factory=list,
+        description="Use external_package_dirs to access custom packages located outside your Truss. This lets multiple Trusses share the same package.",
+    )
 
-    resources: Resources = pydantic.Field(default_factory=Resources)
-    runtime: Runtime = pydantic.Field(default_factory=Runtime)
-    build: Build = pydantic.Field(default_factory=Build)
-    build_commands: list[str] = pydantic.Field(default_factory=list)
-    docker_server: Optional[DockerServer] = None
-    model_cache: ModelCache = pydantic.Field(default_factory=lambda: ModelCache([]))
-    weights: Weights = pydantic.Field(default_factory=lambda: Weights([]))
-    trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = None
+    python_version: str = pydantic.Field(
+        default="py313",
+        description="The Python version to use.",
+        examples=["py313", "py312", "py311", "py310", "py39"],
+    )
+    base_image: Optional[BaseImage] = pydantic.Field(
+        default=None,
+        description="Use a custom Docker base image instead of the default Truss image.",
+    )
+    requirements_file: Optional[str] = pydantic.Field(
+        default=None,
+        description="Path to a dependency file. Supports requirements.txt, pyproject.toml, and uv.lock. Mutually exclusive with 'requirements'.",
+    )
+    requirements: list[str] = pydantic.Field(
+        default_factory=list,
+        description="A list of Python dependencies in pip requirements file format. Mutually exclusive with 'requirements_file'.",
+    )
+    system_packages: list[str] = pydantic.Field(
+        default_factory=list,
+        description="System packages that you would typically install using apt on a Debian operating system.",
+        examples=[["ffmpeg", "libsm6", "libxext6"]],
+    )
+    environment_variables: dict[str, str] = pydantic.Field(
+        default_factory=dict,
+        description="Key-value pairs exposed to the environment that the model executes in. Do not store secret values here.",
+    )
+    secrets: MutableMapping[str, Optional[str]] = pydantic.Field(
+        default_factory=dict,
+        description="Declare secrets your model needs at runtime, such as API keys or access tokens. Use null as a placeholder; store actual values in your organization settings.",
+    )
+
+    resources: Resources = pydantic.Field(
+        default_factory=Resources,
+        description="Compute resources that your model needs, including CPU, memory, and GPU resources.",
+    )
+    runtime: Runtime = pydantic.Field(
+        default_factory=Runtime, description="Runtime settings for your model instance."
+    )
+    build: Build = pydantic.Field(
+        default_factory=Build,
+        description="Build-time configuration, including secret access during Docker builds.",
+    )
+    build_commands: list[str] = pydantic.Field(
+        default_factory=list,
+        description="A list of shell commands to run during Docker build. These commands execute after system packages and Python requirements are installed.",
+    )
+    docker_server: Optional[DockerServer] = pydantic.Field(
+        default=None,
+        description="Deploy a custom Docker image that has its own HTTP server, without writing a Model class.",
+    )
+    model_cache: ModelCache = pydantic.Field(
+        default_factory=lambda: ModelCache([]),
+        description="Deprecated. Use 'weights' instead. Bundle model weights into your image at build time.",
+    )
+    weights: Weights = pydantic.Field(
+        default_factory=lambda: Weights([]),
+        description="Configure Baseten Delivery Network (BDN) for model weight delivery with multi-tier caching.",
+    )
+    trt_llm: Optional[trt_llm_config.TRTLLMConfiguration] = pydantic.Field(
+        default=None,
+        description="TensorRT-LLM configuration for optimized LLM inference.",
+    )
+
     llm_config: Optional[dict[str, Any]] = None
     llm_version: str = "1.0"
     autoscaling_settings: Optional[dict[str, Any]] = None
     additional_autoscaling_config: Optional[dict[str, Any]] = None
 
+
     # deploying from checkpoint
-    training_checkpoints: Optional[CheckpointList] = None
+    training_checkpoints: Optional[CheckpointList] = pydantic.Field(
+        default=None,
+        description="Configuration for deploying from training checkpoints.",
+    )
 
     # Internal / Legacy.
     input_type: str = "Any"
     model_framework: str = "custom"
     model_type: str = "Model"
-    model_module_dir: str = DEFAULT_MODEL_MODULE_DIR
+    model_module_dir: str = pydantic.Field(
+        default=DEFAULT_MODEL_MODULE_DIR,
+        description="The folder containing your model class.",
+    )
     model_class_filename: str = "model.py"
-    model_class_name: str = "Model"
-    bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
+    model_class_name: str = pydantic.Field(
+        default="Model",
+        description="The name of the class that defines your Truss model. This class must implement at least a predict method.",
+    )
+    bundled_packages_dir: str = pydantic.Field(
+        default=DEFAULT_BUNDLED_PACKAGES_DIR,
+        description="The folder for custom packages in your Truss.",
+    )
     use_local_src: bool = False
     cache_internal: CacheInternal = pydantic.Field(
         default_factory=lambda: CacheInternal([])
     )
-    live_reload: bool = False
-    apply_library_patches: bool = True
+    live_reload: bool = pydantic.Field(
+        default=False,
+        description="If true, changes to your model code are automatically reloaded without restarting the server.",
+    )
+    apply_library_patches: bool = pydantic.Field(
+        default=True,
+        description="Whether to apply library patches for improved compatibility.",
+    )
     spec_version: str = "2.0"
 
     class Config:
@@ -1045,18 +1231,43 @@ class TrussConfig(custom_types.ConfigModel):
             )
         if "hf_cache" in data and "model_cache" not in data:
             data["model_cache"] = data.pop("hf_cache") or []
+        env_vars = data.get("environment_variables", {})
+        conflicts = K8S_RESERVED_ENVIRONMENT_VARIABLES & env_vars.keys()
+        if conflicts:
+            logger.warning(
+                "Warning: the following environment variables are reserved by the "
+                "platform and will be overwritten at runtime: %s",
+                ", ".join(sorted(conflicts)),
+            )
         data["environment_variables"] = {
             k: str(v).lower() if isinstance(v, bool) else str(v)
-            for k, v in data.get("environment_variables", {}).items()
+            for k, v in env_vars.items()
         }
         return cls.model_validate(data)
 
     @classmethod
     def from_yaml(cls, path: pathlib.Path) -> "TrussConfig":
         if not os.path.isfile(path):
-            raise ValueError(f"Expected a truss configuration file at {path}")
+            # It's common for users to create a .yml instead of a .yaml,
+            # so check for that and provide a helpful error message if we find one.
+            resolved_path = path.resolve()
+            stem = resolved_path.stem
+            alternative_path = resolved_path.parent / f"{stem}.yml"
+            if os.path.isfile(alternative_path):
+                raise ValueError(
+                    "No truss configuration file ending in .yaml but found one ending in .yml. Did you mean to rename it?"
+                )
+            else:
+                raise ValueError(f"Expected a truss configuration file at {path}")
+
         with path.open() as f:
             raw_data = safe_load_yaml_with_no_duplicates(f) or {}
+        # TODO(deepakn): Remove this once we have a way to pass no_cache through the context.
+        build_section = raw_data.get("build")
+        if isinstance(build_section, dict) and build_section.get("no_cache") is True:
+            raise ValueError(
+                "no_cache cannot be specified in config.yaml. Use the --no-cache CLI flag instead."
+            )
         return cls.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: pathlib.Path, verbose: bool = True):
@@ -1115,6 +1326,13 @@ class TrussConfig(custom_types.ConfigModel):
         valid = {f"py{x.replace('.', '')}" for x in constants.SUPPORTED_PYTHON_VERSIONS}
         if v not in valid:
             raise ValueError(f"Please ensure that `python_version` is one of {valid}")
+        if v == "py39":
+            warnings.warn(
+                "Python 3.9 is deprecated and will be removed in a future release. "
+                "Please upgrade to a newer Python version.",
+                FutureWarning,
+                stacklevel=2,
+            )
         return v
 
     @pydantic.model_validator(mode="after")

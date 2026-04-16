@@ -3,7 +3,6 @@ base_image:
 external_package_dirs: []
 model_metadata: {}
 model_name: Non Root Base Image
-python_version: py39
 requirements: []
 resources:
   accelerator: null

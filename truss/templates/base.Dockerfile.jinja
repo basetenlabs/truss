@@ -49,7 +49,7 @@ RUN useradd -u {{ NONROOT_DEFAULT_USER_ID }} -ms /bin/bash {{ app_username }}
 ENV DEBIAN_FRONTEND=noninteractive
 
 
-{%- set UV_VERSION = "0.8.22" %}
+{%- set UV_VERSION = "0.10.0" %}
 {#
 NB(nikhil): We use a semi-complex uv installation command across the board:
 - A generous UV_HTTP_TIMEOUT (5m) for packages that take a long time to install.
@@ -57,6 +57,7 @@ NB(nikhil): We use a semi-complex uv installation command across the board:
 - Use the python executable currently on the path, will respect activated virtual envs.
 - `--system --break-system-packages` bypasses checks if we're actually installing into system python, but has no effect otherwise.
 #}
+{%- set clean_uv_env = 'env -i PATH="$PATH" HOME="$HOME"' %}
 {%- set sys_pip_install_command =
     "UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300} " +
     "uv pip install --system --break-system-packages " +
@@ -123,6 +124,9 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{ sys
 
 
 {% block install_requirements %}
+{#- Constraints file bounds versions for user-overridden packages. #}
+COPY --chown={{ default_owner }} ./{{ constraints_filename }} {{ constraints_filename }}
+
     {%- if requirements_file_type == "uv_lock" %}
 COPY --chown={{ default_owner }} ./{{ pyproject_toml_filename }} {{ pyproject_toml_filename }}
 COPY --chown={{ default_owner }} ./{{ uv_lock_filename }} {{ uv_lock_filename }}
@@ -140,12 +144,12 @@ RUN {{ sys_pip_install_command }} -r {{ pyproject_toml_filename }} --no-cache-di
 
     {%- elif requirements_file_type == "pip" %}
 COPY --chown={{ default_owner }} ./{{ user_supplied_requirements_filename }} {{ user_supplied_requirements_filename }}
-RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} --no-cache-dir
+RUN {{ sys_pip_install_command }} -r {{ user_supplied_requirements_filename }} -c {{ constraints_filename }} --no-cache-dir
     {%- endif %}
 
     {%- if should_install_requirements %}
 COPY --chown={{ default_owner }} ./{{ config_requirements_filename }} {{ config_requirements_filename }}
-RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} --no-cache-dir
+RUN {{ sys_pip_install_command }} -r {{ config_requirements_filename }} -c {{ constraints_filename }} --no-cache-dir
     {%- endif %}
 {% endblock %}
 

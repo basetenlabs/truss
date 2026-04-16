@@ -149,6 +149,14 @@ class BasetenApi:
     def auth_token(self) -> ApiKey:
         return self._auth_token
 
+    @property
+    def suppress_error_print(self) -> bool:
+        return self._rest_api_client.suppress_error_print
+
+    @suppress_error_print.setter
+    def suppress_error_print(self, value: bool) -> None:
+        self._rest_api_client.suppress_error_print = value
+
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
         headers = self._auth_token.header()
         payload: Dict[str, Any] = {"query": query}

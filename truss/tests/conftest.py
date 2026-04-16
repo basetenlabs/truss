@@ -732,7 +732,7 @@ def _modify_yaml(yaml_path: Path):
 @pytest.fixture
 def default_config() -> Dict[str, Any]:
     return {
-        "python_version": "py39",
+        "python_version": "py313",
         "resources": {
             "accelerator": None,
             "cpu": "1",
@@ -1006,6 +1006,7 @@ def mock_remote_factory():
     """Fixture that mocks RemoteFactory.create and returns a configured mock remote."""
     from unittest.mock import MagicMock, patch
 
+    from truss.remote.baseten.custom_types import TeamType
     from truss.remote.remote_factory import RemoteFactory
 
     with patch.object(RemoteFactory, "create") as mock_factory:
@@ -1014,6 +1015,10 @@ def mock_remote_factory():
         mock_service.model_id = "model_id"
         mock_service.model_version_id = "version_id"
         mock_remote.push.return_value = mock_service
+        mock_remote.api.get_teams.return_value = {
+            "default": TeamType(id="default_team_id", name="default", default=True)
+        }
+        mock_remote.api.models.return_value = {"models": []}
         mock_factory.return_value = mock_remote
         yield mock_remote
 

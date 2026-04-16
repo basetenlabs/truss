@@ -2,6 +2,7 @@ import os
 import random
 import shutil
 import string
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -28,7 +29,17 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
         for d in dirs:
             (dest / rel_root / d).mkdir(exist_ok=True)
         for filename in filenames:
-            shutil.copy2(str(Path(dirpath) / filename), str(dest / rel_root / filename))
+            src_file = Path(dirpath) / filename
+            # for symlinks, .exists() checks whether the target file exists.
+            if src_file.is_symlink() and not src_file.exists():
+                rel_file = rel_root / filename
+                print(
+                    f"WARNING: Skipping '{rel_file}': broken symlink. "
+                    f"Consider adding it to .trussignore.",
+                    file=sys.stderr,
+                )
+                continue
+            shutil.copy2(str(src_file), str(dest / rel_root / filename))
 
 
 def copy_file_path(src: Path, dest: Path) -> str:
@@ -155,8 +166,15 @@ def walk_filtered(
     spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, patterns)
     for dirpath, dirs, filenames in os.walk(root, followlinks=False):
         rel_root = Path(dirpath).relative_to(root)
-        dirs[:] = sorted(d for d in dirs if not spec.match_file(rel_root / d))
-        filtered = [f for f in filenames if not spec.match_file(rel_root / f)]
+        dirs[:] = sorted(
+            d
+            for d in dirs
+            if not spec.match_file((rel_root / d).as_posix())
+            and not spec.match_file((rel_root / d).as_posix() + "/")
+        )
+        filtered = [
+            f for f in filenames if not spec.match_file((rel_root / f).as_posix())
+        ]
         yield dirpath, dirs, filtered
 
 

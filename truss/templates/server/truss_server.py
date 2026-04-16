@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 import logging.config
@@ -22,7 +23,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import ORJSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from fastapi.routing import APIWebSocketRoute as FastAPIWebSocketRoute
 from model_wrapper import ModelWrapper
@@ -39,6 +40,7 @@ from prometheus_client import (
 )
 from pydantic import BaseModel
 from shared import log_config, serialization
+from shared.log_config import chain_request_id_context, request_id_context
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
@@ -178,6 +180,10 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         request_id = request.headers.get("x-baseten-request-id")
+        chain_request_id = request.headers.get("x-baseten-chain-request-id")
+        # Set request_id in context so it's included in all log records
+        request_id_context.set(request_id)
+        chain_request_id_context.set(chain_request_id)
 
         logging.debug(
             f"[DEBUG] Request received - {request.method} /{method.__name__} "
@@ -232,8 +238,35 @@ class BasetenEndpoints:
             method=self._model.completions, request=request, body_raw=body_raw
         )
 
+    async def embeddings(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.embeddings, request=request, body_raw=body_raw
+        )
+
+    async def messages(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.messages, request=request, body_raw=body_raw
+        )
+
+    async def responses(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        return await self._execute_request(
+            method=self._model.responses, request=request, body_raw=body_raw
+        )
+
     async def websocket(self, ws: WebSocket) -> None:
         self.check_healthy()
+        # Set request_id in context so it's included in all log records
+        request_id = ws.headers.get("x-baseten-request-id")
+        chain_request_id = ws.headers.get("x-baseten-chain-request-id")
+        request_id_context.set(request_id)
+        chain_request_id_context.set(chain_request_id)
+
         trace_ctx = otel_propagate.extract(ws.headers) or None
         # We don't go through the typical execute_request path, since we don't need
         # to parse request body or attempt to serialize results.
@@ -319,6 +352,19 @@ class BasetenEndpoints:
         else:
             return self._model.truss_schema.serialize()
 
+    # Sync def so FastAPI runs it in a threadpool, avoiding blocking the
+    # event loop during module re-import.
+    def hot_reload(self, request: Request):
+        try:
+            self._model.hot_reload()
+        except Exception as exc:
+            # Return error summary only; full traceback is already logged
+            # by model_wrapper.hot_reload() in the container logs.
+            return JSONResponse(
+                status_code=422, content={"error": f"{type(exc).__name__}: {exc}"}
+            )
+        return {"msg": "Hot reload complete"}
+
     @staticmethod
     def is_binary(request: Request):
         return (
@@ -381,12 +427,17 @@ class TrussServer:
                 return
 
     def create_application(self):
+        @contextlib.asynccontextmanager
+        async def lifespan(app):
+            self.on_startup()
+            yield
+
         app = FastAPI(
             title="Baseten Inference Server",
             docs_url=None,
             redoc_url=None,
             default_response_class=ORJSONResponse,
-            on_startup=[self.on_startup],
+            lifespan=lifespan,
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", lambda: True),
@@ -431,12 +482,33 @@ class TrussServer:
                     methods=["POST"],
                     tags=["V1"],
                 ),
+                FastAPIRoute(
+                    r"/v1/embeddings",
+                    self._endpoints.embeddings,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
+                    r"/v1/messages",
+                    self._endpoints.messages,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
+                    r"/v1/responses",
+                    self._endpoints.responses,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
                 # Websocket endpoint
                 FastAPIWebSocketRoute(r"/v1/websocket", self._endpoints.websocket),
                 # Endpoint aliases for Sagemaker hosting
                 FastAPIRoute(r"/ping", self._endpoints.invocations_ready),
                 FastAPIRoute(
                     r"/invocations", self._endpoints.invocations, methods=["POST"]
+                ),
+                FastAPIRoute(
+                    r"/hot-reload", self._endpoints.hot_reload, methods=["POST"]
                 ),
             ],
             exception_handlers={
