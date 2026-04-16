@@ -36,15 +36,24 @@ logger = logging.getLogger(__name__)
 _ROLLOUT_STARTUP_TIMEOUT_SECONDS = 300
 _ROLLOUT_RETRY_INTERVAL_SECONDS = 5
 
-# Path to the vendored megatron-lm checkout; must be set before swift.megatron
-# is imported so init_megatron_env() skips the GitHub clone step.
-_VENDOR_DIR = Path(__file__).resolve().parents[6] / "vendor"
-_MEGATRON_LM_PATH = str(_VENDOR_DIR / "megatron-lm")
-
 
 def _init_ms_swift_megatron() -> None:
-    """Ensure MEGATRON_LM_PATH is set before importing swift.megatron."""
-    os.environ.setdefault("MEGATRON_LM_PATH", _MEGATRON_LM_PATH)
+    """Set MEGATRON_LM_PATH before importing swift.megatron.
+
+    ms-swift's init_megatron_env() checks this env var; if unset it tries to
+    clone megatron-lm from GitHub.  We point it at wherever megatron-core is
+    already installed (site-packages on the cluster, the vendor venv locally).
+    """
+    if "MEGATRON_LM_PATH" not in os.environ:
+        import importlib.util
+        spec = importlib.util.find_spec("megatron")
+        if spec and spec.origin:
+            # spec.origin = .../site-packages/megatron/__init__.py
+            # parent.parent  = .../site-packages  ← the "repo root" ms-swift expects
+            os.environ["MEGATRON_LM_PATH"] = str(Path(spec.origin).parent.parent)
+            logger.info("MEGATRON_LM_PATH auto-detected: %s", os.environ["MEGATRON_LM_PATH"])
+        else:
+            logger.warning("megatron package not found; MEGATRON_LM_PATH not set")
     os.environ.setdefault("USE_HF", "1")
 
 
