@@ -36,9 +36,13 @@ class TrussTestService(TrussService):
     def predict_url(self) -> str:
         return f"{self._service_url}/v1/models/model:predict"
 
-    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[dict]:
         for status in ["DEPLOYING", "ACTIVE"]:
-            yield status
+            yield {"status": status}
+
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
+        for deployment in self.poll_deployment(sleep_secs):
+            yield deployment["status"]
 
 
 def mock_successful_response():
