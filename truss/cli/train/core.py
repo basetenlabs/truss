@@ -170,13 +170,46 @@ def display_training_projects(projects: list[dict], remote_url: str) -> None:
     console.print(table)
 
 
+def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Queued Training Jobs",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Job ID", style="cyan")
+    table.add_column("Job Name")
+    table.add_column("Project")
+    table.add_column("Instance Type")
+    table.add_column("Created By")
+    table.add_column("Queued At")
+    table.add_column("Job Page", style="bold yellow")
+
+    for job in jobs:
+        table.add_row(
+            job["id"],
+            job["name"],
+            job["training_project"]["name"],
+            job["instance_type"]["name"],
+            job.get("user", {}).get("email", ""),
+            cli_common.format_localized_time(job["created_at"]),
+            cli_common.format_link(
+                status_page_url(remote_url, job["training_project"]["id"], job["id"]),
+                "link",
+            ),
+        )
+
+    console.print(table)
+
+
 def view_training_details(
     remote_provider: BasetenRemote, project_id: Optional[str], job_id: Optional[str]
 ):
     """
     view_training_details shows a list of jobs that meet the provided project_id and job_id filters.
 
-     If no filters are provided, the command will show a list of all training projects and a list of active jobs.
+     If no filters are provided, the command will show a list of all training projects along with queued and active jobs.
     """
     if job_id or project_id:
         jobs_response = remote_provider.api.search_training_jobs(
@@ -199,22 +232,19 @@ def view_training_details(
     else:
         projects = remote_provider.api.list_training_projects()
         display_training_projects(projects, remote_provider.remote_url)
-        queued_jobs = remote_provider.api.search_training_jobs(
-            statuses=QUEUED_JOB_STATUSES
+        jobs = remote_provider.api.search_training_jobs(
+            statuses=QUEUED_JOB_STATUSES + ACTIVE_JOB_STATUSES
         )
+        queued_jobs = [j for j in jobs if j["current_status"] in QUEUED_JOB_STATUSES]
+        active_jobs = [j for j in jobs if j["current_status"] in ACTIVE_JOB_STATUSES]
         if queued_jobs:
-            display_training_jobs(
-                queued_jobs, remote_provider.remote_url, title="Queued Training Jobs"
-            )
-        active_jobs = remote_provider.api.search_training_jobs(
-            statuses=ACTIVE_JOB_STATUSES
-        )
+            display_queued_jobs(queued_jobs, remote_provider.remote_url)
         if active_jobs:
             display_training_jobs(
                 active_jobs, remote_provider.remote_url, title="Active Training Jobs"
             )
         if not queued_jobs and not active_jobs:
-            console.print("No active training jobs.", style="yellow")
+            console.print("No queued or active training jobs.", style="yellow")
 
 
 def stop_all_jobs(remote_provider: BasetenRemote, project_id: Optional[str]):

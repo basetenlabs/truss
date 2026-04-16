@@ -66,37 +66,36 @@ def test_view_training_details_splits_queued_and_active(capsys):
     mock_remote.remote_url = "https://app.baseten.co"
     mock_remote.api.list_training_projects.return_value = []
     ts = "2024-01-01T00:00:00+00:00"
-    mock_remote.api.search_training_jobs.side_effect = [
-        # First call: queued jobs
-        [
-            {
-                "id": "q1",
-                "current_status": "TRAINING_JOB_PENDING",
-                "name": "queued-job",
-                "training_project": {"id": "p1", "name": "proj"},
-                "instance_type": {"name": "H100"},
-                "created_at": ts,
-                "updated_at": ts,
-            }
-        ],
-        # Second call: active jobs
-        [
-            {
-                "id": "a1",
-                "current_status": "TRAINING_JOB_RUNNING",
-                "name": "active-job",
-                "training_project": {"id": "p1", "name": "proj"},
-                "instance_type": {"name": "H100"},
-                "created_at": ts,
-                "updated_at": ts,
-            }
-        ],
+    mock_remote.api.search_training_jobs.return_value = [
+        {
+            "id": "q1",
+            "current_status": "TRAINING_JOB_PENDING",
+            "name": "queued-job",
+            "training_project": {"id": "p1", "name": "proj"},
+            "instance_type": {"name": "H100"},
+            "created_at": ts,
+            "updated_at": ts,
+        },
+        {
+            "id": "a1",
+            "current_status": "TRAINING_JOB_RUNNING",
+            "name": "active-job",
+            "training_project": {"id": "p1", "name": "proj"},
+            "instance_type": {"name": "H100"},
+            "created_at": ts,
+            "updated_at": ts,
+        },
     ]
 
     view_training_details(mock_remote, project_id=None, job_id=None)
     captured = capsys.readouterr()
+    # Queued section renders as a table with its own title and columns
     assert "Queued Training Jobs" in captured.out
+    assert "Queued At" in captured.out
+    assert "q1" in captured.out
+    # Active section still uses the card-per-job display
     assert "Active Training Jobs" in captured.out
+    assert "active-job" in captured.out
 
 
 def test_view_training_details_no_jobs_shows_fallback(capsys):
@@ -106,11 +105,11 @@ def test_view_training_details_no_jobs_shows_fallback(capsys):
     mock_remote = Mock()
     mock_remote.remote_url = "https://app.baseten.co"
     mock_remote.api.list_training_projects.return_value = []
-    mock_remote.api.search_training_jobs.side_effect = [[], []]
+    mock_remote.api.search_training_jobs.return_value = []
 
     view_training_details(mock_remote, project_id=None, job_id=None)
     captured = capsys.readouterr()
-    assert "No active training jobs" in captured.out
+    assert "No queued or active training jobs" in captured.out
 
 
 @pytest.mark.parametrize(
