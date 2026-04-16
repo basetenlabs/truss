@@ -1383,3 +1383,91 @@ def test_push_json_output_wait_deploy_failed(
     assert "error" in data
     assert "DEPLOY_FAILED" in data["error"]["message"]
     assert data["error"]["deployment"] == failed_deployment
+
+
+def _invoke_download(args):
+    runner = CliRunner()
+    return runner.invoke(truss_cli, ["download", *args])
+
+
+def test_download_requires_out_file_or_out_dir():
+    result = _invoke_download(["--model-id", "m", "--deployment-id", "d"])
+    assert result.exit_code != 0
+    assert "Must specify either --out-file or --out-dir" in result.output
+
+
+def test_download_rejects_both_out_file_and_out_dir():
+    result = _invoke_download(
+        [
+            "--model-id",
+            "m",
+            "--deployment-id",
+            "d",
+            "--out-file",
+            "f.tar",
+            "--out-dir",
+            "dir",
+        ]
+    )
+    assert result.exit_code != 0
+    assert "Cannot specify both --out-file and --out-dir" in result.output
+
+
+def test_download_rejects_missing_parent_dir(tmp_path):
+    result = _invoke_download(
+        [
+            "--model-id",
+            "m",
+            "--deployment-id",
+            "d",
+            "--out-file",
+            str(tmp_path / "nonexistent" / "f.tar"),
+        ]
+    )
+    assert result.exit_code != 0
+    assert "Parent directory does not exist" in result.output
+
+
+def test_download_rejects_existing_file_without_overwrite(tmp_path):
+    existing = tmp_path / "model.tar"
+    existing.touch()
+    result = _invoke_download(
+        ["--model-id", "m", "--deployment-id", "d", "--out-file", str(existing)]
+    )
+    assert result.exit_code != 0
+    assert "File already exists" in result.output
+    assert "--overwrite" in result.output
+
+
+def test_download_rejects_nonempty_dir_without_overwrite(tmp_path):
+    out = tmp_path / "model"
+    out.mkdir()
+    (out / "something.txt").touch()
+    result = _invoke_download(
+        ["--model-id", "m", "--deployment-id", "d", "--out-dir", str(out)]
+    )
+    assert result.exit_code != 0
+    assert "Directory is not empty" in result.output
+    assert "--overwrite" in result.output
+
+
+def test_download_allows_existing_empty_dir(tmp_path):
+    out = tmp_path / "model"
+    out.mkdir()
+    mock_remote = MagicMock()
+    mock_remote.api.get_deployment_download_url.return_value = (
+        "https://presigned.example.com"
+    )
+    mock_response = MagicMock()
+    mock_response.raw = MagicMock()
+    with (
+        patch("truss.cli.cli.RemoteFactory.create", return_value=mock_remote),
+        patch("truss.cli.remote_cli.inquire_remote_name", return_value="remote1"),
+        patch("truss.cli.cli.requests.get", return_value=mock_response),
+        patch("truss.cli.cli.tarfile.open"),
+    ):
+        result = _invoke_download(
+            ["--model-id", "m", "--deployment-id", "d", "--out-dir", str(out)]
+        )
+    assert result.exit_code == 0
+    assert "Extracted to" in result.output
