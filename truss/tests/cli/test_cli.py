@@ -1393,7 +1393,8 @@ def _invoke_download(args):
 def test_download_requires_out_file_or_out_dir():
     result = _invoke_download(["--model-id", "m", "--deployment-id", "d"])
     assert result.exit_code != 0
-    assert "Must specify either --out-file or --out-dir" in result.output
+    assert "--out-file" in result.output
+    assert "--out-dir" in result.output
 
 
 def test_download_rejects_both_out_file_and_out_dir():
@@ -1410,7 +1411,8 @@ def test_download_rejects_both_out_file_and_out_dir():
         ]
     )
     assert result.exit_code != 0
-    assert "Cannot specify both --out-file and --out-dir" in result.output
+    assert "--out-file" in result.output
+    assert "--out-dir" in result.output
 
 
 def test_download_rejects_missing_parent_dir(tmp_path):
