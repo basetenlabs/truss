@@ -6,23 +6,31 @@ build-backend = "uv_build"
 name = "trainers-server"
 version = "0.1.0"
 description = "Training worker server for the trainers SDK"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "pydantic>=2",
     "httpx",
+    "requests",
     "uvicorn",
 ]
 
 [project.optional-dependencies]
 worker = [
     "ms-swift",
+    "megatron-core",
+    "transformer-engine",
     "torch",
     "vllm>=0.9",
 ]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "torch",
+]
 
 [tool.uv]
-prerelease = "allow"
 override-dependencies = [
     "vllm>=0.12.0; sys_platform == 'linux'",
 ]
@@ -30,6 +38,7 @@ override-dependencies = [
 [tool.uv.sources]
 ms-swift = { path = "vendor/ms-swift" }
 megatron-core = { path = "vendor/megatron-lm" }
+transformer-engine = { path = "vendor/transformer-engine-stub", editable = true }
 torch = [
     { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
@@ -41,3 +50,7 @@ triton = [
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

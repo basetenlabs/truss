@@ -29,3 +29,6 @@ class RLControllerConfig(BaseModel):
     model_id: str = "Qwen/Qwen3-0.6B"
     inference: InferenceServerConfig = Field(default_factory=InferenceServerConfig)
     training: TrainingServerConfig = Field(default_factory=TrainingServerConfig)
+    # "hf"       → plain HuggingFace/PyTorch, single-GPU or FSDP multi-GPU.
+    # "megatron"  → Megatron-Core TP/PP; required for MegatronWeightWriter weight sync.
+    backend: Literal["hf", "megatron"] = "hf"

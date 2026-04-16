@@ -11,7 +11,7 @@ from truss.base import truss_config
 
 runtime = definitions.Runtime(
     start_commands=[
-        "apt-get update && apt-get install -y python3-dev curl git",
+        "apt-get update && apt-get install -y python3-dev curl",
         "curl -LsSf https://astral.sh/uv/install.sh | sh",
         ". $HOME/.local/bin/env && uv sync --extra worker",
         ".venv/bin/python -m trainers_server.dp_worker.main --config $RL_CONFIG_PATH --port {WORKER_PORT}",

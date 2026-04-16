@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
@@ -21,6 +21,10 @@ from .models import (
     StatusResult,
 )
 
+# MegatronRLController is imported lazily in _make_controller to avoid pulling
+# in swift.megatron.* at module load time (breaks test stubs in conftest.py).
+AnyController = Union[RLController, "MegatronRLController"]
+
 
 def _run_or_raise(fn, *args, **kwargs):
     try:
@@ -33,10 +37,18 @@ def _run_or_raise(fn, *args, **kwargs):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-def create_app(config: Optional[RLControllerConfig] = None, *, controller: Optional[RLController] = None) -> FastAPI:
+def _make_controller(config: RLControllerConfig):
+    """Instantiate the right controller based on ``config.backend``."""
+    if config.backend == "megatron":
+        from .megatron_controller import MegatronRLController
+        return MegatronRLController(config)
+    return RLController(config)
+
+
+def create_app(config: Optional[RLControllerConfig] = None, *, controller: Optional[AnyController] = None) -> FastAPI:
     app = FastAPI(title="RL Training API")
     if controller is None:
-        controller = RLController(config or RLControllerConfig())
+        controller = _make_controller(config or RLControllerConfig())
     app.state.rl_controller = controller
 
     @app.get("/health")
