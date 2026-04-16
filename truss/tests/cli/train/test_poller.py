@@ -93,9 +93,10 @@ def test_view_training_details_splits_queued_and_active(capsys):
     assert "Queued Training Jobs" in captured.out
     assert "Queued At" in captured.out
     assert "q1" in captured.out
-    # Active section still uses the card-per-job display
+    # Active section renders as a table with a Status column
     assert "Active Training Jobs" in captured.out
-    assert "active-job" in captured.out
+    assert "Status" in captured.out
+    assert "a1" in captured.out
 
 
 def test_view_training_details_no_jobs_shows_fallback(capsys):

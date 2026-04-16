@@ -98,13 +98,39 @@ class DisplayTableColumn:
     accessor: Callable[[dict], str]
 
 
-def display_training_jobs(
-    jobs, remote_url: str, checkpoints_by_job_id=None, title="Training Job Details"
-):
-    checkpoints_by_job_id = checkpoints_by_job_id or {}
-    console.print(title, style="bold magenta")
+def display_training_jobs(jobs, remote_url: str, title="Training Job Details"):
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title=title,
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Job ID", style="cyan")
+    table.add_column("Job Name")
+    table.add_column("Project")
+    table.add_column("Status")
+    table.add_column("Instance Type")
+    table.add_column("Created By")
+    table.add_column("Created")
+    table.add_column("Job Page", style="bold yellow")
+
     for job in jobs:
-        display_training_job(job, remote_url, checkpoints_by_job_id.get(job["id"], []))
+        table.add_row(
+            job["id"],
+            job["name"],
+            job["training_project"]["name"],
+            job["current_status"],
+            job["instance_type"]["name"],
+            job.get("user", {}).get("email", ""),
+            cli_common.format_localized_time(job["created_at"]),
+            cli_common.format_link(
+                status_page_url(remote_url, job["training_project"]["id"], job["id"]),
+                "link",
+            ),
+        )
+
+    console.print(table)
 
 
 def recreate_training_job(
