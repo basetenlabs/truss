@@ -1079,13 +1079,13 @@ def model_logs(
 @click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
 @click.option(
     "--out-file",
-    type=click.Path(),
+    type=click.Path(dir_okay=False),
     required=False,
     help="Save the truss as a tar file at this path.",
 )
 @click.option(
     "--out-dir",
-    type=click.Path(),
+    type=click.Path(file_okay=False),
     required=False,
     help="Extract the truss into this directory.",
 )
@@ -1138,20 +1138,24 @@ def download(
     )
 
     console.print("Downloading truss...")
-    response = requests.get(download_url, stream=True)
-    response.raise_for_status()
-    response.raw.decode_content = True
+    with requests.get(download_url, stream=True, timeout=(10, None)) as response:
+        response.raise_for_status()
+        response.raw.decode_content = True
 
-    if out_file:
-        with open(out_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        console.print(f"Saved to {out_path}")
-    else:
-        out_path.mkdir(exist_ok=True)
-        with tarfile.open(fileobj=response.raw, mode="r|*") as tar:
-            tar.extractall(path=out_path)
-        console.print(f"Extracted to {out_path}")
+        if out_file:
+            with open(out_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            console.print(f"Saved to {out_path}")
+        else:
+            out_path.mkdir(exist_ok=True)
+            with tarfile.open(fileobj=response.raw, mode="r|*") as tar:
+                # filter="data" prevents path traversal; only available in 3.12+
+                if sys.version_info >= (3, 12):
+                    tar.extractall(path=out_path, filter="data")
+                else:
+                    tar.extractall(path=out_path)
+            console.print(f"Extracted to {out_path}")
 
 
 @truss_cli.command()
