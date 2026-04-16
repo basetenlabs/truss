@@ -93,7 +93,6 @@ class ModelVersionHandle(NamedTuple):
     instance_type_name: Optional[str] = None
 
 
-
 def get_chain_id_by_name(
     api: BasetenApi, chain_name: str, team_id: Optional[str] = None
 ) -> Optional[str]:
@@ -726,40 +725,20 @@ def get_training_job_logs_with_pagination(
     return all_logs
 
 
-# ============== BIS LLM Helpers ==============
-
-
-
 def create_llm_service(
     api: BasetenApi,
     model_name: str,
-    resources: Dict,
-    llm_config: Dict,
-    llm_version: str = "1.0",
+    resources: dict,
+    llm_config: dict,
+    llm_version: str = "",
     model_id: Optional[str] = None,
-    environment_variables: Optional[Dict] = None,
-    autoscaling_settings: Optional[Dict] = None,
-    additional_autoscaling_config: Optional[Dict] = None,
+    environment_variables: Optional[dict] = None,
+    autoscaling_settings: Optional[dict] = None,
+    additional_autoscaling_config: Optional[dict] = None,
+    labels: Optional[dict] = None,
     metadata: Optional[dict] = None,
+    team_id: Optional[str] = None,
 ) -> ModelVersionHandle:
-    """Create a BIS LLM model (or deployment) via REST API.
-
-    Args:
-        api: BasetenApi instance.
-        model_name: Name of the LLM model to create.
-        resources: Resource specification (e.g. {"accelerator": "H100"}).
-        llm_config: LLM-specific configuration dict.
-        llm_version: Helm chart version, defaults to "1.0".
-        model_id: Existing model ID. If None, creates a new model.
-        environment_variables: Optional environment variables.
-        autoscaling_settings: Optional autoscaling settings.
-        additional_autoscaling_config: Optional additional autoscaling config
-            (e.g. in-flight token metrics).
-        metadata: Optional deployment metadata.
-
-    Returns:
-        A ModelVersionHandle.
-    """
     if model_id is None:
         response = api.create_llm_model(
             name=model_name,
@@ -770,6 +749,7 @@ def create_llm_service(
             autoscaling_settings=autoscaling_settings,
             additional_autoscaling_config=additional_autoscaling_config,
             metadata=metadata,
+            team_id=team_id,
         )
         return ModelVersionHandle(
             model_id=response["id"],

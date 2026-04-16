@@ -47,7 +47,7 @@ from truss.remote.baseten.core import (
     validate_truss_config_against_backend,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
-from truss.remote.baseten.service import BasetenService, TrussService, URLConfig
+from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import RemoteUser, TrussRemote
 from truss.templates.control.control.helpers.custom_types import PatchType
@@ -276,11 +276,10 @@ class BasetenRemote(TrussRemote):
         team_id: Optional[str] = None,
         labels: Optional[Dict[str, Any]] = None,
     ) -> BasetenService:
-            # Route BIS LLM models to the REST API push workflow.
         if truss_handle._spec._config.llm_config is not None:
             if not publish:
                 raise ValueError(
-                    "Development deployment is not supported for BIS LLM models. "
+                    "Development deployment is not supported for LLM models. "
                     "Use --publish to create a published deployment."
                 )
             return self.push_llm(
@@ -355,12 +354,6 @@ class BasetenRemote(TrussRemote):
         team_id: Optional[str] = None,
         labels: Optional[Dict[str, Any]] = None,
     ) -> BasetenService:
-        """Push workflow for BIS LLM models using REST API endpoints.
-
-        Unlike the regular `push` flow, this does not archive or upload to S3.
-        It reads the truss config and sends the structured fields directly
-        to the v1/llm_models REST endpoint.
-        """
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
@@ -369,16 +362,20 @@ class BasetenRemote(TrussRemote):
 
         config = truss_handle._spec._config
 
-        # Build resources dict from typed config.
         resources: Dict[str, Any] = {}
         if config.resources.accelerator.accelerator:
             resources["accelerator"] = config.resources.accelerator.accelerator.value
 
-        llm_config = config.llm_config or {}
-        llm_version = config.llm_version
-        autoscaling_settings = config.autoscaling_settings
-        additional_autoscaling_config = config.additional_autoscaling_config
-        environment_variables = config.environment_variables or {}
+        autoscaling_settings = (
+            config.autoscaling_settings.model_dump(exclude_none=True)
+            if config.autoscaling_settings
+            else None
+        )
+        additional_autoscaling_config = (
+            config.additional_autoscaling_config.model_dump(exclude_none=True)
+            if config.additional_autoscaling_config
+            else None
+        )
 
         model_id = exists_model(self._api, model_name, team_id=team_id)
 
@@ -386,13 +383,14 @@ class BasetenRemote(TrussRemote):
             api=self._api,
             model_name=model_name,
             resources=resources,
-            llm_config=llm_config,
-            llm_version=llm_version,
+            llm_config=config.llm_config or {},
+            llm_version=config.llm_version,
             model_id=model_id,
-            environment_variables=environment_variables or None,
+            environment_variables=config.environment_variables or None,
             autoscaling_settings=autoscaling_settings,
             additional_autoscaling_config=additional_autoscaling_config,
             labels=labels,
+            team_id=team_id,
         )
 
         return BasetenService(

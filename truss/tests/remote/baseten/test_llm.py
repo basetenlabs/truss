@@ -3,18 +3,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from truss.base.truss_config import (
-    AdditionalAutoscalingConfig,
-    AutoscalingMetric,
-    AutoscalingSettings,
-)
-from truss.remote.baseten.core import (
-    ModelVersionHandle,
-    create_llm_service,
-)
+from truss.remote.baseten.core import ModelVersionHandle, create_llm_service
 from truss.remote.baseten.service import BasetenService
 from truss.truss_handle.truss_handle import TrussHandle
-
 
 # ============== API Tests ==============
 
@@ -75,7 +66,7 @@ def test_create_llm_model_minimal(baseten_api):
     assert body["name"] == "my-llm"
     assert body["resources"] == {"accelerator": "H100"}
     assert body["llm_config"] == {"backend": "pytorch"}
-    assert body["llm_version"] == "1.0"
+    assert body["llm_version"] == ""
     assert "environment_variables" not in body
     assert "autoscaling_settings" not in body
     assert "additional_autoscaling_config" not in body
@@ -295,12 +286,10 @@ def test_push_llm_with_autoscaling(custom_model_truss_dir_with_pre_and_post, rem
         )
 
         _, kwargs = mock_create.call_args
-        assert kwargs["autoscaling_settings"] == AutoscalingSettings(
-            min_replica=1, max_replica=5
-        )
-        assert kwargs["additional_autoscaling_config"] == AdditionalAutoscalingConfig(
-            metrics=[AutoscalingMetric(name="in_flight_tokens", target=50000)]
-        )
+        assert kwargs["autoscaling_settings"] == {"min_replica": 1, "max_replica": 5}
+        assert kwargs["additional_autoscaling_config"] == {
+            "metrics": [{"name": "in_flight_tokens", "target": 50000.0}]
+        }
 
 
 def test_push_llm_extracts_resources_from_config(
