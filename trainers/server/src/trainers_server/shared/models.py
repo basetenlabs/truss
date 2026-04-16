@@ -178,7 +178,7 @@ class ForwardBackwardDetails(BaseModel):
 
 
 class OptimStepDetails(BaseModel):
-    adam_params: AdamParams = Field(default_factory=AdamParams)
+    adam_params: AdamParams
 
 
 class SampleDetails(BaseModel):

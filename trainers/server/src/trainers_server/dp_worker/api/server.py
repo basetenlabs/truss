@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 
 from trainers_server.shared.models import (
+    AdamParams,
     ForwardBackwardDetails,
     ForwardBackwardResult,
     OptimStepDetails,
@@ -48,7 +49,7 @@ def create_app(config: Optional[RLControllerConfig] = None, *, controller: Optio
         return _run_or_raise(controller.forward_backward, details)
 
     @app.post("/optim_step", response_model=OptimStepResult)
-    async def optim_step(details: OptimStepDetails = OptimStepDetails()) -> OptimStepResult:
+    async def optim_step(details: OptimStepDetails = OptimStepDetails(adam_params=AdamParams())) -> OptimStepResult:
         return _run_or_raise(controller.optim_step, details)
 
     @app.post("/to_inference", response_model=ToInferenceResult)
