@@ -203,7 +203,9 @@ def resolve_remote(remote, config):
         else:
             error(
                 f"Multiple remotes in ~/.trussrc: {', '.join(sections)}. "
-                f"Specify one in the hostname: ssh <workload>.<remote>.ssh.baseten.co\n"
+                f"Specify one in the hostname, for example:\n"
+                f"  ssh training-job-<job_id>-<node>.<remote>.ssh.baseten.co\n"
+                f"  ssh model-<model_id>.<remote>.ssh.baseten.co\n"
                 f"Or re-run: truss ssh setup --default-remote <name>"
             )
     return remote

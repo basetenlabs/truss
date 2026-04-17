@@ -905,6 +905,7 @@ class ServingImageBuilder(ImageBuilder):
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
         )
+        should_install_openssh_server = config.runtime.remote_ssh.enabled
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
@@ -933,6 +934,7 @@ class ServingImageBuilder(ImageBuilder):
             min_supported_python_minor_version_in_custom_base_image=min_py_version.minor,
             supported_python_major_version_in_custom_base_image=min_py_version.major,
             should_install_system_requirements=should_install_system_requirements,
+            should_install_openssh_server=should_install_openssh_server,
             should_install_requirements=should_install_python_requirements,
             requirements_file_type=config.requirements_file_type.value,
             config=config,
