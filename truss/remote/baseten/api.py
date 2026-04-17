@@ -1113,61 +1113,11 @@ class BasetenApi:
         )
         return resp_json
 
-    def create_llm_model(
-        self,
-        name: str,
-        resources: dict[str, Any],
-        llm_config: dict[str, Any],
-        llm_version: str = "",
-        environment_variables: Optional[dict[str, Any]] = None,
-        autoscaling_settings: Optional[dict[str, Any]] = None,
-        additional_autoscaling_config: Optional[dict[str, Any]] = None,
-        metadata: Optional[dict] = None,
-        team_id: Optional[str] = None,
-    ) -> dict:
-        body: dict[str, Any] = {
-            "name": name,
-            "resources": resources,
-            "llm_config": llm_config,
-            "llm_version": llm_version,
-        }
-        if environment_variables:
-            body["environment_variables"] = environment_variables
-        if autoscaling_settings is not None:
-            body["autoscaling_settings"] = autoscaling_settings
-        if additional_autoscaling_config is not None:
-            body["additional_autoscaling_config"] = additional_autoscaling_config
-        if metadata is not None:
-            body["metadata"] = metadata
-        endpoint = (
-            f"v1/teams/{team_id}/llm_models" if team_id else "v1/llm_models"
-        )
+    def create_llm_model(self, body: dict, team_id: Optional[str] = None) -> dict:
+        endpoint = f"v1/teams/{team_id}/llm_models" if team_id else "v1/llm_models"
         return self._rest_api_client.post(endpoint, body=body)
 
-    def create_llm_model_deployment(
-        self,
-        model_id: str,
-        resources: dict[str, Any],
-        llm_config: dict[str, Any],
-        llm_version: str = "",
-        environment_variables: Optional[dict[str, Any]] = None,
-        autoscaling_settings: Optional[dict[str, Any]] = None,
-        additional_autoscaling_config: Optional[dict[str, Any]] = None,
-        metadata: Optional[dict] = None,
-    ) -> dict:
-        body: dict[str, Any] = {
-            "resources": resources,
-            "llm_config": llm_config,
-            "llm_version": llm_version,
-        }
-        if environment_variables:
-            body["environment_variables"] = environment_variables
-        if autoscaling_settings is not None:
-            body["autoscaling_settings"] = autoscaling_settings
-        if additional_autoscaling_config is not None:
-            body["additional_autoscaling_config"] = additional_autoscaling_config
-        if metadata is not None:
-            body["metadata"] = metadata
+    def create_llm_model_version(self, model_id: str, body: dict) -> dict:
         return self._rest_api_client.post(
             f"v1/llm_models/{model_id}/deployments", body=body
         )
