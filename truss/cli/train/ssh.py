@@ -9,8 +9,12 @@ from typing import Optional
 
 import truss
 
-BASETEN_SSH_DIR = Path.home() / ".ssh" / "baseten"
-SSH_CONFIG_PATH = Path.home() / ".ssh" / "config"
+BASETEN_SSH_DIR = Path(
+    os.environ.get("BASETEN_SSH_DIR", Path.home() / ".ssh" / "baseten")
+)
+SSH_CONFIG_PATH = Path(
+    os.environ.get("BASETEN_SSH_CONFIG_PATH", Path.home() / ".ssh" / "config")
+)
 
 MARKER_START = "# --- baseten-ssh ---"
 MARKER_END = "# --- end baseten-ssh ---"
@@ -29,8 +33,8 @@ Match host *.ssh.baseten.co exec "{python} {proxy_script} --sign %n"
 
 SSH_CONFIG_BLOCK_WINDOWS = """\
 {marker_start}
-Match host *.ssh.baseten.co exec "{python} {proxy_script} --sign %n"
-    ProxyCommand cmd /c "if exist "{python}" ("{python}" "{proxy_script}" "%n") else (echo baseten-ssh: Python not found at {python}. Run: truss train ssh setup 1>&2)"
+Match host *.ssh.baseten.co exec "\\"{python}\\" \\"{proxy_script}\\" --sign %n"
+    ProxyCommand "{python}" "{proxy_script}" %n
     User baseten
     IdentityFile {key_path}
     CertificateFile {cert_path}
@@ -204,9 +208,16 @@ def setup_ssh_config(
     end_idx = existing.find(MARKER_END)
 
     if start_idx != -1 and end_idx != -1:
-        new_content = (
-            existing[:start_idx] + block + existing[end_idx + len(MARKER_END) + 1 :]
-        )
+        after_idx = end_idx + len(MARKER_END)
+        # Consume a single trailing newline if present (\r\n or \n), so the
+        # replacement block (which ends with \n) doesn't double the separator.
+        # Never consume unconditionally — that would eat the first char of the
+        # next config entry when MARKER_END sits at EOF with no newline.
+        if existing[after_idx : after_idx + 2] == "\r\n":
+            after_idx += 2
+        elif existing[after_idx : after_idx + 1] == "\n":
+            after_idx += 1
+        new_content = existing[:start_idx] + block + existing[after_idx:]
     else:
         separator = "\n" if existing and not existing.endswith("\n") else ""
         new_content = existing + separator + block
@@ -217,4 +228,6 @@ def setup_ssh_config(
 
 def is_setup_complete(key_dir: Path = BASETEN_SSH_DIR) -> bool:
     """Check if SSH setup has been completed."""
-    return (key_dir / "proxy-command.py").exists() and (key_dir / "id_ed25519").exists()
+    if not (key_dir / "proxy-command.py").exists():
+        return False
+    return any((key_dir / name).exists() for name in ("id_ed25519", "id_rsa"))

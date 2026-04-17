@@ -329,3 +329,115 @@ class TestSetupSSHConfig:
         assert "Host myserver" in content
         assert "User deploy" in content
         assert "Port 2222" in content
+
+    def test_replace_preserves_first_char_of_next_entry(self, tmp_path):
+        """Regression: slice must not consume a char if MARKER_END has no trailing newline."""
+        from truss.cli.train.ssh import MARKER_END, MARKER_START, setup_ssh_config
+
+        ssh_config = tmp_path / "config"
+        key_dir = tmp_path / "baseten"
+        key_dir.mkdir()
+
+        # MARKER_END directly abuts next entry with no newline between
+        ssh_config.write_text(
+            f"{MARKER_START}\nOLD BLOCK\n{MARKER_END}Host another-server\n    User root\n"
+        )
+
+        with mock.patch("truss.cli.train.ssh.SSH_CONFIG_PATH", ssh_config):
+            setup_ssh_config(key_dir)
+
+        content = ssh_config.read_text()
+        assert "Host another-server" in content  # full "Host" preserved, not "ost"
+        assert "User root" in content
+
+    def test_replace_handles_crlf_line_endings(self, tmp_path):
+        """Regression: slice should consume \\r\\n as a single separator, not half of it."""
+        from truss.cli.train.ssh import MARKER_END, MARKER_START, setup_ssh_config
+
+        ssh_config = tmp_path / "config"
+        key_dir = tmp_path / "baseten"
+        key_dir.mkdir()
+
+        # Windows-style line endings after MARKER_END
+        ssh_config.write_bytes(
+            f"{MARKER_START}\r\nOLD BLOCK\r\n{MARKER_END}\r\nHost another-server\r\n    User root\r\n".encode()
+        )
+
+        with mock.patch("truss.cli.train.ssh.SSH_CONFIG_PATH", ssh_config):
+            setup_ssh_config(key_dir)
+
+        content = ssh_config.read_text()
+        assert "Host another-server" in content
+        assert "OLD BLOCK" not in content
+
+
+class TestWindowsConfigBlock:
+    """Regression tests for Windows-specific quoting in SSH config block."""
+
+    def _render(self):
+        from truss.cli.train.ssh import (
+            MARKER_END,
+            MARKER_START,
+            SSH_CONFIG_BLOCK_WINDOWS,
+        )
+
+        return SSH_CONFIG_BLOCK_WINDOWS.format(
+            marker_start=MARKER_START,
+            marker_end=MARKER_END,
+            python=r"C:\Program Files\Python311\python.exe",
+            proxy_script=r"C:\Users\bob\.ssh\baseten\proxy-command.py",
+            key_path=r"C:\Users\bob\.ssh\baseten\id_ed25519",
+            cert_path=r"C:\Users\bob\.ssh\baseten\id_ed25519-cert.pub",
+        )
+
+    def test_match_exec_escapes_quotes_around_paths(self):
+        rendered = self._render()
+        # SSH's config parser turns \" into literal " for the shell, so cmd.exe
+        # receives "C:\Program Files\...\python.exe" with the space-containing
+        # path properly quoted.
+        assert (
+            r'exec "\"C:\Program Files\Python311\python.exe\" '
+            r'\"C:\Users\bob\.ssh\baseten\proxy-command.py\" --sign %n"' in rendered
+        )
+
+    def test_proxycommand_quotes_paths(self):
+        rendered = self._render()
+        assert (
+            r'ProxyCommand "C:\Program Files\Python311\python.exe" '
+            r'"C:\Users\bob\.ssh\baseten\proxy-command.py" %n' in rendered
+        )
+
+    def test_no_broken_cmd_c_wrapper(self):
+        # The old template used `cmd /c "if exist "..."..."` with unbalanced
+        # quotes that cmd.exe couldn't parse. Guard against regression.
+        rendered = self._render()
+        assert "cmd /c" not in rendered
+        assert "if exist" not in rendered
+
+
+class TestIsSetupComplete:
+    def test_returns_true_with_ed25519(self, tmp_path):
+        from truss.cli.train.ssh import is_setup_complete
+
+        (tmp_path / "proxy-command.py").touch()
+        (tmp_path / "id_ed25519").touch()
+        assert is_setup_complete(tmp_path) is True
+
+    def test_returns_true_with_rsa(self, tmp_path):
+        from truss.cli.train.ssh import is_setup_complete
+
+        (tmp_path / "proxy-command.py").touch()
+        (tmp_path / "id_rsa").touch()
+        assert is_setup_complete(tmp_path) is True
+
+    def test_returns_false_without_proxy_script(self, tmp_path):
+        from truss.cli.train.ssh import is_setup_complete
+
+        (tmp_path / "id_ed25519").touch()
+        assert is_setup_complete(tmp_path) is False
+
+    def test_returns_false_without_key(self, tmp_path):
+        from truss.cli.train.ssh import is_setup_complete
+
+        (tmp_path / "proxy-command.py").touch()
+        assert is_setup_complete(tmp_path) is False
