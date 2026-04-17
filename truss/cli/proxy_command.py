@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""SSH helper for Baseten training jobs.
+"""SSH helper for Baseten workloads (training jobs and inference models).
 
-This script is installed to ~/.ssh/baseten/proxy-command.py by `truss train ssh setup`.
+This script is installed to ~/.ssh/baseten/proxy-command.py by `truss ssh setup`.
 It is fully self-contained (only Python stdlib imports, no truss dependency).
 
 It has two modes, both invoked by SSH automatically:
@@ -12,11 +12,14 @@ It has two modes, both invoked by SSH automatically:
   2. Proxy mode (ProxyCommand): Connects to the SSH proxy using the cached JWT.
      Invoked as: proxy-command.py <hostname>
 
-Hostname format: training-job-<job_id>-<node>.<remote>.ssh.baseten.co
-Example: training-job-5wo5n3y-0.dev.ssh.baseten.co
+Hostname formats:
+  training-job-<job_id>-<node>.<remote>.ssh.baseten.co        (training)
+  model-<model_id>.<remote>.ssh.baseten.co                    (inference, default env)
+  model-<model_id>-<env_name>.<remote>.ssh.baseten.co         (inference, specific env)
 """
 
 import configparser
+import dataclasses
 import json
 import os
 import selectors
@@ -28,6 +31,7 @@ import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 # Stamped by `truss train ssh setup` with the truss version at install time.
 # Sent to the signing API so the server can reject outdated clients.
@@ -45,7 +49,11 @@ TRUSSRC_PATH = Path(os.environ.get("USER_TRUSSRC_PATH", Path.home() / ".trussrc"
 JWT_CACHE_DIR = BASETEN_SSH_DIR / ".jwt-cache"
 
 HOSTNAME_SUFFIX = ".ssh.baseten.co"
-HOSTNAME_PREFIX = "training-job-"
+HOSTNAME_PREFIX_TRAINING = "training-job-"
+HOSTNAME_PREFIX_MODEL = "model-"
+
+WORKLOAD_TRAINING = "training"
+WORKLOAD_MODEL = "model"
 
 BASETEN_REST_API_URL = os.environ.get("BASETEN_BASE_URL", "https://api.baseten.co")
 
@@ -66,13 +74,25 @@ def find_key_path():
     return None
 
 
+@dataclasses.dataclass
+class ParsedHostname:
+    """Result of parsing an SSH hostname."""
+
+    workload_type: str
+    id: str
+    replica: Optional[str]
+    environment: Optional[str]
+    remote: Optional[str]
+    api_prefix: Optional[str]
+
+
 def parse_hostname(hostname):
-    """Parse hostname into (job_id, replica, remote, api_prefix).
+    """Parse hostname into a ParsedHostname.
 
     Supported formats:
-      training-job-<job_id>-<node>.ssh.baseten.co                       — default remote, default API
-      training-job-<job_id>-<node>.<remote>.ssh.baseten.co              — explicit remote, default API
-      training-job-<job_id>-<node>.<remote>.<api_prefix>.ssh.baseten.co — explicit remote, custom API
+      training-job-<job_id>-<node>[.<remote>[.<api_prefix>]].ssh.baseten.co
+      model-<model_id>[.<remote>[.<api_prefix>]].ssh.baseten.co
+      model-<model_id>-<env_name>[.<remote>[.<api_prefix>]].ssh.baseten.co
     """
     if not hostname.endswith(HOSTNAME_SUFFIX):
         error(f"Invalid hostname: {hostname} (expected *.ssh.baseten.co)")
@@ -80,43 +100,84 @@ def parse_hostname(hostname):
     prefix = hostname[: -len(HOSTNAME_SUFFIX)]
     dot_idx = prefix.find(".")
     if dot_idx == -1:
-        job_replica = prefix
+        workload_part = prefix
         remote = None
         api_prefix = None
     else:
-        job_replica = prefix[:dot_idx]
+        workload_part = prefix[:dot_idx]
         rest = prefix[dot_idx + 1 :]
         parts = rest.split(".", 1)
         remote = parts[0]
         api_prefix = parts[1] if len(parts) > 1 else None
 
-    if not job_replica.startswith(HOSTNAME_PREFIX):
+    if workload_part.startswith(HOSTNAME_PREFIX_TRAINING):
+        return _parse_training_hostname(hostname, workload_part, remote, api_prefix)
+    elif workload_part.startswith(HOSTNAME_PREFIX_MODEL):
+        return _parse_model_hostname(hostname, workload_part, remote, api_prefix)
+    else:
         error(
             f"Invalid hostname: {hostname} "
-            f"(expected training-job-<job_id>-<node>.ssh.baseten.co)"
+            f"(expected training-job-<job_id>-<node> or model-<model_id>)"
         )
 
-    job_replica = job_replica[len(HOSTNAME_PREFIX) :]
 
-    dash_idx = job_replica.rfind("-")
+def _parse_training_hostname(hostname, workload_part, remote, api_prefix):
+    remainder = workload_part[len(HOSTNAME_PREFIX_TRAINING) :]
+
+    dash_idx = remainder.rfind("-")
     if dash_idx == -1:
         error(f"Invalid hostname: {hostname} (cannot parse job_id and node)")
 
-    job_id = job_replica[:dash_idx]
-    replica_str = job_replica[dash_idx + 1 :]
+    job_id = remainder[:dash_idx]
+    replica_str = remainder[dash_idx + 1 :]
 
     if not replica_str:
         error(f"Invalid hostname: {hostname} (empty replica)")
-
     if not replica_str.isdigit():
         error(f"Invalid hostname: {hostname} (replica must be a number)")
-
-    replica = replica_str
-
     if not job_id:
         error(f"Invalid hostname: {hostname} (empty job_id)")
 
-    return job_id, replica, remote, api_prefix
+    return ParsedHostname(
+        workload_type=WORKLOAD_TRAINING,
+        id=job_id,
+        replica=replica_str,
+        environment=None,
+        remote=remote,
+        api_prefix=api_prefix,
+    )
+
+
+def _parse_model_hostname(hostname, workload_part, remote, api_prefix):
+    remainder = workload_part[len(HOSTNAME_PREFIX_MODEL) :]
+    if not remainder:
+        error(f"Invalid hostname: {hostname} (empty model_id)")
+
+    # Model IDs are [a-z0-9]+ (no hyphens). If there's a hyphen, everything
+    # after the first one is the environment name.
+    dash_idx = remainder.find("-")
+    if dash_idx == -1:
+        model_id = remainder
+        environment = None
+    else:
+        model_id = remainder[:dash_idx]
+        environment = remainder[dash_idx + 1 :]
+        if not environment:
+            error(f"Invalid hostname: {hostname} (empty environment name)")
+
+    if not model_id:
+        error(f"Invalid hostname: {hostname} (empty model_id)")
+
+    replica = os.environ.get("BASETEN_REPLICA") or None
+
+    return ParsedHostname(
+        workload_type=WORKLOAD_MODEL,
+        id=model_id,
+        replica=replica,
+        environment=environment,
+        remote=remote,
+        api_prefix=api_prefix,
+    )
 
 
 def _read_trussrc():
@@ -142,8 +203,8 @@ def resolve_remote(remote, config):
         else:
             error(
                 f"Multiple remotes in ~/.trussrc: {', '.join(sections)}. "
-                f"Specify one in the hostname: ssh training-job-<job_id>-<node>.<remote>.ssh.baseten.co\n"
-                f"Or re-run: truss train ssh setup --default-remote <name>"
+                f"Specify one in the hostname: ssh <workload>.<remote>.ssh.baseten.co\n"
+                f"Or re-run: truss ssh setup --default-remote <name>"
             )
     return remote
 
@@ -234,10 +295,10 @@ def resolve_project_id(rest_url, api_key, job_id):
     return jobs[0]["training_project"]["id"]
 
 
-def sign_certificate(
+def sign_training_certificate(
     rest_url, api_key, project_id, job_id, public_key, replica, key_path
 ):
-    """Call the SSH signing endpoint. Returns (ssh_cert, jwt, proxy_address)."""
+    """Call the training SSH signing endpoint. Returns (jwt, proxy_address)."""
     resp = api_request(
         f"{rest_url}/v1/training_projects/{project_id}/jobs/{job_id}/ssh/sign",
         api_key,
@@ -245,30 +306,51 @@ def sign_certificate(
         body={"public_key": public_key, "replica_id": replica},
     )
 
-    # Write cert next to the key (e.g. id_ed25519-cert.pub)
     cert_path = key_path.parent / (key_path.name + "-cert.pub")
     cert_path.write_text(resp["ssh_certificate"])
+    return resp["jwt"], resp["proxy_address"]
 
+
+def sign_model_certificate(rest_url, api_key, parsed, public_key, key_path):
+    """Call the inference SSH signing endpoint. Returns (jwt, proxy_address)."""
+    body = {"public_key": public_key}
+    if parsed.replica:
+        body["replica_id"] = parsed.replica
+
+    if parsed.environment:
+        url = f"{rest_url}/v1/models/{parsed.id}/environments/{parsed.environment}/ssh/sign"
+    else:
+        url = f"{rest_url}/v1/models/{parsed.id}/ssh/sign"
+
+    resp = api_request(url, api_key, method="POST", body=body)
+
+    cert_path = key_path.parent / (key_path.name + "-cert.pub")
+    cert_path.write_text(resp["ssh_certificate"])
     return resp["jwt"], resp["proxy_address"]
 
 
 # --- JWT cache: shared between sign mode and proxy mode ---
 
 
-def _jwt_cache_path(job_id, replica):
-    return JWT_CACHE_DIR / f"{job_id}-{replica}.json"
+def _jwt_cache_path(parsed):
+    parts = [parsed.workload_type, parsed.id]
+    if parsed.environment:
+        parts.append(parsed.environment)
+    if parsed.replica:
+        parts.append(parsed.replica)
+    return JWT_CACHE_DIR / f"{'-'.join(parts)}.json"
 
 
-def save_jwt_cache(job_id, replica, jwt_token, proxy_address):
+def save_jwt_cache(parsed, jwt_token, proxy_address):
     """Save JWT and proxy address for the proxy command to read."""
     JWT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _jwt_cache_path(job_id, replica)
+    path = _jwt_cache_path(parsed)
     path.write_text(json.dumps({"jwt": jwt_token, "proxy_address": proxy_address}))
 
 
-def load_jwt_cache(job_id, replica):
+def load_jwt_cache(parsed):
     """Load cached JWT and proxy address. Returns (jwt, proxy_address) or None."""
-    path = _jwt_cache_path(job_id, replica)
+    path = _jwt_cache_path(parsed)
     if not path.exists():
         return None
     try:
@@ -279,6 +361,25 @@ def load_jwt_cache(job_id, replica):
 
 
 # --- Sign mode (Match exec) ---
+
+
+def _sign_for_parsed(parsed, rest_url, api_key, key_path):
+    """Sign a certificate for the given parsed hostname. Returns (jwt, proxy_address)."""
+    public_key = key_path.with_suffix(".pub").read_text().strip()
+
+    if parsed.workload_type == WORKLOAD_TRAINING:
+        project_id = resolve_project_id(rest_url, api_key, parsed.id)
+        return sign_training_certificate(
+            rest_url,
+            api_key,
+            project_id,
+            parsed.id,
+            public_key,
+            parsed.replica,
+            key_path,
+        )
+    else:
+        return sign_model_certificate(rest_url, api_key, parsed, public_key, key_path)
 
 
 def main_sign():
@@ -295,24 +396,19 @@ def main_sign():
     key_path = find_key_path()
     if not key_path:
         print(
-            "baseten-ssh: SSH keypair not found. Run 'truss train ssh setup' first.",
+            "baseten-ssh: SSH keypair not found. Run 'truss ssh setup' first.",
             file=sys.stderr,
         )
         sys.exit(0)  # Exit 0 so Match still applies; ProxyCommand will show error too
 
-    job_id, replica, remote, api_prefix = parse_hostname(hostname)
+    parsed = parse_hostname(hostname)
     config = _read_trussrc()
-    remote = resolve_remote(remote, config)
+    remote = resolve_remote(parsed.remote, config)
     api_key, _ = load_trussrc(remote, config)
-    rest_url = resolve_rest_api_url(api_prefix)
+    rest_url = resolve_rest_api_url(parsed.api_prefix)
 
-    project_id = resolve_project_id(rest_url, api_key, job_id)
-    public_key = key_path.with_suffix(".pub").read_text().strip()
-    jwt_token, proxy_address = sign_certificate(
-        rest_url, api_key, project_id, job_id, public_key, replica, key_path
-    )
-
-    save_jwt_cache(job_id, replica, jwt_token, proxy_address)
+    jwt_token, proxy_address = _sign_for_parsed(parsed, rest_url, api_key, key_path)
+    save_jwt_cache(parsed, jwt_token, proxy_address)
 
 
 # --- Proxy mode (ProxyCommand) ---
@@ -340,7 +436,9 @@ def connect_proxy(proxy_address, jwt_token):
     status = tls_sock.recv(1)
     if not status or status[0] != STATUS_OK:
         tls_sock.close()
-        error("SSH proxy rejected the connection. Is the job and SSH server running?")
+        error(
+            "SSH proxy rejected the connection. Is the workload and SSH server running?"
+        )
 
     return tls_sock
 
@@ -418,25 +516,21 @@ def main_proxy():
 
     key_path = find_key_path()
     if not key_path:
-        error("SSH keypair not found. Run 'truss train ssh setup' first.")
+        error("SSH keypair not found. Run 'truss ssh setup' first.")
 
-    job_id, replica, remote, api_prefix = parse_hostname(hostname)
+    parsed = parse_hostname(hostname)
 
     # Try to use cached JWT from sign mode
-    cached = load_jwt_cache(job_id, replica)
+    cached = load_jwt_cache(parsed)
     if cached:
         jwt_token, proxy_address = cached
     else:
         # Fallback: sign here if Match exec didn't run (e.g. old SSH config)
         config = _read_trussrc()
-        remote = resolve_remote(remote, config)
+        remote = resolve_remote(parsed.remote, config)
         api_key, _ = load_trussrc(remote, config)
-        rest_url = resolve_rest_api_url(api_prefix)
-        project_id = resolve_project_id(rest_url, api_key, job_id)
-        public_key = key_path.with_suffix(".pub").read_text().strip()
-        jwt_token, proxy_address = sign_certificate(
-            rest_url, api_key, project_id, job_id, public_key, replica, key_path
-        )
+        rest_url = resolve_rest_api_url(parsed.api_prefix)
+        jwt_token, proxy_address = _sign_for_parsed(parsed, rest_url, api_key, key_path)
 
     # Connect to proxy
     tls_sock = connect_proxy(proxy_address, jwt_token)

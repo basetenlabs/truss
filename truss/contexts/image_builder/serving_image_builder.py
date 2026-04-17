@@ -787,6 +787,13 @@ class ServingImageBuilder(ImageBuilder):
         )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
+        if config.runtime.remote_ssh.enabled:
+            self._copy_into_build_dir(
+                TEMPLATES_DIR / "baseten-ssh-server.sh",
+                build_dir,
+                "baseten-ssh-server.sh",
+            )
+
         # Copy constraints file to bound versions for user-overridden packages.
         self._copy_into_build_dir(
             SERVER_CODE_DIR / CONSTRAINTS_TXT_FILENAME,

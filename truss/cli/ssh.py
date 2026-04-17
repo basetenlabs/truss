@@ -21,9 +21,17 @@ MARKER_END = "# --- end baseten-ssh ---"
 
 SSH_CONFIG_BLOCK_UNIX = """\
 {marker_start}
-Match host *.ssh.baseten.co exec "{python} {proxy_script} --sign %n"
-    ProxyCommand sh -c 'test -x "{python}" || {{ echo "baseten-ssh: Python not found at {python}. Please try re-running: truss train ssh setup" >&2; exit 127; }}; exec "{python}" "{proxy_script}" "$1"' -- %n
+Match host training-job-*.ssh.baseten.co exec "{python} {proxy_script} --sign %n"
+    ProxyCommand sh -c 'test -x "{python}" || {{ echo "baseten-ssh: Python not found at {python}. Please try re-running: truss ssh setup" >&2; exit 127; }}; exec "{python}" "{proxy_script}" "$1"' -- %n
     User baseten
+    IdentityFile {key_path}
+    CertificateFile {cert_path}
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+Match host model-*.ssh.baseten.co exec "{python} {proxy_script} --sign %n"
+    ProxyCommand sh -c 'test -x "{python}" || {{ echo "baseten-ssh: Python not found at {python}. Please try re-running: truss ssh setup" >&2; exit 127; }}; exec "{python}" "{proxy_script}" "$1"' -- %n
+    User app
     IdentityFile {key_path}
     CertificateFile {cert_path}
     StrictHostKeyChecking no
@@ -33,9 +41,17 @@ Match host *.ssh.baseten.co exec "{python} {proxy_script} --sign %n"
 
 SSH_CONFIG_BLOCK_WINDOWS = """\
 {marker_start}
-Match host *.ssh.baseten.co exec "\\"{python}\\" \\"{proxy_script}\\" --sign %n"
+Match host training-job-*.ssh.baseten.co exec "\\"{python}\\" \\"{proxy_script}\\" --sign %n"
     ProxyCommand "{python}" "{proxy_script}" %n
     User baseten
+    IdentityFile {key_path}
+    CertificateFile {cert_path}
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+Match host model-*.ssh.baseten.co exec "\\"{python}\\" \\"{proxy_script}\\" --sign %n"
+    ProxyCommand "{python}" "{proxy_script}" %n
+    User app
     IdentityFile {key_path}
     CertificateFile {cert_path}
     StrictHostKeyChecking no
