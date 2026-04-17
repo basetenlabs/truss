@@ -1,14 +1,31 @@
+import configparser
 from unittest import mock
 
 import pytest
+
+from truss.cli import proxy_command
+from truss.cli import ssh as ssh_mod
+from truss.cli.proxy_command import (
+    load_trussrc,
+    parse_hostname,
+    resolve_remote,
+    resolve_rest_api_url,
+)
+from truss.cli.ssh import (
+    MARKER_END,
+    MARKER_START,
+    SSH_CONFIG_BLOCK_WINDOWS,
+    ensure_ssh_keypair,
+    install_proxy_command_script,
+    is_setup_complete,
+    setup_ssh_config,
+)
 
 
 class TestParseHostname:
     """Tests for proxy_command.parse_hostname."""
 
     def _parse(self, hostname):
-        from truss.cli.train.proxy_command import parse_hostname
-
         return parse_hostname(hostname)
 
     def test_basic(self):
@@ -73,8 +90,6 @@ class TestLoadTrussrc:
     """Tests for proxy_command.load_trussrc."""
 
     def test_loads_remote(self, tmp_path):
-        from truss.cli.train.proxy_command import load_trussrc
-
         rc = tmp_path / ".trussrc"
         rc.write_text(
             "[dev]\n"
@@ -82,72 +97,47 @@ class TestLoadTrussrc:
             "api_key = test-key-123\n"
             "remote_url = https://app.dev.baseten.co\n"
         )
-        with mock.patch("truss.cli.train.proxy_command.TRUSSRC_PATH", rc):
+        with mock.patch("truss.cli.proxy_command.TRUSSRC_PATH", rc):
             api_key, remote_url = load_trussrc("dev")
         assert api_key == "test-key-123"
         assert remote_url == "https://app.dev.baseten.co"
 
     def test_missing_remote(self, tmp_path):
-        from truss.cli.train.proxy_command import load_trussrc
-
         rc = tmp_path / ".trussrc"
         rc.write_text("[baseten]\napi_key = x\nremote_url = y\n")
-        with mock.patch("truss.cli.train.proxy_command.TRUSSRC_PATH", rc):
+        with mock.patch("truss.cli.proxy_command.TRUSSRC_PATH", rc):
             with pytest.raises(SystemExit):
                 load_trussrc("nonexistent")
 
     def test_missing_file(self, tmp_path):
-        from truss.cli.train.proxy_command import load_trussrc
-
-        with mock.patch(
-            "truss.cli.train.proxy_command.TRUSSRC_PATH", tmp_path / "nope"
-        ):
+        with mock.patch("truss.cli.proxy_command.TRUSSRC_PATH", tmp_path / "nope"):
             with pytest.raises(SystemExit):
                 load_trussrc("dev")
 
 
 class TestResolveRestApiUrl:
     def test_default_is_prod(self):
-        from truss.cli.train.proxy_command import resolve_rest_api_url
-
         assert resolve_rest_api_url() == "https://api.baseten.co"
 
     def test_api_prefix(self):
-        from truss.cli.train.proxy_command import resolve_rest_api_url
-
         assert resolve_rest_api_url("mc-dev") == "https://api.mc-dev.baseten.co"
 
     def test_staging_prefix(self):
-        from truss.cli.train.proxy_command import resolve_rest_api_url
-
         assert resolve_rest_api_url("staging") == "https://api.staging.baseten.co"
 
 
 class TestResolveRemote:
     def test_explicit_remote_passthrough(self):
-        import configparser
-
-        from truss.cli.train.proxy_command import resolve_remote
-
         config = configparser.ConfigParser()
         config.read_string("[dev]\napi_key = x\n")
         assert resolve_remote("dev", config) == "dev"
 
     def test_single_remote_default(self):
-        import configparser
-
-        from truss.cli.train.proxy_command import resolve_remote
-
         config = configparser.ConfigParser()
         config.read_string("[dev]\napi_key = x\n")
         assert resolve_remote(None, config) == "dev"
 
     def test_multiple_remotes_errors(self):
-        import configparser
-
-        from truss.cli.train import proxy_command
-        from truss.cli.train.proxy_command import resolve_remote
-
         config = configparser.ConfigParser()
         config.read_string("[dev]\napi_key = x\n\n[baseten]\napi_key = y\n")
         with mock.patch.object(proxy_command, "DEFAULT_REMOTE", ""):
@@ -155,22 +145,12 @@ class TestResolveRemote:
                 resolve_remote(None, config)
 
     def test_multiple_remotes_with_default(self):
-        import configparser
-
-        from truss.cli.train import proxy_command
-        from truss.cli.train.proxy_command import resolve_remote
-
         config = configparser.ConfigParser()
         config.read_string("[dev]\napi_key = x\n\n[baseten]\napi_key = y\n")
         with mock.patch.object(proxy_command, "DEFAULT_REMOTE", "baseten"):
             assert resolve_remote(None, config) == "baseten"
 
     def test_explicit_remote_overrides_default(self):
-        import configparser
-
-        from truss.cli.train import proxy_command
-        from truss.cli.train.proxy_command import resolve_remote
-
         config = configparser.ConfigParser()
         config.read_string("[dev]\napi_key = x\n\n[baseten]\napi_key = y\n")
         with mock.patch.object(proxy_command, "DEFAULT_REMOTE", "baseten"):
@@ -179,8 +159,6 @@ class TestResolveRemote:
 
 class TestEnsureSSHKeypair:
     def test_creates_keypair_ed25519(self, tmp_path):
-        from truss.cli.train.ssh import ensure_ssh_keypair
-
         key_dir = tmp_path / "ssh" / "baseten"
         mock_result = mock.Mock(returncode=0)
         with mock.patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -193,8 +171,6 @@ class TestEnsureSSHKeypair:
             assert reused is False
 
     def test_falls_back_to_rsa(self, tmp_path):
-        from truss.cli.train.ssh import ensure_ssh_keypair
-
         key_dir = tmp_path / "ssh" / "baseten"
         ed25519_fail = mock.Mock(returncode=1)
         rsa_ok = mock.Mock(returncode=0)
@@ -209,8 +185,6 @@ class TestEnsureSSHKeypair:
             assert reused is False
 
     def test_skips_existing_ed25519(self, tmp_path):
-        from truss.cli.train.ssh import ensure_ssh_keypair
-
         key_dir = tmp_path / "ssh" / "baseten"
         key_dir.mkdir(parents=True)
         (key_dir / "id_ed25519").touch()
@@ -222,8 +196,6 @@ class TestEnsureSSHKeypair:
             assert reused is True
 
     def test_skips_existing_rsa(self, tmp_path):
-        from truss.cli.train.ssh import ensure_ssh_keypair
-
         key_dir = tmp_path / "ssh" / "baseten"
         key_dir.mkdir(parents=True)
         (key_dir / "id_rsa").touch()
@@ -237,8 +209,6 @@ class TestEnsureSSHKeypair:
 
 class TestInstallProxyCommandScript:
     def test_installs_with_version(self, tmp_path):
-        from truss.cli.train.ssh import install_proxy_command_script
-
         key_dir = tmp_path / "ssh" / "baseten"
         with mock.patch("truss.__version__", "1.2.3"):
             dest = install_proxy_command_script(key_dir)
@@ -249,8 +219,6 @@ class TestInstallProxyCommandScript:
         assert "{{CLIENT_VERSION}}" not in content
 
     def test_installs_with_default_remote(self, tmp_path):
-        from truss.cli.train.ssh import install_proxy_command_script
-
         key_dir = tmp_path / "ssh" / "baseten"
         with mock.patch("truss.__version__", "1.2.3"):
             dest = install_proxy_command_script(key_dir, default_remote="baseten")
@@ -260,8 +228,6 @@ class TestInstallProxyCommandScript:
         assert "{{DEFAULT_REMOTE}}" not in content
 
     def test_installs_without_default_remote(self, tmp_path):
-        from truss.cli.train.ssh import install_proxy_command_script
-
         key_dir = tmp_path / "ssh" / "baseten"
         with mock.patch("truss.__version__", "1.2.3"):
             dest = install_proxy_command_script(key_dir)
@@ -273,13 +239,11 @@ class TestInstallProxyCommandScript:
 
 class TestSetupSSHConfig:
     def test_creates_new_config(self, tmp_path):
-        from truss.cli.train.ssh import MARKER_END, MARKER_START, setup_ssh_config
-
         ssh_config = tmp_path / "config"
         key_dir = tmp_path / "baseten"
         key_dir.mkdir()
 
-        with mock.patch("truss.cli.train.ssh.SSH_CONFIG_PATH", ssh_config):
+        with mock.patch.object(ssh_mod, "SSH_CONFIG_PATH", ssh_config):
             setup_ssh_config(key_dir)
 
         content = ssh_config.read_text()
@@ -290,8 +254,6 @@ class TestSetupSSHConfig:
         assert "User baseten" in content
 
     def test_replaces_existing_block(self, tmp_path):
-        from truss.cli.train.ssh import MARKER_END, MARKER_START, setup_ssh_config
-
         ssh_config = tmp_path / "config"
         key_dir = tmp_path / "baseten"
         key_dir.mkdir()
@@ -302,7 +264,7 @@ class TestSetupSSHConfig:
             "Host another-server\n    User root\n"
         )
 
-        with mock.patch("truss.cli.train.ssh.SSH_CONFIG_PATH", ssh_config):
+        with mock.patch.object(ssh_mod, "SSH_CONFIG_PATH", ssh_config):
             setup_ssh_config(key_dir)
 
         content = ssh_config.read_text()
@@ -313,8 +275,6 @@ class TestSetupSSHConfig:
         assert "*.ssh.baseten.co" in content
 
     def test_preserves_other_entries(self, tmp_path):
-        from truss.cli.train.ssh import setup_ssh_config
-
         ssh_config = tmp_path / "config"
         key_dir = tmp_path / "baseten"
         key_dir.mkdir()
@@ -322,7 +282,7 @@ class TestSetupSSHConfig:
         existing = "Host myserver\n    User deploy\n    Port 2222\n"
         ssh_config.write_text(existing)
 
-        with mock.patch("truss.cli.train.ssh.SSH_CONFIG_PATH", ssh_config):
+        with mock.patch.object(ssh_mod, "SSH_CONFIG_PATH", ssh_config):
             setup_ssh_config(key_dir)
 
         content = ssh_config.read_text()
@@ -332,18 +292,15 @@ class TestSetupSSHConfig:
 
     def test_replace_preserves_first_char_of_next_entry(self, tmp_path):
         """Regression: slice must not consume a char if MARKER_END has no trailing newline."""
-        from truss.cli.train.ssh import MARKER_END, MARKER_START, setup_ssh_config
-
         ssh_config = tmp_path / "config"
         key_dir = tmp_path / "baseten"
         key_dir.mkdir()
 
-        # MARKER_END directly abuts next entry with no newline between
         ssh_config.write_text(
             f"{MARKER_START}\nOLD BLOCK\n{MARKER_END}Host another-server\n    User root\n"
         )
 
-        with mock.patch("truss.cli.train.ssh.SSH_CONFIG_PATH", ssh_config):
+        with mock.patch.object(ssh_mod, "SSH_CONFIG_PATH", ssh_config):
             setup_ssh_config(key_dir)
 
         content = ssh_config.read_text()
@@ -352,18 +309,15 @@ class TestSetupSSHConfig:
 
     def test_replace_handles_crlf_line_endings(self, tmp_path):
         """Regression: slice should consume \\r\\n as a single separator, not half of it."""
-        from truss.cli.train.ssh import MARKER_END, MARKER_START, setup_ssh_config
-
         ssh_config = tmp_path / "config"
         key_dir = tmp_path / "baseten"
         key_dir.mkdir()
 
-        # Windows-style line endings after MARKER_END
         ssh_config.write_bytes(
             f"{MARKER_START}\r\nOLD BLOCK\r\n{MARKER_END}\r\nHost another-server\r\n    User root\r\n".encode()
         )
 
-        with mock.patch("truss.cli.train.ssh.SSH_CONFIG_PATH", ssh_config):
+        with mock.patch.object(ssh_mod, "SSH_CONFIG_PATH", ssh_config):
             setup_ssh_config(key_dir)
 
         content = ssh_config.read_text()
@@ -375,12 +329,6 @@ class TestWindowsConfigBlock:
     """Regression tests for Windows-specific quoting in SSH config block."""
 
     def _render(self):
-        from truss.cli.train.ssh import (
-            MARKER_END,
-            MARKER_START,
-            SSH_CONFIG_BLOCK_WINDOWS,
-        )
-
         return SSH_CONFIG_BLOCK_WINDOWS.format(
             marker_start=MARKER_START,
             marker_end=MARKER_END,
@@ -392,9 +340,6 @@ class TestWindowsConfigBlock:
 
     def test_match_exec_escapes_quotes_around_paths(self):
         rendered = self._render()
-        # SSH's config parser turns \" into literal " for the shell, so cmd.exe
-        # receives "C:\Program Files\...\python.exe" with the space-containing
-        # path properly quoted.
         assert (
             r'exec "\"C:\Program Files\Python311\python.exe\" '
             r'\"C:\Users\bob\.ssh\baseten\proxy-command.py\" --sign %n"' in rendered
@@ -408,8 +353,6 @@ class TestWindowsConfigBlock:
         )
 
     def test_no_broken_cmd_c_wrapper(self):
-        # The old template used `cmd /c "if exist "..."..."` with unbalanced
-        # quotes that cmd.exe couldn't parse. Guard against regression.
         rendered = self._render()
         assert "cmd /c" not in rendered
         assert "if exist" not in rendered
@@ -417,27 +360,19 @@ class TestWindowsConfigBlock:
 
 class TestIsSetupComplete:
     def test_returns_true_with_ed25519(self, tmp_path):
-        from truss.cli.train.ssh import is_setup_complete
-
         (tmp_path / "proxy-command.py").touch()
         (tmp_path / "id_ed25519").touch()
         assert is_setup_complete(tmp_path) is True
 
     def test_returns_true_with_rsa(self, tmp_path):
-        from truss.cli.train.ssh import is_setup_complete
-
         (tmp_path / "proxy-command.py").touch()
         (tmp_path / "id_rsa").touch()
         assert is_setup_complete(tmp_path) is True
 
     def test_returns_false_without_proxy_script(self, tmp_path):
-        from truss.cli.train.ssh import is_setup_complete
-
         (tmp_path / "id_ed25519").touch()
         assert is_setup_complete(tmp_path) is False
 
     def test_returns_false_without_key(self, tmp_path):
-        from truss.cli.train.ssh import is_setup_complete
-
         (tmp_path / "proxy-command.py").touch()
         assert is_setup_complete(tmp_path) is False
