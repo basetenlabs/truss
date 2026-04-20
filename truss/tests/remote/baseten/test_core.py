@@ -1,5 +1,6 @@
 import json
 from tempfile import NamedTemporaryFile
+from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -16,6 +17,44 @@ from truss.remote.baseten.core import (
     get_training_job_logs_with_pagination,
 )
 from truss.remote.baseten.utils.time import iso_to_millis
+
+
+def _make_push_data(
+    *,
+    publish: bool = True,
+    model_id: Optional[str] = None,
+    deployment_name: Optional[str] = None,
+    environment: Optional[str] = None,
+    preserve_previous_prod_deployment: bool = False,
+    allow_truss_download: bool = True,
+    deploy_timeout_minutes: Optional[int] = None,
+    preserve_env_instance_type: bool = True,
+    labels: Optional[dict] = None,
+    origin: Optional[b10_types.ModelOrigin] = None,
+    team_id: Optional[str] = None,
+) -> b10_types.FinalPushData:
+    # preserve_previous_prod_deployment requires promote=True per PushOptions
+    # validator; tests that set preserve get promote=True implicitly.
+    return b10_types.FinalPushData(
+        model_name="model_name",
+        s3_key="s3_key",
+        encoded_config_str="config",
+        version_name=deployment_name,
+        model_id=model_id,
+        options=b10_types.PushOptions(
+            publish=publish,
+            promote=preserve_previous_prod_deployment,
+            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+            disable_truss_download=not allow_truss_download,
+            deployment_name=deployment_name,
+            environment=environment,
+            deploy_timeout_minutes=deploy_timeout_minutes,
+            preserve_env_instance_type=preserve_env_instance_type,
+            labels=labels,
+            origin=origin,
+            team_id=team_id,
+        ),
+    )
 
 
 def test_exists_model():
@@ -193,15 +232,13 @@ def test_create_truss_service_handles_eligible_environment_values(environment):
     api.create_model_from_truss.return_value = return_value
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(
+            publish=True,
+            model_id=None,
+            deployment_name="deployment_name",
+            environment=environment,
+        ),
         b10_types.TrussUserEnv.collect(),
-        preserve_previous_prod_deployment=False,
-        is_draft=False,
-        model_id=None,
-        deployment_name="deployment_name",
-        environment=environment,
     )
     assert version_handle.version_id == "model_version_id"
     assert version_handle.model_id == "model_id"
@@ -219,14 +256,8 @@ def test_create_truss_services_handles_is_draft(model_id):
     api.create_development_model_from_truss.return_value = return_value
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(publish=False, model_id=model_id),
         b10_types.TrussUserEnv.collect(),
-        preserve_previous_prod_deployment=False,
-        is_draft=True,
-        model_id=model_id,
-        deployment_name="deployment_name",
     )
     assert version_handle.version_id == "model_version_id"
     assert version_handle.model_id == "model_id"
@@ -238,7 +269,7 @@ def test_create_truss_services_handles_is_draft(model_id):
     [
         {
             "environment": None,
-            "deployment_name": "some deployment",
+            "deployment_name": "some_deployment",
             "preserve_previous_prod_deployment": False,
         },
         {
@@ -263,13 +294,8 @@ def test_create_truss_service_handles_existing_model(inputs):
     api.create_model_version_from_truss.return_value = return_value
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(publish=True, model_id="model_id", **inputs),
         b10_types.TrussUserEnv.collect(),
-        is_draft=False,
-        model_id="model_id",
-        **inputs,
     )
 
     assert version_handle.version_id == "model_version_id"
@@ -296,15 +322,13 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
 
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(
+            publish=not is_draft,
+            model_id=None,
+            deployment_name="deployment_name",
+            allow_truss_download=allow_truss_download,
+        ),
         b10_types.TrussUserEnv.collect(),
-        preserve_previous_prod_deployment=False,
-        is_draft=is_draft,
-        model_id=None,
-        deployment_name="deployment_name",
-        allow_truss_download=allow_truss_download,
     )
     assert version_handle.version_id == "model_version_id"
     assert version_handle.model_id == "model_id"
@@ -906,14 +930,13 @@ def test_create_truss_service_passes_deploy_timeout_minutes():
     api.create_model_version_from_truss.return_value = return_value
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(
+            publish=True,
+            model_id="model_id",
+            environment="staging",
+            deploy_timeout_minutes=600,
+        ),
         b10_types.TrussUserEnv.collect(),
-        is_draft=False,
-        model_id="model_id",
-        environment="staging",
-        deploy_timeout_minutes=600,
     )
 
     assert version_handle.version_id == "model_version_id"
@@ -934,15 +957,14 @@ def test_create_truss_service_passes_deploy_timeout_minutes_with_other_params():
     api.create_model_version_from_truss.return_value = return_value
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(
+            publish=True,
+            model_id="model_id",
+            environment="production",
+            preserve_env_instance_type=False,
+            deploy_timeout_minutes=900,
+        ),
         b10_types.TrussUserEnv.collect(),
-        is_draft=False,
-        model_id="model_id",
-        environment="production",
-        preserve_env_instance_type=False,
-        deploy_timeout_minutes=900,
     )
 
     assert version_handle.version_id == "model_version_id"
@@ -964,13 +986,8 @@ def test_create_truss_service_passes_deploy_timeout_minutes_for_development_mode
     api.create_development_model_from_truss.return_value = return_value
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(publish=False, model_id=None, deploy_timeout_minutes=600),
         b10_types.TrussUserEnv.collect(),
-        is_draft=True,
-        model_id=None,
-        deploy_timeout_minutes=600,
     )
 
     assert version_handle.version_id == "model_version_id"
@@ -992,13 +1009,8 @@ def test_create_truss_service_passes_labels():
 
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(publish=True, model_id=None, labels=labels),
         b10_types.TrussUserEnv.collect(),
-        is_draft=False,
-        model_id=None,
-        labels=labels,
     )
 
     assert version_handle.version_id == "model_version_id"
@@ -1020,13 +1032,8 @@ def test_create_truss_service_passes_labels_for_development_model():
 
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(publish=False, model_id=None, labels=labels),
         b10_types.TrussUserEnv.collect(),
-        is_draft=True,
-        model_id=None,
-        labels=labels,
     )
 
     assert version_handle.version_id == "model_version_id"
@@ -1048,13 +1055,8 @@ def test_create_truss_service_passes_labels_for_existing_model():
 
     version_handle = create_truss_service(
         api,
-        "model_name",
-        "s3_key",
-        "config",
+        _make_push_data(publish=True, model_id="existing_model_id", labels=labels),
         b10_types.TrussUserEnv.collect(),
-        is_draft=False,
-        model_id="existing_model_id",
-        labels=labels,
     )
 
     assert version_handle.version_id == "model_version_id"

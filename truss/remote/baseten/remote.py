@@ -1,6 +1,5 @@
 import enum
 import logging
-import re
 import sys
 import time
 from pathlib import Path
@@ -20,8 +19,6 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten import custom_types as b10_types
@@ -45,6 +42,7 @@ from truss.remote.baseten.core import (
     upload_truss,
     validate_truss_config_against_backend,
 )
+from truss.remote.baseten.custom_types import FinalPushData, PushOptions
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -92,20 +90,6 @@ def retry_patch(
                 f"Initial sync failed after {max_retries} attempts: {msg}"
             )
             sys.exit(1)
-
-
-class FinalPushData(custom_types.OracleData):
-    class Config:
-        protected_namespaces = ()
-
-    is_draft: bool
-    model_id: Optional[str]
-    preserve_previous_prod_deployment: bool
-    origin: Optional[custom_types.ModelOrigin] = None
-    environment: Optional[str] = None
-    allow_truss_download: bool
-    team_id: Optional[str] = None
-    labels: Optional[Dict[str, Any]] = None
 
 
 class BasetenRemote(TrussRemote):
@@ -173,17 +157,8 @@ class BasetenRemote(TrussRemote):
         self,
         truss_handle: TrussHandle,
         model_name: str,
-        publish: bool = True,
-        promote: bool = False,
-        preserve_previous_prod_deployment: bool = False,
-        disable_truss_download: bool = False,
-        deployment_name: Optional[str] = None,
-        origin: Optional[custom_types.ModelOrigin] = None,
-        environment: Optional[str] = None,
+        options: PushOptions,
         progress_bar: Optional[Type["progress.Progress"]] = None,
-        deploy_timeout_minutes: Optional[int] = None,
-        team_id: Optional[str] = None,
-        labels: Optional[Dict[str, Any]] = None,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -191,46 +166,20 @@ class BasetenRemote(TrussRemote):
         if truss_handle.is_scattered():
             truss_handle = TrussHandle(truss_handle.gather())
 
-        if truss_handle.spec.model_server != ModelServer.TrussServer:
-            publish = True
-
-        if promote:
-            environment = PRODUCTION_ENVIRONMENT_NAME
-
-        # If there is a target environment, it must be published.
-        # Draft models cannot be promoted.
-        if environment and not publish:
+        # Log auto-publish before normalization mutates publish.
+        if options.environment and not options.publish:
             logging.info(
                 f"Automatically publishing model '{model_name}' based on environment setting."
             )
-            publish = True
 
-        if not publish and deployment_name:
-            raise ValueError(
-                "Deployment name cannot be used for development deployment"
-            )
+        # Apply server-dependent rules (non-TrussServer forces publish, promote
+        # sets environment, environment forces publish, etc.). Returns a new
+        # PushOptions; subsequent reads must use the normalized instance.
+        options = options.normalize(truss_handle.spec.model_server)
 
-        if not promote and preserve_previous_prod_deployment:
-            raise ValueError(
-                "preserve-previous-production-deployment can only be used "
-                "with the '--promote' option"
-            )
-
-        if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
-            raise ValueError(
-                "Deployment name must only contain alphanumeric, -, _ and . characters"
-            )
-
-        if deploy_timeout_minutes is not None and (
-            deploy_timeout_minutes < 10 or deploy_timeout_minutes > 1440
-        ):
-            raise ValueError(
-                "deploy-timeout-minutes must be between 10 minutes and 1440 minutes (24 hours)"
-            )
-
-        model_id = exists_model(self._api, model_name, team_id=team_id)
-
-        if model_id is not None and disable_truss_download:
+        # This check requires an API lookup and cannot move into PushOptions.
+        model_id = exists_model(self._api, model_name, team_id=options.team_id)
+        if model_id is not None and options.disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
         config = truss_handle._spec._config
@@ -245,15 +194,9 @@ class BasetenRemote(TrussRemote):
             model_name=model_name,
             s3_key=s3_key,
             encoded_config_str=encoded_config_str,
-            is_draft=not publish,
+            version_name=options.deployment_name,
             model_id=model_id,
-            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
-            version_name=deployment_name,
-            origin=origin,
-            environment=environment,
-            allow_truss_download=not disable_truss_download,
-            team_id=team_id,
-            labels=labels,
+            options=options,
         )
 
     def push(  # type: ignore
@@ -275,9 +218,7 @@ class BasetenRemote(TrussRemote):
         team_id: Optional[str] = None,
         labels: Optional[Dict[str, Any]] = None,
     ) -> BasetenService:
-        push_data = self._prepare_push(
-            truss_handle=truss_handle,
-            model_name=model_name,
+        options = PushOptions(
             publish=publish,
             promote=promote,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
@@ -285,38 +226,26 @@ class BasetenRemote(TrussRemote):
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
-            progress_bar=progress_bar,
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
             labels=labels,
+            preserve_env_instance_type=preserve_env_instance_type,
+            include_git_info=include_git_info,
+        )
+        push_data = self._prepare_push(
+            truss_handle=truss_handle,
+            model_name=model_name,
+            options=options,
+            progress_bar=progress_bar,
         )
 
-        if include_git_info:
+        if push_data.options.include_git_info:
             truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
         else:
             truss_user_env = b10_types.TrussUserEnv.collect()
 
-        # TODO(Tyron): This set of args is duplicated across
-        # many functions. We should consolidate them into a
-        # data class with standardized default values so
-        # we're not drilling these arguments everywhere.
         model_version_handle = create_truss_service(
-            api=self._api,
-            model_name=push_data.model_name,
-            s3_key=push_data.s3_key,
-            config=push_data.encoded_config_str,
-            is_draft=push_data.is_draft,
-            model_id=push_data.model_id,
-            preserve_previous_prod_deployment=push_data.preserve_previous_prod_deployment,
-            allow_truss_download=push_data.allow_truss_download,
-            deployment_name=push_data.version_name,
-            origin=push_data.origin,
-            environment=push_data.environment,
-            truss_user_env=truss_user_env,
-            preserve_env_instance_type=preserve_env_instance_type,
-            deploy_timeout_minutes=deploy_timeout_minutes,
-            team_id=push_data.team_id,
-            labels=push_data.labels,
+            api=self._api, push_data=push_data, truss_user_env=truss_user_env
         )
 
         if model_version_handle.instance_type_name:
@@ -352,6 +281,15 @@ class BasetenRemote(TrussRemote):
         if environment and not publish:
             publish = True
 
+        options = PushOptions(
+            publish=publish,
+            environment=environment,
+            origin=custom_types.ModelOrigin.CHAINS,
+            disable_truss_download=disable_chain_download,
+            deployment_name=deployment_name,
+            team_id=team_id,
+        )
+
         chainlet_data: List[custom_types.ChainletDataAtomic] = []
 
         for artifact in [entrypoint_artifact, *dependency_artifacts]:
@@ -362,18 +300,13 @@ class BasetenRemote(TrussRemote):
             push_data = self._prepare_push(
                 truss_handle=truss_handle,
                 model_name=model_name,
-                publish=publish,
-                origin=custom_types.ModelOrigin.CHAINS,
+                options=options,
                 progress_bar=progress_bar,
-                disable_truss_download=disable_chain_download,
-                deployment_name=deployment_name,
             )
             oracle_data = custom_types.OracleData(
                 model_name=push_data.model_name,
                 s3_key=push_data.s3_key,
                 encoded_config_str=push_data.encoded_config_str,
-                is_draft=push_data.is_draft,
-                model_id=push_data.model_id,
                 version_name=push_data.version_name,
             )
             chainlet_data.append(

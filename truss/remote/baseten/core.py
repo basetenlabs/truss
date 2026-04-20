@@ -391,53 +391,38 @@ def upload_chain_artifact(
 
 def create_truss_service(
     api: BasetenApi,
-    model_name: str,
-    s3_key: str,
-    config: str,
+    push_data: b10_types.FinalPushData,
     truss_user_env: b10_types.TrussUserEnv,
     semver_bump: str = "MINOR",
-    preserve_previous_prod_deployment: bool = False,
-    allow_truss_download: bool = False,
-    is_draft: Optional[bool] = False,
-    model_id: Optional[str] = None,
-    deployment_name: Optional[str] = None,
-    origin: Optional[b10_types.ModelOrigin] = None,
-    environment: Optional[str] = None,
-    preserve_env_instance_type: bool = True,
-    deploy_timeout_minutes: Optional[int] = None,
-    team_id: Optional[str] = None,
-    labels: Optional[dict] = None,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
 
     Args:
         api: BasetenApi instance.
-        model_name: Name of the model to create.
-        s3_key: S3 key of the uploaded TrussHandle.
-        config: Base64 encoded JSON string of the Truss config.
+        push_data: FinalPushData produced by BasetenRemote._prepare_push.
+        truss_user_env: Client environment metadata.
         semver_bump: Semver bump type, defaults to "MINOR".
-        promote: Whether to promote the model after deploy, defaults to False.
-        preserve_previous_prod_deployment: Whether to scale old production deployment
-            to zero.
-        deployment_name: Name to apply to the created deployment. Not applied to
-            development model.
-        team_id: ID of the team to create the model in.
 
     Returns:
         A Model Version handle.
     """
-    if is_draft:
+    options = push_data.options
+    model_name = push_data.model_name
+    s3_key = push_data.s3_key
+    config = push_data.encoded_config_str
+
+    if push_data.is_draft:
         model_version_json = api.create_development_model_from_truss(
             model_name,
             s3_key,
             config,
             truss_user_env,
-            allow_truss_download=allow_truss_download,
-            origin=origin,
-            deploy_timeout_minutes=deploy_timeout_minutes,
-            team_id=team_id,
-            labels=labels,
+            allow_truss_download=push_data.allow_truss_download,
+            origin=options.origin,
+            deploy_timeout_minutes=options.deploy_timeout_minutes,
+            team_id=options.team_id,
+            labels=options.labels,
         )
 
         return ModelVersionHandle(
@@ -451,20 +436,20 @@ def create_truss_service(
             ),
         )
 
-    if model_id is None:
+    if push_data.model_id is None:
         model_version_json = api.create_model_from_truss(
             model_name,
             s3_key,
             config,
             semver_bump,
             truss_user_env,
-            allow_truss_download=allow_truss_download,
-            deployment_name=deployment_name,
-            origin=origin,
-            environment=environment,
-            deploy_timeout_minutes=deploy_timeout_minutes,
-            team_id=team_id,
-            labels=labels,
+            allow_truss_download=push_data.allow_truss_download,
+            deployment_name=options.deployment_name,
+            origin=options.origin,
+            environment=options.environment,
+            deploy_timeout_minutes=options.deploy_timeout_minutes,
+            team_id=options.team_id,
+            labels=options.labels,
         )
 
         return ModelVersionHandle(
@@ -479,22 +464,22 @@ def create_truss_service(
         )
 
     model_version_json = api.create_model_version_from_truss(
-        model_id,
+        push_data.model_id,
         s3_key,
         config,
         semver_bump,
         truss_user_env,
-        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
-        deployment_name=deployment_name,
-        environment=environment,
-        preserve_env_instance_type=preserve_env_instance_type,
-        deploy_timeout_minutes=deploy_timeout_minutes,
-        labels=labels,
+        preserve_previous_prod_deployment=options.preserve_previous_prod_deployment,
+        deployment_name=options.deployment_name,
+        environment=options.environment,
+        preserve_env_instance_type=options.preserve_env_instance_type,
+        deploy_timeout_minutes=options.deploy_timeout_minutes,
+        labels=options.labels,
     )
 
     return ModelVersionHandle(
         version_id=model_version_json["id"],
-        model_id=model_id,
+        model_id=push_data.model_id,
         hostname=model_version_json["oracle"]["hostname"],
         instance_type_name=(
             model_version_json["instance_type"]["name"]

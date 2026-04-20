@@ -1,12 +1,15 @@
 import pathlib
+import re
 import subprocess
 import sys
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import pydantic
 
 import truss
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.truss_config import ModelServer
 
 
 class DeployedChainlet(pydantic.BaseModel):
@@ -38,6 +41,91 @@ class OracleData(pydantic.BaseModel):
     encoded_config_str: str
     semver_bump: Optional[str] = "MINOR"
     version_name: Optional[str] = None
+
+
+class PushOptions(pydantic.BaseModel):
+    # Frozen so normalize() returns a new instance rather than mutating in place.
+    class Config:
+        frozen = True
+
+    publish: bool = False
+    promote: bool = False
+    preserve_previous_prod_deployment: bool = False
+    disable_truss_download: bool = False
+    deployment_name: Optional[str] = None
+    origin: Optional[ModelOrigin] = None
+    environment: Optional[str] = None
+    deploy_timeout_minutes: Optional[int] = None
+    team_id: Optional[str] = None
+    labels: Optional[Dict[str, Any]] = None
+    preserve_env_instance_type: bool = True
+    include_git_info: bool = False
+
+    @pydantic.field_validator("deploy_timeout_minutes")
+    @classmethod
+    def _validate_deploy_timeout_minutes(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 10 or v > 1440):
+            raise ValueError(
+                "deploy-timeout-minutes must be between 10 minutes and 1440 minutes (24 hours)"
+            )
+        return v
+
+    @pydantic.field_validator("deployment_name")
+    @classmethod
+    def _validate_deployment_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not re.match(r"^[0-9a-zA-Z_\-\.]*$", v):
+            raise ValueError(
+                "Deployment name must only contain alphanumeric, -, _ and . characters"
+            )
+        return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_preserve_requires_promote(self) -> "PushOptions":
+        if not self.promote and self.preserve_previous_prod_deployment:
+            raise ValueError(
+                "preserve-previous-production-deployment can only be used "
+                "with the '--promote' option"
+            )
+        return self
+
+    def normalize(self, model_server: ModelServer) -> "PushOptions":
+        # Apply server-dependent rules. Invariant: is_draft (= not publish) is
+        # only correct *after* normalize runs — callers must normalize before
+        # reading publish-derived state.
+        publish = self.publish
+        environment = self.environment
+
+        if model_server != ModelServer.TrussServer:
+            publish = True
+
+        if self.promote:
+            environment = PRODUCTION_ENVIRONMENT_NAME
+
+        if environment and not publish:
+            publish = True
+
+        if not publish and self.deployment_name:
+            raise ValueError(
+                "Deployment name cannot be used for development deployment"
+            )
+
+        return self.model_copy(update={"publish": publish, "environment": environment})
+
+
+class FinalPushData(OracleData):
+    class Config:
+        protected_namespaces = ()
+
+    model_id: Optional[str] = None
+    options: PushOptions
+
+    @property
+    def is_draft(self) -> bool:
+        return not self.options.publish
+
+    @property
+    def allow_truss_download(self) -> bool:
+        return not self.options.disable_truss_download
 
 
 # This corresponds to `ChainletInputAtomicGraphene` in the backend.

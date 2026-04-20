@@ -207,7 +207,7 @@ def test_push_chain_atomic_with_chain_upload(
     assert create_kwargs["deployment_name"] == deployment_name
 
     prepare_kwargs = context["mock_prepare_push"].call_args.kwargs
-    assert prepare_kwargs["deployment_name"] == deployment_name
+    assert prepare_kwargs["options"].deployment_name == deployment_name
 
 
 @patch("truss.remote.baseten.remote.create_chain_atomic")

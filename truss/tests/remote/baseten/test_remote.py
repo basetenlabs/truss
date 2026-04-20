@@ -664,7 +664,7 @@ def test_push_passes_deploy_timeout_minutes_to_create_truss_service(
 
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout_minutes"] == 450
+    assert kwargs["push_data"].options.deploy_timeout_minutes == 450
 
 
 def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
@@ -681,7 +681,7 @@ def test_push_passes_none_deploy_timeout_minutes_when_not_specified(
 
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs.get("deploy_timeout_minutes") is None
+    assert kwargs["push_data"].options.deploy_timeout_minutes is None
 
 
 def test_push_integration_deploy_timeout_minutes_propagated(
@@ -703,8 +703,8 @@ def test_push_integration_deploy_timeout_minutes_propagated(
 
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout_minutes"] == 750
-    assert kwargs["environment"] == "staging"
+    assert kwargs["push_data"].options.deploy_timeout_minutes == 750
+    assert kwargs["push_data"].options.environment == "staging"
 
 
 def test_api_push_integration_deploy_timeout_minutes_propagated(
