@@ -44,7 +44,7 @@ def test_no_settings_file_creates_default():
     uc = reload_user_config()
 
     assert SETTINGS_PATH.exists(), "Settings file should be created"
-    assert uc.settings.check_for_updates is True, "Default should be True"
+    assert uc.get_settings().check_for_updates is True, "Default should be True"
 
     content = SETTINGS_PATH.read_text()
     assert "check_for_updates" in content, "check_for_updates should be in file"
@@ -55,8 +55,8 @@ def test_no_settings_file_creates_default():
 def test_settings_value_is_read(value: bool):
     write_settings(f"[preferences]\ncheck_for_updates = {str(value).lower()}\n")
     uc = reload_user_config()
-    assert uc.settings.check_for_updates is value, f"Should read {value} from file"
-    print(f"  Read check_for_updates = {uc.settings.check_for_updates}")
+    assert uc.get_settings().check_for_updates is value, f"Should read {value} from file"
+    print(f"  Read check_for_updates = {uc.get_settings().check_for_updates}")
     return f"check_for_updates={value} read correctly"
 
 
@@ -118,7 +118,7 @@ def test_old_settings_file_gets_new_keys():
     )
 
     uc = reload_user_config()
-    assert uc.settings.check_for_updates is True, "Default should be True in memory"
+    assert uc.get_settings().check_for_updates is True, "Default should be True in memory"
 
     updated = SETTINGS_PATH.read_text()
     assert "check_for_updates" in updated, "check_for_updates should be added to file"
@@ -146,7 +146,7 @@ def test_notification_shows_only_once_per_day():
 
     uc = reload_user_config()
 
-    result1 = uc.state.should_notify_upgrade("0.1.0")
+    result1 = uc.get_state().should_notify_upgrade("0.1.0")
     assert result1 is not None, "First call should return notification info"
     print(f"  First call returned: {result1}")
 
@@ -156,7 +156,7 @@ def test_notification_shows_only_once_per_day():
 
     uc = reload_user_config()
 
-    result2 = uc.state.should_notify_upgrade("0.1.0")
+    result2 = uc.get_state().should_notify_upgrade("0.1.0")
     assert result2 is None, f"Second call should return None, got: {result2}"
     print("  Second call returned None (as expected)")
 
