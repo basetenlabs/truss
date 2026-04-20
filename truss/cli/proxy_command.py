@@ -13,9 +13,9 @@ It has two modes, both invoked by SSH automatically:
      Invoked as: proxy-command.py <hostname>
 
 Hostname formats:
-  training-job-<job_id>-<node>.<remote>.ssh.baseten.co        (training)
-  model-<model_id>.<remote>.ssh.baseten.co                    (inference, default env)
-  model-<model_id>-<env_name>.<remote>.ssh.baseten.co         (inference, specific env)
+  training-job-<job_id>-<node>.<remote>.ssh.baseten.co                            (training)
+  model-<model_id>-<deployment_id>.<remote>.ssh.baseten.co                        (inference, specific deployment)
+  model-<model_id>-<deployment_id>-<replica_id>.<remote>.ssh.baseten.co           (inference, specific deployment + replica)
 """
 
 import configparser
@@ -81,7 +81,7 @@ class ParsedHostname:
     workload_type: str
     id: str
     replica: Optional[str]
-    environment: Optional[str]
+    deployment_id: Optional[str]
     remote: Optional[str]
     api_prefix: Optional[str]
 
@@ -91,8 +91,8 @@ def parse_hostname(hostname):
 
     Supported formats:
       training-job-<job_id>-<node>[.<remote>[.<api_prefix>]].ssh.baseten.co
-      model-<model_id>[.<remote>[.<api_prefix>]].ssh.baseten.co
-      model-<model_id>-<env_name>[.<remote>[.<api_prefix>]].ssh.baseten.co
+      model-<model_id>-<deployment_id>[.<remote>[.<api_prefix>]].ssh.baseten.co
+      model-<model_id>-<deployment_id>-<replica_id>[.<remote>[.<api_prefix>]].ssh.baseten.co
     """
     if not hostname.endswith(HOSTNAME_SUFFIX):
         error(f"Invalid hostname: {hostname} (expected *.ssh.baseten.co)")
@@ -142,7 +142,7 @@ def _parse_training_hostname(hostname, workload_part, remote, api_prefix):
         workload_type=WORKLOAD_TRAINING,
         id=job_id,
         replica=replica_str,
-        environment=None,
+        deployment_id=None,
         remote=remote,
         api_prefix=api_prefix,
     )
@@ -153,28 +153,31 @@ def _parse_model_hostname(hostname, workload_part, remote, api_prefix):
     if not remainder:
         error(f"Invalid hostname: {hostname} (empty model_id)")
 
-    # Model IDs are [a-z0-9]+ (no hyphens). If there's a hyphen, everything
-    # after the first one is the environment name.
-    dash_idx = remainder.find("-")
-    if dash_idx == -1:
-        model_id = remainder
-        environment = None
-    else:
-        model_id = remainder[:dash_idx]
-        environment = remainder[dash_idx + 1 :]
-        if not environment:
-            error(f"Invalid hostname: {hostname} (empty environment name)")
+    # Model and deployment IDs are [a-z0-9]+ (no hyphens). Split on the first
+    # two dashes: model_id, deployment_id, then replica_id (which may contain
+    # hyphens).
+    parts = remainder.split("-", 2)
+    if len(parts) < 2:
+        error(
+            f"Invalid hostname: {hostname} "
+            f"(expected model-<model_id>-<deployment_id>[-<replica_id>])"
+        )
+    model_id = parts[0]
+    deployment_id = parts[1]
+    replica = parts[2] if len(parts) >= 3 else None
 
     if not model_id:
         error(f"Invalid hostname: {hostname} (empty model_id)")
-
-    replica = os.environ.get("BASETEN_REPLICA") or None
+    if not deployment_id:
+        error(f"Invalid hostname: {hostname} (empty deployment_id)")
+    if replica is not None and not replica:
+        error(f"Invalid hostname: {hostname} (empty replica_id)")
 
     return ParsedHostname(
         workload_type=WORKLOAD_MODEL,
         id=model_id,
         replica=replica,
-        environment=environment,
+        deployment_id=deployment_id,
         remote=remote,
         api_prefix=api_prefix,
     )
@@ -205,7 +208,7 @@ def resolve_remote(remote, config):
                 f"Multiple remotes in ~/.trussrc: {', '.join(sections)}. "
                 f"Specify one in the hostname, for example:\n"
                 f"  ssh training-job-<job_id>-<node>.<remote>.ssh.baseten.co\n"
-                f"  ssh model-<model_id>.<remote>.ssh.baseten.co\n"
+                f"  ssh model-<model_id>-<deployment_id>.<remote>.ssh.baseten.co\n"
                 f"Or re-run: truss ssh setup --default-remote <name>"
             )
     return remote
@@ -319,10 +322,9 @@ def sign_model_certificate(rest_url, api_key, parsed, public_key, key_path):
     if parsed.replica:
         body["replica_id"] = parsed.replica
 
-    if parsed.environment:
-        url = f"{rest_url}/v1/models/{parsed.id}/environments/{parsed.environment}/ssh/sign"
-    else:
-        url = f"{rest_url}/v1/models/{parsed.id}/ssh/sign"
+    url = (
+        f"{rest_url}/v1/models/{parsed.id}/deployments/{parsed.deployment_id}/ssh/sign"
+    )
 
     resp = api_request(url, api_key, method="POST", body=body)
 
@@ -336,8 +338,8 @@ def sign_model_certificate(rest_url, api_key, parsed, public_key, key_path):
 
 def _jwt_cache_path(parsed):
     parts = [parsed.workload_type, parsed.id]
-    if parsed.environment:
-        parts.append(parsed.environment)
+    if parsed.deployment_id:
+        parts.append(parsed.deployment_id)
     if parsed.replica:
         parts.append(parsed.replica)
     return JWT_CACHE_DIR / f"{'-'.join(parts)}.json"

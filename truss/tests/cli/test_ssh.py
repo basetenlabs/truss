@@ -36,17 +36,17 @@ class TestParseHostname:
             workload_type=WORKLOAD_TRAINING,
             id=id,
             replica=replica,
-            environment=None,
+            deployment_id=None,
             remote=remote,
             api_prefix=api_prefix,
         )
 
-    def _model(self, id, environment, replica, remote, api_prefix):
+    def _model(self, id, deployment_id, replica, remote, api_prefix):
         return ParsedHostname(
             workload_type=WORKLOAD_MODEL,
             id=id,
             replica=replica,
-            environment=environment,
+            deployment_id=deployment_id,
             remote=remote,
             api_prefix=api_prefix,
         )
@@ -93,39 +93,46 @@ class TestParseHostname:
         with pytest.raises(SystemExit):
             self._parse("training-job-5wo5n3y.dev.ssh.baseten.co")
 
-    def test_model_basic(self):
-        assert self._parse("model-abc123.dev.ssh.baseten.co") == self._model(
-            "abc123", None, None, "dev", None
+    def test_model_with_deployment(self):
+        assert self._parse("model-abc123-def456.dev.ssh.baseten.co") == self._model(
+            "abc123", "def456", None, "dev", None
         )
 
-    def test_model_with_environment(self):
-        assert self._parse("model-abc123-staging.dev.ssh.baseten.co") == self._model(
-            "abc123", "staging", None, "dev", None
-        )
+    def test_model_with_deployment_and_replica(self):
+        assert self._parse(
+            "model-abc123-def456-ghi789.dev.ssh.baseten.co"
+        ) == self._model("abc123", "def456", "ghi789", "dev", None)
+
+    def test_model_replica_with_dashes(self):
+        assert self._parse(
+            "model-abc123-def456-pod-xyz-abc.dev.ssh.baseten.co"
+        ) == self._model("abc123", "def456", "pod-xyz-abc", "dev", None)
 
     def test_model_no_remote(self):
-        assert self._parse("model-abc123.ssh.baseten.co") == self._model(
-            "abc123", None, None, None, None
+        assert self._parse("model-abc123-def456.ssh.baseten.co") == self._model(
+            "abc123", "def456", None, None, None
         )
 
     def test_model_api_prefix(self):
-        assert self._parse("model-abc123.dev.mc-dev.ssh.baseten.co") == self._model(
-            "abc123", None, None, "dev", "mc-dev"
-        )
+        assert self._parse(
+            "model-abc123-def456.dev.mc-dev.ssh.baseten.co"
+        ) == self._model("abc123", "def456", None, "dev", "mc-dev")
 
-    def test_model_replica_from_env(self, monkeypatch):
-        monkeypatch.setenv("BASETEN_REPLICA", "pod-xyz")
-        assert self._parse("model-abc123.dev.ssh.baseten.co") == self._model(
-            "abc123", None, "pod-xyz", "dev", None
-        )
+    def test_model_missing_deployment(self):
+        with pytest.raises(SystemExit):
+            self._parse("model-abc123.dev.ssh.baseten.co")
 
     def test_model_empty_id(self):
         with pytest.raises(SystemExit):
             self._parse("model-.dev.ssh.baseten.co")
 
-    def test_model_empty_environment(self):
+    def test_model_empty_deployment(self):
         with pytest.raises(SystemExit):
             self._parse("model-abc123-.dev.ssh.baseten.co")
+
+    def test_model_empty_replica(self):
+        with pytest.raises(SystemExit):
+            self._parse("model-abc123-def456-.dev.ssh.baseten.co")
 
 
 class TestLoadTrussrc:
