@@ -117,6 +117,22 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 {%- if config.docker_server %}
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
         curl nginx && rm -rf /var/lib/apt/lists/*
+{#-
+  Relocate nginx's PID file off /run. The Ubuntu/Debian nginx package hardcodes
+  `pid /run/nginx.pid;` in /etc/nginx/nginx.conf, so when nginx runs as a
+  non-root UID via `run_as_user_id`, it needs /run to be writable by that UID
+  to create its pid file. Whether /run ends up writable in the final image
+  depends on how the base image was built, which makes relying on it fragile.
+  /tmp is world-writable with the sticky bit so it works regardless of what
+  the base image does with /run.
+  Note: `pid` must live in nginx's main context, so this cannot be overridden
+  from /etc/nginx/conf.d (which is included inside the http block), and it
+  cannot be overridden via `nginx -g` either (nginx errors on a duplicate `pid`
+  directive). Editing nginx.conf directly is the only workable option.
+#}
+RUN sed -i -e 's|^pid\s*/run/nginx.pid;|pid /tmp/nginx.pid;|' \
+           -e 's|^pid\s*/var/run/nginx.pid;|pid /tmp/nginx.pid;|' \
+           /etc/nginx/nginx.conf
 COPY --chown={{ default_owner }} ./docker_server_requirements.txt ${APP_HOME}/docker_server_requirements.txt
 
 {# NB(nikhil): Use the same python version for custom server proxy as the control server, for consistency. #}
