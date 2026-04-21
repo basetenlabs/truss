@@ -213,7 +213,11 @@ def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
     table.add_column("Queued At")
     table.add_column("Job Page", style="bold yellow")
 
-    for job in jobs:
+    sorted_jobs = sorted(
+        jobs, key=lambda j: (-(j.get("priority") or 0), j.get("created_at", ""))
+    )
+
+    for job in sorted_jobs:
         table.add_row(
             job["id"],
             job["name"],
