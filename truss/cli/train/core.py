@@ -208,16 +208,22 @@ def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
     table.add_column("Job Name")
     table.add_column("Project")
     table.add_column("Instance Type")
+    table.add_column("Priority")
     table.add_column("Created By")
     table.add_column("Queued At")
     table.add_column("Job Page", style="bold yellow")
 
-    for job in jobs:
+    sorted_jobs = sorted(
+        jobs, key=lambda j: (-(j.get("priority") or 0), j.get("created_at", ""))
+    )
+
+    for job in sorted_jobs:
         table.add_row(
             job["id"],
             job["name"],
             job["training_project"]["name"],
             job["instance_type"]["name"],
+            str(job.get("priority") or 0),
             job.get("user", {}).get("email", ""),
             cli_common.format_localized_time(job["created_at"]),
             cli_common.format_link(
@@ -373,6 +379,7 @@ def display_training_job(
     table.add_row("Project Name", job["training_project"]["name"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
+    table.add_row("Priority", str(job.get("priority") or 0))
     if user_email := job.get("user", {}).get("email"):
         table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
