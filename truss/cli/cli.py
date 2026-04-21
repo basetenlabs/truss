@@ -952,6 +952,14 @@ def push(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
 
+    if tr.spec.config.runtime.remote_ssh.enabled and isinstance(
+        service, BasetenService
+    ):
+        console.print(
+            "🔐  SSH into this deployment (after one-time 'truss ssh setup'): "
+            f"ssh model-{service.model_id}-{service.model_version_id}.ssh.baseten.co"
+        )
+
     if tail and isinstance(service, BasetenService):
         # When combined with --wait/--watch, tail runs in background so the
         # wait polling loop below can proceed on the main thread.

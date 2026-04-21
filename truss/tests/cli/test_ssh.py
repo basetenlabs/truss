@@ -6,6 +6,9 @@ import pytest
 from truss.cli import proxy_command
 from truss.cli import ssh as ssh_mod
 from truss.cli.proxy_command import (
+    WORKLOAD_MODEL,
+    WORKLOAD_TRAINING,
+    ParsedHostname,
     load_trussrc,
     parse_hostname,
     resolve_remote,
@@ -28,42 +31,50 @@ class TestParseHostname:
     def _parse(self, hostname):
         return parse_hostname(hostname)
 
-    def test_basic(self):
-        assert self._parse("training-job-5wo5n3y-0.dev.ssh.baseten.co") == (
-            "5wo5n3y",
-            "0",
-            "dev",
-            None,
+    def _training(self, id, replica, remote, api_prefix):
+        return ParsedHostname(
+            workload_type=WORKLOAD_TRAINING,
+            id=id,
+            replica=replica,
+            deployment_id=None,
+            remote=remote,
+            api_prefix=api_prefix,
         )
 
-    def test_multi_digit_replica(self):
-        assert self._parse("training-job-abc1234-12.baseten.ssh.baseten.co") == (
-            "abc1234",
-            "12",
-            "baseten",
-            None,
+    def _model(self, id, deployment_id, replica, remote, api_prefix):
+        return ParsedHostname(
+            workload_type=WORKLOAD_MODEL,
+            id=id,
+            replica=replica,
+            deployment_id=deployment_id,
+            remote=remote,
+            api_prefix=api_prefix,
         )
+
+    def test_basic(self):
+        assert self._parse(
+            "training-job-5wo5n3y-0.dev.ssh.baseten.co"
+        ) == self._training("5wo5n3y", "0", "dev", None)
+
+    def test_multi_digit_replica(self):
+        assert self._parse(
+            "training-job-abc1234-12.baseten.ssh.baseten.co"
+        ) == self._training("abc1234", "12", "baseten", None)
 
     def test_remote_with_dashes(self):
         assert self._parse(
             "training-job-5wo5n3y-0.my-custom-remote.ssh.baseten.co"
-        ) == ("5wo5n3y", "0", "my-custom-remote", None)
+        ) == self._training("5wo5n3y", "0", "my-custom-remote", None)
 
     def test_staging_remote(self):
-        assert self._parse("training-job-abc1234-2.staging.ssh.baseten.co") == (
-            "abc1234",
-            "2",
-            "staging",
-            None,
-        )
+        assert self._parse(
+            "training-job-abc1234-2.staging.ssh.baseten.co"
+        ) == self._training("abc1234", "2", "staging", None)
 
     def test_api_prefix(self):
-        assert self._parse("training-job-rwn61qy-0.dev.mc-dev.ssh.baseten.co") == (
-            "rwn61qy",
-            "0",
-            "dev",
-            "mc-dev",
-        )
+        assert self._parse(
+            "training-job-rwn61qy-0.dev.mc-dev.ssh.baseten.co"
+        ) == self._training("rwn61qy", "0", "dev", "mc-dev")
 
     def test_invalid_no_suffix(self):
         with pytest.raises(SystemExit):
@@ -71,19 +82,57 @@ class TestParseHostname:
 
     def test_invalid_no_prefix(self):
         with pytest.raises(SystemExit):
-            self._parse("5wo5n3y-0.dev.ssh.baseten.co")  # missing training-job- prefix
+            self._parse("5wo5n3y-0.dev.ssh.baseten.co")
 
     def test_no_remote(self):
-        assert self._parse("training-job-5wo5n3y-0.ssh.baseten.co") == (
-            "5wo5n3y",
-            "0",
-            None,
-            None,
+        assert self._parse("training-job-5wo5n3y-0.ssh.baseten.co") == self._training(
+            "5wo5n3y", "0", None, None
         )
 
     def test_invalid_no_replica(self):
         with pytest.raises(SystemExit):
-            self._parse("training-job-5wo5n3y.dev.ssh.baseten.co")  # no -node
+            self._parse("training-job-5wo5n3y.dev.ssh.baseten.co")
+
+    def test_model_with_deployment(self):
+        assert self._parse("model-abc123-def456.dev.ssh.baseten.co") == self._model(
+            "abc123", "def456", None, "dev", None
+        )
+
+    def test_model_with_deployment_and_replica(self):
+        assert self._parse(
+            "model-abc123-def456-ghi789.dev.ssh.baseten.co"
+        ) == self._model("abc123", "def456", "ghi789", "dev", None)
+
+    def test_model_replica_with_dashes(self):
+        assert self._parse(
+            "model-abc123-def456-pod-xyz-abc.dev.ssh.baseten.co"
+        ) == self._model("abc123", "def456", "pod-xyz-abc", "dev", None)
+
+    def test_model_no_remote(self):
+        assert self._parse("model-abc123-def456.ssh.baseten.co") == self._model(
+            "abc123", "def456", None, None, None
+        )
+
+    def test_model_api_prefix(self):
+        assert self._parse(
+            "model-abc123-def456.dev.mc-dev.ssh.baseten.co"
+        ) == self._model("abc123", "def456", None, "dev", "mc-dev")
+
+    def test_model_missing_deployment(self):
+        with pytest.raises(SystemExit):
+            self._parse("model-abc123.dev.ssh.baseten.co")
+
+    def test_model_empty_id(self):
+        with pytest.raises(SystemExit):
+            self._parse("model-.dev.ssh.baseten.co")
+
+    def test_model_empty_deployment(self):
+        with pytest.raises(SystemExit):
+            self._parse("model-abc123-.dev.ssh.baseten.co")
+
+    def test_model_empty_replica(self):
+        with pytest.raises(SystemExit):
+            self._parse("model-abc123-def456-.dev.ssh.baseten.co")
 
 
 class TestLoadTrussrc:
@@ -249,9 +298,11 @@ class TestSetupSSHConfig:
         content = ssh_config.read_text()
         assert MARKER_START in content
         assert MARKER_END in content
-        assert "*.ssh.baseten.co" in content
+        assert "training-job-*.ssh.baseten.co" in content
+        assert "model-*.ssh.baseten.co" in content
         assert "proxy-command.py" in content
         assert "User baseten" in content
+        assert "User app" in content
 
     def test_replaces_existing_block(self, tmp_path):
         ssh_config = tmp_path / "config"
