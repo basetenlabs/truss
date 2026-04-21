@@ -46,7 +46,7 @@ def test_chain_invoke_url_draft():
 
 def test_llm_invoke_url_prod():
     url = service.URLConfig.invoke_url(
-        "https://mode-abc.api.baseten.co",
+        "https://model-abc.api.baseten.co",
         service.URLConfig.LLM,
         "123",
         is_draft=False,
