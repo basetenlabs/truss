@@ -212,6 +212,7 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        defer_environment_settings: bool = True,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -227,6 +228,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
+                    {f"defer_environment_settings: {'true' if defer_environment_settings else 'false'}" if environment else ""}
                     user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
@@ -267,6 +269,7 @@ class BasetenApi:
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
         labels: Optional[dict] = None,
+        defer_environment_settings: bool = True,
     ):
         query_string = f"""
             mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
@@ -281,6 +284,7 @@ class BasetenApi:
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
+                    {f"defer_environment_settings: {'true' if defer_environment_settings else 'false'}" if environment else ""}
                     user_deploy_metadata: $userDeployMetadata
                 ) {{
                     model_version {{
@@ -747,6 +751,14 @@ class BasetenApi:
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:
         return self._rest_api_client.get(
             f"v1/models/{model_id}/deployments/{deployment_id}"
+        )
+
+    def update_deployment(
+        self, model_id: str, deployment_id: str, update_data: dict
+    ) -> Any:
+        """Update a deployment's configuration (e.g., autoscaling settings)"""
+        return self._rest_api_client.patch(
+            f"v1/models/{model_id}/deployments/{deployment_id}", body=update_data
         )
 
     def upsert_secret(self, name: str, value: str) -> Any:

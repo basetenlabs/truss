@@ -465,6 +465,7 @@ def create_truss_service(
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
             labels=labels,
+            defer_environment_settings=True,  # Defer environment settings until successful deployment
         )
 
         return ModelVersionHandle(
@@ -490,6 +491,7 @@ def create_truss_service(
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
         labels=labels,
+        defer_environment_settings=True,  # Defer environment settings until successful deployment
     )
 
     return ModelVersionHandle(
