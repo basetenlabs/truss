@@ -15,6 +15,20 @@
 #   BT_SSH_CA_KEY_PATH   - Path to the SSH CA public key file
 #   BT_SSH_SUBJECT       - Subject identifier (used as authorized principal)
 #   BT_SSH_DIR           - Directory for SSH runtime files (default: /run/baseten-ssh)
+#
+# The SSH CA public key is a verification credential, the same category as
+# GitHub's published host keys and the TrustedUserCAKeys file on every sshd
+# using certificate authentication. Distributing the CA public key across the
+# fleet is standard industry practice for SSH certificate authorities.
+#
+# It cannot be used to forge certificates, decrypt traffic, or impersonate the
+# CA. Those all require the private key, which never leaves Baseten's private
+# secret store.
+#
+# Authorization is not based on possession of this key. Each certificate is
+# scoped to a specific principal (job ID), and sshd enforces that the cert's
+# principal matches the pod's job via AuthorizedPrincipals. A cert signed for
+# job X cannot be used to access job Y's pod, even within the same account.
 
 _SSH_RESET="\033[0m"
 _SSH_CYAN="\033[36m"

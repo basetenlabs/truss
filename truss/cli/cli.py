@@ -956,7 +956,7 @@ def push(
         service, BasetenService
     ):
         console.print(
-            "🔐  SSH into this deployment (after 'truss ssh setup'): "
+            "🔐  SSH into this deployment (after one-time 'truss ssh setup'): "
             f"ssh model-{service.model_id}-{service.model_version_id}.ssh.baseten.co"
         )
 
