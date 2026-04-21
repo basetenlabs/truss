@@ -55,7 +55,9 @@ def test_no_settings_file_creates_default():
 def test_settings_value_is_read(value: bool):
     write_settings(f"[preferences]\ncheck_for_updates = {str(value).lower()}\n")
     uc = reload_user_config()
-    assert uc.get_settings().check_for_updates is value, f"Should read {value} from file"
+    assert uc.get_settings().check_for_updates is value, (
+        f"Should read {value} from file"
+    )
     print(f"  Read check_for_updates = {uc.get_settings().check_for_updates}")
     return f"check_for_updates={value} read correctly"
 
@@ -118,7 +120,9 @@ def test_old_settings_file_gets_new_keys():
     )
 
     uc = reload_user_config()
-    assert uc.get_settings().check_for_updates is True, "Default should be True in memory"
+    assert uc.get_settings().check_for_updates is True, (
+        "Default should be True in memory"
+    )
 
     updated = SETTINGS_PATH.read_text()
     assert "check_for_updates" in updated, "check_for_updates should be added to file"
