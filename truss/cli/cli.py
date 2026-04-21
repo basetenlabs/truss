@@ -802,7 +802,7 @@ def push(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = user_config.settings.include_git_info
+        include_git_info = user_config.get_settings().include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
     if output_format == "json" and isinstance(remote_provider, BasetenRemote):
