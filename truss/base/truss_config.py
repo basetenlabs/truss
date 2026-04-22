@@ -25,7 +25,7 @@ import yaml
 from pydantic import json_schema
 from pydantic_core import core_schema
 
-from truss.base import constants, custom_types, trt_llm_config
+from truss.base import constants, custom_types, trt_llm_config, vllm_config
 
 # PORT: knative reserved
 # HOSTNAME: set to the pod name by k8s
@@ -1174,6 +1174,10 @@ class TrussConfig(custom_types.ConfigModel):
         default=None,
         description="TensorRT-LLM configuration for optimized LLM inference.",
     )
+    vllm: Optional[vllm_config.VLLMConfiguration] = pydantic.Field(
+        default=None,
+        description="vLLM configuration for serving models with the vLLM inference engine.",
+    )
 
     # deploying from checkpoint
     training_checkpoints: Optional[CheckpointList] = pydantic.Field(
@@ -1343,34 +1347,13 @@ class TrussConfig(custom_types.ConfigModel):
         return v
 
     @pydantic.model_validator(mode="after")
-    def _validate_remote_ssh(self) -> "TrussConfig":
-        if (
-            self.runtime.remote_ssh.enabled
-            and self.docker_server is not None
-            and self.docker_server.run_as_user_id is not None
-        ):
-            raise ValueError(
-                "remote_ssh.enabled is not compatible with "
-                "docker_server.run_as_user_id. SSH requires the default "
-                "'app' user (uid 60000)."
-            )
+    def _validate_vllm(self) -> "TrussConfig":
+        if self.vllm is not None:
+            if self.trt_llm is not None:
+                raise ValueError(
+                    "vllm and trt_llm cannot both be configured at the same time."
+                )
         return self
-
-    @pydantic.model_validator(mode="after")
-    def _validate_config(self) -> "TrussConfig":
-        if self.requirements and self.requirements_file:
-            raise ValueError(
-                "Please ensure that only one of `requirements` and `requirements_file` is specified"
-            )
-        if self.model_cache.models and self.weights.sources:
-            raise ValueError(
-                "Please ensure that only one of `model_cache` and `weights` is specified"
-            )
-        return self
-
-    @pydantic.field_validator("cache_internal", mode="before")
-    def _default_cache_internal_if_none(cls, v: Any) -> CacheInternal:
-        return CacheInternal([]) if v is None else v
 
     @pydantic.model_validator(mode="after")
     def _validate_trt_llm_resources(self) -> "TrussConfig":
@@ -1386,6 +1369,16 @@ class TrussConfig(custom_types.ConfigModel):
             return None
         exclude_unset = bool(info.context and "verbose" in info.context)
         return trt_llm.model_dump(exclude_unset=exclude_unset)
+
+    @pydantic.field_serializer("vllm")
+    def _serialize_vllm(
+        self,
+        vllm: Optional[vllm_config.VLLMConfiguration],
+        info: core_schema.FieldSerializationInfo,
+    ) -> Optional[dict[str, Any]]:
+        if not vllm:
+            return None
+        return vllm.model_dump()
 
     # NB(nikhil): clear_runtime_fields will remove all runtime specific fields from the config so
     # we can more optimally detect whether a new image build is needed.

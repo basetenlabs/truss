@@ -191,7 +191,10 @@ class BasetenRemote(TrussRemote):
         if truss_handle.is_scattered():
             truss_handle = TrussHandle(truss_handle.gather())
 
-        if truss_handle.spec.model_server != ModelServer.TrussServer:
+        if (
+            truss_handle.spec.model_server != ModelServer.TrussServer
+            or truss_handle.spec.config.vllm is not None
+        ):
             publish = True
 
         if promote:
