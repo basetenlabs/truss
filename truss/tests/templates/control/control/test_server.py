@@ -1,3 +1,4 @@
+import base64
 import os
 import platform
 import socket
@@ -17,6 +18,7 @@ from truss.templates.control.control.application import create_app  # noqa
 from truss.templates.control.control.helpers.custom_types import (  # noqa
     Action,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PatchType,
     PythonRequirementPatch,
@@ -292,6 +294,123 @@ async def _apply_patches(client, patches: List[Patch]):
     original_hash = resp.json()["result"]
     patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=patches)
     return await client.post("/control/patch", json=patch_request.to_dict())
+
+
+@pytest.mark.anyio
+async def test_patch_hot_reload(app, client):
+    # Hot reload should write files, skip process stop/start,
+    # POST /hot-reload to the inference server, and update the hash.
+    mock_model_file_content = """
+class Model:
+    def predict(self, request):
+        return {'prediction': [2]}
+"""
+    patch_obj = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content=mock_model_file_content,
+            hot_reload=True,
+        ),
+    )
+
+    resp = await client.get("/control/truss_hash")
+    original_hash = resp.json()["result"]
+
+    patch_request = PatchRequest(
+        hash="dummy", prev_hash=original_hash, patches=[patch_obj]
+    )
+
+    # Mock the proxy_client so we can verify the /hot-reload call
+    mock_response = httpx.Response(
+        200,
+        json={"msg": "Hot reload complete"},
+        request=httpx.Request("POST", "/hot-reload"),
+    )
+    app.state.proxy_client.post = AsyncMock(return_value=mock_response)
+
+    process_controller = app.state.inference_server_process_controller
+    with (
+        patch.object(process_controller, "stop") as mock_stop,
+        patch.object(process_controller, "start") as mock_start,
+    ):
+        resp = await client.post("/control/patch", json=patch_request.to_dict())
+        assert resp.status_code == 200
+        assert "error" not in resp.json()
+
+        # Verify the file was written
+        with (app.state.inference_server_home / "model" / "model.py").open() as f:
+            assert f.read() == mock_model_file_content
+
+        # Verify /hot-reload was called on the inference server
+        app.state.proxy_client.post.assert_called_once_with("/hot-reload")
+
+        # Verify the process was NOT stopped/started
+        mock_stop.assert_not_called()
+        mock_start.assert_not_called()
+
+    # Verify the hash was updated
+    resp = await client.get("/control/truss_hash")
+    assert resp.json()["result"] == "dummy"
+
+    # Now simulate a hot reload that fails with a user code error (422 from
+    # inference server). The control server should return patch_failed_recoverable.
+    error_response = httpx.Response(
+        422,
+        json={"error": "SyntaxError: expected ':'"},
+        request=httpx.Request("POST", "/hot-reload"),
+    )
+    app.state.proxy_client.post = AsyncMock(return_value=error_response)
+
+    bad_patch_obj = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content="class Model:\n    def predict(self, request)\n",
+            hot_reload=True,
+        ),
+    )
+    bad_patch_request = PatchRequest(
+        hash="dummy2", prev_hash="dummy", patches=[bad_patch_obj]
+    )
+    resp = await client.post("/control/patch", json=bad_patch_request.to_dict())
+    assert resp.status_code == 200
+    assert resp.json()["error"]["type"] == "patch_failed_recoverable"
+    assert "SyntaxError" in resp.json()["error"]["msg"]
+
+
+@pytest.mark.anyio
+async def test_patch_binary_model_code(app, client):
+    binary_content = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01"
+    encoded = base64.b64encode(binary_content).decode("ascii")
+    patch_obj = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.ADD, path="weights.bin", content=None, content_bytes=encoded
+        ),
+    )
+    await _verify_apply_patch_success(client, patch_obj)
+    written = (app.state.inference_server_home / "model" / "weights.bin").read_bytes()
+    assert written == binary_content
+
+
+@pytest.mark.anyio
+async def test_patch_binary_package(app, client):
+    binary_content = b"\x00\x01\x02\xff\xfe\xfd"
+    encoded = base64.b64encode(binary_content).decode("ascii")
+    patch_obj = Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.ADD, path="my_pkg/lib.so", content=None, content_bytes=encoded
+        ),
+    )
+    await _verify_apply_patch_success(client, patch_obj)
+    written = (
+        app.state.inference_server_home / ".." / "packages" / "my_pkg" / "lib.so"
+    ).read_bytes()
+    assert written == binary_content
 
 
 @contextmanager

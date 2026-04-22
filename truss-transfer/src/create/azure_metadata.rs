@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 
 use crate::create::object_storage_client::get_client_options;
-use crate::secrets::get_secret_from_file;
+use crate::secrets::get_secret;
 
 /// Parse Azure Blob Storage URI into account, container, and blob components
 /// Expected format: azure://accountname/containername/path/to/blob
@@ -87,8 +87,7 @@ pub fn azure_storage(
         .with_account(account_name)
         .with_client_options(get_client_options());
 
-    // Read Azure credentials from single file
-    if let Some(credentials_content) = get_secret_from_file(runtime_secret_name) {
+    if let Some(credentials_content) = get_secret(runtime_secret_name) {
         // Try to parse as JSON first
         if let Ok(credentials) = serde_json::from_str::<AzureCredentials>(&credentials_content) {
             builder = builder.with_access_key(credentials.account_key);
@@ -107,7 +106,7 @@ pub fn azure_storage(
         }
     } else {
         return Err(anyhow!(
-            "Failed to read Azure credentials from not existing file: {}",
+            "Azure credential '{}' not found in environment variable or file",
             runtime_secret_name
         ));
     }

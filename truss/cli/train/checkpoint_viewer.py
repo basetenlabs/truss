@@ -365,7 +365,7 @@ def _show_url(url: str) -> None:
         ("#888888", "\n\nPress left arrow to go back"),
     ]
     app: Application = Application(
-        layout=Layout(Window(FormattedTextControl(text))),  # type: ignore[arg-type]
+        layout=Layout(Window(FormattedTextControl(text), wrap_lines=True)),  # type: ignore[arg-type]
         key_bindings=kb,
         full_screen=True,
     )
@@ -388,7 +388,8 @@ def _build_explorer_choices(
             annotation_parts = [ckpt_type]
             if base_model:
                 annotation_parts.append(base_model)
-            label += f" [{' \u00b7 '.join(annotation_parts)}]"
+            sep = " \u00b7 "
+            label += f" [{sep.join(annotation_parts)}]"
         choices.append({"name": label, "value": ("dir", d["name"])})
     for f in sorted(dir_files, key=lambda x: x["_rel_path"]):
         name = f["_rel_path"].split("/")[-1]

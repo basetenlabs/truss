@@ -326,6 +326,9 @@ class DockerChainletService(b10_service.TrussService):
     def predict_url(self) -> str:
         return f"{self._service_url}/v1/models/model:predict"
 
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[dict]:
+        raise NotImplementedError()
+
     def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         raise NotImplementedError()
 
@@ -543,7 +546,7 @@ def _create_baseten_chain(
             remote_factory.RemoteFactory.create(remote=baseten_options.remote),
         )
 
-    if user_config.settings.include_git_info or baseten_options.include_git_info:
+    if user_config.get_settings().include_git_info or baseten_options.include_git_info:
         truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
             baseten_options.working_dir
         )

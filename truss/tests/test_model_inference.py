@@ -16,12 +16,15 @@ from typing import Iterator, Mapping, Optional
 
 import httpx
 import opentelemetry.trace.propagation.tracecontext as tracecontext
+import packaging.requirements
+import packaging.version
 import pytest
 import requests
 import websockets
 from opentelemetry import context, trace
 from prometheus_client.parser import text_string_to_metric_families
 from python_on_whales import Container
+from python_on_whales.exceptions import DockerException
 from requests.exceptions import RequestException
 
 from truss.local.local_config_handler import LocalConfigHandler
@@ -320,12 +323,22 @@ def test_async_streaming_timeout(test_data_path):
             for chunk in response.iter_content():
                 pass
 
-        # Check to ensure the Timeout error is in the container logs
-        # TODO: maybe intercept this error better?
+        # Check to ensure the timeout-related error is in the container logs.
+        # The exact exception varies by Python version (TimeoutError on older,
+        # CancelledError on newer asyncio).
         _assert_logs_contain_error(
-            container.logs(),
-            error="raise exceptions.TimeoutError()",
-            message="Exception in ASGI application\n",
+            container.logs(), error=None, message="Exception in ASGI application\n"
+        )
+        error_log = next(
+            line
+            for line in (json.loads(raw) for raw in container.logs().splitlines())
+            if line["levelname"] == "ERROR" and "exc_info" in line
+        )
+        assert (
+            "TimeoutError" in error_log["exc_info"]
+            or "CancelledError" in error_log["exc_info"]
+        ), (
+            f"Expected TimeoutError or CancelledError in exc_info: {error_log['exc_info']}"
         )
 
 
@@ -357,21 +370,33 @@ def test_streaming_with_error_and_stacktrace(test_data_path):
             byte_string.decode()
             for byte_string in predict_non_error_response.iter_content()
         ] == ["0", "1", "2", "3", "4"]
-        expected_stack_trace = (
-            "Traceback (most recent call last):\n"
-            '  File "/app/model/model.py", line 12, in inner\n'
-            "    helpers_1.foo(123)\n"
-            '  File "/packages/helpers_1.py", line 5, in foo\n'
-            "    return helpers_2.bar(x)\n"
-            '  File "/packages/helpers_2.py", line 2, in bar\n'
-            '    raise Exception("Crashed in `bar`.")\n'
-            "Exception: Crashed in `bar`."
-        )
+        # Check key traceback lines individually rather than as one multiline
+        # string, because Python's traceback format varies across versions
+        # (e.g. 3.10+ adds ^^^ underline annotations).
+        expected_lines = [
+            "Traceback (most recent call last):",
+            'File "/app/model/model.py", line 12, in inner',
+            "helpers_1.foo(123)",
+            'File "/packages/helpers_1.py", line 5, in foo',
+            "return helpers_2.bar(x)",
+            'File "/packages/helpers_2.py", line 2, in bar',
+            'raise Exception("Crashed in `bar`.")',
+            "Exception: Crashed in `bar`.",
+        ]
         _assert_logs_contain_error(
             container.logs(),
-            error=expected_stack_trace,
+            error=None,
             message="Exception while generating streamed response: Crashed in `bar`.",
         )
+        error_log = next(
+            line
+            for line in (json.loads(raw) for raw in container.logs().splitlines())
+            if line["levelname"] == "ERROR" and "exc_info" in line
+        )
+        for expected in expected_lines:
+            assert expected in error_log["exc_info"], (
+                f"Missing expected traceback line: {expected!r}"
+            )
 
 
 @pytest.mark.integration
@@ -697,21 +722,31 @@ def test_truss_with_error_stacktrace(test_data_path):
         assert response.headers["x-baseten-error-source"] == "04"
         assert response.headers["x-baseten-error-code"] == "600"
 
-        expected_stack_trace = (
-            "Traceback (most recent call last):\n"
-            '  File "/app/model/model.py", line 8, in predict\n'
-            "    return helpers_1.foo(123)\n"
-            '  File "/packages/helpers_1.py", line 5, in foo\n'
-            "    return helpers_2.bar(x)\n"
-            '  File "/packages/helpers_2.py", line 2, in bar\n'
-            '    raise Exception("Crashed in `bar`.")\n'
-            "Exception: Crashed in `bar`."
-        )
+        # Check key traceback lines individually rather than as one multiline
+        # string, because Python's traceback format varies across versions
+        # (e.g. 3.10+ adds ^^^ underline annotations).
+        expected_lines = [
+            "Traceback (most recent call last):",
+            'File "/app/model/model.py", line 8, in predict',
+            "return helpers_1.foo(123)",
+            'File "/packages/helpers_1.py", line 5, in foo',
+            "return helpers_2.bar(x)",
+            'File "/packages/helpers_2.py", line 2, in bar',
+            'raise Exception("Crashed in `bar`.")',
+            "Exception: Crashed in `bar`.",
+        ]
         _assert_logs_contain_error(
-            container.logs(),
-            error=expected_stack_trace,
-            message="Internal Server Error",
+            container.logs(), error=None, message="Internal Server Error"
         )
+        error_log = next(
+            line
+            for line in (json.loads(raw) for raw in container.logs().splitlines())
+            if line["levelname"] == "ERROR" and "exc_info" in line
+        )
+        for expected in expected_lines:
+            assert expected in error_log["exc_info"], (
+                f"Missing expected traceback line: {expected!r}"
+            )
 
 
 @pytest.mark.integration
@@ -1758,6 +1793,9 @@ def test_custom_openai_endpoints():
         def load(self):
             self._predict_count = 0
             self._completions_count = 0
+            self._embeddings_count = 0
+            self._messages_count = 0
+            self._responses_count = 0
 
         async def predict(self, inputs) -> int:
             self._predict_count += inputs["increment"]
@@ -1766,6 +1804,18 @@ def test_custom_openai_endpoints():
         async def completions(self, inputs) -> int:
             self._completions_count += inputs["increment"]
             return self._completions_count
+
+        async def embeddings(self, inputs) -> int:
+            self._embeddings_count += inputs["increment"]
+            return self._embeddings_count
+
+        async def messages(self, inputs) -> int:
+            self._messages_count += inputs["increment"]
+            return self._messages_count
+
+        async def responses(self, inputs) -> int:
+            self._responses_count += inputs["increment"]
+            return self._responses_count
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         container, urls = tr.docker_run_for_test()
@@ -1778,7 +1828,19 @@ def test_custom_openai_endpoints():
         assert response.status_code == 200
         assert response.json() == 2
 
-        response = requests.post(urls.chat_completions_url, json={"increment": 3})
+        response = requests.post(urls.embeddings_url, json={"increment": 3})
+        assert response.status_code == 200
+        assert response.json() == 3
+
+        response = requests.post(urls.messages_url, json={"increment": 4})
+        assert response.status_code == 200
+        assert response.json() == 4
+
+        response = requests.post(urls.responses_url, json={"increment": 5})
+        assert response.status_code == 200
+        assert response.json() == 5
+
+        response = requests.post(urls.chat_completions_url, json={"increment": 6})
         assert response.status_code == 404
 
 
@@ -1859,6 +1921,40 @@ def test_openai_client_streaming():
             json={"nums": ["1", "2"]},
             stream=True,
             # Despite requesting json, we should still stream results back.
+            headers={
+                "accept": "application/json",
+                "user-agent": "OpenAI/Python 1.61.0",
+            },
+        )
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]
+
+
+@pytest.mark.integration
+def test_messages_streaming():
+    """
+    Test a Truss that exposes a messages endpoint with streaming.
+    """
+    model = """
+    from typing import AsyncGenerator
+
+    class Model:
+        async def messages(self, inputs) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        response = requests.post(
+            urls.messages_url,
+            json={"nums": ["1", "2"]},
+            stream=True,
             headers={
                 "accept": "application/json",
                 "user-agent": "OpenAI/Python 1.61.0",
@@ -2140,3 +2236,338 @@ def test_system_managed_python(test_data_path):
         response = requests.post(urls.predict_url, json={})
         assert response.status_code == 200
         assert response.json() == {"success": True}
+
+
+# Model that returns installed versions of key server dependencies.
+_VERSION_CHECK_MODEL = """
+    import importlib.metadata
+    import sys
+    class Model:
+        def predict(self, data):
+            packages = [
+                "fastapi", "numpy", "uvicorn", "requests",
+                "pyyaml", "msgpack", "msgpack-numpy",
+            ]
+            versions = {
+                pkg: importlib.metadata.version(pkg)
+                for pkg in packages
+            }
+            versions["python"] = f"{sys.version_info.major}.{sys.version_info.minor}"
+            return versions
+"""
+
+_CONSTRAINTS_PATH = (
+    Path(__file__).parent.parent / "templates" / "server" / "constraints.txt"
+)
+
+# Versions within constraint bounds, used for requirements_file tests.
+# Update these if constraints.txt changes and they fall outside bounds.
+NUMPY_VERSION_WITHIN_BOUNDS = "1.26.4"
+REQUESTS_VERSION_WITHIN_BOUNDS = "2.31.0"
+
+# Version below the lower bound of numpy's constraint.
+NUMPY_VERSION_OUT_OF_BOUNDS = "1.22.0"
+
+
+def _load_constraints() -> dict[str, packaging.requirements.Requirement]:
+    # Parse constraints.txt into a dict of normalized package name -> Requirement
+    constraints = {}
+    for line in _CONSTRAINTS_PATH.read_text().splitlines():
+        line = line.split(" #")[0].strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            req = packaging.requirements.Requirement(line)
+            constraints[req.name] = req
+        except Exception:
+            continue
+    return constraints
+
+
+def _get_floor_version(req: packaging.requirements.Requirement) -> str:
+    # Extract the >= floor version from a requirement's specifiers.
+    # For == pins, return that version.
+    for spec in req.specifier:
+        if spec.operator == ">=":
+            return spec.version
+        if spec.operator == "==":
+            return spec.version
+    raise ValueError(f"No floor version found in {req}")
+
+
+@pytest.mark.integration
+def test_server_deps_oldest_floors():
+    # Pin key deps to their lowest allowed version from constraints.txt
+    # and verify the server boots and serves a request.
+    # Pin to py311 because some floor versions (e.g. numpy 1.23.5) have no
+    # wheels for Python 3.12+.
+    constraints = _load_constraints()
+    pinned_packages = ["fastapi", "numpy", "uvicorn", "requests", "pyyaml"]
+    oldest_reqs = [
+        f"{name}=={_get_floor_version(constraints[name])}" for name in pinned_packages
+    ]
+    config = "python_version: py311\nrequirements:\n" + "\n".join(
+        f"  - {r}" for r in oldest_reqs
+    )
+    with ensure_kill_all(), _temp_truss(_VERSION_CHECK_MODEL, config) as tr:
+        container, urls = tr.docker_run_for_test()
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        versions = response.json()
+        for name in pinned_packages:
+            expected = packaging.version.parse(_get_floor_version(constraints[name]))
+            actual = packaging.version.parse(versions[name])
+            assert actual == expected, f"{name}: expected {expected}, got {actual}"
+
+
+@pytest.mark.integration
+def test_server_deps_newest_ceilings():
+    # Use every constraint spec as a requirement so pip resolves the newest
+    # allowed version of each package, then verify the server boots.
+    constraints = _load_constraints()
+    newest_reqs = [str(req) for req in constraints.values()]
+    config = "requirements:\n" + "\n".join(f"  - {r}" for r in newest_reqs)
+    with ensure_kill_all(), _temp_truss(_VERSION_CHECK_MODEL, config) as tr:
+        container, urls = tr.docker_run_for_test()
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        versions = response.json()
+        # Config has no explicit python_version, so this confirms the default.
+        assert versions["python"] == "3.13"
+        for name in versions:
+            if name in constraints:
+                installed = packaging.version.parse(versions[name])
+                assert installed in constraints[name].specifier, (
+                    f"{name}: {installed} is outside {constraints[name].specifier}"
+                )
+
+
+# Model that exercises numpy version-specific APIs and msgpack serialization.
+_NUMPY_COMPAT_MODEL = """
+    import numpy as np
+    class Model:
+        def predict(self, data):
+            mode = data.get("mode", "version")
+            if mode == "version":
+                return {
+                    "numpy_version": np.version.version,
+                    "numpy_major": int(np.version.version.split(".")[0]),
+                }
+            elif mode == "array":
+                return {"array": np.array([1.0, 2.0, 3.0], dtype=np.float64)}
+            elif mode == "product":
+                return {"result": float(np.product(np.array([1.0, 2.0, 3.0])))}
+            elif mode == "trapezoid":
+                return {"result": float(np.trapezoid(np.array([1.0, 2.0, 3.0])))}
+"""
+
+
+@pytest.mark.integration
+def test_numpy1x_compat():
+    # No user numpy requirement  - gets numpy <2.0 from base requirements.txt.
+    # Exercises JSON and msgpack predict paths, and numpy 1.x-only APIs.
+    config = ""
+    with ensure_kill_all(), _temp_truss(_NUMPY_COMPAT_MODEL, config) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        # Confirm numpy 1.x is installed.
+        response = requests.post(urls.predict_url, json={"mode": "version"})
+        assert response.status_code == 200
+        assert response.json()["numpy_major"] == 1
+
+        # np.product exists in 1.x.
+        response = requests.post(urls.predict_url, json={"mode": "product"})
+        assert response.status_code == 200
+        assert response.json()["result"] == 6.0
+
+        # np.trapezoid does not exist in 1.x.
+        response = requests.post(urls.predict_url, json={"mode": "trapezoid"})
+        assert response.status_code == 500
+        _assert_logs_contain_error(container.logs(), "trapezoid")
+
+        # Msgpack round-trip with a numpy array.
+        from truss.templates.shared.serialization import (
+            truss_msgpack_deserialize,
+            truss_msgpack_serialize,
+        )
+
+        byte_input = truss_msgpack_serialize({"mode": "array"})
+        response = requests.post(
+            urls.predict_url,
+            data=byte_input,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        assert response.status_code == 200
+        result = truss_msgpack_deserialize(response.content)
+        import numpy as np
+
+        assert isinstance(result["array"], np.ndarray)
+        np.testing.assert_array_equal(result["array"], [1.0, 2.0, 3.0])
+
+
+@pytest.mark.integration
+def test_numpy2x_compat():
+    # User explicitly requests numpy>=2.0. The base image has numpy 1.x
+    # pre-installed, so an explicit lower bound is needed to trigger an upgrade.
+    # The widened constraint (<3.0) allows this.
+    config = "requirements:\n  - numpy>=2.0"
+    with ensure_kill_all(), _temp_truss(_NUMPY_COMPAT_MODEL, config) as tr:
+        container, urls = tr.docker_run_for_test()
+
+        # Confirm numpy 2.x is installed.
+        response = requests.post(urls.predict_url, json={"mode": "version"})
+        assert response.status_code == 200
+        assert response.json()["numpy_major"] == 2
+
+        # np.product was removed in 2.0.
+        response = requests.post(urls.predict_url, json={"mode": "product"})
+        assert response.status_code == 500
+        _assert_logs_contain_error(container.logs(), "product")
+
+        # np.trapezoid was added in 2.0.
+        response = requests.post(urls.predict_url, json={"mode": "trapezoid"})
+        assert response.status_code == 200
+        assert response.json()["result"] == 4.0
+
+        # Msgpack round-trip with a numpy array  - the critical test for
+        # msgpack-numpy 0.4.8 compatibility with numpy 2.x.
+        from truss.templates.shared.serialization import (
+            truss_msgpack_deserialize,
+            truss_msgpack_serialize,
+        )
+
+        byte_input = truss_msgpack_serialize({"mode": "array"})
+        response = requests.post(
+            urls.predict_url,
+            data=byte_input,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        assert response.status_code == 200
+        result = truss_msgpack_deserialize(response.content)
+        import numpy as np
+
+        assert isinstance(result["array"], np.ndarray)
+        np.testing.assert_array_equal(result["array"], [1.0, 2.0, 3.0])
+
+
+@pytest.mark.integration
+def test_server_deps_requirements_file():
+    # Test that requirements_file pip path also subtracts from base
+    # and applies constraints.
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+        create_truss(truss_dir, "", textwrap.dedent(_VERSION_CHECK_MODEL))
+
+        # Write a requirements file with specific versions
+        req_file = truss_dir / "my_requirements.txt"
+        req_file.write_text(
+            f"numpy=={NUMPY_VERSION_WITHIN_BOUNDS}\n"
+            f"requests=={REQUESTS_VERSION_WITHIN_BOUNDS}\n"
+        )
+
+        # Update config to use requirements_file
+        config_path = truss_dir / "config.yaml"
+        import yaml
+
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+        config["requirements_file"] = "my_requirements.txt"
+        with open(config_path, "w") as f:
+            yaml.dump(config, f)
+
+        tr = TrussHandle(truss_dir)
+        container, urls = tr.docker_run_for_test()
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        versions = response.json()
+        assert versions["numpy"] == NUMPY_VERSION_WITHIN_BOUNDS
+        assert versions["requests"] == REQUESTS_VERSION_WITHIN_BOUNDS
+        # Non-overridden deps should still be present from base
+        assert "fastapi" in versions
+
+
+@pytest.mark.integration
+def test_server_deps_out_of_bounds_requirements(capfd):
+    # Specifying a version below the constraint floor via requirements list
+    # should fail the Docker build.
+    # Pin to py311 because numpy 1.22.0 has no wheels for Python 3.12+.
+    config = f"python_version: py311\nrequirements:\n  - numpy=={NUMPY_VERSION_OUT_OF_BOUNDS}"
+    with ensure_kill_all(), _temp_truss(_VERSION_CHECK_MODEL, config) as tr:
+        with pytest.raises(DockerException):
+            tr.docker_run_for_test()
+        captured = capfd.readouterr()
+        assert "unsatisfiable" in captured.err
+        assert f"numpy=={NUMPY_VERSION_OUT_OF_BOUNDS}" in captured.err
+
+
+@pytest.mark.integration
+def test_server_deps_out_of_bounds_requirements_file(capfd):
+    # Specifying a version below the constraint floor via requirements_file
+    # should fail the Docker build.
+    # Pin to py311 because numpy 1.22.0 has no wheels for Python 3.12+.
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+        create_truss(truss_dir, "", textwrap.dedent(_VERSION_CHECK_MODEL))
+
+        req_file = truss_dir / "my_requirements.txt"
+        req_file.write_text(f"numpy=={NUMPY_VERSION_OUT_OF_BOUNDS}\n")
+
+        config_path = truss_dir / "config.yaml"
+        import yaml
+
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+        config["requirements_file"] = "my_requirements.txt"
+        config["python_version"] = "py311"
+        with open(config_path, "w") as f:
+            yaml.dump(config, f)
+
+        tr = TrussHandle(truss_dir)
+        with pytest.raises(DockerException):
+            tr.docker_run_for_test()
+        captured = capfd.readouterr()
+        assert "unsatisfiable" in captured.err
+        assert f"numpy=={NUMPY_VERSION_OUT_OF_BOUNDS}" in captured.err
+
+
+@pytest.mark.integration
+def test_server_deps_uv_lock_silently_overridden():
+    # When using uv.lock with a version outside our constraints, the build
+    # succeeds but our base requirements silently overwrite the locked version.
+    # This test documents this undesirable behavior.
+    # Pin to py311 because numpy 1.22.0 has no wheels for Python 3.12+.
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+        create_truss(truss_dir, "", textwrap.dedent(_VERSION_CHECK_MODEL))
+
+        # Generate a uv.lock with numpy pinned below our constraint floor.
+        pyproject = truss_dir / "pyproject.toml"
+        pyproject.write_text(
+            f'[project]\nname = "test"\nversion = "0.1.0"\n'
+            f'requires-python = ">=3.9"\n'
+            f'dependencies = ["numpy=={NUMPY_VERSION_OUT_OF_BOUNDS}"]\n'
+        )
+        import subprocess
+
+        subprocess.run(["uv", "lock"], cwd=truss_dir, check=True)
+
+        config_path = truss_dir / "config.yaml"
+        import yaml
+
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+        config["requirements_file"] = "uv.lock"
+        config["python_version"] = "py311"
+        with open(config_path, "w") as f:
+            yaml.dump(config, f)
+
+        tr = TrussHandle(truss_dir)
+        container, urls = tr.docker_run_for_test()
+        response = requests.post(urls.predict_url, json={})
+        assert response.status_code == 200
+        versions = response.json()
+        # The locked version is silently overridden by our base requirements.
+        installed = packaging.version.parse(versions["numpy"])
+        assert installed != packaging.version.parse(NUMPY_VERSION_OUT_OF_BOUNDS)
+        constraints = _load_constraints()
+        assert installed in constraints["numpy"].specifier

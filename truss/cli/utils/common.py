@@ -83,7 +83,16 @@ def set_logging_level() -> None:
 def check_is_interactive() -> bool:
     """Detects if CLI is operated interactively by human, so we can ask things,
     that we would want to skip for automated subprocess/CI contexts."""
-    return sys.stdin.isatty() and sys.stdout.isatty()
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    try:
+        ctx = click.get_current_context(silent=True)
+        root_obj = ctx.find_root().obj if ctx else None
+        if root_obj and root_obj.get("non_interactive", False):
+            return False
+    except RuntimeError:
+        pass
+    return True
 
 
 def _store_param_callback(ctx: click.Context, param: click.Parameter, value: str):
@@ -296,6 +305,17 @@ def wait_for_development_model_ready(
                     style="red",
                 )
                 sys.exit(1)
+
+
+def start_keepalive(model_hostname: str, api_key: str) -> threading.Event:
+    """Start a keepalive thread to prevent scale-to-zero. Returns the stop event."""
+    console.print("💤 --no-sleep enabled: keeping development model warm")
+    stop_event = threading.Event()
+    keepalive_thread = threading.Thread(
+        target=keepalive_loop, args=(model_hostname, api_key, stop_event), daemon=True
+    )
+    keepalive_thread.start()
+    return stop_event
 
 
 def keepalive_loop(

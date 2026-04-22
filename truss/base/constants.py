@@ -38,6 +38,7 @@ REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME = "user_requirements.txt"
 BASE_SERVER_REQUIREMENTS_TXT_FILENAME = "base_server_requirements.txt"
 SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
+CONSTRAINTS_TXT_FILENAME = "constraints.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 PYPROJECT_TOML_FILENAME = "pyproject.toml"
 UV_LOCK_FILENAME = "uv.lock"
@@ -50,6 +51,7 @@ FILENAME_CONSTANTS_MAP = {
     "base_server_requirements_filename": BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     "server_requirements_filename": SERVER_REQUIREMENTS_TXT_FILENAME,
     "system_packages_filename": SYSTEM_PACKAGES_TXT_FILENAME,
+    "constraints_filename": CONSTRAINTS_TXT_FILENAME,
 }
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"

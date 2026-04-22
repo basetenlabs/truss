@@ -287,9 +287,11 @@ def prepare_push(
         runtime=training_job.runtime,
         compute=training_job.compute,
         name=training_job.name,
+        priority=training_job.priority,
         interactive_session=training_job.interactive_session,
         workspace=training_job.workspace,
         weights=training_job.weights,
+        enable_baseten_workdir=training_job.enable_baseten_workdir,
         runtime_artifacts=[
             S3Artifact(s3_key=credentials["s3_key"], s3_bucket=credentials["s3_bucket"])
         ],
@@ -329,6 +331,7 @@ def _apply_cli_overrides(
     accelerator: Optional[str] = None,
     node_count: Optional[int] = None,
     entrypoint: Optional[str] = None,
+    priority: Optional[int] = None,
 ) -> None:
     """Apply CLI flag overrides to the training project configuration."""
     if interactive_trigger is not None or interactive_timeout_minutes is not None:
@@ -380,6 +383,14 @@ def _apply_cli_overrides(
             )
         training_project.job.runtime.start_commands = [entrypoint]
 
+    if priority is not None:
+        existing_priority = training_project.job.priority
+        if existing_priority is not None:
+            console.print(
+                f"[bold yellow]⚠ Warning:[/bold yellow] priority '{existing_priority}' provided in config file will be ignored. Using '{priority}' provided via --priority flag."
+            )
+        training_project.job.priority = priority
+
 
 def create_training_job(
     remote_provider: BasetenRemote,
@@ -393,6 +404,7 @@ def create_training_job(
     accelerator: Optional[str] = None,
     node_count: Optional[int] = None,
     entrypoint: Optional[str] = None,
+    priority: Optional[int] = None,
 ) -> dict:
     if job_name_from_cli:
         if training_project.job.name:
@@ -413,6 +425,7 @@ def create_training_job(
         accelerator=accelerator,
         node_count=node_count,
         entrypoint=entrypoint,
+        priority=priority,
     )
 
     source_dir = config.absolute().parent

@@ -149,6 +149,14 @@ class BasetenApi:
     def auth_token(self) -> ApiKey:
         return self._auth_token
 
+    @property
+    def suppress_error_print(self) -> bool:
+        return self._rest_api_client.suppress_error_print
+
+    @suppress_error_print.setter
+    def suppress_error_print(self, value: bool) -> None:
+        self._rest_api_client.suppress_error_print = value
+
     def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
         headers = self._auth_token.header()
         payload: Dict[str, Any] = {"query": query}
@@ -857,6 +865,10 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def get_training_capacity(self) -> list[dict]:
+        resp_json = self._rest_api_client.get("v1/training/capacity")
+        return resp_json.get("gpu_capacities", [])
+
     def list_training_job_checkpoints(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoints"
@@ -892,6 +904,15 @@ class BasetenApi:
         resp_json = self._rest_api_client.patch(
             f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_sessions/{session_id}",
             body,
+        )
+        return resp_json
+
+    def sign_ssh_certificate(
+        self, project_id: str, job_id: str, public_key: str, replica_id: str
+    ) -> dict:
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/ssh/sign",
+            body={"public_key": public_key, "replica_id": replica_id},
         )
         return resp_json
 

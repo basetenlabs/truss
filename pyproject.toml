@@ -1,11 +1,12 @@
 [project]
 name = "truss"
-version = "0.15.5"
+version = "0.16.2"
 description = "A seamless bridge from model development to model delivery"
 authors = [
     { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
     { name = "Phil Howes", email = "no-reply@baseten.co" },
 ]
+# When updating requires-python, also update classifiers below to match.
 requires-python = ">=3.9,<3.15"
 readme = "README.md"
 license = "MIT"
@@ -15,6 +16,14 @@ keywords = [
     "Model Serving",
     "Model Deployment",
     "Machine Learning",
+]
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "huggingface_hub>=0.25.0",

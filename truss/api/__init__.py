@@ -6,6 +6,8 @@ if TYPE_CHECKING:
     from rich import progress
 
 from truss.api import definitions
+from truss.cli.resolvers.model_team_resolver import resolve_model_team_name
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
@@ -52,6 +54,27 @@ def whoami(remote: Optional[str] = None):
     return remote_provider.whoami()
 
 
+def _resolve_team_id(
+    remote_provider: BasetenRemote,
+    provided_team_name: Optional[str],
+    remote_name: Optional[str],
+    model_name: str,
+) -> Optional[str]:
+    """Resolve team_id using the same logic as the CLI's ``--team`` flag.
+
+    Uses :func:`resolve_model_team_name` with ``allow_interactive=False`` so that
+    ambiguous cases raise ValueError instead of prompting.
+    """
+    _, team_id = resolve_model_team_name(
+        remote_provider=remote_provider,
+        provided_team_name=provided_team_name,
+        existing_model_name=model_name,
+        allow_interactive=False,
+        remote_name=remote_name,
+    )
+    return team_id
+
+
 def push(
     target_directory: str,
     remote: Optional[str] = None,
@@ -68,6 +91,7 @@ def push(
     preserve_env_instance_type: bool = True,
     deploy_timeout_minutes: Optional[int] = None,
     labels: Optional[Dict[str, Any]] = None,
+    team: Optional[str] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -98,6 +122,7 @@ def push(
           configured in the specified environment.
         deploy_timeout_minutes: Optional timeout in minutes for the deployment operation.
         labels: Optional JSON-serializable dictionary of label key-value pairs.
+        team: Name of the team to push the model to.
 
     Returns:
         The newly created ModelDeployment.
@@ -124,13 +149,17 @@ def push(
                 "Multiple remotes found. Please pass the remote as an argument."
             )
 
-    remote_provider = RemoteFactory.create(remote=remote)
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
     tr = load(target_directory)
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         raise ValueError(
             "No model name provided. Please specify a model name in config.yaml."
         )
+
+    team_id = _resolve_team_id(remote_provider, team, remote, model_name)
+
     service = remote_provider.push(
         tr,
         model_name=model_name,
@@ -145,7 +174,8 @@ def push(
         include_git_info=include_git_info,
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
+        team_id=team_id,
         labels=labels,
-    )  # type: ignore
+    )
 
     return definitions.ModelDeployment(cast(BasetenService, service))
