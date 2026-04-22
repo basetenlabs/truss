@@ -178,7 +178,6 @@ class BasetenRemote(TrussRemote):
         origin: Optional[custom_types.ModelOrigin],
         environment: Optional[str],
         deploy_timeout_minutes: Optional[int],
-        labels: Optional[Dict[str, Any]],
     ) -> None:
         if not publish:
             raise ValueError("Development deployment is not supported for LLM models.")
@@ -196,11 +195,13 @@ class BasetenRemote(TrussRemote):
             raise ValueError("Origin is not supported for LLM models.")
         if deploy_timeout_minutes is not None:
             raise ValueError("Deploy timeout minutes is not supported for LLM models.")
-        if labels is not None:
-            raise ValueError("Labels are not supported for LLM models.")
 
     def _prepare_llm_request_body(
-        self, config: Any, model_name: str, model_id: Optional[str]
+        self,
+        config: Any,
+        model_name: str,
+        model_id: Optional[str],
+        labels: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "resources": config.resources.model_dump(exclude_none=True),
@@ -220,6 +221,8 @@ class BasetenRemote(TrussRemote):
             body["additional_autoscaling_config"] = (
                 config.additional_autoscaling_config.model_dump(exclude_none=True)
             )
+        if labels is not None:
+            body["metadata"] = labels
         return body
 
     # Validate and finalize options.
@@ -258,7 +261,6 @@ class BasetenRemote(TrussRemote):
                 origin=origin,
                 environment=environment,
                 deploy_timeout_minutes=deploy_timeout_minutes,
-                labels=labels,
             )
 
         if truss_handle.spec.model_server != ModelServer.TrussServer:
@@ -368,6 +370,7 @@ class BasetenRemote(TrussRemote):
                     config=config,
                     model_name=model_name,
                     model_id=push_data.model_id,
+                    labels=push_data.labels,
                 ),
                 model_id=push_data.model_id,
                 team_id=push_data.team_id,

@@ -681,6 +681,7 @@ def test_push_uses_llm_service_for_llm_config(
                         "model_name",
                         mock_truss_handle.truss_dir,
                         publish=True,
+                        labels={"git_sha": "abc123", "environment": "production"},
                     )
 
     mock_validate_backend.assert_not_called()
@@ -693,6 +694,7 @@ def test_push_uses_llm_service_for_llm_config(
     assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
     assert kwargs["body"]["llm_version"] == "v1"
     assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
+    assert kwargs["body"]["metadata"] == {"git_sha": "abc123", "environment": "production"}
     assert isinstance(kwargs["body"]["resources"], dict)
     assert "name" not in kwargs["body"]
     assert service.model_id == "llm-model-id"
