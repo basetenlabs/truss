@@ -546,7 +546,7 @@ def _create_baseten_chain(
             remote_factory.RemoteFactory.create(remote=baseten_options.remote),
         )
 
-    if user_config.settings.include_git_info or baseten_options.include_git_info:
+    if user_config.get_settings().include_git_info or baseten_options.include_git_info:
         truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(
             baseten_options.working_dir
         )

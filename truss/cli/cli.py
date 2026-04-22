@@ -802,7 +802,7 @@ def push(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = user_config.settings.include_git_info
+        include_git_info = user_config.get_settings().include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
     if output_format == "json" and isinstance(remote_provider, BasetenRemote):
@@ -951,6 +951,14 @@ def push(
     console.print(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
+
+    if tr.spec.config.runtime.remote_ssh.enabled and isinstance(
+        service, BasetenService
+    ):
+        console.print(
+            "🔐  SSH into this deployment (after one-time 'truss ssh setup'): "
+            f"ssh model-{service.model_id}-{service.model_version_id}.ssh.baseten.co"
+        )
 
     if tail and isinstance(service, BasetenService):
         # When combined with --wait/--watch, tail runs in background so the
@@ -1351,4 +1359,9 @@ def kill_all() -> None:
 
 
 # These imports are needed to register the subcommands
-from truss.cli import chains_commands, migrate_commands, train_commands  # noqa: F401
+from truss.cli import (  # noqa: F401
+    chains_commands,
+    migrate_commands,
+    ssh_commands,
+    train_commands,
+)

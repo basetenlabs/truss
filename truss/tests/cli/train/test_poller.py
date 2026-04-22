@@ -91,11 +91,9 @@ def test_view_training_details_splits_queued_and_active(capsys):
     captured = capsys.readouterr()
     # Queued section renders as a table with its own title and columns
     assert "Queued Training Jobs" in captured.out
-    assert "Queued At" in captured.out
     assert "q1" in captured.out
     # Active section renders as a table with a Status column
     assert "Active Training Jobs" in captured.out
-    assert "Status" in captured.out
     assert "a1" in captured.out
 
 

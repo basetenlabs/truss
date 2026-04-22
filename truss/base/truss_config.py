@@ -590,6 +590,15 @@ Transport = Annotated[
 ]
 
 
+class RemoteSSH(custom_types.ConfigModel):
+    """Configuration for SSH access to running model instances."""
+
+    enabled: bool = pydantic.Field(
+        default=False,
+        description="If true, enables SSH access to running model instances.",
+    )
+
+
 class Runtime(custom_types.ConfigModel):
     """Runtime settings for your model instance."""
 
@@ -619,6 +628,10 @@ class Runtime(custom_types.ConfigModel):
     health_checks: HealthChecks = pydantic.Field(
         default_factory=HealthChecks,
         description="Custom health check configuration for your deployments.",
+    )
+    remote_ssh: RemoteSSH = pydantic.Field(
+        default_factory=RemoteSSH,
+        description="Configuration for SSH access to running model instances.",
     )
     truss_server_version_override: Optional[str] = pydantic.Field(
         None,
@@ -1328,6 +1341,20 @@ class TrussConfig(custom_types.ConfigModel):
                 stacklevel=2,
             )
         return v
+
+    @pydantic.model_validator(mode="after")
+    def _validate_remote_ssh(self) -> "TrussConfig":
+        if (
+            self.runtime.remote_ssh.enabled
+            and self.docker_server is not None
+            and self.docker_server.run_as_user_id is not None
+        ):
+            raise ValueError(
+                "remote_ssh.enabled is not compatible with "
+                "docker_server.run_as_user_id. SSH requires the default "
+                "'app' user (uid 60000)."
+            )
+        return self
 
     @pydantic.model_validator(mode="after")
     def _validate_config(self) -> "TrussConfig":

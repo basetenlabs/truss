@@ -653,6 +653,20 @@
       "title": "ModelServer",
       "type": "string"
     },
+    "RemoteSSH": {
+      "additionalProperties": true,
+      "description": "Configuration for SSH access to running model instances.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "If true, enables SSH access to running model instances.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "RemoteSSH",
+      "type": "object"
+    },
     "Resources": {
       "additionalProperties": true,
       "description": "Compute resources that your model needs, including CPU, memory, and GPU resources.",
@@ -787,6 +801,9 @@
         },
         "health_checks": {
           "$ref": "#/$defs/HealthChecks"
+        },
+        "remote_ssh": {
+          "$ref": "#/$defs/RemoteSSH"
         },
         "truss_server_version_override": {
           "anyOf": [

@@ -208,16 +208,22 @@ def display_queued_jobs(jobs: list[dict], remote_url: str) -> None:
     table.add_column("Job Name")
     table.add_column("Project")
     table.add_column("Instance Type")
+    table.add_column("Priority")
     table.add_column("Created By")
     table.add_column("Queued At")
     table.add_column("Job Page", style="bold yellow")
 
-    for job in jobs:
+    sorted_jobs = sorted(
+        jobs, key=lambda j: (-(j.get("priority") or 0), j.get("created_at", ""))
+    )
+
+    for job in sorted_jobs:
         table.add_row(
             job["id"],
             job["name"],
             job["training_project"]["name"],
             job["instance_type"]["name"],
+            str(job.get("priority") or 0),
             job.get("user", {}).get("email", ""),
             cli_common.format_localized_time(job["created_at"]),
             cli_common.format_link(
@@ -373,6 +379,7 @@ def display_training_job(
     table.add_row("Project Name", job["training_project"]["name"])
     table.add_row("Status", job["current_status"])
     table.add_row("Instance Type", job["instance_type"]["name"])
+    table.add_row("Priority", str(job.get("priority") or 0))
     if user_email := job.get("user", {}).get("email"):
         table.add_row("Created By", user_email)
     table.add_row("Created", cli_common.format_localized_time(job["created_at"]))
@@ -717,3 +724,34 @@ def view_cache_summary_by_project(
 
     project = fetch_project_by_name_or_id(remote_provider, project_identifier)
     view_cache_summary(remote_provider, project["id"], sort_by, order, output_format)
+
+
+def display_training_capacity(remote_provider: BasetenRemote) -> None:
+    """Fetch and display GPU capacity limits and usage for the organization."""
+    gpu_capacities = remote_provider.api.get_training_capacity()
+
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold magenta",
+        title="Training GPU Capacity",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("GPU Type", style="cyan")
+    table.add_column("Baseline", justify="right")
+    table.add_column("Limit", justify="right")
+    table.add_column("Usage", justify="right")
+
+    if not gpu_capacities:
+        console.print("No Training GPU capacity limits.")
+        return
+
+    for item in gpu_capacities:
+        table.add_row(
+            item.get("gpu_type", ""),
+            str(item.get("baseline", 0)),
+            str(item.get("limit", 0)),
+            str(item.get("usage_count", 0)),
+        )
+
+    console.print(table)
