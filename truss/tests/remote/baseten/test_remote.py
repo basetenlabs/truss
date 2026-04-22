@@ -14,6 +14,7 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
+from truss.remote.baseten.service import URLConfig
 from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
 from truss.truss_handle.truss_handle import TrussHandle
 
@@ -644,6 +645,60 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
             match="Extra fields not allowed: \[extra_field, who_am_i\]",
         ):
             remote.push(th, "model_name", th.truss_dir)
+
+
+def test_push_uses_llm_service_for_llm_config(
+    remote,
+    mock_upload_truss,
+    mock_truss_handle,
+):
+    mock_truss_handle.spec.config.llm_config = {"model": "test-llm"}
+    mock_truss_handle.spec.config.llm_version = "v1"
+    mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
+    mock_truss_handle.spec.config.autoscaling_settings = None
+    mock_truss_handle.spec.config.additional_autoscaling_config = None
+
+    llm_handle = mock.Mock(
+        version_id="llm-deployment-id",
+        model_id="llm-model-id",
+        hostname="hostname",
+        instance_type_name=None,
+    )
+
+    with patch("truss.remote.baseten.remote.exists_model", return_value="llm-model-id"):
+        with patch(
+            "truss.remote.baseten.remote.validate_truss_config_against_backend"
+        ) as mock_validate_backend:
+            with patch(
+                "truss.remote.baseten.remote.create_llm_service",
+                return_value=llm_handle,
+            ) as mock_create_llm_service:
+                with patch(
+                    "truss.remote.baseten.remote.create_truss_service"
+                ) as mock_create_truss_service:
+                    service = remote.push(
+                        mock_truss_handle,
+                        "model_name",
+                        mock_truss_handle.truss_dir,
+                        publish=True,
+                    )
+
+    mock_validate_backend.assert_not_called()
+    mock_upload_truss.assert_called_once()
+    mock_create_truss_service.assert_not_called()
+    mock_create_llm_service.assert_called_once()
+    _, kwargs = mock_create_llm_service.call_args
+    assert kwargs["model_id"] == "llm-model-id"
+    assert kwargs["team_id"] is None
+    assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
+    assert kwargs["body"]["llm_version"] == "v1"
+    assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
+    assert isinstance(kwargs["body"]["resources"], dict)
+    assert "name" not in kwargs["body"]
+    assert service.model_id == "llm-model-id"
+    assert service.model_version_id == "llm-deployment-id"
+    assert service._url_config == URLConfig.LLM
+
 
 
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(

@@ -168,6 +168,60 @@ class BasetenRemote(TrussRemote):
             workload_types=["model_container", "model_build"],
         )
 
+    def _validate_llm_push_options(
+        self,
+        publish: bool,
+        promote: bool,
+        preserve_previous_prod_deployment: bool,
+        disable_truss_download: bool,
+        deployment_name: Optional[str],
+        origin: Optional[custom_types.ModelOrigin],
+        environment: Optional[str],
+        deploy_timeout_minutes: Optional[int],
+        labels: Optional[Dict[str, Any]],
+    ) -> None:
+        if not publish:
+            raise ValueError("Development deployment is not supported for LLM models.")
+        if promote:
+            raise ValueError("Promotion is not supported for LLM models ")
+        if environment:
+            raise ValueError("Environment is not supported for LLM models.")
+        if preserve_previous_prod_deployment:
+            raise ValueError("Preserve previous production deployment is not supported for LLM models.")
+        if disable_truss_download:
+            raise ValueError("Disable truss download is not supported for LLM models.")
+        if deployment_name:
+            raise ValueError("Deployment name is not supported for LLM models.")
+        if origin:
+            raise ValueError("Origin is not supported for LLM models.")
+        if deploy_timeout_minutes is not None:
+            raise ValueError("Deploy timeout minutes is not supported for LLM models.")
+        if labels is not None:
+            raise ValueError("Labels are not supported for LLM models.")
+
+    def _prepare_llm_request_body(
+        self, config: Any, model_name: str, model_id: Optional[str]
+    ) -> Dict[str, Any]:
+        body: Dict[str, Any] = {
+            "resources": config.resources.model_dump(exclude_none=True),
+            "llm_config": config.llm_config or {},
+        }
+        if model_id is None:
+            body["name"] = model_name
+        if config.llm_version:
+            body["llm_version"] = config.llm_version
+        if config.environment_variables:
+            body["environment_variables"] = config.environment_variables
+        if config.autoscaling_settings is not None:
+            body["autoscaling_settings"] = config.autoscaling_settings.model_dump(
+                exclude_none=True
+            )
+        if config.additional_autoscaling_config is not None:
+            body["additional_autoscaling_config"] = (
+                config.additional_autoscaling_config.model_dump(exclude_none=True)
+            )
+        return body
+
     # Validate and finalize options.
     # Upload Truss files to S3 and return S3 key.
     def _prepare_push(
@@ -191,6 +245,21 @@ class BasetenRemote(TrussRemote):
 
         if truss_handle.is_scattered():
             truss_handle = TrussHandle(truss_handle.gather())
+
+        config = truss_handle.spec.config
+
+        if config.llm_config is not None:
+            self._validate_llm_push_options(
+                publish=publish,
+                promote=promote,
+                preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+                disable_truss_download=disable_truss_download,
+                deployment_name=deployment_name,
+                origin=origin,
+                environment=environment,
+                deploy_timeout_minutes=deploy_timeout_minutes,
+                labels=labels,
+            )
 
         if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True
@@ -234,11 +303,10 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
-        config = truss_handle._spec._config
-
         config.validate_forbid_extra()
         encoded_config_str = base64_encoded_json_str(config.to_dict())
-        validate_truss_config_against_backend(self._api, encoded_config_str)
+        if config.llm_config is None:
+            validate_truss_config_against_backend(self._api, encoded_config_str)
         temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
 
@@ -276,19 +344,6 @@ class BasetenRemote(TrussRemote):
         team_id: Optional[str] = None,
         labels: Optional[Dict[str, Any]] = None,
     ) -> BasetenService:
-        if truss_handle._spec._config.llm_config is not None:
-            if not publish:
-                raise ValueError(
-                    "Development deployment is not supported for LLM models. "
-                    "Use --publish to create a published deployment."
-                )
-            return self.push_llm(
-                truss_handle=truss_handle,
-                model_name=model_name,
-                team_id=team_id,
-                labels=labels,
-            )
-
         push_data = self._prepare_push(
             truss_handle=truss_handle,
             model_name=model_name,
@@ -304,6 +359,28 @@ class BasetenRemote(TrussRemote):
             team_id=team_id,
             labels=labels,
         )
+
+        config = truss_handle.spec.config
+        if config.llm_config is not None:
+            model_version_handle = create_llm_service(
+                api=self._api,
+                body=self._prepare_llm_request_body(
+                    config=config,
+                    model_name=model_name,
+                    model_id=push_data.model_id,
+                ),
+                model_id=push_data.model_id,
+                team_id=push_data.team_id,
+            )
+            return BasetenService(
+                model_version_handle=model_version_handle,
+                is_draft=False,
+                api_key=self._auth_service.authenticate().value,
+                service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
+                truss_handle=truss_handle,
+                api=self._api,
+                url_config=URLConfig.LLM,
+            )
 
         if include_git_info:
             truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
@@ -345,63 +422,10 @@ class BasetenRemote(TrussRemote):
             service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
+            url_config=URLConfig.MODEL,
         )
 
-    def push_llm(
-        self,
-        truss_handle: TrussHandle,
-        model_name: str,
-        team_id: Optional[str] = None,
-        labels: Optional[Dict[str, Any]] = None,
-    ) -> BasetenService:
-        if model_name.isspace():
-            raise ValueError("Model name cannot be empty")
 
-        if truss_handle.is_scattered():
-            truss_handle = TrussHandle(truss_handle.gather())
-
-        config = truss_handle._spec._config
-
-        resources: Dict[str, Any] = {}
-        if config.resources.accelerator.accelerator:
-            resources["accelerator"] = config.resources.accelerator.accelerator.value
-
-        autoscaling_settings = (
-            config.autoscaling_settings.model_dump(exclude_none=True)
-            if config.autoscaling_settings
-            else None
-        )
-        additional_autoscaling_config = (
-            config.additional_autoscaling_config.model_dump(exclude_none=True)
-            if config.additional_autoscaling_config
-            else None
-        )
-
-        model_id = exists_model(self._api, model_name, team_id=team_id)
-
-        model_version_handle = create_llm_service(
-            api=self._api,
-            model_name=model_name,
-            resources=resources,
-            llm_config=config.llm_config or {},
-            llm_version=config.llm_version,
-            model_id=model_id,
-            environment_variables=config.environment_variables or None,
-            autoscaling_settings=autoscaling_settings,
-            additional_autoscaling_config=additional_autoscaling_config,
-            labels=labels,
-            team_id=team_id,
-        )
-
-        return BasetenService(
-            model_version_handle=model_version_handle,
-            is_draft=False,
-            api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
-            truss_handle=truss_handle,
-            api=self._api,
-            url_config=URLConfig.LLM,
-        )
 
     def push_chain_atomic(
         self,

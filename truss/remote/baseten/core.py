@@ -504,6 +504,36 @@ def create_truss_service(
     )
 
 
+def create_llm_service(
+    api: BasetenApi,
+    body: dict,
+    model_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+) -> ModelVersionHandle:
+    if model_id is None:
+        response = api.create_llm_model(
+            body=body,
+            team_id=team_id,
+        )
+        return ModelVersionHandle(
+            model_id=response["id"],
+            version_id=response.get("deployment_id", ""),
+            hostname=response.get("hostname", ""),
+            instance_type_name=response.get("instance_type_name"),
+        )
+
+    response = api.create_llm_model_version(
+        model_id=model_id,
+        body=body,
+    )
+    return ModelVersionHandle(
+        version_id=response["id"],
+        model_id=model_id,
+        hostname=response.get("hostname", ""),
+        instance_type_name=response.get("instance_type_name"),
+    )
+
+
 def validate_truss_config_against_backend(api: BasetenApi, config: str) -> None:
     """
     Validate a truss config as well as the truss version.
@@ -723,54 +753,3 @@ def get_training_job_logs_with_pagination(
     logging.info(f"Completed pagination for job {job_id}. Total logs: {len(all_logs)}")
 
     return all_logs
-
-
-def create_llm_service(
-    api: BasetenApi,
-    model_name: str,
-    resources: dict,
-    llm_config: dict,
-    llm_version: str = "",
-    model_id: Optional[str] = None,
-    environment_variables: Optional[dict] = None,
-    autoscaling_settings: Optional[dict] = None,
-    additional_autoscaling_config: Optional[dict] = None,
-    labels: Optional[dict] = None,
-    metadata: Optional[dict] = None,
-    team_id: Optional[str] = None,
-) -> ModelVersionHandle:
-    if model_id is None:
-        response = api.create_llm_model(
-            name=model_name,
-            resources=resources,
-            llm_config=llm_config,
-            llm_version=llm_version,
-            environment_variables=environment_variables,
-            autoscaling_settings=autoscaling_settings,
-            additional_autoscaling_config=additional_autoscaling_config,
-            metadata=metadata,
-            team_id=team_id,
-        )
-        return ModelVersionHandle(
-            model_id=response["id"],
-            version_id=response.get("deployment_id", ""),
-            hostname=response.get("hostname", ""),
-            instance_type_name=response.get("instance_type_name"),
-        )
-
-    response = api.create_llm_model_deployment(
-        model_id=model_id,
-        resources=resources,
-        llm_config=llm_config,
-        llm_version=llm_version,
-        environment_variables=environment_variables,
-        autoscaling_settings=autoscaling_settings,
-        additional_autoscaling_config=additional_autoscaling_config,
-        metadata=metadata,
-    )
-    return ModelVersionHandle(
-        model_id=model_id,
-        version_id=response.get("deployment_id", ""),
-        hostname=response.get("hostname", ""),
-        instance_type_name=response.get("instance_type_name"),
-    )
