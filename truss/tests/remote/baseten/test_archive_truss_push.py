@@ -27,16 +27,16 @@ def test_archive_dir_injects_config_yaml_override(
     handle = TrussHandle(truss_dir, config_path=alt_path)
     default_config = (handle.truss_dir / CONFIG_FILE).resolve()
     assert handle.spec.config_path.resolve() != default_config
-    config_yaml_override = yaml.safe_dump(
-        handle.spec.config.to_dict(verbose=True)
-    ).encode("utf-8")
-    archive = archive_dir(truss_dir, config_yaml_override=config_yaml_override)
+    expected_bytes = alt_path.read_bytes()
+    archive = archive_dir(truss_dir, config_yaml_override=expected_bytes)
     archive.file.seek(0)
 
     with tarfile.open(fileobj=archive.file, mode="r:") as tar:
         names = tar.getnames()
         assert "config.yaml" in names
         assert "config.alt.yaml" in names
-        extracted = yaml.safe_load(tar.extractfile("config.yaml").read())
+        member = tar.extractfile("config.yaml")
+        assert member is not None
+        assert member.read() == expected_bytes
 
-    assert extracted["model_name"] == "from_alternate_config"
+    assert yaml.safe_load(expected_bytes)["model_name"] == "from_alternate_config"

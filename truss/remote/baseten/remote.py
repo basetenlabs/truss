@@ -241,9 +241,8 @@ class BasetenRemote(TrussRemote):
         default_config = (truss_handle.truss_dir / CONFIG_FILE).resolve()
         config_yaml_override: Optional[bytes] = None
         if truss_handle.spec.config_path.resolve() != default_config:
-            config_yaml_override = yaml.safe_dump(
-                truss_handle.spec.config.to_dict(verbose=True)
-            ).encode("utf-8")
+            # Match non-override packing: stream literal file bytes into config.yaml.
+            config_yaml_override = truss_handle.spec.config_path.read_bytes()
         temp_file = archive_dir(
             truss_handle._truss_dir,
             progress_bar,
