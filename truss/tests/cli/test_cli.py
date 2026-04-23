@@ -528,7 +528,7 @@ def test_cli_push_passes_deploy_timeout_minutes_to_create_truss_service(
     assert result.exit_code == 0
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout_minutes"] == 450
+    assert kwargs["push_data"].options.deploy_timeout_minutes == 450
 
 
 def test_cli_push_passes_none_deploy_timeout_minutes_when_not_specified(
@@ -557,7 +557,7 @@ def test_cli_push_passes_none_deploy_timeout_minutes_when_not_specified(
     assert result.exit_code == 0
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs.get("deploy_timeout_minutes") is None
+    assert kwargs["push_data"].options.deploy_timeout_minutes is None
 
 
 def test_cli_push_integration_deploy_timeout_minutes_propagated(
@@ -590,8 +590,8 @@ def test_cli_push_integration_deploy_timeout_minutes_propagated(
     assert result.exit_code == 0
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["deploy_timeout_minutes"] == 750
-    assert kwargs["environment"] == "staging"
+    assert kwargs["push_data"].options.deploy_timeout_minutes == 750
+    assert kwargs["push_data"].options.environment == "staging"
 
 
 def test_cli_push_api_integration_deploy_timeout_minutes_propagated(
@@ -708,7 +708,7 @@ def test_push_defaults_to_published(
     assert result.exit_code == 0
     mock_create_truss_service.assert_called_once()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["is_draft"] is False
+    assert kwargs["push_data"].is_draft is False
 
 
 def test_push_no_cache_sets_build_no_cache_on_config(
@@ -1254,7 +1254,7 @@ def test_push_with_model_name_flag_does_not_write_to_config(
     assert result.exit_code == 0
     mock_write.assert_not_called()
     _, kwargs = mock_create_truss_service.call_args
-    assert kwargs["model_name"] == "override-name"
+    assert kwargs["push_data"].model_name == "override-name"
 
 
 def test_watch_model_name_flag_overrides_config(
