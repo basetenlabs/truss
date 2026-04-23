@@ -40,15 +40,17 @@ truss_cli.add_command(ssh)
 )
 @common.common_options()
 def ssh_setup(python_path: Optional[str], default_remote: Optional[str]):
-    """One-time setup: configure SSH access for Baseten training jobs.
+    """One-time setup: configure SSH access for Baseten workloads.
 
     Generates an SSH keypair, installs a ProxyCommand script, and adds a
     wildcard Host entry to ~/.ssh/config. After running this once, connect
-    to any running training job with:
+    to any running workload with:
 
-        ssh <job-id>-<replica>.<remote>.ssh.baseten.co
+        # Training job
+        ssh training-job-<job_id>-<node>.ssh.baseten.co
 
-    Example: ssh 5wo5n3y-0.dev.ssh.baseten.co
+        # Model deployment (requires runtime.remote_ssh.enabled)
+        ssh model-<model_id>-<deployment_id>.ssh.baseten.co
     """
     if default_remote is None:
         available_remotes = RemoteFactory.get_available_config_names()
