@@ -4,11 +4,12 @@ from pathlib import Path
 
 import yaml
 
-from truss.remote.baseten.core import archive_truss_for_remote_push
+from truss.base.constants import CONFIG_FILE
+from truss.remote.baseten.core import archive_dir
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-def test_archive_truss_for_remote_push_injects_config_yaml(
+def test_archive_dir_injects_config_yaml_override(
     tmp_path: Path, test_data_path: Path
 ) -> None:
     """Non-default --config must appear as config.yaml in the uploaded tarball."""
@@ -24,7 +25,12 @@ def test_archive_truss_for_remote_push_injects_config_yaml(
         yaml.safe_dump(alt_config, f)
 
     handle = TrussHandle(truss_dir, config_path=alt_path)
-    archive = archive_truss_for_remote_push(handle)
+    default_config = (handle.truss_dir / CONFIG_FILE).resolve()
+    assert handle.spec.config_path.resolve() != default_config
+    config_yaml_override = yaml.safe_dump(
+        handle.spec.config.to_dict(verbose=True)
+    ).encode("utf-8")
+    archive = archive_dir(truss_dir, config_yaml_override=config_yaml_override)
     archive.file.seek(0)
 
     with tarfile.open(fileobj=archive.file, mode="r:") as tar:
