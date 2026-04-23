@@ -866,6 +866,9 @@ def _gen_truss_config(
 
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
         config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
+        # Enables BDN weight mirroring for engine builder checkpoints.
+        if assets.weights:
+            config.weights = truss_config.Weights(assets.weights)
         truss_config.TrussConfig.model_validate(config)
         return config
 
