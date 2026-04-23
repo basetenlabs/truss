@@ -867,6 +867,11 @@ def _gen_truss_config(
 
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
         config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
+        # MDN / BDN: `assets.weights` is allowed on engine builder chainlets (unlike
+        # `cached` / `external_data`) and must be copied so weight resolution can run
+        # before the TRT engine build when the platform uses `config.weights` for that.
+        if assets.weights:
+            config.weights = truss_config.Weights(assets.weights)
         truss_config.TrussConfig.model_validate(config)
         return config
 
