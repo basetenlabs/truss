@@ -6,6 +6,7 @@ import textwrap
 from typing import IO, TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Type
 
 import requests
+import yaml
 
 from truss.base.errors import ValidationError
 from truss.cli.utils.output import console
@@ -14,13 +15,14 @@ from truss.util.error_utils import handle_client_error
 if TYPE_CHECKING:
     from rich import progress
 
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import CONFIG_FILE, PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.time import iso_to_millis
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
+from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import load_trussignore_patterns_from_truss_dir
 
 logger = logging.getLogger(__name__)
@@ -333,6 +335,44 @@ def archive_dir(
         # workaround for Windows bug with Tempfile that causes PermissionErrors
         temp_file = create_tar_with_progress_bar(
             dir, ignore_patterns, delete=False, progress_bar=progress_bar
+        )
+    temp_file.file.seek(0)
+    return temp_file
+
+
+def archive_truss_for_remote_push(
+    truss_handle: TrussHandle, progress_bar: Optional[Type["progress.Progress"]] = None
+) -> IO:
+    """
+    Archive a Truss directory for upload to a remote build.
+
+    When the handle uses a non-default config path (for example ``truss push
+    --config other.yaml``), the effective configuration is serialized as
+    ``config.yaml`` in the tarball so remote extraction matches what
+    ``docker_build_setup`` expects.
+    """
+    default_config = (truss_handle.truss_dir / CONFIG_FILE).resolve()
+    if truss_handle.spec.config_path.resolve() == default_config:
+        return archive_dir(truss_handle.truss_dir, progress_bar)
+
+    ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_handle.truss_dir)
+    override = yaml.safe_dump(truss_handle.spec.config.to_dict(verbose=True)).encode(
+        "utf-8"
+    )
+    try:
+        temp_file = create_tar_with_progress_bar(
+            truss_handle.truss_dir,
+            ignore_patterns,
+            progress_bar=progress_bar,
+            config_yaml_override=override,
+        )
+    except PermissionError:
+        temp_file = create_tar_with_progress_bar(
+            truss_handle.truss_dir,
+            ignore_patterns,
+            delete=False,
+            progress_bar=progress_bar,
+            config_yaml_override=override,
         )
     temp_file.file.seek(0)
     return temp_file

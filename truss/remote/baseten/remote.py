@@ -35,6 +35,7 @@ from truss.remote.baseten.core import (
     ModelVersionHandle,
     ModelVersionId,
     archive_dir,
+    archive_truss_for_remote_push,
     create_chain_atomic,
     create_truss_service,
     exists_model,
@@ -238,7 +239,7 @@ class BasetenRemote(TrussRemote):
         config.validate_forbid_extra()
         encoded_config_str = base64_encoded_json_str(config.to_dict())
         validate_truss_config_against_backend(self._api, encoded_config_str)
-        temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
+        temp_file = archive_truss_for_remote_push(truss_handle, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
 
         return FinalPushData(
