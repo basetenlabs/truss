@@ -904,6 +904,13 @@ def push(
             )
             console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
+    # vllm checks
+    if tr.spec.config.vllm is not None:
+        if not publish:
+            live_reload_disabled_text = "Development mode is currently not supported for trusses using vLLM. Remove --watch to deploy as a published model."
+            console.print(live_reload_disabled_text, style="red")
+            sys.exit(1)
+
     source = Path(target_directory)
     working_dir = source.parent if source.is_file() else source.resolve()
 

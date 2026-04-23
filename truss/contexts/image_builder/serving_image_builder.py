@@ -62,6 +62,7 @@ from truss.base.trt_llm_config import (
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     K8S_RESERVED_ENVIRONMENT_VARIABLES,
+    BaseImage,
     DockerServer,
     RequirementsFileType,
     TrussConfig,
@@ -452,6 +453,30 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
+    def prepare_vllm_build_dir(self, build_dir: Path):
+        """Prepares the build directory for a vLLM model deployment."""
+        config = self._spec.config
+        assert config.vllm is not None, (
+            "prepare_vllm_build_dir should only be called when vllm is configured"
+        )
+
+        # Hardcode the vLLM base image
+        config.base_image = BaseImage(
+            image=constants.VLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
+        )
+
+        # Build the start command from vllm config
+        start_command = config.vllm.build_start_command()
+
+        # Configure docker_server for deployment
+        config.docker_server = DockerServer(
+            start_command=start_command,
+            server_port=config.vllm.port,
+            predict_endpoint="/v1/chat/completions",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+
     def prepare_trtllm_inference_stack_v2_build_dir(self, build_dir: Path):
         """prepares the build directory inference_stack v2 tensorrt-llm model"""
         config = self._spec.config
@@ -631,6 +656,9 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+        if config.vllm is not None:
+            self.prepare_vllm_build_dir(build_dir=build_dir)
+
         if (
             isinstance(config.trt_llm, TRTLLMConfiguration)
             and config.trt_llm.build is not None
