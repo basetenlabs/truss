@@ -9,7 +9,7 @@ import pydantic
 import pytest
 
 import truss_chains as chains
-from truss.base import truss_config
+from truss.base import trt_llm_config, truss_config
 from truss_chains import framework, public_api, public_types, utils
 
 utils.setup_dev_logging(logging.DEBUG)
@@ -793,6 +793,131 @@ def test_raises_engine_builder_validation():
                 assets=chains.Assets(secret_keys=["hf_access_token"]),
             )
             engine_builder_config = 123
+
+
+def _make_trtllm_config() -> trt_llm_config.TRTLLMConfiguration:
+    return trt_llm_config.TRTLLMConfiguration(
+        build=trt_llm_config.TrussTRTLLMBuildConfiguration(
+            base_model="decoder",
+            max_seq_len=2048,
+            max_batch_size=8,
+            checkpoint_repository={"source": "HF", "repo": "meta-llama/Llama-2-7b"},
+        ),
+        runtime=trt_llm_config.TrussTRTLLMRuntimeConfiguration(),
+    )
+
+
+def test_custom_engine_builder_registers_and_allows_run_remote_override():
+    """The custom variant has no `@final` run_remote, so user overrides must work,
+    and the framework config should mark it as engine-builder with dependency
+    support enabled."""
+    with _raise_errors():
+
+        class CustomLLM(chains.CustomEngineBuilderLLMChainlet):
+            remote_config = chains.RemoteConfig(
+                compute=chains.Compute(gpu=truss_config.Accelerator.H100),
+                assets=chains.Assets(secret_keys=["hf_access_token"]),
+            )
+            engine_builder_config = _make_trtllm_config()
+
+            async def run_remote(
+                self, llm_input: chains.EngineBuilderLLMInput
+            ) -> AsyncIterator[str]:
+                yield "hello"
+
+        assert framework.is_engine_builder_chainlet(CustomLLM)
+        assert framework.is_custom_engine_builder_chainlet(CustomLLM)
+        assert CustomLLM._framework_config.supports_dependencies is True
+        # Regular engine-builder chainlets must *not* be treated as the custom
+        # variant.
+        assert not framework.is_custom_engine_builder_chainlet(
+            chains.EngineBuilderLLMChainlet
+        )
+
+
+def test_custom_engine_builder_allows_relaxed_remote_config():
+    """The strict field restrictions for briton-only engine builders do not apply
+    to the custom variant, which runs real user code and may need e.g. custom
+    health checks. Concretely: `options.health_checks` would be rejected on the
+    briton-only variant, but must be accepted here."""
+    with _raise_errors():
+
+        class CustomLLMRelaxed(chains.CustomEngineBuilderLLMChainlet):
+            remote_config = chains.RemoteConfig(
+                compute=chains.Compute(gpu=truss_config.Accelerator.H100),
+                assets=chains.Assets(secret_keys=["hf_access_token"]),
+                options=chains.ChainletOptions(
+                    health_checks=truss_config.HealthChecks(
+                        restart_threshold_seconds=60
+                    )
+                ),
+            )
+            engine_builder_config = _make_trtllm_config()
+
+            async def run_remote(
+                self, llm_input: chains.EngineBuilderLLMInput
+            ) -> AsyncIterator[str]:
+                yield "ok"
+
+
+def test_custom_engine_builder_rejects_inference_stack_v2():
+    """The image-builder's v2 path replaces `model.py` with a briton docker
+    server, so custom Python would silently never run. We surface that as an
+    explicit validation error."""
+    match = (
+        rf"{TEST_FILE}:\d+ \(CustomLLMv2\) \[kind: INVALID_CONFIG_ERROR\].*"
+        r"CustomEngineBuilderLLMChainlet only supports TRT-LLM `inference_stack='v1'`"
+    )
+    with pytest.raises(public_types.ChainsUsageError, match=match), _raise_errors():
+
+        class CustomLLMv2(chains.CustomEngineBuilderLLMChainlet):
+            remote_config = chains.RemoteConfig(
+                compute=chains.Compute(gpu=truss_config.Accelerator.H100),
+                assets=chains.Assets(secret_keys=["hf_access_token"]),
+            )
+            engine_builder_config = trt_llm_config.TRTLLMConfiguration(
+                build=trt_llm_config.TrussTRTLLMBuildConfiguration(
+                    checkpoint_repository={
+                        "source": "HF",
+                        "repo": "meta-llama/Llama-2-7b",
+                    }
+                ),
+                runtime=trt_llm_config.TRTLLMRuntimeConfigurationV2(
+                    max_seq_len=2048, max_batch_size=8
+                ),
+                inference_stack="v2",
+            )
+
+            async def run_remote(
+                self, llm_input: chains.EngineBuilderLLMInput
+            ) -> AsyncIterator[str]:
+                yield "nope"
+
+
+def test_custom_engine_builder_can_depend_on_other_chainlets():
+    """Unlike the briton-only variant, the custom engine-builder chainlet may
+    declare `chains.depends(...)` on peer chainlets so it can orchestrate
+    additional calls from inside the briton handler."""
+    with _raise_errors():
+
+        class Helper(chains.ChainletBase):
+            async def run_remote(self) -> str:
+                return "helper"
+
+        class CustomLLMWithDeps(chains.CustomEngineBuilderLLMChainlet):
+            remote_config = chains.RemoteConfig(
+                compute=chains.Compute(gpu=truss_config.Accelerator.H100),
+                assets=chains.Assets(secret_keys=["hf_access_token"]),
+            )
+            engine_builder_config = _make_trtllm_config()
+
+            def __init__(self, helper=chains.depends(Helper)):
+                self._helper = helper
+
+            async def run_remote(
+                self, llm_input: chains.EngineBuilderLLMInput
+            ) -> AsyncIterator[str]:
+                yield await self._helper.run_remote()
 
 
 def test_raises_invalid_display_name():

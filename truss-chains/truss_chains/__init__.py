@@ -1,5 +1,10 @@
 from truss.base.truss_config import WeightsSource
-from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
+from truss_chains.framework import (
+    ChainletBase,
+    CustomEngineBuilderLLMChainlet,
+    EngineBuilderLLMChainlet,
+    ModelBase,
+)
 from truss_chains.public_api import (
     depends,
     depends_context,
@@ -32,6 +37,7 @@ from truss_chains.utils import make_abs_path_here
 __all__ = [
     "Assets",
     "BasetenImage",
+    "CustomEngineBuilderLLMChainlet",
     "EngineBuilderLLMChainlet",
     "ChainletBase",
     "ChainletOptions",

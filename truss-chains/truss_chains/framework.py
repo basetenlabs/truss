@@ -876,6 +876,32 @@ def _validate_engine_builder_fields(
         )
 
 
+def _validate_custom_engine_builder_config(
+    cls: Type[private_types.ABCChainlet], location: _ErrorLocation
+) -> None:
+    """Additional sanity checks for `CustomEngineBuilderLLMChainlet` subclasses.
+
+    The image-builder path for TRT-LLM ``inference_stack="v2"`` unconditionally
+    replaces the user's ``model.py`` with briton as a docker_server, which would
+    silently drop the custom Python code. Surface this as an explicit error
+    instead of debugging a no-op at runtime.
+    """
+    engine_cfg = getattr(cls, private_types.ENGINE_BUILDER_CONFIG_NAME, None)
+    if not isinstance(engine_cfg, trt_llm_config.TRTLLMConfiguration):
+        # Type errors are already reported by `_validate_config_class_variable`.
+        return
+    if engine_cfg.inference_stack == "v2":
+        _collect_error(
+            "CustomEngineBuilderLLMChainlet only supports TRT-LLM "
+            "`inference_stack='v1'` today; the v2 image builder replaces the "
+            "user `model.py` with a briton docker_server, so custom Python "
+            "would never run. Use a v1 engine_builder_config or switch to "
+            "`EngineBuilderLLMChainlet` (briton-only).",
+            _ErrorKind.INVALID_CONFIG_ERROR,
+            location,
+        )
+
+
 def _validate_health_check(
     cls: Type[private_types.ABCChainlet], location: _ErrorLocation
 ) -> Optional[private_types.HealthCheckAPIDescriptor]:
@@ -974,6 +1000,7 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
         "ModelBase",
         "EngineBuilderChainlet",
         "EngineBuilderLLMChainlet",
+        "CustomEngineBuilderLLMChainlet",
     ]
     if cls.__name__ in _skip_class_name:
         logging.debug(f"Skipping chainlet class validation for `{cls}`.")
@@ -994,7 +1021,14 @@ def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
             private_types.ENGINE_BUILDER_CONFIG_NAME,
             trt_llm_config.TRTLLMConfiguration,
         )
-        _validate_engine_builder_fields(cls.remote_config, location)
+        # The custom variant ships real user code, so the strict "everything
+        # in remote_config must be unset" rule of the briton-only variant
+        # doesn't apply: users may need docker_image (for extra pip deps),
+        # cached assets, health checks, etc.
+        if not is_custom_engine_builder_chainlet(cls):
+            _validate_engine_builder_fields(cls.remote_config, location)
+        else:
+            _validate_custom_engine_builder_config(cls, location)
 
     init_validator = _ChainletInitValidator(cls, location)
     chainlet_descriptor = private_types.ChainletAPIDescriptor(
@@ -1672,12 +1706,49 @@ class EngineBuilderChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        # Custom engine-builder chainlets run real user Python in front of
+        # briton, so they may call out to other chainlets. The briton-only
+        # variant does not support dependencies. Since this runs while
+        # ``CustomEngineBuilderLLMChainlet`` itself is being defined we probe
+        # by class-name to avoid a forward-reference ``NameError``.
+        supports_dependencies = any(
+            base.__name__ == "CustomEngineBuilderLLMChainlet" for base in cls.__mro__
+        )
         cls._framework_config = private_types.FrameworkConfig(
             entity_type=private_types.EntityType.ENGINE_BUILDER_MODEL,
-            supports_dependencies=False,
+            supports_dependencies=supports_dependencies,
             endpoint_method_name=private_types.RUN_REMOTE_METHOD_NAME,
         )
         validate_and_register_cls(cls)
+
+
+class CustomEngineBuilderLLMChainlet(EngineBuilderChainlet, metaclass=abc.ABCMeta):
+    """An engine-builder chainlet that runs user-defined Python in front of briton.
+
+    Unlike :class:`EngineBuilderLLMChainlet`, which produces a pure-briton truss,
+    this variant emits a truss with **both** ``config.trt_llm`` (so briton is
+    built into the container) **and** a generated ``model.py`` that instantiates
+    the user's chainlet class. The briton engine object is exposed to the
+    chainlet via the :attr:`trt_llm` instance attribute *before* ``run_remote``
+    is invoked, mirroring the standalone custom engine builder pattern:
+    https://docs.baseten.co/engines/engine-builder-llm/custom-engine-builder
+
+    Subclasses override ``run_remote`` to implement business logic, fan-out,
+    custom routing, etc., and may call briton in-process via::
+
+        await self.trt_llm["engine"].chat_completions(
+            request=request, model_input=payload
+        )
+
+    Subclasses may also declare dependencies on other chainlets, e.g. to
+    orchestrate additional models inside the custom engine-builder handler.
+    """
+
+    engine_builder_config: ClassVar[trt_llm_config.TRTLLMConfiguration]
+    # Populated by the generated ``model.py`` wrapper at load time, before any
+    # request is served. Typed as ``Any`` because the concrete briton object is
+    # only importable at runtime inside the deployed image.
+    trt_llm: Any = None
 
 
 class EngineBuilderLLMChainlet(EngineBuilderChainlet, metaclass=abc.ABCMeta):
@@ -1691,3 +1762,7 @@ class EngineBuilderLLMChainlet(EngineBuilderChainlet, metaclass=abc.ABCMeta):
 
 def is_engine_builder_chainlet(cls: Type[private_types.ABCChainlet]):
     return issubclass(cls, EngineBuilderChainlet)
+
+
+def is_custom_engine_builder_chainlet(cls: Type[private_types.ABCChainlet]):
+    return issubclass(cls, CustomEngineBuilderLLMChainlet)

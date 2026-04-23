@@ -465,12 +465,17 @@ def _gen_load_src(chainlet_descriptor: private_types.ChainletAPIDescriptor) -> _
 
     user_chainlet_ref = _gen_chainlet_import_and_ref(chainlet_descriptor)
     imports.update(user_chainlet_ref.imports)
-    body = _indent(
-        "\n".join(
-            [f"logging.info(f'Loading Chainlet `{chainlet_descriptor.name}`.')"]
-            + [f"self._chainlet = {user_chainlet_ref.src}({init_args})"]
-        )
-    )
+    body_lines = [
+        f"logging.info(f'Loading Chainlet `{chainlet_descriptor.name}`.')",
+        f"self._chainlet = {user_chainlet_ref.src}({init_args})",
+    ]
+    # Custom engine-builder chainlets get the briton ``trt_llm`` dict injected
+    # onto the chainlet instance so user code can access ``self.trt_llm`` in
+    # ``run_remote``. Regular chainlets leave ``_trt_llm`` as ``None`` and this
+    # assignment is skipped.
+    if framework.is_custom_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
+        body_lines.append("self._chainlet.trt_llm = self._trt_llm")
+    body = _indent("\n".join(body_lines))
     src = "\n".join(["def load(self) -> None:", body])
     return _Source(src=src, imports=imports)
 
@@ -867,8 +872,20 @@ def _gen_truss_config(
 
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
         config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
-        truss_config.TrussConfig.model_validate(config)
-        return config
+        # Enables BDN weight mirroring for engine builder checkpoints.
+        if assets.weights:
+            config.weights = truss_config.Weights(assets.weights)
+        # Pure (non-custom) engine-builder chainlets produce a briton-only
+        # truss; no user ``model.py`` is generated and the rest of this
+        # function (requirements / image / model-class wiring) is skipped.
+        # Custom engine-builder chainlets fall through so they emit both the
+        # TRT-LLM config *and* the chain-generated ``model.py`` that receives
+        # ``trt_llm`` injection from the truss server.
+        if not framework.is_custom_engine_builder_chainlet(
+            chainlet_descriptor.chainlet_cls
+        ):
+            truss_config.TrussConfig.model_validate(config)
+            return config
 
     config.model_class_filename = _MODEL_FILENAME
     config.model_class_name = _MODEL_CLS_NAME
