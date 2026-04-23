@@ -176,6 +176,13 @@ class TrussService(ABC):
         pass
 
     @abstractmethod
+    def poll_deployment(self, sleep_secs: int = 1) -> Iterator[Dict[str, Any]]:
+        """
+        Poll for a deployment, yielding the full deployment dict.
+        """
+        pass
+
+    @abstractmethod
     def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         """
         Poll for a deployment status.

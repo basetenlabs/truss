@@ -10,12 +10,13 @@ class RestAPIClient:
     def __init__(self, base_url: str, headers: Dict[str, str]):
         self.base_url = base_url
         self.headers = headers
+        self.suppress_error_print = False
 
     def _handle_error(self, resp: requests.Response):
         if 400 <= resp.status_code < 500:
             try:
                 data = resp.json()
-                if "message" in data:
+                if "message" in data and not self.suppress_error_print:
                     print(f"Client error: {data['message']}")
             except ValueError:
                 pass

@@ -787,6 +787,13 @@ class ServingImageBuilder(ImageBuilder):
         )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
+        if config.runtime.remote_ssh.enabled:
+            self._copy_into_build_dir(
+                TEMPLATES_DIR / "baseten-ssh-server.sh",
+                build_dir,
+                "baseten-ssh-server.sh",
+            )
+
         # Copy constraints file to bound versions for user-overridden packages.
         self._copy_into_build_dir(
             SERVER_CODE_DIR / CONSTRAINTS_TXT_FILENAME,
@@ -898,6 +905,7 @@ class ServingImageBuilder(ImageBuilder):
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
         )
+        should_install_openssh_server = config.runtime.remote_ssh.enabled
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
@@ -926,6 +934,7 @@ class ServingImageBuilder(ImageBuilder):
             min_supported_python_minor_version_in_custom_base_image=min_py_version.minor,
             supported_python_major_version_in_custom_base_image=min_py_version.major,
             should_install_system_requirements=should_install_system_requirements,
+            should_install_openssh_server=should_install_openssh_server,
             should_install_requirements=should_install_python_requirements,
             requirements_file_type=config.requirements_file_type.value,
             config=config,
