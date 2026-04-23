@@ -492,11 +492,6 @@ class RemoteConfig(custom_types.SafeModelNonSerializable):
     assets: Assets = Assets()
     name: Optional[str] = None
     options: ChainletOptions = ChainletOptions()
-    build_commands: list[str] = pydantic.Field(
-        default_factory=list,
-        description="Shell commands run during the Docker image build, after system "
-        "packages and before chain code (same as Truss `config.yaml` `build_commands`).",
-    )
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
