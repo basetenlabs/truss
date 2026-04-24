@@ -512,25 +512,20 @@ def create_llm_service(
 ) -> ModelVersionHandle:
     if model_id is None:
         response = api.create_llm_model(
-            body=body,
             team_id=team_id,
+            body=body,
         )
-        return ModelVersionHandle(
-            model_id=response["id"],
-            version_id=response.get("deployment_id", ""),
-            hostname=response.get("hostname", ""),
-            instance_type_name=response.get("instance_type_name"),
+    else:
+        response = api.create_llm_model_version(
+            model_id=model_id,
+            body=body,
         )
 
-    response = api.create_llm_model_version(
-        model_id=model_id,
-        body=body,
-    )
     return ModelVersionHandle(
-        version_id=response["id"],
-        model_id=model_id,
-        hostname=response.get("hostname", ""),
-        instance_type_name=response.get("instance_type_name"),
+        model_id=response["model_id"],
+        version_id=response["version_id"],
+        hostname=response["hostname"],
+        instance_type_name=response["instance_type_name"],
     )
 
 
