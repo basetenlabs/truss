@@ -865,6 +865,10 @@ class BasetenApi:
         )
         return resp_json["training_job"]
 
+    def get_training_capacity(self) -> list[dict]:
+        resp_json = self._rest_api_client.get("v1/training/capacity")
+        return resp_json.get("gpu_capacities", [])
+
     def list_training_job_checkpoints(self, project_id: str, job_id: str):
         resp_json = self._rest_api_client.get(
             f"v1/training_projects/{project_id}/jobs/{job_id}/checkpoints"
@@ -900,6 +904,15 @@ class BasetenApi:
         resp_json = self._rest_api_client.patch(
             f"v1/training_projects/{project_id}/jobs/{job_id}/interactive_sessions/{session_id}",
             body,
+        )
+        return resp_json
+
+    def sign_ssh_certificate(
+        self, project_id: str, job_id: str, public_key: str, replica_id: str
+    ) -> dict:
+        resp_json = self._rest_api_client.post(
+            f"v1/training_projects/{project_id}/jobs/{job_id}/ssh/sign",
+            body={"public_key": public_key, "replica_id": replica_id},
         )
         return resp_json
 
@@ -988,6 +1001,12 @@ class BasetenApi:
     def get_from_presigned_url(self, presigned_url: str) -> bytes:
         response = requests.get(presigned_url)
         return response.content
+
+    def get_deployment_download_url(self, model_id: str, deployment_id: str) -> str:
+        response = self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/download"
+        )
+        return response["download_url"]
 
     def get_model_deployment_logs(
         self,

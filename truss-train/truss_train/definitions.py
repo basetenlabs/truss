@@ -116,6 +116,7 @@ class InteractiveSessionTrigger(str, enum.Enum):
 class InteractiveSessionProvider(str, enum.Enum):
     VS_CODE = "vs_code"
     CURSOR = "cursor"
+    SSH = "ssh"
 
 
 class InteractiveSessionAuthProvider(str, enum.Enum):
@@ -206,6 +207,7 @@ class TrainingJob(custom_types.SafeModelNoExtra):
     runtime: Runtime = Runtime()
     interactive_session: Optional[InteractiveSession] = None
     name: Optional[str] = None
+    priority: Optional[int] = None
     workspace: Optional[Workspace] = None
     weights: List[truss_config.WeightsSource] = []
     """MDN weight sources to mount in the training container. Weights are mirrored and cached for fast startup."""

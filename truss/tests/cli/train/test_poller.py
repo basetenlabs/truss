@@ -2,7 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from truss.cli.train.core import ACTIVE_JOB_STATUSES
+from truss.cli.train.core import ACTIVE_JOB_STATUSES, QUEUED_JOB_STATUSES
 from truss.cli.train.poller import JOB_STARTING_STATES, TrainingPollerMixin
 
 
@@ -50,8 +50,65 @@ def test_before_polling_waits_through_pending(mock_sleep):
     assert poller._current_status.status == "TRAINING_JOB_DEPLOYING"
 
 
-def test_pending_in_active_job_statuses():
-    assert "TRAINING_JOB_PENDING" in ACTIVE_JOB_STATUSES
+def test_pending_not_in_active_job_statuses():
+    assert "TRAINING_JOB_PENDING" not in ACTIVE_JOB_STATUSES
+
+
+def test_pending_in_queued_job_statuses():
+    assert "TRAINING_JOB_PENDING" in QUEUED_JOB_STATUSES
+
+
+def test_view_training_details_splits_queued_and_active(capsys):
+    """Queued (PENDING) jobs appear under 'Queued' header, not 'Active'."""
+    from truss.cli.train.core import view_training_details
+
+    mock_remote = Mock()
+    mock_remote.remote_url = "https://app.baseten.co"
+    mock_remote.api.list_training_projects.return_value = []
+    ts = "2024-01-01T00:00:00+00:00"
+    mock_remote.api.search_training_jobs.return_value = [
+        {
+            "id": "q1",
+            "current_status": "TRAINING_JOB_PENDING",
+            "name": "queued-job",
+            "training_project": {"id": "p1", "name": "proj"},
+            "instance_type": {"name": "H100"},
+            "created_at": ts,
+            "updated_at": ts,
+        },
+        {
+            "id": "a1",
+            "current_status": "TRAINING_JOB_RUNNING",
+            "name": "active-job",
+            "training_project": {"id": "p1", "name": "proj"},
+            "instance_type": {"name": "H100"},
+            "created_at": ts,
+            "updated_at": ts,
+        },
+    ]
+
+    view_training_details(mock_remote, project_id=None, job_id=None)
+    captured = capsys.readouterr()
+    # Queued section renders as a table with its own title and columns
+    assert "Queued Training Jobs" in captured.out
+    assert "q1" in captured.out
+    # Active section renders as a table with a Status column
+    assert "Active Training Jobs" in captured.out
+    assert "a1" in captured.out
+
+
+def test_view_training_details_no_jobs_shows_fallback(capsys):
+    """When both queued and active are empty, show the 'no active' message."""
+    from truss.cli.train.core import view_training_details
+
+    mock_remote = Mock()
+    mock_remote.remote_url = "https://app.baseten.co"
+    mock_remote.api.list_training_projects.return_value = []
+    mock_remote.api.search_training_jobs.return_value = []
+
+    view_training_details(mock_remote, project_id=None, job_id=None)
+    captured = capsys.readouterr()
+    assert "No queued or active training jobs" in captured.out
 
 
 @pytest.mark.parametrize(

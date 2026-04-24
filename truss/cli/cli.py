@@ -2,11 +2,13 @@ import inspect
 import json
 import os
 import sys
+import tarfile
 import threading
 import time
 from pathlib import Path
 from typing import Optional, cast
 
+import requests
 import rich.table
 import rich_click as click
 from rich import console as rich_console
@@ -802,7 +804,7 @@ def push(
         remote = remote_cli.inquire_remote_name()
 
     if not include_git_info:
-        include_git_info = user_config.settings.include_git_info
+        include_git_info = user_config.get_settings().include_git_info
 
     remote_provider = RemoteFactory.create(remote=remote)
     if output_format == "json" and isinstance(remote_provider, BasetenRemote):
@@ -952,6 +954,14 @@ def push(
         f"🪵  View logs for your deployment at {common.format_link(service.logs_url)}"
     )
 
+    if tr.spec.config.runtime.remote_ssh.enabled and isinstance(
+        service, BasetenService
+    ):
+        console.print(
+            "🔐  SSH into this deployment (after one-time 'truss ssh setup'): "
+            f"ssh model-{service.model_id}-{service.model_version_id}.ssh.baseten.co"
+        )
+
     if tail and isinstance(service, BasetenService):
         # When combined with --wait/--watch, tail runs in background so the
         # wait polling loop below can proceed on the main thread.
@@ -1067,6 +1077,93 @@ def model_logs(
         )
         for log in log_watcher.watch():
             cli_log_utils.output_log(log)
+
+
+@truss_cli.command()
+@click.option(
+    "--remote", type=str, required=False, help="Name of the remote in .trussrc."
+)
+@click.option("--model-id", type=str, required=True, help="ID of the model.")
+@click.option("--deployment-id", type=str, required=True, help="ID of the deployment.")
+@click.option(
+    "--out-file",
+    type=click.Path(dir_okay=False),
+    required=False,
+    help="Save the truss as a tar file at this path.",
+)
+@click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False),
+    required=False,
+    help="Extract the truss into this directory.",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Allow overwriting an existing file or non-empty directory.",
+)
+@common.common_options()
+def download(
+    remote: Optional[str],
+    model_id: str,
+    deployment_id: str,
+    out_file: Optional[str],
+    out_dir: Optional[str],
+    overwrite: bool,
+) -> None:
+    """
+    Downloads the truss for a deployed model.
+    """
+    if out_file and out_dir:
+        raise click.UsageError("Cannot specify both --out-file and --out-dir.")
+
+    if not out_file and not out_dir:
+        raise click.UsageError("Must specify either --out-file or --out-dir.")
+
+    out_path = Path(out_file or out_dir)  # type: ignore[arg-type]
+
+    if not out_path.parent.exists():
+        raise click.UsageError(f"Parent directory does not exist: {out_path.parent}")
+
+    if not overwrite:
+        if out_file and out_path.exists():
+            raise click.UsageError(
+                f"File already exists: {out_path}. Use --overwrite to replace it."
+            )
+        if out_dir and out_path.exists() and any(out_path.iterdir()):
+            raise click.UsageError(
+                f"Directory is not empty: {out_path}. Use --overwrite to write into it."
+            )
+
+    if not remote:
+        remote = remote_cli.inquire_remote_name()
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    console.print("Fetching download URL...")
+    download_url = remote_provider.api.get_deployment_download_url(
+        model_id, deployment_id
+    )
+
+    console.print("Downloading truss...")
+    with requests.get(download_url, stream=True, timeout=(10, None)) as response:
+        response.raise_for_status()
+        response.raw.decode_content = True
+
+        if out_file:
+            with open(out_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            console.print(f"Saved to {out_path}")
+        else:
+            out_path.mkdir(exist_ok=True)
+            with tarfile.open(fileobj=response.raw, mode="r|*") as tar:
+                # filter="data" prevents path traversal; only available in 3.12+
+                if sys.version_info >= (3, 12):
+                    tar.extractall(path=out_path, filter="data")
+                else:
+                    tar.extractall(path=out_path)
+            console.print(f"Extracted to {out_path}")
 
 
 @truss_cli.command()
@@ -1351,4 +1448,9 @@ def kill_all() -> None:
 
 
 # These imports are needed to register the subcommands
-from truss.cli import chains_commands, migrate_commands, train_commands  # noqa: F401
+from truss.cli import (  # noqa: F401
+    chains_commands,
+    migrate_commands,
+    ssh_commands,
+    train_commands,
+)
