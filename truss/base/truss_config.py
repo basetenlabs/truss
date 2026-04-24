@@ -1215,22 +1215,17 @@ class TrussConfig(custom_types.ConfigModel):
     )
 
     llm_config: Optional[dict[str, Any]] = pydantic.Field(
-        default=None,
-        description="Configuration options for LLM deployments.",
+        default=None, description="Configuration options for LLM deployments."
     )
     llm_version: str = pydantic.Field(
-        default="",
-        description="The version of the LLM deployment stack.",
+        default="", description="The version of the LLM deployment stack."
     )
     autoscaling_settings: Optional[AutoscalingSettings] = pydantic.Field(
-        default=None,
-        description="Autoscaling settings for a deployment.",
+        default=None, description="Autoscaling settings for a deployment."
     )
-    additional_autoscaling_config: Optional[AdditionalAutoscalingConfig] = pydantic.Field(
-        default=None,
-        description="Additional autoscaling configuration",
+    additional_autoscaling_config: Optional[AdditionalAutoscalingConfig] = (
+        pydantic.Field(default=None, description="Additional autoscaling configuration")
     )
-
 
     # Internal / Legacy.
     input_type: str = "Any"

@@ -1064,7 +1064,6 @@ def test_create_truss_service_passes_labels_for_existing_model():
     assert kwargs["labels"] == labels
 
 
-
 def test_create_llm_service_creates_new_model():
     api = MagicMock()
     api.create_llm_model.return_value = {

@@ -695,7 +695,10 @@ def test_create_development_model_from_truss_with_labels(mock_post, baseten_api)
 @mock.patch("requests.post", return_value=mock_create_llm_model_response())
 def test_create_llm_model_team_routing(mock_post, baseten_api):
     baseten_api.create_llm_model(body={"name": "my-llm"}, team_id="team-abc")
-    assert mock_post.call_args[0][0] == "https://api.baseten.co/v1/teams/team-abc/llm_models"
+    assert (
+        mock_post.call_args[0][0]
+        == "https://api.baseten.co/v1/teams/team-abc/llm_models"
+    )
 
     baseten_api.create_llm_model(body={"name": "my-llm"})
     assert mock_post.call_args[0][0] == "https://api.baseten.co/v1/llm_models"
@@ -703,5 +706,10 @@ def test_create_llm_model_team_routing(mock_post, baseten_api):
 
 @mock.patch("requests.post", return_value=mock_create_llm_model_version_response())
 def test_create_llm_model_version_routing(mock_post, baseten_api):
-    baseten_api.create_llm_model_version(model_id="llm-model-123", body={"name": "my-llm"})
-    assert mock_post.call_args[0][0] == "https://api.baseten.co/v1/llm_models/llm-model-123/deployments"
+    baseten_api.create_llm_model_version(
+        model_id="llm-model-123", body={"name": "my-llm"}
+    )
+    assert (
+        mock_post.call_args[0][0]
+        == "https://api.baseten.co/v1/llm_models/llm-model-123/deployments"
+    )

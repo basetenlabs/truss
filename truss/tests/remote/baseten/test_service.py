@@ -46,12 +46,12 @@ def test_chain_invoke_url_draft():
 
 def test_llm_invoke_url_prod():
     url = service.URLConfig.invoke_url(
-        "https://model-abc.api.baseten.co",
-        service.URLConfig.LLM,
-        "123",
-        is_draft=False,
+        "https://model-abc.api.baseten.co", service.URLConfig.LLM, "123", is_draft=False
     )
-    assert url == "https://model-abc.api.baseten.co/deployment/123/sync/v1/chat/completions"
+    assert (
+        url
+        == "https://model-abc.api.baseten.co/deployment/123/sync/v1/chat/completions"
+    )
 
 
 def test_model_status_page_url():

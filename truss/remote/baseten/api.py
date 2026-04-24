@@ -1121,4 +1121,3 @@ class BasetenApi:
         return self._rest_api_client.post(
             f"v1/llm_models/{model_id}/deployments", body=body
         )
-

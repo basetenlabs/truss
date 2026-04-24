@@ -186,7 +186,9 @@ class BasetenRemote(TrussRemote):
         if environment:
             raise ValueError("Environment is not supported for LLM models.")
         if preserve_previous_prod_deployment:
-            raise ValueError("Preserve previous production deployment is not supported for LLM models.")
+            raise ValueError(
+                "Preserve previous production deployment is not supported for LLM models."
+            )
         if disable_truss_download:
             raise ValueError("Disable truss download is not supported for LLM models.")
         if deployment_name:
@@ -427,8 +429,6 @@ class BasetenRemote(TrussRemote):
             api=self._api,
             url_config=URLConfig.MODEL,
         )
-
-
 
     def push_chain_atomic(
         self,

@@ -14,8 +14,8 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import RemoteError
-from truss.remote.baseten.service import URLConfig
 from truss.remote.baseten.remote import PatchResult, PatchStatus, retry_patch
+from truss.remote.baseten.service import URLConfig
 from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
@@ -648,9 +648,7 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
 
 
 def test_push_uses_llm_service_for_llm_config(
-    remote,
-    mock_upload_truss,
-    mock_truss_handle,
+    remote, mock_upload_truss, mock_truss_handle
 ):
     mock_truss_handle.spec.config.llm_config = {"model": "test-llm"}
     mock_truss_handle.spec.config.llm_version = "v1"
@@ -694,13 +692,15 @@ def test_push_uses_llm_service_for_llm_config(
     assert kwargs["body"]["llm_config"] == {"model": "test-llm"}
     assert kwargs["body"]["llm_version"] == "v1"
     assert kwargs["body"]["environment_variables"] == {"HF_TOKEN": "secret"}
-    assert kwargs["body"]["metadata"] == {"git_sha": "abc123", "environment": "production"}
+    assert kwargs["body"]["metadata"] == {
+        "git_sha": "abc123",
+        "environment": "production",
+    }
     assert isinstance(kwargs["body"]["resources"], dict)
     assert "name" not in kwargs["body"]
     assert service.model_id == "llm-model-id"
     assert service.model_version_id == "llm-deployment-id"
     assert service._url_config == URLConfig.LLM
-
 
 
 def test_push_passes_deploy_timeout_minutes_to_create_truss_service(

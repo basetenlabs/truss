@@ -511,15 +511,9 @@ def create_llm_service(
     team_id: Optional[str] = None,
 ) -> ModelVersionHandle:
     if model_id is None:
-        response = api.create_llm_model(
-            team_id=team_id,
-            body=body,
-        )
+        response = api.create_llm_model(team_id=team_id, body=body)
     else:
-        response = api.create_llm_model_version(
-            model_id=model_id,
-            body=body,
-        )
+        response = api.create_llm_model_version(model_id=model_id, body=body)
 
     return ModelVersionHandle(
         model_id=response["model_id"],
