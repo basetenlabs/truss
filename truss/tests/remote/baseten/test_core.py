@@ -1067,8 +1067,8 @@ def test_create_truss_service_passes_labels_for_existing_model():
 def test_create_llm_service_creates_new_model():
     api = MagicMock()
     api.create_llm_model.return_value = {
-        "id": "llm-model-id",
-        "deployment_id": "llm-deployment-id",
+        "model_id": "llm-model-id",
+        "version_id": "llm-deployment-id",
         "hostname": "hostname",
         "instance_type_name": "A10G",
     }
@@ -1084,7 +1084,8 @@ def test_create_llm_service_creates_new_model():
 def test_create_llm_service_creates_model_version():
     api = MagicMock()
     api.create_llm_model_version.return_value = {
-        "id": "llm-model-version-id",
+        "model_id": "llm-model-id",
+        "version_id": "llm-deployment-id",
         "hostname": "hostname",
         "instance_type_name": "A10G",
     }
@@ -1095,7 +1096,7 @@ def test_create_llm_service_creates_model_version():
     )
 
     assert version_handle.model_id == "llm-model-id"
-    assert version_handle.version_id == "llm-model-version-id"
+    assert version_handle.version_id == "llm-deployment-id"
     api.create_llm_model_version.assert_called_once_with(
         model_id="llm-model-id", body=body
     )
