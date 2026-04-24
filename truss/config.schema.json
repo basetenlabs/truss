@@ -5,6 +5,145 @@
       "title": "AcceleratorSpec",
       "type": "string"
     },
+    "AdditionalAutoscalingConfig": {
+      "description": "Additional autoscaling configuration for in-flight token metrics.",
+      "properties": {
+        "metrics": {
+          "description": "List of metric targets for autoscaling.",
+          "items": {
+            "$ref": "#/$defs/AutoscalingMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "title": "AdditionalAutoscalingConfig",
+      "type": "object"
+    },
+    "AutoscalingMetric": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "target"
+      ],
+      "title": "AutoscalingMetric",
+      "type": "object"
+    },
+    "AutoscalingSettings": {
+      "description": "Autoscaling settings for a deployment.\nAll fields are optional; only provided fields are applied.",
+      "properties": {
+        "min_replica": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum number of replicas.",
+          "examples": [
+            0
+          ],
+          "title": "Min Replica"
+        },
+        "max_replica": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum number of replicas.",
+          "examples": [
+            7
+          ],
+          "title": "Max Replica"
+        },
+        "autoscaling_window": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timeframe in seconds of traffic considered for autoscaling decisions.",
+          "examples": [
+            600
+          ],
+          "title": "Autoscaling Window"
+        },
+        "scale_down_delay": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Waiting period in seconds before scaling down any active replica.",
+          "examples": [
+            120
+          ],
+          "title": "Scale Down Delay"
+        },
+        "concurrency_target": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of requests per replica before scaling up.",
+          "examples": [
+            2
+          ],
+          "title": "Concurrency Target"
+        },
+        "target_utilization_percentage": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target utilization percentage for scaling up/down.",
+          "examples": [
+            70
+          ],
+          "title": "Target Utilization Percentage"
+        }
+      },
+      "title": "AutoscalingSettings",
+      "type": "object"
+    },
     "BaseImage": {
       "additionalProperties": true,
       "description": "Use base_image to deploy a custom Docker image.",
@@ -1996,6 +2135,50 @@
       ],
       "default": null,
       "description": "Configuration for deploying from training checkpoints."
+    },
+    "llm_config": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Configuration options for LLM deployments.",
+      "title": "Llm Config"
+    },
+    "llm_version": {
+      "default": "",
+      "description": "The version of the LLM deployment stack.",
+      "title": "Llm Version",
+      "type": "string"
+    },
+    "autoscaling_settings": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AutoscalingSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Autoscaling settings for a deployment."
+    },
+    "additional_autoscaling_config": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AdditionalAutoscalingConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Additional autoscaling configuration"
     },
     "input_type": {
       "default": "Any",
