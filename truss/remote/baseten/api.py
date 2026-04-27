@@ -1002,6 +1002,12 @@ class BasetenApi:
         response = requests.get(presigned_url)
         return response.content
 
+    def get_deployment_download_url(self, model_id: str, deployment_id: str) -> str:
+        response = self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/download"
+        )
+        return response["download_url"]
+
     def get_model_deployment_logs(
         self,
         model_id: str,

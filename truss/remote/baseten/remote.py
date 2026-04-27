@@ -20,7 +20,7 @@ import yaml
 from requests import ReadTimeout
 from watchfiles import watch
 
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import CONFIG_FILE, PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
@@ -238,7 +238,16 @@ class BasetenRemote(TrussRemote):
         config.validate_forbid_extra()
         encoded_config_str = base64_encoded_json_str(config.to_dict())
         validate_truss_config_against_backend(self._api, encoded_config_str)
-        temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
+        default_config = (truss_handle.truss_dir / CONFIG_FILE).resolve()
+        config_yaml_override: Optional[bytes] = None
+        if truss_handle.spec.config_path.resolve() != default_config:
+            # Match non-override packing: stream literal file bytes into config.yaml.
+            config_yaml_override = truss_handle.spec.config_path.read_bytes()
+        temp_file = archive_dir(
+            truss_handle._truss_dir,
+            progress_bar,
+            config_yaml_override=config_yaml_override,
+        )
         s3_key = upload_truss(self._api, temp_file, progress_bar)
 
         return FinalPushData(
