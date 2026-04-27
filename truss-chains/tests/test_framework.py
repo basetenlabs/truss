@@ -10,7 +10,9 @@ import pytest
 
 import truss_chains as chains
 from truss.base import trt_llm_config, truss_config
-from truss_chains import framework, public_api, public_types, utils
+from truss_chains import framework, private_types, public_api, public_types, utils
+from truss_chains.deployment import code_gen
+from truss_chains.remote_chainlet import model_skeleton
 
 utils.setup_dev_logging(logging.DEBUG)
 
@@ -918,6 +920,147 @@ def test_custom_engine_builder_can_depend_on_other_chainlets():
                 self, llm_input: chains.EngineBuilderLLMInput
             ) -> AsyncIterator[str]:
                 yield await self._helper.run_remote()
+
+
+# Generated `load()` for the custom variant must wire `trt_llm` onto the chainlet,
+# and the wrapper at runtime must propagate it so `run_remote` can use the engine.
+########################################################################################
+
+
+class _FakeLazyDataResolver:
+    """Mimics the subset of LazyDataResolverV2 that ``TrussChainletModel.__init__``
+    invokes (just `block_until_download_complete`)."""
+
+    def block_until_download_complete(self) -> None:
+        return None
+
+
+def _new_truss_chainlet_model(
+    chainlet_cls: type, trt_llm: object
+) -> model_skeleton.TrussChainletModel:
+    """Construct a `TrussChainletModel` plumbed exactly like the deployed wrapper.
+
+    The chains-generated `model.py` calls `TrussChainletModel.__init__(...)`
+    with a `trt_llm` kwarg when the truss server has populated it. We replicate
+    that here without firing up the full code-gen pipeline."""
+    truss_metadata = private_types.TrussMetadata(chainlet_to_service={}).model_dump()
+    config = {"model_metadata": {private_types.TRUSS_CONFIG_CHAINS_KEY: truss_metadata}}
+    instance = model_skeleton.TrussChainletModel(
+        config=config,
+        data_dir=pathlib.Path("/tmp"),
+        secrets={},  # type: ignore[arg-type] -- behaves like a dict mapping for tests
+        lazy_data_resolver=_FakeLazyDataResolver(),  # type: ignore[arg-type]
+        environment=None,
+        trt_llm=trt_llm,
+    )
+    # Mirror what `_gen_load_src` emits for a custom engine-builder chainlet:
+    # build the user chainlet, then graft `trt_llm` onto it.
+    instance._chainlet = chainlet_cls()
+    if framework.is_custom_engine_builder_chainlet(chainlet_cls):
+        instance._chainlet.trt_llm = instance._trt_llm
+    return instance
+
+
+def test_gen_load_src_injects_trt_llm_for_custom_variant():
+    """Codegen must emit `self._chainlet.trt_llm = self._trt_llm` for the
+    custom variant so user `run_remote` can reach the engine, and must NOT
+    emit it for plain chainlets (where there is no `_trt_llm` to forward)."""
+    with _raise_errors():
+
+        class CustomLLMLoadSrc(chains.CustomEngineBuilderLLMChainlet):
+            remote_config = chains.RemoteConfig(
+                compute=chains.Compute(gpu=truss_config.Accelerator.H100),
+                assets=chains.Assets(secret_keys=["hf_access_token"]),
+            )
+            engine_builder_config = _make_trtllm_config()
+
+            async def run_remote(
+                self, llm_input: chains.EngineBuilderLLMInput
+            ) -> AsyncIterator[str]:
+                yield "ok"
+
+        class PlainChainlet(chains.ChainletBase):
+            async def run_remote(self) -> str:
+                return "plain"
+
+        custom_descr = framework._global_chainlet_registry.get_descriptor(
+            CustomLLMLoadSrc
+        )
+        plain_descr = framework._global_chainlet_registry.get_descriptor(PlainChainlet)
+
+        custom_load = code_gen._gen_load_src(custom_descr).src
+        plain_load = code_gen._gen_load_src(plain_descr).src
+
+        assert "self._chainlet.trt_llm = self._trt_llm" in custom_load
+        assert "self._chainlet.trt_llm = self._trt_llm" not in plain_load
+
+
+def test_run_remote_can_access_trt_llm_engine_via_wrapper():
+    """End-to-end-ish: a fake `trt_llm` injected into the model wrapper must
+    reach the chainlet's `run_remote` as `self.trt_llm["engine"]`. Exercises
+    the model_skeleton + the wiring `_gen_load_src` is responsible for."""
+
+    engine_calls: list[dict] = []
+
+    class _FakeBritonEngine:
+        async def completions(self, *, request, model_input):
+            engine_calls.append({"request": request, "model_input": model_input})
+            return f"hello {model_input['prompt']}"
+
+    fake_trt_llm = {"engine": _FakeBritonEngine()}
+
+    with _raise_errors():
+
+        class EngineUsingChainlet(chains.CustomEngineBuilderLLMChainlet):
+            remote_config = chains.RemoteConfig(
+                compute=chains.Compute(gpu=truss_config.Accelerator.H100),
+                assets=chains.Assets(secret_keys=["hf_access_token"]),
+            )
+            engine_builder_config = _make_trtllm_config()
+
+            async def run_remote(
+                self, llm_input: chains.EngineBuilderLLMInput
+            ) -> AsyncIterator[str]:
+                # The whole point of the custom variant: read self.trt_llm.
+                engine = self.trt_llm["engine"]
+                result = await engine.completions(
+                    request=None, model_input={"prompt": llm_input.prompt}
+                )
+                yield result
+
+        wrapper = _new_truss_chainlet_model(EngineUsingChainlet, fake_trt_llm)
+
+        # Wrapper-level plumbing: __init__ stashes the kwarg and load propagates it.
+        assert wrapper._trt_llm is fake_trt_llm
+        assert wrapper._chainlet.trt_llm is fake_trt_llm
+
+        async def _drive():
+            chunks: list[str] = []
+            async for chunk in wrapper._chainlet.run_remote(
+                public_types.EngineBuilderLLMInput(prompt="world")
+            ):
+                chunks.append(chunk)
+            return chunks
+
+        chunks = asyncio.run(_drive())
+        assert chunks == ["hello world"]
+        assert engine_calls == [{"request": None, "model_input": {"prompt": "world"}}]
+
+
+def test_run_remote_trt_llm_is_none_for_plain_chainlet_wrapper():
+    """When the truss server does not pass `trt_llm` (regular chainlet path),
+    the wrapper must not blow up: `_trt_llm` defaults to `None` and the user
+    chainlet is unaffected."""
+    with _raise_errors():
+
+        class PlainNoTrtLLM(chains.ChainletBase):
+            async def run_remote(self) -> str:
+                return "ok"
+
+        wrapper = _new_truss_chainlet_model(PlainNoTrtLLM, trt_llm=None)
+        assert wrapper._trt_llm is None
+        # The plain chainlet must not have had `trt_llm` grafted on by load().
+        assert not hasattr(wrapper._chainlet, "trt_llm")
 
 
 def test_raises_invalid_display_name():
