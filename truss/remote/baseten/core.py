@@ -422,6 +422,7 @@ def create_truss_service(
     deploy_timeout_minutes: Optional[int] = None,
     team_id: Optional[str] = None,
     labels: Optional[dict] = None,
+    raw_config: Optional[bytes] = None,
 ) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
@@ -453,6 +454,7 @@ def create_truss_service(
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
             labels=labels,
+            raw_config=raw_config,
         )
 
         return ModelVersionHandle(
@@ -480,6 +482,7 @@ def create_truss_service(
             deploy_timeout_minutes=deploy_timeout_minutes,
             team_id=team_id,
             labels=labels,
+            raw_config=raw_config,
         )
 
         return ModelVersionHandle(
@@ -505,6 +508,7 @@ def create_truss_service(
         preserve_env_instance_type=preserve_env_instance_type,
         deploy_timeout_minutes=deploy_timeout_minutes,
         labels=labels,
+        raw_config=raw_config,
     )
 
     return ModelVersionHandle(

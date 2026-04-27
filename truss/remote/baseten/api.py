@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from enum import Enum
@@ -212,9 +213,10 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_from_truss(
                     name: "{model_name}"
                     s3_key: "{s3_key}"
@@ -228,6 +230,7 @@ class BasetenApi:
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -249,6 +252,9 @@ class BasetenApi:
                 "trussUserEnv": truss_user_env.json(),
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
+                else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
                 else None,
             },
         )
@@ -267,9 +273,10 @@ class BasetenApi:
         preserve_env_instance_type: bool = True,
         deploy_timeout_minutes: Optional[int] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 create_model_version_from_truss(
                     model_id: "{model_id}"
                     s3_key: "{s3_key}"
@@ -282,6 +289,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -305,6 +313,9 @@ class BasetenApi:
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
                 else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
+                else None,
             },
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
@@ -320,9 +331,10 @@ class BasetenApi:
         deploy_timeout_minutes: Optional[int] = None,
         team_id: Optional[str] = None,
         labels: Optional[dict] = None,
+        raw_config: Optional[bytes] = None,
     ):
         query_string = f"""
-            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString) {{
+            mutation ($trussUserEnv: String, $userDeployMetadata: JSONString, $rawConfig: String) {{
                 deploy_draft_truss(name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
@@ -332,6 +344,7 @@ class BasetenApi:
                     {f"deploy_timeout_minutes: {deploy_timeout_minutes}" if deploy_timeout_minutes is not None else ""}
                     {f'team_id: "{team_id}"' if team_id else ""}
                     user_deploy_metadata: $userDeployMetadata
+                    raw_config: $rawConfig
                 ) {{
                     model_version {{
                         id
@@ -354,6 +367,9 @@ class BasetenApi:
                 "trussUserEnv": truss_user_env.json(),
                 "userDeployMetadata": json.dumps(labels)
                 if labels is not None
+                else None,
+                "rawConfig": base64.b64encode(raw_config).decode("utf-8")
+                if raw_config is not None
                 else None,
             },
         )
@@ -1007,6 +1023,13 @@ class BasetenApi:
             f"v1/models/{model_id}/deployments/{deployment_id}/download"
         )
         return response["download_url"]
+
+    def get_deployment_config(
+        self, model_id: str, deployment_id: str
+    ) -> Dict[str, Any]:
+        return self._rest_api_client.get(
+            f"v1/models/{model_id}/deployments/{deployment_id}/config"
+        )
 
     def get_model_deployment_logs(
         self,
