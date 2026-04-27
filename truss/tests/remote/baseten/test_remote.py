@@ -5,6 +5,7 @@ import pydantic
 import pytest
 import requests_mock
 
+from truss.base.truss_config import BISLLM
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
@@ -650,11 +651,11 @@ def test_push_raised_validation_error_for_extra_fields(tmp_path, remote):
 def test_push_uses_llm_service_for_llm_config(
     remote, mock_upload_truss, mock_truss_handle
 ):
-    mock_truss_handle.spec.config.llm_config = {"model": "test-llm"}
-    mock_truss_handle.spec.config.llm_version = "v1"
+    mock_truss_handle.spec.config.bis_llm = BISLLM(
+        config={"model": "test-llm"},
+        version="v1",
+    )
     mock_truss_handle.spec.config.environment_variables = {"HF_TOKEN": "secret"}
-    mock_truss_handle.spec.config.autoscaling_settings = None
-    mock_truss_handle.spec.config.additional_autoscaling_config = None
 
     llm_handle = mock.Mock(
         version_id="llm-deployment-id",

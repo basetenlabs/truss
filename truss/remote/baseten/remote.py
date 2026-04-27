@@ -207,7 +207,6 @@ class BasetenRemote(TrussRemote):
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "resources": config.resources.model_dump(exclude_none=True),
-            "llm_config": config.bis_llm.config or {},
         }
         if model_id is None:
             body["name"] = model_name
@@ -221,7 +220,7 @@ class BasetenRemote(TrussRemote):
                 body["llm_version"] = config.bis_llm.version
 
             if config.bis_llm.config is not None:
-                body["config"] = config.bis_llm.config
+                body["llm_config"] = config.bis_llm.config
 
             if config.bis_llm.additional_autoscaling_config is not None:
                 body["additional_autoscaling_config"] = (
